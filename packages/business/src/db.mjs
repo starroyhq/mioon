@@ -1,6 +1,7 @@
 import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync,openSync,writeFileSync,readFileSync,unlinkSync,existsSync,closeSync} from 'node:fs';
 import path from 'node:path';
+import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 export function openStore(root,{lock=true}={}){
  mkdirSync(root,{recursive:true,mode:0o700});mkdirSync(path.join(root,'media'),{recursive:true});
  const lockPath=path.join(root,'server.lock');
@@ -105,6 +106,14 @@ export function openStore(root,{lock=true}={}){
  CREATE TRIGGER IF NOT EXISTS retain_agent_chat_events BEFORE DELETE ON agent_chat_events
  BEGIN SELECT RAISE(ABORT,'chat events must be retained');END;
  INSERT OR IGNORE INTO schema_version VALUES(6);
+ COMMIT;`);
+ // Read-only inspection uses indexes rather than repeatedly scanning JSON.
+ // Building these additive indexes scans existing rows once at first startup;
+ // no record, historical response or journal is rewritten by this migration.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE INDEX IF NOT EXISTS inspection_versions_asset_id ON versions(${INSPECTION_VERSION_ASSET_EXPRESSION},id);
+ ${['assets','shots','nodes','edges','jobs','versions','exports','timelines'].map(table=>`CREATE INDEX IF NOT EXISTS inspection_${table}_project_id ON ${table}(projectId,id);`).join('\n')}
+ INSERT OR IGNORE INTO schema_version VALUES(7);
  COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};

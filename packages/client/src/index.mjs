@@ -1,10 +1,10 @@
 import {setTimeout as pause} from 'node:timers/promises';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {schemas, descriptions, parse} from '@mioon/contracts';
+import {schemas, descriptions, parse, operationEffect, effectAnnotations} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 
-export {schemas, descriptions, resolveConnection};
+export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = '0.4.0';
 export const EXIT_CODES = Object.freeze({success: 0, unexpected: 1, validation: 2, conflict: 3, unavailable: 4, timeout: 5, operationFailed: 6, interrupted: 130});
 export const discoverySchemas = {
@@ -12,6 +12,11 @@ export const discoverySchemas = {
   capabilities: z.object({}).strict(),
   schema: z.object({operation: z.enum(Object.keys(schemas)).optional()}).strict(),
 };
+export const discoveryEffects = Object.freeze({
+  doctor: Object.freeze({...operationEffect('provider.list'), notes:'Reads authenticated local health and current provider capabilities; no external provider call or mutation.'}),
+  capabilities: operationEffect('provider.list'),
+  schema: Object.freeze({...operationEffect('provider.list'), notes:'Reads static schemas and advisory effect metadata in this process; no backend, credentials or network required.'}),
+});
 export class ClientError extends Error {
   constructor(code, message, {status, details = {}, exitCode} = {}) {
     super(message); this.name = 'ClientError'; this.code = code; this.status = status; this.details = details;
@@ -48,7 +53,7 @@ export function jsonSchema(schema) { return zodToJsonSchema(schema, {strictUnion
 export function operationDefinition(operation) {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
   const inputSchema = jsonSchema(schemas[operation]);
-  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: descriptions[operation] || operation, inputSchema, requiresRequestId: inputSchema.required?.includes('requestId') || false};
+  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: descriptions[operation] || operation, inputSchema, requiresRequestId: inputSchema.required?.includes('requestId') || false, effects: operationEffect(operation)};
 }
 export function discoverSchema(input = {}) {
   const parsed = validateDiscovery('schema', input);

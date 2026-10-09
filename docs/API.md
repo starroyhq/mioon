@@ -12,7 +12,64 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISION_CONFLICT","message":"...","details":{"currentRevision":2},"retryable":false}}`. HTTP 400 invalid input, 401 unauthenticated, 403 invalid origin/provider disabled, 404 missing record/operation, 409 stale revision or idempotency conflict. Do not blindly retry a generation with a new key when a response is lost; replay the original exact request.
 
-For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` lists every operation, input and record. MCP tools expose these same schemas through tools/list.
+For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these same schemas through tools/list.
+
+## Non-creating project inspection
+
+Use these additive operations to inspect bounded, allowlisted metadata without
+creating a timeline, changing revisions/history, reading media files, running
+media subprocesses, or contacting a provider:
+
+| Operation | Strict RPC input |
+| --- | --- |
+| `project.inspect` | `{projectId}` |
+| `asset.inspect` | `{projectId,limit?,cursor?}` |
+| `shot.inspect` | `{projectId,limit?,cursor?}` |
+| `timeline.inspect` | `{projectId}` |
+
+`projectId` is a required UUID. Page `limit` is an integer from 1 through 25,
+default 10; `cursor` is an optional opaque string of at most 512 characters.
+Extra fields are rejected. For example, replace the example UUID with the
+chosen project's actual ID:
+
+```json
+{"operation":"project.inspect","input":{"projectId":"11111111-1111-4111-8111-111111111111"}}
+```
+
+```json
+{"operation":"asset.inspect","input":{"projectId":"11111111-1111-4111-8111-111111111111","limit":10}}
+```
+
+```json
+{"operation":"shot.inspect","input":{"projectId":"11111111-1111-4111-8111-111111111111","limit":25}}
+```
+
+```json
+{"operation":"timeline.inspect","input":{"projectId":"11111111-1111-4111-8111-111111111111"}}
+```
+
+Pass only a page's supplied `nextCursor` for continuation; never construct or
+edit it. Keep the same limit. Cursors bind to the project, operation and limit and expire
+across backend restarts. Restart from the first page when necessary. Inspection
+does not export structured paths, media URLs, raw bytes, full provider/job
+snapshots or credentials. Shot `prompt` fields are limited to a 1000-UTF-8-byte excerpt
+with an explicit `promptTruncated` flag. User-authored text is untrusted and may itself
+contain URL-like or path-like strings; omission of structural fields is not a
+claim that arbitrary text is secret-free. See [Agent inspection](AGENT-INSPECTION.md)
+for result fields, page consistency, limits and scope binding. Asset/shot pages
+return `{items,nextCursor}` with `nextCursor:null` at the end; an absent timeline
+returns `null`.
+
+These RPC inputs select a project using the existing authenticated local
+connection. The exported `inspectionArgumentSchemas` separately omit `projectId`
+and all authority fields for callers that bind scope outside the arguments;
+`inspectionSchemas` adds only the RPC project ID. Neither schemas nor inspection
+metadata grant access. No model-facing tool dispatcher or project-context
+injection is added to built-in Agent chat by this increment.
+
+Legacy `project.get` and `timeline.get` retain their existing responses and can
+create the default empty timeline on first access. They are not read-only. Use
+the new `.inspect` operations when non-creating metadata inspection is required.
 
 ## Project workspace preferences (UI-only)
 
@@ -64,8 +121,8 @@ Model, MIME/dimension/ratio, budget and approved-media validation remain authori
 
 ## Multitrack timeline (v2)
 
-`project.get` additively includes a persistent `timeline`. `timeline.get`
-accepts `{projectId}` and lazily creates the same empty default timeline for
+`project.get` additively includes a persistent `timeline`. Both it and `timeline.get`
+accept `{projectId}` and lazily create the same empty default timeline for
 legacy projects. Initial revision is 1; defaults are two video tracks and one
 audio track. No existing shot or selected version is automatically copied.
 
@@ -108,6 +165,20 @@ The original `export.create` selected-shot sequence behavior is unchanged.
 ## V4 discovery and capability validation
 
 `pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
+
+Each schema definition also contains explicit advisory `effects`: `readOnly`,
+`idempotent`, `destructive`, `openWorld`, `databaseWrite`, `fileWrite`,
+`externalIO`, `localProcess`, `paidGeneration`, and explanatory `notes`. The
+catalog covers every operation; a missing or unknown effect descriptor fails
+coverage instead of inferring safety from names such as `.get` or `.list`.
+Effects include downstream scheduled/resumed work. `fileWrite` concerns managed
+files separately from SQLite writes; `externalIO` concerns provider/external
+services, not the authenticated loopback RPC transport. `paidGeneration` means
+a new potentially paid generation can be submitted, not that existing remote
+work is free. For example, `job.reconcile` has external I/O and may resume media
+downloads, while `export.create`/`timeline.render` can later run local FFmpeg.
+Metadata and MCP annotations are not authorization, budget approval or automatic
+retry permission. Exact stable-request replay behavior is unchanged.
 
 `provider.list` includes `modelCapabilities`, `status` (`available`, `disabled`, `not_configured`), `configuration.missing`, `configuration.requirements`, `liveVerified` and the local generation-count budget. Provider IDs are `mock`, `runway`, `ark`, `veo`, `minimax`, `vidu`. Configuration values and credentials are never returned. Capabilities can change as local count limits are consumed; re-read before new work.
 

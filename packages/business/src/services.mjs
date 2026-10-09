@@ -6,6 +6,7 @@ import {normalizedCapabilities,generationLimit,providerSettings} from './provide
 import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createReferenceServices} from './references.mjs';
+import {createInspectionServices} from './inspection.mjs';
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
@@ -46,7 +47,9 @@ export function createServices(store,providers,{env=process.env}={}){
  });
  const timeline=createTimelineServices(store,{required,check,hash,now});
  const references=createReferenceServices(store,{required,check,hash,now});
+ const inspection=createInspectionServices(store);
  const handlers={
+ ...inspection.handlers,
  ...timeline.handlers,
  ...references.handlers,
  'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
@@ -97,6 +100,6 @@ export function createServices(store,providers,{env=process.env}={}){
  'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>required('versions',s.selectedVersionId));const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);return e;}),
  'export.get':i=>required('exports',i.exportId)
  };
- async function call(op,input){const parsed=parse(op,input);return publicValue(await handlers[op](parsed));}
- return {call,required,check,event,saveJob,createJob,handlers,publicValue};
+ async function call(op,input){if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input);const parsed=parse(op,input);return publicValue(await handlers[op](parsed));}
+ return {call,required,check,event,saveJob,createJob,handlers,publicValue,inspection};
 }

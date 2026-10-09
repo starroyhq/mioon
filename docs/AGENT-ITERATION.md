@@ -2,9 +2,9 @@
 
 Date: 2026-10-09 (UTC)
 
-Status: **stage 1 settings committed (`66a0193`); stage 2A committed (`3db1a02`); stage 2B dual-protocol/right-dock committed (`e2db533`); durability-only stage 3A implemented and locally verified after provider hardening (`9716677`), pending independent review/commit**. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md), [chat acceptance](AGENT-CHAT.md), [Responses contract](AGENT-RESPONSES.md) and [durable chat](AGENT-DURABLE.md). Scoped tools and generation approvals remain planned. The companion [provider research](AGENT-PROVIDERS.md) does not certify live compatibility.
+Status: **stage 1 settings committed (`66a0193`); stage 2A committed (`3db1a02`); stage 2B dual-protocol/right-dock committed (`e2db533`); durability-only stage 3A committed (`ce60c97`); stage 3B shared scoped inspection locally verified, pending independent release review**. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md), [chat acceptance](AGENT-CHAT.md), [Responses contract](AGENT-RESPONSES.md), [durable chat](AGENT-DURABLE.md) and [shared scoped inspection](AGENT-INSPECTION.md). Model tool execution and generation approvals remain planned. The companion [provider research](AGENT-PROVIDERS.md) does not certify live compatibility.
 
-The architecture review used local HEAD `821600f` and the then-uncommitted panel work. The panel release was subsequently handed off as `ed23ef7`, the baseline for the first Agent settings increment. Preserve that panel work. Secure settings were committed as `66a0193`; `80334cf` adds roadmap documentation. Stage 2A was committed as `3db1a02`; stage 2B as `e2db533`, with independent Responses/CC adapters and the inline right dock. Stage 3A starts from `9716677` and adds local typed-chat durability without project tools.
+The architecture review used local HEAD `821600f` and the then-uncommitted panel work. The panel release was subsequently handed off as `ed23ef7`, the baseline for the first Agent settings increment. Preserve that panel work. Secure settings were committed as `66a0193`; `80334cf` adds roadmap documentation. Stage 2A was committed as `3db1a02`; stage 2B as `e2db533`, with independent Responses/CC adapters and the inline right dock. Stage 3A started from `9716677` and was committed as `ce60c97`, adding local typed-chat durability without project tools. Stage 3B starts from `ce60c97` and adds shared non-creating inspection without connecting it to model conversations.
 
 ## Outcome and scope
 
@@ -157,7 +157,7 @@ The trusted approval UI must show and bind the project, shot revision, provider/
 
 ## Staged commits and acceptance
 
-Stages 0–2B are recorded/committed. Stage 3 is split into durable typed-chat recovery, shared scoped inspection and then both-protocol read tools. Stage 3A is implemented with local synthetic acceptance, pending independent review/commit; the rest of stages 3–7 remain planned. A stage is not done until its tests and actual runtime evidence are recorded. All runtime model/provider fixtures must be visibly labeled simulated.
+Stages 0–2B are recorded/committed. Stage 3 is split into durable typed-chat recovery, shared scoped inspection and then both-protocol read tools. Stage 3A is committed with independent 902/902 acceptance; stage 3B has local 974/974 and native runtime acceptance, pending independent release review; stage 3C and stages 4–7 remain planned. A stage is not done until its tests and actual runtime evidence are recorded. All runtime model/provider fixtures must be visibly labeled simulated.
 
 | Stage | Main ownership/files | Acceptance and runtime evidence |
 | --- | --- | --- |

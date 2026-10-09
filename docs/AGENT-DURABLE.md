@@ -2,8 +2,7 @@
 
 Date: 2026-10-09 (UTC). Baseline: `9716677`.
 
-Status: implementation and local synthetic acceptance complete; pending independent
-parent review and local commit. This is the first durability increment, **not scoped project tools or a completed editing Agent**.
+Status: committed as `ce60c97` after independent **902/902** tests passed. This is the first durability increment, **not scoped project tools or a completed editing Agent**.
 Both Chat Completions and Responses remain supported by their existing independent
 text adapters. All acceptance uses synthetic local HTTP services; no live account,
 real key, media upload, OAuth or paid generation is authorized for this work.
@@ -132,7 +131,7 @@ adapters. Presets remain documentation-backed, not live-provider verified.
 - Full bounded suite: **898/898, 0 skipped**, 112.9 s. The only subsequent
   production change clarified two native recovery dialogs; all affected desktop
   tests then passed **64/64**, including four new disclosure regression cases.
-  Independent final aggregate verification is owned by the parent before commit.
+  Independent final aggregate verification passed **902/902** before commit `ce60c97`.
 - Real process-level crash/reopen tests cover both protocols, lost acknowledgement,
   immutable context/replay, event ordering, and zero restart credential acquisition
   or inference. Runtime/journal focused tests passed **39/39**; subprocess crash

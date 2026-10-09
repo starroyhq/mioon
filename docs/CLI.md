@@ -75,7 +75,7 @@ mioon generation submit --help
 
 `--help`, `--version`, and `schema` work offline. `doctor` authenticates against the backend and reports safe readiness metadata and provider capabilities; it neither submits generation nor exposes secret locations. `capabilities` returns the current `provider.list` data, including legacy fields and per-model `modelCapabilities`. Use enabled/configured/model constraints from that response rather than assuming a provider is ready. Current provider IDs are `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`; live providers stay disabled without explicit backend opt-in and an authorized budget.
 
-`schema [operation]` converts the actual exported Zod input schema to JSON Schema. It returns the operation, natural command, MCP tool name, description, `inputSchema`, and `requiresRequestId`. Custom refinements (such as rectangle containment) still run in the shared Zod validator even where JSON Schema cannot represent them.
+`schema [operation]` converts the actual exported Zod input schema to JSON Schema. It returns the operation, natural command, MCP tool name, description, `inputSchema`, `requiresRequestId`, and explicit advisory `effects`. Custom refinements (such as rectangle containment) still run in the shared Zod validator even where JSON Schema cannot represent them. Effects describe direct and scheduled work; they never authorize a call or waive required approval. Missing effect coverage is an error, not a suffix-based safety guess.
 
 Every shared operation is available in either form:
 
@@ -87,6 +87,42 @@ cat ./request.json | mioon generation submit --input -
 ```
 
 The command covers projects, assets, shots, canvas nodes/edges, providers, generation, jobs, versions, timeline tracks/clips, and exports automatically from the contracts. `--input-file` and `--input -` read only explicitly requested client-side input. `--input` and `--input-file` are mutually exclusive. Unknown fields, including nested fields, are rejected. `--json` may be specified but JSON is already the default.
+
+### Inspect without creating a timeline
+
+The four `.inspect` operations return bounded, allowlisted metadata without
+writing project state or reading/processing media. Replace the illustrative UUID
+with the selected project's actual ID:
+
+```sh
+mioon schema project.inspect
+mioon project inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111"}'
+mioon asset inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111","limit":10}'
+mioon shot inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111","limit":25}'
+mioon timeline inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111"}'
+```
+
+Only asset/shot inspection accepts optional `limit` (integer 1–25, default 10)
+and `cursor` (opaque string, at most 512 characters). Use only a returned
+`nextCursor`, unchanged, for the same project, operation and limit. Restart pagination after
+a backend restart invalidates the cursor. No request ID is required. All inputs
+are strict, including rejection of credentials, paths and authority overrides.
+
+Inspection does not return structured paths, media URLs or bytes, and does not
+start generation or rendering. Shot `prompt` fields are excerpts of at most 1000 UTF-8
+bytes with an explicit `promptTruncated` flag. User-authored text remains untrusted and
+may contain URL-like strings. `timeline inspect` reports an absent timeline
+without initializing it. By contrast, legacy `project get` and `timeline get`
+retain their original responses and can create an empty timeline on first read;
+their effect metadata is not read-only. See [Agent inspection](AGENT-INSPECTION.md)
+for result contracts and scope boundaries. This increment does not inject
+project context or enable model tool execution in built-in Agent chat.
+
+The `effects` fields also describe managed-file writes, local subprocesses,
+external/provider I/O and potentially paid new generation. `job reconcile`
+contacts the existing provider task and can resume download/publication;
+`export create` and `timeline render` can later run local FFmpeg. Effect metadata
+does not change stable-request replay, current-revision checks or user approvals.
 
 ### Connect a real first-frame input
 

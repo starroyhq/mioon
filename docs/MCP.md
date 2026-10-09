@@ -92,25 +92,74 @@ Claude Code's [official MCP guide](https://code.claude.com/docs/en/mcp) describe
 
 All RPC operation names replace dots with underscores. For example:
 
-- `project_create`, `project_list`, `project_get`
-- `asset_import`, `asset_list`
-- `shot_create`, `shot_update`, `shot_reorder`
+- `project_create`, `project_list`, `project_get`, `project_inspect`
+- `asset_import`, `asset_list`, `asset_inspect`
+- `shot_create`, `shot_update`, `shot_reorder`, `shot_inspect`
 - `node_create`, `node_update`, `edge_create`, `edge_delete`
 - `provider_list`, `generation_submit`
 - `job_get`, `job_list`, `job_retry`, `job_cancel`, `job_reconcile`
 - `version_list`, `version_select`
-- `timeline_get`, `timeline_track_add`, `timeline_track_update`
-- `timeline_clip_add`, `timeline_clip_update`, `timeline_clip_remove`
+- `timeline_get`, `timeline_inspect`, `timeline_history_get`, `timeline_undo`, `timeline_redo`
+- `timeline_track_add`, `timeline_track_update`
+- `timeline_clip_add`, `timeline_clip_update`, `timeline_clip_remove`, `timeline_clip_split`
 - `timeline_seed`, `timeline_render`
 - `export_create`, `export_get`
 
 Three additional read-only discovery tools are available:
 
-- `mioon_schema({})`: all operation definitions, actual JSON Schemas, natural CLI commands, and `requiresRequestId` flags. `mioon_schema({"operation":"generation.submit"})` narrows to one operation. This tool works offline.
+- `mioon_schema({})`: all operation definitions, actual JSON Schemas, natural CLI commands, `requiresRequestId` flags, and advisory `effects`. `mioon_schema({"operation":"generation.submit"})` narrows to one operation. This tool works offline.
 - `mioon_capabilities({})`: the current `provider.list` data, including per-model `modelCapabilities`, enabled/configured gates, supported durations/aspect ratios, and limits. It does not submit generation.
 - `mioon_doctor({})`: authenticated readiness, client/backend version metadata, connection mode, and provider capabilities. It does not return credential paths or token values.
 
 Provider IDs currently include `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`. Discover each configured provider's actual model options before use; adding an adapter does not authorize live generation or mean a credential is configured.
+
+### Bounded, non-creating inspection
+
+Use the four inspection tools for safe project-scoped metadata. These exact
+argument examples use an illustrative UUID; substitute the chosen project's ID:
+
+```text
+project_inspect({"projectId":"11111111-1111-4111-8111-111111111111"})
+asset_inspect({"projectId":"11111111-1111-4111-8111-111111111111","limit":10})
+shot_inspect({"projectId":"11111111-1111-4111-8111-111111111111","limit":25})
+timeline_inspect({"projectId":"11111111-1111-4111-8111-111111111111"})
+```
+
+Only asset/shot inspection accepts `limit` (integer 1–25, default 10) and optional
+`cursor` (at most 512 characters). Pass the returned `nextCursor` unchanged with the same limit;
+cursors bind to the project/operation/limit and expire across backend restarts.
+Inspection never creates empty tracks, edits revisions/history, reads media,
+runs local media processes or contacts providers. Missing timelines remain
+missing. Results omit structured paths, URLs and raw media; shot `prompt` excerpts
+are capped at 1000 UTF-8 bytes with `promptTruncated`. User-authored text is
+untrusted and can still contain URL-like strings. Full response contracts and
+scope behavior: [Agent inspection](AGENT-INSPECTION.md).
+
+The built-in Agent chat does not receive these records or any executable model
+tools in this increment. Existing authenticated standalone MCP clients can call
+them explicitly. Legacy `project_get` and `timeline_get` keep their original
+responses and can lazily create a timeline; both correctly advertise
+`readOnlyHint:false`.
+
+### Advisory effects and MCP annotations
+
+Every shared operation has an explicit effect descriptor. The MCP bridge derives
+`readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint` from that
+descriptor rather than guessing from suffixes. `mioon_schema` exposes it as
+`effects`, including database/file writes, external I/O, local subprocesses and
+potential new paid generation. Missing/new operations fail effect coverage.
+The SDK's annotations are hints, not authorization or permission to skip client
+approval. Unspecified internal effect fields default conservatively; no unknown
+operation receives a guessed safe annotation.
+
+Effects cover later worker activity too: generation submit/retry can incur
+charges; reconciliation contacts an existing provider task and can resume
+downloads but does not submit new generation; exports can run local FFmpeg and
+write managed files. New timeline edits, including add/seed, can discard a redo
+branch, so they are conservatively destructive. Read-only discovery remains
+truthful: schema needs no backend, while doctor/capabilities read only the local
+backend without contacting a provider. `idempotentHint:true` describes repeat
+effects, not fresh responses; preserve exact stable request IDs and inputs.
 
 ## Results, safety, and recovery
 
