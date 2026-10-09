@@ -177,6 +177,18 @@ export function createTimelineServices(store,{required,check,hash,now}){
    clip(timeline,input.clipId);
    timeline.clips=timeline.clips.filter(item=>item.id!==input.clipId);
   }),
+  'timeline.clip.split':input=>mutate('timeline.clip.split',input,timeline=>{
+   const left=clip(timeline,input.clipId),end=left.startFrame+left.durationFrames;
+   if(input.atFrame<=left.startFrame||input.atFrame>=end)
+    throw new AppError('SPLIT_BOUNDS','分割点必须位于所选片段内部，不能位于起止帧',400,{clipId:left.id,startFrame:left.startFrame,endFrame:end,atFrame:input.atFrame});
+   const source=asset(timeline.projectId,left.assetId),leftDuration=input.atFrame-left.startFrame;
+   // A still has no advancing source clock. Moving media keeps contiguous
+   // source ranges; copying the complete clip also preserves frozen references.
+   const right={...clone(left),id:randomUUID(),startFrame:input.atFrame,durationFrames:end-input.atFrame,
+    sourceInFrame:source.mimeType.startsWith('image/')?0:left.sourceInFrame+leftDuration};
+   left.durationFrames=leftDuration;
+   timeline.clips.splice(timeline.clips.indexOf(left)+1,0,right);
+  }),
   'timeline.seed':input=>mutate('timeline.seed',input,timeline=>{
    if(timeline.clips.length)throw new AppError('TIMELINE_NOT_EMPTY','只有空时间线可以从镜头顺序导入',409);
    const shots=list('shots',input.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);

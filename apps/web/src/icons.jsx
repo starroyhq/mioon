@@ -2,6 +2,7 @@ import React from 'react';
 const paths = {
   music: <><path d="M9 18V5l11-2v13M9 8l11-2" /><ellipse cx="6" cy="18" rx="3" ry="2.5" /><ellipse cx="17" cy="16" rx="3" ry="2.5" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
+  scissors: <><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="m8 8 13 13M8 16 21 3" /></>,
   arrow: <path d="m8 5 7 7-7 7" />,
   left: <path d="m15 5-7 7 7 7" />,
   down: <path d="m6 9 6 6 6-6" />,

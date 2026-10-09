@@ -316,3 +316,6 @@ body:has(.workbench-confirm) [data-slot="dialog-overlay"]{z-index:110}
 @media (max-width: 1250px) {
   .workspace-save-status[data-phase="saving"], .workspace-save-status[data-phase="pending"] { display: none; }
 }
+
+/* Selected-clip split target stays readable without crowding compact timelines. */
+.timeline-split-controls{display:flex;align-items:center;gap:7px;min-width:0}.timeline-split-controls>.button{min-height:24px;padding:4px 7px;font-size:10px;color:#d4e5b5;border-color:#536349;background:#394332}.timeline-split-target{display:flex;min-width:0;max-width:180px;font-size:9px;color:#a3b398;white-space:nowrap}.timeline-split-target>span{overflow:hidden;text-overflow:ellipsis}.timeline-split-target>b{font-family:monospace;font-weight:400;flex:none;color:#d3e6a0}.timeline-toolbar{gap:12px}@media(max-width:1150px){.timeline-split-target{max-width:100px}.timeline-toolbar{gap:8px}.playhead-input output{display:none}}@media(max-width:850px){.timeline-toolbar{height:auto;min-height:40px;flex-wrap:wrap;padding:6px 12px;row-gap:6px}.timeline-split-target{max-width:120px}}

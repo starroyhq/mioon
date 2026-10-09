@@ -78,6 +78,7 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | `timeline.clip.add` | `trackId,assetId,startFrame,durationFrames`, optional `name,sourceInFrame,rect,gain` |
 | `timeline.clip.update` | `clipId`, nonempty `patch:{trackId?,name?,startFrame?,durationFrames?,sourceInFrame?,rect?,gain?}` |
 | `timeline.clip.remove` | `clipId` |
+| `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
 | `timeline.render` | `purpose:'preview'|'export'` |
 

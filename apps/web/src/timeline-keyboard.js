@@ -8,15 +8,23 @@ export function rulerFrameForKey(key, frame, maxFrame = 18000) {
 
 const nativeEditingTargets = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="searchbox"], [role="spinbutton"], [role="combobox"], [role="dialog"], [role="alertdialog"], [aria-modal="true"], [role="menu"], [role="listbox"]';
 
-/** Preserve native text undo and modal controls, including shadow-DOM targets. */
-export function timelineHistoryActionForKey(event, { modalOpen = false } = {}) {
+/** Preserve native editing and modal controls, including shadow-DOM targets. */
+function shortcutBlocked(event, modalOpen) {
   if (modalOpen || event.defaultPrevented || event.repeat || event.isComposing || event.keyCode === 229
-    || event.altKey || Boolean(event.ctrlKey) === Boolean(event.metaKey)) return null;
+    || event.altKey || Boolean(event.ctrlKey) === Boolean(event.metaKey)) return true;
   const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
   const targets = [event.target, ...path, event.target?.ownerDocument?.activeElement];
-  if (targets.some(target => target?.isContentEditable || (target?.closest ? target : target?.parentElement)?.closest?.(nativeEditingTargets))) return null;
+  return targets.some(target => target?.isContentEditable || (target?.closest ? target : target?.parentElement)?.closest?.(nativeEditingTargets));
+}
+
+export function timelineHistoryActionForKey(event, { modalOpen = false } = {}) {
+  if (shortcutBlocked(event, modalOpen)) return null;
   const key = event.key?.toLowerCase();
   if (key === 'z') return event.shiftKey ? 'redo' : 'undo';
   if (key === 'y' && event.ctrlKey && !event.shiftKey) return 'redo';
   return null;
+}
+
+export function timelineSplitActionForKey(event, { modalOpen = false } = {}) {
+  return !shortcutBlocked(event, modalOpen) && !event.shiftKey && event.key?.toLowerCase() === 'b' ? 'split' : null;
 }

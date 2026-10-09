@@ -26,7 +26,8 @@ import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from '
 import { createWorkspacePreferences } from './workspace-preferences.js';
 import { migrateBrowserStorage } from './storage-migration.js';
 import { timelineHistoryState } from './timeline-history.js';
-import { timelineHistoryActionForKey } from './timeline-keyboard.js';
+import { timelineHistoryActionForKey, timelineSplitActionForKey } from './timeline-keyboard.js';
+import { timelineSplitState } from './timeline-split.js';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, isReferenceEdge, referenceForShot, isReferenceOperation, hasPendingReference, isImageReferenceNode, referenceAttachIssue, canvasEdge } from './reference-connections.js';
 
 const emptyData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null, timelineHistory: null };
@@ -460,6 +461,15 @@ export default function App() {
   const timelinePending = pending.some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render');
   const timelineBusy = Boolean(busy['timeline:mutation'] || timelinePending);
   const historyState = timelineHistoryState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty, online: online && auth === true && !loading });
+  const splitState = timelineSplitState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty, online: online && auth === true && !loading, selectedClipId, playhead, mode: workspaceMode });
+  async function splitTimelineClip() {
+    if (currentProject.current !== dataRef.current.project?.id) return null;
+    const latest = timelineSplitState({ projectId: currentProject.current, timeline: dataRef.current.timeline, history: dataRef.current.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty, online: online && auth === true && !loading, selectedClipId: viewRef.current.editing.selectedClipId, playhead: viewRef.current.editing.playhead, mode: viewRef.current.activeMode });
+    if (!latest.canSplit) return null;
+    const result = await mutateTimeline('timeline.clip.split', { clipId: latest.clipId, atFrame: latest.atFrame });
+    if (result) notify(`已在第 ${latest.atFrame} 帧分割为 ${latest.leftDuration} + ${latest.rightDuration} 帧，可一次撤销。`);
+    return result;
+  }
   function changeTimelineHistory(direction) {
     if (workspaceMode !== 'editing' || !['undo', 'redo'].includes(direction) || currentProject.current !== dataRef.current.project?.id) return null;
     const latest = timelineHistoryState({ projectId: currentProject.current, timeline: dataRef.current.timeline, history: dataRef.current.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty, online: online && auth === true && !loading });
@@ -469,7 +479,12 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = event => {
       if (viewRef.current.activeMode !== 'editing') return;
-      const direction = timelineHistoryActionForKey(event, { modalOpen: Boolean(document.querySelector('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) });
+      const guards = { modalOpen: Boolean(document.querySelector('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) };
+      if (timelineSplitActionForKey(event, guards)) {
+        if (splitState.canSplit) { event.preventDefault(); splitTimelineClip(); }
+        return;
+      }
+      const direction = timelineHistoryActionForKey(event, guards);
       if (!direction || !(direction === 'undo' ? historyState.canUndo : historyState.canRedo)) return;
       event.preventDefault();
       changeTimelineHistory(direction);
@@ -585,7 +600,7 @@ export default function App() {
     <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label="03 属性" />}><header className="inspector-region-heading"><div className="region-title"><h2>属性</h2></div><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起属性" title="收起属性" data-testid="toggle-inspector" />}><Icon name="arrow" size={16} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="inspector-region-content">{workspaceMode === 'canvas' ? <div className="inspector-container">
     <Inspector key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={inspect} onAddVersion={assetId => addTimelineAsset(assetId)} />
     </div> : chosenClip ? <TimelineInspector key={`${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`} onReturnToSource={clipSource ? () => returnToSource(chosenClip.assetId) : undefined} sourceDescription={clipSource?.version ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>片段属性</span></header><div className="inspector-empty"><h3>选择时间线片段</h3><p>在这里调整起止帧、源入点、画面位置和音量。</p></div></aside>}</CollapsibleContent></Collapsible>
-    {workspaceMode === 'editing' && data.project && !loading && <Timeline key={data.project.id} viewState={view.editing} onViewStateChange={patch => { if (data.project?.id === currentProject.current && viewRef.current.activeMode === 'editing') updateView('editing', patch); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} assets={data.assets} selectedClipId={selectedClipId} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} collapsed={timelineCollapsed} onCollapse={() => setTimelineCollapsed(!timelineCollapsed)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} />}
+    {workspaceMode === 'editing' && data.project && !loading && <Timeline key={data.project.id} viewState={view.editing} onViewStateChange={patch => { if (data.project?.id === currentProject.current && viewRef.current.activeMode === 'editing') updateView('editing', patch); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} splitState={splitState} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={selectedClipId} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} collapsed={timelineCollapsed} onCollapse={() => setTimelineCollapsed(!timelineCollapsed)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} />}
     <nav className="mobile-nav" aria-label="移动工作区导航">{[['assets', 'folder', '素材'], ['canvas', workspaceMode === 'canvas' ? 'grid' : 'play', workspaceMode === 'canvas' ? '画板' : '预览'], ['inspector', 'settings', '设置']].map(([id, icon, label]) => <Button variant="ghost" className={mobilePanel === id ? 'active' : ''} key={id} onClick={() => setMobilePanel(id)}><Icon name={icon} size={17} />{label}</Button>)}</nav>
     {toast && <div className={`toast ${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{toast.message}</span><Button variant="ghost" className="icon-button small" aria-label="关闭提示" onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
     {showCreate && <CreateProject onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create']} />}

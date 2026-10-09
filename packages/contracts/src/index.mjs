@@ -43,6 +43,7 @@ export const schemas={
 'timeline.clip.add':z.object({...timelineMutation,assetId:id,...clipFields,name:clipFields.name.optional(),sourceInFrame:sourceFrame.optional(),rect:rect.optional(),gain:clipFields.gain.optional()}).strict(),
 'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()]))).strict().refine(p=>Object.keys(p).length>0)}).strict(),
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
+'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),
 'timeline.seed':z.object(timelineMutation).strict(),
 'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export'])}).strict()
 };
@@ -64,6 +65,7 @@ Object.assign(descriptions,{
  'timeline.clip.add':'在指定轨道与帧位置添加固定素材片段；同轨不可重叠',
  'timeline.clip.update':'按时间线版本移动、裁切或调整片段，保留固定素材引用',
  'timeline.clip.remove':'按时间线版本移除指定片段',
+ 'timeline.clip.split':'在所选片段内部的整数时间线帧原子分割；左段保留ID，右段固定新ID；保留素材和源范围，不移动其他片段，可一次撤销，使用稳定requestId',
  'timeline.seed':'仅向空时间线按镜头顺序复制当前所选版本，之后独立编辑',
  'timeline.render':'冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；通过export_get查询'
 });

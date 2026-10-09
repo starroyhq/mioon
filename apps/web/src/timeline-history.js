@@ -4,6 +4,7 @@ const operationLabels = {
   'timeline.clip.add': '添加片段',
   'timeline.clip.update': '修改片段',
   'timeline.clip.remove': '移除片段',
+  'timeline.clip.split': '分割片段',
   'timeline.seed': '从分镜建立时间线',
 };
 

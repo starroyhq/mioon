@@ -42,9 +42,9 @@ The ordinary development Electron build ran in the own-cloud Linux graphical ses
 
 Screenshots inspected from the actual native application:
 
-- `evidence/workspace-preferences/native-restored-canvas.png`
-- `evidence/workspace-preferences/native-restored-editing.png`
-- `evidence/workspace-preferences/native-unavailable-confirmation.png`
+- `evidence/workspace-preferences/native-restored-canvas.jpg`
+- `evidence/workspace-preferences/native-restored-editing.jpg`
+- `evidence/workspace-preferences/native-unavailable-confirmation.jpg`
 
 ## Actual browser verification
 
