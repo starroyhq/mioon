@@ -19,7 +19,7 @@ import {createServices} from '../packages/business/src/services.mjs';
 const equal=(actual,expected,message)=>assert.equal(JSON.stringify(actual),JSON.stringify(expected),message);
 const domain=timeline=>({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames});
 export async function runHistoryBrowserAcceptance({tab,projectId,dataDir,outDir}) {
- assert.ok(path.resolve(dataDir).includes('/evidence/timeline-history/runtime/'),'Only the isolated synthetic QA copy may be edited');
+ assert.ok(['/evidence/timeline-history/runtime/', '/evidence/dual-workspace/runtime/'].some(part => path.resolve(dataDir).includes(part)), 'Only an isolated synthetic QA copy may be edited');
  await mkdir(outDir,{recursive:true});
  const store=openStore(dataDir,{lock:false}),services=createServices(store,new Map(),{env:{}});
  const read=()=>services.call('timeline.get',{projectId});
@@ -34,6 +34,7 @@ export async function runHistoryBrowserAcceptance({tab,projectId,dataDir,outDir}
  }
  async function capture(name) {const bytes=await tab.screenshot({fullPage:true});await writeFile(path.join(outDir,name),bytes);result.screenshots.push(name);}
  try {
+  await tab.playwright.getByTestId('workspace-editing').click();await tab.getAXState({emit:false});
   let timeline=await read(),revision=timeline.revision;
   const baseline=structuredClone(timeline),baselineHistory=await history(),unchanged=outside();
   assert.ok(timeline.clips.length>0&&timeline.tracks.length<11,'Use the existing synthetic multitrack fixture');

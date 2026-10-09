@@ -1,7 +1,7 @@
 import { useConfirmation } from '@video-workbench/ui/components/workbench-confirm';
 import { Separator } from '@video-workbench/ui/components/separator';
 import { Badge } from '@video-workbench/ui/components/badge';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@video-workbench/ui/components/button';
 import { Input } from '@video-workbench/ui/components/input';
 import { Label } from '@video-workbench/ui/components/label';
@@ -21,7 +21,7 @@ import { generationSelection, generationInputIssue, providerAvailabilityIssue, i
 
 const editable = (s) => ({ title: s.title, prompt: s.prompt || '', referenceAssetIds: s.referenceAssetIds || [], duration: s.duration || 2, aspectRatio: s.aspectRatio || '9:16', parameters: s.parameters || {} });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-export default function Inspector({ shot, node, project, assets, versions, jobs, providers, tab, setTab, busy, onSave, onNodeSave, onGenerate, onSelectVersion, onCompare, onOpenJobs, onDirtyChange, onAddVersion, generationOptions = {}, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect }) {
+export default function Inspector({ shot, node, project, assets, versions, jobs, providers, tab, setTab, busy, onSave, onNodeSave, onGenerate, onSelectVersion, onCompare, onOpenJobs, onDirtyChange, onAddVersion, generationOptions = {}, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect, highlightedVersionId }) {
   const confirm = useConfirmation();
   const initial = shot ? editable(shot) : { label: node?.label || '', text: node?.text || '' };
   const [draft, setDraft] = useState(initial);
@@ -29,6 +29,13 @@ export default function Inspector({ shot, node, project, assets, versions, jobs,
   const [baseRevision, setBaseRevision] = useState((shot || node)?.revision);
   const [conflict, setConflict] = useState(false);
   const baseline = useRef(initial);
+  const mounted = useRef(false);
+  const editSerial = useRef(0);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const highlightedVersion = useRef(null);
   const [advanced, setAdvanced] = useState(false);
   const record = shot || node;
   const boundReference = referenceForShot(edges, shot?.id);
@@ -47,26 +54,48 @@ export default function Inspector({ shot, node, project, assets, versions, jobs,
   async function changeInputMode(mode) {
     if (referenceLocked) return;
     if (mode === 'text' && draft.referenceAssetIds.length) {
-      if (!await confirm('切换为文生视频会清除此镜头的参考图选择，素材库中的原图会保留。继续？')) return;
+      if (!await confirm('切换为文生视频会清除此镜头的参考图选择，素材库中的原图会保留。继续？') || !mounted.current) return;
       edit('referenceAssetIds', []);
     }
     updateGeneration({ inputMode: mode });
   }
-  function edit(key, value) { setDraft(d => ({ ...d, [key]: value })); setDirty(true); }
+  function edit(key, value) { editSerial.current++; setDraft(d => ({ ...d, [key]: value })); setDirty(true); }
   async function save() {
-    if (referenceBusy || conflict) return null;
+    if (referenceBusy || conflict || !mounted.current) return null;
+    const submittedSerial = editSerial.current;
     const result = shot ? await onSave(shot.id, baseRevision, draft) : await onNodeSave(node.id, baseRevision, draft);
-    if (result) { setDirty(false); setConflict(false); setBaseRevision(result.revision); baseline.current = shot ? editable(result) : { label: result.label || '', text: result.text || '' }; setDraft(baseline.current); }
+    // A completed save may update project data after navigation, but it must
+    // never continue an old inspector's save-and-generate chain.
+    if (!mounted.current) return null;
+    if (result) {
+      const saved = shot ? editable(result) : { label: result.label || '', text: result.text || '' };
+      baseline.current = saved;
+      setBaseRevision(result.revision); setConflict(false);
+      if (editSerial.current !== submittedSerial) {
+        // The submitted snapshot is saved; keep anything typed while waiting.
+        setDirty(true);
+        return null;
+      }
+      setDirty(false); setDraft(saved);
+    }
     return result;
   }
   async function clearManualReferences() {
     if (referenceLocked || !draft.referenceAssetIds?.length) return;
-    if (!await confirm('清除此镜头的手动参考图选择？素材库中的原图会保留。保存修改后才能连接首帧节点。')) return;
+    if (!await confirm('清除此镜头的手动参考图选择？素材库中的原图会保留。保存修改后才能连接首帧节点。') || !mounted.current) return;
     edit('referenceAssetIds', []);
   }
-  function reset() { const latest = shot ? editable(shot) : { label: node.label || '', text: node.text || '' }; setDraft(latest); baseline.current = latest; setBaseRevision(record.revision); setDirty(false); setConflict(false); }
-  async function generate() { if (referenceBusy || conflict || capabilityIssue || availabilityIssue) return; const latest = dirty ? await save() : shot; if (latest) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode }); }
+  function reset() { editSerial.current++; const latest = shot ? editable(shot) : { label: node.label || '', text: node.text || '' }; setDraft(latest); baseline.current = latest; setBaseRevision(record.revision); setDirty(false); setConflict(false); }
+  async function generate() { if (referenceBusy || conflict || capabilityIssue || availabilityIssue) return; const latest = dirty ? await save() : shot; if (latest && mounted.current) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode }); }
   const selectedVersions = versions.filter(v => v.shotId === shot?.id).sort((a, b) => b.number - a.number);
+  useEffect(() => {
+    if (!highlightedVersionId || tab !== 'versions') return;
+    const frame = requestAnimationFrame(() => {
+      highlightedVersion.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      highlightedVersion.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [highlightedVersionId, tab, shot?.id]);
   const shotJobs = jobs.filter(j => j.shotId === shot?.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const running = shotJobs.find(activeJob);
   const generating = Boolean(running || busy[`generate:${shot?.id}`]);
@@ -88,7 +117,7 @@ export default function Inspector({ shot, node, project, assets, versions, jobs,
         <TabsTrigger value="settings" className={`flex-none rounded-none border-0 bg-transparent shadow-none ${tab === 'settings' ? 'active' : ''}`}>创作参数</TabsTrigger>
         <TabsTrigger value="versions" className={`flex-none rounded-none border-0 bg-transparent shadow-none ${tab === 'versions' ? 'active' : ''}`}>版本历史 <span>{selectedVersions.length}</span></TabsTrigger>
       </TabsList>
-      <ScrollArea style={{ flex: 1, minHeight: 0 }}><div className="inspector-scroll" style={{ overflow: 'visible' }}><TabsContent value="versions"><div className="section-heading"><span>探索不同的可能</span><Button variant="ghost" size="sm" className="text-button" disabled={selectedVersions.length < 2} onClick={() => onCompare(shot.id)}><Icon name="compare" size={14} />比较</Button></div>{selectedVersions.length ? selectedVersions.map(v => <div className={`version-card ${shot.selectedVersionId === v.id ? 'chosen' : ''}`} key={v.id} draggable={Boolean(v.assetId)} onDragStart={e => { if (v.assetId) dragAsset(e, v.assetId); }}><div className="version-preview"><Media version={v} controls /></div><div className="version-details"><strong>版本 {v.number}</strong><Badge className={`small-badge ${v.isMock ? 'neutral' : 'accent'}`}>{v.isMock ? '模拟' : v.providerId}</Badge><span className="spacer" />{shot.selectedVersionId === v.id && <Icon name="check" size={16} />}</div><p>{v.snapshot?.prompt || '未填写提示词'}</p><p className="version-generation-specs">{v.model || v.snapshot?.model || v.providerId} · {v.snapshot?.duration}s · {v.snapshot?.aspectRatio} · {v.snapshot?.referenceAssetIds?.length || 0} 张参考</p><div className="version-card-footer"><span>{new Date(v.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span><Button variant="ghost" size="sm" className="button small" disabled={shot.selectedVersionId === v.id || busy[`version:${shot.id}`]} onClick={() => onSelectVersion(shot, v.id)}>{shot.selectedVersionId === v.id ? '当前选用' : '选用此版本'}</Button></div><Button variant="ghost" size="sm" className="button small full version-to-timeline" disabled={!v.assetId} onClick={() => onAddVersion(v.assetId)}>将此固定版本加入时间线</Button></div>) : <div className="small-empty"><Icon name="layers" size={28} /><h4>还没有生成版本</h4><p>每次生成都保存为独立版本。你可以随时比较、切换，不会覆盖已有结果。</p><Button variant="ghost" size="sm" className="button" onClick={() => setTab('settings')}>开始创作</Button></div>}</TabsContent><TabsContent value="settings">
+      <ScrollArea style={{ flex: 1, minHeight: 0 }}><div className="inspector-scroll" style={{ overflow: 'visible' }}><TabsContent value="versions"><div className="section-heading"><span>探索不同的可能</span><Button variant="ghost" size="sm" className="text-button" disabled={selectedVersions.length < 2} onClick={() => onCompare(shot.id)}><Icon name="compare" size={14} />比较</Button></div>{selectedVersions.length ? selectedVersions.map(v => <div className={`version-card ${shot.selectedVersionId === v.id ? 'chosen' : ''} ${highlightedVersionId === v.id ? 'source-highlighted' : ''}`} key={v.id} ref={highlightedVersionId === v.id ? highlightedVersion : undefined} tabIndex={highlightedVersionId === v.id ? -1 : undefined} data-testid={`version-card-${v.id}`} data-source-highlighted={highlightedVersionId === v.id || undefined} aria-label={highlightedVersionId === v.id ? `片段来源：版本 ${v.number}` : undefined} draggable={Boolean(v.assetId)} onDragStart={e => { if (v.assetId) dragAsset(e, v.assetId); }}><div className="version-preview"><Media version={v} controls /></div>{highlightedVersionId === v.id && <div className="version-source-note" data-testid="highlighted-source-version"><Icon name="link" size={12} />当前片段的固定来源 · 版本 {v.number}</div>}<div className="version-details"><strong>版本 {v.number}</strong><Badge className={`small-badge ${v.isMock ? 'neutral' : 'accent'}`}>{v.isMock ? '模拟' : v.providerId}</Badge><span className="spacer" />{shot.selectedVersionId === v.id && <Icon name="check" size={16} />}</div><p>{v.snapshot?.prompt || '未填写提示词'}</p><p className="version-generation-specs">{v.model || v.snapshot?.model || v.providerId} · {v.snapshot?.duration}s · {v.snapshot?.aspectRatio} · {v.snapshot?.referenceAssetIds?.length || 0} 张参考</p><div className="version-card-footer"><span>{new Date(v.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span><Button variant="ghost" size="sm" className="button small" disabled={shot.selectedVersionId === v.id || busy[`version:${shot.id}`]} onClick={() => onSelectVersion(shot, v.id)}>{shot.selectedVersionId === v.id ? '当前选用' : '选用此版本'}</Button></div><Button variant="ghost" size="sm" className="button small full version-to-timeline" disabled={!v.assetId} onClick={() => onAddVersion(v.assetId)}>将此固定版本加入时间线</Button></div>) : <div className="small-empty"><Icon name="layers" size={28} /><h4>还没有生成版本</h4><p>每次生成都保存为独立版本。你可以随时比较、切换，不会覆盖已有结果。</p><Button variant="ghost" size="sm" className="button" onClick={() => setTab('settings')}>开始创作</Button></div>}</TabsContent><TabsContent value="settings">
       {shot.selectedVersionId && <Button variant="ghost" size="sm" className="button small full version-to-timeline" data-testid="selected-version-to-timeline" onClick={() => { const selected = versions.find(v => v.id === shot.selectedVersionId); if (selected?.assetId) onAddVersion(selected.assetId); }}>当前选用版本 → 时间线（固定副本）</Button>}
       <div className="section-eyebrow">SHOT {String(shot.orderIndex + 1).padStart(2, '0')}<Badge className={`small-badge ${dirty ? 'warn' : 'neutral'}`}>{dirty ? '未保存' : '已同步'}</Badge></div>
       <Label className="field-label" htmlFor="shot-title">镜头名称</Label><Input id="shot-title" data-testid="shot-title" value={draft.title} onChange={e => edit('title', e.target.value)} maxLength={150} />

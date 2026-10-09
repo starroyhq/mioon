@@ -141,3 +141,146 @@ body:has(.workbench-confirm) [data-slot="dialog-overlay"]{z-index:110}
 .bound-reference-heading{display:flex;align-items:center;gap:7px;color:#d2e7bd;font-size:10px;margin-bottom:10px}.bound-reference-source{display:flex;align-items:flex-start;gap:9px;margin-bottom:8px}.bound-reference-source img{width:52px;height:61px;object-fit:cover;border-radius:4px;flex:none}.bound-reference-source>div{display:flex;flex-direction:column;min-width:0}.bound-reference-source strong,.bound-reference-source span{font-size:10px;color:#c0d1b3;overflow-wrap:anywhere}.bound-reference-source span{font-size:9px;color:#83967c;margin-top:3px}.bound-reference>.button{margin-top:10px;color:#c9d7bc;border-color:#526746}
 .visual-connection-note{border-top:1px solid #35404c;padding-top:12px;margin-top:17px!important;line-height:1.75}.clear-manual-references{margin-top:8px;font-size:10px;color:#cbb18e}
 @media(max-width:720px){.canvas-connection-legend{top:7px;left:9px;gap:8px;font-size:8px;padding:5px 7px}.selected-edge-note{top:43px;left:9px;font-size:9px}.reference-connection-panel,.bound-reference{padding:11px}}
+
+/* One project, two full workspaces. Only the active workspace is mounted. */
+.workbench.workbench-v2.mode-canvas {
+  --timeline-h: 0px;
+  grid-template-rows: 60px minmax(0, 1fr);
+}
+.workbench.workbench-v2.mode-editing {
+  --timeline-h: clamp(304px, 34dvh, 340px);
+  grid-template-rows: 60px minmax(220px, 1fr) var(--timeline-h);
+}
+.workbench-v2.mode-editing.timeline-collapsed { --timeline-h: 47px; }
+.workbench-v2.mode-canvas .main-stage,
+.workbench-v2.mode-editing .main-stage { min-height: 0; }
+.workbench-v2.mode-canvas .region-index,
+.workbench-v2.mode-editing .region-index { display: none; }
+.workbench-v2.mode-canvas .toast { bottom: 18px; }
+.workbench-v2.mode-editing .preview-stage { padding: 20px; }
+.workbench-v2.mode-editing .preview-mode-bar { height: 45px; }
+.workbench-v2.mode-editing .preview-footer { height: 52px; }
+.workspace-mode-switch { flex: none; }
+.workspace-mode-switch [data-slot="tabs-trigger"] { min-width: 64px; }
+.asset-card-actions .mode-primary-action {
+  color: #d9e9bf;
+  background: #bfd69710;
+}
+.workbench-v2 .asset-card-meta .asset-generated-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #b4cca1;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid #b7d18c17;
+  min-width: 0;
+}
+.workbench-v2 .asset-generated-badge > span {
+  color: inherit;
+  margin-top: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.asset-generated-badge > b {
+  flex: none;
+  font-size: 7px;
+  font-weight: 500;
+  color: #d7e6aa;
+  background: #d7e6aa13;
+  border-radius: 3px;
+  padding: 1px 3px;
+  margin-left: auto;
+}
+.clip-source .clip-source-description { color: #c9d9bc; }
+.clip-source .return-to-source {
+  margin-top: 9px;
+  color: #d7e6aa;
+  border-color: #617c4b;
+  background: #d7e6aa0b;
+}
+.clip-source > .text-button { display: flex; white-space: normal; text-align: left; }
+.version-card.source-highlighted {
+  border-color: #a7cfe0;
+  box-shadow: 0 0 0 2px #a7cfe02b;
+  scroll-margin: 12px;
+}
+.version-card.source-highlighted:focus { outline: 2px solid #a7cfe0; outline-offset: 2px; }
+.version-source-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 0 1px;
+  color: #b8dbe9;
+  font-size: 10px;
+  line-height: 1.5;
+}
+@media (max-width: 950px) {
+  .workbench.workbench-v2.mode-editing { --timeline-h: 275px; }
+  .workbench-v2.mode-editing.timeline-collapsed { --timeline-h: 47px; }
+  .workbench-v2.mode-editing .preview-stage { padding: 12px; }
+}
+@media (max-width: 720px) {
+  .workbench.workbench-v2.mode-canvas {
+    grid-template-rows: 55px minmax(0, 1fr) 38px;
+  }
+  .workbench.workbench-v2.mode-editing {
+    --timeline-h: clamp(220px, 32dvh, 269px);
+    grid-template-rows: 55px minmax(190px, 1fr) var(--timeline-h) 38px;
+  }
+  .workbench-v2.mode-canvas .mobile-nav { grid-row: 3; }
+  .workbench-v2.mode-editing .mobile-nav { grid-row: 4; }
+  .workbench-v2.mode-canvas .toast { bottom: 48px; }
+  .workbench-v2.mode-editing.timeline-collapsed { --timeline-h: 41px; }
+  .workbench-v2.mode-editing .preview-stage { padding: 8px; }
+  .workbench-v2.mode-editing .preview-mode-bar { height: 37px; }
+  .workbench-v2.mode-editing .preview-footer { height: 43px; }
+  .workspace-mode-switch [data-slot="tabs-trigger"] { min-width: 48px; }
+  .workbench-v2 .asset-card-meta .asset-generated-badge { font-size: 8px; }
+}
+
+/* The project-wide mode switch remains reachable on small screens. */
+.topbar-workspace { flex: none; gap: 0; }
+.topbar-workspace .workspace-tabs { height: 35px; }
+.topbar-workspace .segmented button { min-width: 59px; font-size: 12px; }
+.topbar-workspace .segmented button[data-active],
+.topbar-workspace .segmented button[aria-selected="true"] {
+  color: #e0edc7;
+  background: #3c4b36;
+  border-color: #80956345;
+  box-shadow: 0 1px 3px #0003;
+}
+@media (max-width: 1250px) {
+  .workbench-v2 .topbar .project-trigger { max-width: 205px; }
+  .topbar-workspace .segmented button { min-width: 53px; padding: 5px 10px; font-size: 11px; }
+}
+@media (max-width: 950px) {
+  .workbench-v2 .topbar .project-trigger { max-width: 160px; }
+  .topbar-workspace .segmented button { min-width: 46px; padding: 5px 8px; font-size: 10px; }
+}
+@media (max-width: 720px) {
+  .workbench.workbench-v2.mode-canvas { grid-template-rows: 82px minmax(0, 1fr) 38px; }
+  .workbench.workbench-v2.mode-editing { grid-template-rows: 82px minmax(150px, 1fr) var(--timeline-h) 38px; }
+  .workbench-v2 .topbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: 28px 30px;
+    column-gap: 12px;
+    row-gap: 6px;
+    padding: 8px 10px 10px;
+  }
+  .workbench-v2 .topbar .brand { grid-row: 1; grid-column: 1; }
+  .workbench-v2 .topbar .project-trigger {
+    grid-row: 1;
+    grid-column: 2;
+    width: 100%;
+    max-width: none;
+    justify-content: flex-end;
+  }
+  .workbench-v2 .topbar-workspace { grid-row: 2; grid-column: 1; }
+  .workbench-v2 .topbar-workspace .workspace-tabs { height: 30px; }
+  .workbench-v2 .topbar-workspace .segmented button { min-width: 46px; padding: 4px 8px; }
+  .workbench-v2 .topbar-actions { grid-row: 2; grid-column: 2; justify-self: end; }
+  .workbench-v2 .region-guide { top: 90px; }
+}

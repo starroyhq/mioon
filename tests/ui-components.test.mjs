@@ -193,8 +193,11 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /if \(await inspect\(job\.shotId/);
   assert.match(app, /<DialogTitle>生成任务<\/DialogTitle>/);
   assert.match(app, /<DropdownMenuContent/);
-  assert.match(app, /<TabsContent value="canvas" keepMounted/);
-  assert.match(app, /<TabsContent value="preview" keepMounted/);
+  assert.match(app, /data-testid="workspace-canvas"/);
+  assert.match(app, /data-testid="workspace-editing"/);
+  assert.match(app, /workspaceMode === 'canvas'/);
+  assert.match(app, /workspaceMode === 'editing'/);
+  assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
   assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);
 });
 

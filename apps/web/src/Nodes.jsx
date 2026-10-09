@@ -1,17 +1,34 @@
 import { Button } from '@video-workbench/ui/components/button';
-import React, { memo } from 'react';
+import React, { memo, useLayoutEffect, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import Icon from './icons.jsx';
 import { activeJob, assetUrl, statusText, versionUrl } from './api.js';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, VISUAL_SOURCE_HANDLE, VISUAL_TARGET_HANDLE } from './reference-connections.js';
 
+export function disposeMedia(element) {
+  if (!element) return;
+  element.pause();
+  element.removeAttribute('src');
+  // Release the decoder and cancel pending loads when a workspace leaves the DOM.
+  element.load();
+}
+
 export function Media({ asset, version, className = '', controls = false, ...props }) {
+  const media = useRef(null);
   const url = version ? versionUrl(version) : assetUrl(asset);
   const video = Boolean(version || asset?.mimeType?.startsWith('video/'));
   const audio = asset?.mimeType?.startsWith('audio/');
+  const sourceKey = `${version?.id || asset?.id || ''}:${url}:${audio ? 'audio' : 'video'}:${controls}`;
+  useLayoutEffect(() => {
+    const element = media.current;
+    if (!element) return;
+    // React Strict Mode replays effects without recreating the media element.
+    if (element.getAttribute('src') !== url) element.setAttribute('src', url);
+    return () => disposeMedia(element);
+  }, [sourceKey]);
   if (!url) return <div className={`media-placeholder ${className}`}><Icon name="film" size={32} /><span>等待你的第一个画面</span></div>;
-  if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio className="nodrag nowheel" src={url} controls preload="metadata" {...props} /> : <span>音频素材</span>}</div>;
-  return video ? <video className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...props} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || '镜头参考图'} loading="lazy" {...props} />;
+  if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio ref={media} key={sourceKey} className="nodrag nowheel" src={url} controls preload="metadata" {...props} /> : <span>音频素材</span>}</div>;
+  return video ? <video ref={media} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...props} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || '镜头参考图'} loading="lazy" {...props} />;
 }
 const ShotNode = memo(function ShotNode({ data, selected }) {
   const { record, asset, version, job, index, onInspect, onGenerate } = data;

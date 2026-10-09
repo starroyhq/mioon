@@ -80,7 +80,8 @@ def login(page, base):
     page.get_by_label('访问令牌', exact=True).fill(TOKEN)
     page.get_by_role('button', name='进入工作台', exact=True).click()
     expect(page.get_by_test_id('workbench')).to_be_visible(timeout=15000)
-    expect(page.get_by_test_id('timeline-panel')).to_be_visible()
+    expect(page.get_by_test_id('workspace-canvas')).to_have_attribute('aria-selected', 'true')
+    expect(page.get_by_test_id('timeline-panel')).to_have_count(0)
 
 
 def active(page):
@@ -274,6 +275,8 @@ def panels_keyboard(page, state, requests):
         expect(page.get_by_test_id(content)).to_be_visible()
         expect(button).to_have_attribute('aria-expanded', 'true')
         results.append(panel)
+    page.get_by_test_id('workspace-editing').click()
+    expect(page.get_by_test_id('timeline-panel')).to_be_visible()
     button = page.get_by_test_id('toggle-timeline')
     button.focus()
     button.press('Space')
@@ -484,6 +487,9 @@ def main():
                     began = time.monotonic()
                     try:
                         login(page, BASE)
+                        if name in ['slider', 'ruler', 'switches', 'track-select', 'dirty-confirmation', 'removal-confirmation']:
+                            page.get_by_test_id('workspace-editing').click()
+                            expect(page.get_by_test_id('timeline-panel')).to_be_visible()
                         result['details'] = test(page, lambda: rpc(BASE, 'project.get', {'projectId': PID}), requests)
                         result['status'] = 'PASS'
                     except Exception as error:

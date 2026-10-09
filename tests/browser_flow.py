@@ -43,6 +43,8 @@ def login(page,base,project=None):
     expect(page.get_by_test_id('workbench')).to_be_visible(timeout=15000)
 def screenshot(page,name):page.screenshot(path=str(OUT/name),full_page=True)
 def select_shot(page,shot):
+    page.get_by_test_id('workspace-canvas').click()
+    if page.get_by_role('button',name='展开分镜',exact=True).is_visible():page.get_by_role('button',name='展开分镜',exact=True).click()
     close=page.get_by_role('button',name='关闭生成任务')
     if close.is_visible():close.click()
     page.get_by_test_id('storyboard-shot-'+shot['id']).locator('.storyboard-preview').click();expect(page.get_by_test_id('shot-title')).to_have_value(shot['title'])
@@ -141,7 +143,7 @@ with sync_playwright() as p:
     proc,handle,base=start(ROOT/'examples/mcp-project' if (ROOT/'examples/mcp-project/workbench.sqlite').exists() else pathlib.Path(manifest['dataDirectory']))
     try:
         context=browser.new_context(viewport={'width':1600,'height':1000});page=context.new_page()
-        login(page,base,mcp_pid);expect(page.get_by_test_id('storyboard').locator('.storyboard-shot')).to_have_count(3)
+        login(page,base,mcp_pid);page.get_by_role('button',name='展开分镜',exact=True).click();expect(page.get_by_test_id('storyboard').locator('.storyboard-shot')).to_have_count(3)
         for shot_id in manifest['shotIds']:
             expect(page.locator('[data-testid="shot-node-'+shot_id+'"] video')).to_have_count(1)
         page.get_by_test_id('fit-canvas').click();page.wait_for_timeout(600);screenshot(page,'A3-mcp-project-in-ui.png')
@@ -152,7 +154,7 @@ with sync_playwright() as p:
     proc,handle,base=start(ROOT/'examples/demo-project')
     try:
         context=browser.new_context(viewport={'width':1600,'height':1000});page=context.new_page()
-        login(page,base,demo['projectId']);expect(page.get_by_test_id('storyboard').locator('.storyboard-shot')).to_have_count(5)
+        login(page,base,demo['projectId']);page.get_by_role('button',name='展开分镜',exact=True).click();expect(page.get_by_test_id('storyboard').locator('.storyboard-shot')).to_have_count(5)
         page.get_by_test_id('fit-canvas').click();page.wait_for_timeout(600);screenshot(page,'M3-story-demo.png')
         log('M3: requested five-beat10second story sample opens with mock versions',projectId=demo['projectId'])
         context.close()

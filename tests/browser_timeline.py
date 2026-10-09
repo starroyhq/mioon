@@ -67,13 +67,14 @@ with sync_playwright() as p:
         login(page,base,pid)
         state=lambda:rpc(base,'project.get',{'projectId':pid})
         initial=state();tl=initial['timeline'];assert len(tl['tracks'])==3 and len(tl['clips'])==5
-        for label in ['01 素材库','02 主工作区','03 属性','04 多轨时间线']:
+        for label in ['01 素材库','画板工作区','03 属性']:
             expect(page.get_by_label(label,exact=True)).to_be_visible()
         page.get_by_test_id('fit-canvas').click();page.wait_for_timeout(500)
         screenshot(page,'01-canvas-regions.png')
         page.get_by_test_id('region-guide-toggle').click();expect(page.get_by_test_id('region-guide')).to_be_visible();screenshot(page,'02-region-guide.png');page.get_by_role('button',name='关闭区域说明').click()
-        log('V2-B1: four named functional zones and in-app region guide visible',projectId=pid)
-        page.get_by_test_id('workspace-preview').click();page.get_by_test_id('preview-timeline-mode').click()
+        expect(page.get_by_test_id('timeline-panel')).to_have_count(0)
+        log('V2-B1: Canvas regions and in-app guide visible; timeline unmounted',projectId=pid)
+        page.get_by_test_id('workspace-editing').click();page.get_by_test_id('preview-timeline-mode').click()
         video=page.get_by_test_id('timeline-preview-video');expect(video).to_be_visible()
         video.evaluate('(v)=>{v.muted=true;return v.play()}');poll(lambda:video.evaluate('(v)=>v.readyState'),lambda r:r>=3);video.evaluate('(v)=>v.pause()')
         page.get_by_test_id('timeline-playhead').fill('90');page.get_by_test_id('timeline-playhead').press('Tab')
@@ -95,6 +96,8 @@ with sync_playwright() as p:
         dismiss(page);log('V2-B4: real pointer drag from image library to canvas persisted a new asset node')
         # Drop the same source onto a new compatible track, then drag an existing
         # clip from V2 to it; actual HTML5 pointer events carry the app's drag payload.
+        page.get_by_test_id('workspace-editing').click()
+        expect(page.get_by_test_id('timeline-panel')).to_be_visible()
         before_tracks=len(state()['timeline']['tracks']);page.get_by_test_id('add-video-track').click()
         current=poll(state,lambda v:len(v['timeline']['tracks'])==before_tracks+1);newtrack=max(current['timeline']['tracks'],key=lambda t:t['orderIndex'])
         lane=page.get_by_test_id('track-lane-'+newtrack['id']);expect(lane).to_be_visible()
@@ -113,7 +116,11 @@ with sync_playwright() as p:
         baseclip=next(c for c in initial['timeline']['clips'] if c['startFrame']==150 and c['durationFrames']==150)
         page.get_by_test_id('timeline-clip-'+baseclip['id']).click();expect(page.get_by_test_id('clip-inspector')).to_be_visible()
         page.get_by_test_id('clip-duration').fill('90');page.get_by_test_id('clip-source-in').fill('30')
-        page.get_by_test_id('workspace-canvas').click();page.get_by_test_id('workspace-preview').click();expect(page.get_by_test_id('clip-duration')).to_have_value('90')
+        page.get_by_test_id('workspace-canvas').click()
+        expect(page.get_by_test_id('confirm-action')).to_be_visible()
+        page.get_by_role('button',name='取消',exact=True).click()
+        expect(page.get_by_test_id('workspace-editing')).to_have_attribute('aria-selected','true')
+        expect(page.get_by_test_id('clip-duration')).to_have_value('90')
         page.get_by_test_id('toggle-inspector').click();page.get_by_test_id('reopen-inspector').click();expect(page.get_by_test_id('clip-source-in')).to_have_value('30')
         page.get_by_test_id('save-clip').click()
         current=poll(state,lambda v:next(c for c in v['timeline']['clips'] if c['id']==baseclip['id'])['sourceInFrame']==30)
@@ -121,7 +128,7 @@ with sync_playwright() as p:
         dismiss(page);page.get_by_test_id('preview-timeline-mode').click();expect(page.get_by_test_id('preview-stale')).to_be_visible();screenshot(page,'04-stale-preview-and-trim.png')
         page.get_by_test_id('toggle-assets').click();page.get_by_test_id('reopen-assets').click();page.get_by_test_id('toggle-timeline').click();page.get_by_test_id('toggle-timeline').click()
         expect(page.get_by_test_id('timeline-clip-'+baseclip['id'])).to_be_visible()
-        log('V2-B6: frame-precise trim and source offset save; modes/collapsed panels retain unsaved edits; stale render is explicit')
+        log('V2-B6: frame-precise trim and source offset save; mode Cancel/collapsed panels retain unsaved edits; stale render is explicit')
         # Same-track overlap rejection must not mutate the authoritative timeline.
         page.get_by_test_id('timeline-clip-'+moved['id']).click();before=state()['timeline'];page.get_by_test_id('clip-start').fill('0');page.get_by_test_id('save-clip').click()
         expect(page.get_by_role('alert')).to_contain_text('同一轨道',timeout=10000)

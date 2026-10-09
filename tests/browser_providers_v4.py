@@ -120,7 +120,7 @@ def test_browser():
                 route.continue_()
             context.route('**/*', network_guard)
             login(page, base)
-            page.get_by_test_id('storyboard-shot-' + sid).locator('.storyboard-preview').click()
+            page.get_by_test_id('shot-node-' + sid).get_by_text(shot['title'], exact=True).click()
             expect(page.get_by_test_id('shot-inspector')).to_be_visible()
             expect(page.get_by_test_id('shot-title')).to_have_value(shot['title'])
             expect(page.get_by_test_id('shot-prompt')).to_have_value(prompt)
@@ -214,7 +214,7 @@ def test_browser():
             assert len(generation_requests) == 2 and all(r['providerId'] == 'mock' for r in generation_requests)
             capture(page, '04-local-mock-versions.png', 'provider-select'); log('V4-UI-5: text and image mock each produce an immutable MP4', playback=playback)
             page.reload(); expect(page.get_by_test_id('workbench')).to_be_visible()
-            page.get_by_test_id('storyboard-shot-' + sid).locator('.storyboard-preview').click(); page.get_by_role('tab', name='版本历史').click()
+            page.get_by_test_id('shot-node-' + sid).get_by_text(shot['title'], exact=True).click(); page.get_by_role('tab', name='版本历史').click()
             expect(page.locator('.version-card')).to_have_count(2); capture(page, '05-persisted-versions-and-timeline.png')
             persisted = state(); assert persisted['timeline'] == timeline
             assert sorted([v for v in persisted['versions'] if v['shotId'] == sid], key=lambda version: version['number']) == versions
@@ -222,7 +222,7 @@ def test_browser():
             assert cli_state['project']['id'] == PID
             assert sorted([v for v in cli_state['versions'] if v['shotId'] == sid], key=lambda version: version['number']) == versions
             assert cli_state['timeline'] == timeline
-            page.get_by_test_id('workspace-preview').click(); page.get_by_test_id('preview-timeline-mode').click()
+            page.get_by_test_id('workspace-editing').click(); page.get_by_test_id('preview-timeline-mode').click()
             composite = page.get_by_test_id('timeline-preview-video'); expect(composite).to_be_visible()
             composite.evaluate('(v) => { v.muted = true; return v.play(); }')
             decoded = poll(lambda: composite.evaluate('(v) => ({time: v.currentTime, width: v.videoWidth, error: v.error && v.error.code})'), lambda value: value['time'] > .15 and value['width'] == 720)
