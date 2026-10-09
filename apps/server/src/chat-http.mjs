@@ -1,5 +1,6 @@
 import {safeChatRuntimeError} from '@mioon/business/agent/chat-runtime';
 import {agentChatError} from '@mioon/business/agent/chat-errors';
+import {createAgentEditHttp} from './agent-edit-http.mjs';
 
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_BUFFERED_BYTES = 256 * 1024;
@@ -23,9 +24,11 @@ function query(url, allowed) {
  * by startServer before calling this handler, never bypassed for SSE. */
 export function createChatHttp({runtime}) {
   const clients = new Set();
+  const editHttp = createAgentEditHttp({runtime});
   return {
     async handle(req, res, url) {
       if (!url.pathname.startsWith('/api/agent/chat/')) return false;
+      if (await editHttp(req, res, url)) return true;
       try {
         const match = /^\/api\/agent\/chat\/([^/]+)(?:\/(runs|requests|history)(?:\/([^/]+)(?:\/(events|stop))?)?)?$/.exec(url.pathname);
         if (!match || match[2] === 'requests' && (!match[3] || match[4]) || match[2] === 'history' && match[3]) { json(res, 404, {ok: false, error: {code: 'AGENT_CHAT_NOT_FOUND', message: '接口不存在。', details: {}, retryable: false}}); return true; }

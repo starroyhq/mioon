@@ -186,6 +186,7 @@ function uiHarness(client, receipts = memoryReceipts()) {
     if (id === 'react') return react;
     if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
     if (id === './agent-tool-state.js') return toolLogic;
+    if (id === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
     if (id === './AgentRunActivity.jsx') { const child = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentRunActivity.jsx', import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(child, child.exports, resolve); return child.exports; }
     if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.jsx') return { default: 'Icon' };

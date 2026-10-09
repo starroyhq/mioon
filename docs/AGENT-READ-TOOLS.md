@@ -2,11 +2,12 @@
 
 Date: 2026-10-09 (UTC). Baseline: `8341029`.
 
-Status: local implementation and synthetic acceptance complete; awaiting parent
-independent review and commit. This stage adds read-only saved
+Status: committed as `dbf3b93` after independent acceptance. This stage adds read-only saved
 project inspection to both Chat Completions and Responses. It does not add
 editing, media perception, generation, shell/file tools, OAuth or live-provider
 certification. All acceptance uses synthetic localhost model-shaped services.
+The later [reviewed-edit increment](AGENT-EDITS.md) has separate consent and
+approval boundaries; this read-only mode retains the scope documented here.
 
 ## Explicit scope and limits
 

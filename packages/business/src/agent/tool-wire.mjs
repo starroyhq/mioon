@@ -1,6 +1,7 @@
 import {exactObject} from './config.mjs';
 import {agentChatError} from './chat-errors.mjs';
 import {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
+import {EDIT_TOOL_DEFINITIONS, EDIT_TOOL_LIMITS, EDIT_TOOL_SYSTEM_INSTRUCTION, parseEditToolArguments} from './edit-tool-policy.mjs';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_LIMITS, READ_TOOL_SYSTEM_INSTRUCTION, parseReadToolArguments} from './read-tool-policy.mjs';
 
 const fail = code => { throw agentChatError(code); };
@@ -37,13 +38,21 @@ export const AGENT_READ_TOOL_PROFILES = freeze({
     ollama: {parallel: false, choice: false, strict: false},
   },
 });
-export function normalizeToolCall({id, name, argumentsJson, itemId}) {
+// This selector is internal and closed: callers cannot supply schemas or operations.
+export function toolScope(readTools) {
+  if (readTools?.scope !== undefined && readTools.scope !== 'selected_shot_edit') fail('AGENT_CHAT_VALIDATION');
+  return readTools?.scope === 'selected_shot_edit' ? {definitions: EDIT_TOOL_DEFINITIONS, limits: EDIT_TOOL_LIMITS,
+    instruction: EDIT_TOOL_SYSTEM_INSTRUCTION, parse: parseEditToolArguments} : {definitions: READ_TOOL_DEFINITIONS,
+    limits: READ_TOOL_LIMITS, instruction: READ_TOOL_SYSTEM_INSTRUCTION, parse: parseReadToolArguments};
+}
+export function normalizeToolCall({id, name, argumentsJson, itemId}, readTools) {
+  const scope = toolScope(readTools);
   toolId(id); if (itemId !== undefined) toolId(itemId);
-  if (!toolString(argumentsJson, READ_TOOL_LIMITS.maxArgumentsBytes)) {
-    if (typeof argumentsJson === 'string' && Buffer.byteLength(argumentsJson) > READ_TOOL_LIMITS.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
+  if (!toolString(argumentsJson, scope.limits.maxArgumentsBytes)) {
+    if (typeof argumentsJson === 'string' && Buffer.byteLength(argumentsJson) > scope.limits.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
     toolProtocolError();
   }
-  const parsed = parseReadToolArguments(name, argumentsJson);
+  const parsed = scope.parse(name, argumentsJson);
   return {id, name, arguments: parsed.arguments, argumentsJson, ...(itemId !== undefined ? {itemId} : {})};
 }
 export function sameToolCall(actual, expected) {
@@ -52,19 +61,20 @@ export function sameToolCall(actual, expected) {
 export function validateReadTools(configuration, readTools) {
   if (readTools === undefined) return undefined;
   if (!toolObject(readTools) || !['request', 'answer'].includes(readTools.phase)) fail('AGENT_CHAT_VALIDATION');
+  const scope = toolScope(readTools), extra = readTools.scope === undefined ? [] : ['scope'];
   const profile = AGENT_READ_TOOL_PROFILES[configuration.protocol]?.[configuration.presetId];
   if (!profile) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   if (readTools.phase === 'request') {
-    if (!exactObject(readTools, ['phase'])) fail('AGENT_CHAT_VALIDATION');
+    if (!exactObject(readTools, ['phase', ...extra])) fail('AGENT_CHAT_VALIDATION');
   } else {
-    if (!exactObject(readTools, ['phase', 'toolCall', 'providerOutput', 'result'])) fail('AGENT_CHAT_VALIDATION');
+    if (!exactObject(readTools, ['phase', 'toolCall', 'providerOutput', 'result', ...extra])) fail('AGENT_CHAT_VALIDATION');
     const call = readTools.toolCall;
     if (!exactObject(call, ['id', 'name', 'arguments', 'argumentsJson', ...(Object.hasOwn(call || {}, 'itemId') ? ['itemId'] : [])])) fail('AGENT_CHAT_VALIDATION');
-    const normalized = normalizeToolCall(call);
+    const normalized = normalizeToolCall(call, readTools);
     if (JSON.stringify(normalized.arguments) !== JSON.stringify(call.arguments)) fail('AGENT_CHAT_VALIDATION');
     if ((configuration.protocol === 'responses') !== Object.hasOwn(call, 'itemId')) fail('AGENT_CHAT_VALIDATION');
-    if (!toolString(readTools.result, READ_TOOL_LIMITS.maxResultBytes)) {
-      if (typeof readTools.result === 'string' && Buffer.byteLength(readTools.result) > READ_TOOL_LIMITS.maxResultBytes) fail('AGENT_CHAT_LIMIT');
+    if (!toolString(readTools.result, scope.limits.maxResultBytes)) {
+      if (typeof readTools.result === 'string' && Buffer.byteLength(readTools.result) > scope.limits.maxResultBytes) fail('AGENT_CHAT_LIMIT');
       fail('AGENT_CHAT_VALIDATION');
     }
     try { if (!toolObject(JSON.parse(readTools.result))) fail('AGENT_CHAT_VALIDATION'); } catch { fail('AGENT_CHAT_VALIDATION'); }
@@ -74,28 +84,30 @@ export function validateReadTools(configuration, readTools) {
 export function readToolRequestFields(configuration, readTools) {
   const profile = validateReadTools(configuration, readTools);
   if (!profile) return {};
-  const tools = readTools.phase === 'answer' ? [] : READ_TOOL_DEFINITIONS.map(definition => {
+  const tools = readTools.phase === 'answer' ? [] : toolScope(readTools).definitions.map(definition => {
     const {type: _type, strict: _strict, ...fields} = definition;
     const spec = {...fields, ...(profile.strict ? {strict: true} : {})};
     return configuration.protocol === 'responses' ? {type: 'function', ...spec} : {type: 'function', function: spec};
   });
   return {tools, ...(profile.choice ? {tool_choice: readTools.phase === 'answer' ? 'none' : 'auto'} : {}), ...(profile.parallel ? {parallel_tool_calls: false} : {})};
 }
-export function readToolMessages(messages) {
+export function readToolMessages(messages, readTools) {
+  const instruction = toolScope(readTools).instruction;
   const result = [];
   for (const [position, message] of messages.entries()) {
     if (message?.role === 'system') {
-      if (position || ![CHAT_SYSTEM_INSTRUCTION, READ_TOOL_SYSTEM_INSTRUCTION].includes(message.content)) fail('AGENT_CHAT_VALIDATION');
-      result.push({...message, content: READ_TOOL_SYSTEM_INSTRUCTION});
+      if (position || ![CHAT_SYSTEM_INSTRUCTION, instruction].includes(message.content)) fail('AGENT_CHAT_VALIDATION');
+      result.push({...message, content: instruction});
     } else result.push(message);
   }
-  if (result[0]?.role !== 'system') result.unshift({role: 'system', content: READ_TOOL_SYSTEM_INSTRUCTION});
+  if (result[0]?.role !== 'system') result.unshift({role: 'system', content: instruction});
   return result;
 }
 
 /** Function metadata appears once; only argument strings are delta-encoded.
  * This state cannot dispatch. finish() is called only after clean transport EOF. */
-export function chatToolAccumulator() {
+export function chatToolAccumulator(readTools) {
+  const scope = toolScope(readTools);
   let call = null;
   return {
     add(calls) {
@@ -103,20 +115,20 @@ export function chatToolAccumulator() {
       const delta = calls[0];
       if (!toolObject(delta) || Object.keys(delta).some(key => !['index', 'id', 'type', 'function'].includes(key)) || delta.index !== 0 || !toolObject(delta.function) || Object.keys(delta.function).some(key => !['name', 'arguments'].includes(key))) toolProtocolError();
       if (!call) {
-        if (delta.type !== 'function' || typeof delta.function.name !== 'string' || !READ_TOOL_DEFINITIONS.some(definition => definition.name === delta.function.name)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
+        if (delta.type !== 'function' || typeof delta.function.name !== 'string' || !scope.definitions.some(definition => definition.name === delta.function.name)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
         call = {id: toolId(delta.id), name: delta.function.name, argumentsJson: ''};
       } else if (delta.id != null || delta.type != null || delta.function.name != null) toolProtocolError();
       if (delta.function.arguments !== undefined) {
-        if (!toolString(delta.function.arguments, READ_TOOL_LIMITS.maxArgumentsBytes)) {
-          if (typeof delta.function.arguments === 'string' && Buffer.byteLength(delta.function.arguments) > READ_TOOL_LIMITS.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
+        if (!toolString(delta.function.arguments, scope.limits.maxArgumentsBytes)) {
+          if (typeof delta.function.arguments === 'string' && Buffer.byteLength(delta.function.arguments) > scope.limits.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
           toolProtocolError();
         }
         call.argumentsJson += delta.function.arguments;
-        if (Buffer.byteLength(call.argumentsJson) > READ_TOOL_LIMITS.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
+        if (Buffer.byteLength(call.argumentsJson) > scope.limits.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
       }
     },
     get present() { return call !== null; },
-    finish() { if (!call) toolProtocolError(); return normalizeToolCall(call); },
+    finish() { if (!call) toolProtocolError(); return normalizeToolCall(call, readTools); },
   };
 }
 export function chatToolContinuation(readTools) {
@@ -124,16 +136,17 @@ export function chatToolContinuation(readTools) {
   if (!exactObject(item, ['role', 'content', 'tool_calls']) || item.role !== 'assistant' || (item.content !== null && !toolString(item.content, 256 * 1024)) || !Array.isArray(item.tool_calls) || item.tool_calls.length !== 1) toolProtocolError();
   const call = item.tool_calls[0];
   if (!exactObject(call, ['id', 'type', 'function']) || call.type !== 'function' || !exactObject(call.function, ['name', 'arguments'])) toolProtocolError();
-  sameToolCall(normalizeToolCall({id: call.id, name: call.function.name, argumentsJson: call.function.arguments}), readTools.toolCall);
+  sameToolCall(normalizeToolCall({id: call.id, name: call.function.name, argumentsJson: call.function.arguments}, readTools), readTools.toolCall);
   return [structuredClone(item), {role: 'tool', tool_call_id: call.id, content: readTools.result}];
 }
 
-export function responseToolSnapshot(item, status) {
+export function responseToolSnapshot(item, status, readTools) {
+  const scope = toolScope(readTools);
   if (toolObject(item) && ['reasoning', 'reasoning_content', 'reasoning_details', 'encrypted_content', 'thinking', 'signature', 'phase'].some(key => item[key] != null && item[key] !== '')) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
   if (!toolObject(item) || Object.keys(item).some(key => !['id', 'type', 'call_id', 'name', 'arguments', 'status'].includes(key)) || item.type !== 'function_call' || (item.status !== undefined && item.status !== status)) toolProtocolError();
-  if (!READ_TOOL_DEFINITIONS.some(definition => definition.name === item.name)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
-  if (!toolString(item.arguments, READ_TOOL_LIMITS.maxArgumentsBytes)) {
-    if (typeof item.arguments === 'string' && Buffer.byteLength(item.arguments) > READ_TOOL_LIMITS.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
+  if (!scope.definitions.some(definition => definition.name === item.name)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
+  if (!toolString(item.arguments, scope.limits.maxArgumentsBytes)) {
+    if (typeof item.arguments === 'string' && Buffer.byteLength(item.arguments) > scope.limits.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
     toolProtocolError();
   }
   return {type: 'function_call', id: toolId(item.id), callId: toolId(item.call_id), name: item.name, argumentsJson: item.arguments};
@@ -148,8 +161,8 @@ export function responseToolContinuation(readTools, messageSnapshot, maxItems) {
   for (const item of output) {
     if (item?.type === 'function_call') {
       if (call) toolProtocolError();
-      const snapshot = responseToolSnapshot(item, 'completed');
-      call = normalizeToolCall({id: snapshot.callId, itemId: snapshot.id, name: snapshot.name, argumentsJson: snapshot.argumentsJson});
+      const snapshot = responseToolSnapshot(item, 'completed', readTools);
+      call = normalizeToolCall({id: snapshot.callId, itemId: snapshot.id, name: snapshot.name, argumentsJson: snapshot.argumentsJson}, readTools);
       sameToolCall(call, readTools.toolCall);
     } else {
       const message = messageSnapshot(item, 'completed');

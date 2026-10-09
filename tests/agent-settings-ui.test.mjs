@@ -248,7 +248,7 @@ test('settings integration stays in the shared dock, uses local controls and has
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
-  assert.match(source, /连接设置不会发起模型请求；每次发送都需确认聊天文字或项目只读检查范围/);
+  assert.match(source, /连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查或选中镜头提议范围/);
   assert.doesNotMatch(source, /尚无工具执行/); assert.match(source, /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
   assert.doesNotMatch(app, /showAgentSettings|showAgentChat/);
@@ -313,7 +313,7 @@ test('Qwen Responses guidance keeps qwen-plus until the user types the documente
   assert.equal(f.calls.length, 0); h.change('agent-settings-model', 'qwen3.8-flash'); assert.equal(h.find('agent-settings-model').props.value, 'qwen3.8-flash'); h.unmount();
 });
 
-test('actual selected Responses guidance describes consented bounded read tools without promising reasoning or editing', async () => {
+test('actual selected Responses guidance describes consented read tools and separately reviewed shot edits without promising reasoning or generation', async () => {
   const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render();
   for (const preset of ['openai', 'custom', 'ollama']) {
     h.change('agent-settings-preset', preset);
@@ -322,7 +322,9 @@ test('actual selected Responses guidance describes consented bounded read tools 
     const guidance = JSON.stringify(h.find('agent-settings-model-guidance'));
     assert.match(guidance, /仅支持非思考模式/);
     assert.match(guidance, /选择并确认项目只读检查后，每轮最多 1 次只读工具调用、2 次模型请求/);
-    assert.match(guidance, /不支持项目编辑或媒体生成/);
+    assert.match(guidance, /镜头标题与画面描述的修改需另选提议模式并逐份批准/);
+    assert.match(guidance, /不支持媒体生成/);
+    assert.doesNotMatch(guidance, /不支持项目编辑|自动应用|自动批准/);
     assert.doesNotMatch(guidance, /不支持工具|尚无工具|无工具执行|仅支持非思考文字对话/);
     if (preset === 'custom') assert.match(guidance, /兼容性未经验证/);
     h.change('agent-settings-protocol', 'chat_completions');

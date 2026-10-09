@@ -65,7 +65,7 @@ export default function AgentSettings({ onClose }) {
       <header className="modal-header agent-settings-header">
         <div className="agent-settings-heading"><span className="agent-settings-symbol"><Icon name="sparkle" size={22} /></span><div>
           <div className="agent-settings-eyebrow">AGENT · CONNECTION</div><h2>Agent 连接设置</h2>
-          <p>连接设置不会发起模型请求；每次发送都需确认聊天文字或项目只读检查范围。</p>
+          <p>连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查或选中镜头提议范围。</p>
         </div></div>
         <Button type="button" variant="ghost" className="icon-button" aria-label="返回 Agent 对话" data-testid="agent-settings-back" disabled={!visible} onClick={dismiss}><Icon name="left" /></Button>
       </header>
@@ -98,7 +98,7 @@ export default function AgentSettings({ onClose }) {
                 </div>
                 <div className="agent-settings-field agent-settings-full"><div className="agent-settings-label-row"><Label htmlFor="agent-model">模型名称 <span>Model ID</span></Label><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-reset" disabled={!editable || !defaultsChanged} onClick={() => withClearKey(() => session.current?.edit({ baseUrl: platform.baseUrl, model: platform.model, protocol: platform.defaultProtocol }))}><Icon name="refresh" size={12} />恢复此平台预设</Button></div>
                   <Input id="agent-model" data-testid="agent-settings-model" value={draft.model} onChange={event => { if (usable()) session.current?.edit({ model: event.target.value }); }} disabled={!editable} maxLength={200} placeholder="输入账户可用的模型 ID" spellCheck={false} autoCapitalize="none" />
-                  {draft.protocol === 'responses' && <p className={`agent-settings-help ${modelNeedsReview ? 'agent-settings-model-warning' : ''}`} data-testid="agent-settings-model-guidance">{modelHints.length ? `${modelNeedsReview ? '当前模型不在此协议文本配置中，请手动填写：' : '此协议文本配置：'}${modelHints.join('、')}。` : '自定义服务：请手动填写支持 Responses 的精确模型 ID；兼容性未经验证。'}{protocolNote || '仅支持非思考模式；选择并确认项目只读检查后，每轮最多 1 次只读工具调用、2 次模型请求。不支持项目编辑或媒体生成。'}</p>}
+                  {draft.protocol === 'responses' && <p className={`agent-settings-help ${modelNeedsReview ? 'agent-settings-model-warning' : ''}`} data-testid="agent-settings-model-guidance">{modelHints.length ? `${modelNeedsReview ? '当前模型不在此协议文本配置中，请手动填写：' : '此协议文本配置：'}${modelHints.join('、')}。` : '自定义服务：请手动填写支持 Responses 的精确模型 ID；兼容性未经验证。'}{protocolNote || '仅支持非思考模式；选择并确认项目只读检查后，每轮最多 1 次只读工具调用、2 次模型请求。镜头标题与画面描述的修改需另选提议模式并逐份批准；不支持媒体生成。'}</p>}
                 </div>
                 <div className="agent-settings-endpoint agent-settings-full" data-testid="agent-settings-endpoint"><span>{AGENT_PROTOCOLS[draft.protocol]?.label} · 请求地址预览</span><p>{endpoint || '填写完整的 API 基础地址后显示请求地址。'}</p></div>
               </div>

@@ -119,6 +119,11 @@ for result contracts and scope boundaries. Built-in Agent uses the same reads
 under [separate bounded run consent](AGENT-READ-TOOLS.md); a CLI call does not
 start or authorize an Agent conversation.
 
+Built-in Agent proposal review is a separate authenticated application workflow,
+not a new CLI operation. External clients continue to use the shared authorized
+`shot update` contract with their own retained replay key. See
+[reviewed selected-shot edits](AGENT-EDITS.md) for its bounded scope and status.
+
 The `effects` fields also describe managed-file writes, local subprocesses,
 external/provider I/O and potentially paid new generation. `job reconcile`
 contacts the existing provider task and can resume download/publication;

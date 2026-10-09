@@ -54,6 +54,7 @@ function harness(client) {
     if (name === './icons.jsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return new Proxy({}, { get: (_, key) => String(key) });
+    if (name === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
     if (name === './AgentRunActivity.jsx') return load(name);
     throw Error(name);
   };

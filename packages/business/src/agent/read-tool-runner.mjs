@@ -1,11 +1,14 @@
 import {agentChatError} from './chat-errors.mjs';
 import {buildAgentRequest} from './agent-gateway.mjs';
-import {READ_TOOL_LIMITS, READ_TOOL_OPERATIONS, parseReadToolArguments} from './read-tool-policy.mjs';
+import {toolScope} from './tool-wire.mjs';
+import {READ_TOOL_LIMITS, READ_TOOL_OPERATIONS} from './read-tool-policy.mjs';
 
-/** Bounded orchestration only. All domain reads go through the existing branded
- * business inspection dispatcher. Nothing here runs on startup or read replay. */
+/** Bounded orchestration with a closed read-or-propose scope. Reads use the
+ * branded inspection dispatcher; edits only create review proposals atomically.
+ * Nothing here runs on startup, and no model output can apply a mutation. */
 export async function runReadToolWorkflow({runId, projectId, configuration, messages, provenance,
-  apiKey, gateway, selfPort, journal, inspection, control}) {
+  apiKey, gateway, selfPort, journal, inspection, editService, target, control}) {
+  const scopeOptions = target ? {scope: 'selected_shot_edit'} : {}, scope = toolScope(scopeOptions);
   const committed = operation => {
     const saved = control.commit(operation);
     if (saved.events?.length) control.publish(saved.events);
@@ -36,7 +39,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
     if (terminal.finishReason === 'tool_calls') {
       const call = terminal.toolCall;
       if (!call || !terminal.providerOutput) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
-      const parsed = parseReadToolArguments(call.name, call.argumentsJson);
+      const parsed = scope.parse(call.name, call.argumentsJson);
       if (JSON.stringify(parsed.arguments) !== JSON.stringify(call.arguments)) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
     } else if (terminal.toolCall) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
     control.flush();
@@ -44,19 +47,25 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
     committed(() => journal.modelComplete(runId, step.id, {output: terminal}));
     return control.live() ? terminal : null;
   }
-  const completed = await request(first, {phase: 'request'});
+  const completed = await request(first, {phase: 'request', ...scopeOptions});
   if (!completed || !control.live() || completed.finishReason === 'stop') return;
-  const call = completed.toolCall, parsed = parseReadToolArguments(call.name, call.argumentsJson);
-  const toolProvenance = {category: 'project_saved_text_metadata', projectId, operation: parsed.operation};
+  const call = completed.toolCall, parsed = scope.parse(call.name, call.argumentsJson);
+  const toolProvenance = {category: target ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, operation: parsed.operation};
   const intent = committed(() => journal.toolIntent(runId, first.id, {toolCall: call, provenance: toolProvenance}));
   if (!control.live()) return;
   // Context identity and its capabilities are created solely by the backend.
-  const scope = inspection.createContext({projectId, capabilities: Object.values(READ_TOOL_OPERATIONS), maxCalls: 1,
+  const inspectionScope = target ? null : inspection.createContext({projectId, capabilities: Object.values(READ_TOOL_OPERATIONS), maxCalls: 1,
     maxResultBytes: READ_TOOL_LIMITS.maxResultBytes - 1024, maxTotalBytes: READ_TOOL_LIMITS.maxResultBytes - 1024});
   const captured = committed(() => journal.captureTool(runId, intent.step.id, () => {
     if (!control.live()) throw agentChatError('AGENT_CHAT_ABORTED');
+    if (target) {
+      const proposal = editService.createInside({projectId, runId, target, changes: parsed.arguments, toolCall: call});
+      const result = {kind: 'untrusted_shot_update_proposal', operation: 'shot.update', status: 'pending_review',
+        applied: false, proposalId: proposal.id, digest: proposal.digest};
+      return {result, resultJson: JSON.stringify(result), provenance: toolProvenance};
+    }
     let data;
-    try { data = inspection.dispatch(scope, parsed.operation, parsed.dispatchArguments); }
+    try { data = inspection.dispatch(inspectionScope, parsed.operation, parsed.dispatchArguments); }
     catch (error) {
       if (error?.code === 'INSPECTION_BUDGET_EXCEEDED') throw agentChatError('AGENT_CHAT_LIMIT');
       throw agentChatError('AGENT_CHAT_INSPECTION_UNAVAILABLE');
@@ -69,7 +78,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
   if (!control.live()) return;
   const resultJson = captured.step.observation?.resultJson;
   if (typeof resultJson !== 'string') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
-  const readTools = {phase: 'answer', toolCall: call, providerOutput: completed.providerOutput, result: resultJson};
+  const readTools = {phase: 'answer', ...scopeOptions, toolCall: call, providerOutput: completed.providerOutput, result: resultJson};
   const built = buildAgentRequest({configuration, messages, readTools, selfPort});
   const continuation = committed(() => journal.prepareContinuation(runId, {protocol: configuration.protocol,
     body: built.body, context: messages, provenance}));

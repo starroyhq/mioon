@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {types} from 'node:util';
 import {agentChatError} from './chat-errors.mjs';
 import {exactObject} from './config.mjs';
+import {EDIT_TOOL_LIMITS, EDIT_CAPABILITY_FIELDS, editToolPolicy, validEditText, selectedShotMessage, parseEditToolArguments} from './edit-tool-policy.mjs';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 
 // This module persists evidence, never acquires authority or dispatches a tool.
@@ -9,7 +10,7 @@ import {deriveAgentEndpoint} from '@mioon/contracts';
 const MAX_STEP_BYTES = 1024 * 1024;
 const MAX_BODY_BYTES = 128 * 1024;
 const MAX_OUTPUT_BYTES = 256 * 1024;
-const OPERATIONS = ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect'];
+const OPERATIONS = ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect', 'shot.update'];
 const STATUSES = ['not_started', 'intent', 'dispatch_started', 'completed', 'unknown'];
 const bad = () => { throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE'); };
 const full = () => { throw agentChatError('AGENT_CHAT_STORAGE_LIMIT'); };
@@ -58,7 +59,8 @@ function parse(value, maximum) {
 }
 function provenance(value, projectId, observation = false) {
   if (!exactObject(value, observation ? ['category', 'projectId', 'operation'] : ['category', 'projectId', 'sourceRunIds']) ||
-    value.category !== 'project_saved_text_metadata' || value.projectId !== projectId) bad();
+    !['project_saved_text_metadata', 'project_selected_shot_text'].includes(value.category) || value.projectId !== projectId) bad();
+  if (observation && (value.category === 'project_selected_shot_text') !== (value.operation === 'shot.update')) bad();
   if (observation ? !OPERATIONS.includes(value.operation) : !Array.isArray(value.sourceRunIds) || value.sourceRunIds.length > 12 ||
     value.sourceRunIds.some(id => !uuid(id)) || new Set(value.sourceRunIds).size !== value.sourceRunIds.length) bad();
 }
@@ -79,19 +81,20 @@ function request(value, run, round) {
     Object.hasOwn(body, 'tool_choice') && body.tool_choice !== 'none')) bad();
   return body;
 }
-function toolCall(value) {
+function toolCall(value, edit = false) {
   if (!keys(value, ['id', 'name', 'arguments', 'argumentsJson'], ['itemId']) || !text(value.id, 256, 1) || /[\x00-\x20\x7f]/u.test(value.id) ||
     !text(value.name, 100, 1) || Object.hasOwn(value, 'itemId') && (!text(value.itemId, 256, 1) || /[\x00-\x20\x7f]/u.test(value.itemId)) ||
-    !object(value.arguments) || !same(parse(value.argumentsJson, 2048), value.arguments)) bad();
+    !object(value.arguments) || !same(parse(value.argumentsJson, edit ? EDIT_TOOL_LIMITS.maxArgumentsBytes : 2048), value.arguments)) bad();
 }
-function output(value, protocol) {
+function output(value, protocol, edit = false) {
   if (!keys(value, ['type', 'finishReason'], ['toolCall', 'providerOutput', 'usage']) || value.type !== 'done' || !['stop', 'tool_calls'].includes(value.finishReason)) bad();
   json(value, MAX_OUTPUT_BYTES);
   if (Object.hasOwn(value, 'usage') && (!keys(value.usage, [], ['prompt_tokens', 'completion_tokens', 'total_tokens']) ||
     Object.values(value.usage).some(count => !Number.isSafeInteger(count) || count < 0 || count > 10000000) ||
     value.usage.completion_tokens > 2048)) bad();
   if (value.finishReason === 'tool_calls') {
-    toolCall(value.toolCall);
+    toolCall(value.toolCall, edit);
+    if (edit) { try { parseEditToolArguments(value.toolCall.name, value.toolCall.argumentsJson); } catch { bad(); } }
     if ((protocol === 'responses') !== Object.hasOwn(value.toolCall, 'itemId')) bad();
     if (protocol === 'chat_completions') {
       const message = value.providerOutput;
@@ -146,18 +149,26 @@ function continuation(requestValue, run, steps) {
   }
   for (const key of Object.keys(first)) if (!['messages', 'input', 'tools', 'tool_choice', 'parallel_tool_calls'].includes(key) && !same(body[key], first[key])) bad();
 }
+function validateTarget(target, projectId) {
+  if (!exactObject(target, ['projectId', 'shotId', 'expectedRevision', 'title', 'prompt']) || target.projectId !== projectId ||
+    !uuid(target.shotId) || !Number.isSafeInteger(target.expectedRevision) || target.expectedRevision < 0 ||
+    !validEditText(target.title, 'title') || !validEditText(target.prompt, 'prompt')) bad();
+}
 export function validateInspectionRunFields(run) {
-  const has = ['contextMode', 'provenance', 'activity'].some(key => Object.hasOwn(run, key));
+  const has = ['contextMode', 'provenance', 'activity', 'editTarget'].some(key => Object.hasOwn(run, key));
   if (!has) return false;
-  if (run.contextMode !== 'project_inspection' || !Array.isArray(run.activity) || run.activity.length < 1 || run.activity.length > 3) bad();
+  if (!['project_inspection', 'selected_shot_edit'].includes(run.contextMode) || !Array.isArray(run.activity) || run.activity.length < 1 || run.activity.length > 3) bad();
   provenance(run.provenance, run.projectId);
+  const edit = run.contextMode === 'selected_shot_edit';
+  if ((run.provenance.category === 'project_selected_shot_text') !== edit || Object.hasOwn(run, 'editTarget') !== edit) bad();
+  if (edit) validateTarget(run.editTarget, run.projectId);
   let models = 0, tools = 0;
   for (const item of run.activity) {
     if (!keys(item, ['id', 'kind', 'ordinal', 'status'], item?.kind === 'tool' ? ['name', 'operation', 'resultJson'] : []) ||
       !uuid(item.id) || !['model', 'tool'].includes(item.kind) || !STATUSES.includes(item.status)) bad();
     if (item.kind === 'model') { if (item.ordinal !== ++models || models > 2 || item.status === 'intent') bad(); }
     else {
-      if (item.ordinal !== ++tools || tools > 1 || models !== 1 || !text(item.name, 100, 1) || !OPERATIONS.includes(item.operation) || item.status === 'not_started') bad();
+      if (item.ordinal !== ++tools || tools > 1 || models !== 1 || !text(item.name, 100, 1) || !OPERATIONS.includes(item.operation) || (item.operation === 'shot.update') !== edit || item.status === 'not_started') bad();
       if (Object.hasOwn(item, 'resultJson')) { if (item.status !== 'completed') bad(); parse(item.resultJson, 8192); }
       else if (item.status === 'completed') bad();
     }
@@ -188,22 +199,27 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
       !same(value.configuration, run.configuration) || !same(value.messages, value.execution.request.context)) bad();
     validateExecution(value.execution, run);
     const consent = value.consent, policy = value.execution.policy;
-    const consentFields = ['destination', 'protocol', 'model', 'context', 'projectId', 'schemaVersion', 'catalogHash', 'maxModelRequests', 'maxToolCalls', 'maxResultBytes'];
+    const edit = run.contextMode === 'selected_shot_edit';
+    const consentFields = ['destination', 'protocol', 'model', 'context', 'projectId', ...(edit ? [...EDIT_CAPABILITY_FIELDS, 'shotId', 'expectedRevision'] : ['schemaVersion', 'catalogHash', 'maxModelRequests', 'maxToolCalls', 'maxResultBytes'])];
     if (!exactObject(consent, consentFields) || consent.destination !== deriveAgentEndpoint(run.configuration) ||
       consent.protocol !== run.configuration.protocol || consent.model !== run.configuration.model ||
-      consentFields.slice(3).some(key => consent[key] !== policy[key])) bad();
+      consentFields.slice(3).some(key => consent[key] !== (['shotId', 'expectedRevision'].includes(key) ? value.execution.target[key] : policy[key]))) bad();
     const messages = value.messages;
     if (messages.length !== 2 * run.provenance.sourceRunIds.length + 2 ||
       messages.some((message, index) => !exactObject(message, ['role', 'content']) || !text(message.content, 32768) ||
-        message.role !== (index === 0 ? 'system' : index % 2 ? 'user' : 'assistant')) || messages.at(-1).content !== run.userText) bad();
+        message.role !== (index === 0 ? 'system' : index % 2 ? 'user' : 'assistant')) || messages.at(-1).content !== (edit ? selectedShotMessage(run.userText, run.editTarget) : run.userText)) bad();
     const body = parse(value.execution.request.body, MAX_BODY_BYTES);
     if (value.execution.request.protocol === 'chat_completions' ? !same(body.messages, messages) :
       body.instructions !== messages[0].content || !same(body.input, messages.slice(1))) bad();
   }
   function validateExecution(execution, run) {
-    if (!exactObject(execution, ['version', 'policy', 'request']) || execution.version !== 1) bad();
+    const edit = run.contextMode === 'selected_shot_edit';
+    if (!exactObject(execution, ['version', 'policy', 'request', ...(edit ? ['target'] : [])]) || execution.version !== 1) bad();
     const policy = execution.policy;
-    if (!exactObject(policy, ['schemaVersion', 'projectId', 'context', 'maxModelRequests', 'maxToolCalls', 'maxResultBytes', 'catalog', 'catalogHash']) ||
+    if (edit) {
+      validateTarget(execution.target, run.projectId);
+      if (!same(execution.target, run.editTarget) || !same(policy, editToolPolicy(run.projectId))) bad();
+    } else if (!exactObject(policy, ['schemaVersion', 'projectId', 'context', 'maxModelRequests', 'maxToolCalls', 'maxResultBytes', 'catalog', 'catalogHash']) ||
       policy.schemaVersion !== 1 || policy.projectId !== run.projectId || policy.context !== 'project_inspection' ||
       policy.maxModelRequests !== 2 || policy.maxToolCalls !== 1 || policy.maxResultBytes !== 8192 ||
       !Array.isArray(policy.catalog) || policy.catalog.length !== 4 || !/^[a-f0-9]{64}$/u.test(policy.catalogHash) ||
@@ -235,14 +251,15 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
         request(step.request, run, step.ordinal);
         if (step.ordinal === 1 && !same(step.request, execution.request)) bad();
         if (step.output) {
-          output(step.output, step.request.protocol);
+          output(step.output, step.request.protocol, run.contextMode === 'selected_shot_edit');
           if (step.ordinal === 2 && step.output.finishReason !== 'stop' || step.output.toolCall &&
             !execution.policy.catalog.some(definition => definition.name === step.output.toolCall.name)) bad();
         }
       } else if (step.kind === 'tool') {
         if (step.ordinal !== 1 || step.position !== 2 || !uuid(step.modelStepId) || step.status === 'not_started' ||
           !exactObject(step.intent, ['toolCall', 'provenance']) || (step.status === 'completed') !== Object.hasOwn(step, 'observation')) bad();
-        toolCall(step.intent.toolCall); provenance(step.intent.provenance, run.projectId, true);
+        toolCall(step.intent.toolCall, run.contextMode === 'selected_shot_edit'); provenance(step.intent.provenance, run.projectId, true);
+        if (step.intent.provenance.category !== run.provenance.category || (step.intent.provenance.operation === 'shot.update') !== (run.contextMode === 'selected_shot_edit')) bad();
         if (step.observation) validateObservation(step.observation, step, run);
       } else bad();
       return step;
@@ -278,7 +295,7 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
   }
   function inside(runId, stepId, operation) {
     const previous = row(runId), run = readRun(previous);
-    if (!run || run.contextMode !== 'project_inspection') bad();
+    if (!run || !['project_inspection', 'selected_shot_edit'].includes(run.contextMode)) bad();
     const steps = readSteps(run), step = steps.find(item => item.id === stepId);
     if (!step) bad();
     return operation(previous, run, steps, step);
@@ -292,7 +309,9 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
     initialize(run, input) {
       const execution = json(input), step = {version: 1, id: randomUUID(), runId: run.id, projectId: run.projectId, position: 1,
         kind: 'model', ordinal: 1, status: 'not_started', createdAt: run.createdAt, requestId: run.modelRequestId, request: execution.request};
-      run.contextMode = 'project_inspection'; run.provenance = structuredClone(execution.request.provenance); run.activity = [activity(step)];
+      run.contextMode = execution.policy?.context;
+      if (run.contextMode === 'selected_shot_edit') run.editTarget = structuredClone(execution.target);
+      run.provenance = structuredClone(execution.request.provenance); run.activity = [activity(step)];
       validateExecution(execution, run);
       return {execution, step, insert: () => write(step)};
     },
@@ -314,7 +333,7 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
       const value = json(supplied);
       if (!exactObject(value, ['output'])) bad();
       return store.tx(() => inside(runId, stepId, (previous, run, steps, step) => {
-        if (step.kind !== 'model') bad(); output(value.output, step.request.protocol);
+        if (step.kind !== 'model') bad(); output(value.output, step.request.protocol, run.contextMode === 'selected_shot_edit');
         if (value.output.toolCall && !accepted(run).policy.catalog.some(definition => definition.name === value.output.toolCall.name)) bad();
         if (step.status === 'completed') { if (!same(step.output, value.output)) bad(); return replay(run, step); }
         running(run); if (step.status !== 'dispatch_started' || step.ordinal === 2 && value.output.finishReason !== 'stop') bad();
@@ -328,6 +347,7 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
         if (model.kind !== 'model' || model.ordinal !== 1 || model.status !== 'completed' || model.output.finishReason !== 'tool_calls' ||
           !exactObject(intent, ['toolCall', 'provenance']) || !same(intent.toolCall, model.output.toolCall)) bad();
         provenance(intent.provenance, run.projectId, true);
+        if (intent.provenance.category !== run.provenance.category || (intent.provenance.operation === 'shot.update') !== (run.contextMode === 'selected_shot_edit')) bad();
         if (steps[1]) { if (!same(steps[1].intent, intent)) bad(); return replay(run, steps[1]); }
         running(run);
         const step = {version: 1, id: randomUUID(), runId, projectId: run.projectId, position: 2, kind: 'tool', ordinal: 1,
@@ -361,7 +381,7 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
       const next = json(supplied);
       return store.tx(() => {
         const previous = row(runId), run = readRun(previous);
-        if (!run || run.contextMode !== 'project_inspection') bad();
+        if (!run || !['project_inspection', 'selected_shot_edit'].includes(run.contextMode)) bad();
         const steps = readSteps(run); request(next, run, 2);
         if (steps[2]) { if (!same(steps[2].request, next)) bad(); return replay(run, steps[2]); }
         running(run); if (steps.length !== 2 || steps[1].status !== 'completed') bad();

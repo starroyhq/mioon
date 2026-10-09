@@ -96,5 +96,11 @@ export function createServices(store,providers,{env=process.env}={}){
  'export.get':i=>required('exports',i.exportId)
  };
  async function call(op,input){if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input);const parsed=parse(op,input);return publicValue(await handlers[op](parsed));}
- return {call,required,check,event,saveJob,createJob,handlers,publicValue,inspection};
+ // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
+ // It shares the same parsed input, handler, transaction and response journal.
+ async function updateShotInProject(projectId,input){
+  if(typeof projectId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(projectId))throw new AppError('VALIDATION_ERROR','项目范围无效');
+  return publicValue(await localMutations.updateShotInProject(projectId,parse('shot.update',input)));
+ }
+ return {call,updateShotInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection};
 }

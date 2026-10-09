@@ -211,8 +211,11 @@ If an actual downloaded live result differs from the requested ratio by more tha
 
 The authenticated `/api/agent/chat/:projectId` routes retain their snapshot,
 run, Stop, SSE, request-ID lookup and history semantics. Snapshot scope is now
-`chat_and_project_inspection`; its `inspection` capability includes availability,
-schema version, catalog hash and the fixed two-model-request/one-read/8-KiB limits.
+`chat_and_reviewed_shot_edits` when the reviewed-edit service is available
+(otherwise `chat_and_project_inspection`). Its `inspection` capability retains
+availability, schema version, catalog hash and the fixed
+two-model-request/one-read/8-KiB limits. The separate `edit` capability publishes
+the selected-shot schema/catalog and text/round limits described below.
 No view/lookup/history route starts inference or inspection.
 
 The existing send envelope remains strict: `requestId`, `instanceId`,
@@ -230,3 +233,13 @@ bodies, provider output artifacts and credentials are not added to public run
 DTOs. Tool results are bounded inert JSON strings. Older typed runs remain
 readable and typed send requests remain compatible. Full execution/recovery,
 privacy and protocol contract: [Agent read tools](AGENT-READ-TOOLS.md).
+
+## Reviewed Agent shot-edit proposals
+
+The reviewed-edit increment adds a separate `selected_shot_edit` consent mode
+and authenticated proposal review routes. Its only business write is an
+explicitly approved `shot.update` title/prompt patch; creating a proposal does
+not apply it. Discovery is backend-persistent and independent of renderer
+session storage. Endpoint shapes, limits, states and current acceptance status:
+[reviewed selected-shot edits](AGENT-EDITS.md). These review endpoints are not
+business RPC operations or callable model tools.

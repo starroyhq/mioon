@@ -4,8 +4,7 @@ import {agentChatError} from './chat-errors.mjs';
 import {createAgentTransport} from './network-policy.mjs';
 import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.mjs';
 import {isDeepStrictEqual} from 'node:util';
-import {READ_TOOL_LIMITS, READ_TOOL_SYSTEM_INSTRUCTION} from './read-tool-policy.mjs';
-import {validateReadTools, readToolRequestFields, readToolMessages, normalizeToolCall, responseToolSnapshot, compareResponseTool, responseToolContinuation} from './tool-wire.mjs';
+import {toolScope, validateReadTools, readToolRequestFields, readToolMessages, normalizeToolCall, responseToolSnapshot, compareResponseTool, responseToolContinuation} from './tool-wire.mjs';
 
 // Documentation-backed, deliberately text-only profiles, not live certification.
 // Qwen cannot disable provider-side truncation. Its documented 1M-token model
@@ -64,8 +63,8 @@ export function buildAgentResponsesBody({configuration, messages, selfPort, read
   const config = validateAgentResponsesConfiguration(configuration, {selfPort, readTools});
   if (!Array.isArray(messages) || !messages.length || messages.length > AGENT_CHAT_LIMITS.maxMessages) fail('AGENT_CHAT_VALIDATION');
   // The fixed runtime instruction is never customizable by model/user input.
-  const instructions = readTools ? READ_TOOL_SYSTEM_INSTRUCTION : CHAT_SYSTEM_INSTRUCTION;
-  if (readTools) messages = readToolMessages(messages);
+  const instructions = readTools ? toolScope(readTools).instruction : CHAT_SYSTEM_INSTRUCTION;
+  if (readTools) messages = readToolMessages(messages, readTools);
   let inputBytes = Buffer.byteLength(instructions), input = [];
   for (const [position, message] of messages.entries()) {
     if (!exactObject(message, ['role', 'content']) || !validString(message.content, AGENT_CHAT_LIMITS.maxInputBytes)) fail('AGENT_CHAT_VALIDATION');
@@ -75,13 +74,13 @@ export function buildAgentResponsesBody({configuration, messages, selfPort, read
     }
     if (!['user', 'assistant'].includes(message.role) || message.role !== (input.length % 2 === 0 ? 'user' : 'assistant')) fail('AGENT_CHAT_VALIDATION');
     inputBytes += Buffer.byteLength(message.content);
-    if (inputBytes > (readTools ? READ_TOOL_LIMITS.maxContextBytes : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
+    if (inputBytes > (readTools ? toolScope(readTools).limits.maxContextBytes : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
     input.push({role: message.role, content: message.content});
   }
   if (!input.length || input.at(-1).role !== 'user') fail('AGENT_CHAT_VALIDATION');
   if (readTools?.phase === 'answer') {
     input.push(...responseToolContinuation(readTools, messageSnapshot, AGENT_RESPONSES_LIMITS.maxItems));
-    if (Buffer.byteLength(JSON.stringify(input)) + Buffer.byteLength(instructions) > AGENT_RESPONSES_LIMITS.maxInputBytes) fail('AGENT_CHAT_LIMIT');
+    if (Buffer.byteLength(JSON.stringify(input)) + Buffer.byteLength(instructions) > (readTools.scope === 'selected_shot_edit' ? toolScope(readTools).limits.maxContinuationBytes : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
   }
   const body = JSON.stringify({model: config.model, stream: true, store: false, max_output_tokens: AGENT_CHAT_LIMITS.maxOutputTokens,
     instructions, input, ...AGENT_RESPONSES_PROFILES[config.presetId].fields, ...readToolRequestFields(config, readTools)});
@@ -194,7 +193,7 @@ export function createResponsesGateway(dependencies = {}) {
           if (response.reasoning != null && !object(response.reasoning)) protocol();
           for (const item of response.output) {
             if (object(item) && item.type === 'reasoning') fail('AGENT_CHAT_REASONING_UNSUPPORTED');
-            if (allowToolCalls && object(item) && item.type === 'function_call') { responseToolSnapshot(item, 'completed'); continue; }
+            if (allowToolCalls && object(item) && item.type === 'function_call') { responseToolSnapshot(item, 'completed', readTools); continue; }
             if (object(item) && item.type !== 'message') {
               if (typeof item.type === 'string' && (item.type.includes('call') || item.type.includes('tool') || item.type === 'mcp_approval_request')) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
               protocol();
@@ -219,7 +218,7 @@ export function createResponsesGateway(dependencies = {}) {
           if (response.status !== 'completed' || response.error != null || response.incomplete_details != null || !items.length || response.output.length !== items.length) protocol();
           for (let n = 0; n < items.length; n++) {
             if (!items[n].done || (items[n].type !== 'function_call' && !items[n].content.length)) protocol();
-            const snapshot = response.output[n]?.type === 'function_call' && allowToolCalls ? responseToolSnapshot(response.output[n], 'completed') : messageSnapshot(response.output[n], 'completed');
+            const snapshot = response.output[n]?.type === 'function_call' && allowToolCalls ? responseToolSnapshot(response.output[n], 'completed', readTools) : messageSnapshot(response.output[n], 'completed');
             compareItem(snapshot, items[n]);
             if (allowToolCalls && !isDeepStrictEqual(response.output[n], items[n].snapshot)) protocol();
           }
@@ -231,9 +230,9 @@ export function createResponsesGateway(dependencies = {}) {
         if (!responseId) protocol();
         if (value.type === 'response.output_item.added') {
           if (index(value.output_index, AGENT_RESPONSES_LIMITS.maxItems) !== items.length || (items.length && !items.at(-1).done)) protocol();
-          const item = allowToolCalls && value.item?.type === 'function_call' ? responseToolSnapshot(value.item, 'in_progress') : messageSnapshot(value.item, 'in_progress');
+          const item = allowToolCalls && value.item?.type === 'function_call' ? responseToolSnapshot(value.item, 'in_progress', readTools) : messageSnapshot(value.item, 'in_progress');
           if (item.type === 'function_call') {
-            if (++toolCount > READ_TOOL_LIMITS.maxToolCalls || item.argumentsJson !== '') protocol();
+            if (++toolCount > toolScope(readTools).limits.maxToolCalls || item.argumentsJson !== '') protocol();
           } else if (item.content.length) protocol();
           if (itemIds.has(item.id)) protocol();
           itemIds.add(item.id); items.push({...item, done: false});
@@ -242,7 +241,7 @@ export function createResponsesGateway(dependencies = {}) {
         if (value.type === 'response.output_item.done') {
           const item = items[index(value.output_index, AGENT_RESPONSES_LIMITS.maxItems)];
           if (!item || item.done || (value.item_id !== undefined && id(value.item_id) !== item.id)) protocol();
-          const snapshot = allowToolCalls && value.item?.type === 'function_call' ? responseToolSnapshot(value.item, 'completed') : messageSnapshot(value.item, 'completed');
+          const snapshot = allowToolCalls && value.item?.type === 'function_call' ? responseToolSnapshot(value.item, 'completed', readTools) : messageSnapshot(value.item, 'completed');
           compareItem(snapshot, item); item.done = true;
           if (allowToolCalls) item.snapshot = structuredClone(value.item);
           continue;
@@ -253,13 +252,13 @@ export function createResponsesGateway(dependencies = {}) {
           const allowed = ['type', 'sequence_number', 'response_id', 'item_id', 'output_index', value.type.endsWith('.done') ? 'arguments' : 'delta', 'name'];
           if (Object.keys(value).some(key => !allowed.includes(key)) || (value.name !== undefined && value.name !== item.name)) protocol();
           if (value.type.endsWith('.done')) {
-            if (!validString(value.arguments, READ_TOOL_LIMITS.maxArgumentsBytes) || value.arguments !== item.argumentsJson) protocol();
-            normalizeToolCall({id: item.callId, itemId: item.id, name: item.name, argumentsJson: item.argumentsJson});
+            if (!validString(value.arguments, toolScope(readTools).limits.maxArgumentsBytes) || value.arguments !== item.argumentsJson) protocol();
+            normalizeToolCall({id: item.callId, itemId: item.id, name: item.name, argumentsJson: item.argumentsJson}, readTools);
             item.argumentsDone = true;
           } else {
-            if (!validString(value.delta, READ_TOOL_LIMITS.maxArgumentsBytes)) { if (typeof value.delta === 'string' && Buffer.byteLength(value.delta) > READ_TOOL_LIMITS.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT'); protocol(); }
+            if (!validString(value.delta, toolScope(readTools).limits.maxArgumentsBytes)) { if (typeof value.delta === 'string' && Buffer.byteLength(value.delta) > toolScope(readTools).limits.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT'); protocol(); }
             item.argumentsJson += value.delta;
-            if (Buffer.byteLength(item.argumentsJson) > READ_TOOL_LIMITS.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
+            if (Buffer.byteLength(item.argumentsJson) > toolScope(readTools).limits.maxArgumentsBytes) fail('AGENT_CHAT_LIMIT');
           }
           continue;
         }
@@ -302,7 +301,7 @@ export function createResponsesGateway(dependencies = {}) {
       if (!completed) fail('AGENT_CHAT_TRUNCATED');
       stream.close();
       const item = items.find(value => value.type === 'function_call');
-      const toolCall = item ? normalizeToolCall({id: item.callId, itemId: item.id, name: item.name, argumentsJson: item.argumentsJson}) : null;
+      const toolCall = item ? normalizeToolCall({id: item.callId, itemId: item.id, name: item.name, argumentsJson: item.argumentsJson}, readTools) : null;
       yield {type: 'done', finishReason: toolCall ? 'tool_calls' : 'stop', ...(usage ? {usage} : {}), ...(toolCall ? {toolCall, providerOutput} : {})};
     } catch (error) {
       if (signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');

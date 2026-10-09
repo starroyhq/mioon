@@ -73,6 +73,26 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
   }
  }
  const touchProject=id=>{const p=project(id);put('projects',{...p,revision:p.revision+1,updatedAt:now()});};
+ const updateShot=(input,projectScope)=>mutate('shot.update',input,{
+  resolve:()=>{
+   if(projectScope===undefined)return target('shots',input.shotId);
+   // The approved Agent project is checked after BEGIN IMMEDIATE, including
+   // exact replay. A preflight read outside this transaction cannot bind scope
+   // against a second writer that reassigns the target before the lock is held.
+   try{project(projectScope);return {projectId:projectScope,value:owned('shots',input.shotId,projectScope)};}
+   catch(error){
+    if(error instanceof AppError&&['NOT_FOUND','CROSS_PROJECT_REFERENCE'].includes(error.code))
+     throw new AppError('NOT_FOUND','找不到记录',404);
+    throw error;
+   }
+  },
+  validate:({value})=>{shotRelations(value);if(input.patch.referenceAssetIds!==undefined)assets(value.projectId,input.patch.referenceAssetIds);},
+  apply:({value:shot})=>{
+   check(shot,input.expectedRevision);references.guardManualUpdate(shot,input.patch.referenceAssetIds);
+   return put('shots',{...shot,...input.patch,revision:shot.revision+1,updatedAt:now()});
+  },
+  replay:(response,context)=>{if(response.id!==input.shotId)invalid();replayRecord('shots',response,context);},
+ });
  const handlers={
   'shot.create':input=>mutate('shot.create',input,{
    resolve:()=>({projectId:project(input.projectId).id}),
@@ -83,15 +103,7 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
    },
    replay:(response,context)=>replayRecord('shots',response,context),
   }),
-  'shot.update':input=>mutate('shot.update',input,{
-   resolve:()=>target('shots',input.shotId),
-   validate:({value})=>{shotRelations(value);if(input.patch.referenceAssetIds!==undefined)assets(value.projectId,input.patch.referenceAssetIds);},
-   apply:({value:shot})=>{
-    check(shot,input.expectedRevision);references.guardManualUpdate(shot,input.patch.referenceAssetIds);
-    return put('shots',{...shot,...input.patch,revision:shot.revision+1,updatedAt:now()});
-   },
-   replay:(response,context)=>{if(response.id!==input.shotId)invalid();replayRecord('shots',response,context);},
-  }),
+  'shot.update':input=>updateShot(input),
   'shot.reorder':input=>mutate('shot.reorder',input,{
    resolve:()=>({projectId:project(input.projectId).id}),
    // Verify requested owners even on replay. Membership/order validation belongs
@@ -130,5 +142,5 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
    replay:(response,context)=>{if(response.id!==input.shotId)invalid();replayRecord('shots',response,context);},
   }),
  };
- return {handlers};
+ return {handlers,updateShotInProject:(projectId,input)=>updateShot(input,projectId)};
 }

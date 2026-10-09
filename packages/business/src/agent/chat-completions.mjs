@@ -4,8 +4,7 @@ import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './co
 import {agentChatError} from './chat-errors.mjs';
 import {createAgentTransport} from './network-policy.mjs';
 import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.mjs';
-import {READ_TOOL_LIMITS} from './read-tool-policy.mjs';
-import {validateReadTools, readToolRequestFields, readToolMessages, chatToolAccumulator, chatToolContinuation} from './tool-wire.mjs';
+import {toolScope, validateReadTools, readToolRequestFields, readToolMessages, chatToolAccumulator, chatToolContinuation} from './tool-wire.mjs';
 
 // These are explicit text-only profiles, not a vendor-wide compatibility claim.
 // Model aliases/edits remain saveable settings, but unsupported named profiles
@@ -65,12 +64,12 @@ export function buildAgentChatBody({configuration, messages, selfPort, readTools
   const config = validateAgentChatConfiguration(configuration, {selfPort, readTools});
   const profile = AGENT_CHAT_PROFILES[config.presetId];
   if (!Array.isArray(messages) || !messages.length || messages.length > AGENT_CHAT_LIMITS.maxMessages) fail('AGENT_CHAT_VALIDATION');
-  if (readTools) messages = readToolMessages(messages);
+  if (readTools) messages = readToolMessages(messages, readTools);
   let inputBytes = 0;
   const safeMessages = messages.map(message => {
     if (!exactObject(message, ['role', 'content']) || !['system', 'user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || !message.content.isWellFormed()) fail('AGENT_CHAT_VALIDATION');
     inputBytes += Buffer.byteLength(message.content);
-    if (inputBytes > (readTools ? READ_TOOL_LIMITS.maxContextBytes : AGENT_CHAT_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
+    if (inputBytes > (readTools ? toolScope(readTools).limits.maxContextBytes : AGENT_CHAT_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
     return {role: message.role, content: message.content};
   });
   if (readTools?.phase === 'answer') {
@@ -94,7 +93,7 @@ export function createChatCompletionGateway(dependencies = {}) {
     try {
       stream = await open({...request, apiKey, signal, selfPort});
       let finishReason = null, done = false, outputBytes = 0, usage, content = '', refusal = '';
-      const tools = chatToolAccumulator(), allowToolCalls = readTools?.phase === 'request';
+      const tools = chatToolAccumulator(readTools), allowToolCalls = readTools?.phase === 'request';
       for await (const frame of parseAgentSse(stream.body, {...AGENT_SSE_LIMITS, signal})) {
         if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
         if (frame.event === 'error') fail('AGENT_CHAT_PROVIDER_ERROR');

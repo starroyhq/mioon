@@ -2,10 +2,11 @@
 
 Date: 2026-10-09 (UTC). Baseline: `dbf3b93`.
 
-Status: implemented; local acceptance complete and ready for independent release
-review. This is a shared business-service foundation for existing UI, HTTP, CLI
-and MCP callers. The built-in Agent still exposes only its four approved read
-operations.
+Status: committed as `2ba58ee` after independent 1,160-test acceptance. This is a
+shared business-service foundation for existing UI, HTTP, CLI and MCP callers.
+That release exposed only the built-in Agent's four approved read operations.
+The later [reviewed-edit increment](AGENT-EDITS.md) separately adds its durable
+proposal and approval boundary.
 
 ## Exactly six operations
 

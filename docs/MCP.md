@@ -187,7 +187,10 @@ until the outcome is known. Their schema still has `requiresRequestId:false`, an
 MCP `idempotentHint:false` remains truthful for unkeyed calls. Exact keyed replay
 returns the original response even after later revisions/restart, provided current
 ownership remains valid. Changed operation/project/arguments under a key conflict.
-No model write tool is enabled in the built-in Agent by this external MCP capability.
+This external MCP capability does not authorize built-in Agent writes. Its
+separate reviewed-edit workflow exposes only a proposal tool and authenticated
+human review endpoints, absent from the MCP catalog; see the scope and current
+acceptance status in [reviewed selected-shot edits](AGENT-EDITS.md).
 See [shared mutation replay](MUTATION-REPLAY.md).
 
 For every mutation that requires `requestId`, the caller owns a stable ID. After a lost HTTP or MCP result, repeat the exact original operation and complete input with the **same requestId**, preserving its original revision. The bridge never invents IDs or automatically re-submits paid tasks. Changed reuse of an ID conflicts. A fresh intended edit uses a fresh ID and current revision.

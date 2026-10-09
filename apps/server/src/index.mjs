@@ -1,5 +1,6 @@
 import http from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
+import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createChatHttp} from './chat-http.mjs';
 import {readFile, writeFile, stat} from 'node:fs/promises';
 import {createReadStream, existsSync} from 'node:fs';
@@ -43,6 +44,7 @@ export async function startServer({
   token: suppliedToken,
   agentSettings: suppliedAgentSettings,
   chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
+  agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
 
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
@@ -69,7 +71,8 @@ export async function startServer({
     agentSettings = suppliedAgentSettings || await createAgentSettings({
       persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
     });
-    chatRuntime = createChatRuntime({store, agentSettings, inspection: services.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
+    const editService = createAgentEditService({store, services, ...(agentEditFault ? {fault: agentEditFault} : {})});
+    chatRuntime = createChatRuntime({store, agentSettings, editService, inspection: services.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
     chatHttp = createChatHttp({runtime: chatRuntime});
     const origins = new Set(), hosts = new Set();
     const auth = req => {

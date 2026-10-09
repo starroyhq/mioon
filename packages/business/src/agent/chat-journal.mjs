@@ -58,7 +58,7 @@ export function chatThreadId(projectId) {
 
 /** Synchronous SQLite journal, deliberately independent of settings, secrets,
  * gateways and business dispatch. Trusted limit injection is only for tests. */
-export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
+export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS, onRunTerminalInside}) {
   if (!store?.db || typeof store.tx !== 'function') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
   const db = store.db, bounds = {...CHAT_JOURNAL_LIMITS, ...limits};
   const row = id => db.prepare(`${SELECT_RUN} WHERE id=?`).get(id);
@@ -112,6 +112,7 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
     delta += saveRun(previous, run);
     db.prepare('UPDATE agent_chat_threads SET revision=? WHERE id=?').run(rev, run.threadId);
     account(delta, -bounds.terminalReserveBytes);
+    onRunTerminalInside?.(structuredClone(run));
     return {run, revision: rev, events};
   }
   const stepJournal = createChatStepJournal({store, readRun: read, row, account, saveRun, appendEvent, revision});
@@ -166,8 +167,8 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
           if (event.run.lastEventId !== event.id || event.type === 'terminal' && event.run.status === 'running' ||
             event.run.modelRequestId !== current.modelRequestId || event.run.userText !== current.userText ||
             encode(event.run.configuration) !== encode(current.configuration) || event.run.contextMode !== current.contextMode ||
-            encode(event.run.provenance) !== encode(current.provenance)) throw unavailable();
-          if (current.contextMode === 'project_inspection' && event.run.activity.some((item, index) => {
+            encode(event.run.provenance) !== encode(current.provenance) || encode(event.run.editTarget) !== encode(current.editTarget)) throw unavailable();
+          if (['project_inspection', 'selected_shot_edit'].includes(current.contextMode) && event.run.activity.some((item, index) => {
             const durable = current.activity[index];
             return !durable || ['id', 'kind', 'ordinal', 'name', 'operation'].some(key => item[key] !== durable[key]) ||
               Object.hasOwn(item, 'resultJson') && item.resultJson !== durable.resultJson;
@@ -214,7 +215,7 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
     dispatch(runId) {
       return store.tx(() => {
         const previous = row(runId), run = read(previous);
-        if (!run || run.contextMode === 'project_inspection' || run.status !== 'running' || run.modelRequestState !== 'not_started') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
+        if (!run || ['project_inspection', 'selected_shot_edit'].includes(run.contextMode) || run.status !== 'running' || run.modelRequestState !== 'not_started') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
         // Conservative local boundary BEFORE calling the gateway. This is not
         // evidence that a socket opened, the provider accepted, or billing began.
         run.modelRequestState = 'dispatch_started'; run.modelRequestStartedAt = now();

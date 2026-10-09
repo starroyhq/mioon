@@ -85,6 +85,8 @@ operations because keyless calls retain legacy behavior. A new intended edit
 uses a new key and current revision. Unknown/lost/malformed output, auth failure
 or key conflict is not evidence that the earlier attempt failed. Only a valid
 exact success or the server's same-key `mutationOutcome:'not_applied'` rollback
-proof resolves that uncertainty. The built-in Agent remains read-only; an
-external operation schema does not authorize a model to write. See
+proof resolves that uncertainty. An external operation schema does not authorize
+a model to write. Built-in Agent reviewed edits use a separate bounded proposal
+and user approval workflow, not an MCP/CLI approval tool; see its scope and
+current status in [reviewed edits](../../../docs/AGENT-EDITS.md). See also
 [shared mutation replay](../../../docs/MUTATION-REPLAY.md).
