@@ -23,6 +23,8 @@ Prefer private connection files, not token literals in client configuration:
 
 Connection files are read again on every HTTP request. A long-lived MCP process follows desktop restarts and direct token-file rotation without restarting itself. Files must be small regular files owned by the current user; POSIX permissions must be `0600` or stricter, and symlinks are rejected. Desktop token location must be beside the descriptor, with a live PID. Origins are restricted to local HTTP (`127.0.0.1` or `localhost`), and redirects, embedded URL credentials, paths, queries, and fragments are refused. No token or credential path is returned by doctor.
 
+Q2 also validates the private parent directory and canonical ancestry and rejects multiply linked credentials. Existing unsafe files/directories are preserved rather than repaired or replaced. Windows persistent-file access is unavailable until a native ACL backend is implemented and verified. See [private storage and recovery](PRIVATE-STORAGE.md); no new MCP authority or operation is introduced.
+
 Do not mix a desktop descriptor with `MIOON_BASE_URL`/`MIOON_TOKEN_FILE`. Explicit `MIOON_TOKEN` takes precedence when no token file is supplied; `MIOON_TOKEN_FILE` plus `MIOON_TOKEN` is rejected. New setups should choose exactly one mode.
 
 ### V4.1 渠道对应的连接文件

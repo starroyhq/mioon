@@ -2,6 +2,7 @@ import path from 'node:path';
 import { createAgentSettings, AGENT_CREDENTIAL_ACQUIRE } from '@mioon/business/agent/settings';
 import { createAgentSettingsFile } from '@mioon/business/agent/settings-file';
 import { agentSettingsError } from '@mioon/business/agent/config';
+import { validatePrivateDirectory } from '@mioon/contracts/private-storage';
 import desktopIdentity from '../identity.cjs';
 
 const LINUX_KEYRINGS = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']);
@@ -66,8 +67,9 @@ export function createDesktopSecretCodec({ safeStorage, appId, platform = proces
 export async function createDesktopAgentSettings({ safeStorage, userData, appId, platform = process.platform }) {
   try {
     if (typeof userData !== 'string' || !path.isAbsolute(userData)) throw vaultError();
+    validatePrivateDirectory(userData);
     return await createAgentSettings({
-      persistence: createAgentSettingsFile({ directory: path.join(userData, 'agent-settings') }),
+      persistence: createAgentSettingsFile({ directory: path.join(userData, 'agent-settings'), privateRoot: userData }),
       secretCodec: createDesktopSecretCodec({ safeStorage, appId, platform }),
       storage: () => desktopSecretStorage(safeStorage, platform)
     });

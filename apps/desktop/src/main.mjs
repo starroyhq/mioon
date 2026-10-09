@@ -1,9 +1,8 @@
 import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage } from 'electron';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dataPaths, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnection } from './config.mjs';
+import { prepareDesktopStorage, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown } from './config.mjs';
 import desktopIdentity from '../identity.cjs';
 import { BackendSupervisor } from './supervisor.mjs';
 import { createDesktopAgentSettings } from './secret-store.mjs';
@@ -20,9 +19,9 @@ if (process.platform === 'linux') {
   app.setDesktopName(`${identity.appId}.desktop`);
   app.commandLine.appendSwitch('class', identity.appId);
 }
-const paths = dataPaths(app.getPath('appData'), process.env.MIOON_DESKTOP_USER_DATA, identity.channel);
-mkdirSync(paths.userData, { recursive: true, mode: 0o700 });
-app.setPath('userData', paths.userData);
+let paths, startupStorageError;
+try { paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
+catch (error) { startupStorageError = error; }
 let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let smokeDiscardDecision;
@@ -32,6 +31,7 @@ async function toolsFromUser() {
   let configuration;
   try { configuration = await readToolConfig(paths.configFile); return await validateTools(configuration); }
   catch (error) {
+    if (error?.code?.startsWith('STORAGE_')) throw error;
     if (smokeOutput) throw error;
     const result = await dialog.showMessageBox({ type: 'warning', title: '配置视频工具',
       message: '需要你已安装的 FFmpeg 和 ffprobe',
@@ -101,7 +101,7 @@ async function openWindow() {
 
 async function stop() {
   await backend?.stop();
-  await removeConnection(paths);
+  await removeConnectionOnShutdown(paths);
   await activeSession?.clearStorageData();
   activeSession = null;
   ready = null;
@@ -147,8 +147,8 @@ async function fatal(error) {
     await writeFile(smokeOutput, JSON.stringify({ ok: false, error: error.message }, null, 2));
     process.exitCode = 1;
   } else {
-    await dialog.showMessageBox({ type: 'error', title: '无法启动 Mioon',
-      message: '应用无法启动。', detail: error.message, buttons: ['退出'] });
+    await dialog.showMessageBox(error?.code?.startsWith('STORAGE_') ? storageFailureDialog(error) :
+      { type: 'error', title: '无法启动 Mioon', message: '应用无法启动。', detail: error.message, buttons: ['退出'] });
   }
   app.quit();
 }
@@ -176,7 +176,8 @@ const quitCoordinator = new QuitCoordinator({ getWindow: () => win,
     finally { await agentSettings?.close(); agentSettings = null; }
   }, finish: () => app.quit() });
 
-if (!app.requestSingleInstanceLock()) app.quit();
+if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStorageError);
+else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
   app.on('activate', () => { if (!win && ready && !quitting) void openWindow().catch(fatal); });

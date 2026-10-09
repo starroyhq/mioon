@@ -18,6 +18,7 @@
     "package:mac:dev": "node scripts/build.mjs --channel=development && electron-builder --config electron-builder.dev.cjs --mac --publish never"
   },
   "dependencies": {
+    "@mioon/contracts": "workspace:*",
     "@mioon/server": "workspace:*",
     "@mioon/business": "workspace:*"
   }

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.mjs"
+    ".": "./src/index.mjs",
+    "./private-storage": "./src/private-storage.mjs"
   },
   "dependencies": {
     "zod": "3.25.76"

@@ -1,6 +1,5 @@
-import {open, lstat} from 'node:fs/promises';
-import {constants} from 'node:fs';
 import path from 'node:path';
+import {readPrivateFile} from '@mioon/contracts/private-storage';
 
 export class ConnectionError extends Error {
   constructor(message) { super(message); this.name = 'ConnectionError'; this.code = 'CONNECTION_CONFIG_ERROR'; }
@@ -16,29 +15,15 @@ export function validateLocalUrl(base) {
   return url.origin;
 }
 
-/** Open once with NOFOLLOW, then inspect the opened inode. Never print the path. */
+/** The shared Node-only policy validates parent privacy and the opened inode.
+ * Keep storage diagnostics local: connection errors never include a path/token. */
 async function privateFile(file) {
-  let handle;
   try {
-    const entry = await lstat(file);
-    if (!entry.isFile() || entry.isSymbolicLink()) invalid('Connection credentials must be a regular file, not a symbolic link.');
-    handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
-    const info = await handle.stat();
-    if (entry.dev !== info.dev || entry.ino !== info.ino) invalid('Connection credentials changed while opening; try again.');
-    if (!info.isFile() || info.size > 8192) invalid('Connection credentials must be a small regular file.');
-    if (process.platform !== 'win32') {
-      if (info.mode & 0o077) invalid('Connection credentials must be private to their owner (0600).');
-      if (typeof process.getuid === 'function' && info.uid !== process.getuid()) invalid('Connection credentials are owned by another user.');
-    }
-    const buffer = Buffer.alloc(8193);
-    const {bytesRead} = await handle.read(buffer, 0, buffer.length, 0);
-    if (bytesRead > 8192) invalid('Connection credentials must be a small regular file.');
-    return buffer.subarray(0, bytesRead).toString('utf8');
+    return await readPrivateFile(file, {maxBytes:8192, encoding:'utf8'});
   } catch (error) {
-    if (error instanceof ConnectionError) throw error;
-    if (error.code === 'ELOOP') invalid('Connection credentials must be a regular file, not a symbolic link.');
-    invalid('Cannot read the configured private connection file. Check that the backend is running and the file is readable.');
-  } finally { await handle?.close(); }
+    if (error?.code === 'STORAGE_PRIVACY_UNAVAILABLE') invalid('Private connection files require verified operating-system access controls, which are unavailable on this platform.');
+    invalid('Cannot read connection credentials. Use a small, owner-only (0600) regular file in a private owner-only directory (0700), and check that the backend is running.');
+  }
 }
 function validToken(value) {
   const token = typeof value === 'string' ? value.trim() : '';

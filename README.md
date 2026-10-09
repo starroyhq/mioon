@@ -118,10 +118,11 @@ pnpm demo
 `examples/multitrack-project/` 是独立的10秒原创几何演示：两段主画面、中间1秒主画面间隙、上层星形卡片画中画，以及独立音频与源内裁剪。素材由脚本生成，不使用任何用户素材或真实供应商。
 
 ```sh
-MIOON_DATA_DIR=./examples/multitrack-project pnpm start
+node apps/desktop/scripts/migrate-data.mjs --source="$PWD/examples/multitrack-project" --destination="$PWD/data-multitrack/workspace"
+MIOON_DATA_DIR=./data-multitrack/workspace pnpm start
 ```
 
-首次启动后读取该目录新生成的访问令牌并登录。要从头复现，运行 `pnpm demo:timeline`；它生成测试素材，并自行启动/关闭后端。需要 Python 3 + Pillow。已有同名示例会复用，不自动重复创建片段。
+首次启动后读取该目录新生成的访问令牌并登录。要从头复现到新的私有目录，运行 `MIOON_V2_DEMO_DIR="$PWD/data-timeline-demo" pnpm demo:timeline`；它生成测试素材，并自行启动/关闭后端。需要 Python 3 + Pillow。已有同名示例会复用，不自动重复创建片段。
 
 ## 测试
 
@@ -155,7 +156,7 @@ Web入口的业务数据在 `MIOON_DATA_DIR`（默认 `data/`）：SQLite WAL、
 
 架构已明确采用 Electron。本版包含 Linux 本地桌面构建及 macOS 构建配置；Mac 原生运行、签名、公证、系统密钥库与自动升级仍需真实 macOS 环境和另行授权验证。没有自动发布、部署、签名或上传应用。
 
-For a ready-to-open example without waiting for the seed script, use `MIOON_DATA_DIR=./examples/demo-project pnpm start` after build, then read that directory's newly created access-token. See examples/README.md. The delivered sample contains no login token or API key.
+For a prebuilt example, first copy the closed sample into a new private workspace using the commands in [examples/README.md](examples/README.md), then start that copy. A broadly readable sample directory is intentionally refused; existing data is never chmodded automatically. The delivered sample contains no login token or API key. See [private-storage recovery](docs/PRIVATE-STORAGE.md).
 
 
 ## Monorepo 和开发入口

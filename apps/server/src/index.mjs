@@ -2,7 +2,7 @@ import http from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createChatHttp} from './chat-http.mjs';
-import {readFile, writeFile, stat} from 'node:fs/promises';
+import {stat} from 'node:fs/promises';
 import {createReadStream, existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -11,8 +11,16 @@ import {createAgentSettings, sanitizeAgentSettingsError, sanitizeAgentSettingsRe
 import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
+import {validateWorkspaceStorage} from '@mioon/business/db';
+import {readPrivateFile, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
+const validToken = value => {
+  if (typeof value !== 'string' || value.length < 20 || Buffer.byteLength(value, 'utf8') > 4096 || /[\r\n\0]/.test(value)) {
+    throw Error('MIOON_TOKEN must contain at least 20 characters, at most 4096 bytes, and no line breaks or NUL bytes');
+  }
+  return value;
+};
 const equal = (a, b) => {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   const left = Buffer.from(a), right = Buffer.from(b);
@@ -49,20 +57,25 @@ export async function startServer({
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
   const root = path.resolve(dataDir), dist = path.resolve(distDir);
-  if (suppliedToken !== undefined && (typeof suppliedToken !== 'string' || suppliedToken.length < 20)) throw Error('MIOON_TOKEN must contain at least 20 characters');
-  const store = openStore(root);
-  let token = suppliedToken;
+  if (suppliedToken !== undefined) validToken(suppliedToken);
   const tokenFile = path.join(root, 'access-token');
+  // Validate every existing managed entry before SQLite, lock creation or token
+  // generation. An explicit token can override unused malformed token contents,
+  // but can never bypass unsafe filesystem metadata on an existing token.
+  validateWorkspaceStorage(root);
+  let token = suppliedToken;
+  if (token === undefined) {
+    const stored = readPrivateFile(tokenFile, {root, allowMissing: true, maxBytes: 4098, encoding: 'utf8'});
+    // Preserve the server/client token-file whitespace normalization contract.
+    if (stored !== null) token = validToken(stored.trim());
+  }
+  const store = openStore(root);
   let worker, server, agentSettings, chatRuntime, chatHttp;
   try {
-    if (!token) {
-      if (existsSync(tokenFile)) token = (await readFile(tokenFile, 'utf8')).trim();
-      else {
-        token = randomBytes(32).toString('hex');
-        await writeFile(tokenFile, token, {mode: 0o600, flag: 'wx'});
-      }
+    if (token === undefined) {
+      token = randomBytes(32).toString('hex');
+      writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false});
     }
-    if (token.length < 20) throw Error('MIOON_TOKEN must contain at least 20 characters');
     const providers = createProviderRegistry({db: store.db, root});
     const services = createServices(store, providers);
     const workspacePreferences = createWorkspacePreferences(store);

@@ -1,13 +1,61 @@
 import {DatabaseSync} from 'node:sqlite';
 import {isAsyncFunction,isPromise} from 'node:util/types';
-import {mkdirSync,openSync,writeFileSync,readFileSync,unlinkSync,existsSync,closeSync} from 'node:fs';
 import path from 'node:path';
+import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
+
+/** Read-only preflight of every startup-owned entry, before any lock, token,
+ * directory or SQLite write. Legacy 0755 media and 0644 SQLite remain protected
+ * by the verified 0700 root, provided no other account can write them. */
+export function validateWorkspaceStorage(root){
+ root=path.resolve(root);
+ if(!validatePrivateDirectory(root,{allowMissing:true}))return;
+ validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true});
+ for(const name of ['workbench.sqlite','workbench.sqlite-wal','workbench.sqlite-shm','workbench.sqlite-journal']){
+  validateManagedFile(path.join(root,name),{root,allowMissing:true});
+ }
+ validateManagedFile(path.join(root,'server.lock'),{root,allowMissing:true,maxBytes:64});
+ validateManagedFile(path.join(root,'access-token'),{root,allowMissing:true,private:true,maxBytes:4098});
+ const settings=path.join(root,'agent-settings');
+ if(validateManagedDirectory(settings,{root,allowMissing:true,private:true})){
+  validateManagedFile(path.join(settings,'settings.json'),{root,allowMissing:true,private:true,maxBytes:64*1024});
+ }
+}
+
 export function openStore(root,{lock=true}={}){
- mkdirSync(root,{recursive:true,mode:0o700});mkdirSync(path.join(root,'media'),{recursive:true});
+ root=path.resolve(root);
+ validateWorkspaceStorage(root);
+ ensurePrivateDirectory(root,{create:true});
+ validateWorkspaceStorage(root);
  const lockPath=path.join(root,'server.lock');
- if(lock){if(existsSync(lockPath)){const pid=Number(readFileSync(lockPath,'utf8'));let active=false;try{process.kill(pid,0);active=true;}catch{}if(active)throw Error('This data directory already has a running backend');unlinkSync(lockPath);}const fd=openSync(lockPath,'wx',0o600);writeFileSync(fd,String(process.pid));closeSync(fd);}
- const db=new DatabaseSync(path.join(root,'workbench.sqlite'));db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL;');
+ let db,ownedLock;
+ const releaseLock=()=>{
+  if(!ownedLock)return;
+  try{
+   const current=validateManagedFile(lockPath,{root,allowMissing:true,maxBytes:64});
+   if(current&&current.ino===ownedLock.ino&&current.dev===ownedLock.dev&&readPrivateFile(lockPath,{root,private:false,maxBytes:64,encoding:'utf8'})===String(process.pid)){
+    removePrivateFile(lockPath,{root,private:false,maxBytes:64});
+   }
+  }catch{} // Never delete a changed, linked or otherwise unsafe lock in cleanup.
+  ownedLock=undefined;
+ };
+ try{
+  if(lock){
+   const previous=readPrivateFile(lockPath,{root,allowMissing:true,private:false,maxBytes:64,encoding:'utf8'});
+   if(previous!==null){
+    const pid=Number(previous);let active=false;
+    if(Number.isSafeInteger(pid)&&pid>0){try{process.kill(pid,0);active=true;}catch(error){if(error.code!=='ESRCH')active=true;}}
+    if(active)throw Error('This data directory already has a running backend');
+    removePrivateFile(lockPath,{root,private:false,maxBytes:64});
+   }
+   writePrivateFileAtomic(lockPath,String(process.pid),{root,maxBytes:64,replace:false});
+   ownedLock=validateManagedFile(lockPath,{root,private:true,maxBytes:64});
+  }
+  // Recheck immediately before SQLite's pathname-only open. Node has no SQLite
+  // fd/NOFOLLOW API; a concurrent same-uid/root adversary is outside this policy.
+  validateWorkspaceStorage(root);
+  db=new DatabaseSync(path.join(root,'workbench.sqlite'));
+  db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL;');
  db.exec(`CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY);INSERT OR IGNORE INTO schema_version VALUES(1);
  CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS assets(id TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),data TEXT NOT NULL);
@@ -226,6 +274,15 @@ export function openStore(root,{lock=true}={}){
    db.exec('COMMIT');return result;
   }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  };
- const close=()=>{db.close();if(lock&&existsSync(lockPath)&&readFileSync(lockPath,'utf8')===String(process.pid))unlinkSync(lockPath);};
+ // Do not create media until the complete preflight and schema initialization
+ // succeed. Existing safe legacy media permissions are deliberately preserved.
+ if(!validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true}))ensurePrivateDirectory(path.join(root,'media'),{create:true});
+ let closed=false;
+ const close=()=>{if(closed)return;db.close();closed=true;releaseLock();};
  return {db,root,get,list,put,tx,close};
+ }catch(error){
+  try{db?.close();}catch{}
+  releaseLock();
+  throw error;
+ }
 }

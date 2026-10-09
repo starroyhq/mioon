@@ -29,6 +29,8 @@ pnpm exec mioon doctor
 
 Every HTTP request re-reads the descriptor and adjacent private token, checks the running PID and local origin, and follows token/port rotation after a desktop restart. A disappeared descriptor returns a safe connection error; no fallback backend is selected.
 
+File-based credentials also require a current-user-owned private parent directory, bounded regular single-linked files and a safe canonical ancestry. A `0600` token directly inside a broadly accessible parent is refused. There is no automatic permission repair or fallback to another token. See [private storage and recovery](PRIVATE-STORAGE.md), including the explicit Windows ACL readiness blocker.
+
 ### V4.1 渠道对应的连接文件
 
 正式版 ID 为 `app.starroy.mioon`，开发版 ID 为 `app.starroy.mioon.dev`，包括打包后的开发版。Linux 默认连接文件分别为 `$HOME/.config/app.starroy.mioon/mcp-connection.json` 与 `$HOME/.config/app.starroy.mioon.dev/mcp-connection.json`；macOS 对应 `$HOME/Library/Application Support/` 下的同名目录。实际位置受 Electron appData / `MIOON_DESKTOP_USER_DATA` 影响。JSON/TOML 中使用展开后的绝对路径。

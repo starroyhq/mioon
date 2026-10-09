@@ -58,6 +58,8 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm deskt
 - 项目数据库和托管媒体位于上述目录的 `workspace/`
 - Chromium 缓存/配置与业务 `workspace/` 分开；认证 cookie 使用内存 session，不写到 Chromium 持久 cookie 库
 - `MIOON_DESKTOP_USER_DATA` 可明确覆盖整个桌面数据目录，必须是绝对路径；每个渠道应使用独立目录。`desktop-identity.json` 私有标记会拒绝已属于另一渠道的目录，不会自动覆盖或改写标记
+
+本地目录的隐私校验、旧目录拒绝时的数据保留与恢复方式，见 [PRIVATE-STORAGE.md](PRIVATE-STORAGE.md)。Q2 不会自动修改已有目录的权限或所有者；Windows ACL 尚未实现，不能以 `0600` / `0700` 数值代替 Windows 原生校验。
 - 正式/开发版的数据库、工具配置、Chromium 状态、单实例锁、connection descriptor 和令牌默认隔离；同一渠道再次启动会聚焦原窗口
 
 应用采用 Electron 单实例锁，业务数据库仍有独立单写者锁。再次启动会聚焦已有窗口。默认数据目录与下载目录、源码目录、当前工作目录、安装包目录均无关；换版本不会因此丢失项目。正常退出后再整体备份 `workspace/`，包括媒体，不只复制 SQLite 文件。旧 Web 版数据可以在服务停止后复制到新桌面 `workspace/`；本版本不会自动移动原目录，也没有在用户 Mac 上执行任何迁移。

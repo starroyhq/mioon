@@ -47,6 +47,9 @@ importers:
       '@mioon/business':
         specifier: workspace:*
         version: link:../../packages/business
+      '@mioon/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@mioon/server':
         specifier: workspace:*
         version: link:../server
@@ -65,6 +68,9 @@ importers:
       '@mioon/business':
         specifier: workspace:*
         version: link:../../packages/business
+      '@mioon/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
 
   apps/web:
     dependencies:
