@@ -6,12 +6,14 @@ import {streamAgentResponse, validateAgentGatewayConfiguration} from './agent-ga
 import {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 export {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 import {agentChatError, safeAgentChatError} from './chat-errors.mjs';
+import {createChatJournal, CHAT_JOURNAL_LIMITS} from './chat-journal.mjs';
 
 export const CHAT_LIMITS = Object.freeze({messageBytes: 8192, responseBytes: 128 * 1024, contextBytes: 32 * 1024,
-  historyRuns: 12, projects: 32, runs: 64, runsPerProject: 16, requests: 2048, active: 4,
+  historyRuns: 12, projects: 32, runs: 2048, runsPerProject: 16, requests: 2048, active: 4,
+  batchMs: 50, batchBytes: 2048, storageBytes: CHAT_JOURNAL_LIMITS.bytes,
   events: 256, eventBytes: 64 * 1024, subscribers: 32, subscribersPerRun: 8, runMs: 120000});
 const errors = {
-  AGENT_CHAT_SESSION_EXPIRED: [409, '对话服务已重新启动；旧会话已失效，请重新读取后明确发送。'],
+  AGENT_CHAT_SESSION_EXPIRED: [409, '对话服务已重新启动，请重新读取已保存记录；不会自动重新发送。'],
   AGENT_CHAT_CONVERSATION_CONFLICT: [409, '对话已被另一个窗口更新，请重新读取后确认发送。'],
   AGENT_CHAT_SETTINGS_CONFLICT: [409, '连接设置已改变，请重新读取并确认目标和模型。'],
   AGENT_CHAT_CONSENT_REQUIRED: [409, '请确认当前目标、模型及仅发送输入聊天文字。'],
@@ -19,7 +21,7 @@ const errors = {
   AGENT_CHAT_IDEMPOTENCY_CONFLICT: [409, '此发送标识已用于不同请求；未重复发送。'],
   AGENT_CHAT_RUN_EXPIRED: [410, '这次对话已离开本次服务的有限缓存；不会自动重新发送。'],
   AGENT_CHAT_NOT_FOUND: [404, '项目或这次对话不存在。'],
-  AGENT_CHAT_BUSY: [429, '本地对话缓存或并发已达上限，请稍后或重新启动服务后继续。'],
+  AGENT_CHAT_BUSY: [429, '正在生成的对话或订阅已达上限，请稍后继续。'],
   AGENT_CHAT_CLOSED: [503, '本地对话服务正在关闭。'],
   AGENT_CHAT_CREDENTIAL_UNAVAILABLE: [503, '当前连接密钥不可用，请检查设置和系统安全存储。'],
 };
@@ -59,102 +61,159 @@ function bounded(operation, signal, ms = 10000) {
   });
 }
 
-/** Backend-session only. Never touches project content or a business dispatcher.
- * Constructor gateway injection is for trusted synthetic QA, never HTTP/env input. */
-export function createChatRuntime({store, agentSettings, gateway = streamAgentResponse, selfPort, mode = 'provider'}) {
-  const instanceId = randomUUID(), conversations = new Map(), runs = new Map(), requests = new Map();
+/** Durable typed-chat only. SQLite owns all accepted state; only in-flight
+ * work, bounded uncommitted text batches and subscribers are process-local.
+ * Gateway/limit injection is trusted synthetic QA, never HTTP/env input. */
+export function createChatRuntime({store, agentSettings, gateway = streamAgentResponse, selfPort,
+  mode = 'provider', journalLimits}) {
+  const instanceId = randomUUID(), active = new Map(), watchers = new Map(), publications = [];
   const modeName = mode === 'simulated' ? 'simulated' : 'provider';
-  let closing = false, subscribers = 0, tail = Promise.resolve();
+  let closing = false, fault = null, subscribers = 0, publishing = false, tail = Promise.resolve();
   const shutdown = new AbortController();
+  let journal;
+  function detachRun(runId) { for (const entry of [...(watchers.get(runId) || [])]) entry.detach(); }
+  function fence(state) {
+    state.fenced = true; clearTimeout(state.timer); clearTimeout(state.flushTimer);
+    state.pending = ''; state.pendingBytes = 0; state.controller.abort();
+  }
+  function storageFault() {
+    fault ||= agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
+    shutdown.abort(); publications.length = 0;
+    for (const state of active.values()) fence(state);
+    active.clear();
+    for (const runId of [...watchers.keys()]) detachRun(runId);
+    return fault;
+  }
+  function access(operation) {
+    try { return operation(); }
+    catch (error) {
+      if (['AGENT_CHAT_STORAGE_LIMIT', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY'].includes(error?.code)) throw error;
+      throw storageFault();
+    }
+  }
+  // Opening the runtime reconciles unfinished local rows only. It never asks
+  // settings for credentials, calls a gateway, acquires tools, or retries POST.
+  try { journal = createChatJournal({store, ...(journalLimits ? {limits: journalLimits} : {})}); journal.recover(); }
+  catch { throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE'); }
+  const checkOpen = () => { if (fault) throw fault; if (closing) throw chatRuntimeError('AGENT_CHAT_CLOSED'); };
   const checkProject = projectId => {
     if (typeof projectId !== 'string' || !projectId || projectId.length > 200 || !store.get('projects', projectId)) throw chatRuntimeError('AGENT_CHAT_NOT_FOUND');
   };
   const checkInstance = supplied => { if (!uuid(supplied) || supplied !== instanceId) throw chatRuntimeError('AGENT_CHAT_SESSION_EXPIRED'); };
-  const conversation = projectId => {
-    checkProject(projectId);
-    if (!conversations.has(projectId)) {
-      if (conversations.size >= CHAT_LIMITS.projects) throw chatRuntimeError('AGENT_CHAT_BUSY');
-      conversations.set(projectId, {projectId, revision: 0, runIds: [], activeId: null});
-    }
-    return conversations.get(projectId);
-  };
-  const publicRun = run => ({id: run.id, requestId: run.requestId, projectId: run.projectId, status: run.status,
-    userText: run.userText, assistantText: run.assistantText, configuration: {...run.configuration},
+  const live = state => !closing && !fault && !state.fenced && active.get(state.id) === state && !state.controller.signal.aborted;
+  // Explicit DTOs are the final serialization boundary, including for saved
+  // JSON. Unknown future/internal fields never become renderer-visible data.
+  const publicRun = run => ({id: run.id, requestId: run.requestId, threadId: run.threadId, projectId: run.projectId,
+    status: run.status, userText: run.userText, assistantText: run.assistantText,
+    configuration: {presetId: run.configuration.presetId, platformId: run.configuration.platformId,
+      baseUrl: run.configuration.baseUrl, model: run.configuration.model, protocol: run.configuration.protocol},
     createdAt: run.createdAt, updatedAt: run.updatedAt, lastEventId: run.lastEventId,
-    ...(run.error ? {error: {...run.error, details: {}}} : {})});
-  const runResponse = run => ({instanceId, projectId: run.projectId, revision: conversations.get(run.projectId).revision, run: publicRun(run)});
+    modelRequestId: run.modelRequestId, modelRequestState: run.modelRequestState,
+    ...(run.modelRequestStartedAt ? {modelRequestStartedAt: run.modelRequestStartedAt} : {}),
+    ...(run.error ? {error: publicError(run.error)} : {})});
+  const publicEvent = event => ({id: event.id, type: event.type, instanceId, threadId: event.threadId,
+    projectId: event.projectId, runId: event.runId, revision: event.revision,
+    ...(event.type === 'delta' ? {text: event.text} : {run: publicRun(event.run)})});
+  const runResponse = run => ({instanceId, threadId: run.threadId, projectId: run.projectId,
+    revision: access(() => journal.thread(run.projectId)).revision, run: publicRun(run)});
   const getRun = (projectId, runId, supplied) => {
-    checkProject(projectId); checkInstance(supplied);
-    const run = runs.get(runId);
-    if (!run || run.projectId !== projectId) throw chatRuntimeError('AGENT_CHAT_NOT_FOUND');
+    checkOpen(); checkProject(projectId); checkInstance(supplied);
+    const run = access(() => journal.get(projectId, runId));
+    if (!run) throw chatRuntimeError('AGENT_CHAT_NOT_FOUND');
     return run;
   };
-  function eventSnapshot(run) {
-    return {id: run.lastEventId, type: 'snapshot', instanceId, projectId: run.projectId, runId: run.id,
-      revision: conversations.get(run.projectId).revision, run: publicRun(run)};
+  const eventSnapshot = run => ({id: run.lastEventId, type: 'snapshot', instanceId, threadId: run.threadId,
+    projectId: run.projectId, runId: run.id, revision: access(() => journal.thread(run.projectId)).revision, run: publicRun(run)});
+  function publish(events, detachAfter = false) {
+    for (const event of events) publications.push({event});
+    if (detachAfter) publications.push({detach: events.at(-1)?.runId});
+    if (publishing) return;
+    publishing = true;
+    try {
+      while (publications.length && !fault) {
+        const next = publications.shift();
+        if (next.detach) { detachRun(next.detach); continue; }
+        const event = publicEvent(next.event);
+        for (const entry of [...(watchers.get(event.runId) || [])]) {
+          if (fault) break;
+          if (!entry.detached) { try { entry.listener(structuredClone(event)); } catch { entry.detach(); } }
+        }
+      }
+    } finally { publishing = false; }
   }
-  function emit(run, type, text) {
-    run.lastEventId++;
-    const event = {id: run.lastEventId, type, instanceId, projectId: run.projectId, runId: run.id,
-      revision: conversations.get(run.projectId).revision, ...(type === 'delta' ? {text} : {run: publicRun(run)})};
-    const size = Buffer.byteLength(JSON.stringify(event));
-    run.events.push({event, size}); run.eventBytes += size;
-    while (run.events.length > CHAT_LIMITS.events || run.eventBytes > CHAT_LIMITS.eventBytes) run.eventBytes -= run.events.shift().size;
-    for (const listener of [...run.listeners]) { try { listener(structuredClone(event)); } catch { /* Detachment never retries or aborts inference. */ } }
+  function terminal(state, status, error, {discardPending = false} = {}) {
+    if (!state || state.fenced || fault) return;
+    state.fenced = true; clearTimeout(state.timer); clearTimeout(state.flushTimer);
+    let saved;
+    try { saved = access(() => journal.finish(state.id, status, error ? publicError(error) : undefined, discardPending ? '' : state.pending)); }
+    catch { storageFault(); }
+    finally {
+      state.pending = ''; state.pendingBytes = 0; active.delete(state.id); state.controller.abort();
+    }
+    if (saved && !fault) publish(saved.events, true);
   }
-  function terminal(run, status, error) {
-    if (run.status !== 'running') return;
-    run.status = status; run.updatedAt = new Date().toISOString(); clearTimeout(run.timer);
-    if (error) run.error = publicError(error);
-    const conv = conversations.get(run.projectId); conv.activeId = null; conv.revision++;
-    emit(run, 'terminal');
-    run.controller.abort();
-    for (const detach of [...run.detachers]) detach();
+  function flush(state) {
+    clearTimeout(state.flushTimer); state.flushTimer = null;
+    if (!live(state) || !state.pending) return;
+    const text = state.pending;
+    try {
+      const saved = access(() => journal.append(state.id, text));
+      state.pending = ''; state.pendingBytes = 0;
+      publish(saved.events);
+    } catch (error) {
+      if (error?.code === 'AGENT_CHAT_STORAGE_LIMIT' && live(state)) terminal(state, 'failed', error, {discardPending: true});
+      else if (!fault) throw error;
+    }
   }
-  function history(conv, message) {
+  function buffer(state, text) {
+    for (const char of text) {
+      if (!live(state)) return;
+      const size = Buffer.byteLength(char);
+      if (state.pendingBytes + size > CHAT_LIMITS.batchBytes) flush(state);
+      if (!live(state)) return;
+      state.pending += char; state.pendingBytes += size;
+      if (state.pendingBytes >= CHAT_LIMITS.batchBytes) flush(state);
+      else if (!state.flushTimer) state.flushTimer = setTimeout(() => flush(state), CHAT_LIMITS.batchMs);
+    }
+  }
+  function selectedContext(projectId, message) {
     const selected = [], current = {role: 'user', content: message};
-    let bytes = Buffer.byteLength(CHAT_SYSTEM_INSTRUCTION) + Buffer.byteLength(message);
-    for (const id of [...conv.runIds].reverse()) {
-      const run = runs.get(id);
+    let size = Buffer.byteLength(CHAT_SYSTEM_INSTRUCTION) + Buffer.byteLength(message);
+    // Preserve the previous recent-16 context window. Loading older history is
+    // read-only and never widens the automatically selected model context.
+    for (const run of access(() => journal.page(projectId)).runs.reverse()) {
       if (run.status !== 'completed') continue;
       const pairBytes = Buffer.byteLength(run.userText) + Buffer.byteLength(run.assistantText);
-      if (selected.length >= CHAT_LIMITS.historyRuns || bytes + pairBytes > CHAT_LIMITS.contextBytes) break;
-      selected.unshift(run); bytes += pairBytes;
+      if (selected.length >= CHAT_LIMITS.historyRuns || size + pairBytes > CHAT_LIMITS.contextBytes) break;
+      selected.unshift(run); size += pairBytes;
     }
     return [{role: 'system', content: CHAT_SYSTEM_INSTRUCTION}, ...selected.flatMap(run => [
       {role: 'user', content: run.userText}, {role: 'assistant', content: run.assistantText}]), current];
   }
-  function evictOne(conv) {
-    const candidate = conv ? conv.runIds.map(id => runs.get(id)).find(run => run.status !== 'running') : [...runs.values()].find(run => run.status !== 'running');
-    if (!candidate) throw chatRuntimeError('AGENT_CHAT_BUSY');
-    for (const detach of [...candidate.detachers]) detach();
-    const owner = conversations.get(candidate.projectId);
-    owner.runIds = owner.runIds.filter(id => id !== candidate.id); runs.delete(candidate.id);
-    // Request fingerprints remain as tombstones. An expired run is never resent.
-  }
-  async function execute(run, messages, expectedSettingsRevision) {
+  async function execute(state, configuration, messages, expectedSettingsRevision) {
     let apiKey = null;
     try {
-      // Reject unsupported protocol/model profiles before touching a credential.
-      // This validation never probes, rewrites, or selects another adapter.
-      validateAgentGatewayConfiguration(run.configuration, {selfPort: selfPort()});
-      const expected = {expectedRevision: expectedSettingsRevision, configuration: run.configuration};
+      validateAgentGatewayConfiguration(configuration, {selfPort: selfPort()});
+      const expected = {expectedRevision: expectedSettingsRevision, configuration};
       let credential;
       try {
         if (typeof agentSettings[AGENT_CREDENTIAL_ACQUIRE] !== 'function') throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE');
-        credential = sanitizeAgentCredentialResult(await bounded(() => agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected, {selfPort: selfPort(), signal: run.controller.signal}), run.controller.signal), expected);
+        credential = sanitizeAgentCredentialResult(await bounded(() => agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected,
+          {selfPort: selfPort(), signal: state.controller.signal}), state.controller.signal), expected);
       } catch (error) {
         if (error?.code === 'AGENT_SETTINGS_CONFLICT') throw chatRuntimeError('AGENT_CHAT_SETTINGS_CONFLICT');
         throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE');
       }
-      if (run.status !== 'running' || closing || run.controller.signal.aborted) return;
+      if (!live(state)) return;
       apiKey = credential.apiKey; credential = null;
-      if (!apiKey && run.configuration.presetId !== 'ollama') throw agentChatError('AGENT_CHAT_KEY_REQUIRED');
+      if (!apiKey && configuration.presetId !== 'ollama') throw agentChatError('AGENT_CHAT_KEY_REQUIRED');
+      access(() => journal.dispatch(state.id));
+      if (!live(state)) return;
       let done = false;
-      // Exactly one generator invocation; never retries on failures, disconnects,
-      // missing acknowledgements, malformed output, or provider instructions.
-      for await (const item of gateway({configuration: {...run.configuration}, apiKey, messages, signal: run.controller.signal, selfPort: selfPort()})) {
-        if (run.status !== 'running' || closing || run.controller.signal.aborted) return;
+      // Exactly one invocation, after the conservative local dispatch boundary
+      // committed. A boundary does not prove provider acceptance or billing.
+      for await (const item of gateway({configuration: {...configuration}, apiKey, messages: structuredClone(messages), signal: state.controller.signal, selfPort: selfPort()})) {
+        if (!live(state)) return;
         if (item?.type === 'done') {
           if (item.finishReason === 'length') throw agentChatError('AGENT_CHAT_TRUNCATED');
           if (item.finishReason === 'content_filter') throw agentChatError('AGENT_CHAT_PROVIDER_ERROR');
@@ -162,107 +221,128 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
           done = true; break;
         }
         if (item?.type !== 'delta' || typeof item.text !== 'string') throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
-        if (Buffer.byteLength(run.assistantText) + Buffer.byteLength(item.text) > CHAT_LIMITS.responseBytes) throw agentChatError('AGENT_CHAT_LIMIT');
-        // Bounded public events even if a trusted gateway returns one large delta.
-        for (let offset = 0; offset < item.text.length;) {
-          let end = Math.min(offset + 1024, item.text.length);
-          if (end < item.text.length && /[\uD800-\uDBFF]/u.test(item.text[end - 1])) end--;
-          const text = item.text.slice(offset, end); offset = end;
-          run.assistantText += text; run.updatedAt = new Date().toISOString(); emit(run, 'delta', text);
-          if (run.status !== 'running') return;
-        }
+        const size = Buffer.byteLength(item.text);
+        if (state.receivedBytes + size > CHAT_LIMITS.responseBytes) throw agentChatError('AGENT_CHAT_LIMIT');
+        state.receivedBytes += size;
+        buffer(state, item.text);
       }
-      if (run.status !== 'running' || closing) return;
+      if (!live(state)) return;
       if (!done) throw agentChatError('AGENT_CHAT_TRUNCATED');
-      terminal(run, 'completed');
+      terminal(state, 'completed');
     } catch (error) {
-      if (run.status === 'running' && !closing) terminal(run, 'failed', error);
+      if (live(state)) terminal(state, 'failed', error);
     } finally { apiKey = null; }
   }
   const schedule = operation => {
-    if (closing) return Promise.reject(chatRuntimeError('AGENT_CHAT_CLOSED'));
-    const result = tail.then(() => { if (closing) throw chatRuntimeError('AGENT_CHAT_CLOSED'); return operation(); });
+    try { checkOpen(); } catch (error) { return Promise.reject(error); }
+    const result = tail.then(() => { checkOpen(); return operation(); });
     tail = result.catch(() => {}); return result;
   };
+  function historyPage(projectId, before = null) {
+    checkOpen(); checkProject(projectId);
+    if (before !== null && !uuid(before)) throw agentChatError('AGENT_CHAT_VALIDATION');
+    const conv = access(() => journal.thread(projectId)), page = access(() => journal.page(projectId, before));
+    return {instanceId, threadId: conv.id, projectId, revision: conv.revision, runs: page.runs.map(publicRun), historyCursor: page.historyCursor};
+  }
   return Object.freeze({
     async snapshot(projectId) {
-      if (closing) throw chatRuntimeError('AGENT_CHAT_CLOSED');
-      const conv = conversation(projectId);
+      checkOpen(); checkProject(projectId);
       let settings;
       try { settings = sanitizeAgentSettingsResult(await bounded(() => agentSettings.get({selfPort: selfPort()}), shutdown.signal)); }
-      catch { throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE'); }
-      checkProject(projectId);
-      if (closing) throw chatRuntimeError('AGENT_CHAT_CLOSED');
-      return {instanceId, projectId, revision: conv.revision, scope: 'chat_only', persistence: 'session', mode: modeName,
-        settings, runs: conv.runIds.map(id => publicRun(runs.get(id)))};
+      catch { checkOpen(); throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE'); }
+      const page = historyPage(projectId);
+      return {...page, scope: 'chat_only', persistence: 'local_database', mode: modeName, settings};
     },
     send(projectId, value) {
       let input;
       try { input = parseSend(value); } catch (error) { return Promise.reject(error); }
       return schedule(async () => {
-        // Project and instance checks precede every idempotent replay.
+        // Authorization and epoch checks precede every idempotent replay.
         checkProject(projectId); checkInstance(input.instanceId);
         const fingerprint = createHash('sha256').update(JSON.stringify({projectId, ...input})).digest('hex');
-        const prior = requests.get(input.requestId);
+        const prior = access(() => journal.request(input.requestId));
         if (prior) {
           if (prior.projectId !== projectId || prior.fingerprint !== fingerprint) throw chatRuntimeError('AGENT_CHAT_IDEMPOTENCY_CONFLICT');
-          const run = runs.get(prior.runId);
-          if (!run) throw chatRuntimeError('AGENT_CHAT_RUN_EXPIRED');
+          const run = access(() => journal.get(projectId, prior.runId));
+          if (!run) throw storageFault();
           return {...runResponse(run), replayed: true};
         }
-        const conv = conversation(projectId);
+        const conv = access(() => journal.thread(projectId));
         if (input.expectedConversationRevision !== conv.revision) throw chatRuntimeError('AGENT_CHAT_CONVERSATION_CONFLICT');
-        if (conv.activeId) throw chatRuntimeError('AGENT_CHAT_ACTIVE_RUN');
-        if (requests.size >= CHAT_LIMITS.requests || [...runs.values()].filter(run => run.status === 'running').length >= CHAT_LIMITS.active) throw chatRuntimeError('AGENT_CHAT_BUSY');
+        if (access(() => journal.active(projectId))) throw chatRuntimeError('AGENT_CHAT_ACTIVE_RUN');
+        if (active.size >= CHAT_LIMITS.active) throw chatRuntimeError('AGENT_CHAT_BUSY');
         let settings;
         try { settings = sanitizeAgentSettingsResult(await bounded(() => agentSettings.get({selfPort: selfPort()}), shutdown.signal)); }
-        catch { throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE'); }
-        checkProject(projectId);
-        if (closing) throw chatRuntimeError('AGENT_CHAT_CLOSED');
+        catch { checkOpen(); throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE'); }
+        checkOpen(); checkProject(projectId);
         if (settings.revision !== input.expectedSettingsRevision) throw chatRuntimeError('AGENT_CHAT_SETTINGS_CONFLICT');
         const configuration = parseAgentConfiguration(settings.configuration, {selfPort: selfPort()});
         if (input.consent.destination !== deriveAgentEndpoint(configuration) || input.consent.protocol !== configuration.protocol || input.consent.model !== configuration.model) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
-        const messages = history(conv, input.message);
-        while (conv.runIds.length >= CHAT_LIMITS.runsPerProject) evictOne(conv);
-        while (runs.size >= CHAT_LIMITS.runs) evictOne();
-        const now = new Date().toISOString();
-        const run = {id: randomUUID(), requestId: input.requestId, projectId, status: 'running', userText: input.message, assistantText: '',
-          configuration: Object.freeze(configuration), createdAt: now, updatedAt: now, lastEventId: 0,
-          events: [], eventBytes: 0, listeners: new Set(), detachers: new Set(), controller: new AbortController()};
-        runs.set(run.id, run); conv.runIds.push(run.id); conv.activeId = run.id; conv.revision++;
-        requests.set(input.requestId, {projectId, fingerprint, runId: run.id});
-        emit(run, 'snapshot');
-        run.timer = setTimeout(() => terminal(run, 'failed', agentChatError('AGENT_CHAT_TIMEOUT')), CHAT_LIMITS.runMs);
-        void execute(run, messages, settings.revision);
-        return {...runResponse(run), replayed: false};
+        const messages = selectedContext(projectId, input.message);
+        const saved = access(() => journal.accept({projectId, requestId: input.requestId, fingerprint, instanceId, configuration, messages, consent: input.consent, input}));
+        const state = {id: saved.run.id, projectId, controller: new AbortController(), fenced: false,
+          pending: '', pendingBytes: 0, receivedBytes: 0, timer: null, flushTimer: null};
+        active.set(state.id, state);
+        publish(saved.events);
+        state.timer = setTimeout(() => { if (live(state)) terminal(state, 'failed', agentChatError('AGENT_CHAT_TIMEOUT')); }, CHAT_LIMITS.runMs);
+        // Acceptance, exact context and initial event are already durable before
+        // acknowledgement and before even credential acquisition can begin.
+        void execute(state, Object.freeze({...configuration}), messages, settings.revision);
+        return {...runResponse(access(() => journal.get(projectId, saved.run.id))), replayed: false};
       });
     },
     get(projectId, runId, supplied) { return runResponse(getRun(projectId, runId, supplied)); },
+    lookup(projectId, requestId) {
+      checkOpen(); checkProject(projectId);
+      if (!uuid(requestId)) throw agentChatError('AGENT_CHAT_VALIDATION');
+      const run = access(() => journal.lookup(projectId, requestId));
+      if (!run) throw chatRuntimeError('AGENT_CHAT_NOT_FOUND');
+      return runResponse(run);
+    },
+    history(projectId, options = {}) {
+      if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => key !== 'before')) throw agentChatError('AGENT_CHAT_VALIDATION');
+      return historyPage(projectId, options.before ?? null);
+    },
     stop(projectId, runId, input) {
       if (!exactObject(input, ['instanceId'])) throw agentChatError('AGENT_CHAT_VALIDATION');
       const run = getRun(projectId, runId, input.instanceId);
-      terminal(run, 'stopped'); return runResponse(run);
+      terminal(active.get(run.id), 'stopped');
+      checkOpen();
+      return runResponse(access(() => journal.get(projectId, runId)));
     },
-    subscribe(projectId, runId, supplied, after, listener) {
-      if (closing) throw chatRuntimeError('AGENT_CHAT_CLOSED');
+    subscribe(projectId, runId, supplied, after, listener, onClose) {
       const run = getRun(projectId, runId, supplied);
-      if (!revision(after) || typeof listener !== 'function') throw agentChatError('AGENT_CHAT_VALIDATION');
-      if (subscribers >= CHAT_LIMITS.subscribers || run.listeners.size >= CHAT_LIMITS.subscribersPerRun) throw chatRuntimeError('AGENT_CHAT_BUSY');
-      const first = run.events[0]?.event.id;
-      const replay = after === run.lastEventId || first === undefined || after < first - 1 || after > run.lastEventId ? [eventSnapshot(run)] : run.events.filter(entry => entry.event.id > after).map(entry => entry.event);
-      let detached = false;
-      const detach = () => { if (detached) return; detached = true; run.listeners.delete(listener); run.detachers.delete(detach); subscribers--; };
-      subscribers++; run.listeners.add(listener); run.detachers.add(detach);
-      try { for (const event of replay) listener(structuredClone(event)); } catch (error) { detach(); throw error; }
-      if (run.status !== 'running') detach();
-      return detach;
+      if (!revision(after) || typeof listener !== 'function' || onClose !== undefined && typeof onClose !== 'function') throw agentChatError('AGENT_CHAT_VALIDATION');
+      const entries = watchers.get(runId) || new Set();
+      if (subscribers >= CHAT_LIMITS.subscribers || entries.size >= CHAT_LIMITS.subscribersPerRun) throw chatRuntimeError('AGENT_CHAT_BUSY');
+      let replay = after >= run.lastEventId ? null : access(() => journal.replay(runId, after));
+      if (!replay?.length) replay = [eventSnapshot(run)];
+      const entry = {listener, detached: false, detach: null};
+      entry.detach = () => {
+        if (entry.detached) return;
+        entry.detached = true; entries.delete(entry); subscribers--;
+        if (!entries.size) watchers.delete(runId);
+        try { onClose?.(); } catch { /* Closing a subscriber cannot mutate a run. */ }
+      };
+      subscribers++; entries.add(entry); watchers.set(runId, entries);
+      try { for (const event of replay) { if (entry.detached) break; listener(publicEvent(event)); } }
+      catch (error) { entry.detach(); throw error; }
+      if (run.status !== 'running') entry.detach();
+      return entry.detach;
     },
     close() {
       if (closing) return;
       closing = true; shutdown.abort();
-      for (const run of runs.values()) terminal(run, 'interrupted');
-      // Nothing awaits a stuck provider: callbacks are inert after the terminal
-      // transition; abortable credentials and HTTP transport own their cleanup.
+      if (!fault) {
+        for (const state of [...active.values()]) {
+          try { terminal(state, 'interrupted'); } catch { storageFault(); break; }
+        }
+      }
+      for (const state of active.values()) fence(state);
+      active.clear();
+      for (const runId of [...watchers.keys()]) detachRun(runId);
+      // No provider or credential promise is awaited. Every later callback is
+      // fenced before this returns, so store.close() may follow synchronously.
     },
   });
 }

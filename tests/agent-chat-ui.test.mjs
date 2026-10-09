@@ -8,20 +8,23 @@ import * as logic from '../apps/web/src/agent-chat.js';
 
 const { createAgentChatClient, createAgentChatSession, createAgentChatReceipts, safeAgentChatSnapshot, safeAgentChatRun, readAgentChatSSE, agentChatCanSend, agentChatPromptIssue, agentChatErrorText } = logic;
 const projectId = 'project-one', instanceId = '11111111-1111-4111-8111-111111111111', nextInstance = '99999999-9999-4999-8999-999999999999';
+const threadId = '44444444-4444-4444-8444-444444444444';
 const runId = '22222222-2222-4222-8222-222222222222', requestId = '33333333-3333-4333-8333-333333333333';
 const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://api.example.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions' };
 const settings = (patch = {}) => ({ revision: 0, configuration: { ...configuration }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, presets: [{ id: 'openai', label: 'OpenAI', platforms: [{ id: 'global', label: 'Global', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], ...configuration }] }], scope: 'settings_only', verification: 'not_tested', ...patch });
-const run = (patch = {}) => ({ id: runId, requestId, projectId, status: 'running', userText: 'A typed question', assistantText: '', configuration: { ...configuration }, createdAt: '2026-10-09T00:00:00Z', updatedAt: '2026-10-09T00:00:00Z', lastEventId: 1, ...patch });
-const snapshot = (patch = {}) => ({ instanceId, projectId, revision: 0, scope: 'chat_only', persistence: 'session', mode: 'simulated', settings: settings(), runs: [], ...patch });
-const envelope = (value = run(), revision = 1) => ({ instanceId, projectId, revision, run: value });
+const run = (patch = {}) => ({ id: runId, requestId, threadId, projectId, status: 'running', userText: 'A typed question', assistantText: '', configuration: { ...configuration }, createdAt: '2026-10-09T00:00:00Z', updatedAt: '2026-10-09T00:00:00Z', lastEventId: 1, ...patch });
+const snapshot = (patch = {}) => ({ instanceId, threadId, projectId, revision: 0, historyCursor: null, scope: 'chat_only', persistence: 'local_database', mode: 'simulated', settings: settings(), runs: [], ...patch });
+const envelope = (value = run(), revision = 1) => ({ instanceId, threadId, projectId, revision, run: value });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 24; i++) await Promise.resolve(); };
 const error = code => Object.assign(Error('raw-private-provider-secret'), { code });
 const memoryReceipts = () => { const data = new Map(); return { get: id => data.get(id), set: (id, value) => data.set(id, value), data }; };
-function fixture({ initial = snapshot(), read, start, stop, getRun, stream, receipts = memoryReceipts(), owner = projectId } = {}) {
+function fixture({ initial = snapshot(), read, start, stop, getRun, lookup, history, stream, receipts = memoryReceipts(), owner = projectId } = {}) {
   const calls = [], events = [], changes = [];
   const client = {
     read: async (...args) => { calls.push(['read', ...args]); return read ? read(...args) : structuredClone(initial); },
+    lookup: async (...args) => { calls.push(['lookup', ...args]); if (lookup) return lookup(...args); throw error('AGENT_CHAT_NOT_FOUND'); },
+    history: async (...args) => { calls.push(['history', ...args]); return history ? history(...args) : { instanceId, threadId, projectId: owner, revision: 0, runs: [], historyCursor: null }; },
     start: async (...args) => { calls.push(['start', ...args]); return start ? start(...args) : envelope(run({ userText: args[1].message })); },
     stop: async (...args) => { calls.push(['stop', ...args]); return stop ? stop(...args) : envelope(run({ status: 'stopped', assistantText: 'partial', lastEventId: 3 }), 2); },
     run: async (...args) => { calls.push(['run', ...args]); return getRun ? getRun(...args) : envelope(run()); },
@@ -31,7 +34,7 @@ function fixture({ initial = snapshot(), read, start, stop, getRun, stream, rece
   return { client, session, calls, events, changes, receipts };
 }
 const ready = async f => { await f.session.load(); f.session.edit('A typed question'); f.session.approve(true); };
-const frame = (patch = {}) => ({ id: 2, type: 'delta', instanceId, projectId, runId, revision: 1, text: 'Hello', ...patch });
+const frame = (patch = {}) => ({ id: 2, type: 'delta', instanceId, threadId, projectId, runId, revision: 1, text: 'Hello', ...patch });
 
 test('safe DTO excludes arbitrary error bodies, internals and credentials, bounds output/history and enforces ownership', () => {
   const value = snapshot({ extra: 'raw-private', settings: settings({ value: 'raw-private' }), runs: [run({ apiKey: 'raw-private', error: { code: 'raw-private', message: 'raw-private', details: { value: 'raw-private' } } })] });
@@ -116,7 +119,7 @@ test('missing acknowledgement plus failed safe read stays blocked across dismiss
   const receipts = memoryReceipts(); let reads = 0;
   const f = fixture({ receipts, read: async () => { if (++reads > 1) throw error('NETWORK'); return snapshot(); }, start: async () => { throw error('NETWORK'); } }); await ready(f); await f.session.send();
   assert.equal(f.session.getState().phase, 'unknown'); assert.equal(agentChatCanSend(f.session.getState()), false); f.session.dispose();
-  const g = fixture({ receipts }); await g.session.load(); assert.equal(g.session.getState().phase, 'unknown'); assert.match(g.session.getState().message, /不能证明请求未被接受/); assert.match(g.session.getState().message, /重启后端或应用/); assert.match(g.session.getState().message, /所有临时对话会丢失/); assert.match(g.session.getState().message, /计费/); assert.equal(g.session.approve(true), false); assert.equal(await g.session.send(), false); assert.equal(g.calls.some(call => call[0] === 'start'), false); g.session.dispose();
+  const g = fixture({ receipts }); await g.session.load(); assert.equal(g.session.getState().phase, 'unknown'); assert.match(g.session.getState().message, /不能证明请求未被接受/); assert.match(g.session.getState().message, /当前页面会话内保留，后端重启后仍可核对/); assert.doesNotMatch(g.session.getState().message, /跨重启保留/); assert.match(g.session.getState().message, /计费/); assert.equal(g.session.approve(true), false); assert.equal(await g.session.send(), false); assert.equal(g.calls.some(call => call[0] === 'start'), false); g.session.dispose();
 });
 
 test('receipt storage contains identities only and survives new reader without text or configuration', () => {
@@ -125,11 +128,13 @@ test('receipt storage contains identities only and survives new reader without t
   assert.doesNotMatch(stored, /private|configuration|apiKey/); assert.deepEqual(createAgentChatReceipts(storage).get(projectId), { instanceId, requestId });
 });
 
-test('backend restart identifies lost temporary session, clears pending and never repeats old request', async () => {
+test('backend restart preserves durable interrupted history and resolves a pending receipt without resending', async () => {
   const receipts = memoryReceipts(); receipts.set(projectId, { instanceId, requestId });
-  const f = fixture({ receipts, initial: snapshot({ instanceId: nextInstance }) }); await f.session.load();
-  assert.equal(f.session.getState().sessionLost, true); assert.equal(f.session.getState().pending, null); assert.match(f.session.getState().message, /旧对话/);
-  assert.equal(f.calls.some(call => call[0] === 'start'), false); assert.equal(f.session.getState().consent, null); f.session.dispose();
+  const saved = run({ status: 'interrupted', assistantText: 'Saved partial answer', lastEventId: 3 });
+  const f = fixture({ receipts, initial: snapshot({ instanceId: nextInstance, revision: 2, runs: [saved] }) }); await f.session.load();
+  assert.equal(f.session.getState().sessionLost, true); assert.equal(f.session.getState().pending, null); assert.match(f.session.getState().message, /已保存的对话/);
+  assert.equal(f.session.getState().snapshot.runs[0].assistantText, 'Saved partial answer');
+  assert.equal(f.calls.some(call => ['start', 'stream', 'stop'].includes(call[0])), false); assert.equal(f.session.getState().consent, null); f.session.dispose();
 });
 
 test('changed destination response reloads settings, preserves unsent text and invalidates prior consent', async () => {
@@ -181,6 +186,7 @@ function uiHarness(client, receipts = memoryReceipts()) {
     if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
     if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.jsx') return { default: 'Icon' };
+    if (id === './agent-chat-history.css') return {};
     if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.jsx') return primitive;
     throw Error(id);
   });
@@ -223,7 +229,7 @@ test('integration preserves settings entry, the shared right dock, bounded histo
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace projectId={data.project\?\.id}/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
-  assert.match(source, /无项目读取权限 · 无工具执行/); assert.match(source, /不会发送/); assert.match(source, /重启后丢失/);
+  assert.match(source, /无项目读取权限 · 无工具执行/); assert.match(source, /不会发送/); assert.match(source, /保存在本地应用数据库/); assert.match(source, /并非密钥保险库加密/); assert.match(source, /请勿输入密钥或其他秘密/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML|<a\s|<img\s|<iframe|fetch\(|rpc\(|localStorage|sessionStorage/);
 });
 
@@ -432,4 +438,189 @@ test('App right-dock tabs preserve existing layout, resize and Inspector subtree
   const inspectStart = appSource.indexOf('  async function inspect('), inspectEnd = appSource.indexOf('\n  async function ', inspectStart + 1);
   assert.ok(inspectStart > 0 && inspectEnd > inspectStart); assert.doesNotMatch(appSource.slice(inspectStart, inspectEnd), /setRightDockTab|setAgentPage/);
   assert.equal((appSource.match(/<AgentWorkspace /g) || []).length, 1); assert.doesNotMatch(appSource, /showAgentSettings|showAgentChat/);
+});
+
+const durableId = number => `a0000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
+const savedRun = (number, patch = {}) => run({ id: durableId(number), requestId: durableId(number + 100000), status: 'completed', userText: `Saved question ${number}`, assistantText: `Saved answer ${number}`, lastEventId: 3, ...patch });
+const savedRows = (start, count = 16) => Array.from({ length: count }, (_, index) => savedRun(start + index));
+const page = (runs, patch = {}) => ({ instanceId, threadId, projectId, revision: 40, runs, historyCursor: runs[0]?.id ?? null, ...patch });
+
+test('durable DTO requires matching stable thread IDs, bounded pages and strict cursors', () => {
+  for (const patch of [{ threadId: undefined }, { threadId: 'bad' }, { historyCursor: undefined }, { historyCursor: 'bad' }, { historyCursor: runId }, { persistence: 'session' }]) {
+    assert.throws(() => safeAgentChatSnapshot(snapshot(patch), projectId), value => value.code === 'INVALID_RESPONSE');
+  }
+  assert.throws(() => safeAgentChatSnapshot(snapshot({ runs: [run({ threadId: nextInstance })] }), projectId));
+  assert.throws(() => safeAgentChatSnapshot(snapshot({ runs: [run(), run({ id: durableId(2), status: 'completed' })] }), projectId), 'Duplicate request IDs cannot be disguised as different runs');
+  for (const patch of [{ threadId: undefined }, { projectId: 'other' }, { runs: savedRows(1, 17) }, { runs: [run()] }, { historyCursor: durableId(999) }, { runs: [savedRun(1), savedRun(1)] }, { runs: [savedRun(1, { threadId: nextInstance })] }]) {
+    assert.throws(() => logic.safeAgentChatHistory(page(savedRows(1), patch), projectId, instanceId, threadId, durableId(17)));
+  }
+  assert.throws(() => logic.safeAgentChatHistory(page(savedRows(1)), projectId, nextInstance, threadId, durableId(17)));
+  assert.throws(() => logic.safeAgentChatHistory(page(savedRows(1)), projectId, instanceId, threadId, durableId(1)));
+  const clean = logic.safeAgentChatHistory(page(savedRows(1), { settings: { secret: 'not exposed' }, internal: 'not exposed' }), projectId, instanceId, threadId, durableId(17));
+  assert.equal(clean.runs.length, 16); assert.doesNotMatch(JSON.stringify(clean), /settings|internal|not exposed/);
+});
+
+test('durable SSE DTO pins thread identity and never accepts a foreign-thread terminal run', () => {
+  const event = frame({ type: 'terminal', run: run({ status: 'completed', lastEventId: 2 }) });
+  assert.equal(logic.safeAgentChatEvent(event, { id: '2', type: 'terminal' }, projectId, instanceId, runId, threadId).threadId, threadId);
+  for (const candidate of [{ ...event, threadId: undefined }, { ...event, threadId: nextInstance }, { ...event, run: { ...event.run, threadId: nextInstance } }]) {
+    assert.throws(() => logic.safeAgentChatEvent(candidate, { id: '2', type: 'terminal' }, projectId, instanceId, runId, threadId));
+  }
+});
+
+test('request lookup and older history are authenticated read-only routes without epoch query or settings bodies', async () => {
+  const calls = [], values = [{ ...envelope(run({ status: 'interrupted' }), 40), instanceId: nextInstance }, page(savedRows(1), { historyCursor: null })];
+  const client = createAgentChatClient({ fetchImpl: async (url, options) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: values.shift() }) }; } });
+  const recovered = await client.lookup(projectId, requestId); await client.history(projectId, durableId(17));
+  assert.equal(recovered.instanceId, nextInstance);
+  assert.deepEqual(calls.map(({ url, method, body, credentials, cache }) => ({ url, method, body, credentials, cache })), [
+    { url: `/api/agent/chat/${projectId}/requests/${requestId}`, method: 'GET', body: undefined, credentials: 'same-origin', cache: 'no-store' },
+    { url: `/api/agent/chat/${projectId}/history?before=${durableId(17)}`, method: 'GET', body: undefined, credentials: 'same-origin', cache: 'no-store' },
+  ]);
+  const wrong = createAgentChatClient({ fetchImpl: async () => ({ ok: true, json: async () => ({ ok: true, data: envelope(run({ requestId: durableId(1) })) }) }) });
+  await assert.rejects(wrong.lookup(projectId, requestId), value => value.code === 'INVALID_RESPONSE');
+});
+
+for (const protocol of ['chat_completions', 'responses']) test(`${protocol} lost acknowledgement is resolved after restart outside latest 16 without new inference or context expansion`, async () => {
+  const configured = { ...configuration, protocol }; let reads = 0;
+  const latest = savedRows(100), saved = run({ configuration: configured, status: 'interrupted', assistantText: 'Persisted partial' });
+  const f = fixture({ read: async () => ++reads === 1 ? snapshot({ settings: settings({ configuration: configured }) }) : snapshot({ instanceId: nextInstance, revision: 40, runs: latest, historyCursor: latest[0].id, settings: settings({ configuration: configured }) }),
+    start: async () => { throw error('NETWORK'); }, lookup: async () => ({ ...envelope(saved, 40), instanceId: nextInstance }) });
+  await ready(f); await f.session.send(); const state = f.session.getState();
+  assert.equal(state.pending, null); assert.equal(state.draft, ''); assert.equal(state.phase, 'ready'); assert.equal(state.sessionLost, true); assert.equal(state.recoveredRun.id, runId);
+  assert.deepEqual(state.snapshot.runs.map(run => run.id), latest.map(run => run.id)); assert.equal(state.snapshot.runs.length, 16); assert.equal(state.consent, null);
+  assert.equal(f.calls.filter(call => call[0] === 'lookup').length, 1); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); assert.equal(f.calls.some(call => ['stream', 'stop'].includes(call[0])), false); f.session.dispose();
+});
+
+test('restart with a still-missing request retains receipt and draft until explicit risk confirmation', async () => {
+  let reads = 0; const f = fixture({ read: async () => snapshot({ instanceId: ++reads > 1 ? nextInstance : instanceId }), start: async () => { throw error('NETWORK'); } });
+  await ready(f); await f.session.send(); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().draft, 'A typed question');
+  assert.equal(f.receipts.get(projectId).requestId, requestId); assert.equal(await f.session.send(), false);
+  assert.equal(f.session.abandonPending(requestId), false); f.session.confirmAbandonPending(true); f.session.confirmAbandonPending(false); assert.equal(f.session.abandonPending(requestId), false);
+  f.session.confirmAbandonPending(true); assert.equal(f.session.abandonPending(durableId(999)), false); assert.equal(f.session.abandonPending(requestId), true);
+  assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().consent, null); assert.equal(await f.session.send(), false);
+  assert.match(f.session.getState().message, /重复回复或费用/); assert.equal(f.receipts.get(projectId).requestId, undefined); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
+});
+
+test('lookup racing another restart remains blocked, keeps draft and uses a later explicit read only', async () => {
+  let reads = 0; const f = fixture({ read: async () => snapshot({ instanceId: ++reads >= 3 ? nextInstance : instanceId, revision: 1 }), start: async () => { throw error('NETWORK'); }, lookup: async () => ({ ...envelope(run({ status: 'interrupted' })), instanceId: nextInstance }) });
+  await ready(f); await f.session.send(); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().pending.requestId, requestId);
+  await f.session.load(); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().recoveredRun.status, 'interrupted'); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
+});
+
+test('successful request lookup with newer revision rereads latest context instead of patching stale consent', async () => {
+  const receipts = memoryReceipts(); receipts.set(projectId, { instanceId, requestId }); let reads = 0;
+  const f = fixture({ receipts, read: async () => ++reads === 1 ? snapshot() : snapshot({ revision: 2, runs: [run({ status: 'completed' })] }), lookup: async () => envelope(run({ status: 'completed' }), 2) });
+  await f.session.load(); assert.equal(reads, 2); assert.equal(f.session.getState().snapshot.revision, 2); assert.equal(f.session.getState().snapshot.runs.length, 1); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().consent, null); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
+});
+
+test('failed lookup after renderer reopen preserves readable snapshot and pending identity for an honest user choice', async () => {
+  const receipts = memoryReceipts(); receipts.set(projectId, { instanceId, requestId });
+  const f = fixture({ receipts, lookup: async () => { throw error('AGENT_CHAT_STORAGE_UNAVAILABLE'); } }); await f.session.load();
+  assert.equal(f.session.getState().snapshot.threadId, threadId); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().pending.requestId, requestId); assert.match(f.session.getState().message, /数据库暂不可用/); assert.equal(await f.session.send(), false); f.session.dispose();
+});
+
+test('malformed or foreign request recovery cannot clear pending, overwrite draft or repeat POST', async () => {
+  for (const patch of [{ projectId: 'other' }, { threadId: nextInstance }, { requestId: durableId(999) }, { userText: 'foreign text' }, { configuration: { ...configuration, protocol: 'responses' } }]) {
+    const f = fixture({ start: async () => { throw error('NETWORK'); }, lookup: async () => envelope(run({ status: 'completed', ...patch })) }); await ready(f); await f.session.send();
+    assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().pending.requestId, requestId); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
+  }
+});
+
+test('late acknowledgement or read recovery never clears a newer typed draft', async () => {
+  for (const lost of [false, true]) {
+    const held = deferred(), f = fixture({ initial: snapshot({ revision: 1 }), start: () => held.promise, lookup: async () => envelope(run({ status: 'completed' })) }); await ready(f);
+    const sending = f.session.send(); f.session.edit('A newer unsent draft');
+    if (lost) held.reject(error('NETWORK')); else held.resolve(envelope(run({ status: 'completed' })));
+    await sending; assert.equal(f.session.getState().draft, 'A newer unsent draft'); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().consent, null); f.session.dispose();
+  }
+});
+
+test('durable read, reconnect and backend epoch changes retain unsent drafts and revoke consent', async () => {
+  let reads = 0; const f = fixture({ read: async () => snapshot({ instanceId: ++reads >= 3 ? nextInstance : instanceId }) }); await ready(f);
+  await f.session.load(); assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().consent, null);
+  f.session.approve(true); f.session.setVisible(false); f.session.setVisible(true); await flush();
+  assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().sessionLost, true); assert.equal(f.session.getState().consent, null); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
+});
+
+test('storage limit preserves draft, requires renewed consent and never automatically retries', async () => {
+  const f = fixture({ start: async () => { throw error('AGENT_CHAT_STORAGE_LIMIT'); } }); await ready(f); await f.session.send();
+  assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().consent, null); assert.match(f.session.getState().message, /数据库容量已满/); assert.equal(await f.session.send(), false); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
+});
+
+test('storage-unavailable acknowledgement is uncertain admission and read-reconciles without retry', async () => {
+  const f = fixture({ initial: snapshot({ revision: 1 }), start: async () => { throw error('AGENT_CHAT_STORAGE_UNAVAILABLE'); }, lookup: async () => envelope(run({ status: 'completed', assistantText: 'Persisted before acknowledgement failure' })) }); await ready(f); await f.session.send();
+  assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().recoveredRun.assistantText, 'Persisted before acknowledgement failure'); assert.equal(f.calls.filter(call => call[0] === 'lookup').length, 1); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); f.session.dispose();
+});
+
+test('history paging retains only one 16-run page and at most 32 back cursors without changing latest context or draft', async () => {
+  const latest = savedRows(1000), f = fixture({ initial: snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }), history: async (_, before) => { const number = Number(before.slice(-12)); return page(savedRows(number - 16)); } });
+  await ready(f); const consent = f.session.getState().consent;
+  for (let i = 0; i < 40; i++) assert.equal(await f.session.earlier(), true);
+  const state = f.session.getState(); assert.equal(state.history.page.runs.length, 16); assert.equal(state.history.trail.length, 32); assert.equal(state.history.before, durableId(376));
+  assert.deepEqual(state.snapshot.runs, safeAgentChatSnapshot(snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }), projectId).runs); assert.equal(state.draft, 'A typed question'); assert.equal(state.consent, consent);
+  await f.session.newer(); assert.equal(f.session.getState().history.before, durableId(392)); assert.equal(f.session.getState().history.trail.length, 31);
+  f.session.closeHistory(); assert.deepEqual(f.session.getState().history, { phase: 'closed', page: null, before: null, trail: [], message: '' }); assert.equal(f.calls.some(call => ['start', 'stop'].includes(call[0])), false); f.session.dispose();
+});
+
+test('history paging and double clicks do not detach the live stream or overwrite its draft and output', async () => {
+  const held = deferred(), latest = [...savedRows(100, 15), run()], f = fixture({ initial: snapshot({ revision: 1, runs: latest, historyCursor: latest[0].id }), history: () => held.promise });
+  await f.session.load(); f.session.edit('Draft while streaming'); const stream = f.events[0], opening = f.session.earlier(); assert.equal(await f.session.earlier(), false);
+  stream.onEvent(frame()); held.resolve(page(savedRows(84), { revision: 1 })); await opening;
+  assert.equal(stream.signal.aborted, false); assert.equal(f.session.getState().phase, 'streaming'); assert.equal(f.session.getState().snapshot.runs.at(-1).assistantText, 'Hello'); assert.equal(f.session.getState().draft, 'Draft while streaming'); assert.equal(f.calls.filter(call => call[0] === 'history').length, 1); f.session.dispose();
+});
+
+test('late history after close, hide, reload or project disposal cannot repopulate an obsolete viewer', async () => {
+  for (const action of ['close', 'hide', 'reload', 'dispose']) {
+    const held = deferred(), latest = savedRows(100), f = fixture({ initial: snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }), history: () => held.promise }); await ready(f);
+    const opening = f.session.earlier();
+    if (action === 'close') f.session.closeHistory(); else if (action === 'hide') f.session.setVisible(false); else if (action === 'reload') await f.session.load(); else f.session.dispose();
+    held.resolve(page(savedRows(84))); assert.equal(await opening, false); assert.equal(f.session.getState().history.page, null); assert.equal(f.session.getState().history.phase, 'closed'); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
+  }
+});
+
+test('foreign, overlapping, malformed or old-epoch history never changes current project content', async () => {
+  for (const patch of [{ projectId: 'other' }, { threadId: nextInstance }, { instanceId: nextInstance }, { revision: 39 }, { runs: savedRows(100) }, { runs: savedRows(84, 17) }, { historyCursor: durableId(999) }]) {
+    const latest = savedRows(100), f = fixture({ initial: snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }), history: async () => page(savedRows(84), patch) }); await ready(f); const original = f.session.getState().snapshot;
+    assert.equal(await f.session.earlier(), false); assert.equal(f.session.getState().history.phase, 'error'); assert.equal(f.session.getState().history.page, null); assert.equal(f.session.getState().snapshot, original); assert.equal(f.session.getState().draft, 'A typed question'); assert.equal(f.calls.some(call => call[0] === 'start'), false); f.session.dispose();
+  }
+});
+
+test('hidden history navigation and pending-reset callbacks cannot dispatch or clear receipts', async () => {
+  const receipts = memoryReceipts(); receipts.set(projectId, { instanceId, requestId }); const latest = savedRows(100), f = fixture({ receipts, initial: snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }) }); await f.session.load(); f.session.confirmAbandonPending(true); f.session.setVisible(false);
+  assert.equal(await f.session.earlier(), false); assert.equal(await f.session.newer(), false); assert.equal(f.session.closeHistory(), false); assert.equal(f.session.abandonPending(requestId), false); assert.equal(f.session.confirmAbandonPending(false), false); assert.equal(f.receipts.get(projectId).requestId, requestId); assert.equal(f.calls.some(call => call[0] === 'history'), false); f.session.dispose();
+});
+
+test('actual durable panel prominently discloses plaintext local persistence and shows interrupted history without continuing', async () => {
+  const f = fixture({ initial: snapshot({ revision: 2, runs: [run({ status: 'interrupted', assistantText: '<img src="https://hostile.example"> persisted text' })] }) }), h = uiHarness(f.client);
+  h.render(); await flush(); h.render(); const text = JSON.stringify(h.find('agent-chat-persistence'));
+  for (const pattern of [/本地应用数据库/, /并非密钥保险库加密/, /请勿输入密钥或其他秘密/, /刷新页面或退出应用会丢失未发送草稿/]) assert.match(text, pattern);
+  assert.ok(h.find('agent-chat-interrupted')); assert.equal(h.find('agent-chat-response').props.children, '<img src="https://hostile.example"> persisted text'); assert.equal(f.calls.some(call => ['start', 'stop', 'stream'].includes(call[0])), false); h.unmount();
+});
+
+test('actual archive controls preserve composer and live history, and stale hidden controls are inert', async () => {
+  const latest = savedRows(100), f = fixture({ initial: snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }), history: async () => page(savedRows(84), { historyCursor: null }) }), h = uiHarness(f.client);
+  h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'Retain this draft'); const older = h.find('agent-chat-history-older').props.onClick; older(); await flush(); h.render();
+  assert.ok(h.find('agent-chat-history-page')); assert.equal(h.find('agent-chat-prompt').props.value, 'Retain this draft'); assert.equal(h.find('agent-chat-response').props.children, 'Saved answer 100'); assert.equal(h.find('agent-chat-history-response').props.children, 'Saved answer 84'); assert.equal(h.find('agent-chat-history-older').props.disabled, true);
+  const close = h.find('agent-chat-history-close').props.onClick; h.setVisible(false); older(); close(); h.setVisible(true); await flush(); h.render(); older(); close();
+  assert.equal(f.calls.filter(call => call[0] === 'history').length, 1); assert.equal(h.find('agent-chat-prompt').props.value, 'Retain this draft'); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+});
+
+test('actual pending release explains duplicate cost and requires explicit confirmation without sending', async () => {
+  const f = fixture({ start: async () => { throw error('NETWORK'); } }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-prompt', 'A typed question'); h.change('agent-chat-consent', true); h.form().props.onSubmit({ preventDefault() {} }); await flush(); h.render();
+  h.find('agent-chat-pending-reset').props.onClick(); h.render(); assert.match(JSON.stringify(h.find('agent-chat-pending-reset-warning')), /重复回复或计费/); h.find('agent-chat-pending-reset-cancel').props.onClick(); h.render(); assert.ok(h.find('agent-chat-pending'));
+  h.find('agent-chat-pending-reset').props.onClick(); h.render(); h.find('agent-chat-pending-reset-confirm').props.onClick(); h.render(); assert.equal(h.find('agent-chat-pending'), undefined); assert.equal(h.find('agent-chat-send').props.disabled, true); assert.equal(h.find('agent-chat-prompt').props.value, 'A typed question'); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); h.unmount();
+});
+
+test('lookup cannot hide a running request outside latest history and accidentally unlock another send', async () => {
+  const receipts = memoryReceipts(); receipts.set(projectId, { instanceId, requestId });
+  const f = fixture({ receipts, initial: snapshot({ revision: 1 }), lookup: async () => envelope(run()) }); await f.session.load();
+  assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().pending.requestId, requestId); assert.equal(f.session.getState().recoveredRun, null); assert.equal(f.session.approve(true), false); assert.equal(await f.session.send(), false); f.session.dispose();
+});
+
+test('actual project switch during an older-page read discards the old result and makes its handlers inert', async () => {
+  const held = deferred(), latest = savedRows(100), f = fixture({ read: async owner => owner === projectId ? snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }) : snapshot({ projectId: owner }), history: () => held.promise }), h = uiHarness(f.client);
+  h.render(); await flush(); h.render(); const oldOlder = h.find('agent-chat-history-older').props.onClick; oldOlder(); h.render();
+  const oldClose = h.find('agent-chat-history-close').props.onClick; h.render('project-two'); await flush(); h.render(); held.resolve(page(savedRows(84))); await flush(); oldOlder(); oldClose(); h.render();
+  assert.equal(h.find('agent-chat-page').props['data-project-id'], 'project-two'); assert.equal(h.find('agent-chat-history-page'), undefined); assert.equal(h.find('agent-chat-archive'), undefined); assert.equal(h.find('agent-chat-prompt').props.value, ''); assert.equal(f.calls.filter(call => call[0] === 'history').length, 1); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
 });

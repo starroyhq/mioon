@@ -80,7 +80,7 @@ test('all chat/SSE/stop routes retain authentication, origin, exact methods, bou
   const f = await fixture(t), project = await f.rpc('project.create', {name: 'Chat authorization fixture'}), base = route(project.id), input = await f.sendInput(project.id);
   const noAuth = await f.request(base, {authenticated: false}); assert.equal(noAuth.status, 401);
   assert.equal((await f.request(base, {headers: {origin: 'https://evil.example.com'}})).status, 403);
-  for (const [suffix, method] of [['', 'POST'], ['/runs', 'GET'], [`/runs/${randomUUID()}`, 'POST'], [`/runs/${randomUUID()}/events`, 'POST'], [`/runs/${randomUUID()}/stop`, 'GET']]) {
+  for (const [suffix, method] of [['', 'POST'], ['/runs', 'GET'], ['/history', 'POST'], [`/requests/${randomUUID()}`, 'POST'], [`/runs/${randomUUID()}`, 'POST'], [`/runs/${randomUUID()}/events`, 'POST'], [`/runs/${randomUUID()}/stop`, 'GET']]) {
     assert.equal((await f.request(base + suffix, {method, ...(method === 'POST' ? {input: {}} : {})})).status, 405);
   }
   assert.equal((await f.request(base + '/runs', {method: 'POST', raw: '{'})).status, 400);
@@ -90,12 +90,14 @@ test('all chat/SSE/stop routes retain authentication, origin, exact methods, bou
   assert.equal((await f.request(base + '/secret')).status, 404);
   assert.equal((await f.request(base + '/runs', {method: 'POST', input, headers: {'content-type': 'text/plain'}})).status, 400);
   const sent = (await f.request(base + '/runs', {method: 'POST', input})).body.data;
-  for (const suffix of [`/runs/${sent.run.id}?instanceId=${sent.instanceId}`, `/runs/${sent.run.id}/events?instanceId=${sent.instanceId}&after=0`, `/runs/${sent.run.id}/stop`]) {
+  for (const suffix of [`/requests/${input.requestId}`, `/history?before=${sent.run.id}`, `/runs/${sent.run.id}?instanceId=${sent.instanceId}`, `/runs/${sent.run.id}/events?instanceId=${sent.instanceId}&after=0`, `/runs/${sent.run.id}/stop`]) {
     const method = suffix.endsWith('stop') ? 'POST' : 'GET';
     assert.equal((await f.request(base + suffix, {method, authenticated: false, ...(method === 'POST' ? {input: {instanceId: sent.instanceId}} : {})})).status, 401);
     assert.equal((await f.request(base + suffix, {method, headers: {origin: 'null'}, ...(method === 'POST' ? {input: {instanceId: sent.instanceId}} : {})})).status, 403);
   }
   for (const after of ['-1', 'NaN', '9007199254740992', '1&after=2']) assert.equal((await f.request(`${base}/runs/${sent.run.id}/events?instanceId=${sent.instanceId}&after=${after}`)).status, 400);
+  for (const suffix of ['/requests', `/requests/${input.requestId}/events`, `/history/${sent.run.id}`]) assert.equal((await f.request(base + suffix)).status, 404);
+  for (const suffix of [`/requests/${input.requestId}?instanceId=${sent.instanceId}`, `/history?before=${sent.run.id}&before=${sent.run.id}`, '/history?before=not-a-run']) assert.equal((await f.request(base + suffix)).status, 400);
 });
 
 test('public snapshots, cursor SSE replay and repeated POST expose no key, mutate no project rows, and never re-infer', async t => {
@@ -110,19 +112,43 @@ test('public snapshots, cursor SSE replay and repeated POST expose no key, mutat
   const snapshot = await f.request(base); assert.equal(JSON.stringify(snapshot.body).includes(SECRET), false); assert.equal(snapshot.body.data.runs.length, 1);
   assert.equal(JSON.stringify(f.captures[0].messages).includes('PRIVATE_PROJECT_RECORD'), false);
   const after = inspect(f.root); assert.deepEqual(after.snapshot(), before); after.db.close();
-  const stored = await files(f.root); assert.equal(stored.includes(SECRET), false); assert.equal(stored.includes(input.message), false); assert.equal(stored.includes('Synthetic response'), false);
+  const stored = await files(f.root); assert.equal(stored.includes(SECRET), false); assert.equal(stored.includes(input.message), true); assert.equal(stored.includes('Synthetic response'), true);
+  assert.equal(snapshot.body.data.persistence, 'local_database'); assert.equal(snapshot.body.data.threadId, sent.threadId);
   for (const operation of ['agent.chat.send', 'agent.chat.stop', 'agent.secret.acquire']) assert.equal((await f.request('/api/rpc', {method: 'POST', input: {operation, input: {}}})).body.error.code, 'UNKNOWN_OPERATION');
 });
 
-test('project authorization precedes run, stop, event and idempotent replay; restart fails old instance instead of recreating', async t => {
+test('project authorization precedes lookup, run, stop, event and replay; restart reads durable state without recreating', async t => {
   const f = await fixture(t), one = await f.rpc('project.create', {name: 'One'}), two = await f.rpc('project.create', {name: 'Two'}), input = await f.sendInput(one.id);
   const sent = (await f.request(route(one.id) + '/runs', {method: 'POST', input})).body.data; await completed(f, one.id, sent);
   for (const suffix of [`/runs/${sent.run.id}?instanceId=${sent.instanceId}`, `/runs/${sent.run.id}/events?instanceId=${sent.instanceId}&after=0`]) assert.equal((await f.request(route(two.id) + suffix)).status, 404);
   assert.equal((await f.request(`${route(two.id)}/runs/${sent.run.id}/stop`, {method: 'POST', input: {instanceId: sent.instanceId}})).status, 404);
+  assert.equal((await f.request(`${route(two.id)}/requests/${input.requestId}`)).status, 404);
+  assert.equal((await f.request(`${route(two.id)}/history?before=${sent.run.id}`)).status, 404);
   assert.equal((await f.request(route(two.id) + '/runs', {method: 'POST', input})).body.error.code, 'AGENT_CHAT_IDEMPOTENCY_CONFLICT');
   await f.restart(); const fresh = (await f.request(route(one.id))).body.data;
-  assert.notEqual(fresh.instanceId, sent.instanceId); assert.deepEqual(fresh.runs, []);
+  assert.notEqual(fresh.instanceId, sent.instanceId); assert.equal(fresh.threadId, sent.threadId); assert.equal(fresh.runs[0].id, sent.run.id); assert.equal(fresh.runs[0].status, 'completed');
+  const recovered = (await f.request(`${route(one.id)}/requests/${input.requestId}`)).body.data;
+  assert.equal(recovered.instanceId, fresh.instanceId); assert.equal(recovered.run.id, sent.run.id); assert.equal(recovered.threadId, sent.threadId);
+  assert.equal((await f.request(`${route(one.id)}/requests/${randomUUID()}`)).status, 404);
   assert.equal((await f.request(route(one.id) + '/runs', {method: 'POST', input})).body.error.code, 'AGENT_CHAT_SESSION_EXPIRED'); assert.equal(f.calls, 1);
+});
+
+test('bounded older history and request lookup remain available outside the latest page without another inference', async t => {
+  const f = await fixture(t), project = await f.rpc('project.create', {name: 'Durable history pages'}), base = route(project.id), accepted = [];
+  for (let i = 0; i < 19; i++) {
+    const input = await f.sendInput(project.id, {message: `Persisted turn ${i}`});
+    const sent = (await f.request(base + '/runs', {method: 'POST', input})).body.data;
+    await completed(f, project.id, sent); accepted.push({input, sent});
+  }
+  const latest = (await f.request(base)).body.data;
+  assert.equal(latest.runs.length, 16); assert.equal(latest.historyCursor, latest.runs[0].id);
+  const older = (await f.request(`${base}/history?before=${latest.historyCursor}`)).body.data;
+  assert.deepEqual(older.runs.map(run => run.id), accepted.slice(0, 3).map(item => item.sent.run.id));
+  assert.equal(older.historyCursor, null); assert.equal(older.threadId, latest.threadId);
+  await f.restart();
+  const recovered = (await f.request(`${base}/requests/${accepted[0].input.requestId}`)).body.data;
+  assert.equal(recovered.run.id, accepted[0].sent.run.id); assert.equal(recovered.run.status, 'completed');
+  assert.equal(f.calls, accepted.length);
 });
 
 test('real localhost synthetic gateway uses one inference POST and reattachment never sends another request', async t => {
@@ -164,6 +190,24 @@ test('saturated SSE response detaches locally without sending Stop or retrying i
   const handled = await routeHandler.handle({method: 'GET', headers: {}}, res, new URL(`http://localhost/api/agent/chat/project/runs/${id}/events?instanceId=${randomUUID()}&after=0`));
   assert.equal(handled, true); assert.equal(detached, 1); assert.equal(sent, 1); assert.equal(res.destroyed, true);
   routeHandler.close(); assert.equal(detached, 1);
+});
+
+test('journal fault closes SSE without inventing an uncommitted terminal event', async () => {
+  let closeSubscriber, detached = 0;
+  const written = [], runtime = {subscribe(projectId, runId, instanceId, after, listener, onClose) {
+    closeSubscriber = onClose;
+    listener({id: 1, type: 'snapshot', projectId, runId, instanceId, revision: 1, run: {status: 'running'}});
+    return () => { detached++; };
+  }};
+  const routeHandler = createChatHttp({runtime}), res = new EventEmitter();
+  Object.assign(res, {headersSent: false, writableLength: 0, writableEnded: false, destroyed: false,
+    writeHead() { this.headersSent = true; }, flushHeaders() {}, write(value) { written.push(value); },
+    end() { this.writableEnded = true; }, destroy() { this.destroyed = true; }});
+  await routeHandler.handle({method: 'GET', headers: {}}, res, new URL(`http://localhost/api/agent/chat/project/runs/${randomUUID()}/events?instanceId=${randomUUID()}&after=0`));
+  closeSubscriber(); closeSubscriber(); routeHandler.close();
+  assert.equal(res.writableEnded, true); assert.equal(detached, 1);
+  assert.equal(written.length, 1); assert.ok(!written[0].includes('terminal'));
+  assert.equal(res.listenerCount('close'), 0);
 });
 
 test('shutdown during pending trusted acquisition is bounded and late credential cannot cause an inference', async t => {

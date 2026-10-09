@@ -27,18 +27,26 @@ export function createChatHttp({runtime}) {
     async handle(req, res, url) {
       if (!url.pathname.startsWith('/api/agent/chat/')) return false;
       try {
-        const match = /^\/api\/agent\/chat\/([^/]+)(?:\/(runs)(?:\/([^/]+)(?:\/(events|stop))?)?)?$/.exec(url.pathname);
-        if (!match) { json(res, 404, {ok: false, error: {code: 'AGENT_CHAT_NOT_FOUND', message: '接口不存在。', details: {}, retryable: false}}); return true; }
+        const match = /^\/api\/agent\/chat\/([^/]+)(?:\/(runs|requests|history)(?:\/([^/]+)(?:\/(events|stop))?)?)?$/.exec(url.pathname);
+        if (!match || match[2] === 'requests' && (!match[3] || match[4]) || match[2] === 'history' && match[3]) { json(res, 404, {ok: false, error: {code: 'AGENT_CHAT_NOT_FOUND', message: '接口不存在。', details: {}, retryable: false}}); return true; }
         let projectId, runId;
         try { projectId = decodeURIComponent(match[1]); runId = match[3] ? decodeURIComponent(match[3]) : null; }
         catch { throw agentChatError('AGENT_CHAT_VALIDATION'); }
         if (/[\u0000-\u001f/\\]/u.test(projectId) || (runId && !/^[0-9a-f-]{36}$/u.test(runId))) throw agentChatError('AGENT_CHAT_VALIDATION');
-        const action = match[4], method = !match[2] || runId && action !== 'stop' ? 'GET' : 'POST';
+        const action = match[4], method = !match[2] || ['requests', 'history'].includes(match[2]) || runId && action !== 'stop' ? 'GET' : 'POST';
         if (req.method !== method) {
           res.setHeader('Allow', method);
           json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: `请使用 ${method}`, details: {}, retryable: false}}); return true;
         }
         if (!match[2]) { query(url, []); json(res, 200, {ok: true, data: await runtime.snapshot(projectId)}); }
+        else if (match[2] === 'requests') {
+          // Lost acknowledgements are resolved by a read, including after an
+          // epoch change. This endpoint never resumes or re-sends inference.
+          query(url, []); json(res, 200, {ok: true, data: runtime.lookup(projectId, runId)});
+        }
+        else if (match[2] === 'history') {
+          query(url, ['before']); json(res, 200, {ok: true, data: runtime.history(projectId, {before: url.searchParams.get('before')})});
+        }
         else if (!runId) { query(url, []); json(res, 200, {ok: true, data: await runtime.send(projectId, await readBody(req))}); }
         else if (action === 'stop') { query(url, []); json(res, 200, {ok: true, data: runtime.stop(projectId, runId, await readBody(req))}); }
         else if (!action) { query(url, ['instanceId']); json(res, 200, {ok: true, data: runtime.get(projectId, runId, url.searchParams.get('instanceId'))}); }
@@ -64,7 +72,7 @@ export function createChatHttp({runtime}) {
             if (event.type === 'terminal' || event.run && event.run.status !== 'running') finish();
           };
           res.on('close', finish); clients.add(finish);
-          try { detach = runtime.subscribe(projectId, runId, url.searchParams.get('instanceId'), Number(cursor), listener); }
+          try { detach = runtime.subscribe(projectId, runId, url.searchParams.get('instanceId'), Number(cursor), listener, finish); }
           catch (error) { clients.delete(finish); res.removeListener('close', finish); throw error; }
           if (ended) detach();
           else {

@@ -6,7 +6,7 @@ import {mkdir, writeFile, readFile, access, appendFile} from 'node:fs/promises';
 import path from 'node:path';
 import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
 import {startChatQaMock} from './agent-chat-qa-mock.mjs';
-const root = path.resolve(process.argv.includes('--responses') ? 'evidence/agent-responses/native-runtime' : 'evidence/agent-chat/native-runtime'), userData = path.join(root, 'user-data'), workspace = path.join(userData, 'workspace');
+const root = path.resolve(process.argv.includes('--durable') ? 'evidence/agent-durable/native-runtime' : process.argv.includes('--responses') ? 'evidence/agent-responses/native-runtime' : 'evidence/agent-chat/native-runtime'), userData = path.join(root, 'user-data'), workspace = path.join(userData, 'workspace');
 await mkdir(root, {recursive: true});
 try { await access(path.join(workspace, 'workbench.sqlite')); } catch { await migrateData(path.resolve('examples/multitrack-project'), workspace); }
 if (process.argv.includes('--prepare')) { console.log(workspace); process.exit(0); }

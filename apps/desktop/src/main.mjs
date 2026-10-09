@@ -122,7 +122,7 @@ async function backendFailed() {
   if (win && !win.isDestroyed()) win.hide();
   const { response } = await dialog.showMessageBox({ type: 'error', title: '本地服务已停止',
     message: '本地服务意外退出。已保存的数据会在重启时恢复。',
-    detail: '未保存的界面修改可能丢失。已知任务会恢复；提交结果未知的生成任务不会盲目重新提交。',
+    detail: '未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
     buttons: ['重启本地服务', '退出'], defaultId: 0, cancelId: 1 });
   if (response === 0) { try { await restart(); } catch (error) { await fatal(error); } }
   else app.quit();
@@ -160,7 +160,7 @@ function installMenu() {
     { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => { if (ready && win) void win.loadURL(`${ready.url}/`); } },
     { label: '重启本地服务', click: async () => {
       const { response } = await dialog.showMessageBox({ type: 'question', message: '重启本地服务？',
-        detail: '已保存的数据保留。未保存的界面修改可能丢失。正在运行的任务会在恢复后继续处理。',
+        detail: '已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
         buttons: ['重启', '取消'], defaultId: 1, cancelId: 1 });
       if (response === 0) { try { await restart(); } catch (error) { await fatal(error); } }
     } },

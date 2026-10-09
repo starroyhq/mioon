@@ -59,6 +59,53 @@ export function openStore(root,{lock=true}={}){
  state TEXT NOT NULL CHECK(json_valid(state) AND length(CAST(state AS BLOB))<=16384));
  INSERT OR IGNORE INTO schema_version VALUES(5);
  COMMIT;`);
+ // Additive chat-only journal. No project/business record or older journal is
+ // rewritten. Accepted requests are immutable and are never silently evicted.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS agent_chat_threads(
+ id TEXT PRIMARY KEY,projectId TEXT NOT NULL UNIQUE REFERENCES projects(id),
+ revision INTEGER NOT NULL CHECK(revision>=0),nextPosition INTEGER NOT NULL CHECK(nextPosition>0));
+ CREATE TABLE IF NOT EXISTS agent_chat_requests(
+ requestId TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),
+ threadId TEXT NOT NULL REFERENCES agent_chat_threads(id),runId TEXT NOT NULL UNIQUE,
+ fingerprint TEXT NOT NULL,acceptance TEXT NOT NULL CHECK(json_valid(acceptance)),bytes INTEGER NOT NULL CHECK(bytes>=0));
+ CREATE TABLE IF NOT EXISTS agent_chat_runs(
+ id TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),
+ threadId TEXT NOT NULL REFERENCES agent_chat_threads(id),requestId TEXT NOT NULL UNIQUE REFERENCES agent_chat_requests(requestId),
+ position INTEGER NOT NULL CHECK(position>0),status TEXT NOT NULL CHECK(status IN ('running','completed','failed','stopped','interrupted')),
+ data TEXT NOT NULL CHECK(json_valid(data)),bytes INTEGER NOT NULL CHECK(bytes>=0),UNIQUE(threadId,position));
+ CREATE UNIQUE INDEX IF NOT EXISTS agent_chat_one_active ON agent_chat_runs(projectId) WHERE status='running';
+ CREATE INDEX IF NOT EXISTS agent_chat_history ON agent_chat_runs(projectId,position DESC);
+ CREATE INDEX IF NOT EXISTS agent_chat_completed ON agent_chat_runs(projectId,status,position DESC);
+ CREATE TABLE IF NOT EXISTS agent_chat_events(
+ runId TEXT NOT NULL REFERENCES agent_chat_runs(id),seq INTEGER NOT NULL CHECK(seq>0),
+ data TEXT NOT NULL CHECK(json_valid(data)),bytes INTEGER NOT NULL CHECK(bytes>=0),PRIMARY KEY(runId,seq));
+ CREATE TABLE IF NOT EXISTS agent_chat_quota(
+ id INTEGER PRIMARY KEY CHECK(id=1),runs INTEGER NOT NULL CHECK(runs>=0),
+ bytes INTEGER NOT NULL CHECK(bytes>=0),reservedBytes INTEGER NOT NULL CHECK(reservedBytes>=0));
+ INSERT OR IGNORE INTO agent_chat_quota VALUES(1,0,0,0);
+ CREATE TRIGGER IF NOT EXISTS immutable_agent_chat_requests BEFORE UPDATE ON agent_chat_requests
+ BEGIN SELECT RAISE(ABORT,'accepted chat requests are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS retain_agent_chat_requests BEFORE DELETE ON agent_chat_requests
+ BEGIN SELECT RAISE(ABORT,'accepted chat requests must be retained');END;
+ CREATE TRIGGER IF NOT EXISTS immutable_agent_chat_run_identity BEFORE UPDATE ON agent_chat_runs
+ WHEN NEW.id IS NOT OLD.id OR NEW.projectId IS NOT OLD.projectId OR NEW.threadId IS NOT OLD.threadId OR
+ NEW.requestId IS NOT OLD.requestId OR NEW.position IS NOT OLD.position OR
+ json_extract(NEW.data,'$.id') IS NOT json_extract(OLD.data,'$.id') OR
+ json_extract(NEW.data,'$.requestId') IS NOT json_extract(OLD.data,'$.requestId') OR
+ json_extract(NEW.data,'$.threadId') IS NOT json_extract(OLD.data,'$.threadId') OR
+ json_extract(NEW.data,'$.projectId') IS NOT json_extract(OLD.data,'$.projectId') OR
+ json_extract(NEW.data,'$.userText') IS NOT json_extract(OLD.data,'$.userText') OR
+ json_extract(NEW.data,'$.configuration') IS NOT json_extract(OLD.data,'$.configuration') OR
+ json_extract(NEW.data,'$.createdAt') IS NOT json_extract(OLD.data,'$.createdAt') OR
+ json_extract(NEW.data,'$.modelRequestId') IS NOT json_extract(OLD.data,'$.modelRequestId')
+ BEGIN SELECT RAISE(ABORT,'accepted chat identity and configuration are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS immutable_agent_chat_events BEFORE UPDATE ON agent_chat_events
+ BEGIN SELECT RAISE(ABORT,'chat events are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS retain_agent_chat_events BEFORE DELETE ON agent_chat_events
+ BEGIN SELECT RAISE(ABORT,'chat events must be retained');END;
+ INSERT OR IGNORE INTO schema_version VALUES(6);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

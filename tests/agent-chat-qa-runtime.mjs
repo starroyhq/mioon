@@ -10,7 +10,8 @@ import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
 import {startChatQaMock} from './agent-chat-qa-mock.mjs';
 
 const responsesQa = process.argv.includes('--responses');
-export const chatQaRoot = path.resolve(responsesQa ? 'evidence/agent-responses' : 'evidence/agent-chat');
+const durableQa = process.argv.includes('--durable');
+export const chatQaRoot = path.resolve(durableQa ? 'evidence/agent-durable' : responsesQa ? 'evidence/agent-responses' : 'evidence/agent-chat');
 export const chatRuntime = path.join(chatQaRoot, 'browser-runtime');
 export const chatQaToken = 'agent-chat-synthetic-local-qa-token';
 export async function prepareChatQaFixture() {
@@ -39,11 +40,11 @@ if (process.argv.includes('--serve')) {
   for (const project of [fixture.project, fixture.secondProject]) await direct('/api/rpc', {operation: 'project.get', input: {projectId: project.id}});
   const initial = await direct('/api/agent/settings');
   await direct('/api/agent/settings', {expectedRevision: initial.revision, configuration: {protocol: responsesQa ? 'responses' : 'chat_completions', presetId: 'ollama', platformId: 'local', baseUrl: mock.baseUrl, model: 'qwen3:8b'}, secret: {action: 'remove'}}, 'PUT');
-  const port = responsesQa ? 4886 : 4885, host = `127.0.0.1:${port}`, origin = `http://${host}`;
+  const port = durableQa ? 4892 : responsesQa ? 4886 : 4885, host = `127.0.0.1:${port}`, origin = `http://${host}`;
   let closing = false, seq = 0;
   const audit = async () => {
     const db = new DatabaseSync(path.join(fixture.workspace, 'workbench.sqlite'), {readOnly: true}); let domain;
-    try { const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='workspace_preferences' ORDER BY name").all().map(r => r.name); domain = Object.fromEntries(names.map(name => [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()])); } finally { db.close(); }
+    try { const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'agent_chat_%' AND name!='workspace_preferences' ORDER BY name").all().map(r => r.name); domain = Object.fromEntries(names.map(name => [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()])); } finally { db.close(); }
     return {at: new Date().toISOString(), domainHash: createHash('sha256').update(JSON.stringify(domain)).digest('hex'), mock: mock.snapshot()};
   };
   const server = http.createServer(async (req, res) => {

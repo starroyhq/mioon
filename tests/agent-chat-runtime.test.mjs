@@ -2,7 +2,11 @@ import {deriveAgentEndpoint} from '@mioon/contracts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {setImmediate as turn} from 'node:timers/promises';
+import {setImmediate as turn, setTimeout as delay} from 'node:timers/promises';
+import {mkdtempSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {openStore} from '../packages/business/src/db.mjs';
 import {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.mjs';
 import {createChatRuntime, CHAT_LIMITS, CHAT_SYSTEM_INSTRUCTION} from '../packages/business/src/agent/chat-runtime.mjs';
 
@@ -13,25 +17,29 @@ async function fixture(t, gateway, settingsOverride) {
   const initial = await settings.get();
   await settings.put({expectedRevision: 0, configuration: initial.configuration, secret: {action: 'replace', storage: 'session', value: SECRET}});
   const projects = new Set(Array.from({length: 40}, (_, i) => `p${i + 1}`)), reads = [];
+  const root = mkdtempSync(path.join(tmpdir(), 'mioon-chat-runtime-')), store = openStore(root);
+  for (const id of projects) store.put('projects', {id, name: 'PRIVATE_PROJECT_RECORD_DO_NOT_SEND'});
+  const realGet = store.get;
+  store.get = (table, id) => { reads.push([table, id]); assert.equal(table, 'projects'); return projects.has(id) ? realGet(table, id) : null; };
   const calls = [];
-  const runtime = createChatRuntime({store: {get(table, id) { reads.push([table, id]); assert.equal(table, 'projects'); return projects.has(id) ? {id, name: 'PRIVATE_PROJECT_RECORD_DO_NOT_SEND'} : null; }},
+  const runtime = createChatRuntime({store,
     agentSettings: settingsOverride ? settingsOverride(settings) : settings, selfPort: () => 4318, mode: 'simulated',
     gateway: async function* (options) { calls.push(options); if (gateway) yield* gateway(options); else { yield {type: 'delta', text: 'Synthetic answer'}; yield {type: 'done', finishReason: 'stop'}; } }});
-  t.after(async () => { runtime.close(); await settings.close(); });
-  return {runtime, settings, calls, projects, reads,
+  t.after(async () => { runtime.close(); await settings.close(); store.close(); rmSync(root, {recursive: true, force: true}); });
+  return {runtime, settings, calls, projects, reads, store, root,
     async input(project = 'p1', changes = {}) { const snapshot = await runtime.snapshot(project); return {requestId: randomUUID(), instanceId: snapshot.instanceId,
       expectedSettingsRevision: snapshot.settings.revision, expectedConversationRevision: snapshot.revision, message: 'Typed test text',
       consent: {destination: deriveAgentEndpoint(snapshot.settings.configuration), protocol: snapshot.settings.configuration.protocol, model: snapshot.settings.configuration.model, context: 'typed_chat_only'}, ...changes}; }};
 }
-async function until(check) { for (let i = 0; i < 200; i++) { const value = check(); if (value) return value; await turn(); } assert.fail('Synthetic work did not reach expected state'); }
+async function until(check) { for (let i = 0; i < 200; i++) { const value = check(); if (value) return value; await delay(2); } assert.fail('Synthetic work did not reach expected state'); }
 async function finish(f, sent) { return until(() => { const result = f.runtime.get(sent.projectId, sent.run.id, sent.instanceId); return result.run.status !== 'running' && result; }); }
 async function* held({signal}) { yield {type: 'delta', text: 'Partial'}; await new Promise(resolve => signal.addEventListener('abort', resolve, {once: true})); yield {type: 'delta', text: 'LATE_MUST_NOT_APPEAR'}; yield {type: 'done', finishReason: 'stop'}; }
 
-test('chat is project-pinned, pure typed context, backend-session only, and one gateway invocation per explicit send', async t => {
+test('chat is project-pinned, pure typed context, SQLite-durable, and one gateway invocation per explicit send', async t => {
   const f = await fixture(t);
   await assert.rejects(f.runtime.snapshot('missing'), {code: 'AGENT_CHAT_NOT_FOUND'});
   const snapshot = await f.runtime.snapshot('p1');
-  assert.equal(snapshot.scope, 'chat_only'); assert.equal(snapshot.persistence, 'session'); assert.equal(snapshot.mode, 'simulated');
+  assert.equal(snapshot.scope, 'chat_only'); assert.equal(snapshot.persistence, 'local_database'); assert.equal(snapshot.mode, 'simulated');
   assert.equal(snapshot.settings.secret.configured, true); assert.equal(JSON.stringify(snapshot).includes(SECRET), false);
   const input = await f.input(); const sent = await f.runtime.send('p1', input); const complete = await finish(f, sent);
   assert.equal(complete.run.status, 'completed'); assert.equal(complete.revision, 2); assert.equal(f.calls.length, 1);
@@ -140,7 +148,7 @@ test('one active run per project and four globally; subscriber limits free on de
 test('bounded event replay resets stale/ahead cursor by snapshot and never restarts inference', async t => {
   const f = await fixture(t, async function* () { for (let i = 0; i < 300; i++) yield {type: 'delta', text: `${i},`}; yield {type: 'done', finishReason: 'stop'}; });
   const complete = await finish(f, await f.runtime.send('p1', await f.input()));
-  for (const cursor of [0, complete.run.lastEventId + 1, complete.run.lastEventId]) {
+  for (const cursor of [complete.run.lastEventId + 1, complete.run.lastEventId]) {
     const events = []; f.runtime.subscribe('p1', complete.run.id, complete.instanceId, cursor, event => events.push(event));
     assert.equal(events.length, 1); assert.equal(events[0].type, 'snapshot'); assert.equal(events[0].run.status, 'completed');
   }
@@ -148,11 +156,16 @@ test('bounded event replay resets stale/ahead cursor by snapshot and never resta
   assert.deepEqual(replay.map(event => event.id), [complete.run.lastEventId - 1, complete.run.lastEventId]); assert.equal(f.calls.length, 1);
 });
 
-test('run eviction retains fingerprint tombstone; expired original request cannot cause a duplicate inference', async t => {
+test('recent history is bounded without evicting original requests or enabling duplicate inference', async t => {
   const f = await fixture(t), input = await f.input(); await finish(f, await f.runtime.send('p1', input));
   for (let i = 0; i < CHAT_LIMITS.runsPerProject; i++) await finish(f, await f.runtime.send('p1', await f.input()));
   assert.equal((await f.runtime.snapshot('p1')).runs.length, CHAT_LIMITS.runsPerProject);
-  await assert.rejects(f.runtime.send('p1', input), {code: 'AGENT_CHAT_RUN_EXPIRED'}); assert.equal(f.calls.length, CHAT_LIMITS.runsPerProject + 1);
+  assert.equal((await f.runtime.send('p1', input)).replayed, true); assert.equal(f.calls.length, CHAT_LIMITS.runsPerProject + 1);
+  assert.equal(f.runtime.lookup('p1', input.requestId).run.requestId, input.requestId);
+  const snapshot = await f.runtime.snapshot('p1');
+  assert.ok(snapshot.historyCursor);
+  const older = f.runtime.history('p1', {before: snapshot.historyCursor});
+  assert.equal(older.runs.length, 1); assert.equal(older.runs[0].requestId, input.requestId); assert.equal(older.historyCursor, null);
 });
 
 test('shutdown interrupts streaming, closes subscribers before returning, makes late callbacks inert and invalidates new sends', async t => {
@@ -173,7 +186,7 @@ test('backend-instance restart never recreates an old send', async t => {
 test('run deadline aborts stalled inference, preserves partial output and admits no automatic retry', async t => {
   t.mock.timers.enable({apis: ['setTimeout']});
   const f = await fixture(t, held), sent = await f.runtime.send('p1', await f.input());
-  await until(() => f.runtime.get('p1', sent.run.id, sent.instanceId).run.assistantText);
+  await until(() => f.calls.length);
   t.mock.timers.tick(CHAT_LIMITS.runMs);
   const ended = f.runtime.get('p1', sent.run.id, sent.instanceId);
   assert.equal(ended.run.status, 'failed'); assert.equal(ended.run.error.code, 'AGENT_CHAT_TIMEOUT'); assert.equal(ended.run.assistantText, 'Partial');

@@ -2,27 +2,30 @@ import { AGENT_PROTOCOLS, deriveAgentEndpoint, agentConfiguration, agentConfigur
 
 export { AGENT_PROTOCOLS, deriveAgentEndpoint };
 
-// Chat is an ephemeral, project-labelled text conversation, never a project tool.
+// Durable, project-labelled text conversation; never a project tool.
 export const AGENT_CHAT_PROMPT_BYTES = 8192;
 export const AGENT_CHAT_OUTPUT_BYTES = 128 * 1024;
-const MAX_RUNS = 16, MAX_FRAME = 1024 * 1024;
+const MAX_RUNS = 16, MAX_FRAME = 1024 * 1024, MAX_HISTORY_CURSORS = 32;
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const integer = value => Number.isSafeInteger(value) && value >= 0;
 const bytes = value => new TextEncoder().encode(value).length;
 const statuses = new Set(['running', 'completed', 'stopped', 'failed', 'interrupted']);
-const codes = new Set(['UNAUTHORIZED', 'AGENT_CHAT_SESSION_EXPIRED', 'AGENT_CHAT_CONVERSATION_CONFLICT', 'AGENT_CHAT_SETTINGS_CONFLICT', 'AGENT_CHAT_CONSENT_REQUIRED', 'AGENT_CHAT_ACTIVE_RUN', 'AGENT_CHAT_IDEMPOTENCY_CONFLICT', 'AGENT_CHAT_RUN_EXPIRED', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY', 'AGENT_CHAT_CLOSED', 'AGENT_CHAT_CREDENTIAL_UNAVAILABLE', 'AGENT_CHAT_VALIDATION', 'AGENT_CHAT_LIMIT', 'AGENT_CHAT_PROFILE_UNSUPPORTED', 'AGENT_CHAT_KEY_REQUIRED', 'AGENT_CHAT_NETWORK_DENIED', 'AGENT_CHAT_CONNECT_FAILED', 'AGENT_CHAT_TIMEOUT', 'AGENT_CHAT_ABORTED', 'AGENT_CHAT_HTTP_ERROR', 'AGENT_CHAT_PROTOCOL_ERROR', 'AGENT_CHAT_TRUNCATED', 'AGENT_CHAT_TOOLS_UNSUPPORTED', 'AGENT_CHAT_REASONING_UNSUPPORTED', 'AGENT_CHAT_PROVIDER_ERROR']);
+const codes = new Set(['UNAUTHORIZED', 'AGENT_CHAT_STORAGE_LIMIT', 'AGENT_CHAT_STORAGE_UNAVAILABLE', 'AGENT_CHAT_INTERRUPTED', 'AGENT_CHAT_SESSION_EXPIRED', 'AGENT_CHAT_CONVERSATION_CONFLICT', 'AGENT_CHAT_SETTINGS_CONFLICT', 'AGENT_CHAT_CONSENT_REQUIRED', 'AGENT_CHAT_ACTIVE_RUN', 'AGENT_CHAT_IDEMPOTENCY_CONFLICT', 'AGENT_CHAT_RUN_EXPIRED', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY', 'AGENT_CHAT_CLOSED', 'AGENT_CHAT_CREDENTIAL_UNAVAILABLE', 'AGENT_CHAT_VALIDATION', 'AGENT_CHAT_LIMIT', 'AGENT_CHAT_PROFILE_UNSUPPORTED', 'AGENT_CHAT_KEY_REQUIRED', 'AGENT_CHAT_NETWORK_DENIED', 'AGENT_CHAT_CONNECT_FAILED', 'AGENT_CHAT_TIMEOUT', 'AGENT_CHAT_ABORTED', 'AGENT_CHAT_HTTP_ERROR', 'AGENT_CHAT_PROTOCOL_ERROR', 'AGENT_CHAT_TRUNCATED', 'AGENT_CHAT_TOOLS_UNSUPPORTED', 'AGENT_CHAT_REASONING_UNSUPPORTED', 'AGENT_CHAT_PROVIDER_ERROR']);
 const failure = code => Object.assign(new Error('Agent chat request did not complete.'), { code: codes.has(code) || ['NETWORK', 'INVALID_RESPONSE'].includes(code) ? code : 'NETWORK' });
 export const agentChatErrorText = code => ({
   UNAUTHORIZED: '登录会话已过期，请重新登录后打开对话。',
-  AGENT_CHAT_SESSION_EXPIRED: '后端会话已更换；旧对话和运行无法恢复，也不会自动重新发送。',
+  AGENT_CHAT_SESSION_EXPIRED: '后端已重新启动。已保存的对话仍可读取；中断的回复不会自动续接或重新发送。',
+  AGENT_CHAT_STORAGE_LIMIT: '本地聊天数据库容量已满，无法保存新的对话。草稿已保留，请检查本地存储；不会自动重新发送。',
+  AGENT_CHAT_STORAGE_UNAVAILABLE: '本地聊天数据库暂不可用。请保留草稿并检查本地存储；不会自动重新发送。',
+  AGENT_CHAT_INTERRUPTED: '回复因应用或后端中断而结束。已保存的部分文字保留，不会自动续接；远端仍可能已计算或计费。',
   AGENT_CHAT_SETTINGS_CONFLICT: '连接设置已改变。请核对最新协议、地址和模型，再重新确认发送。',
   AGENT_CHAT_CONVERSATION_CONFLICT: '对话已在其他窗口更新。请核对最新内容，再确认发送。',
   AGENT_CHAT_CONSENT_REQUIRED: '发送目标或对话已改变，请重新核对并确认。',
   AGENT_CHAT_ACTIVE_RUN: '此项目已有一条回复正在生成，请等待或停止后再发送。',
   AGENT_CHAT_CREDENTIAL_UNAVAILABLE: '当前连接的密钥不可用。请在连接设置中检查；没有自动切换服务。',
   AGENT_CHAT_BUSY: '本次会话的运行或容量已达上限，请等待正在进行的回复结束。',
-  AGENT_CHAT_RUN_EXPIRED: '这条运行已不在临时缓存中；无法恢复，也不会重新发送。',
-  AGENT_CHAT_NOT_FOUND: '未找到这条临时运行；不会重新发送。',
+  AGENT_CHAT_RUN_EXPIRED: '这条运行暂不可读取；可以重新读取已保存的对话，不会重新发送。',
+  AGENT_CHAT_NOT_FOUND: '未找到这条已保存的运行；不会重新发送。',
   AGENT_CHAT_CLOSED: '聊天服务已关闭，请重新读取状态或重启应用。',
   AGENT_CHAT_VALIDATION: '消息未通过校验，请检查长度及字符。',
   AGENT_CHAT_PROFILE_UNSUPPORTED: '当前文本聊天尚不支持此协议与模型组合。请在连接设置中核对协议和支持的精确模型 ID；不会自动换模型或协议。',
@@ -41,33 +44,45 @@ export const agentChatErrorText = code => ({
 }[code] || '回复未完成。已保留收到的文字；不会自动重新发送。');
 
 function boundedText(value, max) { if (typeof value !== 'string' || bytes(value) > max) throw failure('INVALID_RESPONSE'); return value; }
-function identity(value, projectId, instanceId) {
-  if (!value || !uuid(value.instanceId) || typeof value.projectId !== 'string' || value.projectId !== projectId || !integer(value.revision) || (instanceId && value.instanceId !== instanceId)) throw failure('INVALID_RESPONSE');
+function identity(value, projectId, instanceId, threadId) {
+  if (!value || !uuid(value.instanceId) || !uuid(value.threadId) || typeof value.projectId !== 'string' || value.projectId !== projectId || !integer(value.revision) || (instanceId && value.instanceId !== instanceId) || (threadId && value.threadId !== threadId)) throw failure('INVALID_RESPONSE');
 }
-export function safeAgentChatRun(value, projectId) {
-  if (!value || !uuid(value.id) || !uuid(value.requestId) || value.projectId !== projectId || !statuses.has(value.status) || !integer(value.lastEventId) || !value.configuration || !['presetId', 'platformId', 'baseUrl', 'model', 'protocol'].every(key => typeof value.configuration[key] === 'string') || !isAgentProtocol(value.configuration.protocol)) throw failure('INVALID_RESPONSE');
+export function safeAgentChatRun(value, projectId, threadId) {
+  if (!value || !uuid(value.id) || !uuid(value.requestId) || !uuid(value.threadId) || (threadId && value.threadId !== threadId) || value.projectId !== projectId || !statuses.has(value.status) || !integer(value.lastEventId) || !value.configuration || !['presetId', 'platformId', 'baseUrl', 'model', 'protocol'].every(key => typeof value.configuration[key] === 'string') || !isAgentProtocol(value.configuration.protocol)) throw failure('INVALID_RESPONSE');
   const configuration = Object.freeze(agentConfiguration(value.configuration));
   try { deriveAgentEndpoint(configuration); } catch { throw failure('INVALID_RESPONSE'); }
   if (configuration.baseUrl.length > 2048 || configuration.model.length > 200 || configuration.presetId.length > 100 || configuration.platformId.length > 100) throw failure('INVALID_RESPONSE');
-  return { id: value.id, requestId: value.requestId, projectId, status: value.status,
+  return { id: value.id, requestId: value.requestId, threadId: value.threadId, projectId, status: value.status,
     userText: boundedText(value.userText, AGENT_CHAT_PROMPT_BYTES), assistantText: boundedText(value.assistantText, AGENT_CHAT_OUTPUT_BYTES),
     configuration, createdAt: typeof value.createdAt === 'string' ? value.createdAt.slice(0, 40) : '', updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt.slice(0, 40) : '', lastEventId: value.lastEventId,
     ...(value.error ? { error: { code: codes.has(value.error.code) ? value.error.code : 'NETWORK' } } : {}) };
 }
+function safeRuns(value, projectId) {
+  if (!Array.isArray(value.runs) || value.runs.length > MAX_RUNS) throw failure('INVALID_RESPONSE');
+  const runs = value.runs.map(run => safeAgentChatRun(run, projectId, value.threadId));
+  if (new Set(runs.map(run => run.id)).size !== runs.length || new Set(runs.map(run => run.requestId)).size !== runs.length || runs.filter(run => run.status === 'running').length > 1) throw failure('INVALID_RESPONSE');
+  if (value.historyCursor !== null && (!uuid(value.historyCursor) || value.historyCursor !== runs[0]?.id)) throw failure('INVALID_RESPONSE');
+  return runs;
+}
 export function safeAgentChatSnapshot(value, projectId) {
   identity(value, projectId);
-  if (value.scope !== 'chat_only' || value.persistence !== 'session' || !['provider', 'simulated'].includes(value.mode) || !Array.isArray(value.runs) || value.runs.length > MAX_RUNS) throw failure('INVALID_RESPONSE');
-  const runs = value.runs.map(run => safeAgentChatRun(run, projectId));
-  if (new Set(runs.map(run => run.id)).size !== runs.length || runs.filter(run => run.status === 'running').length > 1) throw failure('INVALID_RESPONSE');
-  return { instanceId: value.instanceId, projectId, revision: value.revision, scope: 'chat_only', persistence: 'session', mode: value.mode, settings: safeAgentSettings(value.settings), runs };
+  if (value.scope !== 'chat_only' || value.persistence !== 'local_database' || !['provider', 'simulated'].includes(value.mode)) throw failure('INVALID_RESPONSE');
+  const runs = safeRuns(value, projectId);
+  return { instanceId: value.instanceId, threadId: value.threadId, projectId, revision: value.revision, scope: 'chat_only', persistence: 'local_database', mode: value.mode, settings: safeAgentSettings(value.settings), runs, historyCursor: value.historyCursor };
 }
-function safeRunEnvelope(value, projectId, instanceId) { identity(value, projectId, instanceId); return { instanceId: value.instanceId, projectId, revision: value.revision, run: safeAgentChatRun(value.run, projectId) }; }
-export function safeAgentChatEvent(value, frame, projectId, instanceId, runId) {
-  identity(value, projectId, instanceId);
+export function safeAgentChatHistory(value, projectId, instanceId, threadId, before) {
+  identity(value, projectId, instanceId, threadId);
+  const runs = safeRuns(value, projectId);
+  if (runs.some(run => run.status === 'running' || run.id === before) || value.historyCursor === before) throw failure('INVALID_RESPONSE');
+  return { instanceId: value.instanceId, threadId: value.threadId, projectId, revision: value.revision, runs, historyCursor: value.historyCursor };
+}
+function safeRunEnvelope(value, projectId, instanceId, threadId) { identity(value, projectId, instanceId, threadId); return { instanceId: value.instanceId, threadId: value.threadId, projectId, revision: value.revision, run: safeAgentChatRun(value.run, projectId, value.threadId) }; }
+export function safeAgentChatEvent(value, frame, projectId, instanceId, runId, threadId) {
+  identity(value, projectId, instanceId, threadId);
   if (!integer(value.id) || value.id < 1 || String(value.id) !== frame.id || value.type !== frame.type || value.runId !== runId || !['snapshot', 'delta', 'terminal'].includes(value.type)) throw failure('INVALID_RESPONSE');
-  const result = { id: value.id, type: value.type, instanceId, projectId, runId, revision: value.revision };
+  const result = { id: value.id, type: value.type, instanceId, threadId: value.threadId, projectId, runId, revision: value.revision };
   if (value.type === 'delta') result.text = boundedText(value.text, AGENT_CHAT_OUTPUT_BYTES);
-  else { result.run = safeAgentChatRun(value.run, projectId); if (result.run.id !== runId || result.run.lastEventId !== value.id || (value.type === 'terminal' && result.run.status === 'running')) throw failure('INVALID_RESPONSE'); }
+  else { result.run = safeAgentChatRun(value.run, projectId, value.threadId); if (result.run.id !== runId || result.run.lastEventId !== value.id || (value.type === 'terminal' && result.run.status === 'running')) throw failure('INVALID_RESPONSE'); }
   return result;
 }
 
@@ -127,6 +142,12 @@ export function createAgentChatClient({ fetchImpl = (...args) => globalThis.fetc
   }
   return {
     read: async (projectId, signal) => safeAgentChatSnapshot(await json(path(projectId), 'GET', undefined, signal), projectId),
+    lookup: async (projectId, requestId, signal) => {
+      const result = safeRunEnvelope(await json(`${path(projectId)}/requests/${encodeURIComponent(requestId)}`, 'GET', undefined, signal), projectId);
+      if (result.run.requestId !== requestId) throw failure('INVALID_RESPONSE');
+      return result;
+    },
+    history: async (projectId, before, signal) => safeAgentChatHistory(await json(`${path(projectId)}/history?before=${encodeURIComponent(before)}`, 'GET', undefined, signal), projectId, undefined, undefined, before),
     start: async (projectId, input, signal) => safeRunEnvelope(await json(`${path(projectId)}/runs`, 'POST', input, signal), projectId, input.instanceId),
     run: async (projectId, runId, instanceId, signal) => safeRunEnvelope(await json(`${path(projectId)}/runs/${encodeURIComponent(runId)}?instanceId=${encodeURIComponent(instanceId)}`, 'GET', undefined, signal), projectId, instanceId),
     stop: async (projectId, runId, instanceId, signal) => safeRunEnvelope(await json(`${path(projectId)}/runs/${encodeURIComponent(runId)}/stop`, 'POST', { instanceId }, signal), projectId, instanceId),
@@ -159,12 +180,13 @@ export function createAgentChatReceipts(storage) {
     },
   };
 }
-export const initialAgentChatState = () => ({ phase: 'loading', snapshot: null, draft: '', consent: null, message: '', sessionLost: false, pending: null });
+const initialHistoryState = () => ({ phase: 'closed', page: null, before: null, trail: [], message: '' });
+export const initialAgentChatState = () => ({ phase: 'loading', snapshot: null, draft: '', consent: null, message: '', sessionLost: false, pending: null, abandonRequest: null, recoveredRun: null, history: initialHistoryState() });
 export const activeAgentChatRun = state => state?.snapshot?.runs.find(run => run.status === 'running') || null;
 export function agentChatConsentKey(snapshot) {
   if (!snapshot) return null;
   const configuration = snapshot.settings?.configuration;
-  try { return JSON.stringify([snapshot.instanceId, snapshot.revision, snapshot.settings.revision, configuration.presetId, configuration.platformId, deriveAgentEndpoint(configuration), configuration.protocol, configuration.model]); } catch { return null; }
+  try { return JSON.stringify([snapshot.instanceId, snapshot.threadId, snapshot.revision, snapshot.settings.revision, configuration.presetId, configuration.platformId, deriveAgentEndpoint(configuration), configuration.protocol, configuration.model]); } catch { return null; }
 }
 export function agentChatPromptIssue(message) {
   if (typeof message !== 'string' || !message.trim()) return '请输入消息。';
@@ -176,20 +198,23 @@ export const agentChatCanSend = state => Boolean(state?.snapshot && state.phase 
 
 /** One immutable project/chat-page lifetime. Disposing detaches reads only. */
 export function createAgentChatSession({ projectId, client = createAgentChatClient(), receipts = createAgentChatReceipts(), requestId = () => globalThis.crypto.randomUUID(), onChange = () => {} } = {}) {
-  let active = true, visible = true, state = initialAgentChatState(), streamAbort = null, serial = 0;
+  let active = true, visible = true, state = initialAgentChatState(), streamAbort = null, serial = 0, historySerial = 0, historyAbort = null;
   const pendingReads = new Set();
   const publish = patch => { if (active) { state = { ...state, ...patch }; onChange(state); } };
   const detach = () => { serial++; streamAbort?.abort(); streamAbort = null; };
   const request = async action => { const abort = new AbortController(); pendingReads.add(abort); try { return await action(abort.signal); } finally { pendingReads.delete(abort); } };
   const valid = epoch => active && epoch === serial;
   const receipt = value => { if (active) receipts.set(projectId, value); };
+  const resetHistory = () => { historySerial++; historyAbort?.abort(); historyAbort = null; };
+  const sameRun = (previous, next) => !previous || (previous.threadId === next.threadId && agentConfigurationEqual(previous.configuration, next.configuration) && previous.requestId === next.requestId && previous.userText === next.userText);
   const mergeRun = envelope => {
-    envelope = safeRunEnvelope(envelope, projectId, state.snapshot?.instanceId);
+    envelope = safeRunEnvelope(envelope, projectId, state.snapshot?.instanceId, state.snapshot?.threadId);
     if (!state.snapshot || envelope.instanceId !== state.snapshot.instanceId || envelope.projectId !== projectId || envelope.revision < state.snapshot.revision) throw failure('INVALID_RESPONSE');
     const previous = state.snapshot.runs.find(run => run.id === envelope.run.id);
-    if (previous && (!agentConfigurationEqual(previous.configuration, envelope.run.configuration) || previous.requestId !== envelope.run.requestId || previous.userText !== envelope.run.userText)) throw failure('INVALID_RESPONSE');
-    const runs = state.snapshot.runs.filter(run => run.id !== envelope.run.id); runs.push(envelope.run);
-    return { ...state.snapshot, revision: envelope.revision, runs: runs.slice(-MAX_RUNS) };
+    if (!sameRun(previous, envelope.run)) throw failure('INVALID_RESPONSE');
+    const runs = previous ? state.snapshot.runs.map(run => run.id === envelope.run.id ? envelope.run : run) : [...state.snapshot.runs, envelope.run];
+    const bounded = runs.slice(-MAX_RUNS);
+    return { ...state.snapshot, revision: envelope.revision, runs: bounded, historyCursor: runs.length > MAX_RUNS ? bounded[0].id : state.snapshot.historyCursor };
   };
   const finishState = snapshot => ({ snapshot, phase: activeAgentChatRun({ snapshot }) ? 'streaming' : 'ready', consent: null });
   async function recoverStream(runId, instanceId, epoch) {
@@ -213,12 +238,12 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
     void (async () => {
       try {
         await client.stream(projectId, run.id, instanceId, run.lastEventId, { signal: abort.signal, onEvent: event => {
-          if (!valid(epoch) || abort.signal.aborted || event.instanceId !== instanceId || event.projectId !== projectId || event.runId !== run.id) return;
+          if (!valid(epoch) || abort.signal.aborted || event.instanceId !== instanceId || event.projectId !== projectId || event.threadId !== state.snapshot.threadId || event.runId !== run.id) return;
           const previous = state.snapshot.runs.find(item => item.id === run.id);
           if (!previous || event.id <= previous.lastEventId) return;
           if (event.revision < state.snapshot.revision || (event.type === 'delta' && event.id !== previous.lastEventId + 1)) throw failure('INVALID_RESPONSE');
           const next = event.type === 'delta' ? { ...previous, assistantText: boundedText(previous.assistantText + event.text, AGENT_CHAT_OUTPUT_BYTES), lastEventId: event.id } : event.run;
-          const snapshot = mergeRun({ instanceId, projectId, revision: event.revision, run: next });
+          const snapshot = mergeRun({ instanceId, threadId: state.snapshot.threadId, projectId, revision: event.revision, run: next });
           publish({ snapshot, phase: next.status === 'running' ? 'streaming' : 'ready', consent: null, message: '' });
           if (next.status !== 'running') abort.abort();
         } });
@@ -228,36 +253,95 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
   }
   async function load() {
     if (!active || ['submitting', 'stopping'].includes(state.phase)) return false;
-    detach(); const epoch = serial;
-    publish({ phase: 'loading', consent: null });
+    detach(); resetHistory(); const epoch = serial;
+    publish({ phase: 'loading', consent: null, abandonRequest: null, history: initialHistoryState() });
     try {
-      const snapshot = safeAgentChatSnapshot(await request(signal => client.read(projectId, signal)), projectId);
+      let snapshot = safeAgentChatSnapshot(await request(signal => client.read(projectId, signal)), projectId);
       if (!valid(epoch)) return false;
-      if (state.snapshot?.instanceId === snapshot.instanceId) {
-        for (const run of snapshot.runs) {
-          const previous = state.snapshot.runs.find(item => item.id === run.id);
-          if (previous && (!agentConfigurationEqual(previous.configuration, run.configuration) || previous.requestId !== run.requestId || previous.userText !== run.userText)) throw failure('INVALID_RESPONSE');
-        }
+      if (state.snapshot && (state.snapshot.threadId !== snapshot.threadId || snapshot.revision < state.snapshot.revision)) throw failure('INVALID_RESPONSE');
+      for (const run of snapshot.runs) {
+        if (!sameRun(state.snapshot?.runs.find(item => item.id === run.id), run)) throw failure('INVALID_RESPONSE');
       }
       const previous = receipts.get(projectId), sessionLost = Boolean(previous && previous.instanceId !== snapshot.instanceId);
-      const requestPending = !sessionLost && previous?.requestId;
-      const accepted = requestPending && snapshot.runs.find(run => run.requestId === requestPending);
-      if (accepted && state.pending?.configuration && !agentConfigurationEqual(accepted.configuration, state.pending.configuration)) throw failure('INVALID_RESPONSE');
+      const requestPending = state.pending?.requestId || previous?.requestId;
+      publish({ snapshot, sessionLost: sessionLost || state.sessionLost, pending: requestPending ? (state.pending || { requestId: requestPending }) : null, recoveredRun: null });
+      let accepted = requestPending && snapshot.runs.find(run => run.requestId === requestPending);
+      if (requestPending && !accepted) {
+        try {
+          const envelope = safeRunEnvelope(await request(signal => client.lookup(projectId, requestPending, signal)), projectId, snapshot.instanceId, snapshot.threadId);
+          if (!valid(epoch)) return false;
+          if (envelope.run.requestId !== requestPending || envelope.revision < snapshot.revision) throw failure('INVALID_RESPONSE');
+          accepted = envelope.run;
+          // A concurrent accepted turn changes consent context. Read it, rather
+          // than upgrading the revision on an incomplete latest-runs snapshot.
+          if (envelope.revision > snapshot.revision) {
+            snapshot = safeAgentChatSnapshot(await request(signal => client.read(projectId, signal)), projectId);
+            if (!valid(epoch)) return false;
+            if (snapshot.instanceId !== envelope.instanceId || snapshot.threadId !== envelope.threadId || snapshot.revision < envelope.revision) throw failure('INVALID_RESPONSE');
+            for (const run of snapshot.runs) if (!sameRun(state.snapshot?.runs.find(item => item.id === run.id), run)) throw failure('INVALID_RESPONSE');
+            const latest = snapshot.runs.find(run => run.id === accepted.id);
+            if (!sameRun(accepted, latest || accepted)) throw failure('INVALID_RESPONSE');
+            accepted = latest || accepted;
+          }
+        } catch (error) {
+          if (!valid(epoch)) return false;
+          if (error.code !== 'AGENT_CHAT_NOT_FOUND') throw error;
+        }
+      }
+      if (accepted?.status === 'running' && !snapshot.runs.some(run => run.id === accepted.id)) throw failure('INVALID_RESPONSE');
+      if (accepted && !sameRun(snapshot.runs.find(run => run.id === accepted.id), accepted)) throw failure('INVALID_RESPONSE');
+      if (accepted && (accepted.requestId !== requestPending || (state.pending?.configuration && (!agentConfigurationEqual(accepted.configuration, state.pending.configuration) || accepted.userText !== state.pending.userText)))) throw failure('INVALID_RESPONSE');
       const unresolved = requestPending && !accepted;
       receipt({ instanceId: snapshot.instanceId, ...(unresolved ? { requestId: requestPending } : {}) });
+      const clearDraft = accepted && state.pending?.userText === state.draft;
       publish({ ...finishState(snapshot), sessionLost: sessionLost || state.sessionLost, pending: unresolved ? (state.pending || { requestId: requestPending }) : null,
+        recoveredRun: accepted && !snapshot.runs.some(run => run.id === accepted.id) ? accepted : null,
+        ...(clearDraft ? { draft: '' } : {}),
         phase: unresolved ? 'unknown' : activeAgentChatRun({ snapshot }) ? 'streaming' : 'ready',
-        message: unresolved ? '未收到发送确认，尚未找到对应运行。重新读取不能证明请求未被接受，不会自动重发。若始终查不到，需重启后端或应用以结束本地待确认状态；所有临时对话会丢失，远端仍可能已计算或计费。' : sessionLost ? agentChatErrorText('AGENT_CHAT_SESSION_EXPIRED') : '' });
+        message: unresolved ? '未收到发送确认，尚未找到原请求。查不到不能证明请求未被接受；待确认标识在当前页面会话内保留，后端重启后仍可核对。请重新读取，不会自动重发，远端仍可能已计算或计费。' : sessionLost ? agentChatErrorText('AGENT_CHAT_SESSION_EXPIRED') : accepted ? '已读取原请求并确认其保存状态，没有重新发送。' : '' });
       if (!unresolved) { const running = activeAgentChatRun(state); if (running) attach(running); }
       return true;
-    } catch (error) { if (valid(epoch)) publish({ phase: state.snapshot ? 'unknown' : 'load_error', message: error.code === 'UNAUTHORIZED' ? agentChatErrorText(error.code) : '暂时无法读取对话。请检查连接后重新读取；不会发起模型请求。', consent: null }); return false; }
+    } catch (error) { if (valid(epoch)) publish({ phase: state.snapshot ? 'unknown' : 'load_error', message: ['UNAUTHORIZED', 'AGENT_CHAT_STORAGE_UNAVAILABLE'].includes(error.code) ? agentChatErrorText(error.code) : '暂时无法读取或确认对话。草稿与待确认标识保留；重新读取不会发起模型请求。', consent: null }); return false; }
+  }
+  async function historyPage(before, trail) {
+    if (!active || !visible || !state.snapshot || !uuid(before) || state.history.phase === 'loading') return false;
+    resetHistory(); const epoch = historySerial, snapshot = state.snapshot;
+    const abort = new AbortController(); historyAbort = abort; pendingReads.add(abort);
+    publish({ history: { ...state.history, phase: 'loading', message: '' } });
+    try {
+      const page = safeAgentChatHistory(await client.history(projectId, before, abort.signal), projectId, snapshot.instanceId, snapshot.threadId, before);
+      if (!active || !visible || epoch !== historySerial || abort.signal.aborted) return false;
+      // Browsing never mutates live runs, consent, pending sends or the draft.
+      if (page.revision < snapshot.revision || page.runs.some(run => snapshot.runs.some(latest => latest.id === run.id || latest.requestId === run.requestId)) || (page.historyCursor && trail.includes(page.historyCursor))) throw failure('INVALID_RESPONSE');
+      publish({ history: { phase: 'ready', page, before, trail: trail.slice(-MAX_HISTORY_CURSORS), message: '' } });
+      return true;
+    } catch (error) {
+      if (active && visible && epoch === historySerial && !abort.signal.aborted) publish({ history: { ...state.history, phase: 'error', message: error.code === 'AGENT_CHAT_STORAGE_UNAVAILABLE' ? agentChatErrorText(error.code) : '暂时无法读取更早记录。当前回复与草稿仍保留，请返回最近对话后重新读取。' } });
+      return false;
+    } finally { pendingReads.delete(abort); if (historyAbort === abort) historyAbort = null; }
   }
   return {
     getState: () => state, load,
+    confirmAbandonPending(value) {
+      if (!active || !visible || state.phase !== 'unknown' || !state.pending || !state.snapshot) return false;
+      publish({ abandonRequest: value ? state.pending.requestId : null }); return true;
+    },
+    abandonPending(id) {
+      if (!active || !visible || state.phase !== 'unknown' || !state.snapshot || state.pending?.requestId !== id || state.abandonRequest !== id) return false;
+      receipt({ instanceId: state.snapshot.instanceId });
+      publish({ pending: null, abandonRequest: null, consent: null, phase: activeAgentChatRun(state) ? 'detached' : 'ready', message: '已按你的选择结束本地待确认状态，草稿保留。这不会停止或撤回原请求；再次发送可能造成重复回复或费用，请先核对历史并重新确认。' });
+      return true;
+    },
+    earlier() {
+      const history = state.history;
+      return historyPage(history.page ? history.page.historyCursor : state.snapshot?.historyCursor, history.page ? [...history.trail, history.before] : []);
+    },
+    newer() { const trail = state.history.trail; return trail.length ? historyPage(trail.at(-1), trail.slice(0, -1)) : false; },
+    closeHistory() { if (!active || !visible) return false; resetHistory(); publish({ history: initialHistoryState() }); return true; },
     setVisible(value) {
       if (!active || visible === Boolean(value)) return;
       visible = Boolean(value);
-      if (!visible) { streamAbort?.abort(); streamAbort = null; if (state.phase === 'streaming') publish({ phase: 'detached' }); }
+      if (!visible) { resetHistory(); if (state.history.phase === 'loading') publish({ history: { ...state.history, phase: state.history.page ? 'ready' : 'closed' } }); streamAbort?.abort(); streamAbort = null; if (state.phase === 'streaming') publish({ phase: 'detached' }); }
       else if (!['submitting', 'stopping'].includes(state.phase)) void load();
     },
     edit(value) { if (!active || !visible || typeof value !== 'string' || value.length > AGENT_CHAT_PROMPT_BYTES) return false; publish({ draft: value }); return true; },
@@ -276,14 +360,13 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
         if (envelope.run.requestId !== id || envelope.run.userText !== message || !agentConfigurationEqual(envelope.run.configuration, configuration)) throw failure('INVALID_RESPONSE');
         const next = mergeRun(envelope);
         receipt({ instanceId: snapshot.instanceId });
-        publish({ ...finishState(next), draft: '', pending: null });
+        publish({ ...finishState(next), ...(state.draft === message ? { draft: '' } : {}), pending: null, recoveredRun: null });
         attach(envelope.run); return true;
       } catch (error) {
         if (!valid(epoch)) return false;
-        if (['NETWORK', 'INVALID_RESPONSE'].includes(error.code)) {
+        if (['NETWORK', 'INVALID_RESPONSE', 'AGENT_CHAT_STORAGE_UNAVAILABLE'].includes(error.code)) {
           publish({ phase: 'unknown', message: '未收到发送确认。正在读取原请求状态，不会重新发送。' });
           await load();
-          if (active && !state.pending && state.snapshot?.instanceId === snapshot.instanceId && state.snapshot.runs.some(run => run.requestId === id)) publish({ draft: '' });
         } else {
           receipt({ instanceId: snapshot.instanceId });
           publish({ phase: 'ready', pending: null, message: agentChatErrorText(error.code) });
@@ -311,6 +394,6 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
         await recoverStream(run.id, instanceId, epoch); return false;
       }
     },
-    dispose() { if (!active) return; active = false; detach(); for (const controller of pendingReads) controller.abort(); pendingReads.clear(); state = initialAgentChatState(); },
+    dispose() { if (!active) return; active = false; detach(); resetHistory(); for (const controller of pendingReads) controller.abort(); pendingReads.clear(); state = initialAgentChatState(); },
   };
 }

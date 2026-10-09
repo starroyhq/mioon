@@ -7,7 +7,7 @@ import {chatQaClient} from './agent-chat-qa-client.mjs';
 
 export async function chatBrowserHarness(tab, {iteration = 'chat', inline = false} = {}) {
   const q = await chatQaClient({iteration}), outDir = path.join(q.root, 'browser'); await mkdir(outDir, {recursive: true});
-  const report = {startedAt: new Date().toISOString(), featureBaseline: '66a0193', integrationBaseline: iteration === 'responses' ? '3db1a02' : '80334cf', scope: 'chat_only', persistence: 'backend_session', inference: 'synthetic local HTTP fixture through production gateway', realProviderCalls: 0, checks: [], screenshots: []};
+  const report = {startedAt: new Date().toISOString(), featureBaseline: '66a0193', integrationBaseline: iteration === 'durable' ? '9716677' : iteration === 'responses' ? '3db1a02' : '80334cf', scope: 'chat_only', persistence: iteration === 'durable' ? 'local_database' : 'backend_session', inference: 'synthetic local HTTP fixture through production gateway', realProviderCalls: 0, checks: [], screenshots: []};
   const saveReport = () => writeFile(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
   const log = async (name, detail = {}) => { report.checks.push({name, passed: true, ...detail}); await saveReport(); };
   const capture = async name => { const bytes = await tab.getScreenshot({emit: false}); assert.equal(bytes[0], 255); assert.equal(bytes[1], 216); await writeFile(path.join(outDir, name), bytes); report.screenshots.push(name); await saveReport(); };

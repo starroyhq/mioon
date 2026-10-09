@@ -1,5 +1,9 @@
 // Never reflect provider bodies, headers, URLs, keys, socket errors or causes.
 const errors = Object.freeze({
+  AGENT_CHAT_STORAGE_LIMIT: [507, '本地聊天存储已达容量上限；原始请求和记录已保留，未重新发送。'],
+  AGENT_CHAT_STORAGE_UNAVAILABLE: [503, '本地聊天记录无法安全写入；已停止发送，请修复存储后重新打开。'],
+  AGENT_CHAT_NOT_FOUND: [404, '项目或这次对话不存在。'],
+  AGENT_CHAT_BUSY: [429, '正在生成的对话或订阅已达上限，请稍后继续。'],
   AGENT_CHAT_VALIDATION: [400, '聊天请求格式无效，请检查消息和模型设置。'],
   AGENT_CHAT_PROFILE_UNSUPPORTED: [400, '此模型尚未接入当前文本聊天配置，请选择已支持的非思考模型。'],
   AGENT_CHAT_KEY_REQUIRED: [409, '请先为当前服务保存 API 密钥。'],

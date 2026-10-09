@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import {chatBrowserHarness, runChatFailureAndOutput, runChatLostAck, finishChatBrowser} from './browser_agent_chat.mjs';
 
-export async function responsesBrowserHarness(tab) {
-  const h = await chatBrowserHarness(tab, {iteration: 'responses', inline: true});
+export async function responsesBrowserHarness(tab, {iteration = 'responses'} = {}) {
+  const h = await chatBrowserHarness(tab, {iteration, inline: true});
   const settings = name => tab.playwright.getByTestId(`agent-settings-${name}`);
   const choose = async (name, label) => {
     await settings(name).click();
