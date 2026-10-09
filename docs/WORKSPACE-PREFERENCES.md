@@ -6,11 +6,11 @@ Mioon remembers one shared local-user view per project. Browser windows and the 
 
 The additive SQLite schema version 5 creates `workspace_preferences(projectId, revision, state)` with a project foreign key. It does not change project records, shot revisions, timeline revisions, undo/redo history, immutable versions, job snapshots, media, or idempotency records.
 
-The version-1 state has a strict, complete whitelist:
+The version-1 state has a strict, complete whitelist, with one narrowly optional field for legacy compatibility:
 
 - Active Canvas/Editing mode
 - Canvas viewport, node/shot and edge selections, inspector tab, highlighted version, storyboard and minimap visibility
-- Editing clip/source selection, preview kind, playhead, timeline zoom, two-axis scroll, collapsed timeline
+- Editing clip/source selection, preview kind, playhead, timeline zoom, two-axis scroll, collapsed timeline, and timeline magnet (`snappingEnabled`, default `true`)
 - Asset type filter and collapsed library/inspector panels
 
 Free-text search remains renderer-memory only. Draft text, prompts, credentials, tokens, jobs, file paths, arbitrary object fields and media are never accepted as view preferences. Selections may reference a removed entity; the renderer reconciles them against current project data without changing that data.
@@ -20,9 +20,9 @@ Free-text search remains renderer-memory only. Draft text, prompts, credentials,
 These endpoints require the same authenticated loopback token/session and Host/Origin checks as other APIs. They are separate from business RPC, CLI command schemas, MCP tools and the durable business request-recovery log.
 
 - `GET /api/workspace-preferences/:projectId` returns `{ok:true,data:{projectId,revision,state}}`. A project without preferences returns revision `0` and state `null`.
-- `PUT` on the same path accepts exactly `{expectedRevision,state}`. The body limit is 16 KiB. The full state must have exactly the documented version-1 fields, correct primitive types, bounded finite numbers and nullable valid entity UUIDs.
+- `PUT` on the same path accepts exactly `{expectedRevision,state}`. The body limit is 16 KiB. The full state must have exactly the documented version-1 fields, correct primitive types, bounded finite numbers and nullable valid entity UUIDs. Only `editing.snappingEnabled` may be omitted by a legacy v1 caller; omission means `true`. An explicit value must be a boolean. All other missing and unknown fields remain invalid.
 - Successful writes atomically advance only the preference revision. A stale different state returns HTTP 409 `PREFERENCES_CONFLICT` with the current revision.
-- Only an exact retry of the latest accepted state with its original expected revision is replayable. It returns the existing revision without another write. An older historical state cannot overwrite a newer view.
+- Only an exact canonical retry of the latest accepted state with its original expected revision is replayable. It returns the existing revision without another write. Canonical comparison treats the legacy omitted magnet field as `true`; it never treats omission as equivalent to `false`. An older historical state cannot overwrite a newer view.
 
 All responses are non-cacheable. Unsupported methods, missing projects and malformed input fail explicitly.
 
@@ -49,7 +49,8 @@ A complete state has this shape (the nullable viewport instead accepts exactly `
     "pixelsPerSecond": 76,
     "scrollLeft": 0,
     "scrollTop": 0,
-    "timelineCollapsed": false
+    "timelineCollapsed": false,
+    "snappingEnabled": true
   },
   "shared": {
     "assetFilter": "all",
@@ -64,6 +65,8 @@ A complete state has this shape (the nullable viewport instead accepts exactly `
 ## Loading, migration and recovery
 
 The renderer waits for an authoritative preference load before mounting the project workspace and allowing viewport/selection defaults to save. Saved backend state wins over an old renderer cache. Existing local preferences are imported only after the backend positively confirms that no saved record exists. Storage access denial, malformed cache or a failed API read never becomes permission to overwrite remote state.
+
+The magnet preference retains state version 1, SQLite schema version 5 and the `mioon.workspace.v1:` renderer-cache key. Legacy database records and cache entries without this field load with snapping enabled; an explicit `false` survives normalization, persistence and project switching. Backend reads return the normalized field without rewriting stored rows or advancing revisions. Exact replays of legacy stored records likewise leave their bytes and revisions untouched. The renderer accepts a complete legacy GET with only this field missing, without scheduling a migration write. PUT acknowledgements must still contain the complete submitted state. No broader partial-state fallback is allowed.
 
 During API failure, the view still works using a bounded local fallback. A visible status explains that view positions are not synchronized. Loading the saved view is an explicit action because it replaces current view choices. A stale concurrent window stops saving and shows that another window updated the view; it does not silently take ownership or retry an overwrite. The user can load the saved view and then make a new choice.
 

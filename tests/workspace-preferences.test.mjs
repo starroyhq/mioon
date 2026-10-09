@@ -56,7 +56,10 @@ test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and
   for (const parent of [[], ['canvas'], ['canvas', 'viewport'], ['editing'], ['shared']]) {
     const branch = at(valid, parent);
     invalid.push(set(copy(valid), [...parent, 'unexpected'], true));
-    for (const key of Object.keys(branch)) { const value = copy(valid); delete at(value, parent)[key]; invalid.push(value); }
+    for (const key of Object.keys(branch)) {
+      if (parent.join('.') === 'editing' && key === 'snappingEnabled') continue; // Sole legacy v1 omission.
+      const value = copy(valid); delete at(value, parent)[key]; invalid.push(value);
+    }
     if (parent.length) for (const bad of [null, [], false, 1]) invalid.push(set(copy(valid), parent, bad));
   }
   // viewport alone permits null.
@@ -76,8 +79,8 @@ test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and
     for (const bad of [min - 1, max + 1, NaN, Infinity, -Infinity, '1', null]) invalidWithoutNullable.push(set(copy(valid), field, bad));
   }
   invalidWithoutNullable.push(set(copy(valid), ['editing', 'playhead'], 1.5));
-  for (const field of [['canvas', 'storyboardOpen'], ['canvas', 'miniMap'], ['editing', 'timelineCollapsed'], ['shared', 'assetsCollapsed'], ['shared', 'inspectorCollapsed']]) {
-    for (const bad of [0, 1, 'true', null]) invalidWithoutNullable.push(set(copy(valid), field, bad));
+  for (const field of [['canvas', 'storyboardOpen'], ['canvas', 'miniMap'], ['editing', 'timelineCollapsed'], ['editing', 'snappingEnabled'], ['shared', 'assetsCollapsed'], ['shared', 'inspectorCollapsed']]) {
+    for (const bad of [0, 1, 'true', 'false', null, undefined, [], {}]) invalidWithoutNullable.push(set(copy(valid), field, bad));
   }
   for (const field of [['canvas', 'inspectorTab'], ['editing', 'previewKind'], ['shared', 'assetFilter']]) invalidWithoutNullable.push(set(copy(valid), field, 'unknown'));
   for (const value of invalidWithoutNullable) assert.throws(() => f.preferences.put(projectId, {expectedRevision: 0, state: value}), {code: 'VALIDATION_ERROR'});
@@ -85,6 +88,64 @@ test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and
   for (const revision of [-1, .5, '0', null, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => f.preferences.put(projectId, {expectedRevision: revision, state: valid}), {code: 'VALIDATION_ERROR'});
   assert.deepEqual(f.preferences.get(projectId), {projectId, revision: 0, state: null});
   assert.equal(f.store.db.prepare('SELECT count(*) n FROM workspace_preferences').get().n, 0);
+});
+
+test('legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions', async t => {
+  const f = await fixture(t), projectId = f.projectId, legacy = state();
+  delete legacy.editing.snappingEnabled;
+  legacy.editing.playhead = 57;
+  const reorder = value => value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reorder(item)])) : value;
+  const raw = JSON.stringify(reorder(legacy));
+  f.store.db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, 7, raw);
+  const row = () => f.store.db.prepare('SELECT * FROM workspace_preferences WHERE projectId=?').get(projectId);
+  const changes = () => f.store.db.prepare('SELECT total_changes() n').get().n;
+  const before = row(), businessBefore = capture(f.store), writesBefore = changes();
+  const normalized = { ...legacy, editing: { ...legacy.editing, snappingEnabled: true } };
+  const expected = { projectId, revision: 7, state: normalized };
+  assert.deepEqual(f.preferences.get(projectId), expected);
+  assert.equal(changes(), writesBefore);
+  assert.deepEqual(parseWorkspacePreferencesState(legacy), normalized);
+  assert.equal('snappingEnabled' in legacy.editing, false);
+  for (const value of [legacy, normalized]) {
+    assert.deepEqual(f.preferences.put(projectId, { expectedRevision: 6, state: value }), expected);
+    assert.deepEqual(row(), before);
+    assert.equal(changes(), writesBefore);
+  }
+  const disabled = copy(normalized); disabled.editing.snappingEnabled = false;
+  assert.throws(() => f.preferences.put(projectId, { expectedRevision: 6, state: disabled }), { code: 'PREFERENCES_CONFLICT' });
+  assert.deepEqual(row(), before);
+  f.restart();
+  assert.deepEqual(f.preferences.get(projectId), expected);
+  assert.deepEqual(row(), before);
+  const saved = f.preferences.put(projectId, { expectedRevision: 7, state: disabled });
+  assert.equal(saved.revision, 8); assert.equal(saved.state.editing.snappingEnabled, false);
+  assert.deepEqual(f.preferences.put(projectId, { expectedRevision: 7, state: disabled }), saved);
+  assert.throws(() => f.preferences.put(projectId, { expectedRevision: 7, state: legacy }), { code: 'PREFERENCES_CONFLICT' });
+  assert.throws(() => f.preferences.put(projectId, { expectedRevision: 6, state: disabled }), { code: 'PREFERENCES_CONFLICT' });
+  f.restart();
+  assert.deepEqual(f.preferences.get(projectId), saved);
+  assert.deepEqual(capture(f.store), businessBefore);
+});
+
+test('legacy v1 input accepts only the magnet omission and still rejects unknown or incomplete state', async t => {
+  const legacy = state(); delete legacy.editing.snappingEnabled;
+  assert.equal(parseWorkspacePreferencesState(legacy).editing.snappingEnabled, true);
+  const explicit = state(); explicit.editing.snappingEnabled = false;
+  assert.deepEqual(parseWorkspacePreferencesState(explicit), explicit);
+  for (const key of Object.keys(legacy.editing)) {
+    const missing = copy(legacy); delete missing.editing[key];
+    assert.throws(() => parseWorkspacePreferencesState(missing), { code: 'VALIDATION_ERROR' });
+  }
+  const unknown = copy(legacy); unknown.editing.magnet = true;
+  assert.throws(() => parseWorkspacePreferencesState(unknown), { code: 'VALIDATION_ERROR' });
+  const symbolic = copy(legacy); symbolic.editing[Symbol('snappingEnabled')] = true;
+  assert.throws(() => parseWorkspacePreferencesState(symbolic), { code: 'VALIDATION_ERROR' });
+  const f = await fixture(t), saved = f.preferences.put(f.projectId, { expectedRevision: 0, state: legacy });
+  assert.equal(saved.state.editing.snappingEnabled, true);
+  assert.equal(JSON.parse(f.store.db.prepare('SELECT state FROM workspace_preferences WHERE projectId=?').get(f.projectId).state).editing.snappingEnabled, true);
+  assert.deepEqual(f.preferences.put(f.projectId, { expectedRevision: 0, state: legacy }), saved);
+  assert.equal('snappingEnabled' in legacy.editing, false);
 });
 
 test('independent CAS revisions replay only the latest exact write and never overwrite stale state', async t => {
@@ -133,10 +194,12 @@ test('selection IDs can outlive entities, project preferences stay isolated, and
   value.canvas.selectedId = shot.id;
   value.canvas.selectedEdgeId = randomUUID(); value.canvas.highlightedVersionId = randomUUID();
   value.editing.selectedClipId = randomUUID(); value.editing.quickAssetId = randomUUID();
+  value.editing.snappingEnabled = false;
   const saved = f.preferences.put(projectId, {expectedRevision: 0, state: value});
   assert.deepEqual(f.preferences.get(other.id), {projectId: other.id, revision: 0, state: null});
   const otherState = state(); otherState.activeMode = 'editing';
   f.preferences.put(other.id, {expectedRevision: 0, state: otherState});
+  assert.equal(f.preferences.get(other.id).state.editing.snappingEnabled, true);
   assert.deepEqual(f.preferences.get(projectId), saved);
   assert.deepEqual(capture(f.store), before);
   const reconciled = reconcileWorkspaceState(saved.state, {shots: [shot]});

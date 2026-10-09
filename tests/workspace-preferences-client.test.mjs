@@ -106,6 +106,77 @@ test('an existing remote workspace wins over stale local preferences without a w
   assert.equal(server.puts().length, 0); assert.equal(controller.getStatus(A).revision, 8);
 });
 
+test('a complete legacy v1 GET defaults snapping on without a migration write', async t => {
+  const { controller, server, clock } = fixture(t), legacy = durableWorkspaceState(state(123, 'editing'));
+  delete legacy.editing.snappingEnabled;
+  server.records.set(A, { projectId: A, revision: 7, state: copy(legacy) });
+  const loaded = await controller.load(A);
+  assert.equal(loaded.editing.snappingEnabled, true); assert.equal(loaded.editing.playhead, 123);
+  assert.equal(controller.getStatus(A).phase, 'saved'); assert.equal(controller.getStatus(A).revision, 7);
+  await clock.tick(2000); await controller.flush();
+  assert.equal(server.puts().length, 0); assert.equal(controller.hasUnsaved(), false);
+  assert.deepEqual(server.data(A).state, legacy);
+});
+
+test('a raw legacy v1 cache defaults snapping on for safe import or offline fallback', async t => {
+  for (const offline of [false, true]) {
+    const { controller, server, storage, clock } = fixture(t), legacy = state(51, 'editing');
+    delete legacy.editing.snappingEnabled;
+    const raw = JSON.stringify(legacy); storage.setItem(`mioon.workspace.v1:${A}`, raw);
+    if (offline) server.hook = () => { throw new Error('offline'); };
+    const loaded = await controller.load(A);
+    assert.equal(loaded.editing.snappingEnabled, true); assert.equal(loaded.editing.playhead, 51);
+    await clock.tick(2000); await controller.flush();
+    if (offline) {
+      assert.equal(controller.getStatus(A).phase, 'local'); assert.equal(server.puts().length, 0);
+      assert.equal(storage.getItem(`mioon.workspace.v1:${A}`), raw);
+    } else {
+      assert.equal(server.puts().length, 1); assert.equal(server.puts()[0].body.state.editing.snappingEnabled, true);
+      assert.equal(server.data(A).revision, 1); assert.equal(controller.getStatus(A).phase, 'saved');
+    }
+  }
+});
+
+test('magnet off persists, reloads, and stays isolated while lost responses replay its exact CAS body', async t => {
+  const { controller, server, clock, storage } = fixture(t);
+  const disabled = state(); disabled.editing.snappingEnabled = false;
+  await controller.load(A);
+  let lost = true;
+  server.hook = (call, apply) => {
+    const result = apply();
+    if (call.options.method === 'PUT' && lost) { lost = false; throw new Error('lost after commit'); }
+    return result;
+  };
+  controller.update(A, disabled, { immediate: true }); await pump();
+  assert.equal(server.puts()[0].body.state.editing.snappingEnabled, false);
+  await clock.tick(10);
+  assert.deepEqual(server.puts()[0].body, server.puts()[1].body);
+  assert.equal(server.data(A).revision, 1); assert.equal(controller.hasUnsaved(), false);
+  assert.equal(readStoredWorkspaceState(A, storage).editing.snappingEnabled, false);
+  assert.equal((await controller.load(B)).editing.snappingEnabled, true);
+  controller.update(B, state(22)); await controller.flush();
+  assert.equal(server.data(B).state.editing.snappingEnabled, true);
+  assert.equal((await controller.load(A, { reload: true })).editing.snappingEnabled, false);
+  assert.equal(server.data(A).state.editing.snappingEnabled, false);
+});
+
+test('a PUT acknowledgement cannot omit the magnet field even when its default would match', async t => {
+  const { controller, server } = fixture(t);
+  await controller.load(A);
+  server.hook = (call, apply) => {
+    const result = apply();
+    if (call.options.method !== 'PUT') return result;
+    const data = server.data(A); delete data.state.editing.snappingEnabled;
+    return response({ ok: true, data });
+  };
+  controller.update(A, state(12), { immediate: true }); await pump();
+  assert.equal(controller.hasUnsaved(), true); assert.equal(controller.getStatus(A).phase, 'pending');
+  assert.equal(controller.getStatus(A).revision, 0);
+  server.hook = null; await controller.flush();
+  assert.deepEqual(server.puts()[0].body, server.puts()[1].body);
+  assert.equal(server.data(A).revision, 1); assert.equal(controller.hasUnsaved(), false);
+});
+
 test('absent or malformed legacy storage does not schedule a default-state write', async t => {
   const { controller, server, storage, clock } = fixture(t);
   storage.setItem(`mioon.workspace.v1:${A}`, '{broken');
@@ -324,6 +395,15 @@ test('partial, unbounded or unexpected successful remote states cannot become wr
   ];
   const outOfBounds = durableWorkspaceState(state()); outOfBounds.editing.playhead = 999999; malformed.push(outOfBounds);
   const wrongId = durableWorkspaceState(state()); wrongId.canvas.selectedId = 'unexpected-text'; malformed.push(wrongId);
+  for (const bad of [null, 0, 1, 'true', 'false', [], {}]) {
+    const wrongMagnet = durableWorkspaceState(state()); wrongMagnet.editing.snappingEnabled = bad; malformed.push(wrongMagnet);
+  }
+  for (const key of Object.keys(durableWorkspaceState(state()).editing).filter(key => key !== 'snappingEnabled')) {
+    const partialLegacy = durableWorkspaceState(state());
+    delete partialLegacy.editing.snappingEnabled; delete partialLegacy.editing[key]; malformed.push(partialLegacy);
+  }
+  const unknownLegacy = durableWorkspaceState(state()); delete unknownLegacy.editing.snappingEnabled;
+  unknownLegacy.editing.magnet = true; malformed.push(unknownLegacy);
   for (const value of malformed) {
     const { controller, server, storage, clock } = fixture(t);
     writeWorkspaceState(A, state(10), storage);

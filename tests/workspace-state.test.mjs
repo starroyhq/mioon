@@ -24,7 +24,7 @@ const projectData = () => ({
 const saved = () => ({
   ...defaultWorkspaceState(), activeMode: 'editing',
   canvas: { viewport: { x: 132, y: -56, zoom: .67 }, selectedId: 'shot-a', selectedEdgeId: 'reference-edge', inspectorTab: 'versions', highlightedVersionId: 'version-1', storyboardOpen: false, miniMap: true },
-  editing: { selectedClipId: 'clip-a', quickAssetId: 'asset-v1', previewKind: 'source', playhead: 93, pixelsPerSecond: 135, scrollLeft: 412, scrollTop: 27, timelineCollapsed: false },
+  editing: { selectedClipId: 'clip-a', quickAssetId: 'asset-v1', previewKind: 'source', playhead: 93, pixelsPerSecond: 135, scrollLeft: 412, scrollTop: 27, timelineCollapsed: false, snappingEnabled: false },
   shared: { assetFilter: 'video', assetSearch: 'synthetic', assetsCollapsed: false, inspectorCollapsed: false },
 });
 
@@ -34,8 +34,27 @@ test('new projects open Canvas with storyboard collapsed and independent Editing
   assert.equal(a.canvas.storyboardOpen, false);
   assert.equal(a.editing.previewKind, 'timeline');
   assert.equal(a.editing.timelineCollapsed, false);
+  assert.equal(a.editing.snappingEnabled, true);
   a.canvas.viewport = { x: 1, y: 2, zoom: 1 }; a.editing.playhead = 120;
+  a.editing.snappingEnabled = false;
   assert.equal(b.canvas.viewport, null); assert.equal(b.editing.playhead, 0);
+  assert.equal(b.editing.snappingEnabled, true);
+});
+
+test('legacy v1 cache defaults only the new magnet preference without a read mutation', () => {
+  const storage = new MemoryStorage(), legacy = saved();
+  delete legacy.editing.snappingEnabled;
+  const raw = JSON.stringify(legacy);
+  storage.setItem('mioon.workspace.v1:project-a', raw);
+  assert.deepEqual(readWorkspaceState('project-a', storage), { ...legacy, editing: { ...legacy.editing, snappingEnabled: true } });
+  assert.equal(storage.getItem('mioon.workspace.v1:project-a'), raw);
+  assert.equal('snappingEnabled' in legacy.editing, false);
+  for (const value of [null, 0, 1, 'false', 'true']) {
+    legacy.editing.snappingEnabled = value;
+    assert.equal(normalizeWorkspaceState(legacy).editing.snappingEnabled, true);
+  }
+  legacy.editing.snappingEnabled = false;
+  assert.equal(normalizeWorkspaceState(legacy).editing.snappingEnabled, false);
 });
 
 test('project-local view state survives reload without sharing mode, selection or geometry', () => {

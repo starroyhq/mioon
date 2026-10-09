@@ -28,6 +28,7 @@ import { migrateBrowserStorage } from './storage-migration.js';
 import { timelineHistoryState } from './timeline-history.js';
 import { timelineHistoryActionForKey, timelineSplitActionForKey } from './timeline-keyboard.js';
 import { timelineSplitState } from './timeline-split.js';
+import { assetTimelineDuration } from './timeline-snapping.js';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, isReferenceEdge, referenceForShot, isReferenceOperation, hasPendingReference, isImageReferenceNode, referenceAttachIssue, canvasEdge } from './reference-connections.js';
 
 const emptyData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null, timelineHistory: null };
@@ -504,17 +505,20 @@ export default function App() {
     updateView('editing', { selectedClipId: id, quickAssetId: null, playhead: clip.startFrame, ...(showPreview ? { previewKind: 'source' } : {}) });
     updateView('activeMode', 'editing'); setInspectorCollapsed(false); setMobilePanel('canvas');
   }
-  async function addTimelineAsset(assetId, trackId, startFrame) {
+  async function addTimelineAsset(assetId, trackId, startFrame, dropSnapshot) {
+    if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (!await guardNavigation('当前面板有未保存修改。放弃修改并加入时间线？')) return;
     const state = dataRef.current, asset = state.assets.find(a => a.id === assetId), tl = state.timeline;
     if (!asset || !tl) return;
     const kind = assetKind(asset) === 'audio' ? 'audio' : 'video';
     const track = tl.tracks.find(t => t.id === trackId) || (!trackId && tl.tracks.find(t => t.kind === kind));
     if (!track || track.kind !== kind) { notify(`此素材需要${kind === 'audio' ? '音频' : '画面'}轨道。请拖到兼容轨道。`, 'warning'); return; }
-    const durationFrames = assetKind(asset) === 'image' ? 90 : Math.max(1, Math.floor(Number(asset.duration || 2) * 30 + 1e-6));
+    const length = assetTimelineDuration(asset);
+    if (!length.known) { notify(length.note, 'warning'); return; }
+    const durationFrames = dropSnapshot?.durationFrames ?? length.durationFrames;
     const start = startFrame ?? Math.max(0, ...tl.clips.filter(c => c.trackId === track.id).map(c => c.startFrame + c.durationFrames));
     const before = new Set(tl.clips.map(c => c.id));
-    const result = await mutateTimeline('timeline.clip.add', { trackId: track.id, assetId, name: asset.name, startFrame: start, durationFrames, sourceInFrame: 0 });
+    const result = await mutateTimeline('timeline.clip.add', { trackId: track.id, assetId, name: asset.name, startFrame: start, durationFrames, sourceInFrame: 0 }, dropSnapshot?.expectedRevision);
     if (result) {
       navigationEpoch.current++;
       const added = result.clips.find(c => !before.has(c.id));
@@ -532,14 +536,15 @@ export default function App() {
       updateView('shared', { assetSearch: source.asset.name, assetFilter: 'all', assetsCollapsed: false }); setMobilePanel('assets'); setPreviewAsset(source.asset);
     }
   }
-  async function moveTimelineClip(clipId, trackId, startFrame) {
+  async function moveTimelineClip(clipId, trackId, startFrame, dropSnapshot) {
+    if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (clipDirty && !await guardNavigation('当前片段有未保存修改。放弃修改并移动片段？')) return;
     const clip = dataRef.current.timeline?.clips.find(c => c.id === clipId);
     const track = dataRef.current.timeline?.tracks.find(t => t.id === trackId);
     const asset = dataRef.current.assets.find(a => a.id === clip?.assetId);
     if (!clip || !track) return;
     if (track.kind !== (assetKind(asset) === 'audio' ? 'audio' : 'video')) { notify('画面片段与音频片段只能移动到各自兼容的轨道。', 'warning'); return; }
-    const result = await mutateTimeline('timeline.clip.update', { clipId, patch: { trackId, startFrame } });
+    const result = await mutateTimeline('timeline.clip.update', { clipId, patch: { trackId, startFrame } }, dropSnapshot?.expectedRevision);
     if (result) { setSelectedClipId(clipId); setPlayhead(startFrame); }
   }
   async function renderTimeline(purpose) {

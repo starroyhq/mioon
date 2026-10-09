@@ -6,10 +6,10 @@ import {AppError, schemas} from '@mioon/contracts';
 export const MAX_WORKSPACE_PREFERENCES_BYTES = 16 * 1024;
 const entityId = schemas['project.get'].shape.projectId;
 const invalid = (path, message) => { throw new AppError('VALIDATION_ERROR', '工作区偏好字段无效', 400, {issues: [{path, message}]}); };
-function object(value, keys, path) {
+function object(value, keys, path, optional = []) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) invalid(path, 'Expected an object');
   const actual = Reflect.ownKeys(value);
-  if (actual.length !== keys.length || actual.some(key => !keys.includes(key))) invalid(path, 'Expected exactly the documented fields');
+  if (keys.some(key => !Object.hasOwn(value, key)) || actual.some(key => !keys.includes(key) && !optional.includes(key))) invalid(path, 'Expected exactly the documented fields');
   return value;
 }
 function oneOf(value, choices, path) {
@@ -30,7 +30,7 @@ const bool = (value, path) => oneOf(value, [true, false], path);
 export function parseWorkspacePreferencesState(value) {
   const s = object(value, ['version', 'activeMode', 'canvas', 'editing', 'shared'], ['state']);
   const c = object(s.canvas, ['viewport', 'selectedId', 'selectedEdgeId', 'inspectorTab', 'highlightedVersionId', 'storyboardOpen', 'miniMap'], ['state', 'canvas']);
-  const e = object(s.editing, ['selectedClipId', 'quickAssetId', 'previewKind', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'timelineCollapsed'], ['state', 'editing']);
+  const e = object(s.editing, ['selectedClipId', 'quickAssetId', 'previewKind', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'timelineCollapsed'], ['state', 'editing'], ['snappingEnabled']);
   const shared = object(s.shared, ['assetFilter', 'assetsCollapsed', 'inspectorCollapsed'], ['state', 'shared']);
   let viewport = null;
   if (c.viewport !== null) {
@@ -64,6 +64,8 @@ export function parseWorkspacePreferencesState(value) {
       scrollLeft: numeric(e.scrollLeft, 0, 1e7, ['state', 'editing', 'scrollLeft']),
       scrollTop: numeric(e.scrollTop, 0, 1e6, ['state', 'editing', 'scrollTop']),
       timelineCollapsed: bool(e.timelineCollapsed, ['state', 'editing', 'timelineCollapsed']),
+      // Missing only in legacy v1 records; an explicit value must be boolean.
+      snappingEnabled: Object.hasOwn(e, 'snappingEnabled') ? bool(e.snappingEnabled, ['state', 'editing', 'snappingEnabled']) : true,
     },
     shared: {
       assetFilter: oneOf(shared.assetFilter, ['all', 'image', 'video', 'audio'], ['state', 'shared', 'assetFilter']),
@@ -80,7 +82,10 @@ export function createWorkspacePreferences(store) {
     if (!store.get('projects', projectId)) throw new AppError('NOT_FOUND', '找不到项目', 404, {projectId});
   };
   const current = projectId => db.prepare('SELECT revision,state FROM workspace_preferences WHERE projectId=?').get(projectId);
-  const result = (projectId, row) => ({projectId, revision: row?.revision ?? 0, state: row ? JSON.parse(row.state) : null});
+  // Normalize legacy v1 records in memory, without changing their stored bytes
+  // or revision on reads or exact replay.
+  const canonical = state => JSON.stringify(parseWorkspacePreferencesState(JSON.parse(state)));
+  const result = (projectId, row) => ({projectId, revision: row?.revision ?? 0, state: row ? parseWorkspacePreferencesState(JSON.parse(row.state)) : null});
   return {
     get(projectId) {
       requireProject(projectId);
@@ -98,7 +103,7 @@ export function createWorkspacePreferences(store) {
         // Only an exact retry of the most recent accepted write is replayable.
         // An old renderer must never roll back a newer view, even to an equal
         // state that happened to occur at an earlier revision.
-        if (previous && revision === expectedRevision + 1 && previous.state === state) return result(projectId, previous);
+        if (previous && revision === expectedRevision + 1 && canonical(previous.state) === state) return result(projectId, previous);
         if (revision !== expectedRevision) throw new AppError('PREFERENCES_CONFLICT', '工作区视图已在其他窗口更新，请先重新读取', 409, {projectId, expectedRevision, currentRevision: revision});
         if (revision === Number.MAX_SAFE_INTEGER) throw new AppError('PREFERENCES_REVISION_EXHAUSTED', '工作区视图版本已达上限', 409, {projectId, currentRevision: revision});
         const next = {revision: revision + 1, state};

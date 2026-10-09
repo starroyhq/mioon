@@ -1,5 +1,6 @@
 import React from 'react';
 const paths = {
+  magnet: <><path d="M5 3v10a7 7 0 0 0 14 0V3h-5v10a2 2 0 0 1-4 0V3Z" /><path d="M5 7h5m4 0h5" /></>,
   music: <><path d="M9 18V5l11-2v13M9 8l11-2" /><ellipse cx="6" cy="18" rx="3" ry="2.5" /><ellipse cx="17" cy="16" rx="3" ry="2.5" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   scissors: <><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="m8 8 13 13M8 16 21 3" /></>,

@@ -24,6 +24,13 @@ const sameShape = (expected, received) => {
   const keys = Object.keys(expected);
   return keys.length === Object.keys(received).length && keys.every(key => Object.hasOwn(received, key) && sameShape(expected[key], received[key]));
 };
+const validRemoteState = (state, allowLegacy) => {
+  const expected = durableWorkspaceState(state);
+  // A legacy v1 GET may omit this one additive field. Do not generalize this
+  // exception to partial states or PUT acknowledgements of the submitted body.
+  if (allowLegacy && state?.editing && !Object.hasOwn(state.editing, 'snappingEnabled')) delete expected.editing.snappingEnabled;
+  return sameShape(expected, state);
+};
 const errorInfo = error => ({ code: error?.code || 'NETWORK', message: error?.message || 'Workspace preferences are unavailable.' });
 const failure = (message, code = 'NETWORK', transient = true) => Object.assign(new Error(message), { code, transient });
 
@@ -104,7 +111,7 @@ export function createWorkspacePreferences({
         const data = envelope.data;
         if (!data || data.projectId !== entry.projectId || !Number.isSafeInteger(data.revision) || data.revision < 0 ||
           (data.state === null ? data.revision !== 0 : data.revision === 0 || data.state?.version !== 1 ||
-            !sameShape(durableWorkspaceState(data.state), data.state))) {
+            !validRemoteState(data.state, method === 'GET'))) {
           throw failure('Workspace preferences returned an invalid revision or state.');
         }
         if (method === 'PUT' && (data.revision !== body.expectedRevision + 1 || keyOf(durableWorkspaceState(data.state)) !== keyOf(body.state))) {

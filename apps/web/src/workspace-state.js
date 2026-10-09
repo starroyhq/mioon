@@ -6,7 +6,7 @@ const number = (value, fallback, min, max) => Number.isFinite(value) ? Math.max(
 export function defaultWorkspaceState() {
   return { version: 1, activeMode: 'canvas',
     canvas: { viewport: null, selectedId: null, selectedEdgeId: null, inspectorTab: 'settings', highlightedVersionId: null, storyboardOpen: false, miniMap: false },
-    editing: { selectedClipId: null, quickAssetId: null, previewKind: 'timeline', playhead: 0, pixelsPerSecond: 76, scrollLeft: 0, scrollTop: 0, timelineCollapsed: false },
+    editing: { selectedClipId: null, quickAssetId: null, previewKind: 'timeline', playhead: 0, pixelsPerSecond: 76, scrollLeft: 0, scrollTop: 0, timelineCollapsed: false, snappingEnabled: true },
     shared: { assetFilter: 'all', assetSearch: '', assetsCollapsed: false, inspectorCollapsed: false } };
 }
 export function normalizeWorkspaceState(value) {
@@ -16,7 +16,7 @@ export function normalizeWorkspaceState(value) {
   return { version: 1, activeMode: value.activeMode === 'editing' ? 'editing' : 'canvas',
     canvas: { viewport: c.viewport && ['x', 'y', 'zoom'].every(key => Number.isFinite(c.viewport[key])) ? { x: number(c.viewport.x, 0, -1e6, 1e6), y: number(c.viewport.y, 0, -1e6, 1e6), zoom: number(c.viewport.zoom, 1, .2, 1.75) } : null,
       selectedId: id(c.selectedId), selectedEdgeId: id(c.selectedEdgeId), inspectorTab: c.inspectorTab === 'versions' ? 'versions' : 'settings', highlightedVersionId: id(c.highlightedVersionId), storyboardOpen: c.storyboardOpen === true, miniMap: c.miniMap === true },
-    editing: { selectedClipId: id(e.selectedClipId), quickAssetId: id(e.quickAssetId), previewKind: e.previewKind === 'source' ? 'source' : 'timeline', playhead: Math.round(number(e.playhead, 0, 0, 18000)), pixelsPerSecond: number(e.pixelsPerSecond, 76, 28, 220), scrollLeft: number(e.scrollLeft, 0, 0, 1e7), scrollTop: number(e.scrollTop, 0, 0, 1e6), timelineCollapsed: e.timelineCollapsed === true },
+    editing: { selectedClipId: id(e.selectedClipId), quickAssetId: id(e.quickAssetId), previewKind: e.previewKind === 'source' ? 'source' : 'timeline', playhead: Math.round(number(e.playhead, 0, 0, 18000)), pixelsPerSecond: number(e.pixelsPerSecond, 76, 28, 220), scrollLeft: number(e.scrollLeft, 0, 0, 1e7), scrollTop: number(e.scrollTop, 0, 0, 1e6), timelineCollapsed: e.timelineCollapsed === true, snappingEnabled: e.snappingEnabled !== false },
     shared: { assetFilter: ['all', 'image', 'video', 'audio'].includes(s.assetFilter) ? s.assetFilter : 'all', assetSearch: typeof s.assetSearch === 'string' ? s.assetSearch.slice(0, 500) : '', assetsCollapsed: s.assetsCollapsed === true, inspectorCollapsed: s.inspectorCollapsed === true } };
 }
 export function readStoredWorkspaceState(projectId, storage) {

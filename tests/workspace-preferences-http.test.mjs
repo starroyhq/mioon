@@ -75,7 +75,7 @@ test('dedicated preferences HTTP survives a real killed/restarted backend and le
   const value = state(); value.activeMode = 'editing'; value.canvas.viewport = {x: -350, y: 250, zoom: 1.25};
   value.canvas.selectedId = businessBefore.shots[0].id; value.canvas.selectedEdgeId = randomUUID(); value.canvas.highlightedVersionId = randomUUID();
   value.canvas.storyboardOpen = true; value.canvas.miniMap = true; value.canvas.inspectorTab = 'versions';
-  value.editing = {selectedClipId: randomUUID(), quickAssetId: randomUUID(), previewKind: 'source', playhead: 92, pixelsPerSecond: 156, scrollLeft: 800, scrollTop: 120, timelineCollapsed: true};
+  value.editing = {selectedClipId: randomUUID(), quickAssetId: randomUUID(), previewKind: 'source', playhead: 92, pixelsPerSecond: 156, scrollLeft: 800, scrollTop: 120, timelineCollapsed: true, snappingEnabled: false};
   value.shared = {assetFilter: 'audio', assetsCollapsed: true, inspectorCollapsed: true};
   const payload = {expectedRevision: 0, state: value};
   const saved = await f.request(route, {method: 'PUT', input: payload});
@@ -131,6 +131,7 @@ test('preferences endpoint retains token/cookie authentication, strict origin/ho
     {input: {...input, expectedRevision: Number.MAX_SAFE_INTEGER + 1}},
     {input: {...input, state: {...input.state, token: 'sensitive-value-must-not-persist'}}},
     {input: {...input, state: {...input.state, shared: {...input.state.shared, assetSearch: 'local-only search'}}}},
+    {input: {...input, state: {...input.state, editing: {...input.state.editing, snappingEnabled: 'false'}}}},
     {raw: JSON.stringify(input).replace('"shared":{', '"shared":{"__proto__":{},')},
     {input: {...input, state: null}},
   ];

@@ -182,3 +182,12 @@ Linux 打包为本地未签名 tar.gz，发布被关闭。构建输出及准确�
 ## Mioon 命名更新
 
 当前产品、窗口、登录界面、桌面程序、CLI 和 MCP 统一为 Mioon。命令是 `pnpm exec mioon`，workspace 包是 `@mioon/*`，环境变量改用 `MIOON_*`（包括 `MIOON_ENABLE_LIVE_PROVIDER`）。旧命令、包名和环境变量不设兼容别名；请更新本机启动脚本与客户端配置。完整范围、升级与数据保护说明见 [Mioon 升级指南](docs/MIOON-MIGRATION.md)。
+
+### Timeline drag snapping
+
+Editing now has per-project magnetic snapping (default on): drag either edge near
+another clip boundary, the playhead or zero to align within 8 screen pixels. Hold
+Alt for free placement. The live span/guide is exactly the dropped integer frame;
+red overlap/type-invalid destinations never submit. Known media lengths and the
+explicit 90-frame image default support asset drops; unknown-duration media cannot
+be inserted. Explicit CLI/MCP frames are unchanged. [Acceptance and limits](docs/ACCEPTANCE-TIMELINE-SNAPPING.md).
