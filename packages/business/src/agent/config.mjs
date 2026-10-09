@@ -1,4 +1,5 @@
 import {isIP} from 'node:net';
+import {AGENT_PROTOCOLS} from '@mioon/contracts';
 import {AGENT_PRESETS} from './presets.mjs';
 
 export const MAX_AGENT_SETTINGS_BYTES = 16 * 1024;
@@ -67,12 +68,15 @@ export function normalizeAgentBaseUrl(value, {local = false, selfPort} = {}) {
   return `${url.origin}${pathname}`;
 }
 export function parseAgentConfiguration(value, options = {}) {
-  if (!exactObject(value, ['presetId', 'platformId', 'baseUrl', 'model'])) invalid();
+  if (!exactObject(value, ['presetId', 'platformId', 'baseUrl', 'model', 'protocol'])) invalid();
   const preset = AGENT_PRESETS.find(item => item.id === value.presetId);
-  if (!preset?.platforms.some(item => item.id === value.platformId)) invalid();
+  const platform = preset?.platforms.find(item => item.id === value.platformId);
+  if (!platform || typeof value.protocol !== 'string' || !Object.hasOwn(AGENT_PROTOCOLS, value.protocol) || !platform.availableProtocols.includes(value.protocol)) invalid();
   if (typeof value.model !== 'string' || !value.model.trim() || value.model.length > 200 || controls.test(value.model)) invalid();
-  return {presetId: value.presetId, platformId: value.platformId, baseUrl: normalizeAgentBaseUrl(value.baseUrl, {local: value.presetId === 'ollama', selfPort: options.selfPort}), model: value.model.trim()};
+  return {presetId: value.presetId, platformId: value.platformId, baseUrl: normalizeAgentBaseUrl(value.baseUrl, {local: value.presetId === 'ollama', selfPort: options.selfPort}), model: value.model.trim(), protocol: value.protocol};
 }
+// Credential identity deliberately excludes model and protocol; authorization
+// checks still compare the full configuration and its revision before delivery.
 export const agentCredentialBinding = configuration => JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
 export function parseAgentSettingsUpdate(value, options = {}) {
   if (!exactObject(value, ['expectedRevision', 'configuration', 'secret']) || !Number.isSafeInteger(value.expectedRevision) || value.expectedRevision < 0) invalid();

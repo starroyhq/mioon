@@ -9,7 +9,8 @@ import {startServer} from '../apps/server/src/index.mjs';
 import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
 import {startChatQaMock} from './agent-chat-qa-mock.mjs';
 
-export const chatQaRoot = path.resolve('evidence/agent-chat');
+const responsesQa = process.argv.includes('--responses');
+export const chatQaRoot = path.resolve(responsesQa ? 'evidence/agent-responses' : 'evidence/agent-chat');
 export const chatRuntime = path.join(chatQaRoot, 'browser-runtime');
 export const chatQaToken = 'agent-chat-synthetic-local-qa-token';
 export async function prepareChatQaFixture() {
@@ -37,8 +38,8 @@ if (process.argv.includes('--serve')) {
   }
   for (const project of [fixture.project, fixture.secondProject]) await direct('/api/rpc', {operation: 'project.get', input: {projectId: project.id}});
   const initial = await direct('/api/agent/settings');
-  await direct('/api/agent/settings', {expectedRevision: initial.revision, configuration: {presetId: 'ollama', platformId: 'local', baseUrl: mock.baseUrl, model: 'qwen3:8b'}, secret: {action: 'remove'}}, 'PUT');
-  const port = 4885, host = `127.0.0.1:${port}`, origin = `http://${host}`;
+  await direct('/api/agent/settings', {expectedRevision: initial.revision, configuration: {protocol: responsesQa ? 'responses' : 'chat_completions', presetId: 'ollama', platformId: 'local', baseUrl: mock.baseUrl, model: 'qwen3:8b'}, secret: {action: 'remove'}}, 'PUT');
+  const port = responsesQa ? 4886 : 4885, host = `127.0.0.1:${port}`, origin = `http://${host}`;
   let closing = false, seq = 0;
   const audit = async () => {
     const db = new DatabaseSync(path.join(fixture.workspace, 'workbench.sqlite'), {readOnly: true}); let domain;

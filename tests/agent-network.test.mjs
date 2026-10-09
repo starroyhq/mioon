@@ -39,7 +39,7 @@ test('DNS validates every answer, exact family, count and syntax; never picks ar
 });
 
 test('Ollama alone allows fixed loopback route and requires a known different self port', async () => {
-  const local = {presetId:'ollama', platformId:'local', baseUrl:'http://localhost:11434/v1', model:'qwen3:8b'};
+  const local = {protocol:'chat_completions',presetId:'ollama', platformId:'local', baseUrl:'http://localhost:11434/v1', model:'qwen3:8b'};
   assert.equal((await resolveAgentDestination(local,{selfPort:4318,lookup:() => assert.fail('localhost never uses DNS')})).address,'127.0.0.1');
   for (const selfPort of [undefined,11434,0,'4318',65536]) await assert.rejects(resolveAgentDestination(local,{selfPort}),{code:'AGENT_CHAT_NETWORK_DENIED'});
   for (const baseUrl of ['http://127.0.0.2:11434/v1','http://localhost:11434/api','http://10.0.0.1:11434/v1']) await assert.rejects(resolveAgentDestination({...local,baseUrl},{selfPort:4318}),{code:'AGENT_CHAT_NETWORK_DENIED'});
@@ -131,4 +131,28 @@ test('test overrides can only tighten defaults, never disable or raise network b
 test('Azure platform VIP is denied as a literal, sole DNS answer and mixed public DNS answer', async () => {
   await assert.rejects(resolveAgentDestination({...configuration,baseUrl:'https://168.63.129.16/v1'},{lookup:()=>assert.fail('literal does not resolve')}),{code:'AGENT_CHAT_NETWORK_DENIED'});
   for(const answers of [[{address:'168.63.129.16',family:4}],[{address:'8.8.8.8',family:4},{address:'168.63.129.16',family:4}]]) await assert.rejects(resolveAgentDestination(configuration,{lookup:async()=>answers}),{code:'AGENT_CHAT_NETWORK_DENIED'});
+});
+
+test('only validated protocol enum derives either fixed transport suffix, including exact Ollama loopback path', async () => {
+  for (const protocol of ['chat_completions','responses']) {
+    const expected=protocol==='responses'?'/responses':'/chat/completions';
+    assert.equal((await resolveAgentDestination({...configuration,protocol},{lookup:publicAnswers})).path,`/v1${expected}`);
+    const local={protocol,presetId:'ollama',platformId:'local',baseUrl:'http://localhost:11434/v1',model:'qwen3:8b'};
+    assert.equal((await resolveAgentDestination(local,{selfPort:4318})).path,`/v1${expected}`);
+    await assert.rejects(resolveAgentDestination(local,{selfPort:11434}),{code:'AGENT_CHAT_NETWORK_DENIED'});
+  }
+  for(const protocol of [undefined,'/responses','responses?key=x','responses/../private','constructor','__proto__']) await assert.rejects(resolveAgentDestination({...configuration,protocol},{lookup:()=>assert.fail('no DNS for invalid enum')}),{code:'AGENT_CHAT_NETWORK_DENIED'});
+});
+
+test('Responses preserves mixed-DNS denial and TLS/peer verification before secret/body transmission',async()=>{
+  const responses={...openArgs,configuration:{...configuration,protocol:'responses'}};
+  const denied=injectedRequest();await assert.rejects(createAgentTransport({lookup:async()=>[{address:'8.8.8.8',family:4},{address:'127.0.0.1',family:4}],httpsRequest:denied.request})(responses),{code:'AGENT_CHAT_NETWORK_DENIED'});assert.equal(denied.calls,0);
+  for(const mismatch of [{peer:'127.0.0.1'},{authorized:false}]){const fixture=injectedRequest(mismatch);await assert.rejects(createAgentTransport({lookup:publicAnswers,httpsRequest:fixture.request})(responses));assert.equal(fixture.ends,0);}
+  const fixture=injectedRequest({beforeConnect:state=>assert.equal(state.ends,0)});const stream=await createAgentTransport({lookup:publicAnswers,httpsRequest:fixture.request})(responses);assert.equal(fixture.options.path,'/v1/responses');assert.equal(fixture.ends,1);stream.close();
+});
+
+test('Responses cancellation while DNS is pending cannot open a later socket',async()=>{
+  let resolveLookup,calls=0;const controller=new AbortController();
+  const pending=createAgentTransport({lookup:()=>new Promise(resolve=>{resolveLookup=resolve;}),httpsRequest:()=>{calls++;assert.fail('late socket');}})({...openArgs,configuration:{...configuration,protocol:'responses'},signal:controller.signal});
+  controller.abort();await assert.rejects(pending,{code:'AGENT_CHAT_ABORTED'});resolveLookup(await publicAnswers());await delay(5);assert.equal(calls,0);
 });

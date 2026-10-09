@@ -1,9 +1,10 @@
+import {AGENT_CHAT_LIMITS} from './chat-policy.mjs';
+export {CHAT_SYSTEM_INSTRUCTION, AGENT_CHAT_LIMITS} from './chat-policy.mjs';
 import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.mjs';
 import {agentChatError} from './chat-errors.mjs';
 import {createAgentTransport} from './network-policy.mjs';
 import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.mjs';
 
-export const AGENT_CHAT_LIMITS = Object.freeze({maxMessages: 64, maxInputBytes: 64 * 1024, maxRequestBytes: 128 * 1024, maxOutputBytes: 256 * 1024, maxOutputTokens: 2048});
 // These are explicit text-only profiles, not a vendor-wide compatibility claim.
 // Model aliases/edits remain saveable settings, but unsupported named profiles
 // fail before inference. Sources and region/account caveats: AGENT-PROVIDERS.md.
@@ -42,11 +43,17 @@ function safeUsage(value) {
   if (Object.hasOwn(result, 'total_tokens') && ((result.prompt_tokens || 0) > result.total_tokens || (result.completion_tokens || 0) > result.total_tokens)) fail('AGENT_CHAT_PROTOCOL_ERROR');
   return Object.keys(result).length ? result : undefined;
 }
-export function buildAgentChatRequest({configuration, apiKey, messages, selfPort}) {
+export function validateAgentChatConfiguration(configuration, {selfPort} = {}) {
   let config;
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { fail('AGENT_CHAT_VALIDATION'); }
+  if (config.protocol !== 'chat_completions') fail('AGENT_CHAT_VALIDATION');
   const profile = AGENT_CHAT_PROFILES[config.presetId];
   if (!profile || (profile.models && !profile.models.includes(config.model))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  return config;
+}
+export function buildAgentChatRequest({configuration, apiKey, messages, selfPort}) {
+  const config = validateAgentChatConfiguration(configuration, {selfPort});
+  const profile = AGENT_CHAT_PROFILES[config.presetId];
   if (config.presetId !== 'ollama' && (typeof apiKey !== 'string' || !apiKey)) fail('AGENT_CHAT_KEY_REQUIRED');
   if (apiKey != null && apiKey !== '' && (typeof apiKey !== 'string' || Buffer.byteLength(apiKey) > MAX_AGENT_SECRET_BYTES || !/^[\x21-\x7e]+$/.test(apiKey))) fail('AGENT_CHAT_VALIDATION');
   if (!Array.isArray(messages) || !messages.length || messages.length > AGENT_CHAT_LIMITS.maxMessages) fail('AGENT_CHAT_VALIDATION');

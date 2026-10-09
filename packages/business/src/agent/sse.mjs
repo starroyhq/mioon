@@ -3,18 +3,20 @@ import {agentChatError} from './chat-errors.mjs';
 export const AGENT_SSE_LIMITS = Object.freeze({maxBytes: 1024 * 1024, maxEventBytes: 64 * 1024, maxEvents: 8192});
 
 /** Bounded UTF-8 SSE framing. No reconnect, event-id execution or URL handling.
- * A final unterminated data frame is truncated, never implicitly dispatched. */
+ * A final unterminated data frame is truncated, never implicitly dispatched.
+ * Opt-in eventName preserves explicit naming (including empty names), so native
+ * protocol validation can distinguish it from default data-only framing. */
 export async function* parseAgentSse(source, options = {}) {
   const limits = {...AGENT_SSE_LIMITS, ...options};
   const decoder = new TextDecoder('utf-8', {fatal: true});
   let line = '', lineBytes = 0, skipLF = false, bytes = 0, eventBytes = 0, events = 0;
-  let event = '', data = [], hasData = false;
+  let event = '', eventNamed = false, data = [], hasData = false;
   function acceptLine(value) {
     eventBytes += Buffer.byteLength(value, 'utf8') + 1;
     if (eventBytes > limits.maxEventBytes) throw agentChatError('AGENT_CHAT_LIMIT');
     if (!value) {
-      const result = hasData ? {event: event || 'message', data: data.join('\n')} : null;
-      event = ''; data = []; hasData = false; eventBytes = 0;
+      const result = hasData ? {event: event || 'message', data: data.join('\n'), ...(options.includeEventName ? {eventName: eventNamed ? event : null} : {})} : null;
+      event = ''; eventNamed = false; data = []; hasData = false; eventBytes = 0;
       if (result && ++events > limits.maxEvents) throw agentChatError('AGENT_CHAT_LIMIT');
       return result;
     }
@@ -24,7 +26,7 @@ export async function* parseAgentSse(source, options = {}) {
     let field = colon === -1 ? '' : value.slice(colon + 1);
     if (field.startsWith(' ')) field = field.slice(1);
     if (name === 'data') { hasData = true; data.push(field); }
-    else if (name === 'event') event = field;
+    else if (name === 'event') { event = field; eventNamed = true; }
     return null;
   }
   function* consume(text) {

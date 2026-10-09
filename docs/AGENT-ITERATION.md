@@ -2,9 +2,9 @@
 
 Date: 2026-10-09 (UTC)
 
-Status: **stage 1 settings committed (`66a0193`); stage 2A CC-only text transport implemented locally with runtime evidence; stage 2B Responses required immediately next**. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md), [chat acceptance](AGENT-CHAT.md) and [Responses contract](AGENT-RESPONSES.md). Scoped tools, durable replay and generation approvals remain planned. The companion [provider research](AGENT-PROVIDERS.md) does not certify live compatibility.
+Status: **stage 1 settings committed (`66a0193`); stage 2A committed (`3db1a02`); stage 2B dual-protocol/right-dock implementation verified locally, pending parent commit**. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md), [chat acceptance](AGENT-CHAT.md) and [Responses contract](AGENT-RESPONSES.md). Scoped tools, durable replay and generation approvals remain planned. The companion [provider research](AGENT-PROVIDERS.md) does not certify live compatibility.
 
-The architecture review used local HEAD `821600f` and the then-uncommitted panel work. The panel release was subsequently handed off as `ed23ef7`, the baseline for the first Agent settings increment. Preserve that panel work. Secure settings were committed as `66a0193`; `80334cf` adds roadmap documentation. Stage 2A now has local code/runtime evidence; dual-protocol support remains incomplete until immediate stage 2B.
+The architecture review used local HEAD `821600f` and the then-uncommitted panel work. The panel release was subsequently handed off as `ed23ef7`, the baseline for the first Agent settings increment. Preserve that panel work. Secure settings were committed as `66a0193`; `80334cf` adds roadmap documentation. Stage 2A was committed as `3db1a02`. Stage 2B now has independent Responses/CC adapters and inline right-dock code; local acceptance passed; parent review/local commit is pending.
 
 ## Outcome and scope
 

@@ -2,7 +2,7 @@
 
 Research date: 2026-10-09 (UTC)
 
-Status: **official-documentation research; catalog/settings implemented locally, live compatibility unverified**. No provider request, account-access check, real credentials or live compatibility test was performed. The settings UI uses these presets. The CC-only text adapter has local mock/runtime evidence in increment 2A; the separate Responses adapter is required immediately in 2B. Scoped Agent execution is not delivered. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md) and [iteration plan](AGENT-ITERATION.md).
+Status: **official-documentation research; catalog/settings implemented locally, live compatibility unverified**. No provider request, account-access check, real credentials or live compatibility test was performed. The settings UI uses these presets. The CC-only text adapter has local mock/runtime evidence in increment 2A; the separate Responses adapter is implemented locally in 2B with profile fixtures; local synthetic runtime acceptance passed; live vendor compatibility remains unverified. See [Responses profiles and limitations](AGENT-RESPONSES.md). Scoped Agent execution is not delivered. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md) and [iteration plan](AGENT-ITERATION.md).
 
 ## Compatibility and status labels
 

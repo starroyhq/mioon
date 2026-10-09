@@ -43,21 +43,31 @@ export function sanitizeAgentSettingsResult(value) {
   const configuration = parseAgentConfiguration(value.configuration);
   return {revision: value.revision, configuration, secret: {configured: value.secret.configured, storage: value.secret.storage}, storage: publicStorage(value.storage), presets: structuredClone(AGENT_PRESETS), scope: 'settings_only', verification: 'not_tested'};
 }
+// The only legacy projection lives on the read path. Public DTOs, writes and
+// trusted acquisition always require an explicit protocol; no default fallback.
+function parseLegacyConfiguration(value) {
+  if (!exactObject(value, ['presetId', 'platformId', 'baseUrl', 'model'])) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+  const configuration = parseAgentConfiguration({...value, protocol: 'chat_completions'});
+  const {protocol, ...legacy} = configuration;
+  if (JSON.stringify(legacy) !== JSON.stringify(value)) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+  return configuration;
+}
 function parseEnvelope(value) {
-  if (!exactObject(value, ['version', 'revision', 'configuration', 'secret']) || value.version !== 1 || !Number.isSafeInteger(value.revision) || value.revision < 0) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
-  const configuration = parseAgentConfiguration(value.configuration);
-  if (JSON.stringify(configuration) !== JSON.stringify(value.configuration)) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+  if (!exactObject(value, ['version', 'revision', 'configuration', 'secret']) || ![1, 2].includes(value.version) || !Number.isSafeInteger(value.revision) || value.revision < 0) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+  const configuration = value.version === 1 ? parseLegacyConfiguration(value.configuration) : parseAgentConfiguration(value.configuration);
+  if (value.version === 2 && JSON.stringify(configuration) !== JSON.stringify(value.configuration)) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
   let secret = null;
   if (value.secret !== null) {
     if (!exactObject(value.secret, ['binding', 'encrypted']) || value.secret.binding !== agentCredentialBinding(configuration) || typeof value.secret.encrypted !== 'string' || !value.secret.encrypted || value.secret.encrypted.length > 48 * 1024 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.secret.encrypted)) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
     secret = {binding: value.secret.binding, encrypted: value.secret.encrypted};
   }
-  return {version: 1, revision: value.revision, configuration, secret};
+  // Projection changes no bytes on disk, revision, binding or ciphertext.
+  return {version: 2, revision: value.revision, configuration, secret};
 }
 /** Single active Agent profile; not the video-provider registry. Secrets are
  * write-only publicly; trusted inference acquisition is an unexported-to-HTTP capability. */
 export async function createAgentSettings({persistence, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}) {
-  let state = {version: 1, revision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null};
+  let state = {version: 2, revision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null};
   let session = null, fault = null, tail = Promise.resolve(), closing = false, vaultReadBlocked = false;
   const capabilities = () => {
     const value = publicStorage(typeof storage === 'function' ? storage() : storage);
@@ -139,7 +149,7 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
             nextSecret = {binding, encrypted};
           } else nextSession = {binding, value: update.secret.value};
         }
-        const candidate = {version: 1, revision: state.revision + 1, configuration: update.configuration, secret: nextSecret};
+        const candidate = {version: 2, revision: state.revision + 1, configuration: update.configuration, secret: nextSecret};
         // Validate the encrypted codec result before it reaches persistent storage.
         try { parseEnvelope(candidate); } catch { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); }
         try { await persistence.save(candidate); }

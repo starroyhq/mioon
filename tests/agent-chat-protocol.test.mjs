@@ -19,14 +19,14 @@ async function fixture(t, handler, dependencies) {
   });
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
   t.after(async () => {server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));});
-  const configuration={presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'qwen3:8b'};
+  const configuration={protocol:'chat_completions',presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'qwen3:8b'};
   return {calls, configuration, run:(options={}) => (dependencies ? createChatCompletionGateway(dependencies) : streamChatCompletion)({configuration,apiKey:null,messages,selfPort:1,...options})};
 }
 
 test('named profiles use exact non-thinking controls, bounded token fields and no tool/continuation options', () => {
   for (const preset of AGENT_PRESETS) {
     const platform=preset.platforms[0];
-    const configuration={presetId:preset.id,platformId:platform.id,baseUrl:platform.baseUrl||'https://fixture.example.com/v1',model:platform.model||'custom-text-model'};
+    const configuration={protocol:'chat_completions',presetId:preset.id,platformId:platform.id,baseUrl:platform.baseUrl||'https://fixture.example.com/v1',model:platform.model||'custom-text-model'};
     const result=JSON.parse(buildAgentChatRequest({configuration,apiKey:'synthetic-key',messages,selfPort:4318}).body);
     assert.equal(result.stream,true); assert.equal(result[AGENT_CHAT_PROFILES[preset.id].tokenField],2048);
     for (const field of ['tools','tool_choice','temperature','parallel_tool_calls','response_format','previous_response_id','extra_headers']) assert.equal(result[field],undefined);
@@ -38,7 +38,7 @@ test('named profiles use exact non-thinking controls, bounded token fields and n
 });
 
 test('request input validation rejects tools, arbitrary headers, unsafe keys, excess size and malformed Unicode', () => {
-  const configuration={presetId:'custom',platformId:'custom',baseUrl:'https://fixture.example.com/v1',model:'custom-text-model'};
+  const configuration={protocol:'chat_completions',presetId:'custom',platformId:'custom',baseUrl:'https://fixture.example.com/v1',model:'custom-text-model'};
   const base={configuration,apiKey:'synthetic-key',messages};
   for (const input of [{...base,apiKey:null},{...base,apiKey:'synthetic\nkey'},{...base,apiKey:'密钥'},{...base,messages:[{role:'tool',content:'x'}]},{...base,messages:[{role:'user',content:'x',tool_calls:[]}]},{...base,messages:[{role:'user',content:[{type:'text',text:'x'}]}]},{...base,messages:[{role:'user',content:'\ud800'}]},{...base,messages:Array(65).fill(messages[0])},{...base,configuration:{...configuration,headers:{x:'y'}}}]) assert.throws(()=>buildAgentChatRequest(input),error=>['AGENT_CHAT_KEY_REQUIRED','AGENT_CHAT_VALIDATION'].includes(error.code));
   assert.throws(()=>buildAgentChatRequest({...base,messages:[{role:'user',content:'x'.repeat(AGENT_CHAT_LIMITS.maxInputBytes+1)}]}),{code:'AGENT_CHAT_LIMIT'});
@@ -171,7 +171,7 @@ test('oversized response headers are rejected by real Node HTTP parsing without 
   const server=createServer((_request,response)=>{response.writeHead(200,{'Content-Type':'text/event-stream','X-Oversized':'synthetic-private-marker'.repeat(1000)});response.end(complete('never accepted'));});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
-  const configuration={presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'qwen3:8b'};
+  const configuration={protocol:'chat_completions',presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'qwen3:8b'};
   await assert.rejects(collect(streamChatCompletion({configuration,apiKey:null,messages,selfPort:1})),error=>error.code==='AGENT_CHAT_CONNECT_FAILED'&&!error.message.includes('marker'));
 });
 

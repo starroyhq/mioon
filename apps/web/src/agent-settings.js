@@ -1,6 +1,11 @@
+import { AGENT_PROTOCOLS, deriveAgentEndpoint } from '@mioon/contracts';
+export { AGENT_PROTOCOLS, deriveAgentEndpoint };
+
 // Agent settings are independent of video generation and project preferences.
 // This module never caches credentials or sends requests to a model provider.
-const fields = ['presetId', 'platformId', 'baseUrl', 'model'];
+const fields = ['presetId', 'platformId', 'baseUrl', 'model', 'protocol'];
+export const isAgentProtocol = value => typeof value === 'string' && Object.hasOwn(AGENT_PROTOCOLS, value);
+export const agentEndpointPreview = configuration => { try { return deriveAgentEndpoint(configuration); } catch { return ''; } };
 export const agentConfiguration = value => Object.fromEntries(fields.map(key => [key, typeof value?.[key] === 'string' ? value[key] : '']));
 const failure = (code = 'NETWORK') => Object.assign(new Error('Agent settings request did not complete.'), { code });
 const codes = new Set(['UNAUTHORIZED', 'AGENT_SETTINGS_VALIDATION', 'AGENT_SETTINGS_CONFLICT', 'AGENT_SETTINGS_STORAGE_UNAVAILABLE', 'AGENT_SETTINGS_SAVE_FAILED', 'AGENT_SETTINGS_CORRUPT', 'AGENT_SETTINGS_CLOSED']);
@@ -15,20 +20,31 @@ export const agentConfigurationEqual = (left, right) => fields.every(key => left
 // arbitrary server fields/messages: an error can accidentally echo input secrets.
 export function safeAgentSettings(value) {
   if (!value || !Number.isSafeInteger(value.revision) || value.revision < 0 ||
-      !value.configuration || !fields.every(key => typeof value.configuration[key] === 'string') ||
+      !value.configuration || !fields.every(key => typeof value.configuration[key] === 'string') || !isAgentProtocol(value.configuration.protocol) ||
       typeof value.secret?.configured !== 'boolean' || !['none', 'session', 'persistent'].includes(value.secret.storage) ||
       (value.secret.configured === (value.secret.storage === 'none')) ||
       typeof value.storage?.persistentAvailable !== 'boolean' || !['app', 'server'].includes(value.storage.sessionScope) ||
       ![null, 'WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT'].includes(value.storage.reasonCode) ||
       value.scope !== 'settings_only' || value.verification !== 'not_tested' || !Array.isArray(value.presets) || !value.presets.length) throw failure('INVALID_RESPONSE');
+  try { deriveAgentEndpoint(value.configuration); } catch { throw failure('INVALID_RESPONSE'); }
   const presets = value.presets.map(preset => {
     if (!preset || !text(preset.id) || !text(preset.label) || !Array.isArray(preset.platforms) || !preset.platforms.length) throw failure('INVALID_RESPONSE');
     return { id: preset.id, label: preset.label, description: text(preset.description), platforms: preset.platforms.map(platform => {
-      if (!platform || !text(platform.id) || !text(platform.label) || typeof platform.baseUrl !== 'string' || typeof platform.model !== 'string') throw failure('INVALID_RESPONSE');
+      if (!platform || !text(platform.id) || !text(platform.label) || typeof platform.baseUrl !== 'string' || typeof platform.model !== 'string' ||
+          !isAgentProtocol(platform.defaultProtocol) || !Array.isArray(platform.availableProtocols) || !platform.availableProtocols.length ||
+          !platform.availableProtocols.every(isAgentProtocol) || new Set(platform.availableProtocols).size !== platform.availableProtocols.length ||
+          !platform.availableProtocols.includes(platform.defaultProtocol)) throw failure('INVALID_RESPONSE');
       const sources = (Array.isArray(platform.sources) ? platform.sources : []).flatMap(source => {
         try { const url = new URL(source.url); return url.protocol === 'https:' && !url.username && !url.password ? [{ label: text(source.label) || '官方文档', url: url.href }] : []; } catch { return []; }
       });
-      return { id: platform.id, label: platform.label, baseUrl: platform.baseUrl, model: platform.model, notes: text(platform.notes), baseUrlTemplate: text(platform.baseUrlTemplate), sources };
+      const supportedModelHints = {}, protocolNotes = {};
+      for (const protocol of platform.availableProtocols) {
+        const hints = platform.supportedModelHints?.[protocol];
+        if (hints !== undefined && (!Array.isArray(hints) || hints.length > 20 || !hints.every(model => typeof model === 'string' && model.length > 0 && model.length <= 200))) throw failure('INVALID_RESPONSE');
+        if (hints) supportedModelHints[protocol] = [...hints];
+        if (typeof platform.protocolNotes?.[protocol] === 'string') protocolNotes[protocol] = platform.protocolNotes[protocol].slice(0, 2000);
+      }
+      return { id: platform.id, label: platform.label, baseUrl: platform.baseUrl, model: platform.model, defaultProtocol: platform.defaultProtocol, availableProtocols: [...platform.availableProtocols], supportedModelHints, protocolNotes, notes: text(platform.notes), baseUrlTemplate: text(platform.baseUrlTemplate), sources };
     }) };
   });
   return { revision: value.revision, configuration: agentConfiguration(value.configuration),
@@ -65,6 +81,7 @@ export const agentSettingsEditable = state => Boolean(state.snapshot) && !agentS
 export const agentSettingsCanSave = state => agentSettingsEditable(state) && !state.recovery && state.phase !== 'blocked';
 export const agentSettingsDirty = state => Boolean(state.snapshot && (!agentConfigurationEqual(state.snapshot.configuration, state.draft) || state.secretAction === 'remove'));
 export function agentSettingsIssue(draft, secret = '') {
+  if (!isAgentProtocol(draft?.protocol)) return '请选择明确的 API 协议。';
   if (!draft?.presetId || !draft?.platformId || !draft?.baseUrl.trim() || !draft?.model.trim()) return '请填写服务地址和模型名称。';
   if (draft.baseUrl.length > 2048 || draft.model.length > 200) return '服务地址最多 2048 个字符，模型名称最多 200 个字符。';
   try {
@@ -84,12 +101,12 @@ const errorText = code => ({
   AGENT_SETTINGS_CLOSED: '设置服务已关闭，请重新打开应用后重试。',
 }[code] || '未收到保存确认，结果可能已经生效。');
 
-/** A single dialog lifetime. No secret is stored in state, recovery, or retries. */
+/** A single settings-page lifetime. No secret is stored in state, recovery, or retries. */
 export function createAgentSettingsSession({ client = createAgentSettingsClient(), onChange = () => {} } = {}) {
-  let state = initialAgentSettingsState(), active = true, epoch = 0;
+  let state = initialAgentSettingsState(), active = true, visible = true, epoch = 0;
   const publish = patch => { if (!active) return; state = { ...state, ...patch }; onChange(state); };
   const current = token => active && token === epoch;
-  const editable = () => active && agentSettingsEditable(state);
+  const editable = () => active && visible && agentSettingsEditable(state);
   function read({ recover = false } = {}) {
     if (!active || agentSettingsBusy(state) && state.phase !== 'loading') return Promise.resolve(false);
     const token = ++epoch;
@@ -116,11 +133,11 @@ export function createAgentSettingsSession({ client = createAgentSettingsClient(
   }
   function selectPreset(id) {
     const preset = state.snapshot?.presets.find(item => item.id === id), platform = preset?.platforms[0];
-    return platform ? edit({ presetId: preset.id, platformId: platform.id, baseUrl: platform.baseUrl, model: platform.model }) : false;
+    return platform ? edit({ presetId: preset.id, platformId: platform.id, baseUrl: platform.baseUrl, model: platform.model, protocol: platform.defaultProtocol }) : false;
   }
   function selectPlatform(id) {
     const platform = state.snapshot?.presets.find(item => item.id === state.draft?.presetId)?.platforms.find(item => item.id === id);
-    return platform ? edit({ platformId: platform.id, baseUrl: platform.baseUrl, model: platform.model }) : false;
+    return platform ? edit({ platformId: platform.id, baseUrl: platform.baseUrl, model: platform.model, protocol: platform.defaultProtocol }) : false;
   }
   function useLatest() {
     if (!editable() || state.phase === 'blocked') return false;
@@ -132,8 +149,9 @@ export function createAgentSettingsSession({ client = createAgentSettingsClient(
     publish({ recovery: null, phase: 'ready', message: '已保留草稿。请确认目标与密钥操作，再点击保存。' }); return true;
   }
   function save(value = '') {
-    if (!active || !agentSettingsCanSave(state)) return Promise.resolve(false);
-    const issue = agentSettingsIssue(state.draft, value);
+    if (!active || !visible || !agentSettingsCanSave(state)) return Promise.resolve(false);
+    const platform = state.snapshot.presets.find(item => item.id === state.draft.presetId)?.platforms.find(item => item.id === state.draft.platformId);
+    const issue = agentSettingsIssue(state.draft, value) || (platform && !platform.availableProtocols.includes(state.draft.protocol) ? '此平台尚未提供所选协议配置，请明确选择可用协议。' : '');
     if (issue) { publish({ phase: 'error', message: issue }); return Promise.resolve(false); }
     if (value && state.storage === 'persistent' && !state.snapshot.storage.persistentAvailable) {
       publish({ phase: 'error', message: errorText('AGENT_SETTINGS_STORAGE_UNAVAILABLE') }); return Promise.resolve(false);
@@ -172,6 +190,7 @@ export function createAgentSettingsSession({ client = createAgentSettingsClient(
     });
   }
   return { getState: () => state, load: () => read(), reload: () => read({ recover: Boolean(state.snapshot) }), edit, selectPreset, selectPlatform, useLatest, acknowledge, save,
+    setVisible(value) { visible = Boolean(value); },
     setStorage(storage) { if (!editable() || !['session', 'persistent'].includes(storage) || storage === 'persistent' && !state.snapshot.storage.persistentAvailable) return false; publish({ storage }); return true; },
     removeKey(remove = true) { if (!editable()) return false; publish({ secretAction: remove ? 'remove' : 'keep', phase: state.recovery ? state.phase : 'ready', message: state.recovery ? state.message : '' }); return true; },
     dispose() { active = false; epoch++; state = initialAgentSettingsState(); },

@@ -5,11 +5,11 @@ import { transformSync } from 'esbuild';
 import * as logic from '../apps/web/src/agent-settings.js';
 
 const { agentBindingChanged, agentSettingsCanSave, agentSettingsIssue, createAgentSettingsClient, createAgentSettingsSession, safeAgentSettings } = logic;
-const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://api.example.com/v1', model: 'example-model' };
+const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://api.example.com/v1', model: 'example-model', protocol: 'chat_completions' };
 const presets = [
-  { id: 'openai', label: 'OpenAI', description: 'Example only', platforms: [{ id: 'global', label: '全球', baseUrl: configuration.baseUrl, model: configuration.model, notes: '仅示例', sources: [{ label: '官方文档', url: 'https://example.com/docs' }] }, { id: 'other', label: '其他地区', baseUrl: 'https://other.example.com/v1', model: 'other-model', sources: [] }] },
-  { id: 'custom', label: '自定义', description: '', platforms: [{ id: 'custom', label: '自定义 HTTPS', baseUrl: '', model: '', sources: [] }] },
-  { id: 'ollama', label: 'Ollama', description: '', platforms: [{ id: 'local', label: '本地', baseUrl: 'http://127.0.0.1:11434/v1', model: 'local-model', sources: [] }] },
+  { id: 'openai', label: 'OpenAI', description: 'Example only', platforms: [{ id: 'global', label: '全球', baseUrl: configuration.baseUrl, model: configuration.model, notes: '仅示例', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], supportedModelHints: { responses: ['gpt-4.1-mini'] }, sources: [{ label: '官方文档', url: 'https://example.com/docs' }] }, { id: 'other', label: '其他地区', baseUrl: 'https://other.example.com/v1', model: 'other-model', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], sources: [] }] },
+  { id: 'custom', label: '自定义', description: '', platforms: [{ id: 'custom', label: '自定义 HTTPS', baseUrl: '', model: '', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], sources: [] }] },
+  { id: 'ollama', label: 'Ollama', description: '', platforms: [{ id: 'local', label: '本地', baseUrl: 'http://127.0.0.1:11434/v1', model: 'local-model', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], sources: [] }] },
 ];
 const snapshot = (patch = {}) => ({ revision: 0, configuration: { ...configuration }, secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, presets, scope: 'settings_only', verification: 'not_tested', ...patch });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -189,9 +189,10 @@ const element = (type, props = {}, ...children) => ({ type, props: { ...props, c
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
 function uiHarness(client) {
-  const slots = [], dom = new Map(); let cursor = 0, effects = [], tree, closes = 0;
+  const slots = [], dom = new Map(); let cursor = 0, effects = [], tree, closes = 0, visible = true;
   const react = { createElement: element,
     useState(initial) { const i = cursor++; slots[i] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, next => { slots[i].value = typeof next === 'function' ? next(slots[i].value) : next; }]; },
+    useMemo(callback, deps) { const i = cursor++; if (!slots[i] || !depsEqual(deps, slots[i].deps)) slots[i] = { value: callback(), deps }; return slots[i].value; },
     useRef(initial) { const i = cursor++; return slots[i] ||= { current: initial }; },
     useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { callback, deps, cleanup: old?.cleanup }; effects.push(i); },
   }; react.default = react;
@@ -199,6 +200,7 @@ function uiHarness(client) {
   Function('module', 'exports', 'require', transformed)(module, module.exports, id => {
     if (id === 'react') return react;
     if (id === './agent-settings.js') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
+    if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.jsx') return { default: 'Icon' };
     if (id.startsWith('@mioon/ui/') || id === './WorkspaceControls.jsx') return primitive;
     throw Error(id);
@@ -209,6 +211,7 @@ function uiHarness(client) {
     form() { return nodes(tree).find(node => node.type === 'form'); },
     key(value) { const input = h.find('agent-settings-key'); input.props.ref.current.value = value; input.props.onChange({ target: { value } }); h.render(); },
     change(id, value) { h.find(id).props.onChange({ target: { value } }); h.render(); },
+    setVisible(value) { visible = value; h.render(); },
     get closes() { return closes; },
     unmount() { for (const slot of slots) slot.cleanup?.(); },
   }; return h;
@@ -219,7 +222,7 @@ test('actual UI callback clears masked DOM key synchronously before request ackn
   h.render(); await flush(); h.render();
   const input = h.find('agent-settings-key'); assert.equal(input.props.type, 'password'); assert.equal(input.props.value, undefined); assert.equal(input.props.defaultValue, undefined); assert.equal(input.props.autoComplete, 'new-password');
   h.key('dummy-entered'); h.form().props.onSubmit({ preventDefault() {} }); assert.equal(input.props.ref.current.value, ''); assert.equal(f.calls.length, 1);
-  h.render(); assert.equal(h.find('agent-settings-dialog').props['data-phase'], 'saving'); assert.equal(h.find('agent-settings-save').props.disabled, true);
+  h.render(); assert.equal(h.find('agent-settings-page').props['data-phase'], 'saving'); assert.equal(h.find('agent-settings-save').props.disabled, true);
   held.resolve(snapshot({ revision: 1, secret: { configured: true, storage: 'session' } })); await flush(); h.render();
   assert.equal(h.find('agent-settings-key').props.ref.current.value, ''); assert.match(h.find('agent-settings-key').props.placeholder, /留空保留/); h.unmount();
 });
@@ -230,22 +233,99 @@ test('actual UI clears entered keys on endpoint/platform/preset edits, reset and
     h.key('dummy-entered'); h.change(id, value); assert.equal(h.find('agent-settings-key').props.ref.current.value, '', id);
   }
   h.change('agent-settings-base-url', 'https://edited.example.com/v1'); h.key('dummy-entered'); h.find('agent-settings-reset').props.onClick(); h.render(); assert.equal(h.find('agent-settings-key').props.ref.current.value, '');
-  h.key('dummy-entered'); const oldSubmit = h.form().props.onSubmit, input = h.find('agent-settings-key'); h.find('agent-settings-close').props.onClick(); assert.equal(input.props.ref.current.value, ''); assert.equal(h.closes, 1);
+  h.key('dummy-entered'); const oldSubmit = h.form().props.onSubmit, input = h.find('agent-settings-key'); h.find('agent-settings-back').props.onClick(); assert.equal(input.props.ref.current.value, ''); assert.equal(h.closes, 1);
   oldSubmit({ preventDefault() {} }); assert.equal(f.calls.length, 0); h.find('agent-settings-cancel').props.onClick(); assert.equal(h.closes, 1); h.unmount();
 });
 
-test('actual UI stays dismissed after late save and old callbacks cannot close or save another dialog', async () => {
+test('actual UI leaves the settings page during a pending save and old callbacks remain inert', async () => {
   const held = deferred(), f = fixture({ write: () => held.promise }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.key('dummy-only');
-  const oldSubmit = h.form().props.onSubmit; oldSubmit({ preventDefault() {} }); h.render(); const oldDialog = h.find('agent-settings-dialog'); h.find('agent-settings-cancel').props.onClick();
+  const oldSubmit = h.form().props.onSubmit; oldSubmit({ preventDefault() {} }); h.render(); const oldDialog = h.find('agent-settings-page'); h.find('agent-settings-cancel').props.onClick();
   assert.equal(h.closes, 1); held.resolve(snapshot({ revision: 1, secret: { configured: true, storage: 'session' } })); await flush(); oldSubmit({ preventDefault() {} });
   assert.equal(f.calls.length, 1); assert.equal(h.closes, 1); assert.equal(oldDialog.props['data-phase'], 'saving'); h.unmount();
 });
 
-test('settings integration is outside persistent panel boundaries, uses shared modal/adapters and has no provider probe', () => {
+test('settings integration stays in the shared dock, uses local controls and has no modal or provider probe', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(app, /showAgentSettings && <AgentSettings/); assert.match(app, /data-testid="agent-settings-open"/);
-  assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.match(source, /from '@mioon\/ui\/components\/dialog'/);
+  assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
+  assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
   assert.match(source, /连接设置不会发起模型请求；对话仅发送经确认的聊天文本，尚无工具执行/); assert.match(source, /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
-  assert.ok(app.indexOf('{showAgentSettings &&') > app.lastIndexOf('</PanelBoundary>'));
+  assert.doesNotMatch(app, /showAgentSettings|showAgentChat/);
+  assert.match(source, /useWorkspaceVisibility/);
+});
+
+test('protocol is required and strict in settings DTOs and catalog choices; missing legacy UI fields fail closed', async () => {
+  for (const protocol of [undefined, null, '', 'Responses', 'auto', '__proto__', 1, {}]) {
+    assert.throws(() => safeAgentSettings(snapshot({ configuration: { ...configuration, protocol } })), value => value.code === 'INVALID_RESPONSE');
+    assert.notEqual(agentSettingsIssue({ ...configuration, protocol }), '');
+    const f = fixture({ initial: snapshot({ configuration: { ...configuration, protocol } }) });
+    assert.equal(await f.session.load(), false); assert.equal(await f.session.save(), false); assert.equal(f.calls.length, 0); f.session.dispose();
+  }
+  for (const patch of [{ defaultProtocol: undefined }, { availableProtocols: [] }, { availableProtocols: ['auto'] }, { availableProtocols: ['responses'], defaultProtocol: 'chat_completions' }, { availableProtocols: ['responses', 'responses'] }, { supportedModelHints: { responses: [1] } }]) {
+    assert.throws(() => safeAgentSettings(snapshot({ presets: [{ ...presets[0], platforms: [{ ...presets[0].platforms[0], ...patch }] }] })));
+  }
+});
+
+test('protocol-only edit is dirty, increments revision and keeps same authenticated key without changing model', async () => {
+  const f = fixture({ initial: snapshot({ secret: { configured: true, storage: 'session' } }) }); await f.session.load();
+  f.session.edit({ protocol: 'responses' });
+  assert.equal(logic.agentSettingsDirty(f.session.getState()), true);
+  assert.equal(logic.agentConfigurationEqual(configuration, f.session.getState().draft), false);
+  assert.equal(agentBindingChanged(configuration, f.session.getState().draft), false);
+  assert.equal(f.session.getState().draft.model, configuration.model);
+  assert.equal(await f.session.save(), true); assert.equal(f.calls.length, 1);
+  assert.deepEqual(f.calls[0].secret, { action: 'keep' }); assert.equal(f.calls[0].configuration.protocol, 'responses'); assert.equal(f.session.getState().snapshot.revision, 1);
+  const g = fixture({ initial: f.session.getState().snapshot }); await g.session.load();
+  assert.equal(g.session.getState().draft.protocol, 'responses'); assert.equal(g.session.getState().draft.model, configuration.model);
+  g.session.selectPlatform('other'); assert.equal(g.session.getState().draft.protocol, 'chat_completions');
+  g.session.edit({ protocol: 'responses' }); g.session.selectPreset('custom'); assert.equal(g.session.getState().draft.protocol, 'chat_completions'); f.session.dispose(); g.session.dispose();
+});
+
+test('wrong protocol acknowledgement and protocol-only two-window conflict reconcile without overwriting draft or retry', async () => {
+  for (const cause of ['wrong-ack', 'conflict']) {
+    let reads = 0;
+    const f = fixture({ read: async () => ++reads === 1 ? snapshot() : snapshot({ revision: 1 }), write: async () => { if (cause === 'conflict') throw codeError('AGENT_SETTINGS_CONFLICT'); return snapshot({ revision: 1 }); } });
+    await f.session.load(); f.session.edit({ protocol: 'responses' }); assert.equal(await f.session.save(), false);
+    assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft.protocol, 'responses'); assert.equal(f.session.getState().snapshot.configuration.protocol, 'chat_completions');
+    assert.equal(f.calls.length, 1); assert.equal(reads, 2); assert.equal(await f.session.save(), false); f.session.dispose();
+  }
+});
+
+test('shared protocol selector exposes fixed endpoint, preserves arbitrary model, and explicit reset returns CC', async () => {
+  const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render();
+  assert.equal(h.find('agent-settings-protocol').type, 'WorkbenchSelect');
+  assert.deepEqual(nodes(h.find('agent-settings-protocol')).filter(node => node.type === 'option').map(node => node.props.value), ['chat_completions', 'responses']);
+  h.change('agent-settings-model', 'my-explicit-model'); h.change('agent-settings-protocol', 'responses');
+  assert.equal(h.find('agent-settings-model').props.value, 'my-explicit-model');
+  assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /https:\/\/api.example.com\/v1\/responses/);
+  assert.match(JSON.stringify(h.find('agent-settings-model-guidance')), /gpt-4.1-mini/); assert.match(JSON.stringify(h.find('agent-settings-model-guidance')), /手动填写/);
+  assert.equal(f.calls.length, 0);
+  h.find('agent-settings-reset').props.onClick(); h.render();
+  assert.equal(h.find('agent-settings-protocol').props.value, 'chat_completions'); assert.equal(h.find('agent-settings-model').props.value, configuration.model); h.unmount();
+});
+
+test('Qwen Responses guidance keeps qwen-plus until the user types the documented exact model', async () => {
+  const qwen = { id: 'qwen', label: 'Qwen', platforms: [{ id: 'beijing', label: '北京', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], supportedModelHints: { responses: ['qwen3.8-flash'] }, protocolNotes: { responses: '供应商自动截断无法禁用；账户与区域必须匹配。' } }] };
+  const initial = snapshot({ presets: [qwen], configuration: { presetId: qwen.id, platformId: 'beijing', baseUrl: qwen.platforms[0].baseUrl, model: 'qwen-plus', protocol: 'chat_completions' } });
+  const f = fixture({ initial }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-settings-protocol', 'responses');
+  assert.equal(h.find('agent-settings-model').props.value, 'qwen-plus'); assert.match(JSON.stringify(h.find('agent-settings-model-guidance')), /qwen3.8-flash/); assert.match(JSON.stringify(h.find('agent-settings-model-guidance')), /自动截断无法禁用/);
+  assert.equal(f.calls.length, 0); h.change('agent-settings-model', 'qwen3.8-flash'); assert.equal(h.find('agent-settings-model').props.value, 'qwen3.8-flash'); h.unmount();
+});
+
+test('hidden settings retain nonsecret draft, clear transient key immediately, and reject all old actions after reveal', async () => {
+  const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-settings-model', 'retained-draft'); h.change('agent-settings-protocol', 'responses'); h.key('dummy-transient');
+  const oldSubmit = h.form().props.onSubmit, oldEdit = h.find('agent-settings-model').props.onChange, oldBack = h.find('agent-settings-back').props.onClick;
+  h.setVisible(false); assert.equal(h.find('agent-settings-key').props.ref.current.value, ''); h.render();
+  assert.equal(h.find('agent-settings-page').props.inert, true); assert.equal(h.find('agent-settings-save').props.disabled, true);
+  oldSubmit({ preventDefault() {} }); oldEdit({ target: { value: 'stale' } }); oldBack();
+  h.setVisible(true); h.render(); oldSubmit({ preventDefault() {} }); oldEdit({ target: { value: 'still stale' } }); oldBack(); h.render();
+  assert.equal(h.find('agent-settings-model').props.value, 'retained-draft'); assert.equal(h.find('agent-settings-protocol').props.value, 'responses');
+  assert.match(JSON.stringify(h.find('agent-settings-key-cleared')), /已清空/); assert.equal(f.calls.length, 0); assert.equal(h.closes, 0); h.unmount();
+});
+
+test('settings save accepted while hidden stays attached without retry and reports the result when shown', async () => {
+  const held = deferred(), f = fixture({ write: () => held.promise }), h = uiHarness(f.client); h.render(); await flush(); h.render();
+  h.change('agent-settings-protocol', 'responses'); h.form().props.onSubmit({ preventDefault() {} }); h.setVisible(false);
+  held.resolve(snapshot({ revision: 1, configuration: { ...configuration, protocol: 'responses' } })); await flush(); h.setVisible(true); h.render();
+  assert.equal(h.find('agent-settings-page').props['data-phase'], 'saved'); assert.equal(h.find('agent-settings-protocol').props.value, 'responses'); assert.equal(f.calls.length, 1); h.unmount();
 });

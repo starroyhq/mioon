@@ -1,3 +1,4 @@
+import {deriveAgentEndpoint} from '@mioon/contracts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -20,7 +21,7 @@ async function fixture(t, gateway, settingsOverride) {
   return {runtime, settings, calls, projects, reads,
     async input(project = 'p1', changes = {}) { const snapshot = await runtime.snapshot(project); return {requestId: randomUUID(), instanceId: snapshot.instanceId,
       expectedSettingsRevision: snapshot.settings.revision, expectedConversationRevision: snapshot.revision, message: 'Typed test text',
-      consent: {destination: snapshot.settings.configuration.baseUrl, model: snapshot.settings.configuration.model, context: 'typed_chat_only'}, ...changes}; }};
+      consent: {destination: deriveAgentEndpoint(snapshot.settings.configuration), protocol: snapshot.settings.configuration.protocol, model: snapshot.settings.configuration.model, context: 'typed_chat_only'}, ...changes}; }};
 }
 async function until(check) { for (let i = 0; i < 200; i++) { const value = check(); if (value) return value; await turn(); } assert.fail('Synthetic work did not reach expected state'); }
 async function finish(f, sent) { return until(() => { const result = f.runtime.get(sent.projectId, sent.run.id, sent.instanceId); return result.run.status !== 'running' && result; }); }
@@ -177,4 +178,54 @@ test('run deadline aborts stalled inference, preserves partial output and admits
   const ended = f.runtime.get('p1', sent.run.id, sent.instanceId);
   assert.equal(ended.run.status, 'failed'); assert.equal(ended.run.error.code, 'AGENT_CHAT_TIMEOUT'); assert.equal(ended.run.assistantText, 'Partial');
   assert.equal(f.calls[0].signal.aborted, true); await turn(); assert.equal(f.calls.length, 1); assert.deepEqual(f.runtime.get('p1', sent.run.id, sent.instanceId), ended);
+});
+
+test('explicit protocol and complete endpoint bind consent; no omitted/inferred protocol is accepted', async t => {
+  const f = await fixture(t), original = await f.input();
+  for (const consent of [
+    {...original.consent, protocol: 'responses'},
+    {...original.consent, destination: original.consent.destination.replace('/chat/completions', '/responses')},
+    {...original.consent, destination: (await f.settings.get()).configuration.baseUrl},
+  ]) await assert.rejects(f.runtime.send('p1', {...original, consent}), {code: 'AGENT_CHAT_CONSENT_REQUIRED'});
+  const {protocol, ...missing} = original.consent;
+  await assert.rejects(f.runtime.send('p1', {...original, consent: missing}), {code: 'AGENT_CHAT_VALIDATION'});
+  assert.equal(f.calls.length, 0);
+  const saved = await f.settings.get();
+  await f.settings.put({expectedRevision: saved.revision, configuration: {...saved.configuration, protocol: 'responses'}, secret: {action: 'keep'}});
+  await assert.rejects(f.runtime.send('p1', original), {code: 'AGENT_CHAT_SETTINGS_CONFLICT'});
+  const input = await f.input(), run = await finish(f, await f.runtime.send('p1', input));
+  assert.equal(run.run.configuration.protocol, 'responses');
+  assert.equal(input.consent.destination, saved.configuration.baseUrl + '/responses');
+  assert.equal(f.calls.length, 1); assert.equal(f.calls[0].apiKey, SECRET);
+});
+
+test('protocol-only race at credential acquisition fails closed; no alternative adapter receives key', async t => {
+  const f = await fixture(t, undefined, settings => ({get: (...args) => settings.get(...args), async [AGENT_CREDENTIAL_ACQUIRE](expected, options) {
+    await settings.put({expectedRevision: expected.expectedRevision, configuration: {...expected.configuration, protocol: 'responses'}, secret: {action: 'keep'}});
+    return settings[AGENT_CREDENTIAL_ACQUIRE](expected, options);
+  }}));
+  const complete = await finish(f, await f.runtime.send('p1', await f.input()));
+  assert.equal(complete.run.status, 'failed'); assert.equal(complete.run.error.code, 'AGENT_CHAT_SETTINGS_CONFLICT'); assert.equal(f.calls.length, 0);
+});
+
+test('accepted Responses run remains protocol-pinned after settings switch and can still stop', async t => {
+  const f = await fixture(t, held), config = await f.settings.get();
+  await f.settings.put({expectedRevision: config.revision, configuration: {...config.configuration, protocol: 'responses'}, secret: {action: 'keep'}});
+  const input = await f.input(), sent = await f.runtime.send('p1', input);
+  await until(() => f.calls.length === 1);
+  const newer = await f.settings.get();
+  await f.settings.put({expectedRevision: newer.revision, configuration: {...newer.configuration, protocol: 'chat_completions'}, secret: {action: 'keep'}});
+  assert.equal(f.runtime.get('p1', sent.run.id, sent.instanceId).run.configuration.protocol, 'responses');
+  const stopped = f.runtime.stop('p1', sent.run.id, {instanceId: sent.instanceId});
+  assert.equal(stopped.run.status, 'stopped'); assert.equal(f.calls[0].configuration.protocol, 'responses');
+  assert.equal((await f.runtime.send('p1', input)).replayed, true); assert.equal(f.calls.length, 1);
+});
+
+test('unsupported protocol profile fails before any credential acquisition or gateway call', async t => {
+  let acquired = 0;
+  const f = await fixture(t, undefined, settings => ({get: (...args) => settings.get(...args), [AGENT_CREDENTIAL_ACQUIRE](...args) { acquired++; return settings[AGENT_CREDENTIAL_ACQUIRE](...args); }}));
+  const config = await f.settings.get();
+  await f.settings.put({expectedRevision: config.revision, configuration: {...config.configuration, protocol: 'responses', model: 'not-a-supported-openai-profile'}, secret: {action: 'keep'}});
+  const result = await finish(f, await f.runtime.send('p1', await f.input()));
+  assert.equal(result.run.status, 'failed'); assert.equal(acquired, 0); assert.equal(f.calls.length, 0);
 });

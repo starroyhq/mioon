@@ -26,7 +26,7 @@ test('all nine researched preset families have explicit platform defaults and no
   assert.equal(AGENT_PRESETS.find(p => p.id === 'qwen').platforms.length, 8);
   for (const preset of AGENT_PRESETS) for (const platform of preset.platforms) {
     assert.ok(platform.id && platform.label);
-    if (platform.baseUrl) assert.equal(parseAgentConfiguration({presetId: preset.id, platformId: platform.id, baseUrl: platform.baseUrl, model: platform.model}).baseUrl, platform.baseUrl);
+    if (platform.baseUrl) assert.equal(parseAgentConfiguration({presetId: preset.id, platformId: platform.id, baseUrl: platform.baseUrl, model: platform.model, protocol: platform.defaultProtocol}).baseUrl, platform.baseUrl);
     else assert.ok(preset.id === 'custom' || platform.baseUrlTemplate);
   }
   assert.ok(Object.isFrozen(AGENT_PRESETS[0].platforms[0]));
@@ -42,7 +42,7 @@ test('remote endpoint syntax blocks credentials, alternate local IP forms and un
 });
 
 test('only explicit local Ollama profile permits loopback /v1 and never current Mioon port', () => {
-  const local = {presetId: 'ollama', platformId: 'local', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b'};
+  const local = {presetId: 'ollama', platformId: 'local', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', protocol: 'chat_completions'};
   assert.deepEqual(parseAgentConfiguration(local, {selfPort: 4318}), local);
   assert.throws(() => parseAgentConfiguration(local, {selfPort: 11434}), {code: 'AGENT_SETTINGS_VALIDATION'});
   for (const url of ['http://10.0.0.2:11434/v1', 'http://127.0.0.2:11434/v1', 'http://foo.localhost:11434/v1', 'http://localhost:11434/api/chat', 'http://localhost:11434/v1/models', 'https://ollama.com/v1']) assert.throws(() => parseAgentConfiguration({...local, baseUrl: url}), {code: 'AGENT_SETTINGS_VALIDATION'});
@@ -77,10 +77,10 @@ test('session keys are write-only, never reach envelope, and vanish on fresh eng
   assert.deepEqual((await restarted.get()).secret, {configured: false, storage: 'none'});
 });
 
-test('credential binding covers exact normalized endpoint, preset and platform; only model changes retain it', async () => {
+test('credential binding covers exact normalized endpoint, preset and platform; model and protocol changes retain it', async () => {
   for (const field of ['baseUrl', 'presetId', 'platformId']) {
     const p = memoryPersistence(), settings = await createAgentSettings({persistence: p});
-    const start = field === 'platformId' ? {presetId: 'qwen', platformId: 'beijing', baseUrl: 'https://api.example.com/v1', model: 'qwen-plus'} : configuration();
+    const start = field === 'platformId' ? {presetId: 'qwen', platformId: 'beijing', baseUrl: 'https://api.example.com/v1', model: 'qwen-plus', protocol: 'chat_completions'} : configuration();
     await settings.put(input(0, {action: 'replace', storage: 'session', value: 'synthetic-binding-marker'}, start));
     const changed = {...start};
     if (field === 'baseUrl') changed.baseUrl += '/other';

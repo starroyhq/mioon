@@ -35,6 +35,7 @@ test('trusted symbol acquisition requires exact revision/full configuration, whi
   const acquired = await f.settings[AGENT_CREDENTIAL_ACQUIRE](f.expected, {selfPort: 4318});
   assert.equal(acquired.apiKey, SECRET); safe(await f.settings.get()); safe(f.persisted);
   for (const input of [{...f.expected, expectedRevision: 0}, {...f.expected, configuration: {...f.expected.configuration, model: 'different'}},
+    {...f.expected, configuration: {...f.expected.configuration, protocol: 'responses'}},
     {...f.expected, configuration: {...f.expected.configuration, baseUrl: 'https://different.example.com/v1'}}]) await assert.rejects(f.settings[AGENT_CREDENTIAL_ACQUIRE](input), {code: 'AGENT_SETTINGS_CONFLICT'});
   await assert.rejects(f.settings[AGENT_CREDENTIAL_ACQUIRE]({...f.expected, secret: SECRET}), {code: 'AGENT_SETTINGS_VALIDATION'});
   await f.settings.put({expectedRevision: f.expected.expectedRevision, configuration: {...f.expected.configuration, baseUrl: 'https://changed.example.com/v1'}, secret: {action: 'keep'}});
@@ -73,6 +74,11 @@ test('desktop acquisition is narrow, request-bound and never put in cached publi
   safe(await p.client.get({selfPort: 4318}));
   const wrong = request('acquire', {...f.expected, configuration: {...f.expected.configuration, model: 'another'}});
   p.broker.handle(wrong); await turn(); assert.equal(p.replies.at(-1).ok, false); safe(p.replies.at(-1));
+  const changed = await p.client.put({expectedRevision: f.expected.expectedRevision, configuration: {...f.expected.configuration, protocol: 'responses'}, secret: {action: 'keep'}}, {selfPort: 4318});
+  assert.equal(changed.configuration.protocol, 'responses'); assert.equal(changed.secret.configured, true);
+  await assert.rejects(p.client[AGENT_CREDENTIAL_ACQUIRE]({...f.expected, expectedRevision: changed.revision}, {selfPort: 4318}), {code: 'AGENT_SETTINGS_CONFLICT'});
+  assert.equal((await p.client[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: changed.revision, configuration: changed.configuration}, {selfPort: 4318})).apiKey, SECRET);
+  assert.ok(p.outgoing.every(message => message.version === 1));
 });
 
 test('client rejects credential-shaped responses to public reads and wrong-bound acquisition responses', async t => {

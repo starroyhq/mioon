@@ -38,3 +38,9 @@ test('SSE closes the source iterator on early return and rejects an already-abor
   const controller = new AbortController(); controller.abort('synthetic-private-marker');
   await assert.rejects(collect(bytes('data: x\n\n'), {signal: controller.signal}), error => error.code === 'AGENT_CHAT_ABORTED' && !error.message.includes('synthetic'));
 });
+
+test('optional event-name metadata distinguishes data-only framing from explicit message or empty names',async()=>{
+  const source=(async function*(){yield Buffer.from('data: one\n\nevent: message\ndata: two\n\nevent:\ndata: three\n\nevent: response.created\ndata: four\n\n');})();
+  const events=[];for await(const event of parseAgentSse(source,{includeEventName:true}))events.push(event);
+  assert.deepEqual(events,[{event:'message',eventName:null,data:'one'},{event:'message',eventName:'message',data:'two'},{event:'message',eventName:'',data:'three'},{event:'response.created',eventName:'response.created',data:'four'}]);
+});

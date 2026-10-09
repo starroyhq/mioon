@@ -1,3 +1,4 @@
+import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '@mioon/contracts';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {isIP} from 'node:net';
 import {request as httpsRequestDefault} from 'node:https';
@@ -69,14 +70,14 @@ function abortable(promise, signal) {
 export async function resolveAgentDestination(configuration, {selfPort, lookup = dnsLookup, signal, maxDnsAnswers = AGENT_NETWORK_LIMITS.maxDnsAnswers} = {}) {
   let config;
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { denied(); }
-  const url = new URL(`${config.baseUrl}/chat/completions`);
+  const url = new URL(deriveAgentEndpoint(config));
   const hostname = bareHost(url.hostname), port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
   if (signal?.aborted) throw abortError(signal);
   if (config.presetId === 'ollama') {
     if (!Number.isInteger(selfPort) || selfPort < 1 || selfPort > 65535 || port === selfPort) denied();
     // localhost means this exact loopback destination, never a host-file/DNS alias.
     const address = hostname === 'localhost' ? '127.0.0.1' : hostname;
-    if (!['127.0.0.1', '::1'].includes(address) || url.pathname !== '/v1/chat/completions') denied();
+    if (!['127.0.0.1', '::1'].includes(address) || url.pathname !== `/v1${AGENT_PROTOCOLS[config.protocol].path}`) denied();
     return {hostname, address, family: isIP(address), port, secure: url.protocol === 'https:', path: url.pathname, local: true};
   }
   let addresses;

@@ -3,8 +3,9 @@ import {readFile, writeFile, mkdir, unlink} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-export async function chatQaClient() {
-  const root = fileURLToPath(new URL('../evidence/agent-chat', import.meta.url)), runtime = path.join(root, 'browser-runtime');
+export async function chatQaClient({iteration = 'chat'} = {}) {
+  if (!['chat', 'responses'].includes(iteration)) throw Error('Unknown synthetic QA iteration');
+  const root = fileURLToPath(new URL(`../evidence/agent-${iteration}`, import.meta.url)), runtime = path.join(root, 'browser-runtime');
   const fixture = JSON.parse(await readFile(path.join(runtime, 'fixture.json'), 'utf8'));
   const waitFor = async (test, label, timeout = 20000) => { const end = Date.now() + timeout; while (Date.now() < end) { const result = await test(); if (result) return result; await new Promise(resolve => setTimeout(resolve, 80)); } throw Error(`Timed out: ${label}`); };
   async function request(pathname, options = {}) {

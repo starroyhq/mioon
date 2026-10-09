@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { randomUUID, createCipheriv, createDecipheriv } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { desktopSecretStorage, createDesktopSecretCodec, createDesktopAgentSettings } from '../apps/desktop/src/secret-store.mjs';
 import { createAgentSettingsBroker, createAgentSettingsClient, MAX_AGENT_SETTINGS_MESSAGE_BYTES } from '../apps/desktop/src/secret-broker.mjs';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
+import { DEFAULT_AGENT_CONFIGURATION } from '../packages/business/src/agent/presets.mjs';
+import { AGENT_CREDENTIAL_ACQUIRE } from '../packages/business/src/agent/settings.mjs';
+import { agentCredentialBinding } from '../packages/business/src/agent/config.mjs';
 
 const DUMMY_KEY = 'dummy-desktop-only-credential-never-live';
 const nextTurn = () => new Promise(resolve => setImmediate(resolve));
@@ -279,6 +282,45 @@ test('desktop settings persist ciphertext outside project data with owner-only f
     const restored = await engine.get();
     assert.deepEqual(restored.secret, saved.secret); assert.equal(restored.revision, saved.revision); assertSanitized(restored);
   } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
+});
+
+test('desktop legacy migration preserves encrypted channel wrapper v1 through locked-vault protocol save', async t => {
+  const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-legacy-desktop-'));
+  const safeStorage = fakeVault(), appId = 'app.starroy.mioon.dev';
+  const vault = createDesktopSecretCodec({safeStorage, appId, platform: 'linux'});
+  const {protocol, ...configuration} = DEFAULT_AGENT_CONFIGURATION;
+  const binding = agentCredentialBinding(configuration);
+  const encrypted = vault.encrypt(JSON.stringify({version: 1, binding, value: DUMMY_KEY}));
+  const directory = path.join(userData, 'agent-settings'), file = path.join(directory, 'settings.json');
+  await mkdir(directory, {mode: 0o700});
+  const bytes = JSON.stringify({version: 1, revision: 12, configuration, secret: {binding, encrypted}});
+  await writeFile(file, bytes, {mode: 0o600});
+  const decrypt = safeStorage.decryptString; let reads = 0;
+  safeStorage.decryptString = value => { reads++; return decrypt(value); };
+  safeStorage.isEncryptionAvailable = () => false;
+  let engine = await createDesktopAgentSettings({safeStorage, userData, appId, platform: 'linux'});
+  t.after(async () => { await engine.close(); await rm(userData, {recursive: true, force: true}); });
+  const port = pairedPort(), replies = [];
+  const broker = createAgentSettingsBroker({agentSettings: engine, send: data => { replies.push(data); port.emit('message', {data}); }});
+  port.postMessage = data => queueMicrotask(() => broker.handle(data));
+  const client = createAgentSettingsClient({port}); t.after(() => { client.close(); broker.close(); });
+  const initial = await client.get();
+  assert.equal(initial.configuration.protocol, 'chat_completions'); assert.equal(initial.revision, 12);
+  assert.equal(initial.secret.configured, true); assert.equal(initial.storage.persistentAvailable, false);
+  assert.equal(await readFile(file, 'utf8'), bytes); assert.equal(reads, 0);
+  const saved = await client.put({expectedRevision: 12, configuration: {...initial.configuration, protocol: 'responses'}, secret: {action: 'keep'}});
+  assert.equal(saved.revision, 13); assert.equal(saved.configuration.protocol, 'responses');
+  const stored = JSON.parse(await readFile(file, 'utf8'));
+  assert.equal(stored.version, 2); assert.deepEqual(stored.secret, {binding, encrypted}); assert.equal(reads, 0);
+  assert.ok(replies.every(reply => reply.version === 1)); replies.forEach(assertSanitized);
+  await engine.close(); safeStorage.isEncryptionAvailable = () => true;
+  engine = await createDesktopAgentSettings({safeStorage, userData, appId, platform: 'linux'});
+  const restored = await engine.get();
+  assert.equal((await engine[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: restored.revision, configuration: restored.configuration})).apiKey, DUMMY_KEY);
+  const wrapper = JSON.parse(decrypt(Buffer.from(encrypted, 'base64')));
+  assert.equal(wrapper.version, 1); assert.equal(wrapper.appId, appId);
+  assert.deepEqual(JSON.parse(wrapper.plaintext), {version: 1, binding, value: DUMMY_KEY});
+  assert.equal(JSON.parse(await readFile(file, 'utf8')).secret.encrypted, encrypted);
 });
 
 test('unavailable Linux vault supports explicit session-only entry until app engine closes', async () => {

@@ -63,7 +63,7 @@ test('web settings store metadata only, survive restart, expire keys, preserve b
   assert.equal((await fileContents(f.root)).some(content => content.includes(marker)), false, 'no plaintext key in envelope, SQLite, WAL, or other workspace file');
   const file = path.join(f.root, 'agent-settings/settings.json');
   const envelope = JSON.parse(await readFile(file, 'utf8'));
-  assert.equal(envelope.secret, null); assert.equal(envelope.revision, 1);
+  assert.equal(envelope.secret, null); assert.equal(envelope.revision, 1); assert.equal(envelope.version, 2); assert.equal(envelope.configuration.protocol, 'chat_completions');
   const noPersistent = await f.request(undefined, {method: 'PUT', payload: input(1, {action: 'replace', storage: 'persistent', value: marker})});
   assert.equal(noPersistent.status, 409); assert.equal(noPersistent.body.error.code, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE');
   await f.restart();
@@ -92,13 +92,45 @@ test('setting a local endpoint performs no provider probe and self-service endpo
   await new Promise(resolve => trap.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => trap.close(resolve)));
   const f = await fixture(t);
-  const config = {presetId: 'ollama', platformId: 'local', baseUrl: `http://127.0.0.1:${trap.address().port}/v1`, model: 'synthetic-local-model'};
+  const config = {presetId: 'ollama', platformId: 'local', baseUrl: `http://127.0.0.1:${trap.address().port}/v1`, model: 'synthetic-local-model', protocol: 'chat_completions'};
   assert.equal((await f.request(undefined, {method: 'PUT', payload: input(0, {action: 'keep'}, config)})).status, 200);
   await f.request();
   assert.equal(requests, 0);
   const self = {...config, baseUrl: `${f.server.url}/v1`};
   assert.equal((await f.request(undefined, {method: 'PUT', payload: input(1, {action: 'keep'}, self)})).status, 400);
   assert.equal((await f.request()).body.data.configuration.baseUrl, config.baseUrl);
+  assert.equal((await f.request(undefined, {method: 'PUT', payload: input(1, {action: 'keep'}, {...config, protocol: 'responses'})})).status, 200);
+  assert.equal(requests, 0, 'a protocol change does not probe either transport');
+});
+
+test('HTTP projects legacy metadata without rewriting and rejects old clients after an explicit Responses save', async t => {
+  const {protocol, ...legacy} = DEFAULT_AGENT_CONFIGURATION;
+  const bytes = JSON.stringify({version: 1, revision: 9, configuration: legacy, secret: null}, null, 2) + '\n';
+  const f = await fixture(t, {prepare: async root => {
+    await mkdir(path.join(root, 'agent-settings'), {mode: 0o700});
+    await writeFile(path.join(root, 'agent-settings/settings.json'), bytes, {mode: 0o600});
+  }});
+  const file = path.join(f.root, 'agent-settings/settings.json');
+  const initial = await f.request();
+  assert.equal(initial.status, 200); assert.equal(initial.body.data.revision, 9);
+  assert.equal(initial.body.data.configuration.protocol, 'chat_completions');
+  assert.equal(await readFile(file, 'utf8'), bytes);
+  const configuration = {...DEFAULT_AGENT_CONFIGURATION, protocol: 'responses'};
+  const saved = await f.request(undefined, {method: 'PUT', payload: input(9, {action: 'replace', storage: 'session', value: 'SYNTHETIC_HTTP_MIGRATION_KEY'}, configuration)});
+  assert.equal(saved.status, 200); assert.equal(saved.body.data.revision, 10);
+  assert.equal(saved.body.data.configuration.protocol, 'responses');
+  assert.equal(saved.body.data.secret.configured, true);
+  const committed = await readFile(file, 'utf8');
+  assert.equal(JSON.parse(committed).version, 2);
+  const oldClient = await f.request(undefined, {method: 'PUT', payload: input(10, {action: 'remove'}, legacy)});
+  assert.equal(oldClient.status, 400); assert.equal(oldClient.body.error.code, 'AGENT_SETTINGS_VALIDATION');
+  const staleProtocol = await f.request(undefined, {method: 'PUT', payload: input(9, {action: 'remove'}, {...DEFAULT_AGENT_CONFIGURATION})});
+  assert.equal(staleProtocol.status, 409); assert.equal(staleProtocol.body.error.code, 'AGENT_SETTINGS_CONFLICT');
+  assert.deepEqual((await f.request()).body, saved.body);
+  assert.equal(await readFile(file, 'utf8'), committed);
+  await f.restart();
+  const restarted = (await f.request()).body.data;
+  assert.equal(restarted.revision, 10); assert.equal(restarted.configuration.protocol, 'responses'); assert.equal(restarted.secret.configured, false);
 });
 
 test('corrupt settings are isolated from server startup and unrelated project operations', async t => {

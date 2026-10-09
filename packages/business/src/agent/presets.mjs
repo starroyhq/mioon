@@ -2,10 +2,10 @@
 // Account/model access and protocol compatibility remain untested.
 const source = (label, url) => ({label, url});
 const platform = (id, label, baseUrl, model, sources, notes, baseUrlTemplate) => ({id, label, baseUrl, model, sources, ...(notes ? {notes} : {}), ...(baseUrlTemplate ? {baseUrlTemplate} : {})});
-const qwenSources = [source('官方端点与区域', 'https://www.alibabacloud.com/help/en/model-studio/base-url')];
+const qwenSources = [source('官方端点与区域', 'https://www.alibabacloud.com/help/en/model-studio/base-url'), source('Responses API', 'https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses')];
 const catalog = [
-  {id: 'openai', label: 'OpenAI', description: 'Chat Completions 文本基线；Responses 与推理模式未接入。', platforms: [platform('global', 'OpenAI', 'https://api.openai.com/v1', 'gpt-4.1-mini', [source('模型文档', 'https://developers.openai.com/api/docs/models/gpt-4.1-mini')])]},
-  {id: 'deepseek', label: 'DeepSeek', description: '非思考模式基线；此阶段仅保存设置。', platforms: [platform('global', 'DeepSeek API', 'https://api.deepseek.com', 'deepseek-flash', [source('Chat API', 'https://api-docs.deepseek.com/api/create-chat-completion/')])]},
+  {id: 'openai', label: 'OpenAI', description: '非推理文本基线；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'OpenAI', 'https://api.openai.com/v1', 'gpt-4.1-mini', [source('模型文档', 'https://developers.openai.com/api/docs/models/gpt-4.1-mini')])]},
+  {id: 'deepseek', label: 'DeepSeek', description: '非思考模式文本基线；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'DeepSeek API', 'https://api.deepseek.com', 'deepseek-flash', [source('Chat API', 'https://api-docs.deepseek.com/api/create-chat-completion/'), source('Responses API', 'https://api-docs.deepseek.com/guides/responses_api/')])]},
   {id: 'qwen', label: 'Qwen / DashScope', description: '区域、工作空间和按量付费账户必须匹配；不继承 Coding Plan 凭证。', platforms: [
     platform('beijing', '北京 · 按量付费', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus', qwenSources),
     platform('singapore', '新加坡 · 按量付费', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', 'qwen-plus', qwenSources),
@@ -28,5 +28,23 @@ const catalog = [
   {id: 'ollama', label: 'Ollama 本地', description: '仅本机回环 /v1；通常无需密钥，不下载模型，不包含云端路由授权。', platforms: [platform('local', '本机 · Ollama', 'http://127.0.0.1:11434/v1', 'qwen3:8b', [source('OpenAI 兼容接口', 'https://docs.ollama.com/api/openai-compatibility')])]},
 ];
 function freeze(value) { for (const item of Object.values(value)) if (item && typeof item === 'object') freeze(item); return Object.freeze(value); }
-export const AGENT_PRESETS = freeze(catalog);
-export const DEFAULT_AGENT_CONFIGURATION = Object.freeze({presetId: 'openai', platformId: 'global', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini'});
+// These choices describe implemented request/parser profiles, not vendor-wide
+// availability or a live compatibility certification. Defaults stay unchanged.
+const responseModelHints = {
+  openai: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'],
+  deepseek: ['deepseek-flash'],
+  qwen: ['qwen3.8-flash'],
+  custom: [],
+  ollama: ['qwen3:8b'],
+};
+export const AGENT_PRESETS = freeze(catalog.map(preset => {
+  const hasResponses = Object.hasOwn(responseModelHints, preset.id);
+  const protocols = {
+    defaultProtocol: 'chat_completions',
+    availableProtocols: hasResponses ? ['chat_completions', 'responses'] : ['chat_completions'],
+    ...(hasResponses ? {supportedModelHints: {responses: responseModelHints[preset.id]}} : {}),
+    ...(preset.id === 'qwen' ? {protocolNotes: {responses: '仅 qwen3.8-flash 非思考文本配置；本应用限制上下文大小，但供应商自动截断无法禁用。区域、工作空间与账户权限须匹配，未经真实调用验证。'}} : {}),
+  };
+  return {...preset, ...protocols, platforms: preset.platforms.map(item => ({...item, ...protocols}))};
+}));
+export const DEFAULT_AGENT_CONFIGURATION = Object.freeze({presetId: 'openai', platformId: 'global', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions'});

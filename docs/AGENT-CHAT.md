@@ -2,7 +2,7 @@
 
 Date: 2026-10-09 (UTC)
 Feature baseline: `66a0193` (secure Agent settings); integration baseline: `80334cf` (roadmap-only follow-up)
-Status: increment 2A, Chat-Completions-only conversational transport, implemented with runtime acceptance; aggregate verification passed; parent review/local commit pending. Responses is required in immediate increment 2B of the same current Agent iteration; compatibility is incomplete until both are delivered. No completed-Agent claim.
+Status: historical acceptance for increment 2A, committed as `3db1a02`: Chat-Completions-only conversational transport. [Increment 2B](AGENT-RESPONSES.md) adds Responses and replaces these modal screenshots with the shared right workspace. Neither increment is a completed project-tool Agent.
 
 ## Bounded outcome
 

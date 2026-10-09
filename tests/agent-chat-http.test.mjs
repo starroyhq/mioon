@@ -1,3 +1,5 @@
+import {deriveAgentEndpoint} from '@mioon/contracts';
+import {responsesFixture, frameResponsesEvent} from './agent-responses-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -14,13 +16,28 @@ import {startServer} from '../apps/server/src/index.mjs';
 
 const token = 'synthetic-agent-chat-http-token';
 const SECRET = 'SYNTHETIC_CHAT_HTTP_KEY';
-async function fixture(t, {gateway, modelServer = false, hold = false} = {}) {
+async function fixture(t, {gateway, modelServer = false, hold = false, protocol = 'chat_completions', responseFault} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-chat-http-')); let calls = 0, providerAborted = 0, captures = [], upstream;
   if (modelServer) {
     upstream = http.createServer(async (req, res) => {
       calls++; const chunks = []; for await (const chunk of req) chunks.push(chunk);
       captures.push({path: req.url, method: req.method, headers: req.headers, body: JSON.parse(Buffer.concat(chunks).toString())});
       res.writeHead(200, {'content-type': 'text/event-stream'});
+      if (protocol === 'responses') {
+        const fixture = responsesFixture();
+        for (const event of fixture.start()) res.write(frameResponsesEvent(event));
+        res.write(frameResponsesEvent(fixture.delta('本地模拟回复')));
+        res.on('close', () => { providerAborted++; });
+        if (!hold) {
+          if (responseFault === 'truncated') res.end();
+          else if (responseFault) {
+            if (responseFault === 'tool') for (const event of fixture.seal()) res.write(frameResponsesEvent(event));
+            res.end(frameResponsesEvent(fixture[responseFault]()));
+          }
+          else res.end(fixture.complete().map(frameResponsesEvent).join(''));
+        }
+        return;
+      }
       res.write('data: ' + JSON.stringify({choices: [{index: 0, delta: {role: 'assistant', content: '本地模拟回复'}, finish_reason: null}]}) + '\n\n');
       res.on('close', () => { providerAborted++; });
       if (!hold) res.end('data: ' + JSON.stringify({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]}) + '\n\ndata: [DONE]\n\n');
@@ -40,11 +57,11 @@ async function fixture(t, {gateway, modelServer = false, hold = false} = {}) {
     async rpc(operation, input = {}) { const r = await this.request('/api/rpc', {method: 'POST', input: {operation, input}}); assert.equal(r.status, 200); return r.body.data; },
     async sendInput(projectId, changes = {}) { const snap = (await this.request(`/api/agent/chat/${projectId}`)).body.data;
       return {requestId: randomUUID(), instanceId: snap.instanceId, expectedSettingsRevision: snap.settings.revision, expectedConversationRevision: snap.revision,
-        message: 'Synthetic typed text', consent: {destination: snap.settings.configuration.baseUrl, model: snap.settings.configuration.model, context: 'typed_chat_only'}, ...changes}; },
+        message: 'Synthetic typed text', consent: {destination: deriveAgentEndpoint(snap.settings.configuration), protocol: snap.settings.configuration.protocol, model: snap.settings.configuration.model, context: 'typed_chat_only'}, ...changes}; },
   };
   const setting = (await f.request('/api/agent/settings')).body.data;
   await f.request('/api/agent/settings', {method: 'PUT', input: {expectedRevision: setting.revision,
-    configuration: modelServer ? {presetId: 'ollama', platformId: 'local', baseUrl: `http://127.0.0.1:${upstream.address().port}/v1`, model: 'qwen3:8b'} : setting.configuration,
+    configuration: modelServer ? {protocol, presetId: 'ollama', platformId: 'local', baseUrl: `http://127.0.0.1:${upstream.address().port}/v1`, model: 'qwen3:8b'} : setting.configuration,
     secret: modelServer ? {action: 'remove'} : {action: 'replace', storage: 'session', value: SECRET}}});
   return f;
 }
@@ -164,9 +181,53 @@ test('shutdown during pending trusted acquisition is bounded and late credential
   const snap = (await request(route(project.id))).data;
   const sent = (await request(route(project.id) + '/runs', 'POST', {requestId: randomUUID(), instanceId: snap.instanceId,
     expectedSettingsRevision: snap.settings.revision, expectedConversationRevision: snap.revision, message: 'Typed only',
-    consent: {destination: snap.settings.configuration.baseUrl, model: snap.settings.configuration.model, context: 'typed_chat_only'}})).data;
+    consent: {destination: deriveAgentEndpoint(snap.settings.configuration), protocol: snap.settings.configuration.protocol, model: snap.settings.configuration.model, context: 'typed_chat_only'}})).data;
   const stream = await fetch(server.url + `${route(project.id)}/runs/${sent.run.id}/events?instanceId=${sent.instanceId}&after=0`, {headers: {authorization: `Bearer ${token}`}});
   const streamText = stream.text(), started = Date.now(); await server.close();
   assert.ok(Date.now() - started < 2000); assert.equal(signal.aborted, true); assert.match(await streamText, /"status":"interrupted"/);
   release(); await turn(); await turn(); assert.equal(calls, 0);
+});
+
+test('actual Responses HTTP sends one fixed-path request, complete bounded context and no CC/stateful/tool fields', async t => {
+  const f = await fixture(t, {modelServer: true, protocol: 'responses'}), project = await f.rpc('project.create', {name: 'PRIVATE_RESPONSE_PROJECT'}), base = route(project.id);
+  for (let i = 0; i < 2; i++) {
+    const input = await f.sendInput(project.id, {message: `Synthetic Responses turn ${i}`});
+    const sent = (await f.request(base + '/runs', {method: 'POST', input})).body.data, done = await completed(f, project.id, sent);
+    assert.equal(done.run.status, 'completed'); assert.equal(done.run.assistantText, '本地模拟回复');
+    assert.equal(done.run.configuration.protocol, 'responses');
+    assert.equal((await f.request(base + '/runs', {method: 'POST', input})).body.data.replayed, true);
+    await (await f.stream(`${base}/runs/${sent.run.id}/events?instanceId=${sent.instanceId}&after=0`)).text();
+  }
+  assert.equal(f.calls, 2);
+  const capture = f.captures.at(-1);
+  assert.equal(capture.path, '/v1/responses'); assert.equal(capture.method, 'POST'); assert.equal(capture.body.stream, true); assert.equal(capture.body.store, false);
+  assert.equal(capture.body.max_output_tokens, 2048); assert.deepEqual(capture.body.reasoning, {effort: 'none'});
+  assert.deepEqual(capture.body.input.map(item => item.role), ['user', 'assistant', 'user']);
+  assert.match(capture.body.instructions, /no access to projects/);
+  for (const key of ['messages','tools','previous_response_id','conversation','background','metadata']) assert.equal(capture.body[key], undefined);
+  assert.equal(JSON.stringify(capture.body).includes('PRIVATE_RESPONSE_PROJECT'), false);
+  assert.equal(capture.headers.authorization, undefined);
+});
+
+test('actual Responses incomplete, failed, unknown, tools and EOF stay partial/failed with no CC fallback', async t => {
+  for (const responseFault of ['incomplete', 'failure', 'unknown', 'tool', 'truncated']) {
+    const f = await fixture(t, {modelServer: true, protocol: 'responses', responseFault}), project = await f.rpc('project.create', {name: 'Responses safe terminal fixture'});
+    const sent = (await f.request(route(project.id) + '/runs', {method: 'POST', input: await f.sendInput(project.id)})).body.data;
+    const ended = await completed(f, project.id, sent);
+    assert.equal(ended.run.status, 'failed', responseFault); assert.equal(ended.run.assistantText, '本地模拟回复', responseFault);
+    assert.equal(f.calls, 1); assert.equal(f.captures[0].path, '/v1/responses');
+    assert.equal(JSON.stringify(ended).includes('Synthetic provider error'), false);
+  }
+});
+
+test('actual Responses Stop and service shutdown abort upstream and close SSE without an additional round', async t => {
+  const f = await fixture(t, {modelServer: true, hold: true, protocol: 'responses'}), project = await f.rpc('project.create', {name: 'Responses cancellation fixture'}), base = route(project.id);
+  const sent = (await f.request(base + '/runs', {method: 'POST', input: await f.sendInput(project.id)})).body.data;
+  const stream = await f.stream(`${base}/runs/${sent.run.id}/events?instanceId=${sent.instanceId}&after=0`), reader = stream.body.getReader(); await reader.read(); await reader.cancel();
+  assert.equal((await f.request(`${base}/runs/${sent.run.id}?instanceId=${sent.instanceId}`)).body.data.run.status, 'running');
+  assert.equal((await f.request(`${base}/runs/${sent.run.id}/stop`, {method: 'POST', input: {instanceId: sent.instanceId}})).body.data.run.status, 'stopped');
+  const next = (await f.request(base + '/runs', {method: 'POST', input: await f.sendInput(project.id)})).body.data;
+  const active = await f.stream(`${base}/runs/${next.run.id}/events?instanceId=${next.instanceId}&after=0`), text = active.text();
+  const started = Date.now(); await f.server.close(); assert.ok(Date.now() - started < 2000); assert.match(await text, /"status":"interrupted"/);
+  assert.ok(f.calls <= 2); assert.ok(f.providerAborted >= 1); assert.ok(f.captures.every(call => call.path === '/v1/responses'));
 });

@@ -3,7 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFile, writeFile, readdir, stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
-const root = path.resolve('evidence/agent-chat/native-runtime'), userData = path.join(root, 'user-data');
+const root = path.resolve(process.argv.includes('--responses') ? 'evidence/agent-responses/native-runtime' : 'evidence/agent-chat/native-runtime'), userData = path.join(root, 'user-data');
 const db = new DatabaseSync(path.join(userData, 'workspace/workbench.sqlite'), {readOnly: true}); let domainHash;
 try {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='workspace_preferences' ORDER BY name").all().map(row => row.name);
@@ -20,5 +20,5 @@ for (const entry of entries) if (entry.isFile()) {
 }
 let mock = []; try { mock = (await readFile(path.join(root, 'mock/mock-requests.jsonl'), 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse); } catch {}
 const report = {at: new Date().toISOString(), domainHash, connection, settingsFiles, mock};
-const name = process.argv[2] || 'snapshot'; if (!/^[a-z0-9-]+$/.test(name)) throw Error('Unsafe audit name');
+const name = process.argv.slice(2).find(value => value !== '--responses') || 'snapshot'; if (!/^[a-z0-9-]+$/.test(name)) throw Error('Unsafe audit name');
 await writeFile(path.join(root, name + '.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));

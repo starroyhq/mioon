@@ -7,7 +7,7 @@ import {createAgentSettingsFile} from '../packages/business/src/agent/settings-f
 import {createAgentSettings} from '../packages/business/src/agent/settings.mjs';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.mjs';
 
-const envelope = (revision = 1) => ({version: 1, revision, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null});
+const envelope = (revision = 1) => ({version: 2, revision, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null});
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-agent-file-'));
   t.after(() => rm(root, {recursive: true, force: true}));
