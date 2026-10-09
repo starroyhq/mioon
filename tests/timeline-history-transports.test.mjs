@@ -20,9 +20,9 @@ const toolName = operation => operation.replaceAll('.', '_');
 function environment(extra = {}) {
   const env = {...process.env};
   for (const key of Object.keys(env)) {
-    if (/^(WB_|RUNWAY|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|VIDEO_WORKBENCH_)/.test(key)) delete env[key];
+    if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|MIOON_)/.test(key)) delete env[key];
   }
-  return {...env, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', ...extra};
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', ...extra};
 }
 
 async function cli(args, env = {}, expectedError) {
@@ -93,7 +93,7 @@ function invalidInputs(operation, projectId = randomUUID()) {
 test('timeline history CLI and official MCP advertise identical strict schemas and require caller-owned request IDs offline', {timeout: 60_000}, async t => {
   const mcp = await connectMcp(t);
   const catalog = await cli(['schema']);
-  assert.deepEqual(await mcp.call('workbench_schema'), catalog);
+  assert.deepEqual(await mcp.call('mioon_schema'), catalog);
   const tools = (await mcp.client.listTools()).tools;
   for (const operation of operations) {
     const definition = await cli(['schema', operation]);
@@ -101,7 +101,7 @@ test('timeline history CLI and official MCP advertise identical strict schemas a
     const mutation = operation !== 'timeline.history.get';
     assert.ok(tool, `${operation} is discoverable through tools/list`);
     assert.deepEqual(definition, catalog.operations.find(item => item.operation === operation));
-    assert.deepEqual(await mcp.call('workbench_schema', {operation}), definition);
+    assert.deepEqual(await mcp.call('mioon_schema', {operation}), definition);
     assert.equal(definition.operation, operation);
     assert.equal(definition.command, operation.replaceAll('.', ' '));
     assert.equal(definition.toolName, tool.name);
@@ -146,7 +146,7 @@ async function backendFixture(t) {
   async function start() {
     let stdout = '', stderr = '';
     backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.mjs')], {
-      cwd: repo, env: environment({WB_DATA_DIR: root, PORT: String(port), WB_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe'],
     });
     let spawnError;
     backend.once('error', error => spawnError = error);
@@ -157,7 +157,7 @@ async function backendFixture(t) {
       if (spawnError) throw spawnError;
       assert.equal(backend.exitCode, null, stderr);
       assert.equal(backend.signalCode, null, stderr);
-      const ready = /Video Workbench ready at (http:\/\/127\.0\.0\.1:(\d+))/.exec(stdout);
+      const ready = /Mioon ready at (http:\/\/127\.0\.0\.1:(\d+))/.exec(stdout);
       if (ready) {
         url = ready[1]; port = Number(ready[2]);
         assert.equal((await fetch(url + '/health')).status, 200);
@@ -216,7 +216,7 @@ function editable(timeline) {
 // This test never imports media, submits generation, or touches existing data.
 test('timeline edit history round-trips HTTP, CLI and official MCP with durable replay, conflicts, branching and process restart', {timeout: 90_000}, async t => {
   const backend = await backendFixture(t);
-  const env = {WB_BASE_URL: backend.url, WB_TOKEN: token};
+  const env = {MIOON_BASE_URL: backend.url, MIOON_TOKEN: token};
   const mcp = await connectMcp(t, env);
   const command = (operation, input, error, flags = []) => cli([...operation.split('.'), '--input', JSON.stringify(input), ...flags], env, error);
   const transports = [

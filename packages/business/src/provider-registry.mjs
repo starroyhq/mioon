@@ -12,7 +12,7 @@ export const providerSettings = Object.freeze({
  minimax:{credential:'MINIMAX_API_KEY',prefix:'MINIMAX'},
  vidu:{credential:'VIDU_API_KEY',prefix:'VIDU'},
 });
-export const providerEnvironmentKeys=Object.freeze(['MINIMAX_REGION','VIDU_REGION','VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER',...Object.values(providerSettings).flatMap(({credential,prefix})=>[credential,`${prefix}_APPROVED_ASSET_SHA256`,`${prefix}_OUTPUT_HOSTS`,`${prefix}_MAX_GENERATIONS`])]);
+export const providerEnvironmentKeys=Object.freeze(['MINIMAX_REGION','VIDU_REGION','MIOON_ENABLE_LIVE_PROVIDER',...Object.values(providerSettings).flatMap(({credential,prefix})=>[credential,`${prefix}_APPROVED_ASSET_SHA256`,`${prefix}_OUTPUT_HOSTS`,`${prefix}_MAX_GENERATIONS`])]);
 
 export function generationLimit(providerId,env=process.env){
  const settings=providerSettings[providerId];
@@ -36,7 +36,7 @@ export function normalizedCapabilities(provider,env=process.env,used=0){
  const status=!configured?'not_configured':enabled?'available':'disabled';
  return {...c,id:provider.id,inputModes,modelCapabilities,configured,enabled,status,liveVerified:c.mock?false:Boolean(c.liveVerified),
   configuration:{...(c.configuration||{}),missing:[...new Set([...(c.configuration?.missing||[]),...missing])],requirements:settings?[
-   'VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER=1：在后端明确启用真实调用',
+   'MIOON_ENABLE_LIVE_PROVIDER=1：在后端明确启用真实调用',
    `${settings.prefix}_MAX_GENERATIONS：当前数据目录的授权生成次数上限`,
    `${settings.prefix}_APPROVED_ASSET_SHA256：图生视频仅发送已授权参考图`,
    ...(c.region?[`${settings.prefix}_REGION=global|cn：必须与密钥账户区域一致，不会跨区回退`]:[]),

@@ -29,13 +29,13 @@ async function boundedJson(response) {
 export function liveConfiguration(env, keyName, prefix) {
   const secret = typeof env[keyName] === 'string' ? env[keyName].trim() : '';
   const configured = Boolean(secret);
-  const enabled = configured && env.VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER === '1';
+  const enabled = configured && env.MIOON_ENABLE_LIVE_PROVIDER === '1';
   return {
     secret, configured, enabled,
     status: !configured ? 'not_configured' : enabled ? 'available' : 'disabled',
     configuration: {
-      missing: [...(!configured ? [keyName] : []), ...(env.VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER !== '1' ? ['VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER'] : [])],
-      requirements: [keyName, 'VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER=1', `${prefix}_MAX_GENERATIONS (application-enforced approved count)`, `${prefix}_APPROVED_ASSET_SHA256 (required for image input)`],
+      missing: [...(!configured ? [keyName] : []), ...(env.MIOON_ENABLE_LIVE_PROVIDER !== '1' ? ['MIOON_ENABLE_LIVE_PROVIDER'] : [])],
+      requirements: [keyName, 'MIOON_ENABLE_LIVE_PROVIDER=1', `${prefix}_MAX_GENERATIONS (application-enforced approved count)`, `${prefix}_APPROVED_ASSET_SHA256 (required for image input)`],
     },
     ensureEnabled() { if (!enabled) throw providerError('PROVIDER_DISABLED', 'Live provider calls are disabled or its server credential is missing.'); },
   };

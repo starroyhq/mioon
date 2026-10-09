@@ -1,6 +1,6 @@
 import * as React from 'react'
-import { Button } from '@video-workbench/ui/components/button'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@video-workbench/ui/components/dialog'
+import { Button } from '@mioon/ui/components/button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog'
 
 type Confirm = (message: string) => Promise<boolean>
 const ConfirmationContext = React.createContext<Confirm | null>(null)

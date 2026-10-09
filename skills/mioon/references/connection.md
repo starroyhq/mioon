@@ -7,21 +7,21 @@ If the user requests starting an isolated local Web service, prepare dependencie
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
-WB_DATA_DIR=/absolute/new/local/data PORT=4318 pnpm start
+MIOON_DATA_DIR=/absolute/new/local/data PORT=4318 pnpm start
 ```
 
 Choose an unused port and a fresh or explicitly selected data directory. Keep the process running. The service only listens on loopback and creates `access-token` with owner-only permissions. In another shell, connect without putting the secret in a command argument:
 
 ```sh
-export WB_BASE_URL=http://127.0.0.1:4318
-export WB_TOKEN_FILE=/absolute/new/local/data/access-token
+export MIOON_BASE_URL=http://127.0.0.1:4318
+export MIOON_TOKEN_FILE=/absolute/new/local/data/access-token
 node apps/cli/src/index.mjs doctor
 ```
 
 For an existing Electron desktop, use its actual `mcp-connection.json` (V4.1 production userData folder `app.starroy.mioon`, development `app.starroy.mioon.dev`; custom locations are possible):
 
 ```sh
-export WB_CONNECTION_FILE=/absolute/to/userData/mcp-connection.json
+export MIOON_CONNECTION_FILE=/absolute/to/userData/mcp-connection.json
 node apps/cli/src/index.mjs doctor
 ```
 
@@ -31,6 +31,6 @@ Do not combine descriptor discovery with another service's base URL or token. Th
 
 ## MCP configuration
 
-Use the host client's normal MCP configuration location only if the user requests configuring that client. Installation of the skill alone does not authorize changing global settings. Both Codex and Claude Code can launch the real stdio server with command `node`, argument `/absolute/path/video-workbench/apps/mcp/src/index.mjs`, and environment `WB_CONNECTION_FILE=/absolute/to/userData/mcp-connection.json`.
+Use the host client's normal MCP configuration location only if the user requests configuring that client. Installation of the skill alone does not authorize changing global settings. Both Codex and Claude Code can launch the real stdio server with command `node`, argument `/absolute/path/mioon/apps/mcp/src/index.mjs`, and environment `MIOON_CONNECTION_FILE=/absolute/to/userData/mcp-connection.json`.
 
-For direct Web service use `WB_BASE_URL` and `WB_TOKEN_FILE` instead. No secret belongs in the configuration. The source bridge needs installed workspace dependencies and Node 24+; it is not bundled in the historical Linux desktop archive. `docs/MCP.md` in the application repository has host-specific configuration examples.
+For direct Web service use `MIOON_BASE_URL` and `MIOON_TOKEN_FILE` instead. No secret belongs in the configuration. The source bridge needs installed workspace dependencies and Node 24+; it is not bundled in the historical Linux desktop archive. `docs/MCP.md` in the application repository has host-specific configuration examples.

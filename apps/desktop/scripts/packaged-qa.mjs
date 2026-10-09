@@ -9,22 +9,25 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { migrateData } from './migrate-data.mjs';
 import { trustedOrigin } from '../src/security.mjs';
+import desktopIdentity from '../identity.cjs';
+import { providerEnvironmentKeys } from '@mioon/business';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const binary = path.join(root, 'release/desktop/linux-unpacked/video-workbench');
-const directory = await mkdtemp(path.join(tmpdir(), 'wb-packaged-qa-'));
+const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.length > 2 ? process.argv.slice(2) : ['--channel=production']));
+const binary = path.join(root, `release/desktop/${identity.channel}/linux-unpacked`, identity.executableName);
+const directory = await mkdtemp(path.join(tmpdir(), 'mioon-packaged-qa-'));
 const userData = path.join(directory, 'user-data');
-const output = process.env.WB_PACKAGED_QA_OUTPUT || path.join(root, 'evidence/v3-desktop/packaged-qa.json');
+const output = process.env.MIOON_PACKAGED_QA_OUTPUT || path.join(root, `evidence/mioon-desktop/${identity.channel}/packaged-qa.json`);
 await mkdir(path.dirname(output), { recursive: true });
 const emptyPath = path.join(directory, 'path-without-node');
 await mkdir(emptyPath);
 const migration = await migrateData(path.join(root, 'examples/multitrack-project'), path.join(userData, 'workspace'));
-if (!path.isAbsolute(process.env.WB_FFMPEG_PATH || '') || !path.isAbsolute(process.env.WB_FFPROBE_PATH || '')) {
-  throw new Error('Set explicit absolute WB_FFMPEG_PATH and WB_FFPROBE_PATH for packaged QA');
+if (!path.isAbsolute(process.env.MIOON_FFMPEG_PATH || '') || !path.isAbsolute(process.env.MIOON_FFPROBE_PATH || '')) {
+  throw new Error('Set explicit absolute MIOON_FFMPEG_PATH and MIOON_FFPROBE_PATH for packaged QA');
 }
-const env = { ...process.env, PATH: emptyPath, WB_DESKTOP_USER_DATA: userData, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0' };
-for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH', 'WB_DESKTOP_SMOKE_OUTPUT',
-  'RUNWAYML_API_SECRET', 'RUNWAY_APPROVED_ASSET_SHA256', 'RUNWAY_OUTPUT_HOSTS', 'RUNWAY_MAX_GENERATIONS']) delete env[name];
+const env = { ...process.env, PATH: emptyPath, MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0' };
+for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH', 'MIOON_DESKTOP_SMOKE_OUTPUT',
+  ...providerEnvironmentKeys.filter(name => name !== 'MIOON_ENABLE_LIVE_PROVIDER')]) delete env[name];
 const child = spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let tail = '', ended = false;
 for (const stream of [child.stdout, child.stderr]) stream.on('data', bytes => { tail = (tail + bytes).slice(-10000); });
@@ -32,7 +35,7 @@ const exit = new Promise((resolve, reject) => {
   child.once('error', reject);
   child.once('exit', (code, signal) => { ended = true; resolve({ code, signal }); });
 });
-const report = { ok: false, binary, migration, noHostNodeInChildPath: true, packagedSmokeHooks: false, remoteDebugging: false, checks: [] };
+const report = { ok: false, identity, binary, migration, noHostNodeInChildPath: true, packagedSmokeHooks: false, remoteDebugging: false, checks: [] };
 const check = name => report.checks.push({ name, ok: true });
 async function poll(fn, title, timeout = 90000) {
   const deadline = Date.now() + timeout;
@@ -48,11 +51,12 @@ try {
     try { return JSON.parse(await readFile(path.join(userData, 'mcp-connection.json'), 'utf8')); }
     catch (error) { if (error.code === 'ENOENT') return false; throw error; }
   }, 'private desktop discovery');
+  assert.equal(descriptor.appId, identity.appId); assert.equal(descriptor.channel, identity.channel);
   const origin = trustedOrigin(descriptor.url);
   const token = (await readFile(descriptor.tokenFile, 'utf8')).trim();
   assert.match(token, /^[a-f0-9]{64}$/);
   const health = await fetch(`${origin}/health`).then(response => response.json());
-  assert.equal(health.ok, true); assert.ok(health.sqlite);
+  assert.equal(health.ok, true); assert.equal(health.service, 'mioon'); assert.ok(health.sqlite);
   report.health = health;
   check('actual-packaged-asar-backend-starts-with-empty-path');
   const utilityExecutable = await readlink(`/proc/${descriptor.pid}/exe`);

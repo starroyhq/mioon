@@ -1,7 +1,7 @@
 import { cp, mkdir, readdir, lstat, stat, realpath, open } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openStore } from '@video-workbench/business';
+import { openStore } from '@mioon/business';
 
 async function optionalStat(file) { try { return await stat(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
 async function checkAncestors(file, { allowMissing = false } = {}) {

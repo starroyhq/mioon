@@ -21,7 +21,7 @@ async function managedDestination(root, destination) {
 
 function runFfmpeg(args) {
   return new Promise((resolve, reject) => {
-    const configured = process.env.WB_FFMPEG_PATH;
+    const configured = process.env.MIOON_FFMPEG_PATH;
     if (configured && !path.isAbsolute(configured)) return reject(error('MOCK_RENDER_FAILED', 'Configured renderer must be an absolute executable path.', { retryable: true }));
     const child = spawnMedia(configured || 'ffmpeg', args, { shell: false, stdio: ['ignore', 'ignore', 'pipe'] }, {kind:'ffmpeg'});
     // Never include command output or asset paths in outward-facing errors.

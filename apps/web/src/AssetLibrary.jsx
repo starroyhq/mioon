@@ -1,10 +1,10 @@
 import React from 'react';
-import { Button } from '@video-workbench/ui/components/button';
-import { Input } from '@video-workbench/ui/components/input';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@video-workbench/ui/components/tabs';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@video-workbench/ui/components/collapsible';
-import { ScrollArea } from '@video-workbench/ui/components/scroll-area';
-import { WorkbenchTooltip } from '@video-workbench/ui/components/workbench-tooltip';
+import { Button } from '@mioon/ui/components/button';
+import { Input } from '@mioon/ui/components/input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/tabs';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
+import { ScrollArea } from '@mioon/ui/components/scroll-area';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import Icon from './icons.jsx';
 import { Media } from './Nodes.jsx';
 import { assetKind, dragAsset } from './Timeline.jsx';

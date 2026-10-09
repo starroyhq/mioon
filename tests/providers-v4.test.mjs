@@ -38,7 +38,7 @@ async function fixture(t, kind, responses = [], options = {}) {
   const spec = specs[kind], root = await sandbox(t), bytes = png(), file = path.join(root, 'approved.png');
   await writeFile(file, bytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const env = { [spec.key]: 'SECRET-DO-NOT-LEAK', VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '1', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...options.env };
+  const env = { [spec.key]: 'SECRET-DO-NOT-LEAK', MIOON_ENABLE_LIVE_PROVIDER: '1', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...options.env };
   const calls = [], queue = [...responses];
   const fetchImpl = async (...args) => { calls.push(args); const item = queue.shift(); if (item instanceof Error) throw item; if (typeof item === 'function') return item(...args); if (!item) throw new Error('No real fetch is allowed in an offline test'); return item; };
   const provider = spec.factory({ root, env, fetchImpl, ...(options.now ? { now: options.now } : {}) });
@@ -50,7 +50,7 @@ async function fixture(t, kind, responses = [], options = {}) {
 
 for (const kind of Object.keys(specs)) {
   test(`${kind}: constructor/capabilities/reconcile/cancel are offline and secrets never appear`, async t => {
-    const { provider, calls, input } = await fixture(t, kind, [], { env: { VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0' } });
+    const { provider, calls, input } = await fixture(t, kind, [], { env: { MIOON_ENABLE_LIVE_PROVIDER: '0' } });
     assert.equal(provider.capabilities.status, 'disabled');
     assert.equal(provider.capabilities.configured, true);
     assert.equal(provider.capabilities.enabled, false);
@@ -197,7 +197,7 @@ test('Ark validates first-frame metadata AND actual dimensions before submission
   for (const patch of [{ width: 200 }, { height: 7000 }, { width: 640 }, { width: undefined }]) assert.throws(() => provider.validate({ ...input, referenceAssets: [{ ...reference, ...patch }] }));
   const square = png(400, 400); await writeFile(file, square);
   const hash = createHash('sha256').update(square).digest('hex');
-  const altered = createArkProvider({ root: path.dirname(file), env: { ARK_API_KEY: 'fixture', ARK_APPROVED_ASSET_SHA256: hash, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '1' }, fetchImpl: () => assert.fail('must reject actual dimensions before any POST') });
+  const altered = createArkProvider({ root: path.dirname(file), env: { ARK_API_KEY: 'fixture', ARK_APPROVED_ASSET_SHA256: hash, MIOON_ENABLE_LIVE_PROVIDER: '1' }, fetchImpl: () => assert.fail('must reject actual dimensions before any POST') });
   await assert.rejects(altered.submit({ ...input, referenceAssets: [{ ...reference, sha256: hash }] }), { code: 'REFERENCE_ASPECT_RATIO_MISMATCH' });
   assert.equal(calls.length, 0);
 });

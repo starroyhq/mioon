@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {AppError} from '@video-workbench/contracts';
+import {AppError} from '@mioon/contracts';
 
 // A reference edge owns one existing managed image and one shot reference slot.
 // It never evaluates a graph or copies prompts from other nodes. Keep the stable

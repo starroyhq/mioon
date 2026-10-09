@@ -38,12 +38,12 @@ async function freePort() {
   const port = listener.address().port; await new Promise(resolve => listener.close(resolve)); return port;
 }
 async function fixture(t) {
-  const root = await mkdtemp(path.join(tmpdir(), 'video-workbench-v2-media-'));
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-v2-media-'));
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   let child;
   async function start() {
     const processRecord = { action: 'start', at: new Date().toISOString(), port, root, stdout: '', stderr: '' };
-    child = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), WB_DATA_DIR: root, WB_TOKEN: token, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
     processRecord.pid = child.pid; records.processes.push(processRecord);
     child.stdout.on('data', bytes => processRecord.stdout += bytes); child.stderr.on('data', bytes => processRecord.stderr += bytes);
     child.on('close', (code, signal) => Object.assign(processRecord, { exitCode: code, signal }));

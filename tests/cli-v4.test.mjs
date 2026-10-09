@@ -11,8 +11,8 @@ import http from 'node:http';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '@video-workbench/server';
-import {schemas} from '@video-workbench/contracts';
+import {startServer} from '@mioon/server';
+import {schemas} from '@mioon/contracts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const cliPath = path.join(repo, 'apps/cli/src/index.mjs');
@@ -21,8 +21,8 @@ const token = 'synthetic-v4-cli-token-never-live';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 function environment(extra = {}) {
   const env = {...process.env};
-  for (const key of Object.keys(env)) if (/^(WB_|RUNWAY|ARK_|VEO_|GOOGLE_|VIDEO_WORKBENCH_)/.test(key)) delete env[key];
-  return {...env, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER:'0', RUNWAY_MAX_GENERATIONS:'0', ...extra};
+  for (const key of Object.keys(env)) if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MIOON_)/.test(key)) delete env[key];
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', RUNWAY_MAX_GENERATIONS:'0', ...extra};
 }
 function startCli(args, env = {}, stdin = '') {
   const child = spawn(process.execPath, [cliPath, ...args], {cwd:repo, env:environment(env), stdio:['pipe','pipe','pipe']});
@@ -146,11 +146,11 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   const proxy = await proxyTo(service);
   const tokenFile = path.join(root, 'cli-token');
   await writeFile(tokenFile, token, {mode:0o600});
-  const env = {WB_BASE_URL:proxy.url, WB_TOKEN_FILE:tokenFile};
+  const env = {MIOON_BASE_URL:proxy.url, MIOON_TOKEN_FILE:tokenFile};
   t.after(async () => {await proxy.close(); await service.close(); await rm(root, {recursive:true, force:true});});
   const command = async (operation, input = {}, flags = []) => succeeded(await cli([...operation.split('.'), '--input', JSON.stringify(input), ...flags], env));
   const callMcp = await connectMcp(t, env);
-  assert.deepEqual(succeeded(await cli(['schema'], env)), await callMcp('workbench_schema'), 'CLI and MCP discovery share exact schema metadata');
+  assert.deepEqual(succeeded(await cli(['schema'], env)), await callMcp('mioon_schema'), 'CLI and MCP discovery share exact schema metadata');
   assert.deepEqual(succeeded(await cli(['capabilities'], env)), await rpc(service, 'provider.list'));
   const doctor = succeeded(await cli(['doctor'], env));
   assert.equal(doctor.ready, true); assert.equal(doctor.connection.source, 'private-token-file');
@@ -173,7 +173,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   });
 
   const imagePath = path.join(root, 'reference.png');
-  await exec(process.env.WB_FFMPEG_PATH || 'ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=0x3566ab:s=16x16','-frames:v','1','-threads','1',imagePath]);
+  await exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=0x3566ab:s=16x16','-frames:v','1','-threads','1',imagePath]);
   const image = await command('asset.import', {projectId:project.id}, ['--file',imagePath]);
   assert.equal(image.name, 'reference.png');
   assert.equal(image.mimeType, 'image/png');
@@ -227,7 +227,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     const media = await fetch(service.url + rendered.url, {headers:{authorization:`Bearer ${token}`}});
     assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'video/mp4');
     const file = path.join(root, 'verified-export.mp4'); await writeFile(file, Buffer.from(await media.arrayBuffer()));
-    const probe = JSON.parse((await exec(process.env.WB_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file])).stdout);
+    const probe = JSON.parse((await exec(process.env.MIOON_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file])).stdout);
     const downloadPath = path.join(root, 'cli-export.mp4');
     succeeded(await cli(['export','download','--input',JSON.stringify({exportId:queued.id}),'--output',downloadPath], env));
     const exportedBytes = await readFile(file);
@@ -294,10 +294,10 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   await t.test('token-file permissions and authentication failures are safely classified', async () => {
     const wrongFile = path.join(root, 'wrong-token');
     await writeFile(wrongFile, 'another-synthetic-token-never-live', {mode:0o600});
-    failed(await cli(['project','list'], {WB_BASE_URL:service.url, WB_TOKEN_FILE:wrongFile}), 4, 'UNAUTHORIZED');
+    failed(await cli(['project','list'], {MIOON_BASE_URL:service.url, MIOON_TOKEN_FILE:wrongFile}), 4, 'UNAUTHORIZED');
     if (process.platform !== 'win32') {
       await chmod(wrongFile, 0o644);
-      const output = await cli(['project','list'], {WB_BASE_URL:service.url, WB_TOKEN_FILE:wrongFile});
+      const output = await cli(['project','list'], {MIOON_BASE_URL:service.url, MIOON_TOKEN_FILE:wrongFile});
       failed(output, 4);
       assert.ok(!output.stdout.includes(wrongFile)); assert.ok(!output.stderr.includes(wrongFile));
     }
@@ -314,7 +314,7 @@ test('CLI unexpected backend errors and unreadable responses keep structured, re
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => fixture.close(resolve)));
-  const env = {WB_BASE_URL:`http://127.0.0.1:${fixture.address().port}`, WB_TOKEN:token};
+  const env = {MIOON_BASE_URL:`http://127.0.0.1:${fixture.address().port}`, MIOON_TOKEN:token};
   const error = failed(await cli(['project','list'], env), 1, 'INTERNAL_ERROR');
   assert.equal(error.details.retained, true); assert.ok(!Object.hasOwn(error.details, 'authorization'));
   malformed = true;

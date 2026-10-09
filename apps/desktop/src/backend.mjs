@@ -1,6 +1,6 @@
-import { startServer } from '@video-workbench/server';
+import { startServer } from '@mioon/server';
 import { DatabaseSync } from 'node:sqlite';
-import { onMediaProcess } from '@video-workbench/business/media-processes';
+import { onMediaProcess } from '@mioon/business/media-processes';
 
 if (!process.parentPort || !process.versions.electron) throw new Error('Backend must run in Electron utilityProcess');
 if (Number(process.versions.node.split('.')[0]) < 24 || typeof DatabaseSync !== 'function') {

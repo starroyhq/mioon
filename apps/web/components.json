@@ -5,5 +5,5 @@
   "tsx": true,
   "tailwind": { "config": "", "css": "../../packages/ui/src/styles/globals.css", "baseColor": "neutral", "cssVariables": true },
   "iconLibrary": "lucide",
-  "aliases": { "components": "@/components", "hooks": "@/hooks", "lib": "@/lib", "utils": "@video-workbench/ui/lib/utils", "ui": "@video-workbench/ui/components" }
+  "aliases": { "components": "@/components", "hooks": "@/hooks", "lib": "@/lib", "utils": "@mioon/ui/lib/utils", "ui": "@mioon/ui/components" }
 }

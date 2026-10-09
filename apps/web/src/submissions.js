@@ -1,9 +1,11 @@
+import { migratePendingStorage } from './storage-migration.js';
 // A lost HTTP response is not proof that the server rejected a paid request.
 // Preserve the exact operation and input until a definite response or a durable
 // job/export with the same request ID establishes the outcome. Never re-key it.
-const PREFIX = 'frame.pending.v1:';
+const PREFIX = 'mioon.pending.v1:';
 function storageKey(projectId, key) { return `${PREFIX}${projectId}:${key}`; }
 export function readPending(projectId, key) {
+  migratePendingStorage();
   const raw = sessionStorage.getItem(storageKey(projectId, key));
   if (!raw) return null;
   const entry = JSON.parse(raw);
@@ -11,6 +13,7 @@ export function readPending(projectId, key) {
   return entry;
 }
 export function writePending(entry) {
+  migratePendingStorage();
   try { sessionStorage.setItem(storageKey(entry.projectId, entry.key), JSON.stringify(entry)); }
   catch { throw new Error('浏览器无法保存请求恢复记录。请允许此站点使用会话存储后再提交。'); }
 }
@@ -23,8 +26,9 @@ export function prepareSubmission(entry) {
   if (!persisted) throw new Error('请求恢复记录未能保存，已阻止提交。');
   return persisted;
 }
-export function clearPending(projectId, key) { sessionStorage.removeItem(storageKey(projectId, key)); }
+export function clearPending(projectId, key) { migratePendingStorage(); sessionStorage.removeItem(storageKey(projectId, key)); }
 export function pendingForProject(projectId) {
+  migratePendingStorage();
   const result = [];
   for (let i = 0; i < sessionStorage.length; i++) {
     const key = sessionStorage.key(i);

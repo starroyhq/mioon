@@ -4,8 +4,8 @@ import {mkdtemp,readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
-import {startServer} from '@video-workbench/server';
-import {onMediaProcess} from '@video-workbench/business/media-processes';
+import {startServer} from '@mioon/server';
+import {onMediaProcess} from '@mioon/business/media-processes';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 test('shutdown interrupts a real long FFmpeg export, reaps its process and preserves queued recovery',async()=>{

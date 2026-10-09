@@ -2,9 +2,9 @@
 // Channels are selected only by build arguments, never by a launch-time environment.
 const identities = Object.freeze({
   production: Object.freeze({ channel: 'production', appId: 'app.starroy.mioon',
-    productName: 'Video Workbench', executableName: 'video-workbench' }),
+    productName: 'Mioon', executableName: 'mioon' }),
   development: Object.freeze({ channel: 'development', appId: 'app.starroy.mioon.dev',
-    productName: 'Video Workbench Dev', executableName: 'video-workbench-dev' })
+    productName: 'Mioon Dev', executableName: 'mioon-dev' })
 });
 function identityForChannel(channel) {
   if (!Object.hasOwn(identities, channel)) throw new Error(`Unknown desktop channel: ${channel}`);

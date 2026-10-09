@@ -36,3 +36,32 @@ export function installUnsavedGuard(win, { confirmDiscard, onCancel }) {
     else onCancel();
   });
 }
+
+/** Keep the renderer alive just long enough to finish ordinary preference HTTP.
+ * This is a main-to-page lifecycle request, never a renderer-to-native API.
+ * Failure is bounded and lets the user either close or keep the window open.
+ */
+export function installPreferencesCloseDrain(win, { flush, confirmClose, onCancel, timeoutMs = 1500 }) {
+  let draining = false, allowOnce = false;
+  win.on('close', event => {
+    if (allowOnce) { allowOnce = false; return; }
+    event.preventDefault();
+    if (draining) return;
+    draining = true;
+    let timer;
+    const deadline = new Promise(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); });
+    void Promise.race([Promise.resolve().then(flush).then(result => result === true, () => false), deadline])
+      .then(async saved => {
+        clearTimeout(timer);
+        if (win.isDestroyed()) return;
+        const close = saved || await confirmClose();
+        draining = false;
+        if (win.isDestroyed()) return;
+        if (close) { allowOnce = true; win.close(); }
+        else onCancel();
+      }).catch(() => {
+        clearTimeout(timer); draining = false;
+        if (!win.isDestroyed()) onCancel();
+      });
+  });
+}

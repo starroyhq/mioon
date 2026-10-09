@@ -15,14 +15,14 @@ await mkdir(output, { recursive: true });
 for (const name of ['main', 'backend']) {
   await build({ entryPoints: [path.join(desktop, `src/${name}.mjs`)], outfile: path.join(output, `${name}.cjs`),
     bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
-    define: { 'import.meta.url': '__workbench_import_meta_url', __WB_DESKTOP_CHANNEL__: JSON.stringify(identity.channel) },
-    banner: { js: 'const __workbench_import_meta_url = require("node:url").pathToFileURL(__filename).href;' },
+    define: { 'import.meta.url': '__mioon_import_meta_url', __MIOON_DESKTOP_CHANNEL__: JSON.stringify(identity.channel) },
+    banner: { js: 'const __mioon_import_meta_url = require("node:url").pathToFileURL(__filename).href;' },
     sourcemap: false, legalComments: 'eof', logLevel: 'info' });
 }
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
 const pkg = JSON.parse(await readFile(path.join(desktop, 'package.json'), 'utf8'));
-await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'video-workbench-desktop', version: pkg.version,
-  private: true, desktopName: `${identity.appId}.desktop`, workbenchDesktop: identity, description: pkg.description, author: 'Video Workbench', main: 'main.cjs', dependencies: {} }, null, 2));
+await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: pkg.version,
+  private: true, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
 await mkdir(path.join(output, 'licenses'), { recursive: true });
 const seen = new Set(), notices = ['# Third-party notices', '', 'Electron and Chromium notices are included beside the packaged executable.', ''];
 async function collectLicenses(packageFile) {
@@ -31,7 +31,7 @@ async function collectLicenses(packageFile) {
   if (seen.has(key)) return;
   seen.add(key);
   const directory = path.dirname(packageFile), require = createRequire(packageFile);
-  if (!metadata.name.startsWith('@video-workbench/')) {
+  if (!metadata.name.startsWith('@mioon/')) {
     const files = (await readdir(directory)).filter(name => /^(license|licence|copying|notice)([.-]|$)/i.test(name));
     for (const file of files) await cp(path.join(directory, file), path.join(output, 'licenses', `${metadata.name.replaceAll('/', '-')}-${file}`));
     notices.push(`- ${key}: ${metadata.license || 'See bundled notices'}${files.length ? ` (${files.join(', ')})` : ''}`);

@@ -1,4 +1,4 @@
-import { findModelCapabilities, getGenerationIssue } from '@video-workbench/contracts';
+import { findModelCapabilities, getGenerationIssue } from '@mioon/contracts';
 
 export const providerStatus = provider => provider?.status || (!provider?.configured ? 'not_configured' : !provider?.enabled ? 'disabled' : 'available');
 export const providerStatusLabel = provider => ({ available: '可用', disabled: '未启用', not_configured: '配置未完成' }[providerStatus(provider)] || '不可用');

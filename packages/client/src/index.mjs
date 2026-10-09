@@ -1,7 +1,7 @@
 import {setTimeout as pause} from 'node:timers/promises';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {schemas, descriptions, parse} from '@video-workbench/contracts';
+import {schemas, descriptions, parse} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 
 export {schemas, descriptions, resolveConnection};
@@ -85,7 +85,7 @@ export function createClient({env = process.env, fetchImpl = fetch, requestTimeo
       const details = body ? {operation: body.operation, ...(body.input?.requestId ? {requestId: body.input.requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})} : {};
       if (signal?.aborted) throw new ClientError('INTERRUPTED', 'Stopped locally. No remote job was cancelled; an in-flight request may still have completed.', {details});
       if (timer.aborted) throw new ClientError('TIMEOUT', 'The local backend request timed out.', {details});
-      throw new ClientError(response ? 'BACKEND_PROTOCOL_ERROR' : 'BACKEND_UNAVAILABLE', response ? 'The backend returned an unreadable response.' : 'The local backend is unavailable. Start or reopen Video Workbench, then retry safely.', {details});
+      throw new ClientError(response ? 'BACKEND_PROTOCOL_ERROR' : 'BACKEND_UNAVAILABLE', response ? 'The backend returned an unreadable response.' : 'The local backend is unavailable. Start or reopen Mioon, then retry safely.', {details});
     }
   }
   async function rpc(operation, input = {}, options) {

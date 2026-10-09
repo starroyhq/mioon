@@ -1,5 +1,5 @@
 {
-  "name": "video-workbench",
+  "name": "mioon",
   "version": "0.4.1",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "node apps/server/src/cli.mjs",
     "start": "node apps/server/src/cli.mjs",
-    "build": "pnpm --filter @video-workbench/web build",
-    "dev:web": "pnpm --filter @video-workbench/web dev",
+    "build": "pnpm --filter @mioon/web build",
+    "dev:web": "pnpm --filter @mioon/web dev",
     "mcp": "node apps/mcp/src/index.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:browser": "python3 tests/browser_flow.py",
@@ -21,26 +21,26 @@
     "demo:timeline": "python3 scripts/create-timeline-fixtures.py && node scripts/create-timeline-demo.mjs",
     "test:timeline": "node --test tests/*timeline*.test.mjs",
     "test:browser:timeline": "python3 tests/browser_timeline.py",
-    "desktop:build": "pnpm --filter @video-workbench/desktop build",
-    "desktop": "pnpm --filter @video-workbench/desktop start",
-    "desktop:package:linux": "pnpm --filter @video-workbench/desktop package:linux",
+    "desktop:build": "pnpm --filter @mioon/desktop build",
+    "desktop": "pnpm --filter @mioon/desktop start",
+    "desktop:package:linux": "pnpm --filter @mioon/desktop package:linux",
     "test:desktop": "node --test tests/desktop*.test.mjs",
     "cli": "node apps/cli/src/index.mjs",
     "test:cli": "node --test tests/cli*.test.mjs",
     "test:providers": "node --test tests/providers*.test.mjs",
     "test:browser:providers": "python3 tests/browser_providers_v4.py",
-    "desktop:build:production": "pnpm --filter @video-workbench/desktop build:production",
-    "desktop:package:linux:dev": "pnpm --filter @video-workbench/desktop package:linux:dev"
+    "desktop:build:production": "pnpm --filter @mioon/desktop build:production",
+    "desktop:package:linux:dev": "pnpm --filter @mioon/desktop package:linux:dev"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
-    "@video-workbench/business": "workspace:*",
-    "@video-workbench/contracts": "workspace:*",
-    "@video-workbench/server": "workspace:*",
+    "@mioon/business": "workspace:*",
+    "@mioon/contracts": "workspace:*",
+    "@mioon/server": "workspace:*",
     "electron": "44.7.0",
     "electron-builder": "26.15.3",
     "esbuild": "0.27.7",
-    "@video-workbench/client": "workspace:*",
-    "@video-workbench/cli": "workspace:*"
+    "@mioon/client": "workspace:*",
+    "@mioon/cli": "workspace:*"
   }
 }

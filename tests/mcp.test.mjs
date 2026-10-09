@@ -18,12 +18,12 @@ async function freePort() { const server = net.createServer(); server.listen(0, 
 
 test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP project, jobs and versions', { timeout: 120_000 }, async t => {
   await mkdir(evidence, { recursive: true });
-  const persist = process.env.WB_MCP_PERSIST_DIR ? path.resolve(process.env.WB_MCP_PERSIST_DIR) : null;
-  const root = persist || await mkdtemp(path.join(tmpdir(), 'video-workbench-mcp-'));
+  const persist = process.env.MIOON_MCP_PERSIST_DIR ? path.resolve(process.env.MIOON_MCP_PERSIST_DIR) : null;
+  const root = persist || await mkdtemp(path.join(tmpdir(), 'mioon-mcp-'));
   await mkdir(root, { recursive: true }); const port = await freePort(), base = `http://127.0.0.1:${port}`;
   const traffic = [], report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.mjs'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['server/index.mjs'], port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
   let stdout = '', stderr = '', mcpStderr = '', client, transport;
-  const backend = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), WB_DATA_DIR: root, WB_TOKEN: token, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const backend = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
   backend.stdout.on('data', bytes => stdout += bytes); backend.stderr.on('data', bytes => stderr += bytes);
   t.after(async () => {
     if (client) await client.close().catch(() => {}); else if (transport) await transport.close().catch(() => {});
@@ -35,7 +35,7 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   });
   const deadline = Date.now() + 10_000;
   while (true) { if (backend.exitCode !== null) throw Error(`Backend exit ${backend.exitCode}: ${stderr}`); try { if ((await fetch(base + '/health')).ok) break; } catch {} if (Date.now() > deadline) throw Error(`Backend start timed out: ${stderr}`); await pause(40); }
-  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.mjs'], cwd: repo, env: { ...process.env, WB_BASE_URL: base, WB_TOKEN: token }, stderr: 'pipe' });
+  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.mjs'], cwd: repo, env: { ...process.env, MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
   transport.stderr.on('data', bytes => mcpStderr += bytes);
   // Preserve the official SDK transport as the wire implementation. This wrapper
   // records its real JSON-RPC messages, rather than calling the service directly.
@@ -50,9 +50,9 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
     close() { return transport.close(); },
     get sessionId() { return transport.sessionId; },
   };
-  client = new Client({ name: 'video-workbench-acceptance-client', version: '1.0.0' }, { capabilities: {} });
+  client = new Client({ name: 'mioon-acceptance-client', version: '1.0.0' }, { capabilities: {} });
   await client.connect(wire);
-  report.server = client.getServerVersion(); assert.equal(report.server.name, 'video-workbench');
+  report.server = client.getServerVersion(); assert.equal(report.server.name, 'mioon');
   const listing = await client.listTools(); report.toolNames = listing.tools.map(tool => tool.name);
   for (const name of ['project_create', 'project_get', 'shot_create', 'shot_update', 'generation_submit', 'job_get', 'version_list', 'version_select', 'export_create', 'job_reconcile']) assert.ok(report.toolNames.includes(name), `Missing MCP tool ${name}`);
   async function call(name, args = {}, expectError = false) {
@@ -109,6 +109,6 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   assert.ok(traffic.some(record => record.direction === 'client-to-server' && record.message.method === 'tools/call' && record.message.params.name === 'generation_submit'));
   report.result = 'passed'; report.sharedStateVerifiedByHttp = true; report.shotIds = mcpState.shots.map(shot => shot.id); report.versionIds = mcpState.versions.map(version => version.id); report.exportId = exported.id; report.persistedForBrowser = Boolean(persist);
   await writeFile(path.join(evidence, 'project-state.json'), JSON.stringify(mcpState, null, 2));
-  if (persist) await writeFile(path.join(evidence, 'demo-project.json'), JSON.stringify({ projectId: project.id, dataDirectory: root, shotIds: report.shotIds, versionIds: report.versionIds, exportId: exported.id, browserInstructions: 'Start backend with WB_DATA_DIR set to dataDirectory and any own local WB_TOKEN. The SDK backend has been stopped.' }, null, 2));
+  if (persist) await writeFile(path.join(evidence, 'demo-project.json'), JSON.stringify({ projectId: project.id, dataDirectory: root, shotIds: report.shotIds, versionIds: report.versionIds, exportId: exported.id, browserInstructions: 'Start backend with MIOON_DATA_DIR set to dataDirectory and any own local MIOON_TOKEN. The SDK backend has been stopped.' }, null, 2));
   t.diagnostic(`Official MCP wire verified; ${traffic.length} messages; project ${project.id}; ${persist ? `persisted in ${root}` : 'isolated temporary fixture'}`);
 });

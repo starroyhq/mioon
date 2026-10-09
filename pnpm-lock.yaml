@@ -11,19 +11,19 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(supports-color@7.2.0)(zod@3.25.76)
-      '@video-workbench/business':
+      '@mioon/business':
         specifier: workspace:*
         version: link:packages/business
-      '@video-workbench/cli':
+      '@mioon/cli':
         specifier: workspace:*
         version: link:apps/cli
-      '@video-workbench/client':
+      '@mioon/client':
         specifier: workspace:*
         version: link:packages/client
-      '@video-workbench/contracts':
+      '@mioon/contracts':
         specifier: workspace:*
         version: link:packages/contracts
-      '@video-workbench/server':
+      '@mioon/server':
         specifier: workspace:*
         version: link:apps/server
       electron:
@@ -38,16 +38,16 @@ importers:
 
   apps/cli:
     dependencies:
-      '@video-workbench/client':
+      '@mioon/client':
         specifier: workspace:*
         version: link:../../packages/client
 
   apps/desktop:
     dependencies:
-      '@video-workbench/business':
+      '@mioon/business':
         specifier: workspace:*
         version: link:../../packages/business
-      '@video-workbench/server':
+      '@mioon/server':
         specifier: workspace:*
         version: link:../server
 
@@ -56,22 +56,22 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(supports-color@7.2.0)(zod@3.25.76)
-      '@video-workbench/client':
+      '@mioon/client':
         specifier: workspace:*
         version: link:../../packages/client
 
   apps/server:
     dependencies:
-      '@video-workbench/business':
+      '@mioon/business':
         specifier: workspace:*
         version: link:../../packages/business
 
   apps/web:
     dependencies:
-      '@video-workbench/contracts':
+      '@mioon/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@video-workbench/ui':
+      '@mioon/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@xyflow/react':
@@ -96,13 +96,13 @@ importers:
 
   packages/business:
     dependencies:
-      '@video-workbench/contracts':
+      '@mioon/contracts':
         specifier: workspace:*
         version: link:../contracts
 
   packages/client:
     dependencies:
-      '@video-workbench/contracts':
+      '@mioon/contracts':
         specifier: workspace:*
         version: link:../contracts
       zod:

@@ -5,7 +5,7 @@ Run after pnpm build: python3 tests/browser_providers_v4.py
 import json, os, pathlib, re, shutil, socket, sqlite3, subprocess, tempfile, time, traceback, urllib.parse, urllib.request
 from playwright.sync_api import expect, sync_playwright
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = pathlib.Path(os.environ.get('WB_PROVIDER_EVIDENCE', str(ROOT / 'evidence/v4-browser-provider')))
+OUT = pathlib.Path(os.environ.get('MIOON_PROVIDER_EVIDENCE', str(ROOT / 'evidence/v4-browser-provider')))
 OUT.mkdir(parents=True, exist_ok=True)
 TOKEN = 'v4-provider-ui-local-test-only'
 PID = json.loads((ROOT / 'evidence/v2-demo/demo-project.json').read_text())['projectId']
@@ -20,9 +20,9 @@ def rpc(base, operation, params=None):
 def cli(base, token_file, operation, params=None):
     # A real CLI subprocess shares the browser's isolated backend. The synthetic
     # token stays in a private file, never in process arguments or evidence.
-    prefixes = ('WB_', 'VIDEO_WORKBENCH_', 'RUNWAY_', 'RUNWAYML_', 'ARK_', 'VEO_', 'GEMINI_', 'MINIMAX_', 'HAILUO_', 'VIDU_')
+    prefixes = ('MIOON_', 'MIOON_', 'RUNWAY_', 'RUNWAYML_', 'ARK_', 'VEO_', 'GEMINI_', 'MINIMAX_', 'HAILUO_', 'VIDU_')
     env = {key: value for key, value in os.environ.items() if not key.startswith(prefixes)}
-    env.update(WB_BASE_URL=base, WB_TOKEN_FILE=str(token_file), VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER='0')
+    env.update(MIOON_BASE_URL=base, MIOON_TOKEN_FILE=str(token_file), MIOON_ENABLE_LIVE_PROVIDER='0')
     result = subprocess.run(['node', 'apps/cli/src/index.mjs', *operation.split('.'), '--input', '-'], input=json.dumps(params or {}), text=True, capture_output=True, timeout=60, cwd=ROOT, env=env)
     assert result.returncode == 0, (operation, result.stdout, result.stderr)
     assert len(result.stdout.strip().splitlines()) == 1
@@ -48,7 +48,7 @@ def start(data):
     with socket.socket() as sock: sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
     prefixes = ('RUNWAY_', 'RUNWAYML_', 'ARK_', 'VEO_', 'GEMINI_', 'MINIMAX_', 'HAILUO_', 'VIDU_')
     env = {key: value for key, value in os.environ.items() if not key.startswith(prefixes)}
-    env.update(PORT=str(port), WB_TOKEN=TOKEN, WB_DATA_DIR=str(data), VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER='0')
+    env.update(PORT=str(port), MIOON_TOKEN=TOKEN, MIOON_DATA_DIR=str(data), MIOON_ENABLE_LIVE_PROVIDER='0')
     handle = open(OUT / 'server.log', 'w')
     proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env=env, stdout=handle, stderr=subprocess.STDOUT)
     base = f'http://127.0.0.1:{port}'
@@ -94,7 +94,7 @@ def test_browser():
     proc, handle, base = start(data)
     try:
         caps = rpc(base, 'provider.list')
-        required = set(os.environ.get('WB_REQUIRED_PROVIDER_IDS', 'mock,runway,ark,veo,minimax,vidu').split(','))
+        required = set(os.environ.get('MIOON_REQUIRED_PROVIDER_IDS', 'mock,runway,ark,veo,minimax,vidu').split(','))
         assert required <= {p['id'] for p in caps}, [p['id'] for p in caps]
         assert all(p['status'] == 'not_configured' and not p['configured'] and not p['enabled'] for p in caps if not p['mock'])
         (OUT / 'capabilities.json').write_text(json.dumps(caps, ensure_ascii=False, indent=2))

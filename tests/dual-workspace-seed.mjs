@@ -2,7 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-const runtime = path.resolve(process.env.WB_QA_RUNTIME || 'evidence/dual-workspace/runtime');
+const runtime = path.resolve(process.env.MIOON_QA_RUNTIME || 'evidence/dual-workspace/runtime');
 if (!runtime.endsWith('/evidence/dual-workspace/runtime')) throw Error('Disposable dual-workspace runtime required');
 const server = JSON.parse(await readFile(`${runtime}/server.json`, 'utf8'));
 const rpc = async (operation,input={}) => { const response = await fetch(server.url+'/api/rpc',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer dualmode-local-synthetic-browser-token'},body:JSON.stringify({operation,input})}); const value=await response.json();if(!value.ok)throw Error(JSON.stringify(value));return value.data; };

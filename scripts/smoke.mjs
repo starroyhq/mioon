@@ -1,6 +1,6 @@
 import {spawn} from 'node:child_process';import fs from 'node:fs';
 const root=process.cwd(),token='workbench-development-token-2026',port=4320;
-const server=spawn(process.execPath,['server/index.mjs'],{env:{...process.env,PORT:String(port),WB_DATA_DIR:root+'/data-demo',WB_TOKEN:token},stdio:['ignore','pipe','pipe']});server.stdout.pipe(process.stdout);server.stderr.pipe(process.stderr);
+const server=spawn(process.execPath,['server/index.mjs'],{env:{...process.env,PORT:String(port),MIOON_DATA_DIR:root+'/data-demo',MIOON_TOKEN:token},stdio:['ignore','pipe','pipe']});server.stdout.pipe(process.stdout);server.stderr.pipe(process.stderr);
 const rpc=async(operation,input)=>{const r=await fetch(`http://127.0.0.1:${port}/api/rpc`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({operation,input})});const v=await r.json();if(!v.ok)throw Error(JSON.stringify(v));return v.data};
 try{for(let i=0;i<50;i++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
 const p=await rpc('project.create',{name:'Stanley × Maltese · 合成测试',description:'软件验收专用合成素材。非授权产品图，非 AI 广告成片。'});

@@ -1,6 +1,6 @@
 # Shared shadcn/ui components
 
-The editor consumes `@video-workbench/ui`, a workspace source package. It vendors
+The editor consumes `@mioon/ui`, a workspace source package. It vendors
 15 **official shadcn/ui `base-nova` components built on `@base-ui/react`**. These
 are the actual published registry sources, not locally invented wrappers that
 imitate shadcn styling. There are no Radix imports or dependencies in this package.
@@ -46,16 +46,22 @@ Fetched **2026-10-09** from the official HTTPS registry, using the individual
 | `separator` | [registry JSON](https://ui.shadcn.com/r/styles/base-nova/separator.json) | `9a80ff8c110e0c55489509f4f82ebcc929c0174b59544047147b7134f86a54e7` |
 | `slider` | [registry JSON](https://ui.shadcn.com/r/styles/base-nova/slider.json) | `1fd32ee03ddaa382aabccce0bd88669aa8f91e4fe487622a68745d2ed1d5f5b9` |
 
+The Mioon namespace update only changes the two workspace import substitutions below.
+All pinned registry/source hashes are unchanged. Current `vendoredSha256` values
+are derived from those unchanged upstream sources using the documented transform,
+then checked byte-for-byte against the installed files; they are not arbitrary
+replacement hashes. `installationNamespace` records `@mioon/ui`.
+
 ### Explicit installation adaptations
 
 The installed TSX source differs from the official embedded source only by these
 mechanical registry-installation substitutions:
 
 1. `import { cn } from "cn"` resolves to the shared
-   `@video-workbench/ui/lib/utils` helper. The helper combines `clsx` with
+   `@mioon/ui/lib/utils` helper. The helper combines `clsx` with
    `tailwind-merge`, so caller utility classes can override component defaults.
 2. `@/registry/base-nova/ui/*` references resolve to the workspace's
-   `@video-workbench/ui/components/*` exports.
+   `@mioon/ui/components/*` exports.
 3. Registry `IconPlaceholder` elements resolve to the named `lucide-react`
    component in the placeholder's `lucide` attribute; unused icon-library
    attributes are removed. Other attributes are retained.
@@ -73,12 +79,12 @@ registry components and are kept separately named.
 Import components individually. Examples:
 
 ```tsx
-import { Button } from "@video-workbench/ui/components/button"
-import { Dialog, DialogContent, DialogTitle } from "@video-workbench/ui/components/dialog"
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@video-workbench/ui/components/select"
+import { Button } from "@mioon/ui/components/button"
+import { Dialog, DialogContent, DialogTitle } from "@mioon/ui/components/dialog"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@mioon/ui/components/select"
 ```
 
-The renderer imports `@video-workbench/ui/globals.css` once before its editor
+The renderer imports `@mioon/ui/globals.css` once before its editor
 layout stylesheet. Package export mappings resolve component entries to
 `./src/components/*.tsx`, utility entries to `./src/lib/*.ts`, and the CSS entry
 to `./src/styles/globals.css`. Vite compiles the source package; there is no copied
@@ -94,7 +100,7 @@ provides matching aliases for strict, no-emit source type checking.
 directives scan both workspace component files and `apps/web/src/**`; the raw
 registry snapshots are excluded from scanning. The app's Vite configuration must
 use `@tailwindcss/vite`. Because pnpm resolves imports from the owning package,
-`tailwindcss` itself must also be a direct dependency of `@video-workbench/ui`.
+`tailwindcss` itself must also be a direct dependency of `@mioon/ui`.
 
 The theme follows shadcn's neutral semantic-token structure, with deliberately
 customized dark surfaces (`#101114`, `#1e2025`, `#22242a`) and the existing editor's

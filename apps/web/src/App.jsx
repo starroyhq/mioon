@@ -1,15 +1,15 @@
-import { Badge } from '@video-workbench/ui/components/badge';
-import { useConfirmation } from '@video-workbench/ui/components/workbench-confirm';
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@video-workbench/ui/components/dialog';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@video-workbench/ui/components/dropdown-menu';
-import { Tabs, TabsList, TabsTrigger } from '@video-workbench/ui/components/tabs';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@video-workbench/ui/components/collapsible';
-import { WorkbenchTooltip } from '@video-workbench/ui/components/workbench-tooltip';
-import { Button } from '@video-workbench/ui/components/button';
-import { Input } from '@video-workbench/ui/components/input';
-import { Textarea } from '@video-workbench/ui/components/textarea';
-import { Label } from '@video-workbench/ui/components/label';
-import { WorkbenchSelect } from '@video-workbench/ui/components/workbench-select';
+import { Badge } from '@mioon/ui/components/badge';
+import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@mioon/ui/components/dialog';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@mioon/ui/components/dropdown-menu';
+import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
+import { Button } from '@mioon/ui/components/button';
+import { Input } from '@mioon/ui/components/input';
+import { Textarea } from '@mioon/ui/components/textarea';
+import { Label } from '@mioon/ui/components/label';
+import { WorkbenchSelect } from '@mioon/ui/components/workbench-select';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import Icon from './icons.jsx';
@@ -22,7 +22,9 @@ import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, statusText, versionUrl, jobStatusText, outputReviewRequired, outputReviewMessage } from './api.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
 import { pendingForProject, prepareSubmission, clearPending, reconcilePending } from './submissions.js';
-import { defaultWorkspaceState, readWorkspaceState, writeWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';
+import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';
+import { createWorkspacePreferences } from './workspace-preferences.js';
+import { migrateBrowserStorage } from './storage-migration.js';
 import { timelineHistoryState } from './timeline-history.js';
 import { timelineHistoryActionForKey } from './timeline-keyboard.js';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, isReferenceEdge, referenceForShot, isReferenceOperation, hasPendingReference, isImageReferenceNode, referenceAttachIssue, canvasEdge } from './reference-connections.js';
@@ -47,7 +49,7 @@ function Login({ onLogin }) {
       setToken(''); await onLogin();
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }
-  return <div className="login-page"><div className="login-atmosphere" /><div className="login-visual"><div className="brand large"><span className="brand-mark"><Icon name="film" size={23} /></span>frame<span className="brand-period">.</span></div><div className="login-headline"><div className="eyebrow">YOUR IDEAS, IN MOTION</div><h1>让每一个想法，<br />都有自己的镜头。</h1><p>从一张参考图出发，在无限画布中构思故事。<br />生成、比较、编排，让灵感一步步成为影像。</p></div><div className="login-footnote"><span className="status-dot green" />私有工作区 · 本地媒体管理 · 版本可追溯</div></div><div className="login-form-wrap"><form className="login-form" onSubmit={submit}><span className="login-icon"><Icon name="lock" size={23} /></span><h2>进入你的影像工作台</h2><p>使用工作台访问令牌登录。令牌仅用于建立安全会话。</p><Label className="field-label" htmlFor="access-token">访问令牌</Label><Input id="access-token" type="password" autoComplete="current-password" value={token} onChange={e => setToken(e.target.value)} placeholder="输入工作台令牌" required autoFocus />{error && <div className="notice error" role="alert">{error}</div>}<Button variant="ghost" className="button primary full" type="submit" disabled={loading || !token}>{loading ? <span className="spinner" /> : <Icon name="arrow" size={16} />}进入工作台</Button><div className="login-security"><Icon name="lock" size={13} />服务商 API 密钥始终留在服务器</div></form></div></div>;
+  return <div className="login-page"><div className="login-atmosphere" /><div className="login-visual"><div className="brand large"><span className="brand-mark"><Icon name="film" size={23} /></span>Mioon</div><div className="login-headline"><div className="eyebrow">YOUR IDEAS, IN MOTION</div><h1>让每一个想法，<br />都有自己的镜头。</h1><p>从一张参考图出发，在无限画布中构思故事。<br />生成、比较、编排，让灵感一步步成为影像。</p></div><div className="login-footnote"><span className="status-dot green" />私有工作区 · 本地媒体管理 · 版本可追溯</div></div><div className="login-form-wrap"><form className="login-form" onSubmit={submit}><span className="login-icon"><Icon name="lock" size={23} /></span><h2>进入你的影像工作台</h2><p>使用工作台访问令牌登录。令牌仅用于建立安全会话。</p><Label className="field-label" htmlFor="access-token">访问令牌</Label><Input id="access-token" type="password" autoComplete="current-password" value={token} onChange={e => setToken(e.target.value)} placeholder="输入工作台令牌" required autoFocus />{error && <div className="notice error" role="alert">{error}</div>}<Button variant="ghost" className="button primary full" type="submit" disabled={loading || !token}>{loading ? <span className="spinner" /> : <Icon name="arrow" size={16} />}进入工作台</Button><div className="login-security"><Icon name="lock" size={13} />服务商 API 密钥始终留在服务器</div></form></div></div>;
 }
 function Modal({ title, subtitle, children, onClose, wide = false }) {
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className={`modal ${wide ? 'wide' : ''}`} showCloseButton={false}><header className="modal-header"><div><DialogTitle>{title}</DialogTitle><DialogDescription className={subtitle ? '' : 'sr-only'}>{subtitle || title}</DialogDescription></div><DialogClose render={<Button variant="ghost" className="icon-button" aria-label="关闭对话框" />}><Icon name="close" /></DialogClose></header>{children}</DialogContent></Dialog>;
@@ -109,21 +111,31 @@ export default function App() {
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
   const [view, setView] = useState(defaultWorkspaceState);
   const viewRef = useRef(view); viewRef.current = view;
-  const viewCache = useRef(new Map());
+  const viewReady = useRef(false);
+  const [preferenceStatus, setPreferenceStatus] = useState({ phase: 'loading', pending: false });
+  const preferencesRef = useRef(null);
+  if (!preferencesRef.current) preferencesRef.current = createWorkspacePreferences({
+    onStatus: (projectId, status) => { if (currentProject.current === projectId) setPreferenceStatus(status); }
+  });
   const busy = busyByProject[currentProject.current || 'none'] || emptyBusy;
   const referencePending = hasPendingReference(pending);
   const referenceBusy = Boolean(busy['reference:mutation'] || referencePending);
   const updateView = useCallback((section, patch) => {
+    if (!viewReady.current || dataRef.current.project?.id !== currentProject.current) return;
     const previous = viewRef.current;
     const value = typeof patch === 'function' ? patch(previous[section]) : patch;
     const next = section === 'activeMode' ? { ...previous, activeMode: value } : { ...previous, [section]: { ...previous[section], ...value } };
     if (JSON.stringify(next) === JSON.stringify(previous)) return;
     viewRef.current = next; setView(next);
-    if (currentProject.current) { viewCache.current.set(currentProject.current, next); writeWorkspaceState(currentProject.current, next); }
+    if (currentProject.current) {
+      const frequent = ['viewport', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'assetSearch'];
+      const immediate = section === 'activeMode' || Object.keys(value).some(key => !frequent.includes(key));
+      preferencesRef.current.update(currentProject.current, next, { immediate });
+    }
   }, []);
   const field = (section, key) => {
-    const owner = currentProject.current;
-    return value => { if (owner === currentProject.current) updateView(section, previous => ({ [key]: typeof value === 'function' ? value(previous[key]) : value })); };
+    const owner = currentProject.current, ownerEpoch = projectEpoch.current;
+    return value => { if (owner === currentProject.current && ownerEpoch === projectEpoch.current) updateView(section, previous => ({ [key]: typeof value === 'function' ? value(previous[key]) : value })); };
   };
   const { selectedId, selectedEdgeId, inspectorTab: tab, storyboardOpen: sequenceOpen, miniMap, highlightedVersionId } = view.canvas;
   const { selectedClipId, quickAssetId, previewKind, playhead, timelineCollapsed } = view.editing;
@@ -148,7 +160,7 @@ export default function App() {
     return true;
   }
   async function changeMode(mode) {
-    if (!['canvas', 'editing'].includes(mode) || mode === viewRef.current.activeMode) return;
+    if (!viewReady.current || loading || !['canvas', 'editing'].includes(mode) || mode === viewRef.current.activeMode) return;
     if (!await guardNavigation()) return;
     navigationEpoch.current++; dragging.current = false;
     updateView('activeMode', mode); setMobilePanel('canvas');
@@ -175,43 +187,75 @@ export default function App() {
       if (currentProject.current !== projectId || epoch !== projectEpoch.current || call !== requestCounter.current) return null;
       dataRef.current = { ...emptyData, ...next }; setData(dataRef.current); setProviders(caps); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId));
       const reconciled = reconcileWorkspaceState(viewRef.current, next);
-      if (JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled; setView(reconciled); viewCache.current.set(projectId, reconciled); writeWorkspaceState(projectId, reconciled); }
+      if (viewReady.current && JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled; setView(reconciled); preferencesRef.current.update(projectId, reconciled, { immediate: true }); }
       return next;
     } catch (e) {
       if (currentProject.current === projectId && epoch === projectEpoch.current && call === requestCounter.current) { if (e.code === 'UNAUTHORIZED') setAuth(false); setOnline(false); if (!quiet) notify(readableError(e), 'error'); }
       return null;
     }
   }, [notify]);
-  async function selectProject(id, initial = false, fromHistory = false) {
-    if (id === currentProject.current && !initial) return true;
+  async function selectProject(id, initial = false, fromHistory = false, reloadPreferences = false) {
+    if (id === currentProject.current && !initial && !reloadPreferences) return true;
     if (!initial && !await guardNavigation('当前面板有未保存的修改。放弃修改并打开另一个项目？')) return false;
     navigationEpoch.current++; const epoch = ++projectEpoch.current; ++requestCounter.current;
-    if (currentProject.current) { viewCache.current.set(currentProject.current, viewRef.current); writeWorkspaceState(currentProject.current, viewRef.current); }
+    if (currentProject.current) void preferencesRef.current.flush({ projectId: currentProject.current, keepalive: true });
     currentProject.current = id;
-    const restored = viewCache.current.get(id) || readWorkspaceState(id);
-    viewRef.current = restored; setView(restored); setZoom(Math.round((restored.canvas.viewport?.zoom || 1) * 100));
+    viewReady.current = false;
+    setPreferenceStatus({ phase: 'loading', pending: false });
     setPending(pendingForProject(id)); setShowProjects(false); setData(emptyData); dataRef.current = emptyData; setNodes([]); setLoading(true); dragging.current = false;
     setShotDirty(false); setClipDirty(false); setInspectorEpoch(value => value + 1); setShowJobs(false); setShowExports(false); setComparisonId(null); setPreviewAsset(null); setRealConfirm(null); setToast(null); setMobilePanel('canvas');
     const url = new URL(window.location.href); url.searchParams.set('project', id);
     if (!fromHistory) window.history[initial ? 'replaceState' : 'pushState']({ projectId: id }, '', url);
-    try { localStorage.setItem('frame.project', id); } catch { /* Session view still works without storage. */ }
+    try { localStorage.setItem('mioon.project', id); } catch { /* Session view still works without storage. */ }
+    // Wait for authoritative preferences (or a safe local fallback) before the
+    // project mounts and its initial viewport/selection effects can persist.
+    const restored = await preferencesRef.current.load(id, { reload: reloadPreferences });
+    if (!restored || currentProject.current !== id || projectEpoch.current !== epoch) return false;
+    viewRef.current = restored; setView(restored); viewReady.current = true;
+    setZoom(Math.round((restored.canvas.viewport?.zoom || 1) * 100));
+    setPreferenceStatus(preferencesRef.current.getStatus(id));
     const next = await refresh(id, false);
     if (currentProject.current !== id || projectEpoch.current !== epoch) return false;
     setLoading(false);
     if (next && !viewRef.current.canvas.selectedId) { const first = [...next.shots].sort((a, b) => a.orderIndex - b.orderIndex)[0] || next.nodes.find(n => n.type !== 'text') || next.nodes[0]; if (first) updateView('canvas', { selectedId: first.id }); }
     return true;
   }
+  async function reloadPreferences() {
+    const captured = context();
+    if (!await confirm('载入已保存视图会替换当前的工作区、选择和位置。继续？')) return;
+    if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
+  }
   async function boot() {
     try {
+      migrateBrowserStorage();
       const [list, caps] = await Promise.all([rpc('project.list'), rpc('provider.list')]);
       setProjects(list); setProviders(caps); setAuth(true); setOnline(true);
-      const desired = new URLSearchParams(window.location.search).get('project') || (() => { try { return localStorage.getItem('frame.project'); } catch { return null; } })();
+      const desired = new URLSearchParams(window.location.search).get('project') || (() => { try { return localStorage.getItem('mioon.project'); } catch { return null; } })();
       const found = list.find(p => p.id === desired) || list[0];
       if (found) await selectProject(found.id, true);
       else { setData(emptyData); currentProject.current = null; }
     } catch (e) { if (e.code === 'UNAUTHORIZED') setAuth(false); else { setAuth('error'); notify(readableError(e), 'error'); } }
   }
   useEffect(() => { boot(); }, []);
+  useEffect(() => {
+    const controller = preferencesRef.current;
+    const flush = () => { void controller.flush({ keepalive: true }); };
+    const onHidden = () => { if (document.visibilityState === 'hidden') flush(); };
+    // An unprivileged lifecycle function: desktop main may await this fixed
+    // function before closing; it exposes no Electron/IPC/native capability.
+    const drain = async () => { await controller.flush({ keepalive: true }); return !controller.hasUnsaved(); };
+    globalThis.__mioonFlushWorkspacePreferences = drain;
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHidden);
+      if (globalThis.__mioonFlushWorkspacePreferences === drain) delete globalThis.__mioonFlushWorkspacePreferences;
+      flush();
+    };
+  }, []);
   useEffect(() => {
     const onPop = async () => { const id = new URLSearchParams(window.location.search).get('project'); if (!id || id === currentProject.current) return; const accepted = await selectProject(id, false, true); if (!accepted) { const url = new URL(window.location.href); url.searchParams.set('project', currentProject.current); window.history.pushState({ projectId: currentProject.current }, '', url); } };
     window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop);
@@ -519,15 +563,15 @@ export default function App() {
   const selectedEdge = data.edges.find(edge => edge.id === selectedEdgeId);
   const visibleAssets = data.assets.filter(a => (assetFilter === 'all' || a.mimeType?.startsWith(`${assetFilter}/`)) && a.name.toLowerCase().includes(assetSearch.toLowerCase()));
   if (auth === false) return <Login onLogin={boot} />;
-  if (auth === null || auth === 'error') return <div className="boot-page"><div className="brand"><span className="brand-mark"><Icon name="film" /></span>frame.</div>{auth === null ? <><span className="spinner" /><p>正在连接你的工作区…</p></> : <><h2>暂时无法连接工作台</h2><p>{toast?.message || '请确认服务器已启动。'}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />重新连接</Button></>}</div>;
+  if (auth === null || auth === 'error') return <div className="boot-page"><div className="brand"><span className="brand-mark"><Icon name="film" /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>正在连接你的工作区…</p></> : <><h2>暂时无法连接工作台</h2><p>{toast?.message || '请确认服务器已启动。'}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />重新连接</Button></>}</div>;
   return <main className={`workbench workbench-v2 mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" data-workspace-mode={workspaceMode}>
     <Input ref={fileInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a" multiple aria-label="导入本地素材" data-testid="asset-upload" onChange={e => importFiles(Array.from(e.target.files))} />
-    <header className="topbar"><a className="brand" href={window.location.pathname} aria-label="Frame 影像工作台"><span className="brand-mark"><Icon name="film" size={19} /></span>frame<span className="brand-period">.</span></a><span className="topbar-divider" /><DropdownMenu open={showProjects} onOpenChange={setShowProjects}><DropdownMenuTrigger render={<Button variant="ghost" className="project-trigger" data-testid="project-switcher" />}><Icon name="folder" size={16} /><span>{data.project?.name || '选择一个项目'}</span><Icon name="down" size={13} /></DropdownMenuTrigger><DropdownMenuContent align="start" className="workbench-project-menu"><DropdownMenuGroup><DropdownMenuLabel>你的项目</DropdownMenuLabel>{projects.map(p => <DropdownMenuItem key={p.id} onClick={() => selectProject(p.id)}><Icon name="folder" size={15} /><span>{p.name}</span>{p.id === data.project?.id && <Icon name="check" size={14} />}</DropdownMenuItem>)}</DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); setShowCreate(true); }}><Icon name="plus" size={15} />新建项目</DropdownMenuItem></DropdownMenuContent></DropdownMenu><Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label="工作区模式"><TabsTrigger value="canvas" data-testid="workspace-canvas">画板</TabsTrigger><TabsTrigger value="editing" data-testid="workspace-editing">剪辑</TabsTrigger></TabsList></Tabs><div className="topbar-sync" title={lastSync ? `最近同步：${lastSync.toLocaleTimeString('zh-CN')}` : ''}><span className={`status-dot ${!online ? 'red' : Object.values(busy).some(Boolean) ? 'orange' : 'green'}`} />{!online ? '连接中断' : Object.values(busy).some(Boolean) ? '正在同步' : inspectorDirty ? '有未保存修改' : '已保存'}</div><div className="topbar-actions"><Button variant="ghost" className="button quiet guide-trigger" data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />区域说明</Button><Button variant="ghost" className={`button quiet ${activeCount ? 'jobs-active' : ''}`} data-testid="jobs-button" onClick={() => setShowJobs(true)}><Icon name="clock" size={16} /><span>任务</span>{activeCount > 0 && <span className="count-pill">{activeCount}</span>}</Button><WorkbenchTooltip content="查看已保存的导出与预览"><Button variant="ghost" className="button quiet export-history" aria-label="查看导出记录" onClick={() => setShowExports(true)}><Icon name="layers" size={16} /></Button></WorkbenchTooltip><Button variant="ghost" className={`button ${timeline?.clips.length ? 'quiet' : 'primary'}`} data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? '请先为每个镜头生成并选用一个版本' : '按分镜板顺序导出成片'} onClick={createExport}><Icon name="download" size={16} /><span>导出分镜</span></Button><Button variant="ghost" className="button primary" data-testid="export-timeline" disabled={!timeline?.clips.length || busy['timeline:render:export']} onClick={() => renderTimeline('export')}><Icon name="download" size={15} />导出时间线</Button><span className="avatar" title="私有工作区">F</span></div></header>
+    <header className="topbar"><a className="brand" href={window.location.pathname} aria-label="Mioon 影像工作台"><span className="brand-mark"><Icon name="film" size={19} /></span>Mioon</a><span className="topbar-divider" /><DropdownMenu open={showProjects} onOpenChange={setShowProjects}><DropdownMenuTrigger render={<Button variant="ghost" className="project-trigger" data-testid="project-switcher" />}><Icon name="folder" size={16} /><span>{data.project?.name || '选择一个项目'}</span><Icon name="down" size={13} /></DropdownMenuTrigger><DropdownMenuContent align="start" className="workbench-project-menu"><DropdownMenuGroup><DropdownMenuLabel>你的项目</DropdownMenuLabel>{projects.map(p => <DropdownMenuItem key={p.id} onClick={() => selectProject(p.id)}><Icon name="folder" size={15} /><span>{p.name}</span>{p.id === data.project?.id && <Icon name="check" size={14} />}</DropdownMenuItem>)}</DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); setShowCreate(true); }}><Icon name="plus" size={15} />新建项目</DropdownMenuItem></DropdownMenuContent></DropdownMenu><Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label="工作区模式"><TabsTrigger value="canvas" disabled={loading} data-testid="workspace-canvas">画板</TabsTrigger><TabsTrigger value="editing" disabled={loading} data-testid="workspace-editing">剪辑</TabsTrigger></TabsList></Tabs><div className="topbar-sync" title={lastSync ? `最近同步：${lastSync.toLocaleTimeString('zh-CN')}` : ''}><span className={`status-dot ${!online ? 'red' : Object.values(busy).some(Boolean) ? 'orange' : 'green'}`} />{!online ? '连接中断' : Object.values(busy).some(Boolean) ? '正在同步' : inspectorDirty ? '有未保存修改' : '已保存'}</div><div className="workspace-save-status" data-testid="workspace-save-status" data-phase={preferenceStatus.phase} role="status">{['local', 'conflict', 'error'].includes(preferenceStatus.phase) ? <><span>{preferenceStatus.phase === 'conflict' ? '视图已在其他窗口更新' : '视图位置未同步'}</span>{preferenceStatus.phase === 'error' && preferenceStatus.canRetry && <Button variant="ghost" className="text-button" data-testid="retry-workspace-save" onClick={() => preferencesRef.current.flush({ projectId: currentProject.current })}>重试</Button>}<Button variant="ghost" className="text-button" data-testid="reload-workspace-preferences" onClick={reloadPreferences}>载入已保存视图</Button></> : preferenceStatus.pending ? <span>保存视图…</span> : null}</div><div className="topbar-actions"><Button variant="ghost" className="button quiet guide-trigger" data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />区域说明</Button><Button variant="ghost" className={`button quiet ${activeCount ? 'jobs-active' : ''}`} data-testid="jobs-button" onClick={() => setShowJobs(true)}><Icon name="clock" size={16} /><span>任务</span>{activeCount > 0 && <span className="count-pill">{activeCount}</span>}</Button><WorkbenchTooltip content="查看已保存的导出与预览"><Button variant="ghost" className="button quiet export-history" aria-label="查看导出记录" onClick={() => setShowExports(true)}><Icon name="layers" size={16} /></Button></WorkbenchTooltip><Button variant="ghost" className={`button ${timeline?.clips.length ? 'quiet' : 'primary'}`} data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? '请先为每个镜头生成并选用一个版本' : '按分镜板顺序导出成片'} onClick={createExport}><Icon name="download" size={16} /><span>导出分镜</span></Button><Button variant="ghost" className="button primary" data-testid="export-timeline" disabled={!timeline?.clips.length || busy['timeline:render:export']} onClick={() => renderTimeline('export')}><Icon name="download" size={15} />导出时间线</Button><span className="avatar" title="私有工作区">M</span></div></header>
     {showGuide && <section className="region-guide" role="region" aria-label="区域说明" data-testid="region-guide"><header><strong>同一个项目，两种专注的工作方式</strong><Button variant="ghost" className="icon-button" aria-label="关闭区域说明" onClick={() => setShowGuide(false)}><Icon name="close" size={16} /></Button></header><div><p><b>画板</b>整理参考图、镜头和版本，在右侧调整生成参数。分镜顺序可按需展开。</p><p><b>剪辑</b>在大画面中检查素材或合成预览，用多轨时间线编排画面和声音。</p><p><b>共享素材库</b>原始素材与每个生成版本都可加入时间线。已有片段固定引用加入时的素材。</p><p><b>来回衔接</b>加入时间线后进入剪辑；返回来源可定位原镜头和版本。切换保留各自的视角和选择。</p></div><footer>重新生成或选用新版本，不会替换已有时间线片段。未保存修改会在离开面板前确认。</footer></section>}
     {assetsCollapsed && <Button variant="ghost" className="panel-reopen assets-reopen" data-testid="reopen-assets" onClick={() => setAssetsCollapsed(false)}><Icon name="folder" size={14} /><span>素材库</span><Icon name="arrow" size={12} /></Button>}
     <AssetLibrary mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed} onCollapse={() => setAssetsCollapsed(true)} project={data.project} />
     <section className="canvas-area" aria-label={workspaceMode === 'canvas' ? '画板工作区' : '剪辑工作区'} data-testid="active-workspace"><div className="canvas-heading"><div className="region-title"><h2>{workspaceMode === 'canvas' ? '画板' : '剪辑预览'}</h2></div>{workspaceMode === 'canvas' && <div className="canvas-tools"><Button variant="ghost" className="button small" data-testid="add-text-node" onClick={() => addNode('text')}><Icon name="text" size={14} /><span>文字</span></Button><Button variant="ghost" className="button small" data-testid="add-image-node" onClick={() => addNode('image')}><Icon name="image" size={14} /><span>图片</span></Button><Button variant="ghost" className="button small" data-testid="add-video-node" onClick={() => addNode('video')}><Icon name="film" size={14} /><span>视频</span></Button><Button variant="ghost" className="button small accent-outline" data-testid="add-shot" disabled={busy['shot-create']} onClick={addShot}><Icon name="plus" size={15} />添加镜头</Button></div>}</div>
-      <div className="main-stage">{workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop}><ReactFlow key={data.project?.id || 'empty'} nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, node) => inspect(node.id)} onNodeDoubleClick={(_, node) => { const record = dataRef.current.nodes.find(n => n.id === node.id); const shot = dataRef.current.shots.find(s => s.id === node.id); const version = dataRef.current.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={savePosition} onConnect={connect} onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} onPaneClick={() => setSelectedEdgeId(null)} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(_, viewport) => { if (viewRef.current.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: .16, minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={{ padding: 0.16, minZoom: .65, maxZoom: 1 }} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={['Backspace', 'Delete']} colorMode="dark"><Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#34363b" />{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? '#b6c783' : '#6c7180'} maskColor="rgba(12,13,15,.8)" pannable zoomable />}</ReactFlow>
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />正在打开项目…</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop}><ReactFlow key={data.project?.id || 'empty'} nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, node) => inspect(node.id)} onNodeDoubleClick={(_, node) => { const record = dataRef.current.nodes.find(n => n.id === node.id); const shot = dataRef.current.shots.find(s => s.id === node.id); const version = dataRef.current.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={savePosition} onConnect={connect} onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} onPaneClick={() => setSelectedEdgeId(null)} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(_, viewport) => { if (viewRef.current.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: .16, minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={{ padding: 0.16, minZoom: .65, maxZoom: 1 }} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={['Backspace', 'Delete']} colorMode="dark"><Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#34363b" />{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? '#b6c783' : '#6c7180'} maskColor="rgba(12,13,15,.8)" pannable zoomable />}</ReactFlow>
       <div className="canvas-connection-legend" data-testid="connection-legend"><span><i className="reference-swatch" />首帧参考 · 参与生成</span><span><i className="visual-swatch" />视觉连线 · 仅整理思路</span></div>
       {selectedEdge && <div className="selected-edge-note" data-testid="selected-edge-note">{isReferenceEdge(selectedEdge) ? <><Icon name="link" size={13} /><span>首帧参考连接</span><Button variant="ghost" size="sm" onClick={() => inspect(selectedEdge.target)}>查看 / 断开</Button></> : <><span>视觉连线不参与生成</span><span className="muted">Delete 删除</span></>}</div>}
       {!data.project && !loading && <div className="canvas-empty"><div className="empty-composition"><div className="empty-mini-card"><Icon name="text" size={19} /><span>一个想法</span></div><span className="empty-connector" /><div className="empty-main-card"><Icon name="film" size={39} /><span>无限可能</span></div><span className="empty-connector" /><div className="empty-mini-card"><Icon name="sparkle" size={19} /><span>一部作品</span></div></div><div className="eyebrow">MAKE ROOM FOR YOUR NEXT STORY</div><h1>下一部作品，从这里开始。</h1><p>把素材、灵感和镜头，放到同一张画布上。</p><Button variant="ghost" className="button primary" data-testid="empty-create-project" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} />创建第一个项目</Button></div>}

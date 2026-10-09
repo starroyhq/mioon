@@ -25,11 +25,11 @@ async function command(file, args) {
 }
 async function freePort() { const server = net.createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening'); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; }
 async function fixture(t) {
-  const root = await mkdtemp(path.join(tmpdir(), 'video-workbench-http-')), port = await freePort();
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-http-')), port = await freePort();
   const base = `http://127.0.0.1:${port}`; let processHandle, processNumber = 0;
   async function start() {
     const number = ++processNumber;
-    processHandle = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), WB_DATA_DIR: root, WB_TOKEN: token, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    processHandle = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = ''; processHandle.stdout.on('data', data => stdout += data); processHandle.stderr.on('data', data => stderr += data);
     const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout, stderr }));
     records.processEvents.push({ action: 'spawn', number, pid: processHandle.pid, port, dataDirectory: root });

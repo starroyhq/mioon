@@ -18,10 +18,10 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "@video-workbench/ui/components/*": [
+      "@mioon/ui/components/*": [
         "./src/components/*.tsx"
       ],
-      "@video-workbench/ui/lib/*": [
+      "@mioon/ui/lib/*": [
         "./src/lib/*.ts"
       ]
     }

@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import desktopIdentity from '../apps/desktop/identity.cjs';
 import { dataPaths, ensureDataIdentity, writeConnection, removeConnection } from '../apps/desktop/src/config.mjs';
 import { migrateData } from '../apps/desktop/scripts/migrate-data.mjs';
-import { openStore } from '@video-workbench/business';
+import { openStore } from '@mioon/business';
 const { identityForChannel, buildChannel } = desktopIdentity;
 const require = createRequire(import.meta.url);
 const production = identityForChannel('production'), development = identityForChannel('development');
@@ -32,13 +32,13 @@ test('build defaults to development and selects production only by an explicit v
 
 test('runtime identity is embedded and never selected from packaged state or a launch environment', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /identityForChannel\(__WB_DESKTOP_CHANNEL__\)/);
+  assert.match(main, /identityForChannel\(__MIOON_DESKTOP_CHANNEL__\)/);
   assert.match(main, /app\.setAppUserModelId\(identity\.appId\)/);
   assert.match(main, /app\.setDesktopName\(`\$\{identity\.appId\}\.desktop`\)/);
-  assert.doesNotMatch(main, /process\.env\.(?:NODE_ENV|WB_DESKTOP_CHANNEL|WB_APP_ID)/);
+  assert.doesNotMatch(main, /process\.env\.(?:NODE_ENV|MIOON_DESKTOP_CHANNEL|MIOON_APP_ID)/);
   const build = await readFile(new URL('../apps/desktop/scripts/build.mjs', import.meta.url), 'utf8');
-  assert.match(build, /__WB_DESKTOP_CHANNEL__: JSON\.stringify\(identity\.channel\)/);
-  assert.match(build, /workbenchDesktop: identity/);
+  assert.match(build, /__MIOON_DESKTOP_CHANNEL__: JSON\.stringify\(identity\.channel\)/);
+  assert.match(build, /mioonDesktop: identity/);
 });
 
 test('both package configs retain security and separate identities, names and output directories', () => {
@@ -63,9 +63,9 @@ test('packaging refuses missing or opposite-channel staging, including packaged 
     for (const identity of [production, development]) {
       const config = require(identity.channel === 'production' ? '../apps/desktop/electron-builder.cjs' : '../apps/desktop/electron-builder.dev.cjs');
       const context = { packager: { info: { appDir: root } } };
-      await writeFile(path.join(root, 'package.json'), JSON.stringify({ workbenchDesktop: identity }));
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ mioonDesktop: identity }));
       await config.beforePack(context);
-      await writeFile(path.join(root, 'package.json'), JSON.stringify({ workbenchDesktop: identity === production ? development : production }));
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ mioonDesktop: identity === production ? development : production }));
       await assert.rejects(config.beforePack(context), /identity mismatch/);
       await writeFile(path.join(root, 'package.json'), '{}');
       await assert.rejects(config.beforePack(context), /identity mismatch/);

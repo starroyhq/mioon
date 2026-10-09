@@ -5,7 +5,7 @@ A route abort intentionally loses one accepted response to exercise exact replay
 import json, os, pathlib, shutil, socket, subprocess, tempfile, time, urllib.request
 from playwright.sync_api import sync_playwright, expect
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-OUT=pathlib.Path(os.environ.get('WB_BROWSER_EVIDENCE',str(ROOT/'evidence/v3-browser'))); OUT.mkdir(parents=True,exist_ok=True)
+OUT=pathlib.Path(os.environ.get('MIOON_BROWSER_EVIDENCE',str(ROOT/'evidence/v3-browser'))); OUT.mkdir(parents=True,exist_ok=True)
 TOKEN='v2-browser-local-test-token-no-live-provider'
 steps=[]; errors=[]
 def log(step,**values):
@@ -25,7 +25,7 @@ def poll(fn,predicate,seconds=60):
 def start(data):
     s=socket.socket();s.bind(('127.0.0.1',0));port=s.getsockname()[1];s.close()
     handle=open(OUT/('server-'+str(port)+'.log'),'w')
-    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'WB_TOKEN':TOKEN,'WB_DATA_DIR':str(data),'VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':'','RUNWAY_MAX_GENERATIONS':'0'},stdout=handle,stderr=subprocess.STDOUT)
+    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'MIOON_TOKEN':TOKEN,'MIOON_DATA_DIR':str(data),'MIOON_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':'','RUNWAY_MAX_GENERATIONS':'0'},stdout=handle,stderr=subprocess.STDOUT)
     base=f'http://127.0.0.1:{port}'
     for _ in range(100):
         if proc.poll() is not None:raise RuntimeError('Backend exited before health')

@@ -5,20 +5,20 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { migrateData } from './migrate-data.mjs';
-import {providerEnvironmentKeys} from '@video-workbench/business';
+import {providerEnvironmentKeys} from '@mioon/business';
 const require = createRequire(import.meta.url);
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const directory = await mkdtemp(path.join(tmpdir(), 'video-workbench-electron-smoke-'));
-const output = process.env.WB_DESKTOP_SMOKE_OUTPUT || path.join(directory, 'report.json');
+const directory = await mkdtemp(path.join(tmpdir(), 'mioon-electron-smoke-'));
+const output = process.env.MIOON_DESKTOP_SMOKE_OUTPUT || path.join(directory, 'report.json');
 await mkdir(path.dirname(output), { recursive: true });
 // Only the repository's original geometric/tonal synthetic example is seeded.
 // Migration deliberately excludes tokens, locks and Chromium state.
 await migrateData(path.resolve(desktop, '../../examples/multitrack-project'), path.join(directory, 'user-data/workspace'));
-const env = { ...process.env, WB_DESKTOP_USER_DATA: path.join(directory, 'user-data'), WB_DESKTOP_SMOKE_OUTPUT: output,
-  VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0' };
-for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', ...providerEnvironmentKeys.filter(key=>key!=='VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER')]) delete env[name];
+const env = { ...process.env, MIOON_DESKTOP_USER_DATA: path.join(directory, 'user-data'), MIOON_DESKTOP_SMOKE_OUTPUT: output,
+  MIOON_ENABLE_LIVE_PROVIDER: '0' };
+for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', ...providerEnvironmentKeys.filter(key=>key!=='MIOON_ENABLE_LIVE_PROVIDER')]) delete env[name];
 const args = [path.join(desktop, 'build')];
-if (process.env.WB_DESKTOP_HEADLESS === '1') args.unshift('--ozone-platform=headless');
+if (process.env.MIOON_DESKTOP_HEADLESS === '1') args.unshift('--ozone-platform=headless');
 const child = spawn(require('electron'), args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let tail = '';
 for (const stream of [child.stdout, child.stderr]) stream.on('data', data => { tail = (tail + data).slice(-12000); });

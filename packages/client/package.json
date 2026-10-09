@@ -1,5 +1,5 @@
 {
-  "name": "@video-workbench/client",
+  "name": "@mioon/client",
   "version": "0.4.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "./download": "./src/download.mjs"
   },
   "dependencies": {
-    "@video-workbench/contracts": "workspace:*",
+    "@mioon/contracts": "workspace:*",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.25.2"
   }

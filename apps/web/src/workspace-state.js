@@ -1,6 +1,6 @@
-// View preferences are local to this renderer. They never change project data,
+// View preferences never change project data,
 // generation snapshots, timeline history or the durable request recovery log.
-const PREFIX = 'frame.workspace.v1:';
+const PREFIX = 'mioon.workspace.v1:';
 const id = value => typeof value === 'string' && value.length < 200 ? value : null;
 const number = (value, fallback, min, max) => Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
 export function defaultWorkspaceState() {
@@ -19,8 +19,15 @@ export function normalizeWorkspaceState(value) {
     editing: { selectedClipId: id(e.selectedClipId), quickAssetId: id(e.quickAssetId), previewKind: e.previewKind === 'source' ? 'source' : 'timeline', playhead: Math.round(number(e.playhead, 0, 0, 18000)), pixelsPerSecond: number(e.pixelsPerSecond, 76, 28, 220), scrollLeft: number(e.scrollLeft, 0, 0, 1e7), scrollTop: number(e.scrollTop, 0, 0, 1e6), timelineCollapsed: e.timelineCollapsed === true },
     shared: { assetFilter: ['all', 'image', 'video', 'audio'].includes(s.assetFilter) ? s.assetFilter : 'all', assetSearch: typeof s.assetSearch === 'string' ? s.assetSearch.slice(0, 500) : '', assetsCollapsed: s.assetsCollapsed === true, inspectorCollapsed: s.inspectorCollapsed === true } };
 }
+export function readStoredWorkspaceState(projectId, storage) {
+  try {
+    const target = storage === undefined ? globalThis.localStorage : storage;
+    const value = JSON.parse(target?.getItem(`${PREFIX}${projectId}`) || 'null');
+    return value && value.version === 1 ? normalizeWorkspaceState(value) : null;
+  } catch { return null; }
+}
 export function readWorkspaceState(projectId, storage) {
-  try { const target = storage === undefined ? globalThis.localStorage : storage; return normalizeWorkspaceState(JSON.parse(target?.getItem(`${PREFIX}${projectId}`) || 'null')); } catch { return defaultWorkspaceState(); }
+  return readStoredWorkspaceState(projectId, storage) || defaultWorkspaceState();
 }
 export function writeWorkspaceState(projectId, state, storage) {
   if (!projectId) return false;

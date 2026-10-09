@@ -30,7 +30,7 @@ async function fixture(t, kind, responses = [], options = {}) {
   const spec = specs[kind], root = await mkdtemp(path.join(tmpdir(), 'additional-provider-')); t.after(() => rm(root, { recursive: true, force: true }));
   const bytes = png(), file = path.join(root, 'reference.png'); await writeFile(file, bytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const env = { [`${spec.prefix}_API_KEY`]: 'PRIVATE-KEY', VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '1', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...(kind === 'vidu' ? { VIDU_OUTPUT_HOSTS: spec.host } : {}), ...options.env };
+  const env = { [`${spec.prefix}_API_KEY`]: 'PRIVATE-KEY', MIOON_ENABLE_LIVE_PROVIDER: '1', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...(kind === 'vidu' ? { VIDU_OUTPUT_HOSTS: spec.host } : {}), ...options.env };
   const calls = [], queue = [...responses];
   const fetchImpl = async (...args) => { calls.push(args); const next = queue.shift(); if (next instanceof Error) throw next; if (typeof next === 'function') return next(...args); if (!next) throw new Error('Real fetch forbidden in offline test'); return next; };
   const provider = spec.factory({ root, env, fetchImpl, ...(options.now ? { now: options.now } : {}) });
@@ -42,7 +42,7 @@ async function fixture(t, kind, responses = [], options = {}) {
 
 for (const kind of Object.keys(specs)) {
   test(`${kind}: construction, capabilities, reconciliation and local stop use no network`, async t => {
-    const { provider, calls, input } = await fixture(t, kind, [], { env: { VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0' } });
+    const { provider, calls, input } = await fixture(t, kind, [], { env: { MIOON_ENABLE_LIVE_PROVIDER: '0' } });
     assert.equal(provider.capabilities.status, 'disabled'); assert.equal(provider.capabilities.liveVerified, false);
     assert.equal(provider.validate(input), true);
     assert.equal(JSON.stringify(provider.capabilities).includes('PRIVATE-KEY'), false);

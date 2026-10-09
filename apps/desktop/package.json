@@ -1,9 +1,9 @@
 {
-  "name": "@video-workbench/desktop",
+  "name": "@mioon/desktop",
   "version": "0.4.1",
   "private": true,
   "type": "module",
-  "description": "Video Workbench secure Electron desktop host",
+  "description": "Mioon secure Electron desktop host",
   "main": "build/main.cjs",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -18,7 +18,7 @@
     "package:mac:dev": "node scripts/build.mjs --channel=development && electron-builder --config electron-builder.dev.cjs --mac --publish never"
   },
   "dependencies": {
-    "@video-workbench/server": "workspace:*",
-    "@video-workbench/business": "workspace:*"
+    "@mioon/server": "workspace:*",
+    "@mioon/business": "workspace:*"
   }
 }

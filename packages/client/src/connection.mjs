@@ -48,13 +48,13 @@ function validToken(value) {
 
 /** Resolve afresh for every request. Descriptor and token rotation need no client restart. */
 export async function resolveConnection(env = process.env) {
-  // Preserve V3's explicit legacy token precedence, but never silently mix token files.
-  if (env.WB_TOKEN && !env.WB_TOKEN_FILE) {
-    return {base: validateLocalUrl(env.WB_BASE_URL || 'http://127.0.0.1:4318'), token: validToken(env.WB_TOKEN)};
+  // An explicit current-name token is supported; never silently mix token files.
+  if (env.MIOON_TOKEN && !env.MIOON_TOKEN_FILE) {
+    return {base: validateLocalUrl(env.MIOON_BASE_URL || 'http://127.0.0.1:4318'), token: validToken(env.MIOON_TOKEN)};
   }
-  if (env.WB_CONNECTION_FILE) {
-    if (env.WB_BASE_URL || env.WB_TOKEN_FILE || env.WB_TOKEN) invalid('Do not mix WB_BASE_URL or direct credentials with desktop discovery.');
-    const descriptorPath = path.resolve(env.WB_CONNECTION_FILE);
+  if (env.MIOON_CONNECTION_FILE) {
+    if (env.MIOON_BASE_URL || env.MIOON_TOKEN_FILE || env.MIOON_TOKEN) invalid('Do not mix MIOON_BASE_URL or direct credentials with desktop discovery.');
+    const descriptorPath = path.resolve(env.MIOON_CONNECTION_FILE);
     let descriptor;
     try { descriptor = JSON.parse(await privateFile(descriptorPath)); } catch (error) {
       if (error instanceof ConnectionError) throw error;
@@ -62,20 +62,20 @@ export async function resolveConnection(env = process.env) {
     }
     if (!descriptor || descriptor.version !== 1 || !Number.isSafeInteger(descriptor.pid) || descriptor.pid < 1 || typeof descriptor.tokenFile !== 'string' || !path.isAbsolute(descriptor.tokenFile)) invalid('Invalid desktop connection descriptor.');
     if (path.dirname(path.resolve(descriptor.tokenFile)) !== path.dirname(descriptorPath)) invalid('Desktop token must be beside its connection descriptor.');
-    try { process.kill(descriptor.pid, 0); } catch { invalid('Desktop backend is not running; reopen Video Workbench.'); }
+    try { process.kill(descriptor.pid, 0); } catch { invalid('Desktop backend is not running; reopen Mioon.'); }
     const token = validToken(await privateFile(descriptor.tokenFile));
     return {base: validateLocalUrl(descriptor.url), token};
   }
-  if (env.WB_TOKEN_FILE) {
-    if (env.WB_TOKEN) invalid('Choose WB_TOKEN_FILE or legacy WB_TOKEN, not both.');
-    return {base: validateLocalUrl(env.WB_BASE_URL || 'http://127.0.0.1:4318'), token: validToken(await privateFile(path.resolve(env.WB_TOKEN_FILE)))};
+  if (env.MIOON_TOKEN_FILE) {
+    if (env.MIOON_TOKEN) invalid('Choose MIOON_TOKEN_FILE or MIOON_TOKEN, not both.');
+    return {base: validateLocalUrl(env.MIOON_BASE_URL || 'http://127.0.0.1:4318'), token: validToken(await privateFile(path.resolve(env.MIOON_TOKEN_FILE)))};
   }
-  invalid('Set WB_CONNECTION_FILE for Electron, or WB_BASE_URL with WB_TOKEN_FILE. Legacy WB_TOKEN is also supported.');
+  invalid('Set MIOON_CONNECTION_FILE for Electron, or MIOON_BASE_URL with MIOON_TOKEN_FILE. MIOON_TOKEN is also supported.');
 }
 
 export function connectionSource(env = process.env) {
-  if (env.WB_TOKEN && !env.WB_TOKEN_FILE) return 'legacy-environment';
-  if (env.WB_CONNECTION_FILE) return 'desktop-descriptor';
-  if (env.WB_TOKEN_FILE) return 'private-token-file';
+  if (env.MIOON_TOKEN && !env.MIOON_TOKEN_FILE) return 'environment-token';
+  if (env.MIOON_CONNECTION_FILE) return 'desktop-descriptor';
+  if (env.MIOON_TOKEN_FILE) return 'private-token-file';
   return 'unconfigured';
 }

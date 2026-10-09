@@ -12,11 +12,11 @@
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "@video-workbench/ui/components",
-    "utils": "@video-workbench/ui/lib/utils",
-    "ui": "@video-workbench/ui/components",
-    "lib": "@video-workbench/ui/lib",
-    "hooks": "@video-workbench/ui/hooks"
+    "components": "@mioon/ui/components",
+    "utils": "@mioon/ui/lib/utils",
+    "ui": "@mioon/ui/components",
+    "lib": "@mioon/ui/lib",
+    "hooks": "@mioon/ui/hooks"
   },
   "registries": {}
 }

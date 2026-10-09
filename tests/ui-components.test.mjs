@@ -18,8 +18,8 @@ const component = name => read(`src/components/${name}.tsx`);
 // protects against replacing official shadcn components with local lookalikes.
 function installRegistrySource(source) {
   let result = source
-    .replaceAll('from "cn"', 'from "@video-workbench/ui/lib/utils"')
-    .replaceAll('@/registry/base-nova/ui/', '@video-workbench/ui/components/');
+    .replaceAll('from "cn"', 'from "@mioon/ui/lib/utils"')
+    .replaceAll('@/registry/base-nova/ui/', '@mioon/ui/components/');
   const icons = [...new Set([...result.matchAll(/lucide="([^"]+)"/g)].map(match => match[1]))].sort();
   if (icons.length) {
     result = result.replace(
@@ -37,6 +37,7 @@ function installRegistrySource(source) {
 
 test('all fifteen shadcn base-nova components match the pinned official source', async t => {
   assert.equal(manifest.style, 'base-nova');
+  assert.equal(manifest.installationNamespace, '@mioon/ui');
   assert.equal(manifest.primitiveLibrary, '@base-ui/react');
   assert.match(manifest.hashDefinitions.registrySha256, /local serialized registry JSON/);
   assert.match(manifest.hashDefinitions.sourceSha256, /decoded embedded TSX/);
@@ -113,8 +114,8 @@ test('shared package config supports official Base UI registry installation', ()
   assert.equal(config.rsc, false);
   assert.equal(config.tsx, true);
   assert.equal(config.iconLibrary, 'lucide');
-  assert.equal(config.aliases.ui, '@video-workbench/ui/components');
-  assert.equal(config.aliases.utils, '@video-workbench/ui/lib/utils');
+  assert.equal(config.aliases.ui, '@mioon/ui/components');
+  assert.equal(config.aliases.utils, '@mioon/ui/lib/utils');
   assert.equal(config.tailwind.css, 'src/styles/globals.css');
   assert.equal(config.tailwind.cssVariables, true);
   assert.match(read('src/lib/utils.ts'), /twMerge\(clsx\(inputs\)\)/);

@@ -18,9 +18,9 @@ test('desktop data location is stable and independent of working directory', () 
 
 test('utility process inherits only required provider configuration and explicit tools', () => {
   const env = utilityEnvironment({ PATH: '/poison', NODE_OPTIONS: '--require evil', ELECTRON_RUN_AS_NODE: '1',
-    UNRELATED_API_KEY: 'secret', HOME: '/home/u', RUNWAYML_API_SECRET: 'provider-secret', VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0' },
+    UNRELATED_API_KEY: 'secret', HOME: '/home/u', RUNWAYML_API_SECRET: 'provider-secret', MIOON_ENABLE_LIVE_PROVIDER: '0' },
   { ffmpeg: '/tools/ffmpeg', ffprobe: '/tools/ffprobe' });
-  assert.equal(env.WB_FFMPEG_PATH, '/tools/ffmpeg'); assert.equal(env.WB_FFPROBE_PATH, '/tools/ffprobe');
+  assert.equal(env.MIOON_FFMPEG_PATH, '/tools/ffmpeg'); assert.equal(env.MIOON_FFPROBE_PATH, '/tools/ffprobe');
   assert.equal(env.HOME, '/home/u'); assert.equal(env.RUNWAYML_API_SECRET, 'provider-secret');
   for (const key of ['PATH', 'NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE', 'UNRELATED_API_KEY']) assert.equal(env[key], undefined);
 });
@@ -32,7 +32,7 @@ test('FFmpeg config contains paths only, explicit env wins, and relative binarie
     assert.deepEqual(await readToolConfig(file, {}), { ffmpeg: '', ffprobe: '' });
     await saveToolConfig(file, { ffmpeg: '/tools/ffmpeg', ffprobe: '/tools/ffprobe', secret: 'not persisted' });
     assert.equal((await stat(file)).mode & 0o777, 0o600);
-    assert.deepEqual(await readToolConfig(file, { WB_FFMPEG_PATH: '/override/ffmpeg' }), { ffmpeg: '/override/ffmpeg', ffprobe: '/tools/ffprobe' });
+    assert.deepEqual(await readToolConfig(file, { MIOON_FFMPEG_PATH: '/override/ffmpeg' }), { ffmpeg: '/override/ffmpeg', ffprobe: '/tools/ffprobe' });
     assert.ok(!(await readFile(file, 'utf8')).includes('secret'));
     await assert.rejects(validateTool('ffmpeg', 'ffmpeg'), /绝对路径/);
     await assert.rejects(validateTool(directory, 'ffmpeg'), /不是可执行文件/);
@@ -75,7 +75,7 @@ test('supervisor starts only a bundled utility and stops gracefully without host
   const child = fakeChild(); let options;
   const supervisor = new BackendSupervisor({ fork: (file, args, opts) => {
     assert.equal(file, '/app/backend.cjs'); assert.deepEqual(args, []); options = opts; return child;
-  }, modulePath: '/app/backend.cjs', environment: { WB_FFMPEG_PATH: '/bin/ffmpeg' } });
+  }, modulePath: '/app/backend.cjs', environment: { MIOON_FFMPEG_PATH: '/bin/ffmpeg' } });
   const ready = await supervisor.start({ dataDir: '/data', distDir: '/app/web', token: 'private' });
   assert.equal(ready.url, 'http://127.0.0.1:49123'); assert.equal(supervisor.state, 'running');
   assert.equal(options.allowLoadingUnsignedLibraries, false); assert.equal(options.stdio, 'ignore');

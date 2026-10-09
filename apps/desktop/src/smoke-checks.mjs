@@ -30,7 +30,7 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
     return job.status === 'succeeded' ? job : false;
   }, 'actual FFmpeg timeline render');
   const metadata = JSON.parse(await readFile(path.join(app.getAppPath(), 'package.json'), 'utf8'));
-  assert.deepEqual(report.identity, metadata.workbenchDesktop);
+  assert.deepEqual(report.identity, metadata.mioonDesktop);
   assert.equal(app.getName(), report.identity.productName);
   assert.equal(app.getPath('userData'), paths.userData);
   const marker = JSON.parse(await readFile(path.join(paths.userData, 'desktop-identity.json'), 'utf8'));
@@ -53,7 +53,7 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   assert.equal(globals.cookie, ''); assert.equal(globals.secureContext, true);
   assert.ok(!new URL(globals.url).searchParams.has('token'));
   record('no-node-no-bridge-no-readable-cookie-no-url-secret');
-  const cookies = await getSession().cookies.get({ name: 'wb_session' });
+  const cookies = await getSession().cookies.get({ name: 'mioon_session' });
   assert.equal(cookies.length, 1);
   assert.equal(cookies[0].secure, true); assert.equal(cookies[0].httpOnly, true);
   assert.equal(cookies[0].sameSite, 'strict'); assert.equal(cookies[0].session, true);
@@ -101,7 +101,7 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   await restart();
   const restored = await rpc('project.get', { projectId });
   assert.equal(restored.body.data.project.id, projectId);
-  const rotated = (await getSession().cookies.get({ name: 'wb_session' }))[0];
+  const rotated = (await getSession().cookies.get({ name: 'mioon_session' }))[0];
   assert.notEqual(rotated.value, oldToken);
   record('graceful-backend-restart-persists-data-rotates-auth');
   const crashedPid = getReady().runtime.pid;

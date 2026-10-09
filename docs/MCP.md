@@ -1,33 +1,33 @@
 # MCP agent integration (V4)
 
-Video Workbench exposes an **official MCP SDK stdio server**. It talks to the same authenticated local HTTP operation layer as the Web app, Electron, and [CLI](CLI.md); it does not open a database or start another backend. Streamable HTTP MCP is not implemented or required. Start the normal backend or Electron separately before calling stateful tools.
+Mioon exposes an **official MCP SDK stdio server**. It talks to the same authenticated local HTTP operation layer as the Web app, Electron, and [CLI](CLI.md); it does not open a database or start another backend. Streamable HTTP MCP is not implemented or required. Start the normal backend or Electron separately before calling stateful tools.
 
 Node.js 24+ and installed source workspace dependencies are required for this optional source bridge. The Electron app itself uses bundled Node, but it does not bundle a standalone MCP executable.
 
 ```sh
 pnpm install --frozen-lockfile
-node /absolute/path/video-workbench/apps/mcp/src/index.mjs
+node /absolute/path/mioon/apps/mcp/src/index.mjs
 # Existing compatibility entrypoint remains supported:
-node /absolute/path/video-workbench/server/mcp.mjs
+node /absolute/path/mioon/server/mcp.mjs
 ```
 
-The MCP client launches this command with the selected environment. Do not run it through a launcher that prints banners to stdout; stdout is exclusively the MCP wire protocol. The bridge can initialize and list tools while the backend is stopped. Calling `workbench_doctor` then explains readiness through a safe structured error.
+The MCP client launches this command with the selected environment. Do not run it through a launcher that prints banners to stdout; stdout is exclusively the MCP wire protocol. The bridge can initialize and list tools while the backend is stopped. Calling `mioon_doctor` then explains readiness through a safe structured error.
 
 ## Connection modes
 
 Prefer private connection files, not token literals in client configuration:
 
-- **Electron:** `WB_CONNECTION_FILE=/absolute/path/to/userData/mcp-connection.json`. The desktop writes this descriptor and adjacent `mcp-token` atomically; both are owner-only and removed at graceful exit. See [DESKTOP.md](DESKTOP.md).
-- **Direct Web backend:** `WB_BASE_URL=http://127.0.0.1:4318` and `WB_TOKEN_FILE=/absolute/path/to/data/access-token`. Start `pnpm dev` separately using the appropriate data directory.
-- **Compatibility:** `WB_TOKEN` in the process environment continues to work. The old explicit-token precedence is retained; avoid mixed configurations. No secret belongs in a tool argument, a URL, or command-line argument.
+- **Electron:** `MIOON_CONNECTION_FILE=/absolute/path/to/userData/mcp-connection.json`. The desktop writes this descriptor and adjacent `mcp-token` atomically; both are owner-only and removed at graceful exit. See [DESKTOP.md](DESKTOP.md).
+- **Direct Web backend:** `MIOON_BASE_URL=http://127.0.0.1:4318` and `MIOON_TOKEN_FILE=/absolute/path/to/data/access-token`. Start `pnpm dev` separately using the appropriate data directory.
+- **Explicit token:** `MIOON_TOKEN` in the process environment is supported; avoid mixed configurations. No secret belongs in a tool argument, a URL, or command-line argument.
 
 Connection files are read again on every HTTP request. A long-lived MCP process follows desktop restarts and direct token-file rotation without restarting itself. Files must be small regular files owned by the current user; POSIX permissions must be `0600` or stricter, and symlinks are rejected. Desktop token location must be beside the descriptor, with a live PID. Origins are restricted to local HTTP (`127.0.0.1` or `localhost`), and redirects, embedded URL credentials, paths, queries, and fragments are refused. No token or credential path is returned by doctor.
 
-Do not mix a desktop descriptor with `WB_BASE_URL`/`WB_TOKEN_FILE`. Legacy `WB_TOKEN` retains V3 explicit-credential precedence; `WB_TOKEN_FILE` plus `WB_TOKEN` is rejected. New setups should choose exactly one mode.
+Do not mix a desktop descriptor with `MIOON_BASE_URL`/`MIOON_TOKEN_FILE`. Explicit `MIOON_TOKEN` takes precedence when no token file is supplied; `MIOON_TOKEN_FILE` plus `MIOON_TOKEN` is rejected. New setups should choose exactly one mode.
 
 ### V4.1 渠道对应的连接文件
 
-正式版 ID 为 `app.starroy.mioon`，开发版 ID 为 `app.starroy.mioon.dev`，包括打包后的开发版。Linux 默认连接文件分别为 `$HOME/.config/app.starroy.mioon/mcp-connection.json` 与 `$HOME/.config/app.starroy.mioon.dev/mcp-connection.json`；macOS 对应 `$HOME/Library/Application Support/` 下的同名目录。实际位置受 Electron appData / `WB_DESKTOP_USER_DATA` 影响。JSON/TOML 中使用展开后的绝对路径。
+正式版 ID 为 `app.starroy.mioon`，开发版 ID 为 `app.starroy.mioon.dev`，包括打包后的开发版。Linux 默认连接文件分别为 `$HOME/.config/app.starroy.mioon/mcp-connection.json` 与 `$HOME/.config/app.starroy.mioon.dev/mcp-connection.json`；macOS 对应 `$HOME/Library/Application Support/` 下的同名目录。实际位置受 Electron appData / `MIOON_DESKTOP_USER_DATA` 影响。JSON/TOML 中使用展开后的绝对路径。
 
 源码默认构建开发版。两个渠道独立运行、轮换令牌；客户端只连明确配置的那一个，不自动猜测或回退。旧 `video-workbench/` 数据及历史连接配置保留；迁移项目后需手动把客户端连接路径改为目标渠道，详见 [数据迁移](DESKTOP.md#数据位置与单实例)。descriptor 的 `appId` / `channel` 是附加非敏感元数据，协议版本仍为 1。
 
@@ -38,20 +38,20 @@ This is a configuration example for the user's review, not an installer. No file
 ```toml
 [mcp_servers.video_workbench]
 command = "node"
-args = ["/absolute/path/video-workbench/apps/mcp/src/index.mjs"]
+args = ["/absolute/path/mioon/apps/mcp/src/index.mjs"]
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 
 [mcp_servers.video_workbench.env]
-WB_CONNECTION_FILE = "/absolute/path/to/userData/mcp-connection.json"
+MIOON_CONNECTION_FILE = "/absolute/path/to/userData/mcp-connection.json"
 ```
 
 For direct Web mode, replace the environment block with:
 
 ```toml
 [mcp_servers.video_workbench.env]
-WB_BASE_URL = "http://127.0.0.1:4318"
-WB_TOKEN_FILE = "/absolute/path/to/video-workbench/data/access-token"
+MIOON_BASE_URL = "http://127.0.0.1:4318"
+MIOON_TOKEN_FILE = "/absolute/path/to/mioon/data/access-token"
 ```
 
 Codex documents project-scoped MCP configuration and the command/args/env fields in its [official MCP configuration guide](https://developers.openai.com/codex/mcp/). Respect client/workspace trust and tool approvals; do not bypass them. No persistent configuration has been applied by merely reading or testing these examples.
@@ -63,12 +63,12 @@ The user may review this project `.mcp.json` example and configure it in their o
 ```json
 {
   "mcpServers": {
-    "video-workbench": {
+    "mioon": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/video-workbench/apps/mcp/src/index.mjs"],
+      "args": ["/absolute/path/mioon/apps/mcp/src/index.mjs"],
       "env": {
-        "WB_CONNECTION_FILE": "/absolute/path/to/userData/mcp-connection.json"
+        "MIOON_CONNECTION_FILE": "/absolute/path/to/userData/mcp-connection.json"
       }
     }
   }
@@ -79,8 +79,8 @@ For direct Web mode, replace `env` with:
 
 ```json
 {
-  "WB_BASE_URL": "http://127.0.0.1:4318",
-  "WB_TOKEN_FILE": "/absolute/path/to/video-workbench/data/access-token"
+  "MIOON_BASE_URL": "http://127.0.0.1:4318",
+  "MIOON_TOKEN_FILE": "/absolute/path/to/mioon/data/access-token"
 }
 ```
 
@@ -88,7 +88,7 @@ Claude Code's [official MCP guide](https://code.claude.com/docs/en/mcp) describe
 
 ## Discovery and schema parity
 
-`tools/list` is generated from the runtime schemas exported by `@video-workbench/contracts`; the identical converter powers CLI `schema`. Shared Zod validation, including nonempty patches and rectangle refinements, runs before a business call. Unknown fields are rejected instead of silently stripped. There is one implementation of business operations and one backend writer.
+`tools/list` is generated from the runtime schemas exported by `@mioon/contracts`; the identical converter powers CLI `schema`. Shared Zod validation, including nonempty patches and rectangle refinements, runs before a business call. Unknown fields are rejected instead of silently stripped. There is one implementation of business operations and one backend writer.
 
 All RPC operation names replace dots with underscores. For example:
 
@@ -106,9 +106,9 @@ All RPC operation names replace dots with underscores. For example:
 
 Three additional read-only discovery tools are available:
 
-- `workbench_schema({})`: all operation definitions, actual JSON Schemas, natural CLI commands, and `requiresRequestId` flags. `workbench_schema({"operation":"generation.submit"})` narrows to one operation. This tool works offline.
-- `workbench_capabilities({})`: the current `provider.list` data, including per-model `modelCapabilities`, enabled/configured gates, supported durations/aspect ratios, and limits. It does not submit generation.
-- `workbench_doctor({})`: authenticated readiness, client/backend version metadata, connection mode, and provider capabilities. It does not return credential paths or token values.
+- `mioon_schema({})`: all operation definitions, actual JSON Schemas, natural CLI commands, and `requiresRequestId` flags. `mioon_schema({"operation":"generation.submit"})` narrows to one operation. This tool works offline.
+- `mioon_capabilities({})`: the current `provider.list` data, including per-model `modelCapabilities`, enabled/configured gates, supported durations/aspect ratios, and limits. It does not submit generation.
+- `mioon_doctor({})`: authenticated readiness, client/backend version metadata, connection mode, and provider capabilities. It does not return credential paths or token values.
 
 Provider IDs currently include `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`. Discover each configured provider's actual model options before use; adding an adapter does not authorize live generation or mean a credential is configured.
 
@@ -126,7 +126,7 @@ Tools return both a text content block containing JSON and the same envelope in 
 
 Errors set `isError: true`; invalid business inputs, unavailable backends, auth failures, and conflicts all use structured safe errors. The bridge does not print raw exceptions or headers. `retryable:false` means the bridge never automatically retries the call; recovery still depends on the operation and current backend state. MCP protocol-level malformed messages are handled by the SDK.
 
-A recommended sequence is `workbench_doctor`, `provider_list`, `project_create`, `asset_import`, `shot_create`, `generation_submit`, repeated bounded `job_get`, `version_list`, `project_get`, `version_select`, `timeline_get`, `timeline_seed`, `timeline_render`, and bounded `export_get`. Use mock for no-cost verification. [CLI.md](CLI.md) includes the full runnable command workflow and authenticated local file download.
+A recommended sequence is `mioon_doctor`, `provider_list`, `project_create`, `asset_import`, `shot_create`, `generation_submit`, repeated bounded `job_get`, `version_list`, `project_get`, `version_select`, `timeline_get`, `timeline_seed`, `timeline_render`, and bounded `export_get`. Use mock for no-cost verification. [CLI.md](CLI.md) includes the full runnable command workflow and authenticated local file download.
 
 `asset_import` takes explicitly authorized bytes (`dataBase64`), never a server filesystem path. An MCP client that has local file access can read those bytes itself; the CLI also provides `asset import --file`. MCP does not expose an arbitrary path read/write helper. To save a completed export locally, use CLI `export download` with an explicit new output path. Relative `/media/UUID` URLs are authenticated local resources, not public sharing links.
 

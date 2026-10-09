@@ -6,25 +6,25 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dataPaths, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnection } from './config.mjs';
 import desktopIdentity from '../identity.cjs';
 import { BackendSupervisor } from './supervisor.mjs';
-import { QuitCoordinator, installUnsavedGuard } from './lifecycle.mjs';
-import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy } from './security.mjs';
+import { QuitCoordinator, installUnsavedGuard, installPreferencesCloseDrain } from './lifecycle.mjs';
+import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.mjs';
 
 // The renderer never receives privileged Electron APIs or native filesystem paths.
 app.enableSandbox();
 // Embedded by build.mjs. Runtime env and app.isPackaged cannot change the channel.
-const identity = desktopIdentity.identityForChannel(__WB_DESKTOP_CHANNEL__);
+const identity = desktopIdentity.identityForChannel(__MIOON_DESKTOP_CHANNEL__);
 app.setName(identity.productName);
 app.setAppUserModelId(identity.appId);
 if (process.platform === 'linux') {
   app.setDesktopName(`${identity.appId}.desktop`);
   app.commandLine.appendSwitch('class', identity.appId);
 }
-const paths = dataPaths(app.getPath('appData'), process.env.WB_DESKTOP_USER_DATA, identity.channel);
+const paths = dataPaths(app.getPath('appData'), process.env.MIOON_DESKTOP_USER_DATA, identity.channel);
 mkdirSync(paths.userData, { recursive: true, mode: 0o700 });
 app.setPath('userData', paths.userData);
 let win, backend, activeSession, ready, restarting = false, quitting = false;
 let smokeDiscardDecision;
-const smokeOutput = !app.isPackaged && process.env.WB_DESKTOP_USER_DATA && process.env.WB_DESKTOP_SMOKE_OUTPUT;
+const smokeOutput = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
 
 async function toolsFromUser() {
   let configuration;
@@ -56,7 +56,7 @@ async function start() {
   backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
   ready = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'), token });
   activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
-  installSessionPolicy(activeSession, ready.url, () => win, { downloadsPath: path.join(app.getPath('downloads'), 'video-workbench.mp4') });
+  installSessionPolicy(activeSession, ready.url, () => win, { downloadsPath: path.join(app.getPath('downloads'), 'mioon.mp4') });
   await activeSession.cookies.set(sessionCookie(ready.url, token));
   await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
   await openWindow();
@@ -65,10 +65,23 @@ async function start() {
 
 async function openWindow() {
   if (!ready || quitting) return;
-  win = new BrowserWindow({ title: 'Video Workbench', width: 1500, height: 960,
+  win = new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
     minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
     autoHideMenuBar: process.platform !== 'darwin', webPreferences: secureWebPreferences(activeSession) });
   installWindowPolicy(win, ready.url);
+  const closingWindow = win;
+  installPreferencesCloseDrain(closingWindow, {
+    // The fixed function can only perform the renderer's normal same-origin HTTP.
+    // It receives no native capabilities, paths, token, or arguments from main.
+    flush: () => isAllowedNavigation(closingWindow.webContents.getURL(), ready.url)
+      ? closingWindow.webContents.executeJavaScript("typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : true")
+      : true,
+    confirmClose: () => smokeOutput || dialog.showMessageBoxSync(closingWindow, { type: 'warning', title: '视图位置尚未保存',
+      message: '当前视图位置尚未保存，仍要退出？',
+      detail: '可以继续编辑并重试连接。直接退出可能丢失最近的工作区、选择或缩放位置；这不会改变已保存的项目和媒体。',
+      buttons: ['仍然退出', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0,
+    onCancel: () => quitCoordinator.cancel()
+  });
   installUnsavedGuard(win, {
     confirmDiscard: () => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBoxSync(win, { type: 'question', title: '尚有未保存的修改',
       message: '放弃未保存的修改？', detail: '选择继续编辑会保持当前窗口和本地服务运行。',
@@ -130,7 +143,7 @@ async function fatal(error) {
     await writeFile(smokeOutput, JSON.stringify({ ok: false, error: error.message }, null, 2));
     process.exitCode = 1;
   } else {
-    await dialog.showMessageBox({ type: 'error', title: '无法启动 Video Workbench',
+    await dialog.showMessageBox({ type: 'error', title: '无法启动 Mioon',
       message: '应用无法启动。', detail: error.message, buttons: ['退出'] });
   }
   app.quit();

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@video-workbench/ui/components/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@mioon/ui/components/select'
 
 /** Adapter for the editor's existing scalar fields; all interaction is Base UI Select. */
 function WorkbenchSelect({ children, value, onChange, className, disabled, required, name, ...props }: Omit<React.ComponentProps<'select'>, 'onChange' | 'value'> & { value?: string | number, onChange?: (event: { target: { value: string } }) => void }) {

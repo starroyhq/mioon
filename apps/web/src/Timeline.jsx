@@ -1,10 +1,10 @@
 import { rulerFrameForKey } from './timeline-keyboard.js';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@video-workbench/ui/components/collapsible';
-import { Switch } from '@video-workbench/ui/components/switch';
-import { Slider } from '@video-workbench/ui/components/slider';
-import { Button } from '@video-workbench/ui/components/button';
-import { Input } from '@video-workbench/ui/components/input';
-import { Label } from '@video-workbench/ui/components/label';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
+import { Switch } from '@mioon/ui/components/switch';
+import { Slider } from '@mioon/ui/components/slider';
+import { Button } from '@mioon/ui/components/button';
+import { Input } from '@mioon/ui/components/input';
+import { Label } from '@mioon/ui/components/label';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from './icons.jsx';
 import { assetUrl } from './api.js';

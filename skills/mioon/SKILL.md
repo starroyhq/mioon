@@ -1,11 +1,11 @@
 ---
-name: video-workbench
-description: Operate a local Video Workbench project through its CLI or MCP to import approved media, generate video, manage shots and versions, edit timelines, and export MP4 files. Use when the user wants another agent to work in this application; it does not install providers or authorize paid generation.
+name: mioon
+description: Operate a local Mioon project through its CLI or MCP to import approved media, generate video, manage shots and versions, edit timelines, and export MP4 files. Use when the user wants another agent to work in this application; it does not install providers or authorize paid generation.
 ---
 
-# Video Workbench
+# Mioon
 
-Work against the user's chosen running Video Workbench service. CLI, MCP and the UI share one project database; do not start a second service on its data directory.
+Work against the user's chosen running Mioon service. CLI, MCP and the UI share one project database; do not start a second service on its data directory.
 
 ## Connect and inspect
 

@@ -20,7 +20,7 @@ async function fixture(t,env={}){
   submit:shot=>services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,requestId:randomUUID(),providerId:'ark'}),
  };
 }
-const env={VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'synthetic-not-a-real-credential',GEMINI_API_KEY:'synthetic-not-a-real-google-key',ARK_MAX_GENERATIONS:'2',VEO_MAX_GENERATIONS:'2'};
+const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'synthetic-not-a-real-credential',GEMINI_API_KEY:'synthetic-not-a-real-google-key',ARK_MAX_GENERATIONS:'2',VEO_MAX_GENERATIONS:'2'};
 
 test('provider registry exposes model-specific safe readiness without credential values',async t=>{
  const f=await fixture(t),caps=await f.services.call('provider.list',{});
@@ -93,7 +93,7 @@ test('every advertised provider ratio is representable in the shared shot schema
 
 
 test('manual reconciliation and explicit retry preserve the original regional account boundary',async t=>{
- const f=await fixture(t,{VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER:'1',MINIMAX_API_KEY:'synthetic-fixture-only',MINIMAX_MAX_GENERATIONS:'2',MINIMAX_REGION:'global'});
+ const f=await fixture(t,{MIOON_ENABLE_LIVE_PROVIDER:'1',MINIMAX_API_KEY:'synthetic-fixture-only',MINIMAX_MAX_GENERATIONS:'2',MINIMAX_REGION:'global'});
  const shot=await f.shot({duration:4});
  const job=await f.services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,requestId:randomUUID(),providerId:'minimax'});
  const original=f.providers.get('minimax');let seen;

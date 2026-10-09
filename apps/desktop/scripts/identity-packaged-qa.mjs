@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import desktopIdentity from '../identity.cjs';
-import { providerEnvironmentKeys } from '@video-workbench/business';
+import { providerEnvironmentKeys } from '@mioon/business';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const output = path.join(root, 'evidence/v4.1-app-id');
 const directory = await mkdtemp(path.join(tmpdir(), 'wb-packaged-identity-'));
@@ -47,7 +47,7 @@ try {
     const packageDir = path.join(root, 'release/desktop', channel, 'linux-unpacked');
     const binary = path.join(packageDir, identity.executableName), archive = path.join(packageDir, 'resources/app.asar');
     const metadata = JSON.parse(asar.extractFile(archive, 'package.json').toString());
-    assert.deepEqual(metadata.workbenchDesktop, identity);
+    assert.deepEqual(metadata.mioonDesktop, identity);
     assert.equal(metadata.desktopName, `${identity.appId}.desktop`);
     assert.equal(metadata.version, '0.4.1');
     const files = asar.listPackage(archive);
@@ -56,10 +56,10 @@ try {
     for (const name of ['RunAsNode', 'EnableNodeOptionsEnvironmentVariable', 'EnableNodeCliInspectArguments', 'GrantFileProtocolExtraPrivileges']) assert.equal(wire[FuseV1Options[name]], 48);
     for (const name of ['EnableCookieEncryption', 'EnableEmbeddedAsarIntegrityValidation', 'OnlyLoadAppFromAsar']) assert.equal(wire[FuseV1Options[name]], 49);
     record('packaged-identity-and-security-fuses', { channel, appId: identity.appId });
-    const env = { ...process.env, XDG_CONFIG_HOME: configHome, WB_FFMPEG_PATH: '/usr/bin/ffmpeg', WB_FFPROBE_PATH: '/usr/bin/ffprobe', VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0',
+    const env = { ...process.env, XDG_CONFIG_HOME: configHome, MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe', MIOON_ENABLE_LIVE_PROVIDER: '0',
       // Deliberately conflicting runtime values must not change the embedded channel.
-      NODE_ENV: channel === 'production' ? 'development' : 'production', WB_DESKTOP_CHANNEL: channel === 'production' ? 'development' : 'production' };
-    for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'WB_DESKTOP_USER_DATA', 'WB_DESKTOP_SMOKE_OUTPUT', ...providerEnvironmentKeys.filter(key => key !== 'VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER')]) delete env[key];
+      NODE_ENV: channel === 'production' ? 'development' : 'production', MIOON_DESKTOP_CHANNEL: channel === 'production' ? 'development' : 'production' };
+    for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MIOON_DESKTOP_USER_DATA', 'MIOON_DESKTOP_SMOKE_OUTPUT', ...providerEnvironmentKeys.filter(key => key !== 'MIOON_ENABLE_LIVE_PROVIDER')]) delete env[key];
     const child = launch(binary, env), userData = path.join(configHome, identity.appId), descriptorFile = path.join(userData, 'mcp-connection.json');
     const descriptor = await waitFor(async () => {
       if (child.exitCode !== null || child.signalCode) throw new Error(`App exited: ${child.log}`);
@@ -91,7 +91,7 @@ try {
   record('production-development-coexist-with-independent-projects-and-legacy-retention');
   await writeFile(path.join(output, 'packaged-windows-ready.json'), JSON.stringify({ ok: true, appIds: packages.map(item => item.identity.appId) }));
   // Optional bounded pause for CUA's screenshot; no debugging interface or packaged test hook.
-  if (process.env.WB_IDENTITY_QA_SCREENSHOT === '1') await waitFor(async () => {
+  if (process.env.MIOON_IDENTITY_QA_SCREENSHOT === '1') await waitFor(async () => {
     try { await access(path.join(output, 'packaged-screenshot-done')); return true; } catch { return false; }
   }, 'native screenshot', 180000);
   for (const item of packages) {

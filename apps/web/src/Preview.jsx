@@ -1,5 +1,5 @@
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@video-workbench/ui/components/tabs';
-import { Button } from '@video-workbench/ui/components/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/tabs';
+import { Button } from '@mioon/ui/components/button';
 import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import Icon from './icons.jsx';
 import { disposeMedia } from './Nodes.jsx';

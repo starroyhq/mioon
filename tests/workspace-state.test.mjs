@@ -46,7 +46,7 @@ test('project-local view state survives reload without sharing mode, selection o
   assert.deepEqual(readWorkspaceState('project-a', storage), a);
   assert.deepEqual(readWorkspaceState('project-b', storage), b);
   assert.deepEqual(readWorkspaceState('project-c', storage), defaultWorkspaceState());
-  assert.deepEqual([...storage.values.keys()].sort(), ['frame.workspace.v1:project-a', 'frame.workspace.v1:project-b']);
+  assert.deepEqual([...storage.values.keys()].sort(), ['mioon.workspace.v1:project-a', 'mioon.workspace.v1:project-b']);
 });
 
 test('changing active mode preserves the inactive mode state byte-for-byte', () => {
@@ -61,7 +61,7 @@ test('changing active mode preserves the inactive mode state byte-for-byte', () 
 test('malformed, obsolete and unavailable preference storage fall back safely', () => {
   const storage = new MemoryStorage();
   for (const value of ['{', 'null', 'true', '[]', '{"version":2,"activeMode":"editing"}']) {
-    storage.setItem('frame.workspace.v1:project-a', value);
+    storage.setItem('mioon.workspace.v1:project-a', value);
     assert.deepEqual(readWorkspaceState('project-a', storage), defaultWorkspaceState());
   }
   const unavailable = { getItem() { throw Error('unavailable'); }, setItem() { throw Error('quota'); } };

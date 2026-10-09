@@ -3,7 +3,7 @@ import http from 'node:http';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,writeFile,mkdir,stat} from 'node:fs/promises';
 import path from 'node:path';
-import {startServer} from '@video-workbench/server';
+import {startServer} from '@mioon/server';
 
 const token = 'synthetic-server-lifecycle-test-token';
 const rpc = async (service, operation, input = {}, headers = {}) => {

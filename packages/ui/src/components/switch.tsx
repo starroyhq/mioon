@@ -1,7 +1,7 @@
 "use client"
 
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
-import { cn } from "@video-workbench/ui/lib/utils"
+import { cn } from "@mioon/ui/lib/utils"
 
 function Switch({
   className,

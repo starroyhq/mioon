@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, providerStatus, providerStatusLabel, providerModels } from '../apps/web/src/generation-settings.js';
-import { getGenerationIssue } from '@video-workbench/contracts';
+import { getGenerationIssue } from '@mioon/contracts';
 
 const image = { id: 'image-a', mimeType: 'image/png', width: 720, height: 1280 };
 const imageModel = { id: 'image-model', name: 'Image Model', inputModes: ['image'], aspectRatios: ['9:16'], durations: [4], referenceImages: { min: 1, max: 1, mimeTypes: ['image/png'], matchAspectRatio: true }, promptRequired: true, maxPromptLength: 500, parameters: ['seed'], seed: { min: 0, max: 100 } };

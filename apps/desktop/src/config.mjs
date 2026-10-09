@@ -1,6 +1,6 @@
 import path from 'node:path';
 import desktopIdentity from '../identity.cjs';
-import {providerEnvironmentKeys} from '@video-workbench/business';
+import {providerEnvironmentKeys} from '@mioon/business';
 import { readFile, writeFile, mkdir, rename, stat, access, realpath, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { execFile } from 'node:child_process';
@@ -9,7 +9,7 @@ const exec = promisify(execFile);
 
 export function dataPaths(appDataPath, override, channel = 'development') {
   const identity = desktopIdentity.identityForChannel(channel);
-  if (override && !path.isAbsolute(override)) throw new Error('WB_DESKTOP_USER_DATA must be an absolute path');
+  if (override && !path.isAbsolute(override)) throw new Error('MIOON_DESKTOP_USER_DATA must be an absolute path');
   const userData = override || path.join(appDataPath, identity.appId);
   return { userData, dataDir: path.join(userData, 'workspace'), configFile: path.join(userData, 'desktop-config.json') };
 }
@@ -27,9 +27,9 @@ export async function ensureDataIdentity(paths, identity) {
     if (error.code !== 'EEXIST') throw error;
     let stored;
     try { stored = JSON.parse(await readFile(file, 'utf8')); }
-    catch { throw new Error('Desktop data identity is unreadable; choose a separate WB_DESKTOP_USER_DATA directory'); }
+    catch { throw new Error('Desktop data identity is unreadable; choose a separate MIOON_DESKTOP_USER_DATA directory'); }
     if (stored.version !== 1 || stored.channel !== expected.channel || stored.appId !== expected.appId) {
-      throw new Error('Desktop data belongs to another app channel; choose a separate WB_DESKTOP_USER_DATA directory');
+      throw new Error('Desktop data belongs to another app channel; choose a separate MIOON_DESKTOP_USER_DATA directory');
     }
   }
 }
@@ -38,7 +38,7 @@ export async function readToolConfig(configFile, env = process.env) {
   let stored = {};
   try { stored = JSON.parse(await readFile(configFile, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw new Error('desktop-config.json is unreadable or invalid'); }
-  return { ffmpeg: env.WB_FFMPEG_PATH || stored.ffmpeg || '', ffprobe: env.WB_FFPROBE_PATH || stored.ffprobe || '' };
+  return { ffmpeg: env.MIOON_FFMPEG_PATH || stored.ffmpeg || '', ffprobe: env.MIOON_FFPROBE_PATH || stored.ffprobe || '' };
 }
 
 export async function validateTool(file, name) {
@@ -73,8 +73,8 @@ export function utilityEnvironment(env, tools) {
     ...providerEnvironmentKeys]) {
     if (typeof env[key] === 'string') result[key] = env[key];
   }
-  result.WB_FFMPEG_PATH = tools.ffmpeg;
-  result.WB_FFPROBE_PATH = tools.ffprobe;
+  result.MIOON_FFMPEG_PATH = tools.ffmpeg;
+  result.MIOON_FFPROBE_PATH = tools.ffprobe;
   return result;
 }
 

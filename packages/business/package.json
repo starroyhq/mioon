@@ -1,5 +1,5 @@
 {
-  "name": "@video-workbench/business",
+  "name": "@mioon/business",
   "version": "0.4.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     "./*": "./src/*.mjs"
   },
   "dependencies": {
-    "@video-workbench/contracts": "workspace:*"
+    "@mioon/contracts": "workspace:*"
   }
 }

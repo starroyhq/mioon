@@ -50,6 +50,15 @@ export function openStore(root,{lock=true}={}){
  BEGIN SELECT RAISE(ABORT,'reference request responses are immutable');END;
  INSERT OR IGNORE INTO schema_version VALUES(4);
  COMMIT;`);
+ // Single-user project view preferences have an independent revision. This
+ // additive table never changes business records, history or request journals.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS workspace_preferences(
+ projectId TEXT PRIMARY KEY REFERENCES projects(id),
+ revision INTEGER NOT NULL CHECK(revision>0 AND revision<=9007199254740991),
+ state TEXT NOT NULL CHECK(json_valid(state) AND length(CAST(state AS BLOB))<=16384));
+ INSERT OR IGNORE INTO schema_version VALUES(5);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

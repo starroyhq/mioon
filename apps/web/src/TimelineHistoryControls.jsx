@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@video-workbench/ui/components/button';
+import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.jsx';
 
 export default function TimelineHistoryControls({ state, onHistory, busy = false }) {

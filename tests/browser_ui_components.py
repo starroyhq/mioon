@@ -3,7 +3,7 @@
 Uses the production renderer and real loopback HTTP/SQLite backend against a
 temporary copy of the synthetic demo. No intercepted state or paid providers.
 Run: python tests/browser_ui_components.py
-Optional WB_UI_CASES is a comma-separated list of case IDs for focused reruns.
+Optional MIOON_UI_CASES is a comma-separated list of case IDs for focused reruns.
 """
 import hashlib
 import json
@@ -22,7 +22,7 @@ import urllib.request
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = pathlib.Path(os.environ.get('WB_UI_EVIDENCE', str(ROOT / 'evidence/v3-ui-components')))
+OUT = pathlib.Path(os.environ.get('MIOON_UI_EVIDENCE', str(ROOT / 'evidence/v3-ui-components')))
 TOKEN = 'base-ui-isolated-browser-test-token-no-live-provider'
 PID = json.loads((ROOT / 'evidence/v2-demo/demo-project.json').read_text())['projectId']
 OUT.mkdir(parents=True, exist_ok=True)
@@ -61,7 +61,7 @@ def start(data):
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
     handle = open(OUT / 'server.log', 'w')
-    proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env={**os.environ, 'PORT': str(port), 'WB_TOKEN': TOKEN, 'WB_DATA_DIR': str(data), 'VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER': '0', 'RUNWAYML_API_SECRET': '', 'RUNWAY_MAX_GENERATIONS': '0'}, stdout=handle, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env={**os.environ, 'PORT': str(port), 'MIOON_TOKEN': TOKEN, 'MIOON_DATA_DIR': str(data), 'MIOON_ENABLE_LIVE_PROVIDER': '0', 'RUNWAYML_API_SECRET': '', 'RUNWAY_MAX_GENERATIONS': '0'}, stdout=handle, stderr=subprocess.STDOUT)
     base = f'http://127.0.0.1:{port}'
     for _ in range(150):
         if proc.poll() is not None:
@@ -448,7 +448,7 @@ CASES = [
 
 def main():
     global BASE, INITIAL
-    selected = set(filter(None, os.environ.get('WB_UI_CASES', '').split(',')))
+    selected = set(filter(None, os.environ.get('MIOON_UI_CASES', '').split(',')))
     report = {'status': 'RUNNING', 'startedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'source': 'real Chromium + production Vite renderer + isolated real HTTP/SQLite backend', 'liveProvidersEnabled': False, 'cases': [], 'pageErrors': [], 'nativeDialogs': []}
     index = ROOT / 'apps/web/dist/index.html'
     report['rendererBuild'] = {'indexSha256': hashlib.sha256(index.read_bytes()).hexdigest(), 'mtimeUtc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(index.stat().st_mtime))}

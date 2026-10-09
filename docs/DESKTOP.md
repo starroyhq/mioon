@@ -8,7 +8,7 @@
 Electron 主进程
   ├─ 沙箱 BrowserWindow → 同源 HTTP → 127.0.0.1:系统分配端口
   └─ Electron utilityProcess（捆绑的 Node + node:sqlite）
-       └─ @video-workbench/server → @video-workbench/business → SQLite / managed media
+       └─ @mioon/server → @mioon/business → SQLite / managed media
             └─ 用户明确指定的 FFmpeg / ffprobe 可执行文件
 
 独立 MCP 客户端 → stdio MCP bridge → 同一个正在运行的 HTTP 服务
@@ -34,7 +34,7 @@ Electron 44 的 npm 分发会在需要时下载官方运行时。构建主机需
 第一次启动会用原生文件对话框要求选择已安装的 `ffmpeg` 与 `ffprobe`。不会自动下载或运行来源不明的二进制。也可由启动者明确给出绝对路径：
 
 ```sh
-WB_FFMPEG_PATH=/usr/bin/ffmpeg WB_FFPROBE_PATH=/usr/bin/ffprobe pnpm desktop
+MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm desktop
 ```
 
 这两个路径必须指向可执行文件，并通过 `-version` 检查；FFmpeg 还必须提供 `libx264` 和 `aac` 编码器。只有路径会写入 `desktop-config.json`。FFmpeg 是明确的外部依赖，没有捆绑；安装来源、GPL/LGPL 组合及其许可义务由实际采用的 FFmpeg 构建决定。Electron 自带的 `libffmpeg` 仅服务于 Chromium 媒体播放，不代替这里的 FFmpeg CLI。
@@ -44,9 +44,9 @@ WB_FFMPEG_PATH=/usr/bin/ffmpeg WB_FFPROBE_PATH=/usr/bin/ffprobe pnpm desktop
 - 正式版 application / bundle ID：`app.starroy.mioon`
 - 开发版 application / bundle ID：`app.starroy.mioon.dev`
 - `pnpm desktop:build` 默认构建开发版；`pnpm desktop:build:production` 明确构建正式版暂存产物。之后 `pnpm desktop` 运行刚刚构建的渠道。
-- 渠道在构建时写入主进程和 `build/package.json` 的 `workbenchDesktop`，启动时不读取 `NODE_ENV`、`WB_DESKTOP_CHANNEL` 等环境变量，也不把 `app.isPackaged` 当作渠道。因此开发版打包后仍是 `.dev`。
+- 渠道在构建时写入主进程和 `build/package.json` 的 `workbenchDesktop`，启动时不读取 `NODE_ENV`、`MIOON_DESKTOP_CHANNEL` 等环境变量，也不把 `app.isPackaged` 当作渠道。因此开发版打包后仍是 `.dev`。
 - `app.setAppUserModelId`（Windows）、Linux desktop name / WM_CLASS 与打包 ID 保持一致；macOS bundle ID 来自 builder 配置，尚未实机验证。
-- 开发版系统应用名称/可执行文件增加 Dev / `-dev` 以便并存；现有 UI、npm workspace 和 `video-workbench` CLI 名字保持兼容。
+- 开发版系统应用名称/可执行文件增加 Dev / `-dev` 以便并存；界面统一为 Mioon，npm workspace 为 `@mioon/*`，CLI 为 `mioon`，不提供旧命令别名。
 - 打包前检查暂存渠道，拒绝把开发版暂存目录当成正式版，或反过来。源码版本为 `0.4.1`。
 
 ## 数据位置与单实例
@@ -57,12 +57,12 @@ WB_FFMPEG_PATH=/usr/bin/ffmpeg WB_FFPROBE_PATH=/usr/bin/ffprobe pnpm desktop
 - Windows 使用 Electron 的 appData 路径，通常为 `%APPDATA%\app.starroy.mioon\` / `%APPDATA%\app.starroy.mioon.dev\`；此平台尚未实机验证
 - 项目数据库和托管媒体位于上述目录的 `workspace/`
 - Chromium 缓存/配置与业务 `workspace/` 分开；认证 cookie 使用内存 session，不写到 Chromium 持久 cookie 库
-- `WB_DESKTOP_USER_DATA` 可明确覆盖整个桌面数据目录，必须是绝对路径；每个渠道应使用独立目录。`desktop-identity.json` 私有标记会拒绝已属于另一渠道的目录，不会自动覆盖或改写标记
+- `MIOON_DESKTOP_USER_DATA` 可明确覆盖整个桌面数据目录，必须是绝对路径；每个渠道应使用独立目录。`desktop-identity.json` 私有标记会拒绝已属于另一渠道的目录，不会自动覆盖或改写标记
 - 正式/开发版的数据库、工具配置、Chromium 状态、单实例锁、connection descriptor 和令牌默认隔离；同一渠道再次启动会聚焦原窗口
 
 应用采用 Electron 单实例锁，业务数据库仍有独立单写者锁。再次启动会聚焦已有窗口。默认数据目录与下载目录、源码目录、当前工作目录、安装包目录均无关；换版本不会因此丢失项目。正常退出后再整体备份 `workspace/`，包括媒体，不只复制 SQLite 文件。旧 Web 版数据可以在服务停止后复制到新桌面 `workspace/`；本版本不会自动移动原目录，也没有在用户 Mac 上执行任何迁移。
 
-V3/V4 原来的 `video-workbench/` 目录原封不动保留。V4.1 首次启动默认打开新渠道目录，旧项目不会自动出现，也不会被删除。要保留项目，请先正常退出旧/新应用并备份整个旧 `workspace/`，再使用下面的复制助手。Linux 旧数据通常来自 `~/.config/video-workbench/workspace`，macOS 旧数据来自 `~/Library/Application Support/video-workbench/workspace`。目标是所选新渠道中尚不存在的 `workspace/`。如果新版本已创建目标 workspace，选择全新的 `WB_DESKTOP_USER_DATA` 目录；不要覆盖、删除或合并已有项目。工具路径需重新选择，不复制旧 Chromium 配置或凭据。迁移完成后也保留旧数据，确认项目和媒体完整后再由用户决定如何归档。
+V3/V4 原来的 `video-workbench/` 目录原封不动保留。V4.1 首次启动默认打开新渠道目录，旧项目不会自动出现，也不会被删除。要保留项目，请先正常退出旧/新应用并备份整个旧 `workspace/`，再使用下面的复制助手。Linux 旧数据通常来自 `~/.config/video-workbench/workspace`，macOS 旧数据来自 `~/Library/Application Support/video-workbench/workspace`。目标是所选新渠道中尚不存在的 `workspace/`。如果新版本已创建目标 workspace，选择全新的 `MIOON_DESKTOP_USER_DATA` 目录；不要覆盖、删除或合并已有项目。工具路径需重新选择，不复制旧 Chromium 配置或凭据。迁移完成后也保留旧数据，确认项目和媒体完整后再由用户决定如何归档。
 
 提供明确执行的源码迁移助手（需要 Node 24）。先正常关闭两边应用，再指定旧数据目录与尚不存在的新 `workspace/` 路径：
 
@@ -91,7 +91,7 @@ Loopback token 与 OS 账户权限共同构成本地单用户信任边界。本�
 
 ## 启动、退出与恢复
 
-主进程等待 utilityProcess 就绪、验证它返回的 loopback origin，再创建已认证窗口。启动超时或服务失败会显示本地错误，不会留下永远等待的空白窗口。退出会先处理页面的未保存修改：选择继续编辑会保持窗口和后端运行；确认放弃且窗口关闭后才停止服务。
+主进程等待 utilityProcess 就绪、验证它返回的 loopback origin，再创建已认证窗口。启动超时或服务失败会显示本地错误，不会留下永远等待的空白窗口。正常关窗先通过一个固定、无特权的页面函数排空视图偏好的同源 HTTP 保存，最多等待 1.5 秒。失败或超时会询问“仍然退出 / 继续编辑”；选择继续编辑会保持窗口和后端运行。此函数不暴露 IPC、Electron、文件系统或令牌。随后仍执行原有未保存属性草稿确认，窗口真正关闭后才停止服务。
 
 正常停止会中断并回收本地媒体子进程、停止 worker、关闭 HTTP 与 SQLite、清理 discovery 文件。主进程同时追踪 utility 报告的媒体子进程；如果 utility 意外退出，剩余的本应用媒体进程会在恢复前被回收。超过关闭期限会终止 utility，数据库 WAL 与原有任务恢复规则仍生效。不会杀死系统上无关的 FFmpeg。
 
@@ -99,15 +99,21 @@ Loopback token 与 OS 账户权限共同构成本地单用户信任边界。本�
 
 macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开窗口，明确退出才关闭服务。此行为已写入源码，但仍需 macOS 实机验证。源代码尚未实现发布升级、签名、公证或系统密钥链凭据配置。
 
+## 项目视图记忆
+
+画板/剪辑模式、选择、缩放、播放头、滚动与面板状态保存在当前渠道的 `workspace/` 数据库独立表中。重新打开同一项目可恢复，包括正常完全退出后重启；这不保存全局最后打开的项目。浏览器与桌面连接同一个后端时共享该项目的本地单用户视图，并以独立版本防止旧窗口覆盖。认证 cookie 和 Chromium session 仍不持久化，没有增加 preload 或 renderer 到原生的桥接。
+
+草稿、搜索文本、任务、媒体和凭据均不属于视图偏好。强杀、崩溃、后端不可用或明确选择退出未保存视图时，最后未确认的视图变化仍可能丢失。详见[工作区偏好契约](WORKSPACE-PREFERENCES.md)。
+
 ## MCP 接入桌面服务
 
 桌面服务就绪后，在桌面数据目录生成 `mcp-connection.json` 和 `mcp-token`，两个文件均为 `0600`。descriptor 包含版本、动态 URL、令牌文件路径、utility PID 及非敏感 `appId` / `channel`；令牌独立保存。正常停止时清理，重启时旋转。不要分享这两个文件或把令牌复制到聊天。
 
 默认 Linux 正式版 descriptor 为 `~/.config/app.starroy.mioon/mcp-connection.json`，开发版为 `~/.config/app.starroy.mioon.dev/mcp-connection.json`；macOS 使用上述 Application Support 对应目录。使用环境变量时应写展开后的绝对路径（例如 shell 中用 `$HOME`），不要在 JSON/TOML 中把 `~` 当作已展开路径。迁移后请明确更新 CLI/MCP 连接配置，旧路径不会自动重定向，不会在两个渠道间静默回退。
 
-MCP bridge 可以配置 `WB_CONNECTION_FILE` 指向所选渠道的 descriptor；每次工具调用重新读取，因此能跟随桌面端口和认证轮换。它通过同一 HTTP service 工作，不另开 SQLite、worker 或第二套业务服务。客户端配置和 Node CLI 要求见 `docs/MCP.md`。
+MCP bridge 可以配置 `MIOON_CONNECTION_FILE` 指向所选渠道的 descriptor；每次工具调用重新读取，因此能跟随桌面端口和认证轮换。它通过同一 HTTP service 工作，不另开 SQLite、worker 或第二套业务服务。客户端配置和 Node CLI 要求见 `docs/MCP.md`。
 
-供应商设置只允许明确列出的服务端环境变量传入 utility，包括 `RUNWAYML_API_SECRET`、`VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER`、授权素材哈希、输出域名和额度门槛；不会传到页面。真实供应商联调仍未获授权，本次测试只使用模拟供应商与原创合成素材。
+供应商设置只允许明确列出的服务端环境变量传入 utility，包括 `RUNWAYML_API_SECRET`、`MIOON_ENABLE_LIVE_PROVIDER`、授权素材哈希、输出域名和额度门槛；不会传到页面。真实供应商联调仍未获授权，本次测试只使用模拟供应商与原创合成素材。
 
 ## 本地打包
 
@@ -118,11 +124,11 @@ pnpm desktop:package:linux
 # 可安装并存的开发版
 pnpm desktop:package:linux:dev
 # 仅生成解包目录
-pnpm --filter @video-workbench/desktop package:dir
-pnpm --filter @video-workbench/desktop package:dir:dev
+pnpm --filter @mioon/desktop package:dir
+pnpm --filter @mioon/desktop package:dir:dev
 ```
 
-正式版输出在 `release/desktop/production/`，开发版在 `release/desktop/development/`：Linux x64 解包目录及 `tar.gz`。两个渠道输出互不覆盖，旧 `release/desktop/` 历史产物保持原样。压缩包中包含 Electron / Node / SQLite / 页面 / 后端；解包后运行正式版 `video-workbench` 或开发版 `video-workbench-dev`，仍需外部 FFmpeg / ffprobe。必须在支持 Chromium 沙箱的非 root Linux 图形会话中运行。若系统策略阻止用户命名空间或沙箱辅助程序，保持安全失败，不添加 `--no-sandbox` 或静默降级。
+正式版输出在 `release/desktop/production/`，开发版在 `release/desktop/development/`：Linux x64 解包目录及 `tar.gz`。两个渠道输出互不覆盖，旧 `release/desktop/` 历史产物保持原样。压缩包中包含 Electron / Node / SQLite / 页面 / 后端；解包后运行正式版 `mioon` 或开发版 `mioon-dev`，仍需外部 FFmpeg / ffprobe。必须在支持 Chromium 沙箱的非 root Linux 图形会话中运行。若系统策略阻止用户命名空间或沙箱辅助程序，保持安全失败，不添加 `--no-sandbox` 或静默降级。
 
 `apps/desktop/electron-builder.cjs` 与 `.dev.cjs` 另有 macOS arm64/x64 DMG 配置；只是配置，没有在本次任务里运行 Mac 构建、签名、公证、Gatekeeper 验证或安装升级测试。未生成可声称已验证的 macOS 安装包。
 
@@ -130,7 +136,7 @@ pnpm --filter @video-workbench/desktop package:dir:dev
 
 ```sh
 pnpm test:desktop
-WB_FFMPEG_PATH=/usr/bin/ffmpeg WB_FFPROBE_PATH=/usr/bin/ffprobe pnpm --filter @video-workbench/desktop smoke
+MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm --filter @mioon/desktop smoke
 ```
 
 单元测试覆盖 origin/导航/下载白名单、无 Node/IPC 窗口设置、cookie 属性、权限拒绝、私有 discovery、环境隔离、启动超时、异常退出、媒体子进程所有权和取消未保存退出。
@@ -139,9 +145,11 @@ WB_FFMPEG_PATH=/usr/bin/ffmpeg WB_FFPROBE_PATH=/usr/bin/ffprobe pnpm --filter @v
 
 在自己的 Linux 图形会话中，扩展 smoke 已通过 19 项检查：包括真实 10 秒分层合成、活动 FFmpeg 期间的 utility SIGKILL 清理/恢复、正常中断/恢复、实际 renderer `beforeunload` 取消退出，以及 720×1280 成片在第 3 秒成功解码后截图。证据为 `evidence/v3-desktop/smoke.json`、`electron-workbench.png`。
 
-打包版另用 `apps/desktop/scripts/packaged-qa.mjs` 作为外部黑盒测试：启动真正的 `release/desktop/linux-unpacked/video-workbench`，子进程 PATH 为空，检查 `/proc` 中后端确实是同一打包 Electron 的 utility，通过私有 discovery 和正常 HTTP 完成真实渲染，再由原生界面检查和退出。它不启用打包 smoke hooks 或远程调试。最终 ASAR 检查运行 `node apps/desktop/scripts/inspect-package.mjs`；结果写入 `evidence/v3-desktop/package-inspection.json`。
+历史 V3 打包黑盒验证针对 `release/desktop/linux-unpacked/video-workbench`，检查空 PATH 启动、捆绑 utility、正常 HTTP 渲染与原生退出；历史证据保留在 `evidence/v3-desktop/`，不是当前 Mioon 构建的验证。
 
-本次 Linux x64 打包黑盒测试通过 6 项：ASAR 启动、捆绑 utility 身份、迁移项目、真实多轨 MP4、匿名拒绝、正常原生退出清理。`packaged-qa.json` 记录完成状态，`packaged-electron-preview.jpg` 是原生窗口检查截图。最终 `tar.gz` 已通过 gzip 完整性检查，内含 ASAR 哈希与这个实测目录一致；打包检查记录 SHA-256。macOS 仍只交付配置，未验证。
+当前 `apps/desktop/scripts/packaged-qa.mjs` 默认检查正式渠道 `release/desktop/production/linux-unpacked/mioon`；传入 `--channel=development` 检查开发渠道的 `mioon-dev`。`inspect-package.mjs` 使用相同渠道参数检查该渠道的包、归档和当前暂存构建，报告写入 `evidence/mioon-desktop/<channel>/`。只有显式 `--historical-v3` 才检查未改动的旧 0.3.0 归档，且不与当前暂存构建比较；报告为 `evidence/mioon-desktop/historical-v3-inspection.json`。这些脚本没有启用 smoke bridge 或远程调试。本次更名修改了脚本入口，但没有构建安装包或运行上述打包版检查。
+
+历史 V3 Linux x64 打包黑盒测试通过 6 项：ASAR 启动、捆绑 utility 身份、迁移项目、真实多轨 MP4、匿名拒绝、正常原生退出清理。`packaged-qa.json` 记录完成状态，`packaged-electron-preview.jpg` 是原生窗口检查截图。最终 `tar.gz` 已通过 gzip 完整性检查，内含 ASAR 哈希与这个实测目录一致；打包检查记录 SHA-256。macOS 仍只交付配置，未验证。
 
 ## 官方依据
 
@@ -157,7 +165,7 @@ WB_FFMPEG_PATH=/usr/bin/ffmpeg WB_FFPROBE_PATH=/usr/bin/ffprobe pnpm --filter @v
 
 V4 最初桌面源码版本为 0.4.0；V4.1 身份补丁为 0.4.1。utility 的显式环境白名单新增 ARK、GEMINI/VEO、MINIMAX 和 VIDU 配置；名单由 provider registry 维护，仍不继承任意环境或将密钥发送到 renderer。MiniMax/Vidu 的区域只接受 `global` / `cn`，不会跨区切换；Vidu 还必须配置经核实的精确输出主机。
 
-CLI 与 MCP 都可使用同一 `WB_CONNECTION_FILE`，每次请求重新读取，跟随桌面端口/令牌轮换。Web 模式还支持 `WB_BASE_URL` + `WB_TOKEN_FILE`。连接与命令见 CLI.md / MCP.md。应用的 Node 来自 Electron；源代码 CLI/MCP 仍需客户端电脑安装 Node24 和工作区依赖。
+CLI 与 MCP 都可使用同一 `MIOON_CONNECTION_FILE`，每次请求重新读取，跟随桌面端口/令牌轮换。Web 模式还支持 `MIOON_BASE_URL` + `MIOON_TOKEN_FILE`。连接与命令见 CLI.md / MCP.md。应用的 Node 来自 Electron；源代码 CLI/MCP 仍需客户端电脑安装 Node24 和工作区依赖。
 
 上文 V3 的 19 项/6 项及 `0.3.0` Linux 归档是历史证据，不含新适配器。本轮 V4 的 fresh development-runtime smoke 与实际源码验收以 ACCEPTANCE-V4.md 为准。旧包保持原样，未声称其已更新；没有重建/发布安装包或做 macOS 实机验证。
 

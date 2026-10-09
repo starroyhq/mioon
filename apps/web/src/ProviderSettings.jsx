@@ -1,9 +1,9 @@
 import React from 'react';
-import { Badge } from '@video-workbench/ui/components/badge';
-import { Button } from '@video-workbench/ui/components/button';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@video-workbench/ui/components/collapsible';
-import { Label } from '@video-workbench/ui/components/label';
-import { WorkbenchSelect } from '@video-workbench/ui/components/workbench-select';
+import { Badge } from '@mioon/ui/components/badge';
+import { Button } from '@mioon/ui/components/button';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
+import { Label } from '@mioon/ui/components/label';
+import { WorkbenchSelect } from '@mioon/ui/components/workbench-select';
 import Icon from './icons.jsx';
 import { inputModeLabel, providerModels, providerStatus, providerStatusLabel } from './generation-settings.js';
 

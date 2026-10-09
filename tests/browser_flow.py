@@ -2,7 +2,7 @@
 import json, os, pathlib, shutil, socket, subprocess, tempfile, time, urllib.request
 from playwright.sync_api import sync_playwright, expect
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-OUT=pathlib.Path(os.environ.get('WB_BROWSER_EVIDENCE',str(ROOT/'evidence'/'browser')));OUT.mkdir(parents=True,exist_ok=True)
+OUT=pathlib.Path(os.environ.get('MIOON_BROWSER_EVIDENCE',str(ROOT/'evidence'/'browser')));OUT.mkdir(parents=True,exist_ok=True)
 TOKEN='browser-local-test-token-2026-only'
 steps=[];errors=[]
 def log(name,**details):
@@ -10,7 +10,7 @@ def log(name,**details):
 def start(data):
     sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1];sock.close()
     handle=open(OUT/('server-'+str(port)+'.log'),'w')
-    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'WB_TOKEN':TOKEN,'WB_DATA_DIR':str(data),'VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':'','RUNWAY_MAX_GENERATIONS':'0'},stdout=handle,stderr=subprocess.STDOUT)
+    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'MIOON_TOKEN':TOKEN,'MIOON_DATA_DIR':str(data),'MIOON_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':'','RUNWAY_MAX_GENERATIONS':'0'},stdout=handle,stderr=subprocess.STDOUT)
     base=f'http://127.0.0.1:{port}'
     for _ in range(100):
         if proc.poll() is not None: raise RuntimeError('Backend exited; inspect server log')
@@ -50,7 +50,7 @@ def select_shot(page,shot):
     page.get_by_test_id('storyboard-shot-'+shot['id']).locator('.storyboard-preview').click();expect(page.get_by_test_id('shot-title')).to_have_value(shot['title'])
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path=shutil.which('chromium'),headless=True,chromium_sandbox=True)
-    data=pathlib.Path(tempfile.mkdtemp(prefix='video-workbench-browser-'))
+    data=pathlib.Path(tempfile.mkdtemp(prefix='mioon-browser-'))
     proc,handle,base=start(data)
     try:
         context=browser.new_context(viewport={'width':1600,'height':1000},accept_downloads=True)

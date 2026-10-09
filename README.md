@@ -1,4 +1,4 @@
-# 视频创作工作台
+# Mioon · 视频创作工作台
 
 个人、本地优先的视频画布与多轨剪辑工作台。简体中文界面；项目、素材、分镜、任务与版本持久化。Web UI、HTTP API、CLI 和 MCP 使用同一个后端业务服务。采用 Electron + pnpm monorepo：桌面壳、Web、HTTP、MCP 独立工作区，共用 Node 24 + SQLite 业务层；通用界面组件使用官方 shadcn/ui 的 Base UI（base-nova）版本，画布保留 React Flow。FFmpeg 执行真实多轨合成。V4 提供 Runway、火山方舟 Seedance、Gemini Veo、MiniMax H3 和 Vidu Q3 Turbo 五个平台的适配器，以及本地模拟供应商。真实生成尚未执行；供应商能力由模型、输入方式及后端安全配置共同决定。
 
@@ -19,7 +19,7 @@ pnpm desktop:build
 pnpm desktop
 ```
 
-桌面版把 Electron 内置的 Node 用于独立业务进程；渲染器禁用 Node 并启用 sandbox/contextIsolation。初次启动会让你选择本机 FFmpeg 和 ffprobe 可执行文件，也可用 WB_FFMPEG_PATH、WB_FFPROBE_PATH 提供绝对路径。它们是明确的外部运行要求，并没有捆绑进安装包。正式版 ID 为 `app.starroy.mioon`，开发版为 `app.starroy.mioon.dev`；源码启动默认开发版，两个渠道使用独立的 userData 路径，初次启动自动登录本地服务。详见 [桌面运行和数据迁移](docs/DESKTOP.md)。
+桌面版把 Electron 内置的 Node 用于独立业务进程；渲染器禁用 Node 并启用 sandbox/contextIsolation。初次启动会让你选择本机 FFmpeg 和 ffprobe 可执行文件，也可用 MIOON_FFMPEG_PATH、MIOON_FFPROBE_PATH 提供绝对路径。它们是明确的外部运行要求，并没有捆绑进安装包。正式版 ID 为 `app.starroy.mioon`，开发版为 `app.starroy.mioon.dev`；源码启动默认开发版，两个渠道使用独立的 userData 路径，初次启动自动登录本地服务。详见 [桌面运行和数据迁移](docs/DESKTOP.md)。
 
 继续使用浏览器入口：
 
@@ -27,7 +27,7 @@ pnpm desktop
 pnpm start
 ```
 
-打开 http://127.0.0.1:4318 。首次启动在 `data/access-token` 创建仅本机可读的访问令牌；在终端读取该文件，把它填入本地登录框。不要把令牌或供应商密钥发到聊天、URL 或公开文件中。可用 `WB_TOKEN` 环境变量替代令牌文件，长度至少20字符。`PORT` 更改端口；`WB_DATA_DIR` 指定数据目录。
+打开 http://127.0.0.1:4318 。首次启动在 `data/access-token` 创建仅本机可读的访问令牌；在终端读取该文件，把它填入本地登录框。不要把令牌或供应商密钥发到聊天、URL 或公开文件中。可用 `MIOON_TOKEN` 环境变量替代令牌文件，长度至少20字符。`PORT` 更改端口；`MIOON_DATA_DIR` 指定数据目录。
 
 ```sh
 cat data/access-token
@@ -42,22 +42,22 @@ cat data/access-token
 安装依赖后，仓库内即可执行真正的 CLI：
 
 ```sh
-pnpm exec video-workbench --help
-pnpm exec video-workbench schema generation.submit
+pnpm exec mioon --help
+pnpm exec mioon schema generation.submit
 ```
 
 连接运行中的 Web 服务时，使用私有令牌文件而非命令行令牌：
 
 ```sh
-WB_BASE_URL=http://127.0.0.1:4318 WB_TOKEN_FILE=/absolute/path/to/data/access-token pnpm exec video-workbench doctor
+MIOON_BASE_URL=http://127.0.0.1:4318 MIOON_TOKEN_FILE=/absolute/path/to/data/access-token pnpm exec mioon doctor
 ```
 
-连接 Electron 时改用 `WB_CONNECTION_FILE` 指向桌面 userData 中的 `mcp-connection.json`，客户端每次请求重新读取，适应端口和令牌轮换。CLI 与真实 stdio MCP 均调用同一后端，不另开数据库。
+连接 Electron 时改用 `MIOON_CONNECTION_FILE` 指向桌面 userData 中的 `mcp-connection.json`，客户端每次请求重新读取，适应端口和令牌轮换。CLI 与真实 stdio MCP 均调用同一后端，不另开数据库。
 
 - [CLI 命令、JSON、退出码与视频下载](docs/CLI.md)
 - [Codex / Claude Code MCP 配置](docs/MCP.md)
-- [可独立复制的 video-workbench Skill](skills/video-workbench/SKILL.md)
-- [纯本地完整示例](skills/video-workbench/references/mock-workflow.md)：导入 → 分镜 → 模拟生成 → 选择版本 → 时间线 → MP4 导出
+- [可独立复制的 mioon Skill](skills/mioon/SKILL.md)
+- [纯本地完整示例](skills/mioon/references/mock-workflow.md)：导入 → 分镜 → 模拟生成 → 选择版本 → 时间线 → MP4 导出
 
 Skill 包仅供手动安装/发现，不自动修改任何 agent 全局配置；也不构成真实生成授权。所有命令有共享运行时 schema。收费请求需保留原始 requestId；未知提交先对账，不能盲目换 ID 重发。
 
@@ -75,7 +75,7 @@ Skill 包仅供手动安装/发现，不自动修改任何 agent 全局配置；
 
 - 画板：左侧素材库、中央无限画布、右侧镜头/节点属性。用于构思、首帧参考连线、生成和比较版本；不显示时间线，分镜顺序默认收起。
 - 剪辑：左侧素材库、中央大预览、右侧片段属性，下方横跨工作区的多轨时间线。用于编排、预览和导出；不显示分镜板或 React Flow 画布。
-- 在同一浏览器来源/当前桌面渲染器会话内，每个项目分别记住当前模式、画板缩放/位置和选择，以及剪辑的片段选择、播放头、时间线缩放/滚动。浏览器同源刷新可恢复；Electron 完全退出后重启使用临时会话与新后端端口，不恢复这些视图偏好，项目数据与时间线历史仍持久保存。模式切换不保存未提交的属性草稿：有修改时先确认保存或放弃，取消会留在原处。
+- 每个项目分别持久记住当前模式、画板缩放/位置和选择，以及剪辑的片段选择、播放头、时间线缩放/滚动与面板状态。打开项目后，从本地后端恢复同一用户的共享视图；Electron 正常退出重启后仍可恢复，临时认证会话与随机端口保持不变。此功能不记住全局“最后打开的项目”。多窗口冲突会停止保存并提示载入已保存视图；自由搜索文本只留在当前界面。模式切换不保存未提交的属性草稿：有修改时先确认保存或放弃，取消会留在原处。详见[视图偏好与退出限制](docs/WORKSPACE-PREFERENCES.md)及[重启验收](docs/ACCEPTANCE-WORKSPACE-PREFERENCES.md)。
 - “加入时间线”是明确的跨模式入口，成功加入后打开剪辑。片段保存的是加入时的素材引用，后续选用新版本不会替换已有片段。
 - 片段属性中的“返回来源”回到画板；生成素材定位到对应镜头的确切历史版本，标记来源但不改选该镜头当前使用的版本。原始导入素材定位到唯一关联节点，找不到唯一节点时只查看素材。
 
@@ -115,7 +115,7 @@ pnpm demo
 `examples/multitrack-project/` 是独立的10秒原创几何演示：两段主画面、中间1秒主画面间隙、上层星形卡片画中画，以及独立音频与源内裁剪。素材由脚本生成，不使用任何用户素材或真实供应商。
 
 ```sh
-WB_DATA_DIR=./examples/multitrack-project pnpm start
+MIOON_DATA_DIR=./examples/multitrack-project pnpm start
 ```
 
 首次启动后读取该目录新生成的访问令牌并登录。要从头复现，运行 `pnpm demo:timeline`；它生成测试素材，并自行启动/关闭后端。需要 Python 3 + Pillow。已有同名示例会复用，不自动重复创建片段。
@@ -133,7 +133,7 @@ pnpm test:browser:timeline
 
 ## 数据与恢复
 
-Web入口的业务数据在 `WB_DATA_DIR`（默认 `data/`）：SQLite WAL、managed media、访问令牌。桌面入口使用 `WB_DESKTOP_USER_DATA` 下的 `workspace/`，见桌面指南。单个数据目录只能运行一个后端。复制/备份前正常关闭后端；整体复制数据目录，包含媒体，不只复制数据库。不要改写结果文件。重启会继续查询已知供应商任务和下载，未知提交先对账。
+Web入口的业务数据在 `MIOON_DATA_DIR`（默认 `data/`）：SQLite WAL、managed media、访问令牌。桌面入口使用 `MIOON_DESKTOP_USER_DATA` 下的 `workspace/`，见桌面指南。单个数据目录只能运行一个后端。复制/备份前正常关闭后端；整体复制数据目录，包含媒体，不只复制数据库。不要改写结果文件。重启会继续查询已知供应商任务和下载，未知提交先对账。
 
 若电脑异常重启留下 `server.lock`，正常启动会检查原进程并清理失效锁。不要在仍有后端运行时移除锁。应用本身不依赖云同步，开发云电脑文件不能当成永久托管或唯一备份。
 
@@ -152,7 +152,7 @@ Web入口的业务数据在 `WB_DATA_DIR`（默认 `data/`）：SQLite WAL、man
 
 架构已明确采用 Electron。本版包含 Linux 本地桌面构建及 macOS 构建配置；Mac 原生运行、签名、公证、系统密钥库与自动升级仍需真实 macOS 环境和另行授权验证。没有自动发布、部署、签名或上传应用。
 
-For a ready-to-open example without waiting for the seed script, use `WB_DATA_DIR=./examples/demo-project pnpm start` after build, then read that directory's newly created access-token. See examples/README.md. The delivered sample contains no login token or API key.
+For a ready-to-open example without waiting for the seed script, use `MIOON_DATA_DIR=./examples/demo-project pnpm start` after build, then read that directory's newly created access-token. See examples/README.md. The delivered sample contains no login token or API key.
 
 
 ## Monorepo 和开发入口
@@ -176,3 +176,7 @@ pnpm test:desktop
 Linux 打包为本地未签名 tar.gz，发布被关闭。构建输出及准确验证边界以 docs/ACCEPTANCE-V3.md 为准；原 v1/v2 交付包保持原样。
 
 当前源码版本为 0.4.1（V4.1 应用 ID 补丁）。V4.1 的构建渠道、独立数据目录和旧数据复制说明见 [DESKTOP.md](docs/DESKTOP.md)，本轮验收见 [ACCEPTANCE-V4.1.md](docs/ACCEPTANCE-V4.1.md)。保留的 `video-workbench-0.3.0-linux-x64.tar.gz` 是历史 V3 包，不含 V4 新服务商与 CLI。V4 本次交付以源码和可复用 Skill 为准，桌面源码构建与运行验证单独记录；不把历史二进制称为已更新。
+
+## Mioon 命名更新
+
+当前产品、窗口、登录界面、桌面程序、CLI 和 MCP 统一为 Mioon。命令是 `pnpm exec mioon`，workspace 包是 `@mioon/*`，环境变量改用 `MIOON_*`（包括 `MIOON_ENABLE_LIVE_PROVIDER`）。旧命令、包名和环境变量不设兼容别名；请更新本机启动脚本与客户端配置。完整范围、升级与数据保护说明见 [Mioon 升级指南](docs/MIOON-MIGRATION.md)。

@@ -1,9 +1,9 @@
 {
-  "name": "@video-workbench/cli",
+  "name": "@mioon/cli",
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "bin": {"video-workbench": "./src/index.mjs"},
+  "bin": {"mioon": "./src/index.mjs"},
   "scripts": {"start": "node src/index.mjs"},
-  "dependencies": {"@video-workbench/client": "workspace:*"}
+  "dependencies": {"@mioon/client": "workspace:*"}
 }

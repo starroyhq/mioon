@@ -1,12 +1,12 @@
-import { Separator } from '@video-workbench/ui/components/separator';
-import { Badge } from '@video-workbench/ui/components/badge';
-import { useConfirmation } from '@video-workbench/ui/components/workbench-confirm';
+import { Separator } from '@mioon/ui/components/separator';
+import { Badge } from '@mioon/ui/components/badge';
+import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Button } from '@video-workbench/ui/components/button';
-import { Input } from '@video-workbench/ui/components/input';
-import { Label } from '@video-workbench/ui/components/label';
-import { ScrollArea } from '@video-workbench/ui/components/scroll-area';
-import { WorkbenchSelect } from '@video-workbench/ui/components/workbench-select';
+import { Button } from '@mioon/ui/components/button';
+import { Input } from '@mioon/ui/components/input';
+import { Label } from '@mioon/ui/components/label';
+import { ScrollArea } from '@mioon/ui/components/scroll-area';
+import { WorkbenchSelect } from '@mioon/ui/components/workbench-select';
 import { assetKind, framesLabel } from './Timeline.jsx';
 import Icon from './icons.jsx';
 

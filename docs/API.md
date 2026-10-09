@@ -12,7 +12,13 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISION_CONFLICT","message":"...","details":{"currentRevision":2},"retryable":false}}`. HTTP 400 invalid input, 401 unauthenticated, 403 invalid origin/provider disabled, 404 missing record/operation, 409 stale revision or idempotency conflict. Do not blindly retry a generation with a new key when a response is lost; replay the original exact request.
 
-The runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` lists every operation, input and record. MCP tools expose these same schemas through tools/list.
+For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` lists every operation, input and record. MCP tools expose these same schemas through tools/list.
+
+## Project workspace preferences (UI-only)
+
+`GET /api/workspace-preferences/:projectId` returns `{ok:true,data:{projectId,revision,state}}`; an absent saved view has revision `0` and state `null`. `PUT` accepts exactly `{expectedRevision,state}`, a strict complete version-1 view whitelist capped at 16 KiB. It uses the same authentication and Host/Origin boundary. Stale differing state returns `409 PREFERENCES_CONFLICT`; an exact retry of the latest accepted write returns its existing revision.
+
+These independent preference revisions never update project/shot/timeline revisions, history or business idempotency. This endpoint is not a business RPC operation or MCP tool. Full fields, bounds, concurrency, migration and close behavior: [Workspace preferences](WORKSPACE-PREFERENCES.md).
 
 ## Example Node client
 
@@ -20,7 +26,7 @@ The runtime schemas in `packages/contracts/src/index.mjs` are authoritative and 
 const call = async (operation, input) => {
   const response = await fetch('http://127.0.0.1:4318/api/rpc', {
     method: 'POST',
-    headers: {'content-type':'application/json', authorization:`Bearer ${process.env.WB_TOKEN}`},
+    headers: {'content-type':'application/json', authorization:`Bearer ${process.env.MIOON_TOKEN}`},
     body: JSON.stringify({operation,input})
   });
   const result = await response.json();
@@ -100,7 +106,7 @@ The original `export.create` selected-shot sequence behavior is unchanged.
 
 ## V4 discovery and capability validation
 
-`pnpm exec video-workbench schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
+`pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
 
 `provider.list` includes `modelCapabilities`, `status` (`available`, `disabled`, `not_configured`), `configuration.missing`, `configuration.requirements`, `liveVerified` and the local generation-count budget. Provider IDs are `mock`, `runway`, `ark`, `veo`, `minimax`, `vidu`. Configuration values and credentials are never returned. Capabilities can change as local count limits are consumed; re-read before new work.
 

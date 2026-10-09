@@ -17,7 +17,7 @@ function deferred() {
 }
 
 async function fixture(t, methods = {}) {
-  const root = await mkdtemp(path.join(tmpdir(), 'video-workbench-race-'));
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-race-'));
   const store = openStore(root);
   let submissions = 0, worker;
   const provider = {

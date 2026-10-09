@@ -17,6 +17,6 @@ test('mock generation and probe use selected absolute executables with no host P
  const provider=pathToFileURL(path.resolve('packages/business/src/providers/mock.mjs')).href;
  const media=pathToFileURL(path.resolve('packages/business/src/media.mjs')).href;
  const source=`import {DatabaseSync} from 'node:sqlite';import {createMockProvider} from ${JSON.stringify(provider)};import {probe} from ${JSON.stringify(media)};const root=${JSON.stringify(root)},db=new DatabaseSync(':memory:');const p=createMockProvider({db,root});const job=await p.submit({prompt:'Synthetic path verification',duration:2,aspectRatio:'9:16',parameters:{scenario:'success',delayMs:0},referenceAssets:[]},{requestId:'custom-runtime-path'});await p.download(job.providerJobId,root+'/output.mp4');const result=await probe(root+'/output.mp4');console.log(JSON.stringify({codec:result.codec,width:result.width,height:result.height,duration:result.duration}));db.close();`;
- const result=await exec(process.execPath,['--input-type=module','-e',source],{env:{...process.env,PATH:path.join(root,'missing-path'),WB_FFMPEG_PATH:encoder,WB_FFPROBE_PATH:probe},timeout:60000});
+ const result=await exec(process.execPath,['--input-type=module','-e',source],{env:{...process.env,PATH:path.join(root,'missing-path'),MIOON_FFMPEG_PATH:encoder,MIOON_FFPROBE_PATH:probe},timeout:60000});
  const output=JSON.parse(result.stdout);assert.equal(output.codec,'h264');assert.equal(output.width/output.height,9/16);assert.equal(output.duration,2);
 });

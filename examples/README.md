@@ -5,7 +5,7 @@
 `demo-project/` is a portable, prebuilt five-shot project. After installation/build, launch with:
 
 ```sh
-WB_DATA_DIR=./examples/demo-project pnpm start
+MIOON_DATA_DIR=./examples/demo-project pnpm start
 ```
 
 Read `examples/demo-project/access-token` after this first local startup and enter it in the local login form. No token is distributed with the sample. Copy the sample directory before experimenting if you want an untouched reference copy. A full data backup includes its SQLite database and all media.
@@ -20,4 +20,4 @@ The project uses the requested Stanley × Maltese story only as shot/prompt data
 
 `multitrack-project/` is a separate10second compositing project made entirely from the original procedural media in `timeline-synthetic/`. It has two video tracks and one audio track. Main pictures occupy0–4s and5–10s; the upper star card occupies2–7s in a smaller rectangle; independent sound occupies0–4s and5–9s with a source trim on its second clip. The second main picture also contains embedded audio.
 
-Start with `WB_DATA_DIR=./examples/multitrack-project pnpm start` after the normal build. No access token is packaged. Use a copy of the directory for experiments. `pnpm demo:timeline` reproduces the source fixtures and both the preview/export through the shared business service. It uses no model provider or external media.
+Start with `MIOON_DATA_DIR=./examples/multitrack-project pnpm start` after the normal build. No access token is packaged. Use a copy of the directory for experiments. `pnpm demo:timeline` reproduces the source fixtures and both the preview/export through the shared business service. It uses no model provider or external media.

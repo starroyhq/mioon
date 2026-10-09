@@ -191,7 +191,7 @@ test('additive reference migration does not rewrite legacy decorative edges or m
 });
 
 test('bound image reaches the real Ark adapter first-frame payload through an injected HTTP transport only',async t=>{
- const env={VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'synthetic-never-transmitted-credential',ARK_MAX_GENERATIONS:'2'};
+ const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'synthetic-never-transmitted-credential',ARK_MAX_GENERATIONS:'2'};
  const f=await fixture(t,env),small=await f.image(),valid=await f.image(f.projectId,110,360,640),shot=await f.shot(f.projectId,{duration:4});
  const smallBound=await f.call('reference.attach',attach(f,small.node,shot));
  await rejectsUnchanged(f,'generation.submit',{shotId:shot.id,expectedRevision:smallBound.shot.revision,requestId:randomUUID(),providerId:'ark'},'UNSUPPORTED_INPUT');assert.equal(f.store.list('jobs').length,0);

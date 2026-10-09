@@ -1,4 +1,4 @@
-export const COOKIE_NAME = 'wb_session';
+export const COOKIE_NAME = 'mioon_session';
 
 export function trustedOrigin(value) {
   const url = new URL(value);

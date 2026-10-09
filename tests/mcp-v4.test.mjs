@@ -8,15 +8,15 @@ import http from 'node:http';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '@video-workbench/server';
-import {schemas} from '@video-workbench/contracts';
+import {startServer} from '@mioon/server';
+import {schemas} from '@mioon/contracts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'synthetic-v4-mcp-token-never-live';
 function environment(extra = {}) {
   const env = {...process.env};
-  for (const key of Object.keys(env)) if (/^(WB_|RUNWAY|ARK_|VEO_|GOOGLE_|VIDEO_WORKBENCH_)/.test(key)) delete env[key];
-  return {...env, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER:'0', RUNWAY_MAX_GENERATIONS:'0', ...extra};
+  for (const key of Object.keys(env)) if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MIOON_)/.test(key)) delete env[key];
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', RUNWAY_MAX_GENERATIONS:'0', ...extra};
 }
 async function bridge(t, env = {}) {
   const client = new Client({name:'v4-protocol-regression', version:'1.0.0'}, {capabilities:{}});
@@ -49,12 +49,12 @@ async function httpRpc(service, operation, input = {}) {
 
 test('MCP initializes offline; discovery schemas exactly cover shared contracts and expose structured errors', {timeout:30_000}, async t => {
   const mcp = await bridge(t);
-  assert.equal(mcp.client.getServerVersion().name, 'video-workbench');
+  assert.equal(mcp.client.getServerVersion().name, 'mioon');
   const listing = await mcp.client.listTools();
   const actual = listing.tools.map(tool => tool.name).sort();
-  const expected = [...Object.keys(schemas).map(operation => operation.replaceAll('.','_')), 'workbench_doctor','workbench_capabilities','workbench_schema'].sort();
+  const expected = [...Object.keys(schemas).map(operation => operation.replaceAll('.','_')), 'mioon_doctor','mioon_capabilities','mioon_schema'].sort();
   assert.deepEqual(actual, expected);
-  const catalog = await mcp.call('workbench_schema');
+  const catalog = await mcp.call('mioon_schema');
   assert.deepEqual(catalog.operations.map(item => item.operation).sort(), Object.keys(schemas).sort());
   for (const operation of Object.keys(schemas)) {
     const definition = catalog.operations.find(item => item.operation === operation);
@@ -70,19 +70,19 @@ test('MCP initializes offline; discovery schemas exactly cover shared contracts 
     assert.deepEqual([...(tool.inputSchema.required || [])].sort(), required, `${operation} required inputs`);
     assert.equal(definition.requiresRequestId, required.includes('requestId'));
   }
-  const submit = await mcp.call('workbench_schema', {operation:'generation.submit'});
+  const submit = await mcp.call('mioon_schema', {operation:'generation.submit'});
   assert.equal(submit.requiresRequestId, true);
   assert.deepEqual(submit, catalog.operations.find(item => item.operation === 'generation.submit'));
   assert.match(catalog.validation, /Zod/);
-  await mcp.call('workbench_schema', {operation:'unregistered.operation'}, 'VALIDATION_ERROR');
-  await mcp.call('workbench_schema', {unexpected:true}, 'VALIDATION_ERROR');
+  await mcp.call('mioon_schema', {operation:'unregistered.operation'}, 'VALIDATION_ERROR');
+  await mcp.call('mioon_schema', {unexpected:true}, 'VALIDATION_ERROR');
   await mcp.call('project_create', {name:'must not dispatch', unexpected:true}, 'VALIDATION_ERROR');
   await mcp.call('generation_submit', {shotId:randomUUID(), expectedRevision:1, providerId:'mock'}, 'VALIDATION_ERROR');
   await mcp.call('project_get', {projectId:'not-a-uuid'}, 'VALIDATION_ERROR');
   await mcp.call('unregistered_tool', {}, 'UNKNOWN_OPERATION');
   await mcp.call('project_list', {}, 'CONNECTION_CONFIG_ERROR');
-  await mcp.call('workbench_doctor', {}, 'CONNECTION_CONFIG_ERROR');
-  await mcp.call('workbench_capabilities', {}, 'CONNECTION_CONFIG_ERROR');
+  await mcp.call('mioon_doctor', {}, 'CONNECTION_CONFIG_ERROR');
+  await mcp.call('mioon_capabilities', {}, 'CONNECTION_CONFIG_ERROR');
   assert.ok(!mcp.stderr().includes('Bearer'));
 });
 
@@ -100,7 +100,7 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   };
   await publish();
   t.after(async () => {await service.close(); await rm(root, {recursive:true, force:true});});
-  const mcp = await bridge(t, {WB_CONNECTION_FILE:connectionFile});
+  const mcp = await bridge(t, {MIOON_CONNECTION_FILE:connectionFile});
   const processId = mcp.transport.pid;
   assert.ok(Number.isSafeInteger(processId) && processId > 0);
   const project = await mcp.call('project_create', {name:'Durable desktop rotation fixture'});
@@ -112,11 +112,11 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   const viaHttp = await httpRpc(service, 'shot.update', updateInput);
   assert.equal(viaHttp.status, 409); assert.equal(viaHttp.body.error.code, conflict.code);
   assert.deepEqual(viaHttp.body.error.details, conflict.details);
-  const doctor = await mcp.call('workbench_doctor');
+  const doctor = await mcp.call('mioon_doctor');
   assert.equal(doctor.ready, true); assert.equal(doctor.connection.source, 'desktop-descriptor');
   assert.equal(doctor.connection.credentialsReloadedPerRequest, true);
-  assert.equal(doctor.backend.service, 'video-workbench');
-  assert.deepEqual(await mcp.call('workbench_capabilities'), (await httpRpc(service, 'provider.list')).body.data);
+  assert.equal(doctor.backend.service, 'mioon');
+  assert.deepEqual(await mcp.call('mioon_capabilities'), (await httpRpc(service, 'provider.list')).body.data);
   const before = await mcp.call('project_get', {projectId:project.id});
   assert.equal(before.shots[0].title, updated.title);
 
@@ -158,7 +158,7 @@ test('MCP rejects malformed arguments before backend mutation and sanitizes unsa
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => fixture.close(resolve)));
-  const mcp = await bridge(t, {WB_BASE_URL:`http://127.0.0.1:${fixture.address().port}`, WB_TOKEN:token});
+  const mcp = await bridge(t, {MIOON_BASE_URL:`http://127.0.0.1:${fixture.address().port}`, MIOON_TOKEN:token});
   await mcp.call('project_list', {unexpected:true}, 'VALIDATION_ERROR');
   await mcp.call('timeline_clip_update', {projectId:randomUUID(), expectedRevision:1, requestId:randomUUID(), clipId:randomUUID(), patch:{}}, 'VALIDATION_ERROR');
   assert.equal(calls.length, 0, 'shared Zod refinement and strictness must run before HTTP');

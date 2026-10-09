@@ -5,8 +5,8 @@ This sample creates a new project and synthetic reference, imports it, creates a
 Run from any folder with an absolute authorized application checkout and a new writable work directory:
 
 ```sh
-python3 /absolute/to/video-workbench/skills/video-workbench/scripts/mock_workflow.py \
-  --repo /absolute/to/video-workbench \
+python3 /absolute/to/mioon/skills/mioon/scripts/mock_workflow.py \
+  --repo /absolute/to/mioon \
   --work-dir /absolute/new/mock-study
 ```
 

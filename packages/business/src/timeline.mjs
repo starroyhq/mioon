@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {AppError} from '@video-workbench/contracts';
+import {AppError} from '@mioon/contracts';
 
 export const TIMELINE_LIMITS=Object.freeze({fps:30,width:720,height:1280,tracks:12,clips:100,durationFrames:18000});
 const defaultRect=()=>({x:0,y:0,width:720,height:1280});

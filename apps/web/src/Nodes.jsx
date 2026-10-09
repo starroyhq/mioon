@@ -1,4 +1,4 @@
-import { Button } from '@video-workbench/ui/components/button';
+import { Button } from '@mioon/ui/components/button';
 import React, { memo, useLayoutEffect, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import Icon from './icons.jsx';

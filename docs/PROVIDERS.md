@@ -25,7 +25,7 @@ New adapters deliberately accept PNG/JPEG only, at most one image, and a nonblan
 
 ### Required server settings
 
-Every real provider needs `VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER=1`, the corresponding server key, and a separately approved application-level generation count. None are implied by installing the app or having a ChatGPT plan.
+Every real provider needs `MIOON_ENABLE_LIVE_PROVIDER=1`, the corresponding server key, and a separately approved application-level generation count. None are implied by installing the app or having a ChatGPT plan.
 
 | ID | Credential name | Approved-image checksum list | Generation count | Additional settings |
 | --- | --- | --- | --- | --- |
@@ -85,7 +85,7 @@ Requests use the fixed `https://api.dev.runwayml.com` origin, Bearer authenticat
 
 Live calls require all applicable gates, configured only after separate user authorization:
 
-1. `VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER=1`
+1. `MIOON_ENABLE_LIVE_PROVIDER=1`
 2. `RUNWAYML_API_SECRET` supplied to the server environment through a secure credential route
 3. `RUNWAY_APPROVED_ASSET_SHA256`: comma-separated hashes of the exact approved synthetic reference files
 4. Any additional application-level budget/authorization gate, including the backend's `RUNWAY_MAX_GENERATIONS`

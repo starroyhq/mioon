@@ -22,7 +22,7 @@ function isImage(bytes, mime) {
 export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now } = {}) {
   const secret = typeof env.RUNWAYML_API_SECRET === 'string' ? env.RUNWAYML_API_SECRET.trim() : '';
   const configured = Boolean(secret);
-  const enabled = configured && env.VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER === '1';
+  const enabled = configured && env.MIOON_ENABLE_LIVE_PROVIDER === '1';
   const approvedHashes = new Set((env.RUNWAY_APPROVED_ASSET_SHA256 ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^[0-9a-f]{64}$/.test(x)));
   // The documented output CDN is allowed by default. Additional verified CDN hosts
   // can be configured server-side, never by a request, prompt, or provider response.

@@ -1,5 +1,5 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';import path from 'node:path';
-const base=process.env.WB_BASE_URL||'http://127.0.0.1:4318';const token=process.env.WB_TOKEN||(await readFile(path.join(process.env.WB_DATA_DIR||'data','access-token'),'utf8')).trim();
+const base=process.env.MIOON_BASE_URL||'http://127.0.0.1:4318';const token=process.env.MIOON_TOKEN||(await readFile(path.join(process.env.MIOON_DATA_DIR||'data','access-token'),'utf8')).trim();
 const rpc=async(operation,input)=>{const r=await fetch(base+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});const v=await r.json();if(!v.ok)throw Error(JSON.stringify(v.error));return v.data;};
 const name='Stanley × Maltese｜10 秒故事 · 合成演示';let project=(await rpc('project.list',{})).find(p=>p.name===name);if(project){console.log(`Demo already exists: ${base}/?project=${project.id}`);process.exit(0);}
 project=await rpc('project.create',{name,description:'五镜头 × 2 秒。原品牌故事仅作数据样例；画面为自行制作的测试图形及模拟运动测试片，非真实产品参考图，非模型广告成片。'});

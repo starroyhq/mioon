@@ -26,7 +26,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   let backend, client, transport, mcpStderr = '';
   async function start() {
     const record = { event: 'start', at: new Date().toISOString(), port, stdout: '', stderr: '' }; report.processes.push(record);
-    backend = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), WB_DATA_DIR: root, WB_TOKEN: token, VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    backend = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
     record.pid = backend.pid; backend.stdout.on('data', bytes => record.stdout += bytes); backend.stderr.on('data', bytes => record.stderr += bytes); backend.on('exit', (code, signal) => Object.assign(record, { exitCode: code, signal }));
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) { if (backend.exitCode !== null) throw Error(record.stderr); try { if ((await fetch(base + '/health')).ok) return; } catch {} await pause(40); }
@@ -40,7 +40,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(report, null, 2)); await rm(root, { recursive: true, force: true });
   });
   await start();
-  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.mjs'], cwd: repo, env: { ...process.env, WB_BASE_URL: base, WB_TOKEN: token }, stderr: 'pipe' });
+  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.mjs'], cwd: repo, env: { ...process.env, MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
   transport.stderr.on('data', bytes => mcpStderr += bytes);
   const wire = {
     onmessage: undefined, onerror: undefined, onclose: undefined,

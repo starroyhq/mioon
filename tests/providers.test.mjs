@@ -29,7 +29,7 @@ async function runway(t, responses = [], options = {}) {
   const file = path.join(root, 'synthetic.png'); await writeFile(file, bytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const calls = [], queue = [...responses];
-  const env = { RUNWAYML_API_SECRET: 'offline-fixture-secret', VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '1', RUNWAY_APPROVED_ASSET_SHA256: sha256, ...options.env };
+  const env = { RUNWAYML_API_SECRET: 'offline-fixture-secret', MIOON_ENABLE_LIVE_PROVIDER: '1', RUNWAY_APPROVED_ASSET_SHA256: sha256, ...options.env };
   const fetchImpl = async (...args) => {
     calls.push(args);
     const response = queue.shift();
@@ -139,7 +139,7 @@ test('mock rejects unsupported capabilities and unsafe output paths', async t =>
 });
 
 test('Runway is disabled by default and construction never fetches', async t => {
-  const { provider, input, calls } = await runway(t, [], { env: { VIDEO_WORKBENCH_ENABLE_LIVE_PROVIDER: '0' } });
+  const { provider, input, calls } = await runway(t, [], { env: { MIOON_ENABLE_LIVE_PROVIDER: '0' } });
   assert.equal(provider.capabilities.enabled, false);
   assert.equal(provider.capabilities.liveVerified, false);
   await assert.rejects(provider.submit(input), { code: 'PROVIDER_DISABLED' });

@@ -28,7 +28,7 @@ export class BackendSupervisor extends EventEmitter {
       let child;
       try {
         child = this.child = this.fork(this.modulePath, [], {
-          env: this.environment, stdio: 'ignore', serviceName: 'Video Workbench Backend',
+          env: this.environment, stdio: 'ignore', serviceName: 'Mioon Backend',
           allowLoadingUnsignedLibraries: false, execArgv: []
         });
       } catch (error) { fail(error); return; }

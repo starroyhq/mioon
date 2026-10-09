@@ -4,7 +4,7 @@ import {createReadStream, existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
-import {openStore, createServices, startWorker, safePath, createProviderRegistry} from '@video-workbench/business';
+import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const equal = (a, b) => {
@@ -39,7 +39,7 @@ export async function startServer({
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
   const root = path.resolve(dataDir), dist = path.resolve(distDir);
-  if (suppliedToken !== undefined && (typeof suppliedToken !== 'string' || suppliedToken.length < 20)) throw Error('WB_TOKEN must contain at least 20 characters');
+  if (suppliedToken !== undefined && (typeof suppliedToken !== 'string' || suppliedToken.length < 20)) throw Error('MIOON_TOKEN must contain at least 20 characters');
   const store = openStore(root);
   let token = suppliedToken;
   const tokenFile = path.join(root, 'access-token');
@@ -52,13 +52,14 @@ export async function startServer({
         await writeFile(tokenFile, token, {mode: 0o600, flag: 'wx'});
       }
     }
-    if (token.length < 20) throw Error('WB_TOKEN must contain at least 20 characters');
+    if (token.length < 20) throw Error('MIOON_TOKEN must contain at least 20 characters');
     const providers = createProviderRegistry({db: store.db, root});
     const services = createServices(store, providers);
+    const workspacePreferences = createWorkspacePreferences(store);
     const origins = new Set(), hosts = new Set();
     const auth = req => {
       const bearer = req.headers.authorization?.replace(/^Bearer /, '');
-      const cookie = (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('wb_session='))?.slice(11);
+      const cookie = (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('mioon_session='))?.slice('mioon_session='.length);
       return equal(bearer, token) || equal(cookie, token);
     };
     server = http.createServer(async (req, res) => {
@@ -68,15 +69,25 @@ export async function startServer({
         res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'");
         if (!hosts.has(req.headers.host) || (req.headers.origin && !origins.has(req.headers.origin))) return json(res, 403, {ok: false, error: {code: 'ORIGIN_REJECTED', message: '本地来源校验失败'}});
         const url = new URL(req.url, `http://127.0.0.1:${server.address().port}`);
-        if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'video-workbench', version: '0.4.0', sqlite: store.db.prepare('select sqlite_version() v').get().v});
+        if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'mioon', version: '0.4.0', sqlite: store.db.prepare('select sqlite_version() v').get().v});
         if (url.pathname === '/api/login' && req.method === 'POST') {
           const input = await body(req, 4096);
           if (!equal(input.token, token)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '访问令牌无效'}});
-          res.setHeader('Set-Cookie', `wb_session=${token}; HttpOnly; SameSite=Strict; Path=/`);
+          res.setHeader('Set-Cookie', [`mioon_session=${token}; HttpOnly; SameSite=Strict; Path=/`, 'wb_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0']);
           return json(res, 200, {ok: true});
         }
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
+        }
+        const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
+        if (preferencesRoute) {
+          let projectId;
+          try { projectId = decodeURIComponent(preferencesRoute[1]); }
+          catch { return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '项目 ID 无效'}}); }
+          if (req.method === 'GET') return json(res, 200, {ok: true, data: workspacePreferences.get(projectId)});
+          if (req.method === 'PUT') return json(res, 200, {ok: true, data: workspacePreferences.put(projectId, await body(req, MAX_WORKSPACE_PREFERENCES_BYTES))});
+          res.setHeader('Allow', 'GET, PUT');
+          return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
         }
         if (url.pathname === '/api/rpc' && req.method === 'POST') {
           const input = await body(req);
@@ -88,7 +99,7 @@ export async function startServer({
           if (!asset) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
           const file = await safePath(root, asset.relativePath), metadata = await stat(file);
           const headers = {'Content-Type': asset.mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
-          if (url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="video-workbench.${asset.mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
+          if (url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${asset.mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
           const range = req.headers.range;
           if (range) {
             const match = /^bytes=(\d*)-(\d*)$/.exec(range);

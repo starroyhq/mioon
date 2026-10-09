@@ -11,7 +11,7 @@ import uuid
 import zlib
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--repo', required=True, type=Path, help='Authorized Video Workbench checkout')
+parser.add_argument('--repo', required=True, type=Path, help='Authorized Mioon checkout')
 parser.add_argument('--work-dir', required=True, type=Path, help='New private directory for state, synthetic image and result')
 parser.add_argument('--image', type=Path, help='Optional explicitly approved local PNG/JPEG/WebP instead of synthetic image')
 args = parser.parse_args()

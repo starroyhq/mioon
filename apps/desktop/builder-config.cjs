@@ -16,7 +16,7 @@ module.exports = function builderConfig(channel) {
     // Reject stale opposite-channel staging rather than shipping mismatched identities.
     beforePack: async context => {
       const metadata = JSON.parse(await fs.readFile(path.join(context.packager.info.appDir, 'package.json'), 'utf8'));
-      if (metadata.workbenchDesktop?.channel !== identity.channel || metadata.workbenchDesktop?.appId !== identity.appId) {
+      if (metadata.mioonDesktop?.channel !== identity.channel || metadata.mioonDesktop?.appId !== identity.appId) {
         throw new Error(`Desktop staging identity mismatch; rebuild with --channel=${channel}`);
       }
     },

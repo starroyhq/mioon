@@ -3,10 +3,10 @@
 ## Workspace boundaries
 
 - `apps/desktop`: Electron main process, sandboxed renderer host, backend utility-process lifecycle and platform packaging. It bundles the server and its dependencies into the desktop app; installed users do not need host Node.js.
-- `apps/web`: React 19 + Vite renderer, React Flow canvas and specialized timeline interactions. It uses `@video-workbench/ui` for common controls.
+- `apps/web`: React 19 + Vite renderer, React Flow canvas and specialized timeline interactions. It uses `@mioon/ui` for common controls.
 - `apps/server`: loopback HTTP transport and static renderer serving. `startServer({dataDir, port, distDir, token})` returns an owned lifecycle; CLI signals are handled only in `cli.mjs`.
 - `apps/mcp`: official SDK stdio MCP bridge. Uses the shared client to call the running service; never opens another database.
-- `apps/cli`: real `video-workbench` executable, schema discovery, local file import/download and bounded watch commands.
+- `apps/cli`: real `mioon` executable, schema discovery, local file import/download and bounded watch commands.
 - `packages/client`: one rotating loopback-auth resolver and HTTP/schema/watch implementation shared by CLI and MCP.
 - `packages/business`: SQLite store, service operations, idempotency, jobs/recovery, immutable assets/versions/timeline snapshots, media handling, FFmpeg compositor and provider adapters.
 - `packages/contracts`: strict Zod request schemas and public error/value contract, shared by service and MCP.
@@ -28,7 +28,7 @@ Desktop backend ports are allocated by binding to loopback port zero, preventing
 
 ## Data compatibility
 
-The workspace move does not change media filenames. In web mode the default remains the repository's `data/`; `WB_DATA_DIR` continues to select a complete existing data directory. The additive v2 timeline migration is retained, and never rewrites v1 selected versions or materializes a new timeline from old shots implicitly. Schema v3 adds durable timeline history; schema v4 adds immutable first-frame connection request responses. Both leave historical records intact.
+The workspace move does not change media filenames. In web mode the default remains the repository's `data/`; `MIOON_DATA_DIR` continues to select a complete existing data directory. The additive v2 timeline migration is retained, and never rewrites v1 selected versions or materializes a new timeline from old shots implicitly. Schema v3 adds durable timeline history; schema v4 adds immutable first-frame connection request responses. Both leave historical records intact.
 
 For desktop migration, stop all processes using the source data directory and use the explicit desktop data import path described in `DESKTOP.md`. Original data remains intact. A data directory must never be opened by two backend processes. Copy all managed media along with the database, never a live SQLite database alone.
 
