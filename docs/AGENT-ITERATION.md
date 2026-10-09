@@ -2,9 +2,9 @@
 
 Date: 2026-10-09 (UTC)
 
-Status: **approved staged plan; stage 1 settings implemented locally, review/commit pending**. The settings-only scope and actual verification are recorded in [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md). Model connectivity, chat, scoped tools, durable replay and generation approvals remain planned. The companion [provider research](AGENT-PROVIDERS.md) does not certify live compatibility.
+Status: **stage 1 settings committed (`66a0193`); stage 2A CC-only text transport implemented locally with runtime evidence; stage 2B Responses required immediately next**. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md), [chat acceptance](AGENT-CHAT.md) and [Responses contract](AGENT-RESPONSES.md). Scoped tools, durable replay and generation approvals remain planned. The companion [provider research](AGENT-PROVIDERS.md) does not certify live compatibility.
 
-The architecture review used local HEAD `821600f` and the then-uncommitted panel work. The panel release was subsequently handed off as `ed23ef7`, the baseline for the first Agent settings increment. Preserve that panel work. Only the secure settings stage has been implemented locally; later stages remain planned.
+The architecture review used local HEAD `821600f` and the then-uncommitted panel work. The panel release was subsequently handed off as `ed23ef7`, the baseline for the first Agent settings increment. Preserve that panel work. Secure settings were committed as `66a0193`; `80334cf` adds roadmap documentation. Stage 2A now has local code/runtime evidence; dual-protocol support remains incomplete until immediate stage 2B.
 
 ## Outcome and scope
 
@@ -20,7 +20,7 @@ Included decisions:
 - Report every future local commit with its hash, verification scope and actual runtime screenshots.
 - Preserve current editing, timeline/history, media, job recovery, desktop identity and security behavior.
 
-Deferred: Codex/ChatGPT OAuth; Responses API adapter; reasoning-enabled model profiles; multimodal Agent context; arbitrary external MCP servers; browser/shell/filesystem tools; autonomous asset uploads; deployment and installers. These are separate capabilities, not implied by an OpenAI-compatible label.
+Deferred: Codex/ChatGPT OAuth; reasoning-enabled model profiles; multimodal Agent context; arbitrary external MCP servers; browser/shell/filesystem tools; autonomous asset uploads; deployment and installers. These are separate capabilities, not implied by an OpenAI-compatible label.
 
 Development/acceptance must use synthetic mock services and dummy credentials only. Live model calls, paid generation, real media uploads, OAuth, credential entry, push and deployment are outside this iteration's current execution authorization.
 
@@ -39,7 +39,7 @@ Important gaps found in the review:
 
 ## Minimal model protocol
 
-The initial compatibility profile is explicitly **Chat Completions + text messages + JSON function tools + SSE**, with application-managed history and non-thinking models/modes.
+Current approved scope explicitly includes **both Chat Completions and OpenAI Responses**, using independent adapters, explicit protocol selection/defaults and application-managed history. The 2026-10-09 scope correction supersedes the earlier Responses deferral. Ship two promptly consecutive bounded increments: 2A is the reviewed Chat-Completions-only conversational transport; 2B immediately adds Responses and versioned settings migration before unrelated features. Completion of 2A is not completion of compatible Agent support. Non-thinking model profiles remain the initial baseline; proper function-call/result semantics are required before scoped tools use either adapter.
 
 - Use named function definitions and tool-call IDs. Plain text resembling a function call is never executable.
 - Runtime contract validation is authoritative, even if a provider advertises strict schemas.
@@ -51,7 +51,7 @@ The initial compatibility profile is explicitly **Chat Completions + text messag
 - Keep documented provider continuation fields separate from display text. Do not accept arbitrary provider fields as instructions. Reasoning modes remain unavailable until their own round-trip requirements pass tests.
 - Use `store: false` in the OpenAI profile. This is not a claim that all compatible providers implement identical retention controls.
 
-Responses is a separate future adapter: it changes function definitions, output-item shapes, call correlation and state handling. Existing Zod schemas also cannot be blindly marked `strict: true`: OpenAI strict schemas require all properties to be required and objects to disallow additional properties. See [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [streamed chunks](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events), and [Responses migration](https://developers.openai.com/api/docs/guides/migrate-to-responses).
+Responses is a separate adapter required in immediate increment 2B: it changes function definitions, output-item shapes, call correlation and state handling. Existing Zod schemas also cannot be blindly marked `strict: true`: OpenAI strict schemas require all properties to be required and objects to disallow additional properties. See [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [streamed chunks](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events), and [Responses migration](https://developers.openai.com/api/docs/guides/migrate-to-responses).
 
 ## Project and tool boundary
 
@@ -157,13 +157,14 @@ The trusted approval UI must show and bind the project, shot revision, provider/
 
 ## Staged commits and acceptance
 
-Stage 0 is recorded and stage 1 has local code/runtime evidence, pending parent verification and commit. Stages 2–7 remain planned. A stage is not done until its tests and actual runtime evidence are recorded. All runtime model/provider fixtures must be visibly labeled simulated.
+Stage 0 is recorded and stage 1 is committed. Stage 2A has local code/runtime evidence pending final verification/commit; 2B is the immediate next required increment. Stages 3–7 remain planned. A stage is not done until its tests and actual runtime evidence are recorded. All runtime model/provider fixtures must be visibly labeled simulated.
 
 | Stage | Main ownership/files | Acceptance and runtime evidence |
 | --- | --- | --- |
 | 0. Record contract | This document; `AGENT-PROVIDERS.md` | Confirm panel handoff commit; retain actual current-workspace baseline screenshot. No new Agent capability claimed. |
 | 1. Secure settings | New `AgentSettings.jsx`; business `agent/config.mjs`, `presets.mjs`; desktop `secret-store.mjs`, `secret-broker.mjs`; integrator-owned server/desktop entry points | Preset/region/model edit, reset, origin invalidation, replace/delete, safe reload, dummy-key redaction, real Electron unavailable-vault behavior. Screenshot settings and storage status. |
-| 2. Streamed chat | Business `agent/chat-completions.mjs`, `sse.mjs`, `network-policy.mjs`; web `AgentPanel.jsx`, `agent-api.js`; synthetic mock server | Text streaming, stop, retry UI, fragmented UTF-8/SSE, keepalives, usage chunks, malformed input, truncation and mid-stream errors. Screenshot streaming, stop and actual simulated failure. |
+| 2A. Chat Completions streamed chat | Business `agent/chat-completions.mjs`, `sse.mjs`, `network-policy.mjs`; web `AgentPanel.jsx`, `agent-api.js`; synthetic mock server | Text streaming, stop, retry UI, fragmented UTF-8/SSE, keepalives, usage chunks, malformed input, truncation and mid-stream errors. Screenshot streaming, stop and actual simulated failure. |
+| 2B. Responses and protocol settings | Separate `responses.mjs` adapter; explicit protocol field/defaults; versioned settings and credential-binding migration; consent/client projections | Stateless Responses history, completed/incomplete/failed event semantics, fragmented output, unsupported reasoning/tool output, cancellation and no automatic fallback. Preserve v1 settings/encrypted keys or fail closed when vault unavailable. Mock-only browser/native protocol-switch evidence and adapter-specific tests. Must follow 2A before unrelated work. |
 | 3. Scoped read tools | Business `agent/runtime.mjs`, `store.mjs`, `context.mjs`, `tool-catalog.mjs`; additive migration; authenticated Agent routes | Two-project denial matrix, linked read result, cursor reconnect, backend restart, multiple windows and navigation races. Screenshot project-labelled conversation and real project record result. |
 | 4. Shared replay | Contracts, `services.mjs`, new `mutation-journal.mjs`, migration, client discovery/request support | Real HTTP/CLI/MCP replay after newer edits/restart; lost-response recovery; changed reuse; stale revisions; stable IDs; unchanged historical replay. Screenshot actual before/after/recovered project state. |
 | 5. Local editing | Scoped dispatcher/policy; proposal/Apply UI; supported tool projections | Actual canvas/timeline edit, double Apply exactly once, conflict preservation, cancelled/stale callback denial, accurate partial batch result. Screenshot diff, visible applied edit and conflict. |

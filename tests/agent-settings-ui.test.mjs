@@ -245,7 +245,7 @@ test('settings integration is outside persistent panel boundaries, uses shared m
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /showAgentSettings && <AgentSettings/); assert.match(app, /data-testid="agent-settings-open"/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.match(source, /from '@mioon\/ui\/components\/dialog'/);
-  assert.match(source, /仅连接设置；对话与工具执行将在后续迭代加入/); assert.match(source, /尚未验证连接/);
+  assert.match(source, /连接设置不会发起模型请求；对话仅发送经确认的聊天文本，尚无工具执行/); assert.match(source, /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
   assert.ok(app.indexOf('{showAgentSettings &&') > app.lastIndexOf('</PanelBoundary>'));
 });

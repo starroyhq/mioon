@@ -2,6 +2,35 @@ import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from './presets.mjs';
 import {agentSettingsError, safeAgentSettingsError, exactObject, parseAgentConfiguration, parseAgentSettingsUpdate, agentCredentialBinding} from './config.mjs';
 
 export const sanitizeAgentSettingsError = safeAgentSettingsError;
+// A trusted-module capability, deliberately absent from string-based HTTP/RPC
+// dispatch and the public settings DTO. Renderer code never imports this symbol.
+export const AGENT_CREDENTIAL_ACQUIRE = Symbol('trusted Agent inference credential');
+export function parseAgentCredentialRequest(value, options = {}) {
+  if (!exactObject(value, ['expectedRevision', 'configuration']) || !Number.isSafeInteger(value.expectedRevision) || value.expectedRevision < 0) throw agentSettingsError('AGENT_SETTINGS_VALIDATION');
+  const configuration = parseAgentConfiguration(value.configuration, options);
+  if (JSON.stringify(configuration) !== JSON.stringify(value.configuration)) throw agentSettingsError('AGENT_SETTINGS_VALIDATION');
+  return {expectedRevision: value.expectedRevision, configuration};
+}
+export function sanitizeAgentCredentialResult(value, expected) {
+  if (!exactObject(value, ['revision', 'configuration', 'apiKey']) || value.revision !== expected.expectedRevision || JSON.stringify(value.configuration) !== JSON.stringify(expected.configuration)) throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
+  if (value.apiKey !== null) parseAgentSettingsUpdate({expectedRevision: value.revision, configuration: value.configuration, secret: {action: 'replace', storage: 'session', value: value.apiKey}});
+  return {revision: value.revision, configuration: {...expected.configuration}, apiKey: value.apiKey};
+}
+function boundedCredentialRead(operation, signal) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer); signal?.removeEventListener('abort', aborted);
+      if (error) reject(agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE')); else resolve(value);
+    };
+    const aborted = () => finish(true);
+    const timer = setTimeout(aborted, 5000);
+    if (signal?.aborted) return aborted();
+    signal?.addEventListener('abort', aborted, {once: true});
+    Promise.resolve().then(operation).then(value => finish(null, value), () => finish(true));
+  });
+}
 const storageReasons = new Set([null, 'WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT']);
 function publicStorage(value) {
   if (!value || typeof value.persistentAvailable !== 'boolean' || !['app', 'server'].includes(value.sessionScope) || !storageReasons.has(value.reasonCode)) throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
@@ -26,7 +55,7 @@ function parseEnvelope(value) {
   return {version: 1, revision: value.revision, configuration, secret};
 }
 /** Single active Agent profile; not the video-provider registry. Secrets are
- * write-only in this settings-only increment, with no credential getter. */
+ * write-only publicly; trusted inference acquisition is an unexported-to-HTTP capability. */
 export async function createAgentSettings({persistence, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}) {
   let state = {version: 1, revision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null};
   let session = null, fault = null, tail = Promise.resolve(), closing = false, vaultReadBlocked = false;
@@ -64,6 +93,30 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
   const snapshot = () => sanitizeAgentSettingsResult({revision: state.revision, configuration: state.configuration, secret: {configured: Boolean(state.secret || session), storage: state.secret ? 'persistent' : session ? 'session' : 'none'}, storage: capabilities()});
   return {
     get() { return schedule(snapshot); },
+    [AGENT_CREDENTIAL_ACQUIRE](input, options = {}) {
+      let expected;
+      try { expected = parseAgentCredentialRequest(input, options); } catch (error) { return Promise.reject(error); }
+      const signal = options.signal;
+      return schedule(async () => {
+        if (signal?.aborted || closing) throw agentSettingsError('AGENT_SETTINGS_CLOSED');
+        if (state.revision !== expected.expectedRevision || JSON.stringify(state.configuration) !== JSON.stringify(expected.configuration)) throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
+        const binding = agentCredentialBinding(expected.configuration);
+        let apiKey = null;
+        if (state.secret) {
+          if (!secretCodec || !capabilities().persistentAvailable || state.secret.binding !== binding) throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+          try {
+            const decoded = JSON.parse(await boundedCredentialRead(() => secretCodec.decrypt(state.secret.encrypted), signal));
+            if (!exactObject(decoded, ['version', 'binding', 'value']) || decoded.version !== 1 || decoded.binding !== binding) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+            apiKey = decoded.value;
+          } catch { throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'); }
+        } else if (session) {
+          if (session.binding !== binding) throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
+          apiKey = session.value;
+        }
+        if (signal?.aborted || closing) throw agentSettingsError('AGENT_SETTINGS_CLOSED');
+        return sanitizeAgentCredentialResult({revision: state.revision, configuration: state.configuration, apiKey}, expected);
+      });
+    },
     put(input, options = {}) {
       // Snapshot/validate before scheduling so callers cannot mutate queued input.
       let update;

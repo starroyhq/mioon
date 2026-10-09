@@ -1,0 +1,135 @@
+import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.mjs';
+import {agentChatError} from './chat-errors.mjs';
+import {createAgentTransport} from './network-policy.mjs';
+import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.mjs';
+
+export const AGENT_CHAT_LIMITS = Object.freeze({maxMessages: 64, maxInputBytes: 64 * 1024, maxRequestBytes: 128 * 1024, maxOutputBytes: 256 * 1024, maxOutputTokens: 2048});
+// These are explicit text-only profiles, not a vendor-wide compatibility claim.
+// Model aliases/edits remain saveable settings, but unsupported named profiles
+// fail before inference. Sources and region/account caveats: AGENT-PROVIDERS.md.
+function freeze(value) { for (const child of Object.values(value)) if (child && typeof child === 'object') freeze(child); return Object.freeze(value); }
+export const AGENT_CHAT_PROFILES = freeze({
+  openai: Object.freeze({models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], tokenField: 'max_completion_tokens', fields: {store: false}}),
+  deepseek: Object.freeze({models: ['deepseek-flash'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}}),
+  qwen: Object.freeze({models: ['qwen-plus'], tokenField: 'max_tokens', fields: {enable_thinking: false}}),
+  zhipu: Object.freeze({models: ['glm-4.7'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}}),
+  kimi: Object.freeze({models: ['kimi-k2.6'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}}),
+  minimax: Object.freeze({models: ['MiniMax-M3'], tokenField: 'max_completion_tokens', fields: {thinking: {type: 'disabled'}}}),
+  openrouter: Object.freeze({models: ['openai/gpt-4.1-mini'], tokenField: 'max_tokens', fields: {provider: {require_parameters: true, allow_fallbacks: false}}}),
+  custom: Object.freeze({models: null, tokenField: 'max_tokens', fields: {}}),
+  // Official compatibility docs, checked 2026-10-09: reasoning_effort:'none'
+  // requests false for boolean-thinking models. No model pull/probe/cloud route.
+  ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}}),
+});
+const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const fail = code => { throw agentChatError(code); };
+function unsupported(value) { return value !== null && value !== undefined && value !== '' && !(Array.isArray(value) && value.length === 0); }
+function rejectActiveFeatures(value) {
+  if (!object(value)) return;
+  if (['tool_calls', 'function_call'].some(key => unsupported(value[key]))) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
+  if (['reasoning', 'reasoning_content', 'reasoning_details', 'thinking', 'signature', 'continuation', 'previous_response_id'].some(key => unsupported(value[key]))) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
+}
+function safeUsage(value) {
+  if (value === null || value === undefined) return undefined;
+  if (!object(value)) fail('AGENT_CHAT_PROTOCOL_ERROR');
+  const result = {};
+  for (const key of ['prompt_tokens', 'completion_tokens', 'total_tokens']) {
+    if (value[key] === undefined) continue;
+    if (!Number.isSafeInteger(value[key]) || value[key] < 0 || value[key] > 10_000_000) fail('AGENT_CHAT_PROTOCOL_ERROR');
+    result[key] = value[key];
+  }
+  if (result.completion_tokens > AGENT_CHAT_LIMITS.maxOutputTokens) fail('AGENT_CHAT_LIMIT');
+  if (Object.hasOwn(result, 'total_tokens') && ((result.prompt_tokens || 0) > result.total_tokens || (result.completion_tokens || 0) > result.total_tokens)) fail('AGENT_CHAT_PROTOCOL_ERROR');
+  return Object.keys(result).length ? result : undefined;
+}
+export function buildAgentChatRequest({configuration, apiKey, messages, selfPort}) {
+  let config;
+  try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { fail('AGENT_CHAT_VALIDATION'); }
+  const profile = AGENT_CHAT_PROFILES[config.presetId];
+  if (!profile || (profile.models && !profile.models.includes(config.model))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  if (config.presetId !== 'ollama' && (typeof apiKey !== 'string' || !apiKey)) fail('AGENT_CHAT_KEY_REQUIRED');
+  if (apiKey != null && apiKey !== '' && (typeof apiKey !== 'string' || Buffer.byteLength(apiKey) > MAX_AGENT_SECRET_BYTES || !/^[\x21-\x7e]+$/.test(apiKey))) fail('AGENT_CHAT_VALIDATION');
+  if (!Array.isArray(messages) || !messages.length || messages.length > AGENT_CHAT_LIMITS.maxMessages) fail('AGENT_CHAT_VALIDATION');
+  let inputBytes = 0;
+  const safeMessages = messages.map(message => {
+    if (!exactObject(message, ['role', 'content']) || !['system', 'user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || !message.content.isWellFormed()) fail('AGENT_CHAT_VALIDATION');
+    inputBytes += Buffer.byteLength(message.content);
+    if (inputBytes > AGENT_CHAT_LIMITS.maxInputBytes) fail('AGENT_CHAT_LIMIT');
+    return {role: message.role, content: message.content};
+  });
+  const body = JSON.stringify({model: config.model, messages: safeMessages, stream: true, [profile.tokenField]: AGENT_CHAT_LIMITS.maxOutputTokens, ...profile.fields});
+  if (Buffer.byteLength(body) > AGENT_CHAT_LIMITS.maxRequestBytes) fail('AGENT_CHAT_LIMIT');
+  return {configuration: config, body};
+}
+
+/** Exactly one POST, with no tool execution, follow-on rounds, retry, protocol
+ * fallback or model substitution. A done event requires BOTH finish and [DONE]
+ * and a clean framed end; partial text remains partial on every failure. */
+export function createChatCompletionGateway(dependencies = {}) {
+  const open = createAgentTransport(dependencies);
+  return async function* streamChatCompletion({configuration, apiKey, messages, signal, selfPort}) {
+    if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
+    const request = buildAgentChatRequest({configuration, apiKey, messages, selfPort});
+    let stream;
+    try {
+      stream = await open({...request, apiKey, signal, selfPort});
+      let finishReason = null, done = false, outputBytes = 0, usage;
+      for await (const frame of parseAgentSse(stream.body, {...AGENT_SSE_LIMITS, signal})) {
+        if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
+        if (frame.event === 'error') fail('AGENT_CHAT_PROVIDER_ERROR');
+        if (frame.event !== 'message') fail('AGENT_CHAT_PROTOCOL_ERROR');
+        if (frame.data === '[DONE]') {
+          if (!finishReason) fail('AGENT_CHAT_TRUNCATED');
+          done = true;
+          continue;
+        }
+        if (done) fail('AGENT_CHAT_PROTOCOL_ERROR');
+        let value;
+        try { value = JSON.parse(frame.data); } catch { fail('AGENT_CHAT_PROTOCOL_ERROR'); }
+        if (!object(value)) fail('AGENT_CHAT_PROTOCOL_ERROR');
+        if (value.error != null) fail('AGENT_CHAT_PROVIDER_ERROR');
+        rejectActiveFeatures(value);
+        if (!Array.isArray(value.choices) || value.choices.length > 1) fail('AGENT_CHAT_PROTOCOL_ERROR');
+        const nextUsage = safeUsage(value.usage);
+        if (nextUsage) {
+          if (usage && JSON.stringify(usage) !== JSON.stringify(nextUsage)) fail('AGENT_CHAT_PROTOCOL_ERROR');
+          usage = nextUsage;
+        }
+        if (!value.choices.length) continue; // Optional usage-only/empty chunks.
+        const choice = value.choices[0];
+        if (!object(choice) || choice.index !== 0 || !object(choice.delta)) fail('AGENT_CHAT_PROTOCOL_ERROR');
+        rejectActiveFeatures(choice); rejectActiveFeatures(choice.delta);
+        const {delta, finish_reason: reason} = choice;
+        const knownDelta = ['role', 'content', 'refusal', 'tool_calls', 'function_call', 'reasoning', 'reasoning_content', 'reasoning_details', 'thinking', 'signature'];
+        if (Object.keys(delta).some(key => !knownDelta.includes(key))) fail('AGENT_CHAT_PROTOCOL_ERROR');
+        if (delta.role != null && delta.role !== 'assistant') fail('AGENT_CHAT_PROTOCOL_ERROR');
+        for (const field of ['content', 'refusal']) {
+          if (delta[field] != null && (typeof delta[field] !== 'string' || !delta[field].isWellFormed())) fail('AGENT_CHAT_PROTOCOL_ERROR');
+        }
+        const text = (delta.content || '') + (delta.refusal || '');
+        if (text) {
+          if (finishReason) fail('AGENT_CHAT_PROTOCOL_ERROR');
+          outputBytes += Buffer.byteLength(text);
+          if (outputBytes > AGENT_CHAT_LIMITS.maxOutputBytes) fail('AGENT_CHAT_LIMIT');
+        }
+        if (reason != null) {
+          if (['tool_calls', 'function_call'].includes(reason)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
+          if (!['stop', 'length', 'content_filter'].includes(reason) || (finishReason && reason !== finishReason)) fail('AGENT_CHAT_PROTOCOL_ERROR');
+          finishReason = reason;
+        }
+        if (text) yield {type: 'delta', text};
+      }
+      if (stream.error()) throw stream.error();
+      if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
+      if (!done || !finishReason) fail('AGENT_CHAT_TRUNCATED');
+      stream.close(); // Release sockets/timers before handing off the terminal event.
+      yield {type: 'done', finishReason, ...(usage ? {usage} : {})};
+    } catch (error) {
+      if (signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
+      throw agentChatError(stream?.error()?.code || error?.code);
+    } finally {
+      stream?.close();
+    }
+  };
+}
+export const streamChatCompletion = createChatCompletionGateway();

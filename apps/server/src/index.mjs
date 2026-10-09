@@ -1,4 +1,6 @@
 import http from 'node:http';
+import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
+import {createChatHttp} from './chat-http.mjs';
 import {readFile, writeFile, stat} from 'node:fs/promises';
 import {createReadStream, existsSync} from 'node:fs';
 import path from 'node:path';
@@ -40,6 +42,8 @@ export async function startServer({
   distDir = path.resolve(directory, '../../web/dist'),
   token: suppliedToken,
   agentSettings: suppliedAgentSettings,
+  chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
+
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
   const root = path.resolve(dataDir), dist = path.resolve(distDir);
@@ -47,7 +51,7 @@ export async function startServer({
   const store = openStore(root);
   let token = suppliedToken;
   const tokenFile = path.join(root, 'access-token');
-  let worker, server, agentSettings;
+  let worker, server, agentSettings, chatRuntime, chatHttp;
   try {
     if (!token) {
       if (existsSync(tokenFile)) token = (await readFile(tokenFile, 'utf8')).trim();
@@ -65,6 +69,8 @@ export async function startServer({
     agentSettings = suppliedAgentSettings || await createAgentSettings({
       persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
     });
+    chatRuntime = createChatRuntime({store, agentSettings, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
+    chatHttp = createChatHttp({runtime: chatRuntime});
     const origins = new Set(), hosts = new Set();
     const auth = req => {
       const bearer = req.headers.authorization?.replace(/^Bearer /, '');
@@ -105,6 +111,7 @@ export async function startServer({
             return json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: {}, retryable: false}});
           }
         }
+        if (await chatHttp.handle(req, res, url)) return;
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {
           let projectId;
@@ -166,15 +173,20 @@ export async function startServer({
     worker = startWorker(store, services, providers);
     let closing;
     const close = () => closing ??= (async () => {
-      // Stop accepting and drain active HTTP requests before closing their store.
+      // Abort inference and close long-lived SSE BEFORE HTTP drain and SQLite.
+      chatRuntime.close();
+      chatHttp.close();
       const drain = new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-      await worker.stop({interruptMedia:true});
-      await drain;
+      const forceDrain = setTimeout(() => server.closeAllConnections(), 3000);
+      forceDrain.unref();
+      try { await worker.stop({interruptMedia:true}); await drain; }
+      finally { clearTimeout(forceDrain); }
       if (!suppliedAgentSettings) await agentSettings?.close();
       store.close();
     })();
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root, close};
   } catch (error) {
+    chatRuntime?.close(); chatHttp?.close();
     if (server?.listening) await new Promise(resolve => server.close(resolve));
     if (worker) await worker.stop();
     if (!suppliedAgentSettings) await agentSettings?.close();

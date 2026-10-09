@@ -57,7 +57,7 @@ export default function AgentSettings({ onClose }) {
       <header className="modal-header agent-settings-header">
         <div className="agent-settings-heading"><span className="agent-settings-symbol"><Icon name="sparkle" size={22} /></span><div>
           <div className="agent-settings-eyebrow">AGENT · CONNECTION</div><DialogTitle>Agent 连接设置</DialogTitle>
-          <DialogDescription>仅连接设置；对话与工具执行将在后续迭代加入。</DialogDescription>
+          <DialogDescription>连接设置不会发起模型请求；对话仅发送经确认的聊天文本，尚无工具执行。</DialogDescription>
         </div></div>
         <Button type="button" variant="ghost" className="icon-button" aria-label="关闭 Agent 设置" data-testid="agent-settings-close" onClick={dismiss}><Icon name="close" /></Button>
       </header>

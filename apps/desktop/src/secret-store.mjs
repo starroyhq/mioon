@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { createAgentSettings } from '@mioon/business/agent/settings';
+import { createAgentSettings, AGENT_CREDENTIAL_ACQUIRE } from '@mioon/business/agent/settings';
 import { createAgentSettingsFile } from '@mioon/business/agent/settings-file';
 import { agentSettingsError } from '@mioon/business/agent/config';
 import desktopIdentity from '../identity.cjs';
@@ -62,7 +62,7 @@ export function createDesktopSecretCodec({ safeStorage, appId, platform = proces
 
 // One instance belongs to main for the entire app session, not to an individual
 // utility or project. A backend restart retains RAM-only credentials; app quit
-// closes the engine and drops them. No getter exposes the credential itself.
+// closes the engine and drops them. No public getter exposes the credential.
 export async function createDesktopAgentSettings({ safeStorage, userData, appId, platform = process.platform }) {
   try {
     if (typeof userData !== 'string' || !path.isAbsolute(userData)) throw vaultError();
@@ -78,6 +78,7 @@ export async function createDesktopAgentSettings({ safeStorage, userData, appId,
     return Object.freeze({
       async get() { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); },
       async put() { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); },
+      async [AGENT_CREDENTIAL_ACQUIRE]() { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); },
       async close() {}
     });
   }

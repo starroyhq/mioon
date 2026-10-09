@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
-import { sanitizeAgentSettingsResult, sanitizeAgentSettingsError } from '@mioon/business/agent/settings';
+import { randomUUID, createHash } from 'node:crypto';
+import { sanitizeAgentSettingsResult, sanitizeAgentSettingsError, AGENT_CREDENTIAL_ACQUIRE, parseAgentCredentialRequest, sanitizeAgentCredentialResult } from '@mioon/business/agent/settings';
 
 export const MAX_AGENT_SETTINGS_MESSAGE_BYTES = 64 * 1024;
 const REQUEST = 'agent-settings-request';
 const RESPONSE = 'agent-settings-response';
+const CANCEL = 'agent-credential-cancel';
 const VERSION = 1;
 const MAX_PENDING = 32;
 const REQUEST_KEYS = new Set(['type', 'version', 'requestId', 'operation', 'input', 'selfPort']);
@@ -43,22 +44,27 @@ function errorResponse(requestId, error) {
 }
 
 // Main-only endpoint. The trusted utility can read safe settings or submit one
-// validated replacement. There is deliberately no secret read/decrypt operation,
-// arbitrary method dispatch, renderer IPC handler, or transferable native port.
+// validated replacement. Only the trusted utility's inference capability may
+// acquire one revision/configuration-bound credential. No arbitrary dispatch,
+// renderer IPC handler, public key serializer, or transferable native port.
 export function createAgentSettingsBroker({ agentSettings, send, isActive = () => true, getSelfPort = () => undefined }) {
   let closed = false;
-  const pending = new Set(), completed = new Map();
+  const pending = new Map(), completed = new Map();
   const active = () => !closed && isActive();
   const reply = message => {
     if (!active()) return;
     try { send(message); } catch { /* The child may have exited between the check and send. */ }
   };
-  const remember = response => {
-    completed.set(response.requestId, response);
+  const remember = (requestId, fingerprint, response) => {
+    completed.set(requestId, {fingerprint, response});
     if (completed.size > 64) completed.delete(completed.keys().next().value);
   };
   return Object.freeze({
     handle(message) {
+      if (message?.type === CANCEL) {
+        if (active() && plainObject(message) && Object.keys(message).length === 3 && message.version === VERSION && validId(message.requestId)) pending.get(message.requestId)?.controller?.abort();
+        return true;
+      }
       if (message?.type !== REQUEST) return false;
       // Uncorrelatable messages get no response, and no part of the supplied
       // payload is echoed in a rejection.
@@ -66,7 +72,7 @@ export function createAgentSettingsBroker({ agentSettings, send, isActive = () =
       const { requestId } = message;
       if (!plainObject(message) || !boundedJson(message) || message.version !== VERSION ||
         Object.keys(message).some(key => !REQUEST_KEYS.has(key)) || !validPort(message.selfPort) ||
-        !['get', 'put'].includes(message.operation) ||
+        !['get', 'put', 'acquire'].includes(message.operation) ||
         (message.operation === 'get' ? Object.hasOwn(message, 'input') : !plainObject(message.input))) {
         reply(errorResponse(requestId, transportError('VALIDATION_ERROR')));
         return true;
@@ -76,33 +82,64 @@ export function createAgentSettingsBroker({ agentSettings, send, isActive = () =
         reply(errorResponse(requestId, transportError('VALIDATION_ERROR')));
         return true;
       }
-      if (completed.has(requestId)) { reply(completed.get(requestId)); return true; }
+      const fingerprint = createHash('sha256').update(JSON.stringify([message.operation, message.input, selfPort ?? message.selfPort])).digest('hex');
+      if (completed.has(requestId)) {
+        const previous = completed.get(requestId);
+        reply(previous.fingerprint === fingerprint && previous.response ? previous.response : errorResponse(requestId, transportError('AGENT_SETTINGS_UNAVAILABLE')));
+        return true;
+      }
       if (pending.has(requestId)) return true;
       if (pending.size >= MAX_PENDING) { reply(errorResponse(requestId, transportError('AGENT_SETTINGS_BUSY'))); return true; }
-      if (!agentSettings || typeof agentSettings[message.operation] !== 'function') {
+      if (!agentSettings || typeof agentSettings[message.operation === 'acquire' ? AGENT_CREDENTIAL_ACQUIRE : message.operation] !== 'function') {
         reply(errorResponse(requestId, transportError('AGENT_SETTINGS_UNAVAILABLE'))); return true;
       }
-      pending.add(requestId);
+      const controller = message.operation === 'acquire' ? new AbortController() : null;
+      pending.set(requestId, {controller});
       // Snapshot only the bounded input. Nothing after this point references the
       // incoming envelope, and errors cannot serialize it or its plaintext key.
-      const input = message.operation === 'put' ? JSON.parse(JSON.stringify(message.input)) : undefined;
+      const input = message.operation !== 'get' ? JSON.parse(JSON.stringify(message.input)) : undefined;
       const operation = message.operation;
       const options = { selfPort: selfPort ?? message.selfPort };
       void (async () => {
-        let response;
+        let response, timer;
+        // Acquisition has its own abort/deadline, independent of HTTP lifetime.
+        const acquire = async () => {
+          const expected = parseAgentCredentialRequest(input, options);
+          return new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (error, result) => {
+              if (settled) return;
+              settled = true; clearTimeout(timer); controller.signal.removeEventListener('abort', abort);
+              if (error) reject(error); else resolve(result);
+            };
+            const abort = () => finish(transportError('AGENT_SETTINGS_UNAVAILABLE'));
+            controller.signal.addEventListener('abort', abort, {once: true});
+            timer = setTimeout(() => controller.abort(), 7000);
+            if (!active() || controller.signal.aborted) return abort();
+            Promise.resolve().then(() => {
+              if (controller.signal.aborted || !active()) throw transportError('AGENT_SETTINGS_UNAVAILABLE');
+              return agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected, {...options, signal: controller.signal});
+            }).then(value => {
+              try { finish(null, sanitizeAgentCredentialResult(value, expected)); } catch (error) { finish(error); }
+            }, error => finish(error));
+          });
+        };
         try {
           if (!active()) return;
-          const result = operation === 'get' ? await agentSettings.get(options) : await agentSettings.put(input, options);
-          const data = sanitizeAgentSettingsResult(result);
+          const data = operation === 'acquire' ? await acquire() : sanitizeAgentSettingsResult(operation === 'get' ? await agentSettings.get(options) : await agentSettings.put(input, options));
           response = { type: RESPONSE, version: VERSION, requestId, ok: true, data };
           if (!boundedJson(response)) throw transportError('AGENT_SETTINGS_UNAVAILABLE');
         } catch (error) { response = errorResponse(requestId, error); }
-        finally { pending.delete(requestId); }
-        if (active()) { remember(response); reply(response); }
+        finally { clearTimeout(timer); pending.delete(requestId); }
+        if (active()) {
+          // Never cache an acquisition result or replay a plaintext credential.
+          remember(requestId, fingerprint, operation === 'acquire' ? null : response);
+          if (!controller?.signal.aborted) reply(response);
+        }
       })();
       return true;
     },
-    close() { closed = true; pending.clear(); completed.clear(); }
+    close() { closed = true; for (const entry of pending.values()) entry.controller?.abort(); pending.clear(); completed.clear(); }
   });
 }
 
@@ -117,7 +154,8 @@ export function createAgentSettingsClient({ port, timeout = 10000 }) {
     const entry = pending.get(requestId);
     if (!entry) return;
     pending.delete(requestId);
-    clearTimeout(entry.timer);
+    clearTimeout(entry.timer); entry.signal?.removeEventListener('abort', entry.abort);
+    if (error && entry.operation === 'acquire') { try { port.postMessage({type: CANCEL, version: VERSION, requestId}); } catch {} }
     if (error) entry.reject(error); else entry.resolve(data);
   };
   const onMessage = ({ data: message } = {}) => {
@@ -130,7 +168,8 @@ export function createAgentSettingsClient({ port, timeout = 10000 }) {
     try {
       if (message.ok) {
         if (Object.hasOwn(message, 'error') || !Object.hasOwn(message, 'data')) throw transportError('AGENT_SETTINGS_UNAVAILABLE');
-        complete(message.requestId, null, sanitizeAgentSettingsResult(message.data));
+        const entry = pending.get(message.requestId);
+        complete(message.requestId, null, entry.operation === 'acquire' ? sanitizeAgentCredentialResult(message.data, entry.expected) : sanitizeAgentSettingsResult(message.data));
       } else {
         if (Object.hasOwn(message, 'data') || !plainObject(message.error)) throw transportError('AGENT_SETTINGS_UNAVAILABLE');
         const serialized = safeError(message.error);
@@ -150,16 +189,23 @@ export function createAgentSettingsClient({ port, timeout = 10000 }) {
   const request = (operation, input, options) => {
     if (closed) return Promise.reject(transportError('AGENT_SETTINGS_UNAVAILABLE'));
     if (pending.size >= MAX_PENDING) return Promise.reject(transportError('AGENT_SETTINGS_BUSY'));
-    if (!plainObject(options) || Object.keys(options).some(key => key !== 'selfPort') || !validPort(options.selfPort)) {
+    if (!plainObject(options) || Object.keys(options).some(key => key !== 'selfPort' && !(operation === 'acquire' && key === 'signal')) || !validPort(options.selfPort)) {
       return Promise.reject(transportError('VALIDATION_ERROR'));
     }
+    let expected;
+    try { if (operation === 'acquire') expected = parseAgentCredentialRequest(input, options); }
+    catch { return Promise.reject(transportError('VALIDATION_ERROR')); }
     const requestId = randomUUID();
-    const message = { type: REQUEST, version: VERSION, requestId, operation, ...options,
-      ...(operation === 'put' ? { input } : {}) };
+    const message = { type: REQUEST, version: VERSION, requestId, operation, ...(options.selfPort !== undefined ? {selfPort: options.selfPort} : {}),
+      ...(operation !== 'get' ? { input: expected ?? input } : {}) };
     if (!boundedJson(message)) return Promise.reject(transportError('VALIDATION_ERROR'));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => complete(requestId, transportError('AGENT_SETTINGS_TIMEOUT')), timeout);
-      pending.set(requestId, { resolve, reject, timer });
+      const signal = operation === 'acquire' ? options.signal : null;
+      const abort = () => complete(requestId, transportError('AGENT_SETTINGS_UNAVAILABLE'));
+      pending.set(requestId, { resolve, reject, timer, operation, expected, signal, abort });
+      if (signal?.aborted) return abort();
+      signal?.addEventListener('abort', abort, {once: true});
       try { port.postMessage(message); }
       catch { complete(requestId, transportError('AGENT_SETTINGS_UNAVAILABLE')); }
     });
@@ -167,6 +213,7 @@ export function createAgentSettingsClient({ port, timeout = 10000 }) {
   return Object.freeze({
     get(options = {}) { return request('get', undefined, options); },
     put(input, options = {}) { return request('put', input, options); },
+    [AGENT_CREDENTIAL_ACQUIRE](input, options = {}) { return request('acquire', input, options); },
     close
   });
 }
