@@ -29,6 +29,19 @@ export function openStore(root,{lock=true}={}){
  json_extract(NEW.data,'$.purpose') IS NOT json_extract(OLD.data,'$.purpose'))
  BEGIN SELECT RAISE(ABORT,'timeline render snapshots are immutable');END;
  INSERT OR IGNORE INTO schema_version VALUES(2);`);
+ // Additive history migration: old timelines become the untouched baseline of
+ // their first new edit. Never manufacture history or rewrite legacy responses.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS timeline_history(
+ id TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),
+ position INTEGER NOT NULL CHECK(position>0),operation TEXT NOT NULL,createdAt TEXT NOT NULL,
+ beforeSnapshot TEXT NOT NULL,afterSnapshot TEXT NOT NULL,UNIQUE(projectId,position));
+ CREATE TABLE IF NOT EXISTS timeline_history_cursors(
+ projectId TEXT PRIMARY KEY REFERENCES projects(id),position INTEGER NOT NULL CHECK(position>=0));
+ CREATE TRIGGER IF NOT EXISTS immutable_timeline_history BEFORE UPDATE ON timeline_history
+ BEGIN SELECT RAISE(ABORT,'timeline history entries are immutable');END;
+ INSERT OR IGNORE INTO schema_version VALUES(3);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

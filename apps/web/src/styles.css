@@ -108,3 +108,11 @@ body:has(.workbench-confirm) [data-slot="dialog-overlay"]{z-index:110}
 .inspector-action .capability-issue{overflow-wrap:anywhere;line-height:1.6}
 
 .version-card p.version-generation-specs{font-size:9px;line-height:1.6;overflow-wrap:anywhere;color:#94abbd;margin-top:4px}
+
+/* Timeline edit history remains available when its lanes are collapsed. */
+.timeline-history-controls{display:flex;align-items:center;gap:5px;flex:none}
+.timeline-history-controls>.button{min-height:26px;padding:4px 7px;gap:5px;font-size:10px;color:#bdd2ad;background:#29352d;border-color:#485d43}
+.timeline-history-controls>.button:disabled{opacity:.4}
+.timeline-history-count{font:9px monospace;color:#91a88b;white-space:nowrap;min-width:65px;margin-left:3px;font-variant-numeric:tabular-nums}
+@media(max-width:950px){.timeline-header-actions{gap:9px}.timeline-length{display:none}.timeline-spec{display:none}}
+@media(max-width:720px){.timeline-header .region-index{display:none}.timeline-header .region-title h2{font-size:10px;white-space:nowrap}.timeline-header-actions{gap:4px}.timeline-history-controls{gap:3px}.timeline-history-controls>.button{min-height:25px;padding:3px 5px;gap:3px;font-size:9px}.timeline-history-count{min-width:27px;margin-left:1px;font-size:8px}.timeline-history-count .history-label{display:none}}

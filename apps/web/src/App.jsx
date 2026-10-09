@@ -22,8 +22,10 @@ import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, statusText, versionUrl, jobStatusText, outputReviewRequired, outputReviewMessage } from './api.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
 import { pendingForProject, prepareSubmission, clearPending, reconcilePending } from './submissions.js';
+import { timelineHistoryState } from './timeline-history.js';
+import { timelineHistoryActionForKey } from './timeline-keyboard.js';
 
-const emptyData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null };
+const emptyData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null, timelineHistory: null };
 function readableError(error) {
   if (error.code === 'CONFLICT' || error.code === 'REVISION_CONFLICT') return '保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存。';
   if (['CLIP_OVERLAP', 'TIMELINE_OVERLAP', 'OVERLAP'].includes(error.code) || /overlap/i.test(error.message || '')) return '同一轨道的片段不能重叠。请调整开始帧，或移到另一条兼容轨道；你的输入仍保留。';
@@ -119,7 +121,7 @@ export default function App() {
     const call = ++requestCounter.current;
     try {
       const [next, caps] = await Promise.all([rpc('project.get', { projectId }), rpc('provider.list')]);
-      if (currentProject.current === projectId && call === requestCounter.current) { setData({ ...emptyData, ...next }); setProviders(caps); setLastSync(new Date()); setOnline(true); reconcilePending(projectId, next); setPending(pendingForProject(projectId)); }
+      if (currentProject.current === projectId && call === requestCounter.current) { dataRef.current = { ...emptyData, ...next }; setData(dataRef.current); setProviders(caps); setLastSync(new Date()); setOnline(true); reconcilePending(projectId, next); setPending(pendingForProject(projectId)); }
       return next;
     } catch (e) { if (e.code === 'UNAUTHORIZED') setAuth(false); setOnline(false); if (!quiet) notify(readableError(e), 'error'); return null; }
   }, [notify]);
@@ -157,6 +159,15 @@ export default function App() {
     busyRef.current.add(key); setBusy(b => ({ ...b, [key]: true }));
     const durable = ['generation.submit', 'job.retry', 'export.create'].includes(operation) || operation.startsWith('timeline.');
     const projectId = currentProject.current;
+    const timelineMutation = operation.startsWith('timeline.') && operation !== 'timeline.render';
+    const invalidateHistory = () => {
+      if (!timelineMutation || currentProject.current !== projectId) return;
+      // An earlier poll, mutation replay, or failed refresh must not re-enable
+      // controls from a history snapshot that predates the dispatched edit.
+      ++requestCounter.current;
+      dataRef.current = { ...dataRef.current, timelineHistory: null };
+      setData(current => current.project?.id === projectId ? { ...current, timelineHistory: null } : current);
+    };
     let stored, dispatched = false;
     try {
       if (durable) {
@@ -165,11 +176,14 @@ export default function App() {
         input = stored.input; operation = stored.operation;
         setPending(pendingForProject(projectId));
       }
+      invalidateHistory();
       dispatched = true;
       const result = await rpc(operation, input);
+      invalidateHistory();
       if (durable) { clearPending(projectId, key); setPending(pendingForProject(projectId)); }
       await refresh(); if (message) notify(message); return result;
     } catch (e) {
+      if (dispatched) invalidateHistory();
       if (durable && stored && e.definitive) { clearPending(projectId, key); setPending(pendingForProject(projectId)); }
       if (e.code === 'UNAUTHORIZED') setAuth(false);
       if (durable && stored && dispatched && !e.definitive) { notify('连接中断，提交结果尚未确认。请求已保留，请在任务面板恢复同一请求；不会生成新的提交编号。', 'error'); setShowJobs(true); }
@@ -275,6 +289,23 @@ export default function App() {
   const timeline = data.timeline;
   const timelinePending = pending.some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render');
   const timelineBusy = Boolean(busy['timeline:mutation'] || timelinePending);
+  const historyState = timelineHistoryState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty, online: online && auth === true && !loading });
+  function changeTimelineHistory(direction) {
+    if (!['undo', 'redo'].includes(direction) || currentProject.current !== dataRef.current.project?.id) return null;
+    const latest = timelineHistoryState({ projectId: currentProject.current, timeline: dataRef.current.timeline, history: dataRef.current.timelineHistory, busy: busyRef.current.has('timeline:mutation'), pending: timelinePending, dirty: clipDirty, online: online && auth === true && !loading });
+    if (!(direction === 'undo' ? latest.canUndo : latest.canRedo)) return null;
+    return mutateTimeline(`timeline.${direction}`);
+  }
+  useEffect(() => {
+    const onKeyDown = event => {
+      const direction = timelineHistoryActionForKey(event, { modalOpen: Boolean(document.querySelector('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) });
+      if (!direction || !(direction === 'undo' ? historyState.canUndo : historyState.canRedo)) return;
+      event.preventDefault();
+      changeTimelineHistory(direction);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
   async function mutateTimeline(operation, input = {}, expectedRevision) {
     if (!dataRef.current.timeline) return null;
     if (timelinePending) { notify('上一条时间线操作的结果尚未确认。请先恢复同一请求，再继续编辑。', 'warning'); setShowJobs(true); return null; }
@@ -364,7 +395,7 @@ export default function App() {
     <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label="03 属性" />}><header className="inspector-region-heading"><div className="region-title"><span className="region-index">03</span><h2>属性</h2></div><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起属性" title="收起属性" data-testid="toggle-inspector" />}><Icon name="arrow" size={16} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="inspector-region-content"><div className={`inspector-container ${chosenClip ? 'inspector-hidden' : ''}`}>
     <Inspector key={selectedId || 'empty'} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} onAddVersion={assetId => addTimelineAsset(assetId)} />
     </div>{chosenClip && <TimelineInspector key={chosenClip.id} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision)} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setWorkspaceMode('preview'); setPreviewKind('source'); }} />}</CollapsibleContent></Collapsible>
-    <Timeline timeline={timeline} assets={data.assets} selectedClipId={selectedClipId} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} collapsed={timelineCollapsed} onCollapse={() => setTimelineCollapsed(!timelineCollapsed)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} />
+    <Timeline timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} assets={data.assets} selectedClipId={selectedClipId} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} collapsed={timelineCollapsed} onCollapse={() => setTimelineCollapsed(!timelineCollapsed)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} />
     <nav className="mobile-nav" aria-label="移动工作区导航">{[['assets', 'folder', '素材'], ['canvas', 'grid', '画布'], ['inspector', 'settings', '设置']].map(([id, icon, label]) => <Button variant="ghost" className={mobilePanel === id ? 'active' : ''} key={id} onClick={() => setMobilePanel(id)}><Icon name={icon} size={17} />{label}</Button>)}</nav>
     {toast && <div className={`toast ${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{toast.message}</span><Button variant="ghost" className="icon-button small" aria-label="关闭提示" onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
     {showCreate && <CreateProject onClose={() => setShowCreate(false)} onCreate={createProject} busy={busy['project-create']} />}

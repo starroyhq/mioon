@@ -48,7 +48,7 @@ export function createServices(store,providers,{env=process.env}={}){
  ...timeline.handlers,
  'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
- 'project.get':i=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};},
+ 'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
  'asset.import':async i=>{
   required('projects',i.projectId);
   if(!/^[A-Za-z0-9+/]*={0,2}$/.test(i.dataBase64)||i.dataBase64.length%4)throw new AppError('INVALID_MEDIA','无效的 base64');

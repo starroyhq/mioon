@@ -17,6 +17,8 @@ const paths = {
   check: <path d="m5 12 4 4L19 6" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   refresh: <><path d="M20 7A8 8 0 1 0 21 13M20 3v5h-5" /></>,
+  undo: <><path d="M3 10h11a7 7 0 0 1 7 7v3M3 10l6-6M3 10l6 6" /></>,
+  redo: <><path d="M21 10H10a7 7 0 0 0-7 7v3M21 10l-6-6M21 10l-6 6" /></>,
   zoom: <><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /><path d="m8 8-5-5m13 5 5-5M8 16l-5 5m13-5 5 5" /></>,
   minus: <path d="M5 12h14" />,
   compare: <><rect x="3" y="4" width="7" height="16" rx="1" /><rect x="14" y="4" width="7" height="16" rx="1" /></>,

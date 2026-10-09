@@ -11,10 +11,14 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 // must be committed in the same SQLite transaction as every mutation.
 export function createTimelineServices(store,{required,check,hash,now}){
  const {db,get,list,put,tx}=store;
+ function find(projectId){
+  const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
+  return row?JSON.parse(row.data):null;
+ }
  function ensure(projectId){
   required('projects',projectId);
-  const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
-  if(row)return JSON.parse(row.data);
+  const existing=find(projectId);
+  if(existing)return existing;
   const createdAt=now();
   return put('timelines',{
    id:randomUUID(),projectId,revision:1,fps:30,width:720,height:1280,
@@ -83,22 +87,75 @@ export function createTimelineServices(store,{required,check,hash,now}){
   db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run(input.requestId,requestHash,JSON.stringify(response));
   return response;
  }
+ // History owns only editable timeline state. Revisions, IDs/timestamps of the
+ // aggregate, media, selected versions, jobs and exports are never restored.
+ const snapshot=timeline=>clone({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames});
+ const cursor=projectId=>db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(projectId)?.position??0;
+ const setCursor=(projectId,position)=>db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,?) ON CONFLICT(projectId) DO UPDATE SET position=excluded.position').run(projectId,position);
+ function history(projectId){
+  required('projects',projectId);
+  // One SQLite statement gives even independent connections a single read
+  // snapshot. Metadata reads never initialize a timeline or acquire a write lock.
+  const row=db.prepare(`SELECT t.data AS timeline,COALESCE(c.position,0) AS position,
+   (SELECT COUNT(*) FROM timeline_history h WHERE h.projectId=p.id) AS length,
+   (SELECT json_object('id',h.id,'operation',h.operation,'createdAt',h.createdAt) FROM timeline_history h WHERE h.projectId=p.id AND h.position=c.position) AS undoEntry,
+   (SELECT json_object('id',h.id,'operation',h.operation,'createdAt',h.createdAt) FROM timeline_history h WHERE h.projectId=p.id AND h.position=COALESCE(c.position,0)+1) AS redoEntry
+   FROM projects p LEFT JOIN timelines t ON t.projectId=p.id LEFT JOIN timeline_history_cursors c ON c.projectId=p.id WHERE p.id=?`).get(projectId);
+  const timeline=row.timeline?JSON.parse(row.timeline):null,position=row.position,length=row.length;
+  return {projectId,timelineId:timeline?.id??null,revision:timeline?.revision??null,cursor:position,length,canUndo:position>0,canRedo:position<length,
+   undoEntry:row.undoEntry?JSON.parse(row.undoEntry):null,redoEntry:row.redoEntry?JSON.parse(row.redoEntry):null};
+ }
+ function recordEdit(operation,timeline,before){
+  const position=cursor(timeline.projectId)+1;
+  // Branch replacement shares the edit transaction, so rejected edits cannot
+  // erase redo. Exact old request responses remain independently durable.
+  db.prepare('DELETE FROM timeline_history WHERE projectId=? AND position>=?').run(timeline.projectId,position);
+  db.prepare('INSERT INTO timeline_history(id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?)')
+   .run(randomUUID(),timeline.projectId,position,operation,timeline.updatedAt,JSON.stringify(before),JSON.stringify(snapshot(timeline)));
+  setCursor(timeline.projectId,position);
+ }
+ function travel(operation,input,direction){
+  return tx(()=>{
+   const previous=replay(operation,input);
+   if(previous.response)return previous.response;
+   required('projects',input.projectId);
+   const timeline=find(input.projectId);
+   const empty=()=>new AppError(direction<0?'NOTHING_TO_UNDO':'NOTHING_TO_REDO',direction<0?'没有可撤销的时间线编辑':'没有可重做的时间线编辑',409);
+   if(!timeline)throw empty();
+   check(timeline,input.expectedRevision);
+   const position=cursor(input.projectId);
+   const entry=db.prepare('SELECT beforeSnapshot,afterSnapshot FROM timeline_history WHERE projectId=? AND position=?').get(input.projectId,position+(direction>0?1:0));
+   if(!entry)throw empty();
+   Object.assign(timeline,JSON.parse(direction<0?entry.beforeSnapshot:entry.afterSnapshot));
+   validate(timeline);
+   timeline.revision++;
+   timeline.updatedAt=now();
+   put('timelines',timeline);
+   setCursor(input.projectId,position+direction);
+   return saveResponse(input,previous.requestHash,timeline);
+  });
+ }
  function mutate(operation,input,apply){
   return tx(()=>{
    const previous=replay(operation,input);
    if(previous.response)return previous.response;
    const timeline=ensure(input.projectId);
    check(timeline,input.expectedRevision);
+   const before=snapshot(timeline);
    apply(timeline);
    validate(timeline);
    timeline.revision++;
    timeline.updatedAt=now();
    put('timelines',timeline);
+   recordEdit(operation,timeline,before);
    return saveResponse(input,previous.requestHash,timeline);
   });
  }
  const handlers={
   'timeline.get':input=>ensure(input.projectId),
+  'timeline.history.get':input=>history(input.projectId),
+  'timeline.undo':input=>travel('timeline.undo',input,-1),
+  'timeline.redo':input=>travel('timeline.redo',input,1),
   'timeline.track.add':input=>mutate('timeline.track.add',input,timeline=>{
    const number=timeline.tracks.filter(item=>item.kind===input.kind).length+1;
    timeline.tracks.push({id:randomUUID(),name:input.name||`${input.kind==='video'?'Video':'Audio'} ${number}`,kind:input.kind,orderIndex:Math.max(-1,...timeline.tracks.map(item=>item.orderIndex))+1,hidden:false,muted:false});
@@ -155,5 +212,5 @@ export function createTimelineServices(store,{required,check,hash,now}){
    return saveResponse(input,previous.requestHash,result);
   })
  };
- return {ensure,handlers};
+ return {ensure,history,handlers};
 }
