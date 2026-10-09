@@ -1,0 +1,185 @@
+import { app, BrowserWindow, Menu, session, dialog, utilityProcess } from 'electron';
+import path from 'node:path';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dataPaths, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnection } from './config.mjs';
+import desktopIdentity from '../identity.cjs';
+import { BackendSupervisor } from './supervisor.mjs';
+import { QuitCoordinator, installUnsavedGuard } from './lifecycle.mjs';
+import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy } from './security.mjs';
+
+// The renderer never receives privileged Electron APIs or native filesystem paths.
+app.enableSandbox();
+// Embedded by build.mjs. Runtime env and app.isPackaged cannot change the channel.
+const identity = desktopIdentity.identityForChannel(__WB_DESKTOP_CHANNEL__);
+app.setName(identity.productName);
+app.setAppUserModelId(identity.appId);
+if (process.platform === 'linux') {
+  app.setDesktopName(`${identity.appId}.desktop`);
+  app.commandLine.appendSwitch('class', identity.appId);
+}
+const paths = dataPaths(app.getPath('appData'), process.env.WB_DESKTOP_USER_DATA, identity.channel);
+mkdirSync(paths.userData, { recursive: true, mode: 0o700 });
+app.setPath('userData', paths.userData);
+let win, backend, activeSession, ready, restarting = false, quitting = false;
+let smokeDiscardDecision;
+const smokeOutput = !app.isPackaged && process.env.WB_DESKTOP_USER_DATA && process.env.WB_DESKTOP_SMOKE_OUTPUT;
+
+async function toolsFromUser() {
+  let configuration;
+  try { configuration = await readToolConfig(paths.configFile); return await validateTools(configuration); }
+  catch (error) {
+    if (smokeOutput) throw error;
+    const result = await dialog.showMessageBox({ type: 'warning', title: '配置视频工具',
+      message: '需要你已安装的 FFmpeg 和 ffprobe',
+      detail: '本应用包含 Electron / Node / SQLite，但不捆绑 FFmpeg。请选择从可信来源安装的 ffmpeg 和 ffprobe 可执行文件。仅保存所选路径，不修改原始素材。\n\n' + error.message,
+      buttons: ['选择工具', '退出'], defaultId: 0, cancelId: 1 });
+    if (result.response !== 0) throw new Error('未配置 FFmpeg');
+  }
+  const choose = async name => {
+    const result = await dialog.showOpenDialog({ title: `选择 ${name} 可执行文件`, properties: ['openFile'] });
+    if (result.canceled || result.filePaths.length !== 1) throw new Error(`未选择 ${name}`);
+    return result.filePaths[0];
+  };
+  configuration = await validateTools({ ffmpeg: await choose('ffmpeg'), ffprobe: await choose('ffprobe') });
+  await saveToolConfig(paths.configFile, configuration);
+  return configuration;
+}
+
+async function start() {
+  await ensureDataIdentity(paths, identity);
+  const tools = await toolsFromUser();
+  const token = randomBytes(32).toString('hex');
+  backend = new BackendSupervisor({ fork: utilityProcess.fork,
+    modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools) });
+  backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
+  ready = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'), token });
+  activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
+  installSessionPolicy(activeSession, ready.url, () => win, { downloadsPath: path.join(app.getPath('downloads'), 'video-workbench.mp4') });
+  await activeSession.cookies.set(sessionCookie(ready.url, token));
+  await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
+  await openWindow();
+  return { identity, runtime: ready.runtime, tools: tools.versions };
+}
+
+async function openWindow() {
+  if (!ready || quitting) return;
+  win = new BrowserWindow({ title: 'Video Workbench', width: 1500, height: 960,
+    minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
+    autoHideMenuBar: process.platform !== 'darwin', webPreferences: secureWebPreferences(activeSession) });
+  installWindowPolicy(win, ready.url);
+  installUnsavedGuard(win, {
+    confirmDiscard: () => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBoxSync(win, { type: 'question', title: '尚有未保存的修改',
+      message: '放弃未保存的修改？', detail: '选择继续编辑会保持当前窗口和本地服务运行。',
+      buttons: ['放弃修改', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0,
+    onCancel: () => quitCoordinator.cancel()
+  });
+  win.on('closed', () => { win = null; });
+  win.once('ready-to-show', () => { if (win && !win.isDestroyed()) win.show(); });
+  win.webContents.on('render-process-gone', () => { if (!quitting && !smokeOutput) void rendererFailed(); });
+  win.webContents.on('unresponsive', () => { if (!quitting && !smokeOutput) void rendererFailed(); });
+  await win.loadURL(`${ready.url}/`);
+}
+
+async function stop() {
+  await backend?.stop();
+  await removeConnection(paths);
+  await activeSession?.clearStorageData();
+  activeSession = null;
+  ready = null;
+}
+
+async function restart() {
+  if (restarting || quitting) return;
+  restarting = true;
+  try {
+    if (win && !win.isDestroyed()) win.destroy();
+    await stop();
+    return await start();
+  } finally { restarting = false; }
+}
+
+async function backendFailed() {
+  if (restarting || quitting) return;
+  if (win && !win.isDestroyed()) win.hide();
+  const { response } = await dialog.showMessageBox({ type: 'error', title: '本地服务已停止',
+    message: '本地服务意外退出。已保存的数据会在重启时恢复。',
+    detail: '未保存的界面修改可能丢失。已知任务会恢复；提交结果未知的生成任务不会盲目重新提交。',
+    buttons: ['重启本地服务', '退出'], defaultId: 0, cancelId: 1 });
+  if (response === 0) { try { await restart(); } catch (error) { await fatal(error); } }
+  else app.quit();
+}
+
+let showingRendererError = false;
+async function rendererFailed() {
+  if (showingRendererError) return;
+  showingRendererError = true;
+  try {
+    const { response } = await dialog.showMessageBox({ type: 'warning', title: '界面需要重新载入',
+      message: '工作区界面没有响应。后台任务仍由本地服务管理。',
+      buttons: ['重新载入界面', '退出'], defaultId: 0, cancelId: 1 });
+    if (response === 0 && win && !win.isDestroyed()) await win.loadURL(`${ready.url}/`);
+    else app.quit();
+  } finally { showingRendererError = false; }
+}
+
+async function fatal(error) {
+  if (smokeOutput) {
+    await mkdir(path.dirname(smokeOutput), { recursive: true });
+    await writeFile(smokeOutput, JSON.stringify({ ok: false, error: error.message }, null, 2));
+    process.exitCode = 1;
+  } else {
+    await dialog.showMessageBox({ type: 'error', title: '无法启动 Video Workbench',
+      message: '应用无法启动。', detail: error.message, buttons: ['退出'] });
+  }
+  app.quit();
+}
+
+function installMenu() {
+  const template = [];
+  if (process.platform === 'darwin') template.push({ role: 'appMenu' });
+  template.push({ label: '应用', submenu: [
+    { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => { if (ready && win) void win.loadURL(`${ready.url}/`); } },
+    { label: '重启本地服务', click: async () => {
+      const { response } = await dialog.showMessageBox({ type: 'question', message: '重启本地服务？',
+        detail: '已保存的数据保留。未保存的界面修改可能丢失。正在运行的任务会在恢复后继续处理。',
+        buttons: ['重启', '取消'], defaultId: 1, cancelId: 1 });
+      if (response === 0) { try { await restart(); } catch (error) { await fatal(error); } }
+    } },
+    { type: 'separator' }, { role: 'quit', label: '退出' }
+  ] }, { role: 'editMenu', label: '编辑' }, { role: 'windowMenu', label: '窗口' });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+const quitCoordinator = new QuitCoordinator({ getWindow: () => win,
+  stop: async () => { quitting = true; await stop(); }, finish: () => app.quit() });
+
+if (!app.requestSingleInstanceLock()) app.quit();
+else {
+  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+  app.on('activate', () => { if (!win && ready && !quitting) void openWindow().catch(fatal); });
+  app.on('window-all-closed', () => { if (!restarting && process.platform !== 'darwin') app.quit(); });
+  app.on('before-quit', event => {
+    if (quitCoordinator.state === 'finished') return;
+    event.preventDefault();
+    void quitCoordinator.request().catch(fatal);
+  });
+  process.on('SIGTERM', () => app.quit());
+  process.on('SIGINT', () => app.quit());
+  app.whenReady().then(async () => {
+    installMenu();
+    const report = await start();
+    if (smokeOutput) {
+      const { runSmoke } = await import('./smoke-checks.mjs');
+      await runSmoke({ app, getWindow: () => win, getSession: () => activeSession,
+        getReady: () => ready, getBackend: () => backend, restart, paths, report, output: smokeOutput,
+        attemptDirtyQuit: async () => {
+          smokeDiscardDecision = false;
+          try { return await quitCoordinator.request(); }
+          finally { smokeDiscardDecision = undefined; }
+        } });
+      app.quit();
+    }
+  }).catch(fatal);
+}

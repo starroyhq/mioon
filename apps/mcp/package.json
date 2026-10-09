@@ -1,0 +1,11 @@
+{
+  "name": "@video-workbench/mcp",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node src/index.mjs"},
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@video-workbench/client": "workspace:*"
+  }
+}

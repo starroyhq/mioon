@@ -1,0 +1,13 @@
+# Recovery without duplicate charges
+
+- `submission_unknown`: acceptance may have occurred. Keep the original job and request. Call `job reconcile`; if the provider cannot find the request, investigate the provider account and bind the verified existing task ID only to its matching local job. Never use `job retry` or a new generation request to guess whether it worked.
+- Known provider task, transient poll/download failure: keep polling/reconciling that task. Do not create a replacement generation. Download URLs can expire; the backend refreshes them from the same task.
+- Definite `failed`: `job retry` submits a new paid request from the original snapshot, requiring a new request ID and applicable authorization. It is not a free download retry. To change prompt or media, edit/create a shot and make an explicitly authorized new generation.
+- `REVISION_CONFLICT`: read the current record, compare it with the user's requested change and merge only that change. Retain unrelated edits. A new intended edit needs its current revision and a new request ID. Do not repeatedly overwrite using stale revisions.
+- `IDEMPOTENCY_CONFLICT`: that ID already identifies different input. Recover the original request/outcome first. Do not change the ID until certain you are performing a distinct intended operation.
+- CLI watch timeout / interruption: the job continues. Reconnect and watch the same ID. `job cancel` stops backend local waiting but does not guarantee provider cancellation or refund. Provider work may continue; reconciliation can resume the same task.
+- `output_review_required` / `OUTPUT_ASPECT_RATIO_MISMATCH`: the provider completed, but decoded output differs from the requested ratio. Local publication is paused and no version is exposed; the existing task and file are retained. Inspect/reconcile that same task. Its compatibility status is `cancelled`, which does not mean remote cancellation. Do not propose a fresh paid generation as recovery.
+- `PROVIDER_DISABLED` / `LIVE_BUDGET_REQUIRED`: check safe capabilities and backend setup. Do not change enable flags or increase caps merely to bypass a block; obtain missing authorization first.
+- A provider may have been retired, preview access may be unavailable, quotas may be exhausted, and offline tests do not establish account entitlement. Report the actual blocker; never claim live generation on the basis of mock success.
+
+Stop a bounded watch with a clear pending status and ID when its window ends; continue only within the user's requested monitoring scope. Do not remove service locks, delete job rows, open the SQLite database as another writer, or edit immutable media to recover a generation.

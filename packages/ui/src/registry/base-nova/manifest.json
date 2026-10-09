@@ -1,0 +1,154 @@
+{
+  "style": "base-nova",
+  "primitiveLibrary": "@base-ui/react",
+  "retrievedAt": "2026-10-09",
+  "snapshotFormat": "Decoded registry payload reserialized as local JSON; original HTTP response bytes are not retained. Embedded TSX source strings are preserved exactly.",
+  "hashDefinitions": {
+    "registrySha256": "SHA-256 of the local serialized registry JSON file, not the HTTP response bytes",
+    "sourceSha256": "SHA-256 of the original decoded embedded TSX source string encoded as UTF-8",
+    "vendoredSha256": "SHA-256 of the installed TSX source file after the documented substitutions"
+  },
+  "license": {
+    "name": "MIT",
+    "copyright": "Copyright (c) 2023 shadcn",
+    "url": "https://raw.githubusercontent.com/shadcn-ui/ui/main/LICENSE.md",
+    "path": "../../LICENSE.shadcn.md"
+  },
+  "components": [
+    {
+      "name": "button",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/button.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/button",
+      "upstreamPath": "registry/base-nova/ui/button.tsx",
+      "registrySha256": "9ba7e870178813f0552b818a913a2792fb500c779e36395740b4973e3025d427",
+      "sourceSha256": "313353436d0fcc8e44ab470adb614b9fd013d28626f624328ea0d66d41a6c81b",
+      "vendoredSha256": "fbc3f3081d655f47c96bbdb0cbc11c298665778feca93a7ff5ec06a3dd12d1ac"
+    },
+    {
+      "name": "input",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/input.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/input",
+      "upstreamPath": "registry/base-nova/ui/input.tsx",
+      "registrySha256": "bbad1bba130ac9750a61844eeb8f043e8a710846e07689fa85398b80a46c2741",
+      "sourceSha256": "dab990dfefa0ba78854ab6602ad074270dba9d7d1262184d9bfbb62bd990903b",
+      "vendoredSha256": "c72787db48db8554f6357db62be4f462e8cdc78c62a8162bee17a6859f413091"
+    },
+    {
+      "name": "textarea",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/textarea.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/textarea",
+      "upstreamPath": "registry/base-nova/ui/textarea.tsx",
+      "registrySha256": "8f01f6bc4ee556263bae7644e8b527022fa77ff203f33a258bb47142ef7d9c81",
+      "sourceSha256": "82601c91ffc6c727d924162c78d7cb853114bcced4e2eb922a68ca12d4239c0f",
+      "vendoredSha256": "c6d0b67414d2af3d2310c2467f485f6a8da41237b5373a0d97642adc0d097b2d"
+    },
+    {
+      "name": "select",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/select.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/select",
+      "upstreamPath": "registry/base-nova/ui/select.tsx",
+      "registrySha256": "425e9b0a28b72617f18fabd75384050113295b88e7ba01c35bede2c72bd5d476",
+      "sourceSha256": "6918ba753234e510c57db3fe395f8b67936421db1efa2ed88694d186aa736c59",
+      "vendoredSha256": "a7ec711669abf6c7f2b08abdfbf1c170966c9f15dccf63baf6801722ecb676fe"
+    },
+    {
+      "name": "dialog",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/dialog.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/dialog",
+      "upstreamPath": "registry/base-nova/ui/dialog.tsx",
+      "registrySha256": "40fc321d25eb9590d07db54b00d9bc1a74274a549aa06d5915a34ba302ed8b94",
+      "sourceSha256": "5be79d2cf2d2152a29d9f14c8e209ad57b696e9dfbf0b9cdf4523a7c710c8d02",
+      "vendoredSha256": "c7c84f5421ab6f1749af91fa85e167a9b6e7757d7f225b8a3e3e59e959863ca6"
+    },
+    {
+      "name": "dropdown-menu",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/dropdown-menu.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/dropdown-menu",
+      "upstreamPath": "registry/base-nova/ui/dropdown-menu.tsx",
+      "registrySha256": "335c59dba30145f434a9cc9ccb0438a3c5e2afe857fc11b029de1ecb415224d7",
+      "sourceSha256": "ba92acc16e141ad77880f8c4a27f9854b8024075130df6f04b6b0bf9cfa9d3f2",
+      "vendoredSha256": "a9f120f1df88357881b076c7ef93827f6737474db19f639ffae837f08e488d0b"
+    },
+    {
+      "name": "tabs",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/tabs.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/tabs",
+      "upstreamPath": "registry/base-nova/ui/tabs.tsx",
+      "registrySha256": "b4552a0329dd9a6e2bfaf03405c133874df5a4930c7bb3dd84c9ab5c45b89402",
+      "sourceSha256": "958b817b256cffae986d046168b70dd0153d542b4c521ee8bbdda349010011ef",
+      "vendoredSha256": "ac297d1eb9ccbc11f42a80bed64962e0a5ebe210300b914a32ef8665dba7ec8d"
+    },
+    {
+      "name": "switch",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/switch.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/switch",
+      "upstreamPath": "registry/base-nova/ui/switch.tsx",
+      "registrySha256": "1f22350ccbf358a3aa198305c41d91e146abc0a7d5b18a9a23488b8d6b264ab4",
+      "sourceSha256": "d232e2ffcfa122c59099872bcb8395eaad36d42fa9d2e0e40382ad19994065e2",
+      "vendoredSha256": "f2afaa50f3f3a8f4e3c9166e2281ab599c88026111bee3e2afa80945dad5b388"
+    },
+    {
+      "name": "collapsible",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/collapsible.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/collapsible",
+      "upstreamPath": "registry/base-nova/ui/collapsible.tsx",
+      "registrySha256": "74f78cd88a30185243847968977cf1de9ffbf576547f2ec1f14b5ef55505b90d",
+      "sourceSha256": "ead4349ff7b01d696ef89294a81d18ee1d3f732321398896462c834ab9b9e065",
+      "vendoredSha256": "ead4349ff7b01d696ef89294a81d18ee1d3f732321398896462c834ab9b9e065"
+    },
+    {
+      "name": "tooltip",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/tooltip.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/tooltip",
+      "upstreamPath": "registry/base-nova/ui/tooltip.tsx",
+      "registrySha256": "2f55867faecee2d3616cfd8c6a80b538909a21e62fdfa2788b1ead56093e5395",
+      "sourceSha256": "f83d5f511812573f4ac98b866d397a46fda0f27eeb0af0ea89af01969eefbc5a",
+      "vendoredSha256": "a141a19c937bf00633edb1196b6b7780973652cd9848e60b055d3bf83ec0c701"
+    },
+    {
+      "name": "scroll-area",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/scroll-area.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/scroll-area",
+      "upstreamPath": "registry/base-nova/ui/scroll-area.tsx",
+      "registrySha256": "be6cdcfbf02a2fa091ec92cb2bc34e35b8a4e4b3a2d041973cfcd68396e6da1d",
+      "sourceSha256": "829549f352f1e56dfe887446bcc3d1707c0ced739a9efcb75f0af364cd88c581",
+      "vendoredSha256": "91f624ad3a57d7588372f66a749634cd35104ce09e2a966dbcbbc8c834b41671"
+    },
+    {
+      "name": "label",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/label.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/label",
+      "upstreamPath": "registry/base-nova/ui/label.tsx",
+      "registrySha256": "89b01e14fd39dceece9fa421e71e78ea83286bd43a2ca1c2f55d2e8d3958fff2",
+      "sourceSha256": "b3b7b21d2877838fc73713df48a47248392de04a3b3fafa8961369f33ab14530",
+      "vendoredSha256": "7ceeccf276a9b037b974e721a91afc48b54bbf29e1c142ec05f0c4685d8b48f9"
+    },
+    {
+      "name": "badge",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/badge.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/badge",
+      "upstreamPath": "registry/base-nova/ui/badge.tsx",
+      "registrySha256": "ccc20021cdcbf0fb23c0d4d28f1da4adde8e51ba59f4b11dd2722ed97a5ee3a4",
+      "sourceSha256": "d9fb280e266119c4b62a4c518e63152de27b094c68d3e5f8929d05bfb0c1bc6c",
+      "vendoredSha256": "f08ba179fc4f212bb46c819c5acb0e90481a4b38df9206ef51ad47f4fce14b01"
+    },
+    {
+      "name": "separator",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/separator.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/separator",
+      "upstreamPath": "registry/base-nova/ui/separator.tsx",
+      "registrySha256": "3ad65962485f464592201cb90017b3d52a5c9fe272ce41ee049485b4c42e0d76",
+      "sourceSha256": "9a80ff8c110e0c55489509f4f82ebcc929c0174b59544047147b7134f86a54e7",
+      "vendoredSha256": "16021a35daee0a26d3311c1752a5ba2ee53d1e6e40865cef41c18be4101140e1"
+    },
+    {
+      "name": "slider",
+      "registryUrl": "https://ui.shadcn.com/r/styles/base-nova/slider.json",
+      "docsUrl": "https://ui.shadcn.com/docs/components/base/slider",
+      "upstreamPath": "registry/base-nova/ui/slider.tsx",
+      "registrySha256": "646bcd7913417b786bbf7578484f851bf89c81a62f70ef9c4f3522e2af80a951",
+      "sourceSha256": "1fd32ee03ddaa382aabccce0bd88669aa8f91e4fe487622a68745d2ed1d5f5b9",
+      "vendoredSha256": "fb0454977ce2132c6806289f14edbed1587b29e0107c554853a6ed07380dd7c1"
+    }
+  ]
+}

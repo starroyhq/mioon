@@ -1,0 +1,16 @@
+{
+  "name": "@video-workbench/client",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./connection": "./src/connection.mjs",
+    "./download": "./src/download.mjs"
+  },
+  "dependencies": {
+    "@video-workbench/contracts": "workspace:*",
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.25.2"
+  }
+}

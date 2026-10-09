@@ -1,0 +1,59 @@
+# Dependencies and generated builds
+node_modules/
+.pnpm-store/
+dist/
+build/
+release/
+coverage/
+*.tsbuildinfo
+
+# Live workspaces, generated sample projects and verification copies
+/data*/
+/examples/*-project/
+/.verification/
+/deliverables/
+/evidence/
+*.sqlite*
+*.db
+*.db-shm
+*.db-wal
+
+# Local secrets, credentials and runtime discovery
+.env
+.env.*
+!.env.example
+access-token
+desktop-token
+server.lock
+mcp-connection.json
+credentials.json
+secrets.json
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc.local
+
+# Logs, caches and editor/OS state
+*.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Generated delivery archives/installers; source fixtures remain tracked
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.dmg
+*.AppImage
+*.exe
+*.msi
+*.deb
+*.rpm

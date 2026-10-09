@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-nova",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@video-workbench/ui/components",
+    "utils": "@video-workbench/ui/lib/utils",
+    "ui": "@video-workbench/ui/components",
+    "lib": "@video-workbench/ui/lib",
+    "hooks": "@video-workbench/ui/hooks"
+  },
+  "registries": {}
+}

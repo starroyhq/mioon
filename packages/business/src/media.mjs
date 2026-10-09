@@ -1,0 +1,18 @@
+import {spawnMedia,mediaInterrupted,interruptedMediaError} from './media-processes.mjs';
+import {stat,realpath} from 'node:fs/promises';
+import {createReadStream} from 'node:fs';
+import {createHash} from 'node:crypto';
+import path from 'node:path';
+export function run(command,args,{timeout=120000}={}){return new Promise((resolve,reject)=>{const configured=command==='ffmpeg'?process.env.WB_FFMPEG_PATH:command==='ffprobe'?process.env.WB_FFPROBE_PATH:null;if(configured&&!path.isAbsolute(configured))return reject(Error('Configured media executable must be an absolute path'));const p=spawnMedia(configured||command,args,{stdio:['ignore','pipe','pipe']},{kind:command});let out='',err='';p.stdout.on('data',b=>out+=b);p.stderr.on('data',b=>err=(err+b).slice(-12000));const timer=setTimeout(()=>p.kill('SIGKILL'),timeout);p.on('error',e=>{clearTimeout(timer);reject(e);});p.on('close',code=>{clearTimeout(timer);mediaInterrupted(p)?reject(interruptedMediaError()):code===0?resolve(out):reject(Error(`${command} failed (${code}): ${err.slice(-2000)}`));});});}
+export async function probe(file){const p=JSON.parse(await run('ffprobe',['-v','error','-show_format','-show_streams','-of','json',file]));const v=p.streams.find(x=>x.codec_type==='video'&&!x.disposition?.attached_pic&&x.width&&x.height),a=p.streams.find(x=>x.codec_type==='audio');if(!v&&!a)throw Error('No decodable image/video/audio stream');return {width:v?.width||0,height:v?.height||0,duration:Number(p.format?.duration)||Number(v?.duration)||Number(a?.duration)||0,hasVideo:Boolean(v),hasAudio:Boolean(a),videoStreamIndex:v?.index,audioStreamIndex:a?.index,codec:v?.codec_name||a?.codec_name,probe:p};}
+// Hash incrementally: long timeline exports must not be copied into JS memory.
+export async function fileHash(file){const hash=createHash('sha256');for await(const data of createReadStream(file))hash.update(data);return hash.digest('hex');}
+export async function fileInfo(file){const [sha256,s,p]=await Promise.all([fileHash(file),stat(file),probe(file)]);return {sizeBytes:s.size,sha256,width:p.width,height:p.height,duration:p.duration,hasVideo:p.hasVideo,hasAudio:p.hasAudio};}
+export async function safePath(root,relative){const base=await realpath(path.join(root,'media'));const target=await realpath(path.join(root,relative));if(!target.startsWith(base+path.sep))throw Error('Media path outside managed directory');return target;}
+export async function stitch(files,destination){
+ const args=['-hide_banner','-loglevel','error','-y'];for(const f of files)args.push('-i',f);
+ const metadata=await Promise.all(files.map(probe));const chains=[];
+ files.forEach((_,i)=>{const duration=metadata[i].duration;if(!(duration>0))throw Error('Export input has no duration');chains.push(`[${i}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,setpts=PTS-STARTPTS,format=yuv420p[v${i}]`);const hasAudio=metadata[i].probe.streams.some(s=>s.codec_type==='audio');chains.push(hasAudio?`[${i}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${duration},asetpts=PTS-STARTPTS[a${i}]`:`anullsrc=r=48000:cl=stereo,atrim=duration=${duration},asetpts=PTS-STARTPTS[a${i}]`);});
+ chains.push(files.map((_,i)=>`[v${i}][a${i}]`).join('')+`concat=n=${files.length}:v=1:a=1[outv][outa]`);
+ args.push('-filter_complex',chains.join(';'),'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart',destination);await run('ffmpeg',args,{timeout:300000});await probe(destination);
+}

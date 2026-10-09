@@ -1,0 +1,132 @@
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+
+/* Workspace packages are outside the web application's automatic scan root. */
+@source "../components/**/*.{ts,tsx}";
+@source "../../../../apps/web/src/**/*.{js,jsx,ts,tsx}";
+
+@custom-variant dark (&:is(.dark *));
+
+/* The Base UI state subset used by the official base-nova registry. */
+@custom-variant data-open (&:where([data-open]:not([data-open="false"])));
+@custom-variant data-closed (&:where([data-closed]:not([data-closed="false"])));
+@custom-variant data-checked (&:where([data-checked]:not([data-checked="false"])));
+@custom-variant data-unchecked (&:where([data-unchecked]:not([data-unchecked="false"])));
+@custom-variant data-disabled (&:where([data-disabled]:not([data-disabled="false"])));
+@custom-variant data-active (&:where([data-active]:not([data-active="false"])));
+@custom-variant data-horizontal (&:where([data-orientation="horizontal"]));
+@custom-variant data-vertical (&:where([data-orientation="vertical"]));
+
+@theme inline {
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Neutral dark surfaces with the editor's existing sage primary treatment.
+   The renderer opts into dark component variants with <html class="dark">. */
+:root,
+.dark {
+  --radius: 0.625rem;
+  --background: #101114;
+  --foreground: #e4e5e7;
+  --card: #1e2025;
+  --card-foreground: #e4e5e7;
+  --popover: #22242a;
+  --popover-foreground: #e4e5e7;
+  --primary: #d7e6aa;
+  --primary-foreground: #24291a;
+  --secondary: #23252b;
+  --secondary-foreground: #d8dbe1;
+  --muted: #22242a;
+  --muted-foreground: #949ba7;
+  --accent: #30333b;
+  --accent-foreground: #edf0f5;
+  --destructive: #ee998f;
+  --destructive-foreground: #221514;
+  --border: #30333b;
+  --input: #3b3e47;
+  --ring: #a4bb79;
+  --chart-1: #d7e6aa;
+  --chart-2: #9ac7bd;
+  --chart-3: #aab8e6;
+  --chart-4: #ddb47e;
+  --chart-5: #ee998f;
+  --sidebar: #17181c;
+  --sidebar-foreground: #e4e5e7;
+  --sidebar-primary: #d7e6aa;
+  --sidebar-primary-foreground: #24291a;
+  --sidebar-accent: #23252b;
+  --sidebar-accent-foreground: #edf0f5;
+  --sidebar-border: #2b2d34;
+  --sidebar-ring: #a4bb79;
+}
+
+@utility cn-font-heading {
+  font-family: var(--font-heading);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background font-sans text-foreground;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot] {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
