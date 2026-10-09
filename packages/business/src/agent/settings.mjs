@@ -1,0 +1,101 @@
+import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from './presets.mjs';
+import {agentSettingsError, safeAgentSettingsError, exactObject, parseAgentConfiguration, parseAgentSettingsUpdate, agentCredentialBinding} from './config.mjs';
+
+export const sanitizeAgentSettingsError = safeAgentSettingsError;
+const storageReasons = new Set([null, 'WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT']);
+function publicStorage(value) {
+  if (!value || typeof value.persistentAvailable !== 'boolean' || !['app', 'server'].includes(value.sessionScope) || !storageReasons.has(value.reasonCode)) throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+  return {persistentAvailable: value.persistentAvailable, sessionScope: value.sessionScope, reasonCode: value.reasonCode};
+}
+/** Explicit result allowlist, also used by the trusted desktop broker. Never
+ * spread internal state/envelopes/errors into public transport messages. */
+export function sanitizeAgentSettingsResult(value) {
+  if (!value || !Number.isSafeInteger(value.revision) || value.revision < 0 || typeof value.secret?.configured !== 'boolean' || !['none', 'session', 'persistent'].includes(value.secret.storage) || value.secret.configured !== (value.secret.storage !== 'none')) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+  const configuration = parseAgentConfiguration(value.configuration);
+  return {revision: value.revision, configuration, secret: {configured: value.secret.configured, storage: value.secret.storage}, storage: publicStorage(value.storage), presets: structuredClone(AGENT_PRESETS), scope: 'settings_only', verification: 'not_tested'};
+}
+function parseEnvelope(value) {
+  if (!exactObject(value, ['version', 'revision', 'configuration', 'secret']) || value.version !== 1 || !Number.isSafeInteger(value.revision) || value.revision < 0) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+  const configuration = parseAgentConfiguration(value.configuration);
+  if (JSON.stringify(configuration) !== JSON.stringify(value.configuration)) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+  let secret = null;
+  if (value.secret !== null) {
+    if (!exactObject(value.secret, ['binding', 'encrypted']) || value.secret.binding !== agentCredentialBinding(configuration) || typeof value.secret.encrypted !== 'string' || !value.secret.encrypted || value.secret.encrypted.length > 48 * 1024 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.secret.encrypted)) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+    secret = {binding: value.secret.binding, encrypted: value.secret.encrypted};
+  }
+  return {version: 1, revision: value.revision, configuration, secret};
+}
+/** Single active Agent profile; not the video-provider registry. Secrets are
+ * write-only in this settings-only increment, with no credential getter. */
+export async function createAgentSettings({persistence, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}) {
+  let state = {version: 1, revision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null};
+  let session = null, fault = null, tail = Promise.resolve(), closing = false, vaultReadBlocked = false;
+  const capabilities = () => {
+    const value = publicStorage(typeof storage === 'function' ? storage() : storage);
+    return vaultReadBlocked ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;
+  };
+  try {
+    const loaded = await persistence.load();
+    if (loaded !== null) state = parseEnvelope(loaded);
+    if (state.secret) {
+      // A web server has no vault and must never adopt a desktop envelope.
+      if (!secretCodec) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+      if (capabilities().persistentAvailable) {
+        try {
+          const decoded = JSON.parse(await secretCodec.decrypt(state.secret.encrypted));
+          if (!exactObject(decoded, ['version', 'binding', 'value']) || decoded.version !== 1 || decoded.binding !== state.secret.binding) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
+          // Reuse key bounds/control validation without ever exposing a getter.
+          parseAgentSettingsUpdate({expectedRevision: state.revision, configuration: state.configuration, secret: {action: 'replace', storage: 'persistent', value: decoded.value}});
+        } catch {
+          // A locked vault and an unreadable ciphertext cannot be distinguished
+          // safely here. Keep the stored envelope, forbid its use, and allow an
+          // explicit removal or newly entered session-only replacement.
+          vaultReadBlocked = true;
+        }
+      }
+    }
+  } catch { fault = agentSettingsError('AGENT_SETTINGS_CORRUPT'); }
+  function schedule(operation) {
+    if (closing) return Promise.reject(agentSettingsError('AGENT_SETTINGS_CLOSED'));
+    const result = tail.then(() => { if (fault) throw fault; return operation(); });
+    tail = result.catch(() => {});
+    return result;
+  }
+  const snapshot = () => sanitizeAgentSettingsResult({revision: state.revision, configuration: state.configuration, secret: {configured: Boolean(state.secret || session), storage: state.secret ? 'persistent' : session ? 'session' : 'none'}, storage: capabilities()});
+  return {
+    get() { return schedule(snapshot); },
+    put(input, options = {}) {
+      // Snapshot/validate before scheduling so callers cannot mutate queued input.
+      let update;
+      try { update = parseAgentSettingsUpdate(input, options); } catch (error) { return Promise.reject(error); }
+      return schedule(async () => {
+        if (update.expectedRevision !== state.revision) throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
+        if (state.revision === Number.MAX_SAFE_INTEGER) throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');
+        const binding = agentCredentialBinding(update.configuration);
+        const sameBinding = binding === agentCredentialBinding(state.configuration);
+        let nextSecret = sameBinding ? state.secret : null;
+        let nextSession = sameBinding ? session : null;
+        if (update.secret.action === 'remove') { nextSecret = null; nextSession = null; }
+        if (update.secret.action === 'replace') {
+          nextSecret = null; nextSession = null;
+          if (update.secret.storage === 'persistent') {
+            if (!secretCodec || !capabilities().persistentAvailable) throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+            let encrypted;
+            try { encrypted = await secretCodec.encrypt(JSON.stringify({version: 1, binding, value: update.secret.value})); }
+            catch { throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'); }
+            nextSecret = {binding, encrypted};
+          } else nextSession = {binding, value: update.secret.value};
+        }
+        const candidate = {version: 1, revision: state.revision + 1, configuration: update.configuration, secret: nextSecret};
+        // Validate the encrypted codec result before it reaches persistent storage.
+        try { parseEnvelope(candidate); } catch { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); }
+        try { await persistence.save(candidate); }
+        catch { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); }
+        // Only commit RAM after the single atomic envelope has committed.
+        state = candidate; session = nextSession;
+        return snapshot();
+      });
+    },
+    async close() { closing = true; await tail; session = null; },
+  };
+}

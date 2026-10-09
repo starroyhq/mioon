@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, dialog, utilityProcess } from 'electron';
+import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage } from 'electron';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -6,6 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dataPaths, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnection } from './config.mjs';
 import desktopIdentity from '../identity.cjs';
 import { BackendSupervisor } from './supervisor.mjs';
+import { createDesktopAgentSettings } from './secret-store.mjs';
 import { QuitCoordinator, installUnsavedGuard, installPreferencesCloseDrain } from './lifecycle.mjs';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.mjs';
 
@@ -23,6 +24,7 @@ const paths = dataPaths(app.getPath('appData'), process.env.MIOON_DESKTOP_USER_D
 mkdirSync(paths.userData, { recursive: true, mode: 0o700 });
 app.setPath('userData', paths.userData);
 let win, backend, activeSession, ready, restarting = false, quitting = false;
+let agentSettings;
 let smokeDiscardDecision;
 const smokeOutput = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
 
@@ -50,9 +52,11 @@ async function toolsFromUser() {
 async function start() {
   await ensureDataIdentity(paths, identity);
   const tools = await toolsFromUser();
+  // Main owns the single settings instance across trusted backend restarts.
+  agentSettings ||= await createDesktopAgentSettings({ safeStorage, userData: app.getPath('userData'), appId: identity.appId });
   const token = randomBytes(32).toString('hex');
   backend = new BackendSupervisor({ fork: utilityProcess.fork,
-    modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools) });
+    modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings });
   backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
   ready = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'), token });
   activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
@@ -166,7 +170,11 @@ function installMenu() {
 }
 
 const quitCoordinator = new QuitCoordinator({ getWindow: () => win,
-  stop: async () => { quitting = true; await stop(); }, finish: () => app.quit() });
+  stop: async () => {
+    quitting = true;
+    try { await stop(); }
+    finally { await agentSettings?.close(); agentSettings = null; }
+  }, finish: () => app.quit() });
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {

@@ -4,6 +4,9 @@ import {createReadStream, existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
+import {createAgentSettings, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
+import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
+import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +39,7 @@ export async function startServer({
   port = 4318,
   distDir = path.resolve(directory, '../../web/dist'),
   token: suppliedToken,
+  agentSettings: suppliedAgentSettings,
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
   const root = path.resolve(dataDir), dist = path.resolve(distDir);
@@ -43,7 +47,7 @@ export async function startServer({
   const store = openStore(root);
   let token = suppliedToken;
   const tokenFile = path.join(root, 'access-token');
-  let worker, server;
+  let worker, server, agentSettings;
   try {
     if (!token) {
       if (existsSync(tokenFile)) token = (await readFile(tokenFile, 'utf8')).trim();
@@ -56,6 +60,11 @@ export async function startServer({
     const providers = createProviderRegistry({db: store.db, root});
     const services = createServices(store, providers);
     const workspacePreferences = createWorkspacePreferences(store);
+    // Desktop injects a narrow trusted-main proxy. Web mode persists only
+    // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
+    agentSettings = suppliedAgentSettings || await createAgentSettings({
+      persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
+    });
     const origins = new Set(), hosts = new Set();
     const auth = req => {
       const bearer = req.headers.authorization?.replace(/^Bearer /, '');
@@ -78,6 +87,23 @@ export async function startServer({
         }
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
+        }
+        if (url.pathname === '/api/agent/settings') {
+          try {
+            const context = {selfPort: server.address().port};
+            if (req.method === 'GET') return json(res, 200, {ok: true, data: sanitizeAgentSettingsResult(await agentSettings.get(context))});
+            if (req.method === 'PUT') {
+              let input;
+              try { input = await body(req, MAX_AGENT_SETTINGS_BYTES); }
+              catch (error) { return json(res, error.status === 413 ? 413 : 400, {ok: false, error: {code: 'AGENT_SETTINGS_VALIDATION', message: 'Agent 设置请求过大或 JSON 格式无效。', details: {}, retryable: false}}); }
+              return json(res, 200, {ok: true, data: sanitizeAgentSettingsResult(await agentSettings.put(input, context))});
+            }
+            res.setHeader('Allow', 'GET, PUT');
+            return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
+          } catch (error) {
+            const safe = sanitizeAgentSettingsError(error);
+            return json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: {}, retryable: false}});
+          }
         }
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {
@@ -144,12 +170,14 @@ export async function startServer({
       const drain = new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       await worker.stop({interruptMedia:true});
       await drain;
+      if (!suppliedAgentSettings) await agentSettings?.close();
       store.close();
     })();
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root, close};
   } catch (error) {
     if (server?.listening) await new Promise(resolve => server.close(resolve));
     if (worker) await worker.stop();
+    if (!suppliedAgentSettings) await agentSettings?.close();
     store.close();
     throw error;
   }

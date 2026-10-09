@@ -1,11 +1,13 @@
 import { EventEmitter } from 'node:events';
 import { trustedOrigin } from './security.mjs';
+import { createAgentSettingsBroker } from './secret-broker.mjs';
 
 export class BackendSupervisor extends EventEmitter {
   constructor({ fork, modulePath, environment, startupTimeout = 20000, stopTimeout = 10000,
+    agentSettings,
     killMedia = pid => { try { process.kill(pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } } }) {
     super();
-    Object.assign(this, { fork, modulePath, environment, startupTimeout, stopTimeout, killMedia });
+    Object.assign(this, { fork, modulePath, environment, startupTimeout, stopTimeout, killMedia, agentSettings });
     this.state = 'idle';
     this.mediaPids = new Set();
     this.mediaKinds = new Map();
@@ -14,10 +16,12 @@ export class BackendSupervisor extends EventEmitter {
   start(config) {
     if (!['idle', 'stopped', 'failed'].includes(this.state)) throw new Error('Backend already active');
     this.state = 'starting';
+    this.origin = null;
     this.expectedExit = false;
     return new Promise((resolve, reject) => {
       let settled = false;
       let timer;
+      let heartbeat;
       const fail = error => {
         if (settled) return;
         settled = true;
@@ -32,9 +36,17 @@ export class BackendSupervisor extends EventEmitter {
           allowLoadingUnsignedLibraries: false, execArgv: []
         });
       } catch (error) { fail(error); return; }
+      // The listener and replies belong to this exact child. A late completion
+      // from an old utility can never be delivered to its replacement.
+      const settingsBroker = createAgentSettingsBroker({ agentSettings: this.agentSettings,
+        send: message => child.postMessage(message),
+        isActive: () => this.child === child && ['running', 'stopping'].includes(this.state),
+        getSelfPort: () => this.origin ? Number(new URL(this.origin).port) : null });
       timer = setTimeout(() => { fail(new Error('本地服务启动超时')); child.kill(); }, this.startupTimeout);
       child.on('error', () => { fail(new Error('本地服务运行时错误')); child.kill(); });
       child.on('message', message => {
+        if (settingsBroker.handle(message)) return;
+        if (this.child !== child) return;
         if (message?.type === 'media-process') {
           const pid = message.pid;
           if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid && pid !== child.pid) {
@@ -50,12 +62,14 @@ export class BackendSupervisor extends EventEmitter {
         settled = true;
         clearTimeout(timer);
         this.state = 'running';
-        this.heartbeat = setInterval(() => { if (this.child === child && this.state === 'running') child.postMessage({ type: 'ping' }); }, 10000);
+        heartbeat = this.heartbeat = setInterval(() => { if (this.child === child && this.state === 'running') child.postMessage({ type: 'ping' }); }, 10000);
         resolve({ url: this.origin, runtime: message.runtime });
       });
       child.once('exit', code => {
+        settingsBroker.close();
         clearTimeout(timer);
-        clearInterval(this.heartbeat);
+        clearInterval(heartbeat);
+        if (this.child !== child) return;
         if (!settled) fail(new Error(`本地服务退出 (${code})`));
         this.child = null;
         // Only PIDs reported by our trusted utility as its active media children.

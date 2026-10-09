@@ -1,6 +1,7 @@
 import { startServer } from '@mioon/server';
 import { DatabaseSync } from 'node:sqlite';
 import { onMediaProcess } from '@mioon/business/media-processes';
+import { createAgentSettingsClient } from './secret-broker.mjs';
 
 if (!process.parentPort || !process.versions.electron) throw new Error('Backend must run in Electron utilityProcess');
 if (Number(process.versions.node.split('.')[0]) < 24 || typeof DatabaseSync !== 'function') {
@@ -9,13 +10,14 @@ if (Number(process.versions.node.split('.')[0]) < 24 || typeof DatabaseSync !== 
 
 let server, starting = false, closing = false, lastPing = Date.now();
 let initialization;
+const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 onMediaProcess(({ type, pid, kind }) => process.parentPort.postMessage({ type: 'media-process', event: type, pid, kind }));
 async function shutdown() {
   if (closing) return;
   closing = true;
   clearInterval(lease);
   try { await initialization; await server?.close(); }
-  finally { process.parentPort.postMessage({ type: 'stopped' }); process.exit(0); }
+  finally { agentSettings.close(); process.parentPort.postMessage({ type: 'stopped' }); process.exit(0); }
 }
 const lease = setInterval(() => { if (Date.now() - lastPing > 30000) void shutdown(); }, 5000);
 process.parentPort.on('message', ({ data }) => {
@@ -25,7 +27,7 @@ process.parentPort.on('message', ({ data }) => {
   starting = true;
   initialization = (async () => {
     try {
-      server = await startServer({ dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token });
+      server = await startServer({ dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings });
       process.parentPort.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {
@@ -33,6 +35,7 @@ process.parentPort.on('message', ({ data }) => {
       process.parentPort.postMessage({ type: 'failed', code: error.code || 'BACKEND_START_FAILED',
         message: '本地服务启动失败。请检查数据目录是否被其他进程占用，以及应用文件是否完整。' });
       clearInterval(lease);
+      agentSettings.close();
       process.exitCode = 1;
       setImmediate(() => process.exit(1));
     }
