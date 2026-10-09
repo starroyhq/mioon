@@ -15,7 +15,8 @@ const errors = Object.freeze({
   AGENT_CHAT_PROTOCOL_ERROR: [502, '模型返回了不支持或无效的文本流，请检查兼容配置。'],
   AGENT_CHAT_TRUNCATED: [502, '模型连接提前结束，回复可能不完整；可手动重试。'],
   AGENT_CHAT_LIMIT: [413, '聊天达到输入、输出或流量限制，已停止当前请求。'],
-  AGENT_CHAT_TOOLS_UNSUPPORTED: [422, '模型尝试调用工具；当前阶段仅支持文本聊天，未执行任何工具。'],
+  AGENT_CHAT_TOOLS_UNSUPPORTED: [422, '模型请求了未获本轮授权的工具，或超出了只读调用上限；该请求未执行。'],
+  AGENT_CHAT_INSPECTION_UNAVAILABLE: [422, '所选项目的这项资料无法安全读取；没有继续发送模型请求。'],
   AGENT_CHAT_REASONING_UNSUPPORTED: [422, '模型返回了推理或续接数据；当前阶段仅支持非思考文本模式。'],
   AGENT_CHAT_PROVIDER_ERROR: [502, '模型服务在回复过程中报告错误，已保留收到的文本。'],
 });

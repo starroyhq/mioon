@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 export async function chatQaClient({iteration = 'chat'} = {}) {
-  if (!['chat', 'responses', 'durable'].includes(iteration)) throw Error('Unknown synthetic QA iteration');
+  if (!['chat', 'responses', 'durable', 'tools'].includes(iteration)) throw Error('Unknown synthetic QA iteration');
   const root = fileURLToPath(new URL(`../evidence/agent-${iteration}`, import.meta.url)), runtime = path.join(root, 'browser-runtime');
   const fixture = JSON.parse(await readFile(path.join(runtime, 'fixture.json'), 'utf8'));
   const waitFor = async (test, label, timeout = 20000) => { const end = Date.now() + timeout; while (Date.now() < end) { const result = await test(); if (result) return result; await new Promise(resolve => setTimeout(resolve, 80)); } throw Error(`Timed out: ${label}`); };
@@ -19,5 +19,6 @@ export async function chatQaClient({iteration = 'chat'} = {}) {
   const audit = () => request('/audit'), restart = () => request('/restart');
   async function fault({pathname = route(fixture.project.id) + '/runs', kind = 'drop'} = {}) { for (const name of ['fault-observed.json', 'release']) try { await unlink(path.join(runtime, name)); } catch {} await writeFile(path.join(runtime, 'fault.json'), JSON.stringify({method: 'POST', pathname, kind})); }
   const waitFault = () => waitFor(async () => { try { return JSON.parse(await readFile(path.join(runtime, 'fault-observed.json'), 'utf8')); } catch { return false; } }, 'held or dropped chat acknowledgement');
-  return {root, runtime, fixture, waitFor, request, route, snapshot, audit, restart, fault, waitFault, release: () => writeFile(path.join(runtime, 'release'), 'release')};
+  const releaseToolBoundary = boundary => { if (iteration !== 'tools' || !['first', 'answer'].includes(boundary)) throw Error('Invalid synthetic tool boundary'); return writeFile(path.join(runtime, 'mock', `release-${boundary}`), 'release'); };
+  return {root, runtime, fixture, releaseToolBoundary, waitFor, request, route, snapshot, audit, restart, fault, waitFault, release: () => writeFile(path.join(runtime, 'release'), 'release')};
 }

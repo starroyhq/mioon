@@ -4,6 +4,8 @@ import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './co
 import {agentChatError} from './chat-errors.mjs';
 import {createAgentTransport} from './network-policy.mjs';
 import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.mjs';
+import {READ_TOOL_LIMITS} from './read-tool-policy.mjs';
+import {validateReadTools, readToolRequestFields, readToolMessages, chatToolAccumulator, chatToolContinuation} from './tool-wire.mjs';
 
 // These are explicit text-only profiles, not a vendor-wide compatibility claim.
 // Model aliases/edits remain saveable settings, but unsupported named profiles
@@ -25,9 +27,9 @@ export const AGENT_CHAT_PROFILES = freeze({
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const fail = code => { throw agentChatError(code); };
 function unsupported(value) { return value !== null && value !== undefined && value !== '' && !(Array.isArray(value) && value.length === 0); }
-function rejectActiveFeatures(value) {
+function rejectActiveFeatures(value, {allowToolCalls = false} = {}) {
   if (!object(value)) return;
-  if (['tool_calls', 'function_call'].some(key => unsupported(value[key]))) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
+  if (unsupported(value.function_call) || (!allowToolCalls && unsupported(value.tool_calls))) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
   if (['reasoning', 'reasoning_content', 'reasoning_details', 'thinking', 'signature', 'continuation', 'previous_response_id'].some(key => unsupported(value[key]))) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
 }
 function safeUsage(value) {
@@ -43,28 +45,39 @@ function safeUsage(value) {
   if (Object.hasOwn(result, 'total_tokens') && ((result.prompt_tokens || 0) > result.total_tokens || (result.completion_tokens || 0) > result.total_tokens)) fail('AGENT_CHAT_PROTOCOL_ERROR');
   return Object.keys(result).length ? result : undefined;
 }
-export function validateAgentChatConfiguration(configuration, {selfPort} = {}) {
+export function validateAgentChatConfiguration(configuration, {selfPort, readTools} = {}) {
   let config;
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { fail('AGENT_CHAT_VALIDATION'); }
   if (config.protocol !== 'chat_completions') fail('AGENT_CHAT_VALIDATION');
   const profile = AGENT_CHAT_PROFILES[config.presetId];
   if (!profile || (profile.models && !profile.models.includes(config.model))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  validateReadTools(config, readTools);
   return config;
 }
-export function buildAgentChatRequest({configuration, apiKey, messages, selfPort}) {
-  const config = validateAgentChatConfiguration(configuration, {selfPort});
-  const profile = AGENT_CHAT_PROFILES[config.presetId];
+export function buildAgentChatRequest({configuration, apiKey, messages, selfPort, readTools}) {
+  const config = validateAgentChatConfiguration(configuration, {selfPort, readTools});
   if (config.presetId !== 'ollama' && (typeof apiKey !== 'string' || !apiKey)) fail('AGENT_CHAT_KEY_REQUIRED');
   if (apiKey != null && apiKey !== '' && (typeof apiKey !== 'string' || Buffer.byteLength(apiKey) > MAX_AGENT_SECRET_BYTES || !/^[\x21-\x7e]+$/.test(apiKey))) fail('AGENT_CHAT_VALIDATION');
+  return buildAgentChatBody({configuration: config, messages, selfPort, readTools});
+}
+/** Pure key-free request compilation for acceptance/journaling. */
+export function buildAgentChatBody({configuration, messages, selfPort, readTools}) {
+  const config = validateAgentChatConfiguration(configuration, {selfPort, readTools});
+  const profile = AGENT_CHAT_PROFILES[config.presetId];
   if (!Array.isArray(messages) || !messages.length || messages.length > AGENT_CHAT_LIMITS.maxMessages) fail('AGENT_CHAT_VALIDATION');
+  if (readTools) messages = readToolMessages(messages);
   let inputBytes = 0;
   const safeMessages = messages.map(message => {
     if (!exactObject(message, ['role', 'content']) || !['system', 'user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || !message.content.isWellFormed()) fail('AGENT_CHAT_VALIDATION');
     inputBytes += Buffer.byteLength(message.content);
-    if (inputBytes > AGENT_CHAT_LIMITS.maxInputBytes) fail('AGENT_CHAT_LIMIT');
+    if (inputBytes > (readTools ? READ_TOOL_LIMITS.maxContextBytes : AGENT_CHAT_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
     return {role: message.role, content: message.content};
   });
-  const body = JSON.stringify({model: config.model, messages: safeMessages, stream: true, [profile.tokenField]: AGENT_CHAT_LIMITS.maxOutputTokens, ...profile.fields});
+  if (readTools?.phase === 'answer') {
+    safeMessages.push(...chatToolContinuation(readTools));
+    if (Buffer.byteLength(JSON.stringify(safeMessages)) > AGENT_CHAT_LIMITS.maxInputBytes) fail('AGENT_CHAT_LIMIT');
+  }
+  const body = JSON.stringify({model: config.model, messages: safeMessages, stream: true, [profile.tokenField]: AGENT_CHAT_LIMITS.maxOutputTokens, ...profile.fields, ...readToolRequestFields(config, readTools)});
   if (Buffer.byteLength(body) > AGENT_CHAT_LIMITS.maxRequestBytes) fail('AGENT_CHAT_LIMIT');
   return {configuration: config, body};
 }
@@ -74,18 +87,20 @@ export function buildAgentChatRequest({configuration, apiKey, messages, selfPort
  * and a clean framed end; partial text remains partial on every failure. */
 export function createChatCompletionGateway(dependencies = {}) {
   const open = createAgentTransport(dependencies);
-  return async function* streamChatCompletion({configuration, apiKey, messages, signal, selfPort}) {
+  return async function* streamChatCompletion({configuration, apiKey, messages, signal, selfPort, readTools}) {
     if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
-    const request = buildAgentChatRequest({configuration, apiKey, messages, selfPort});
+    const request = buildAgentChatRequest({configuration, apiKey, messages, selfPort, readTools});
     let stream;
     try {
       stream = await open({...request, apiKey, signal, selfPort});
-      let finishReason = null, done = false, outputBytes = 0, usage;
+      let finishReason = null, done = false, outputBytes = 0, usage, content = '', refusal = '';
+      const tools = chatToolAccumulator(), allowToolCalls = readTools?.phase === 'request';
       for await (const frame of parseAgentSse(stream.body, {...AGENT_SSE_LIMITS, signal})) {
         if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
         if (frame.event === 'error') fail('AGENT_CHAT_PROVIDER_ERROR');
         if (frame.event !== 'message') fail('AGENT_CHAT_PROTOCOL_ERROR');
         if (frame.data === '[DONE]') {
+          if (done && tools.present) fail('AGENT_CHAT_PROTOCOL_ERROR');
           if (!finishReason) fail('AGENT_CHAT_TRUNCATED');
           done = true;
           continue;
@@ -105,13 +120,17 @@ export function createChatCompletionGateway(dependencies = {}) {
         if (!value.choices.length) continue; // Optional usage-only/empty chunks.
         const choice = value.choices[0];
         if (!object(choice) || choice.index !== 0 || !object(choice.delta)) fail('AGENT_CHAT_PROTOCOL_ERROR');
-        rejectActiveFeatures(choice); rejectActiveFeatures(choice.delta);
+        rejectActiveFeatures(choice); rejectActiveFeatures(choice.delta, {allowToolCalls});
         const {delta, finish_reason: reason} = choice;
         const knownDelta = ['role', 'content', 'refusal', 'tool_calls', 'function_call', 'reasoning', 'reasoning_content', 'reasoning_details', 'thinking', 'signature'];
         if (Object.keys(delta).some(key => !knownDelta.includes(key))) fail('AGENT_CHAT_PROTOCOL_ERROR');
         if (delta.role != null && delta.role !== 'assistant') fail('AGENT_CHAT_PROTOCOL_ERROR');
         for (const field of ['content', 'refusal']) {
           if (delta[field] != null && (typeof delta[field] !== 'string' || !delta[field].isWellFormed())) fail('AGENT_CHAT_PROTOCOL_ERROR');
+        }
+        if (unsupported(delta.tool_calls)) {
+          if (finishReason) fail('AGENT_CHAT_PROTOCOL_ERROR');
+          tools.add(delta.tool_calls);
         }
         const text = (delta.content || '') + (delta.refusal || '');
         if (text) {
@@ -120,17 +139,22 @@ export function createChatCompletionGateway(dependencies = {}) {
           if (outputBytes > AGENT_CHAT_LIMITS.maxOutputBytes) fail('AGENT_CHAT_LIMIT');
         }
         if (reason != null) {
-          if (['tool_calls', 'function_call'].includes(reason)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
-          if (!['stop', 'length', 'content_filter'].includes(reason) || (finishReason && reason !== finishReason)) fail('AGENT_CHAT_PROTOCOL_ERROR');
+          if (reason === 'function_call' || (reason === 'tool_calls' && !allowToolCalls)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
+          if (!['stop', 'length', 'content_filter', ...(allowToolCalls ? ['tool_calls'] : [])].includes(reason) || (finishReason && (reason !== finishReason || tools.present))) fail('AGENT_CHAT_PROTOCOL_ERROR');
+          if ((tools.present && reason !== 'tool_calls') || (!tools.present && reason === 'tool_calls')) fail('AGENT_CHAT_PROTOCOL_ERROR');
           finishReason = reason;
         }
+        if (allowToolCalls) { content += delta.content || ''; refusal += delta.refusal || ''; }
         if (text) yield {type: 'delta', text};
       }
       if (stream.error()) throw stream.error();
       if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
       if (!done || !finishReason) fail('AGENT_CHAT_TRUNCATED');
       stream.close(); // Release sockets/timers before handing off the terminal event.
-      yield {type: 'done', finishReason, ...(usage ? {usage} : {})};
+      if (tools.present && refusal) fail('AGENT_CHAT_PROTOCOL_ERROR');
+      const toolCall = tools.present ? tools.finish() : null;
+      const providerOutput = toolCall ? {role: 'assistant', content: content || null, tool_calls: [{id: toolCall.id, type: 'function', function: {name: toolCall.name, arguments: toolCall.argumentsJson}}]} : null;
+      yield {type: 'done', finishReason, ...(usage ? {usage} : {}), ...(toolCall ? {toolCall, providerOutput} : {})};
     } catch (error) {
       if (signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
       throw agentChatError(stream?.error()?.code || error?.code);

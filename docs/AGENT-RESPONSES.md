@@ -2,7 +2,7 @@
 
 Date: 2026-10-09 (UTC)
 
-Status: **increment 2B implemented locally; builds, parent aggregate and browser/native acceptance passed; parent review/local commit pending**. Baseline: `3db1a02` (increment 2A). This supersedes the earlier Responses deferral. Both explicit protocols now have independent text adapters; this is still temporary conversation without project access, tools or durable conversations. The same increment replaces modal Agent/settings presentation with the shared right workspace.
+Status: **historical increment 2B, committed as `e2db533`**. Baseline: `3db1a02` (increment 2A). This supersedes the earlier Responses deferral. That stage added independent text adapters and temporary conversation. Later [durability](AGENT-DURABLE.md) and [bounded read tools](AGENT-READ-TOOLS.md) extend it; the acceptance below remains historical. The same increment replaces modal Agent/settings presentation with the shared right workspace.
 
 ## Protocol and credential migration
 

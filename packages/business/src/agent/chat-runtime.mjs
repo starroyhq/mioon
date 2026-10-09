@@ -1,12 +1,16 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {exactObject, parseAgentConfiguration} from './config.mjs';
 import {AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentCredentialResult, sanitizeAgentSettingsResult} from './settings.mjs';
-import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '@mioon/contracts';
-import {streamAgentResponse, validateAgentGatewayConfiguration} from './agent-gateway.mjs';
+import {deriveAgentEndpoint} from '@mioon/contracts';
+import {streamAgentResponse, validateAgentGatewayConfiguration, buildAgentRequest} from './agent-gateway.mjs';
 import {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 export {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 import {agentChatError, safeAgentChatError} from './chat-errors.mjs';
 import {createChatJournal, CHAT_JOURNAL_LIMITS} from './chat-journal.mjs';
+import {createInspectionServices} from '../inspection.mjs';
+import {readToolCapability, readToolPolicy} from './read-tool-policy.mjs';
+import {parseChatConsent, inspectionConsentMatches, selectChatContext} from './chat-context.mjs';
+import {runReadToolWorkflow} from './read-tool-runner.mjs';
 
 export const CHAT_LIMITS = Object.freeze({messageBytes: 8192, responseBytes: 128 * 1024, contextBytes: 32 * 1024,
   historyRuns: 12, projects: 32, runs: 2048, runsPerProject: 16, requests: 2048, active: 4,
@@ -16,7 +20,7 @@ const errors = {
   AGENT_CHAT_SESSION_EXPIRED: [409, '对话服务已重新启动，请重新读取已保存记录；不会自动重新发送。'],
   AGENT_CHAT_CONVERSATION_CONFLICT: [409, '对话已被另一个窗口更新，请重新读取后确认发送。'],
   AGENT_CHAT_SETTINGS_CONFLICT: [409, '连接设置已改变，请重新读取并确认目标和模型。'],
-  AGENT_CHAT_CONSENT_REQUIRED: [409, '请确认当前目标、模型及仅发送输入聊天文字。'],
+  AGENT_CHAT_CONSENT_REQUIRED: [409, '读取范围、连接目标或调用限额已改变，请重新确认本轮发送。'],
   AGENT_CHAT_ACTIVE_RUN: [409, '此项目已有回复正在生成，请等待或停止后再发送。'],
   AGENT_CHAT_IDEMPOTENCY_CONFLICT: [409, '此发送标识已用于不同请求；未重复发送。'],
   AGENT_CHAT_RUN_EXPIRED: [410, '这次对话已离开本次服务的有限缓存；不会自动重新发送。'],
@@ -40,10 +44,10 @@ function parseSend(value) {
   if (!exactObject(value, ['requestId', 'instanceId', 'expectedSettingsRevision', 'expectedConversationRevision', 'message', 'consent']) ||
     !uuid(value.requestId) || !uuid(value.instanceId) || !revision(value.expectedSettingsRevision) || !revision(value.expectedConversationRevision) ||
     typeof value.message !== 'string' || !value.message.trim() || Buffer.byteLength(value.message) > CHAT_LIMITS.messageBytes || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(value.message) ||
-    !exactObject(value.consent, ['destination', 'protocol', 'model', 'context']) || typeof value.consent.destination !== 'string' || value.consent.destination.length > 2080 || typeof value.consent.protocol !== 'string' || !Object.hasOwn(AGENT_PROTOCOLS, value.consent.protocol) || typeof value.consent.model !== 'string' || value.consent.model.length > 200 || value.consent.context !== 'typed_chat_only') throw agentChatError('AGENT_CHAT_VALIDATION');
+    !value.message.isWellFormed()) throw agentChatError('AGENT_CHAT_VALIDATION');
   return {requestId: value.requestId, instanceId: value.instanceId, expectedSettingsRevision: value.expectedSettingsRevision,
     expectedConversationRevision: value.expectedConversationRevision, message: value.message,
-    consent: {destination: value.consent.destination, protocol: value.consent.protocol, model: value.consent.model, context: value.consent.context}};
+    consent: parseChatConsent(value.consent)};
 }
 function bounded(operation, signal, ms = 10000) {
   return new Promise((resolve, reject) => {
@@ -61,11 +65,11 @@ function bounded(operation, signal, ms = 10000) {
   });
 }
 
-/** Durable typed-chat only. SQLite owns all accepted state; only in-flight
+/** Durable typed chat and explicitly approved bounded project inspection. SQLite owns accepted state; only in-flight
  * work, bounded uncommitted text batches and subscribers are process-local.
  * Gateway/limit injection is trusted synthetic QA, never HTTP/env input. */
 export function createChatRuntime({store, agentSettings, gateway = streamAgentResponse, selfPort,
-  mode = 'provider', journalLimits}) {
+  mode = 'provider', journalLimits, inspection = createInspectionServices(store)}) {
   const instanceId = randomUUID(), active = new Map(), watchers = new Map(), publications = [];
   const modeName = mode === 'simulated' ? 'simulated' : 'provider';
   let closing = false, fault = null, subscribers = 0, publishing = false, tail = Promise.resolve();
@@ -87,7 +91,7 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
   function access(operation) {
     try { return operation(); }
     catch (error) {
-      if (['AGENT_CHAT_STORAGE_LIMIT', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY'].includes(error?.code)) throw error;
+      if (['AGENT_CHAT_STORAGE_LIMIT', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY', 'AGENT_CHAT_INSPECTION_UNAVAILABLE', 'AGENT_CHAT_LIMIT', 'AGENT_CHAT_ABORTED'].includes(error?.code)) throw error;
       throw storageFault();
     }
   }
@@ -109,6 +113,10 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       baseUrl: run.configuration.baseUrl, model: run.configuration.model, protocol: run.configuration.protocol},
     createdAt: run.createdAt, updatedAt: run.updatedAt, lastEventId: run.lastEventId,
     modelRequestId: run.modelRequestId, modelRequestState: run.modelRequestState,
+    ...(run.contextMode === 'project_inspection' ? {contextMode: run.contextMode,
+      provenance: {category: run.provenance.category, projectId: run.provenance.projectId, sourceRunIds: [...run.provenance.sourceRunIds]},
+      activity: run.activity.map(item => ({id: item.id, kind: item.kind, ordinal: item.ordinal, status: item.status,
+        ...(item.kind === 'tool' ? {name: item.name, operation: item.operation, ...(item.resultJson !== undefined ? {resultJson: item.resultJson} : {})} : {})}))} : {}),
     ...(run.modelRequestStartedAt ? {modelRequestStartedAt: run.modelRequestStartedAt} : {}),
     ...(run.error ? {error: publicError(run.error)} : {})});
   const publicEvent = event => ({id: event.id, type: event.type, instanceId, threadId: event.threadId,
@@ -176,24 +184,15 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       else if (!state.flushTimer) state.flushTimer = setTimeout(() => flush(state), CHAT_LIMITS.batchMs);
     }
   }
-  function selectedContext(projectId, message) {
-    const selected = [], current = {role: 'user', content: message};
-    let size = Buffer.byteLength(CHAT_SYSTEM_INSTRUCTION) + Buffer.byteLength(message);
-    // Preserve the previous recent-16 context window. Loading older history is
-    // read-only and never widens the automatically selected model context.
-    for (const run of access(() => journal.page(projectId)).runs.reverse()) {
-      if (run.status !== 'completed') continue;
-      const pairBytes = Buffer.byteLength(run.userText) + Buffer.byteLength(run.assistantText);
-      if (selected.length >= CHAT_LIMITS.historyRuns || size + pairBytes > CHAT_LIMITS.contextBytes) break;
-      selected.unshift(run); size += pairBytes;
-    }
-    return [{role: 'system', content: CHAT_SYSTEM_INSTRUCTION}, ...selected.flatMap(run => [
-      {role: 'user', content: run.userText}, {role: 'assistant', content: run.assistantText}]), current];
+  function inspectionAvailable(projectId, configuration) {
+    if (!uuid(projectId)) return false;
+    try { validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), readTools: {phase: 'request'}}); return true; }
+    catch { return false; }
   }
   async function execute(state, configuration, messages, expectedSettingsRevision) {
     let apiKey = null;
     try {
-      validateAgentGatewayConfiguration(configuration, {selfPort: selfPort()});
+      validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), ...(state.execution ? {readTools: {phase: 'request'}} : {})});
       const expected = {expectedRevision: expectedSettingsRevision, configuration};
       let credential;
       try {
@@ -207,6 +206,18 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       if (!live(state)) return;
       apiKey = credential.apiKey; credential = null;
       if (!apiKey && configuration.presetId !== 'ollama') throw agentChatError('AGENT_CHAT_KEY_REQUIRED');
+      if (state.execution) {
+        await runReadToolWorkflow({runId: state.id, projectId: state.projectId, configuration, messages,
+          provenance: state.execution.request.provenance, apiKey, gateway, selfPort: selfPort(), journal, inspection,
+          control: {signal: state.controller.signal, live: () => live(state), commit: access, publish,
+            flush: () => flush(state), text: text => {
+              const bytes = Buffer.byteLength(text);
+              if (state.receivedBytes + bytes > CHAT_LIMITS.responseBytes) throw agentChatError('AGENT_CHAT_LIMIT');
+              state.receivedBytes += bytes; buffer(state, text);
+            }}});
+        if (live(state)) terminal(state, 'completed');
+        return;
+      }
       access(() => journal.dispatch(state.id));
       if (!live(state)) return;
       let done = false;
@@ -251,7 +262,8 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       try { settings = sanitizeAgentSettingsResult(await bounded(() => agentSettings.get({selfPort: selfPort()}), shutdown.signal)); }
       catch { checkOpen(); throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE'); }
       const page = historyPage(projectId);
-      return {...page, scope: 'chat_only', persistence: 'local_database', mode: modeName, settings};
+      return {...page, scope: 'chat_and_project_inspection', persistence: 'local_database', mode: modeName, settings,
+        inspection: readToolCapability(inspectionAvailable(projectId, settings.configuration))};
     },
     send(projectId, value) {
       let input;
@@ -278,10 +290,15 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
         if (settings.revision !== input.expectedSettingsRevision) throw chatRuntimeError('AGENT_CHAT_SETTINGS_CONFLICT');
         const configuration = parseAgentConfiguration(settings.configuration, {selfPort: selfPort()});
         if (input.consent.destination !== deriveAgentEndpoint(configuration) || input.consent.protocol !== configuration.protocol || input.consent.model !== configuration.model) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
-        const messages = selectedContext(projectId, input.message);
-        const saved = access(() => journal.accept({projectId, requestId: input.requestId, fingerprint, instanceId, configuration, messages, consent: input.consent, input}));
+        const useInspection = input.consent.context === 'project_inspection';
+        if (useInspection && !inspectionConsentMatches(input.consent, projectId, inspectionAvailable(projectId, configuration))) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
+        const {messages, sourceRunIds} = selectChatContext(access(() => journal.page(projectId)).runs, input.message, input.consent.context, CHAT_LIMITS);
+        const execution = useInspection ? {version: 1, policy: readToolPolicy(projectId), request: {protocol: configuration.protocol,
+          body: buildAgentRequest({configuration, messages, readTools: {phase: 'request'}, selfPort: selfPort()}).body,
+          context: messages, provenance: {category: 'project_saved_text_metadata', projectId, sourceRunIds}}} : undefined;
+        const saved = access(() => journal.accept({projectId, requestId: input.requestId, fingerprint, instanceId, configuration, messages, consent: input.consent, input, ...(execution ? {execution} : {})}));
         const state = {id: saved.run.id, projectId, controller: new AbortController(), fenced: false,
-          pending: '', pendingBytes: 0, receivedBytes: 0, timer: null, flushTimer: null};
+          pending: '', pendingBytes: 0, receivedBytes: 0, timer: null, flushTimer: null, execution};
         active.set(state.id, state);
         publish(saved.events);
         state.timer = setTimeout(() => { if (live(state)) terminal(state, 'failed', agentChatError('AGENT_CHAT_TIMEOUT')); }, CHAT_LIMITS.runMs);

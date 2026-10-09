@@ -2,10 +2,10 @@
 
 Date: 2026-10-09 (UTC). Baseline: `ce60c97`.
 
-Status: implemented and locally verified; pending independent release review. This increment adds
-non-creating business inspection and external RPC/CLI/MCP discovery. **The in-app
-Agent does not yet invoke these operations or receive project content.** Its
-existing typed-chat consent and durable recovery behavior remain unchanged.
+Status: committed as `8341029` after independent **974/974** tests passed. This
+historical stage added shared inspection without connecting models to it.
+[The following read-tools stage](AGENT-READ-TOOLS.md) adds a separate consented
+in-app execution boundary; the shared operation contracts below are unchanged.
 
 ## Four additive operations
 

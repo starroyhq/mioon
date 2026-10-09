@@ -69,7 +69,7 @@ export async function startServer({
     agentSettings = suppliedAgentSettings || await createAgentSettings({
       persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
     });
-    chatRuntime = createChatRuntime({store, agentSettings, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
+    chatRuntime = createChatRuntime({store, agentSettings, inspection: services.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
     chatHttp = createChatHttp({runtime: chatRuntime});
     const origins = new Set(), hosts = new Set();
     const auth = req => {

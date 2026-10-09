@@ -115,8 +115,9 @@ may contain URL-like strings. `timeline inspect` reports an absent timeline
 without initializing it. By contrast, legacy `project get` and `timeline get`
 retain their original responses and can create an empty timeline on first read;
 their effect metadata is not read-only. See [Agent inspection](AGENT-INSPECTION.md)
-for result contracts and scope boundaries. This increment does not inject
-project context or enable model tool execution in built-in Agent chat.
+for result contracts and scope boundaries. Built-in Agent uses the same reads
+under [separate bounded run consent](AGENT-READ-TOOLS.md); a CLI call does not
+start or authorize an Agent conversation.
 
 The `effects` fields also describe managed-file writes, local subprocesses,
 external/provider I/O and potentially paid new generation. `job reconcile`

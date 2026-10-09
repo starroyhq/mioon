@@ -1,6 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {agentChatError} from './chat-errors.mjs';
 import {exactObject, parseAgentConfiguration} from './config.mjs';
+import {createChatStepJournal, validateInspectionRunFields} from './chat-step-journal.mjs';
 
 export const CHAT_JOURNAL_LIMITS = Object.freeze({runs: 2048, bytes: 64 * 1024 * 1024,
   projects: 32, active: 4, terminalReserveBytes: 2 * 1024 * 1024, pageRuns: 16, replayEvents: 256, replayBytes: 64 * 1024});
@@ -41,6 +42,7 @@ function validateRun(run, identity) {
     if (identity && run[key] !== identity[key]) throw unavailable();
   }
   try { parseAgentConfiguration(run.configuration); } catch { throw unavailable(); }
+  validateInspectionRunFields(run);
   return run;
 }
 
@@ -66,6 +68,7 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
     const accepted = db.prepare('SELECT q.runId,q.projectId,q.threadId,t.projectId AS threadProjectId FROM agent_chat_requests q JOIN agent_chat_threads t ON t.id=q.threadId WHERE q.requestId=?').get(run.requestId);
     if (!accepted || accepted.runId !== run.id || accepted.projectId !== run.projectId || accepted.threadId !== run.threadId ||
       accepted.threadProjectId !== run.projectId || run.threadId !== chatThreadId(run.projectId) || !integer(value.position, 1) || !integer(value.bytes)) throw unavailable();
+    stepJournal.validate(run);
     return run;
   };
   const quota = () => db.prepare('SELECT * FROM agent_chat_quota WHERE id=1').get();
@@ -97,7 +100,7 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
     const run = read(previous);
     if (run.status !== 'running') return {run, revision: revision(run.projectId), events: []};
     const rev = revision(run.projectId) + 1, events = [];
-    let delta = 0;
+    let delta = stepJournal.finish(run, status);
     if (pendingText) {
       run.assistantText += pendingText; run.updatedAt = now(); run.lastEventId++;
       const appended = appendEvent(run, 'delta', rev - 1, pendingText); delta += appended.bytes; events.push(appended.event);
@@ -111,7 +114,14 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
     account(delta, -bounds.terminalReserveBytes);
     return {run, revision: rev, events};
   }
+  const stepJournal = createChatStepJournal({store, readRun: read, row, account, saveRun, appendEvent, revision});
   return Object.freeze({
+    steps: stepJournal.steps,
+    modelDispatch: stepJournal.modelDispatch,
+    modelComplete: stepJournal.modelComplete,
+    toolIntent: stepJournal.toolIntent,
+    captureTool: stepJournal.captureTool,
+    prepareContinuation: stepJournal.prepareContinuation,
     thread,
     request(requestId) { return db.prepare('SELECT projectId,runId,fingerprint FROM agent_chat_requests WHERE requestId=?').get(requestId) || null; },
     get(projectId, id) { return read(db.prepare(`${SELECT_RUN} WHERE projectId=? AND id=?`).get(projectId, id)); },
@@ -155,12 +165,19 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
           validateRun(event.run, {...current, status: event.run?.status});
           if (event.run.lastEventId !== event.id || event.type === 'terminal' && event.run.status === 'running' ||
             event.run.modelRequestId !== current.modelRequestId || event.run.userText !== current.userText ||
-            encode(event.run.configuration) !== encode(current.configuration)) throw unavailable();
+            encode(event.run.configuration) !== encode(current.configuration) || event.run.contextMode !== current.contextMode ||
+            encode(event.run.provenance) !== encode(current.provenance)) throw unavailable();
+          if (current.contextMode === 'project_inspection' && event.run.activity.some((item, index) => {
+            const durable = current.activity[index];
+            return !durable || ['id', 'kind', 'ordinal', 'name', 'operation'].some(key => item[key] !== durable[key]) ||
+              Object.hasOwn(item, 'resultJson') && item.resultJson !== durable.resultJson;
+          })) throw unavailable();
         }
         return event;
       });
     },
-    accept({projectId, requestId, fingerprint, instanceId, configuration, messages, consent, input}) {
+    accept({projectId, requestId, fingerprint, instanceId, configuration, messages, consent, input, execution}) {
+      if (execution === undefined && consent?.context !== 'typed_chat_only') throw unavailable();
       return store.tx(() => {
         let conv = thread(projectId), threadBytes = 0;
         if (!db.prepare('SELECT 1 FROM agent_chat_threads WHERE id=?').get(conv.id)) {
@@ -173,27 +190,31 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS}) {
         const run = {id, requestId, threadId: conv.id, projectId, status: 'running', userText: input.message, assistantText: '',
           configuration: structuredClone(configuration), createdAt, updatedAt: createdAt, lastEventId: 1,
           modelRequestId: randomUUID(), modelRequestState: 'not_started'};
+        const prepared = execution === undefined ? null : stepJournal.initialize(run, execution);
         // Only explicit, narrow fields enter this immutable acceptance record.
         // Credential acquisition happens later and can never write this record.
-        const acceptance = encode({version: 1, instanceId, acceptedAt: createdAt,
+        const acceptedData = {version: 1, instanceId, acceptedAt: createdAt,
           expectedSettingsRevision: input.expectedSettingsRevision, expectedConversationRevision: input.expectedConversationRevision,
-          configuration, consent, messages});
+          configuration, consent, messages, ...(prepared ? {execution: prepared.execution} : {})};
+        if (prepared) stepJournal.validateAcceptance(acceptedData, run);
+        const acceptance = encode(acceptedData);
         const requestBytes = bytes(acceptance) + bytes(fingerprint), data = encode(run), runBytes = bytes(data);
         db.prepare('INSERT INTO agent_chat_requests(requestId,projectId,threadId,runId,fingerprint,acceptance,bytes) VALUES(?,?,?,?,?,?,?)')
           .run(requestId, projectId, conv.id, id, fingerprint, acceptance, requestBytes);
         db.prepare('INSERT INTO agent_chat_runs(id,projectId,threadId,requestId,position,status,data,bytes) VALUES(?,?,?,?,?,?,?,?)')
           .run(id, projectId, conv.id, requestId, conv.nextPosition, run.status, data, runBytes);
+        const stepBytes = prepared ? prepared.insert() : 0;
         const rev = conv.revision + 1;
         db.prepare('UPDATE agent_chat_threads SET revision=?,nextPosition=? WHERE id=?').run(rev, conv.nextPosition + 1, conv.id);
         const appended = appendEvent(run, 'snapshot', rev);
-        account(threadBytes + requestBytes + runBytes + appended.bytes, bounds.terminalReserveBytes, 1);
-        return {run, revision: rev, events: [appended.event]};
+        account(threadBytes + requestBytes + runBytes + appended.bytes + stepBytes, bounds.terminalReserveBytes, 1);
+        return {run, ...(prepared ? {step: prepared.step} : {}), revision: rev, events: [appended.event]};
       });
     },
     dispatch(runId) {
       return store.tx(() => {
         const previous = row(runId), run = read(previous);
-        if (!run || run.status !== 'running' || run.modelRequestState !== 'not_started') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
+        if (!run || run.contextMode === 'project_inspection' || run.status !== 'running' || run.modelRequestState !== 'not_started') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
         // Conservative local boundary BEFORE calling the gateway. This is not
         // evidence that a socket opened, the provider accepted, or billing began.
         run.modelRequestState = 'dispatch_started'; run.modelRequestStartedAt = now();

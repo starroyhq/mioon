@@ -64,8 +64,8 @@ These RPC inputs select a project using the existing authenticated local
 connection. The exported `inspectionArgumentSchemas` separately omit `projectId`
 and all authority fields for callers that bind scope outside the arguments;
 `inspectionSchemas` adds only the RPC project ID. Neither schemas nor inspection
-metadata grant access. No model-facing tool dispatcher or project-context
-injection is added to built-in Agent chat by this increment.
+metadata grant access. Built-in Agent inspection uses a separate explicit
+run-consent boundary, described in [bounded Agent reads](AGENT-READ-TOOLS.md).
 
 Legacy `project.get` and `timeline.get` retain their existing responses and can
 create the default empty timeline on first access. They are not read-only. Use
@@ -185,3 +185,27 @@ retry permission. Exact stable-request replay behavior is unchanged.
 Zero references means text input; one approved image means first-frame input. Each model controls which mode, MIME types, dimensions, aspect ratios, durations and advanced parameters are accepted. Unsupported inputs fail before creating a job. Seed is not accepted for Ark/Veo/MiniMax/Vidu in this version; inspect each model's `parameters` array.
 
 If an actual downloaded live result differs from the requested ratio by more than 1%, the backend retains the existing task and downloaded file privately, sets `phase=output_review_required` with `OUTPUT_ASPECT_RATIO_MISMATCH`, and publishes no version. Its transport-compatible `status=cancelled` means local publication/waiting is paused, not that the provider failed or was cancelled. Do not submit a replacement or use `job.retry`; inspect/reconcile the same existing task.
+
+## Agent chat and bounded project reads
+
+The authenticated `/api/agent/chat/:projectId` routes retain their snapshot,
+run, Stop, SSE, request-ID lookup and history semantics. Snapshot scope is now
+`chat_and_project_inspection`; its `inspection` capability includes availability,
+schema version, catalog hash and the fixed two-model-request/one-read/8-KiB limits.
+No view/lookup/history route starts inference or inspection.
+
+The existing send envelope remains strict: `requestId`, `instanceId`,
+`expectedSettingsRevision`, `expectedConversationRevision`, `message`, `consent`.
+Typed consent is unchanged: `{destination,protocol,model,context:'typed_chat_only'}`.
+Project-read consent additionally pins `context:'project_inspection'`, `projectId`,
+`schemaVersion`, `catalogHash`, `maxModelRequests`, `maxToolCalls` and
+`maxResultBytes` from the current capability. Extra authority fields are rejected.
+No HTTP endpoint accepts a branded scope, model step ID or executable tool grant.
+
+Inspection runs expose immutable `contextMode`/`provenance` and at most three
+projected `activity` entries. Existing snapshot/delta/terminal SSE types are
+unchanged; step transitions publish committed snapshots. Exact internal model
+bodies, provider output artifacts and credentials are not added to public run
+DTOs. Tool results are bounded inert JSON strings. Older typed runs remain
+readable and typed send requests remain compatible. Full execution/recovery,
+privacy and protocol contract: [Agent read tools](AGENT-READ-TOOLS.md).

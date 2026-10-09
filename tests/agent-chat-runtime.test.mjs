@@ -39,7 +39,7 @@ test('chat is project-pinned, pure typed context, SQLite-durable, and one gatewa
   const f = await fixture(t);
   await assert.rejects(f.runtime.snapshot('missing'), {code: 'AGENT_CHAT_NOT_FOUND'});
   const snapshot = await f.runtime.snapshot('p1');
-  assert.equal(snapshot.scope, 'chat_only'); assert.equal(snapshot.persistence, 'local_database'); assert.equal(snapshot.mode, 'simulated');
+  assert.equal(snapshot.scope, 'chat_and_project_inspection'); assert.equal(snapshot.persistence, 'local_database'); assert.equal(snapshot.mode, 'simulated');
   assert.equal(snapshot.settings.secret.configured, true); assert.equal(JSON.stringify(snapshot).includes(SECRET), false);
   const input = await f.input(); const sent = await f.runtime.send('p1', input); const complete = await finish(f, sent);
   assert.equal(complete.run.status, 'completed'); assert.equal(complete.revision, 2); assert.equal(f.calls.length, 1);

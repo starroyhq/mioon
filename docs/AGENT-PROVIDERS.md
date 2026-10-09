@@ -2,11 +2,11 @@
 
 Research date: 2026-10-09 (UTC)
 
-Status: **official-documentation research; catalog/settings implemented locally, live compatibility unverified**. No provider request, account-access check, real credentials or live compatibility test was performed. The settings UI uses these presets. The CC-only text adapter has local mock/runtime evidence in increment 2A; the separate Responses adapter is implemented locally in 2B with profile fixtures; local synthetic runtime acceptance passed; live vendor compatibility remains unverified. See [Responses profiles and limitations](AGENT-RESPONSES.md). Scoped Agent execution is not delivered. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md) and [iteration plan](AGENT-ITERATION.md).
+Status: **official-documentation research; catalog/settings implemented locally, live compatibility unverified**. No provider request, account-access check, real credentials or live compatibility test was performed. The settings UI uses these presets. The CC-only text adapter has local mock/runtime evidence in increment 2A; the separate Responses adapter is implemented locally in 2B with profile fixtures; local synthetic runtime acceptance passed; live vendor compatibility remains unverified. See [Responses profiles and limitations](AGENT-RESPONSES.md). [Bounded read-tool adapters](AGENT-READ-TOOLS.md) now have profile-specific synthetic fixtures; actual release acceptance is tracked there. Editing/generation execution remains planned. See [settings acceptance](AGENT-SETTINGS-ACCEPTANCE.md) and [iteration plan](AGENT-ITERATION.md).
 
 ## Compatibility and status labels
 
-Current approved scope covers both Chat Completions and Responses in promptly consecutive adapter increments. The first transport baseline is text-only Chat Completions; Responses support must be independently documented/tested and explicitly selected. JSON function tools follow only after scoped execution is implemented. Both protocols use application-managed history and streaming with their own event semantics. A preset is a starting configuration, not a promise that every model or endpoint from that vendor implements the same protocol.
+Current scope covers independently selected Chat Completions and Responses adapters. Both now have bounded read-tool mock fixtures using the shared scoped inspection services; release evidence and exact limits are recorded in [read-tool acceptance](AGENT-READ-TOOLS.md). Both protocols use application-managed history and streaming with their own event semantics. A preset is a starting configuration, not a promise that every model or endpoint from that vendor implements the same protocol.
 
 Track these states separately:
 
@@ -138,7 +138,7 @@ Sources: [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility
 
 - No invented endpoint, model, account or credential default.
 - User explicitly supplies the remote HTTPS base and model. Apply the same strict network and secret-binding rules as named providers.
-- Baseline supports only the documented Chat Completions profile. Do not auto-discover another API by sending project data to speculative paths.
+- The explicitly selected Chat Completions or Responses profile is used, with separate strict text/read-tool contracts. Do not auto-discover another API by sending project data to speculative paths.
 - Unsupported reasoning, schema, response or streaming shapes produce an actionable compatibility error. Never parse text into executable commands as a fallback.
 - Provider/model capability tests are explicit and can bill. The app must disclose the exact destination and use synthetic context.
 

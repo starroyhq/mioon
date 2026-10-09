@@ -115,6 +115,41 @@ export function openStore(root,{lock=true}={}){
  ${['assets','shots','nodes','edges','jobs','versions','exports','timelines'].map(table=>`CREATE INDEX IF NOT EXISTS inspection_${table}_project_id ON ${table}(projectId,id);`).join('\n')}
  INSERT OR IGNORE INTO schema_version VALUES(7);
  COMMIT;`);
+ // Bounded Agent inspection steps are additive; legacy chat rows remain intact.
+ // Payloads are write-once and retained independently from their progress state.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS agent_chat_steps(
+ id TEXT PRIMARY KEY,runId TEXT NOT NULL REFERENCES agent_chat_runs(id),
+ projectId TEXT NOT NULL REFERENCES projects(id),position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 3),
+ kind TEXT NOT NULL CHECK(kind IN ('model','tool')),
+ status TEXT NOT NULL CHECK(status IN ('not_started','intent','dispatch_started','completed','unknown')),
+ data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=1048576),
+ bytes INTEGER NOT NULL CHECK(bytes>=0),UNIQUE(runId,position));
+ CREATE TRIGGER IF NOT EXISTS immutable_agent_chat_step_payload BEFORE UPDATE ON agent_chat_steps
+ WHEN NEW.id IS NOT OLD.id OR NEW.runId IS NOT OLD.runId OR NEW.projectId IS NOT OLD.projectId OR
+ NEW.position IS NOT OLD.position OR NEW.kind IS NOT OLD.kind OR
+ json_extract(NEW.data,'$.id') IS NOT json_extract(OLD.data,'$.id') OR
+ json_extract(NEW.data,'$.runId') IS NOT json_extract(OLD.data,'$.runId') OR
+ json_extract(NEW.data,'$.projectId') IS NOT json_extract(OLD.data,'$.projectId') OR
+ json_extract(NEW.data,'$.position') IS NOT json_extract(OLD.data,'$.position') OR
+ json_extract(NEW.data,'$.kind') IS NOT json_extract(OLD.data,'$.kind') OR
+ json_extract(NEW.data,'$.ordinal') IS NOT json_extract(OLD.data,'$.ordinal') OR
+ json_extract(NEW.data,'$.createdAt') IS NOT json_extract(OLD.data,'$.createdAt') OR
+ json_extract(NEW.data,'$.requestId') IS NOT json_extract(OLD.data,'$.requestId') OR
+ json_extract(NEW.data,'$.request') IS NOT json_extract(OLD.data,'$.request') OR
+ json_extract(NEW.data,'$.modelStepId') IS NOT json_extract(OLD.data,'$.modelStepId') OR
+ json_extract(NEW.data,'$.intent') IS NOT json_extract(OLD.data,'$.intent') OR
+ (json_type(OLD.data,'$.output') IS NOT NULL AND json_extract(NEW.data,'$.output') IS NOT json_extract(OLD.data,'$.output')) OR
+ (json_type(OLD.data,'$.observation') IS NOT NULL AND json_extract(NEW.data,'$.observation') IS NOT json_extract(OLD.data,'$.observation'))
+ BEGIN SELECT RAISE(ABORT,'agent step payloads are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS retain_agent_chat_steps BEFORE DELETE ON agent_chat_steps
+ BEGIN SELECT RAISE(ABORT,'agent steps must be retained');END;
+ CREATE TRIGGER IF NOT EXISTS immutable_agent_chat_inspection_context BEFORE UPDATE ON agent_chat_runs
+ WHEN json_extract(NEW.data,'$.contextMode') IS NOT json_extract(OLD.data,'$.contextMode') OR
+ json_extract(NEW.data,'$.provenance') IS NOT json_extract(OLD.data,'$.provenance')
+ BEGIN SELECT RAISE(ABORT,'accepted inspection context is immutable');END;
+ INSERT OR IGNORE INTO schema_version VALUES(8);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

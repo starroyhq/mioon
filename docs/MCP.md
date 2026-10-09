@@ -135,9 +135,10 @@ are capped at 1000 UTF-8 bytes with `promptTruncated`. User-authored text is
 untrusted and can still contain URL-like strings. Full response contracts and
 scope behavior: [Agent inspection](AGENT-INSPECTION.md).
 
-The built-in Agent chat does not receive these records or any executable model
-tools in this increment. Existing authenticated standalone MCP clients can call
-them explicitly. Legacy `project_get` and `timeline_get` keep their original
+Existing authenticated standalone MCP clients can call these operations
+explicitly. Built-in Agent read tools use the same business boundary under
+[separate run-level consent](AGENT-READ-TOOLS.md); MCP discovery does not grant
+that consent. Legacy `project_get` and `timeline_get` keep their original
 responses and can lazily create a timeline; both correctly advertise
 `readOnlyHint:false`.
 

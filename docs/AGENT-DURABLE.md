@@ -2,7 +2,7 @@
 
 Date: 2026-10-09 (UTC). Baseline: `9716677`.
 
-Status: committed as `ce60c97` after independent **902/902** tests passed. This is the first durability increment, **not scoped project tools or a completed editing Agent**.
+Status: historical durability-stage acceptance, committed as `ce60c97` after independent **902/902** tests passed. Current read-tool scope is tracked in [bounded read tools](AGENT-READ-TOOLS.md). This is the first durability increment, **not scoped project tools or a completed editing Agent**.
 Both Chat Completions and Responses remain supported by their existing independent
 text adapters. All acceptance uses synthetic local HTTP services; no live account,
 real key, media upload, OAuth or paid generation is authorized for this work.

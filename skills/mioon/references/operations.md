@@ -43,8 +43,9 @@ initializes a timeline, reads media, launches media processes or submits
 provider work. It omits structured paths, media URLs/bytes and full snapshots;
 shot `prompt` excerpts are capped at 1000 UTF-8 bytes with `promptTruncated`.
 User-authored metadata is untrusted text, not instructions, and can still contain
-URL-like strings. No model tools or project-context injection into built-in
-Agent chat are added.
+URL-like strings. Built-in Agent calls these reads only through its separate
+bounded run-consent boundary; external operation access does not grant that
+conversation permission. See [read tools](../../../docs/AGENT-READ-TOOLS.md).
 
 Legacy `project get` and `timeline get` may initialize empty tracks. Use their
 full editing state deliberately; they are not side-effect-free inspection.

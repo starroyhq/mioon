@@ -2,7 +2,7 @@
 
 Date: 2026-10-09 (UTC)
 Baseline: `ed23ef7` (panel release)
-Status: local settings-only implementation; independent parent regression passed; local commit pending.
+Status: historical settings-only acceptance, committed as `66a0193` after independent parent regression passed. Current conversation/tool scope is tracked in [bounded read tools](AGENT-READ-TOOLS.md).
 
 ## Delivered scope
 
