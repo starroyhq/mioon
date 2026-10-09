@@ -43,6 +43,19 @@ Assets are imported as base64 bytes, never arbitrary machine file paths or remot
 - Result versions have a database immutability trigger, unique job ID and immutable files; first output auto-selects only if no selection exists
 - export.create freezes shot order and chosen version IDs/hashes. Later edits do not change that export
 
+## Image-node generation inputs
+
+Use `reference.attach` with `{projectId,sourceNodeId,targetShotId,expectedSourceRevision,expectedShotRevision,requestId,role:'first_frame'}` to connect a managed image node to a shot, returning `{edge,shot}`. Use `reference.detach` with `{projectId,edgeId,expectedShotRevision,requestId}` to remove it, returning `{edge,shot,detached:true}`. The operations are atomic and share strict schemas across HTTP, CLI and MCP.
+
+- One first-frame connection per shot, same-project endpoints and an existing managed PNG/JPEG/WebP image only.
+- Clear and save a manual image choice explicitly before attaching (`REFERENCE_SELECTION_EXISTS`). Connected images cannot be silently changed via `shot.update` or `edge.delete` (`REFERENCE_CONNECTED`); detach first.
+- Source node and shot revisions must be current. Detach checks the shot revision. Source image IDs cannot be edited through `node.update`.
+- Preserve the exact request after an uncertain result. Replay returns its saved original response even after later edits or restart; changed reuse conflicts. A repeated attach with a new ID and current revisions returns the existing edge without duplicates.
+- Detach preserves the managed asset, source node, generated versions and immutable in-flight snapshots. New generation snapshots also record the typed connection provenance.
+- `edge.create` and all historical untyped edges remain decorative. They never supply generation inputs. No general graph execution or character/style consistency is implemented.
+
+Model, MIME/dimension/ratio, budget and approved-media validation remain authoritative at generation time. Connecting an image makes no provider call. See [the full reference contract](CONTRACT.md#typed-first-frame-connections).
+
 ## Multitrack timeline (v2)
 
 `project.get` additively includes a persistent `timeline`. `timeline.get`

@@ -88,6 +88,20 @@ cat ./request.json | video-workbench generation submit --input -
 
 The command covers projects, assets, shots, canvas nodes/edges, providers, generation, jobs, versions, timeline tracks/clips, and exports automatically from the contracts. `--input-file` and `--input -` read only explicitly requested client-side input. `--input` and `--input-file` are mutually exclusive. Unknown fields, including nested fields, are rejected. `--json` may be specified but JSON is already the default.
 
+### Connect a real first-frame input
+
+Visual `edge create` links never feed generation. Use the shared typed operations instead:
+
+```sh
+video-workbench schema reference.attach
+video-workbench reference attach --input '{"projectId":"PROJECT_UUID","sourceNodeId":"IMAGE_NODE_UUID","targetShotId":"SHOT_UUID","expectedSourceRevision":1,"expectedShotRevision":1,"requestId":"first-frame-attach-001","role":"first_frame"}'
+video-workbench reference detach --input '{"projectId":"PROJECT_UUID","edgeId":"EDGE_UUID","expectedShotRevision":2,"requestId":"first-frame-detach-001"}'
+```
+
+Replace placeholders and revisions with the current `project get` results. The source must be an image node referencing an imported managed asset in the same project. A shot with a manual reference selection requires an explicit clear/save first; never automatically discard a user's choice. One first-frame connection is supported. Connected references cannot be changed with `shot update` or deleted with `edge delete`; use the revision-safe detach. Detach preserves the source image and historical generation snapshots. Source-node assets cannot be replaced through `node update`.
+
+Attach/detach both need a caller-owned request ID. After an uncertain response, replay the exact original operation and input, including its original revisions. The response is the original saved result, not a fresh project read, even after the connection was removed or the backend restarted. Refresh before another edit. MCP exposes the identical `reference_attach` and `reference_detach` schemas and behavior. Attaching neither generates nor uploads media; per-model support and live authorization are checked when submitting generation.
+
 ## Safe mock workflow
 
 The following commands show the contract. Replace UUID placeholders with IDs returned by previous commands. Preserve each complete intended mutation request in a JSON file before submitting it.

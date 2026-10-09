@@ -24,6 +24,7 @@ import { generationSelection, generationInputIssue, providerAvailabilityIssue, i
 import { pendingForProject, prepareSubmission, clearPending, reconcilePending } from './submissions.js';
 import { timelineHistoryState } from './timeline-history.js';
 import { timelineHistoryActionForKey } from './timeline-keyboard.js';
+import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, isReferenceEdge, referenceForShot, isReferenceOperation, hasPendingReference, isImageReferenceNode, referenceAttachIssue, canvasEdge } from './reference-connections.js';
 
 const emptyData = { project: null, assets: [], shots: [], nodes: [], edges: [], jobs: [], versions: [], exports: [], timeline: null, timelineHistory: null };
 function readableError(error) {
@@ -108,6 +109,8 @@ export default function App() {
   const [sequenceDrag, setSequenceDrag] = useState(null);
   useEffect(() => { setSequenceOpen(data.shots.length > 0); }, [data.project?.id, data.shots.length]);
   const [pending, setPending] = useState([]);
+  const referencePending = hasPendingReference(pending);
+  const referenceBusy = Boolean(busy['reference:mutation'] || referencePending);
   const [reconcileIds, setReconcileIds] = useState({});
   const fileInput = useRef(null);
   const currentProject = useRef(null);
@@ -127,7 +130,7 @@ export default function App() {
   }, [notify]);
   const selectProject = useCallback(async (id, initial = false) => {
     if (!initial && inspectorDirty && !await confirm('当前镜头有未保存的修改。放弃修改并打开另一个项目？')) return;
-    currentProject.current = id; setShowProjects(false); setSelectedId(null); setSelectedClipId(null); setQuickAssetId(null); setPlayhead(0); setData(emptyData); setNodes([]); setLoading(true);
+    currentProject.current = id; setPending(pendingForProject(id)); setShowProjects(false); setSelectedId(null); setSelectedClipId(null); setQuickAssetId(null); setPlayhead(0); setData(emptyData); setNodes([]); setLoading(true);
     const url = new URL(window.location.href); url.searchParams.set('project', id); window.history.replaceState({}, '', url); localStorage.setItem('frame.project', id);
     const next = await refresh(id, false); setLoading(false);
     const first = next?.shots?.length ? [...next.shots].sort((a, b) => a.orderIndex - b.orderIndex)[0] : next?.nodes?.find(n => n.type !== 'text') || next?.nodes?.[0];
@@ -157,7 +160,7 @@ export default function App() {
   async function run(key, operation, input, message) {
     if (busyRef.current.has(key)) return null;
     busyRef.current.add(key); setBusy(b => ({ ...b, [key]: true }));
-    const durable = ['generation.submit', 'job.retry', 'export.create'].includes(operation) || operation.startsWith('timeline.');
+    const durable = ['generation.submit', 'job.retry', 'export.create'].includes(operation) || operation.startsWith('timeline.') || isReferenceOperation(operation);
     const projectId = currentProject.current;
     const timelineMutation = operation.startsWith('timeline.') && operation !== 'timeline.render';
     const invalidateHistory = () => {
@@ -174,17 +177,17 @@ export default function App() {
         stored = prepareSubmission({ projectId, key, operation, input, createdAt: new Date().toISOString() });
         // Reuse the exact request, including expectedRevision and parameters, after a lost response.
         input = stored.input; operation = stored.operation;
-        setPending(pendingForProject(projectId));
+        if (currentProject.current === projectId) setPending(pendingForProject(projectId));
       }
       invalidateHistory();
       dispatched = true;
       const result = await rpc(operation, input);
       invalidateHistory();
-      if (durable) { clearPending(projectId, key); setPending(pendingForProject(projectId)); }
+      if (durable) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
       await refresh(); if (message) notify(message); return result;
     } catch (e) {
       if (dispatched) invalidateHistory();
-      if (durable && stored && e.definitive) { clearPending(projectId, key); setPending(pendingForProject(projectId)); }
+      if (durable && stored && e.definitive) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
       if (e.code === 'UNAUTHORIZED') setAuth(false);
       if (durable && stored && dispatched && !e.definitive) { notify('连接中断，提交结果尚未确认。请求已保留，请在任务面板恢复同一请求；不会生成新的提交编号。', 'error'); setShowJobs(true); }
       else notify(readableError(e), 'error');
@@ -197,6 +200,7 @@ export default function App() {
     setSelectedClipId(null); setQuickAssetId(null); setSelectedId(id); setTab(nextTab); setInspectorCollapsed(false); setMobilePanel('inspector'); return true;
   }
   function checkGeneration(shot, provider, model, inputMode) {
+    if (referenceWorkBlocked()) return false;
     const issue = generationInputIssue(shot, provider, model, dataRef.current.assets, inputMode) || providerAvailabilityIssue(provider);
     if (issue) { notify(issue, 'error'); return false; }
     if (dataRef.current.jobs.some(j => j.shotId === shot.id && j.status === 'submission_unknown')) { notify('此镜头存在状态未知的提交，服务商可能已经计费。请先核实任务状态，不要重复提交。', 'error'); setShowJobs(true); return false; }
@@ -266,7 +270,10 @@ export default function App() {
     } catch (e) { notify(`${done ? `已导入 ${done} 个素材。` : ''}${readableError(e)}`, 'error'); }
     finally { await refresh(projectId); busyRef.current.delete('import'); setBusy(b => ({ ...b, import: false })); if (fileInput.current) fileInput.current.value = ''; }
   }
-  async function saveShot(shotId, expectedRevision, patch) { return run(`save:${shotId}`, 'shot.update', { shotId, expectedRevision, patch }, '镜头已保存'); }
+  async function saveShot(shotId, expectedRevision, patch) {
+    if (referenceWorkBlocked()) return null;
+    return run(`save:${shotId}`, 'shot.update', { shotId, expectedRevision, patch }, '镜头已保存');
+  }
   async function saveNode(nodeId, expectedRevision, patch) { return run(`save:${nodeId}`, 'node.update', { nodeId, expectedRevision, patch }, '节点已保存'); }
   async function savePosition(_, node) {
     const snapshot = dataRef.current;
@@ -274,9 +281,44 @@ export default function App() {
     if (record) await run(`position:${node.id}`, snapshot.shots.some(s => s.id === node.id) ? 'shot.update' : 'node.update', { [snapshot.shots.some(s => s.id === node.id) ? 'shotId' : 'nodeId']: record.id, expectedRevision: record.revision, patch: { position: node.position } });
     dragging.current = false;
   }
+  function referenceWorkBlocked() {
+    if (busyRef.current.has('reference:mutation')) { notify('首帧连接正在同步，请稍候。', 'warning'); return true; }
+    if (hasPendingReference(pendingForProject(currentProject.current))) { notify('首帧连接的结果尚未确认。请先在任务面板恢复同一请求，再保存或生成。', 'warning'); setShowJobs(true); return true; }
+    return false;
+  }
+  async function attachReference(sourceNodeId, targetShotId) {
+    if (referenceWorkBlocked()) return null;
+    if (inspectorDirty) { notify('请先保存或放弃当前面板的修改，再连接首帧。你的输入仍保留。', 'warning'); return null; }
+    const state = dataRef.current;
+    const source = state.nodes.find(node => node.id === sourceNodeId);
+    const shot = state.shots.find(item => item.id === targetShotId);
+    const issue = referenceAttachIssue({ source, shot, assets: state.assets, edges: state.edges, projectId: state.project?.id });
+    if (issue) { notify(issue, 'warning'); return null; }
+    return run('reference:mutation', 'reference.attach', { projectId: state.project.id, sourceNodeId, targetShotId, expectedSourceRevision: source.revision, expectedShotRevision: shot.revision, requestId: requestId(), role: 'first_frame' }, '已连接首帧参考图。生成将使用这张图片。');
+  }
+  async function detachReference(edgeId) {
+    if (referenceWorkBlocked()) return null;
+    if (inspectorDirty) { notify('请先保存或放弃当前面板的修改，再断开首帧。你的输入仍保留。', 'warning'); return null; }
+    const state = dataRef.current;
+    const edge = state.edges.find(item => item.id === edgeId && isReferenceEdge(item));
+    const shot = state.shots.find(item => item.id === edge?.target);
+    if (!edge || !shot) { await refresh(); return null; }
+    if (!await confirm(`断开「${shot.title}」的首帧参考连接？这会清除此连接设置的参考图，原始素材与图片节点会保留。`)) return null;
+    if (currentProject.current !== state.project.id || referenceWorkBlocked()) return null;
+    return run('reference:mutation', 'reference.detach', { projectId: state.project.id, edgeId, expectedShotRevision: shot.revision, requestId: requestId() }, '首帧连接已断开，原始素材与图片节点已保留。');
+  }
   async function connect(connection) {
     if (connection.source === connection.target) return notify('请选择两个不同的节点。', 'warning');
-    await run(`edge:${connection.source}:${connection.target}`, 'edge.create', { projectId: data.project.id, source: connection.source, target: connection.target });
+    if (connection.sourceHandle === REFERENCE_SOURCE_HANDLE || connection.targetHandle === REFERENCE_TARGET_HANDLE) {
+      if (connection.sourceHandle !== REFERENCE_SOURCE_HANDLE || connection.targetHandle !== REFERENCE_TARGET_HANDLE) return notify('请将图片的绿色首帧输出连接到镜头的绿色首帧输入。灰色端口仅用于视觉连线。', 'warning');
+      return attachReference(connection.source, connection.target);
+    }
+    await run(`edge:${connection.source}:${connection.target}`, 'edge.create', { projectId: dataRef.current.project.id, source: connection.source, target: connection.target }, '已添加视觉连线，不会改变生成输入。');
+  }
+  function beforeDeleteEdges({ edges: removed }) {
+    const selected = removed.filter(edge => edge.id === selectedEdgeId);
+    if (selected.some(edge => isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id)))) notify('首帧参考需要在镜头设置中明确断开；选中连线后可打开目标镜头。', 'warning');
+    return Promise.resolve({ nodes: [], edges: selected.filter(edge => !isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id))) });
   }
   async function selectVersion(shot, versionId) { return run(`version:${shot.id}`, 'version.select', { shotId: shot.id, versionId, expectedRevision: shot.revision }, '已更新当前选用版本'); }
   async function reorder(id, targetIndex) {
@@ -369,10 +411,11 @@ export default function App() {
   const orderedExports = [...data.exports].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   useEffect(() => {
     if (dragging.current) return;
-    const next = [...data.nodes.map(record => ({ id: record.id, type: record.type, position: record.position, selected: record.id === selectedId, data: { record, asset: data.assets.find(a => a.id === record.assetId) } })), ...sortedShots.map((record, index) => ({ id: record.id, type: 'shot', position: record.position, selected: record.id === selectedId, data: { record, index, asset: data.assets.find(a => a.id === record.referenceAssetIds?.[0]), version: data.versions.find(v => v.id === record.selectedVersionId), versionCount: data.versions.filter(v => v.shotId === record.id).length, job: jobs.find(j => j.shotId === record.id), busy: busy[`generate:${record.id}`], generationLabel: generationSelection(providers, generationOptions[record.id], record).provider?.name, onInspect: inspect, onGenerate: async shot => { if (!await inspect(shot.id)) return; if (shot.id === selectedId && inspectorDirty) { notify('请先在右侧保存镜头修改，再生成。', 'warning'); return; } generate(shot); } } }))];
+    const next = [...data.nodes.map(record => ({ id: record.id, type: record.type, position: record.position, selected: record.id === selectedId, data: { record, asset: data.assets.find(a => a.id === record.assetId), canReference: isImageReferenceNode(record, data.assets, data.project?.id), referenceBusy, onInspect: inspect } })), ...sortedShots.map((record, index) => ({ id: record.id, type: 'shot', position: record.position, selected: record.id === selectedId, data: { record, index, referenceConnection: referenceForShot(data.edges, record.id), referenceSourceLabel: data.nodes.find(node => node.id === referenceForShot(data.edges, record.id)?.source)?.label || data.assets.find(asset => asset.id === referenceForShot(data.edges, record.id)?.sourceAssetId)?.name || '图片节点', referenceBusy, asset: data.assets.find(a => a.id === record.referenceAssetIds?.[0]), version: data.versions.find(v => v.id === record.selectedVersionId), versionCount: data.versions.filter(v => v.shotId === record.id).length, job: jobs.find(j => j.shotId === record.id), busy: busy[`generate:${record.id}`], generationLabel: generationSelection(providers, generationOptions[record.id], record).provider?.name, onInspect: inspect, onGenerate: async shot => { if (!await inspect(shot.id)) return; if (shot.id === selectedId && inspectorDirty) { notify('请先在右侧保存镜头修改，再生成。', 'warning'); return; } generate(shot); } } }))];
     setNodes(next);
-  }, [data, sortedShots, selectedId, jobs, busy, inspectorDirty, providers, generationOptions]);
-  const edges = useMemo(() => data.edges.map(e => ({ id: e.id, source: e.source, target: e.target, selected: e.id === selectedEdgeId, type: 'smoothstep', animated: false, style: { stroke: '#777d58', strokeWidth: 1.5 }, interactionWidth: 20 })), [data.edges, selectedEdgeId]);
+  }, [data, sortedShots, selectedId, jobs, busy, inspectorDirty, providers, generationOptions, referenceBusy]);
+  const edges = useMemo(() => data.edges.map(edge => canvasEdge(edge, edge.id === selectedEdgeId)), [data.edges, selectedEdgeId]);
+  const selectedEdge = data.edges.find(edge => edge.id === selectedEdgeId);
   const visibleAssets = data.assets.filter(a => (assetFilter === 'all' || a.mimeType?.startsWith(`${assetFilter}/`)) && a.name.toLowerCase().includes(assetSearch.toLowerCase()));
   if (auth === false) return <Login onLogin={boot} />;
   if (auth === null || auth === 'error') return <div className="boot-page"><div className="brand"><span className="brand-mark"><Icon name="film" /></span>frame.</div>{auth === null ? <><span className="spinner" /><p>正在连接你的工作区…</p></> : <><h2>暂时无法连接工作台</h2><p>{toast?.message || '请确认服务器已启动。'}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />重新连接</Button></>}</div>;
@@ -383,7 +426,9 @@ export default function App() {
     {assetsCollapsed && <Button variant="ghost" className="panel-reopen assets-reopen" data-testid="reopen-assets" onClick={() => setAssetsCollapsed(false)}><Icon name="folder" size={14} /><span>01 素材库</span><Icon name="arrow" size={12} /></Button>}
     <AssetLibrary assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed} onCollapse={() => setAssetsCollapsed(true)} project={data.project} />
     <Tabs value={workspaceMode} onValueChange={setWorkspaceMode} className="canvas-area" render={<section aria-label="02 主工作区" />}><div className="canvas-heading"><div className="region-title"><span className="region-index">02</span><h2>主工作区</h2></div><TabsList className="segmented workspace-tabs" aria-label="主工作区模式"><TabsTrigger value="canvas" data-testid="workspace-canvas" className={workspaceMode === 'canvas' ? 'active' : ''}>画布</TabsTrigger><TabsTrigger value="preview" data-testid="workspace-preview" className={workspaceMode === 'preview' ? 'active' : ''}>预览</TabsTrigger></TabsList><div className="canvas-tools" hidden={workspaceMode !== 'canvas'}><Button variant="ghost" className="button small" data-testid="add-text-node" onClick={() => addNode('text')}><Icon name="text" size={14} /><span>文字</span></Button><Button variant="ghost" className="button small" data-testid="add-image-node" onClick={() => addNode('image')}><Icon name="image" size={14} /><span>图片</span></Button><Button variant="ghost" className="button small" data-testid="add-video-node" onClick={() => addNode('video')}><Icon name="film" size={14} /><span>视频</span></Button><Button variant="ghost" className="button small accent-outline" data-testid="add-shot" disabled={busy['shot-create']} onClick={addShot}><Icon name="plus" size={15} />添加镜头</Button></div></div>
-      <div className="main-stage"><TabsContent value="canvas" keepMounted className={`flow-wrap ${workspaceMode === 'canvas' ? '' : 'workspace-hidden'}`} data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop}><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, node) => inspect(node.id)} onNodeDoubleClick={(_, node) => { const record = dataRef.current.nodes.find(n => n.id === node.id); const shot = dataRef.current.shots.find(s => s.id === node.id); const version = dataRef.current.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={savePosition} onConnect={connect} onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} onPaneClick={() => setSelectedEdgeId(null)} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={({ edges: removed }) => Promise.resolve({ nodes: [], edges: removed.filter(edge => edge.id === selectedEdgeId) })} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} fitView fitViewOptions={{ padding: 0.16, minZoom: .65, maxZoom: 1 }} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={['Backspace', 'Delete']} colorMode="dark"><Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#34363b" />{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? '#b6c783' : '#6c7180'} maskColor="rgba(12,13,15,.8)" pannable zoomable />}</ReactFlow>
+      <div className="main-stage"><TabsContent value="canvas" keepMounted className={`flow-wrap ${workspaceMode === 'canvas' ? '' : 'workspace-hidden'}`} data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop}><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, node) => inspect(node.id)} onNodeDoubleClick={(_, node) => { const record = dataRef.current.nodes.find(n => n.id === node.id); const shot = dataRef.current.shots.find(s => s.id === node.id); const version = dataRef.current.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={savePosition} onConnect={connect} onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} onPaneClick={() => setSelectedEdgeId(null)} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} fitView fitViewOptions={{ padding: 0.16, minZoom: .65, maxZoom: 1 }} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={['Backspace', 'Delete']} colorMode="dark"><Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#34363b" />{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? '#b6c783' : '#6c7180'} maskColor="rgba(12,13,15,.8)" pannable zoomable />}</ReactFlow>
+      <div className="canvas-connection-legend" data-testid="connection-legend"><span><i className="reference-swatch" />首帧参考 · 参与生成</span><span><i className="visual-swatch" />视觉连线 · 仅整理思路</span></div>
+      {selectedEdge && <div className="selected-edge-note" data-testid="selected-edge-note">{isReferenceEdge(selectedEdge) ? <><Icon name="link" size={13} /><span>首帧参考连接</span><Button variant="ghost" size="sm" onClick={() => inspect(selectedEdge.target)}>查看 / 断开</Button></> : <><span>视觉连线不参与生成</span><span className="muted">Delete 删除</span></>}</div>}
       {!data.project && !loading && <div className="canvas-empty"><div className="empty-composition"><div className="empty-mini-card"><Icon name="text" size={19} /><span>一个想法</span></div><span className="empty-connector" /><div className="empty-main-card"><Icon name="film" size={39} /><span>无限可能</span></div><span className="empty-connector" /><div className="empty-mini-card"><Icon name="sparkle" size={19} /><span>一部作品</span></div></div><div className="eyebrow">MAKE ROOM FOR YOUR NEXT STORY</div><h1>下一部作品，从这里开始。</h1><p>把素材、灵感和镜头，放到同一张画布上。</p><Button variant="ghost" className="button primary" data-testid="empty-create-project" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} />创建第一个项目</Button></div>}
       {data.project && !nodes.length && !loading && <div className="canvas-empty"><div className="empty-canvas-symbol"><Icon name="film" size={35} /><span className="small-plus">+</span></div><div className="eyebrow">A BLANK CANVAS, A NEW PERSPECTIVE</div><h1>给故事一个开场。</h1><p>从单个镜头开始，或先搭好三幕的故事结构。</p><div className="empty-actions"><Button variant="ghost" className="button primary" onClick={addShot}><Icon name="plus" size={16} />创建镜头</Button><Button variant="ghost" className="button" data-testid="create-three-shots" disabled={busy.structure} onClick={addStructure}><Icon name="layers" size={16} />创建三镜头结构</Button></div></div>}
       {loading && <div className="canvas-loading"><span className="spinner" />正在打开项目…</div>}
@@ -393,7 +438,7 @@ export default function App() {
     </Tabs>
     {inspectorCollapsed && <Button variant="ghost" className="panel-reopen inspector-reopen" data-testid="reopen-inspector" onClick={() => setInspectorCollapsed(false)}><Icon name="left" size={12} /><span>03 属性</span><Icon name="settings" size={14} /></Button>}
     <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label="03 属性" />}><header className="inspector-region-heading"><div className="region-title"><span className="region-index">03</span><h2>属性</h2></div><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起属性" title="收起属性" data-testid="toggle-inspector" />}><Icon name="arrow" size={16} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="inspector-region-content"><div className={`inspector-container ${chosenClip ? 'inspector-hidden' : ''}`}>
-    <Inspector key={selectedId || 'empty'} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} onAddVersion={assetId => addTimelineAsset(assetId)} />
+    <Inspector key={selectedId || 'empty'} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={inspect} onAddVersion={assetId => addTimelineAsset(assetId)} />
     </div>{chosenClip && <TimelineInspector key={chosenClip.id} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision)} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setWorkspaceMode('preview'); setPreviewKind('source'); }} />}</CollapsibleContent></Collapsible>
     <Timeline timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} assets={data.assets} selectedClipId={selectedClipId} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} collapsed={timelineCollapsed} onCollapse={() => setTimelineCollapsed(!timelineCollapsed)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} />
     <nav className="mobile-nav" aria-label="移动工作区导航">{[['assets', 'folder', '素材'], ['canvas', 'grid', '画布'], ['inspector', 'settings', '设置']].map(([id, icon, label]) => <Button variant="ghost" className={mobilePanel === id ? 'active' : ''} key={id} onClick={() => setMobilePanel(id)}><Icon name={icon} size={17} />{label}</Button>)}</nav>

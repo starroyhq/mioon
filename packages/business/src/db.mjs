@@ -42,6 +42,14 @@ export function openStore(root,{lock=true}={}){
  BEGIN SELECT RAISE(ABORT,'timeline history entries are immutable');END;
  INSERT OR IGNORE INTO schema_version VALUES(3);
  COMMIT;`);
+ // Reference edits store their exact response independently of mutable edges.
+ // Additive only: all historical edges remain visual-only until explicitly bound.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS reference_requests(requestId TEXT PRIMARY KEY,requestHash TEXT NOT NULL,response TEXT NOT NULL);
+ CREATE TRIGGER IF NOT EXISTS immutable_reference_responses BEFORE UPDATE ON reference_requests
+ BEGIN SELECT RAISE(ABORT,'reference request responses are immutable');END;
+ INSERT OR IGNORE INTO schema_version VALUES(4);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

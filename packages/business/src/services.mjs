@@ -5,6 +5,7 @@ import {parse,AppError,publicValue,getGenerationIssue} from '@video-workbench/co
 import {normalizedCapabilities,generationLimit,providerSettings} from './provider-registry.mjs';
 import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
+import {createReferenceServices} from './references.mjs';
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
@@ -39,13 +40,15 @@ export function createServices(store,providers,{env=process.env}={}){
  const createJob=(input,retrySnapshot=null,retryOfJobId=null)=>tx(()=>{
   const requestHash=hash(input), prior=dedupe('generation',input.requestId,requestHash,'jobs');if(prior)return prior;
   const shot=required('shots',input.shotId);if(!retrySnapshot)check(shot,input.expectedRevision);
-  const source=retrySnapshot||shot;const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};const {model,assets,capabilities}=validateProvider(source,input.providerId,input.model,parameters);
-  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...shot.referenceAssetIds],referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height})),aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities};
+  const source=retrySnapshot||shot;const referenceConnections=retrySnapshot?.referenceConnections||(!retrySnapshot?references.snapshot(shot):[]);const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};const {model,assets,capabilities}=validateProvider(source,input.providerId,input.model,parameters);
+  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...shot.referenceAssetIds],referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities};
   const job={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});return job;
  });
  const timeline=createTimelineServices(store,{required,check,hash,now});
+ const references=createReferenceServices(store,{required,check,hash,now});
  const handlers={
  ...timeline.handlers,
+ ...references.handlers,
  'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
  'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
@@ -76,12 +79,12 @@ export function createServices(store,providers,{env=process.env}={}){
  },
  'asset.list':i=>{required('projects',i.projectId);return list('assets',i.projectId);},
  'shot.create':i=>tx(()=>{required('projects',i.projectId);refs(i.projectId,i.referenceAssetIds||[]);const shot={id:randomUUID(),projectId:i.projectId,title:i.title,prompt:i.prompt||'',referenceAssetIds:i.referenceAssetIds||[],aspectRatio:i.aspectRatio||'9:16',duration:i.duration||2,parameters:i.parameters||{},position:i.position||{x:80+list('shots',i.projectId).length*300,y:100},orderIndex:list('shots',i.projectId).length,revision:1,selectedVersionId:null,createdAt:now(),updatedAt:now()};put('shots',shot);touchProject(i.projectId);return shot;}),
- 'shot.update':i=>tx(()=>{const shot=required('shots',i.shotId);check(shot,i.expectedRevision);refs(shot.projectId,i.patch.referenceAssetIds||shot.referenceAssetIds);return put('shots',{...shot,...i.patch,revision:shot.revision+1,updatedAt:now()});}),
+ 'shot.update':i=>tx(()=>{const shot=required('shots',i.shotId);check(shot,i.expectedRevision);references.guardManualUpdate(shot,i.patch.referenceAssetIds);refs(shot.projectId,i.patch.referenceAssetIds||shot.referenceAssetIds);return put('shots',{...shot,...i.patch,revision:shot.revision+1,updatedAt:now()});}),
  'shot.reorder':i=>tx(()=>{const p=required('projects',i.projectId);check(p,i.expectedRevision);const shots=list('shots',p.id);if(i.shotIds.length!==shots.length||new Set(i.shotIds).size!==shots.length||shots.some(s=>!i.shotIds.includes(s.id)))throw new AppError('INVALID_ORDER','顺序必须包含全部镜头且不能重复');i.shotIds.forEach((id,orderIndex)=>{const s=required('shots',id);put('shots',{...s,orderIndex});});touchProject(p.id);return get('projects',p.id);}),
  'node.create':i=>{required('projects',i.projectId);if(i.type!=='text'){if(!i.assetId)throw new AppError('ASSET_REQUIRED','图片/视频/音频节点需要素材');refs(i.projectId,[i.assetId]);const a=required('assets',i.assetId);if(!a.mimeType.startsWith(i.type+'/'))throw new AppError('INVALID_NODE_ASSET','节点类型与素材不一致');}return put('nodes',{id:randomUUID(),...i,label:i.label||'',text:i.text||'',revision:1,createdAt:now()});},
  'node.update':i=>{const n=required('nodes',i.nodeId);check(n,i.expectedRevision);return put('nodes',{...n,...i.patch,revision:n.revision+1});},
- 'edge.create':i=>{required('projects',i.projectId);for(const id of [i.source,i.target]){const n=get('shots',id)||get('nodes',id);if(!n||n.projectId!==i.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(i.source===i.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',i.projectId).find(e=>e.source===i.source&&e.target===i.target);return existing||put('edges',{id:randomUUID(),...i});},
- 'edge.delete':i=>{required('edges',i.edgeId);db.prepare('DELETE FROM edges WHERE id=?').run(i.edgeId);return {deleted:true};},
+ 'edge.create':i=>{required('projects',i.projectId);for(const id of [i.source,i.target]){const n=get('shots',id)||get('nodes',id);if(!n||n.projectId!==i.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(i.source===i.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',i.projectId).find(e=>e.kind!=='reference'&&e.source===i.source&&e.target===i.target);return existing||put('edges',{id:randomUUID(),...i,kind:'decorative'});},
+ 'edge.delete':i=>{const edge=required('edges',i.edgeId);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(i.edgeId);return {deleted:true};},
  'provider.list':()=>[...providers.values()].map(capabilitiesFor),
  'generation.submit':i=>createJob(i),
  'job.get':i=>required('jobs',i.jobId),

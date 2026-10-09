@@ -15,6 +15,7 @@ Use IDs from actual responses. All business operations are available as space-se
 
 - Projects/assets: `project create/list/get`, `asset import/list`. Import uses `--file <explicit-local-file>` and JSON `projectId`; the client reads and uploads bytes.
 - Canvas/shots: `shot create/update/reorder`, `node create/update`, `edge create/delete`.
+- Generation reference: `reference attach/detach` (MCP `reference_attach` / `reference_detach`). Generic canvas edges are visual-only and do not send any image or prompt.
 - Generation: `provider list`, `generation submit`, `job get/list/retry/cancel/reconcile`.
 - Results: `version list/select`.
 - Timeline: `timeline get`, `timeline track add/update`, `timeline clip add/update/remove`, `timeline seed`, `timeline render`.
@@ -25,3 +26,13 @@ MCP tool names replace dots with underscores: `generation_submit`, `timeline_cli
 A mutation's `expectedRevision` comes from the record being edited: shot revision for shot update/version select/generation, project revision for shot reorder, timeline revision for all track/clip/render operations. They are independent. A generation or export replay may return the original response; read its job/export ID for fresh status.
 
 Timeline output is fixed 30fps, 720×1280. Positions, trims and lengths use integer frames; same-track overlaps are rejected, cross-track layers are allowed. Asset IDs refer to immutable imported or generated files. `timeline seed` only works on an empty timeline; it copies currently selected shot versions once. Later timeline edits are independent of the shot list.
+
+## First-frame image connections
+
+Inspect `schema reference.attach` and `schema reference.detach`, then read `project get`. Attach accepts `{projectId,sourceNodeId,targetShotId,expectedSourceRevision,expectedShotRevision,requestId,role:"first_frame"}` and returns `{edge,shot}`. The source must be a managed PNG/JPEG/WebP image node in the target shot's project. It checks both endpoint revisions atomically, writes one typed edge and sets the shot's actual `referenceAssetIds` to the stable source image ID. One connection is supported per shot. Identical reattachment with current revisions makes no duplicate edge or extra edit.
+
+If a manual image is selected, attach rejects with `REFERENCE_SELECTION_EXISTS`, including if the image matches. Do not silently clear that selection. Only when replacing it is authorized, explicitly save an empty `referenceAssetIds` with the current shot revision, then attach using the new revision. A connected shot rejects clearing/replacing references through `shot update` (`REFERENCE_CONNECTED`); unchanged reference IDs and ordinary title/prompt edits remain allowed.
+
+Detach accepts `{projectId,edgeId,expectedShotRevision,requestId}` and returns `{edge,shot,detached:true}`. It removes only the typed edge and its owned shot reference, preserving the source image/node and historical tasks. Generic `edge delete` rejects typed connections. Source assets cannot be replaced through `node update`, and node/asset deletion is unsupported. Source rename/move does not change the bound image.
+
+Persist the exact mutation request until its outcome is known. Replay uses the same operation, revisions and request ID even after restart. It returns the original response, which may describe a connection that has since been removed; refresh `project get` before new work. Changed reuse of an ID, including for detach instead of attach, conflicts. New generation snapshots retain connection provenance and immutable asset hashes; subsequent detach/reattach cannot change queued/running tasks. Model constraints are still checked at generation, and connecting does not upload media or call any provider. These are first-frame inputs only, not character/style consistency or general graph execution.

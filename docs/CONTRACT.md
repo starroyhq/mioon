@@ -13,7 +13,9 @@ All application mutations and reads go through `services.call(operation, input)`
 - shot.reorder `{projectId,expectedRevision,shotIds}` → project. Exact permutation.
 - node.create `{projectId,type:"text"|"image"|"video",label?,text?,assetId?,position:{x,y}}` → node
 - node.update `{nodeId,expectedRevision,patch:{label?,text?,position?}}` → node
-- edge.create `{projectId,source,target}` → edge; edge.delete `{edgeId}` → `{deleted:true}`
+- edge.create `{projectId,source,target}` → decorative edge; edge.delete `{edgeId}` → `{deleted:true}`. Visual-only; typed reference edges cannot be deleted through this operation.
+- reference.attach `{projectId,sourceNodeId,targetShotId,expectedSourceRevision,expectedShotRevision,requestId,role:"first_frame"}` → `{edge,shot}`. Atomically attaches a managed image node to a shot with no manual reference selection.
+- reference.detach `{projectId,edgeId,expectedShotRevision,requestId}` → `{edge,shot,detached:true}`. Atomically removes a first-frame edge and its owned shot reference. Original asset/node and historical jobs remain intact.
 - provider.list `{}` → capabilities array
 - generation.submit `{shotId,expectedRevision,requestId,providerId:"mock"|"runway"|"ark"|"veo"|"minimax"|"vidu",model?,parameters?:{scenario?:"success"|"failure"|"delay"|"timeout"|"unknown",delayMs?}}` → job. Deduplication returns same job for same requestId and identical input; different input = IDEMPOTENCY_CONFLICT. Immutable snapshot includes shot fields, actual reference assets, provider/model, merged parameters. Only mock enabled without explicit environment gate and secure server-side configuration.
 - job.get `{jobId}` → job; job.list `{projectId}` → job[]
@@ -27,7 +29,7 @@ project: id,name,description,revision,createdAt,updatedAt.
 asset: id,projectId,name,mimeType,sizeBytes,width,height,duration,sha256,url,createdAt.
 shot: id,projectId,title,prompt,referenceAssetIds,aspectRatio,duration,parameters,position,orderIndex,revision,selectedVersionId,createdAt,updatedAt.
 node: id,projectId,type,label,text,assetId,position,revision.
-edge: id,projectId,source,target.
+edge: id,projectId,source,target,kind? (`decorative` or `reference`). Historical edges without kind remain decorative. A reference edge additionally has role:`first_frame`,sourceAssetId,createdAt.
 job: id,projectId,shotId,requestId,providerId,model,status,phase,progress,snapshot,providerJobId,submissionCount,error,createdAt,updatedAt,versionId,cancelScope.
 version: id,projectId,shotId,jobId,number,providerId,model,isMock,snapshot,assetId,url,sha256,createdAt.
 export: id,projectId,requestId,status,orderedVersionIds,assetId,url,error,createdAt,updatedAt.
@@ -45,5 +47,15 @@ Node 24 native SQLite 3.53.3 with ESM JavaScript and shared strict Zod runtime s
 The public schema additionally accepts provider IDs `ark`, `veo`, `minimax`, `vidu`. `provider.list` preserves legacy aggregate fields and adds per-model `modelCapabilities`, safe `configuration`, readiness `status`, optional `region` and local count `budget`. Never derive a model's input support from another model or aggregate union. Shared `findModelCapabilities` and `getGenerationIssue` are exported by contracts for renderer/client validation; backend `provider.validate(snapshot)` is authoritative before queueing.
 
 Snapshot reference entries additionally preserve width and height. Mode is inferred from reference count, not an independent mutable request field. Native output dimensions are probed before version publication; a >1% aspect mismatch is paused as `cancelled` / `output_review_required`, retaining the existing provider ID and private output. This is not a remote cancellation or a safe-to-retry failed generation.
+
+## Typed first-frame connections
+
+The reference service accepts only a project-local image node backed by an existing managed PNG/JPEG/WebP asset. It checks both source-node and target-shot revisions for attach, and the target-shot revision for detach. One typed reference edge per shot is allowed; an identical attach with a new request ID and current revisions returns the existing edge/shot without another revision bump. Different sources require an explicit detach. A pre-existing visual edge may coexist and remains visual-only.
+
+Attaching never adopts or overwrites a manual `referenceAssetIds` selection, even when it is the same image. Clear and save that selection explicitly first. While connected, `shot.update` may retain the exact same reference IDs but cannot replace or clear them. Detach clears only the owned image; inconsistent state rejects instead of overwriting it. Source-node `assetId` is immutable through `node.update`; node/asset deletion operations are not exposed. Source labels and positions can change without changing the fixed image.
+
+Both mutations save the exact original response in additive schema-v4 `reference_requests` storage in the same transaction. Replay precedes revision checks and remains byte-equivalent after detach, later edits or restart. Reusing an ID with changed input or for the other reference operation returns `IDEMPOTENCY_CONFLICT`. Refresh `project.get` after replay to see current state.
+
+New generation snapshots include `referenceConnections:[{edgeId,sourceNodeId,sourceAssetId,role}]` alongside the existing frozen image IDs, bytes hash, dimensions and provider settings. Detaching, reattaching or moving/renaming a node does not change queued/running jobs or their explicit retries. Attach does not upload, submit generation or guarantee model compatibility: existing model-specific validation and approved-media gates still apply when generating. This is a first-frame input, not character/style consistency, general DAG execution, prompt propagation, or timeline history.
 
 New adapter factories: `createArkProvider`, `createVeoProvider`, `createMinimaxProvider`, `createViduProvider`. All use fixed official endpoints, validated opaque task IDs, explicit backend configuration, approved managed image hashes, no automatic generation POST retries, bounded safe media downloads and truthful local-only cancellation. The private registry centralizes discovery and environment names; actual docs and supported narrow model subsets are in PROVIDERS.md.

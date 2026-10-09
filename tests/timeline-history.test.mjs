@@ -169,7 +169,7 @@ test('additive migration preserves legacy timeline and response bytes, using leg
  assert.equal((await f.call('timeline.history.get',{projectId})).length,0);assert.deepEqual(await f.call('timeline.track.add',params),timeline);
  const baseline=domain(timeline);timeline=await f.call('timeline.track.update',input(projectId,timeline,{trackId:timeline.tracks[0].id,patch:{name:'After migration'}}));
  f.restart();timeline=await f.call('timeline.undo',input(projectId,timeline));assert.deepEqual(domain(timeline),baseline);assert.deepEqual(f.capture(),outside);
- assert.equal(f.store.db.prepare('SELECT max(version) AS version FROM schema_version').get().version,3);
+ assert.equal(f.store.db.prepare('SELECT version FROM schema_version WHERE version=3').get().version,3);
 });
 
 test('project history, cursor, request identities and state remain isolated',async t=>{

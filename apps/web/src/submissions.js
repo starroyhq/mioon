@@ -7,7 +7,7 @@ export function readPending(projectId, key) {
   const raw = sessionStorage.getItem(storageKey(projectId, key));
   if (!raw) return null;
   const entry = JSON.parse(raw);
-  if (!entry.input?.requestId || !(['generation.submit', 'job.retry', 'export.create'].includes(entry.operation) || /^timeline\.(track\.(add|update)|clip\.(add|update|remove)|seed|render|undo|redo)$/.test(entry.operation)) || entry.projectId !== projectId || entry.key !== key) throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
+  if (!entry.input?.requestId || !(['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(entry.operation) || /^timeline\.(track\.(add|update)|clip\.(add|update|remove)|seed|render|undo|redo)$/.test(entry.operation)) || entry.projectId !== projectId || entry.key !== key) throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
   return entry;
 }
 export function writePending(entry) {
@@ -34,6 +34,12 @@ export function pendingForProject(projectId) {
   return result;
 }
 export function reconcilePending(projectId, data) {
-  const knownIds = new Set([...(data.jobs || []), ...(data.exports || [])].map(r => r.requestId));
-  for (const entry of pendingForProject(projectId)) if (knownIds.has(entry.input.requestId)) clearPending(projectId, entry.key);
+  const jobIds = new Set((data.jobs || []).map(record => record.requestId));
+  const exportIds = new Set((data.exports || []).map(record => record.requestId));
+  for (const entry of pendingForProject(projectId)) {
+    // Request IDs are scoped by operation on the server. A coincident job ID
+    // cannot establish the outcome of a reference or timeline mutation.
+    const knownIds = ['generation.submit', 'job.retry'].includes(entry.operation) ? jobIds : ['export.create', 'timeline.render'].includes(entry.operation) ? exportIds : null;
+    if (knownIds?.has(entry.input.requestId)) clearPending(projectId, entry.key);
+  }
 }

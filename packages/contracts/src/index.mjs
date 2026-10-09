@@ -21,6 +21,8 @@ export const schemas={
 'node.update':z.object({nodeId:id,expectedRevision:z.number().int().positive(),patch:z.object({label:z.string().max(150).optional(),text:z.string().max(5000).optional(),position:position.optional()}).strict()}).strict(),
 'edge.create':z.object({projectId:id,source:id,target:id}).strict(),
 'edge.delete':z.object({edgeId:id}).strict(),
+'reference.attach':z.object({projectId:id,sourceNodeId:id,targetShotId:id,expectedSourceRevision:z.number().int().positive(),expectedShotRevision:z.number().int().positive(),requestId:key,role:z.literal('first_frame')}).strict(),
+'reference.detach':z.object({projectId:id,edgeId:id,expectedShotRevision:z.number().int().positive(),requestId:key}).strict(),
 'provider.list':z.object({}).strict(),
 'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu']),model:z.string().max(100).optional(),parameters:params.optional()}).strict(),
 'job.get':z.object({jobId:id}).strict(),
@@ -47,6 +49,10 @@ export const schemas={
 export const descriptions={
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
+ 'edge.create':'创建同项目的视觉连线；不参与生成，也不传递提示词或素材',
+ 'edge.delete':'仅移除视觉连线；首帧参考连线须使用 reference_detach',
+ 'reference.attach':'原子连接同项目的托管图片节点与镜头作为首帧；须校验两端版本且镜头无手选参考图，使用稳定requestId',
+ 'reference.detach':'按镜头版本原子断开首帧参考连线并清除其专属参考选择；保留原素材、节点及历史任务快照，使用稳定requestId',
  'asset.import':'导入授权的本地图片、视频或音频字节（base64，最大30MiB）',
  'node.create':'创建文本、图片、视频或音频画布节点',
  'timeline.get':'读取持久化30fps多轨时间线；旧项目首次读取时仅创建空轨道',

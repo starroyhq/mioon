@@ -13,7 +13,7 @@ const tools = new Map(Object.keys(schemas).map(operation => {
     name: definition.toolName,
     description: definition.description,
     inputSchema: definition.inputSchema,
-    annotations: {readOnlyHint: operation.endsWith('.list') || (operation.endsWith('.get') && operation !== 'timeline.get'), destructiveHint: operation === 'edge.delete' || operation === 'timeline.clip.remove', idempotentHint: definition.requiresRequestId || operation.endsWith('.list') || operation.endsWith('.get'), openWorldHint: ['generation.submit', 'job.retry', 'job.reconcile'].includes(operation)},
+    annotations: {readOnlyHint: operation.endsWith('.list') || (operation.endsWith('.get') && operation !== 'timeline.get'), destructiveHint: ['edge.delete','reference.detach','timeline.clip.remove'].includes(operation), idempotentHint: definition.requiresRequestId || operation.endsWith('.list') || operation.endsWith('.get'), openWorldHint: ['generation.submit', 'job.retry', 'job.reconcile'].includes(operation)},
     call: (input, options) => client.rpc(operation, input, options),
   }];
 }));

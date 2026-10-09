@@ -28,7 +28,7 @@ Desktop backend ports are allocated by binding to loopback port zero, preventing
 
 ## Data compatibility
 
-The workspace move does not change the SQLite schema or media filenames. In web mode the default remains the repository's `data/`; `WB_DATA_DIR` continues to select a complete existing data directory. The additive v2 timeline migration is retained, and never rewrites v1 selected versions or materializes a new timeline from old shots implicitly.
+The workspace move does not change media filenames. In web mode the default remains the repository's `data/`; `WB_DATA_DIR` continues to select a complete existing data directory. The additive v2 timeline migration is retained, and never rewrites v1 selected versions or materializes a new timeline from old shots implicitly. Schema v3 adds durable timeline history; schema v4 adds immutable first-frame connection request responses. Both leave historical records intact.
 
 For desktop migration, stop all processes using the source data directory and use the explicit desktop data import path described in `DESKTOP.md`. Original data remains intact. A data directory must never be opened by two backend processes. Copy all managed media along with the database, never a live SQLite database alone.
 
@@ -52,3 +52,9 @@ The provider registry constructs mock, Runway, Ark Seedance, Gemini Veo, MiniMax
 MiniMax/Vidu regions are explicit fixed-origin choices, never fallback destinations. Environment names are maintained by the registry and used in the desktop utility allowlist. Credentials remain only in the backend environment. The generation count cap is scoped to this data directory, conservative and separate from a financial spending limit.
 
 CLI, MCP and UI all observe the same immutable jobs, versions and timelines. CLI asset paths are read only by the local client; the HTTP backend receives bytes. Known task polling/downloads cannot generate another paid request. A downloaded live result with the wrong aspect ratio is quarantined in `output_review_required`: no public version is published and no generation is repeated.
+
+## Typed reference inputs
+
+`references.mjs` owns the atomic first-frame binding between one managed image node and one shot. It writes the typed edge, the shot's actual image ID and the exact request response in one SQLite transaction. Endpoint revisions prevent stale edits; a manually chosen image or another bound source is never overwritten. The source image ID is fixed; the node can only be renamed or moved, not retargeted through the public API. Detach removes the owned slot and edge without deleting assets or touching jobs. Generic/legacy edges remain decorative.
+
+New generation snapshots include typed connection provenance alongside existing immutable image metadata and hashes. Dispatch continues to read the frozen snapshot, so disconnecting the canvas does not change an in-flight provider request. Explicit retries also retain the old snapshot. No topological scheduling, prompt propagation, style/character identity guarantee or additional provider capability is introduced. Provider validation and live-media authorization remain at their existing boundaries.
