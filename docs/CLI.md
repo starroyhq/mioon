@@ -146,12 +146,12 @@ The following commands show the contract. Replace UUID placeholders with IDs ret
 ```sh
 mioon project create --input '{"name":"Offline mock video"}'
 mioon asset import --file ./reference.png --input '{"projectId":"PROJECT_UUID"}'
-mioon shot create --input '{"projectId":"PROJECT_UUID","title":"Opening","prompt":"A calm opening shot","referenceAssetIds":["ASSET_UUID"],"aspectRatio":"9:16","duration":2}'
+mioon shot create --input '{"projectId":"PROJECT_UUID","requestId":"demo-create-shot-001","title":"Opening","prompt":"A calm opening shot","referenceAssetIds":["ASSET_UUID"],"aspectRatio":"9:16","duration":2}'
 mioon generation submit --input '{"shotId":"SHOT_UUID","expectedRevision":1,"requestId":"demo-shot-001-v1","providerId":"mock"}'
 mioon job watch --input '{"jobId":"JOB_UUID"}' --timeout-ms 60000 --interval-ms 500
 mioon version list --input '{"shotId":"SHOT_UUID"}'
 mioon project get --input '{"projectId":"PROJECT_UUID"}'
-mioon version select --input '{"shotId":"SHOT_UUID","versionId":"VERSION_UUID","expectedRevision":2}'
+mioon version select --input '{"shotId":"SHOT_UUID","versionId":"VERSION_UUID","expectedRevision":2,"requestId":"demo-select-version-001"}'
 mioon timeline get --input '{"projectId":"PROJECT_UUID"}'
 mioon timeline seed --input '{"projectId":"PROJECT_UUID","expectedRevision":1,"requestId":"demo-seed-001-v1"}'
 mioon timeline render --input '{"projectId":"PROJECT_UUID","expectedRevision":2,"requestId":"demo-render-001-v1","purpose":"export"}'
@@ -177,6 +177,16 @@ mioon export download --input '{"exportId":"EXPORT_UUID"}' --output ./result.mp4
 Only UUID managed-media endpoints on the selected backend are fetched, redirects are refused, and the output path never reaches the server. Creation is exclusive: existing output files and symlinks are never overwritten. Interrupted/failed partial files are removed. The default size limit is 512 MiB; `--max-bytes` can be set up to 2 GiB. An export must already have succeeded.
 
 ## Idempotency, recovery, and watch
+
+`shot create/update/reorder`, `node create/update`, and `version select` accept
+optional stable request IDs (8–200 characters), through JSON `requestId` or the
+existing `--request-id` option. Omission remains valid legacy behavior and offers
+no exact-replay guarantee. Preserve a supplied key and the original complete
+input, including its original revision, after uncertain output. Exact replay
+returns the saved original response; refresh before a later new edit. Changed
+operation/project/input under the same key conflicts. The schema's
+`requiresRequestId` and effect `idempotent` remain false because the key is
+optional; notes explain conditional replay. See [MUTATION-REPLAY.md](MUTATION-REPLAY.md).
 
 The CLI never invents request IDs and never retries submissions automatically. All shared operations that require `requestId` reject an omitted ID locally, before HTTP. You can put it in the exact JSON request or use `--request-id`; specifying conflicting values is an error.
 

@@ -1,4 +1,4 @@
-// Audited against services.mjs, references.mjs, timeline.mjs and jobs.mjs.
+// Audited against services.mjs, local-mutations.mjs, references.mjs, timeline.mjs and jobs.mjs.
 // Effects include work the call schedules/resumes, not just its synchronous RPC.
 // These are advisory descriptions, never permission checks or authorization.
 // Missing fields use conservative values; missing operations have no fallback.
@@ -12,6 +12,9 @@ const read = {readOnly:true,idempotent:true,destructive:false,openWorld:false,
   databaseWrite:false,fileWrite:false,externalIO:false,localProcess:false,paidGeneration:false};
 const localAdd = {...read,readOnly:false,idempotent:false,databaseWrite:true};
 const localEdit = {...localAdd,destructive:true};
+// These six operations are only replay-safe when a caller supplies a stable key.
+// Their unconditional MCP idempotent hint must therefore remain false.
+const optionalReplay = ' With an optional stable requestId, exact retries return the immutable original response; changed reuse conflicts. Keyless calls retain legacy behavior.';
 const replayEdit = {...localEdit,idempotent:true};
 const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
   externalIO:true,localProcess:true,paidGeneration:true};
@@ -27,11 +30,11 @@ export const operationEffects = Object.freeze({
   'project.get': define({...localAdd,idempotent:true,notes:'Legacy full-project read may create the default empty timeline. Response shape and lazy initialization are preserved.'}),
   'asset.import': define({...localAdd,fileWrite:true,localProcess:true,notes:'Writes supplied bytes to a new managed file, invokes local ffprobe, and adds an asset. Failed decoding removes its new file.'}),
   'asset.list': define({...read,notes:'Reads existing asset records, including legacy media URLs; does not read media bytes.'}),
-  'shot.create': define({...localAdd,notes:'Adds a shot and advances project revision; each successful call creates a new ID.'}),
-  'shot.update': define({...localEdit,notes:'Replaces requested shot fields under revision checks; may remove previous text or reference choices.'}),
-  'shot.reorder': define({...localEdit,notes:'Replaces shot ordering and advances project revision under a revision check.'}),
-  'node.create': define({...localAdd,notes:'Adds a canvas node referencing existing managed assets; no media processing.'}),
-  'node.update': define({...localEdit,notes:'Replaces requested node text, label or position under a revision check.'}),
+  'shot.create': define({...localAdd,notes:'Adds a shot and advances project revision; each successful keyless call creates a new ID.'+optionalReplay}),
+  'shot.update': define({...localEdit,notes:'Replaces requested shot fields under revision checks; may remove previous text or reference choices.'+optionalReplay}),
+  'shot.reorder': define({...localEdit,notes:'Replaces shot ordering and advances project revision under a revision check.'+optionalReplay}),
+  'node.create': define({...localAdd,notes:'Adds a canvas node referencing existing managed assets; no media processing.'+optionalReplay}),
+  'node.update': define({...localEdit,notes:'Replaces requested node text, label or position under a revision check.'+optionalReplay}),
   'edge.create': define({...localAdd,idempotent:true,notes:'Adds a decorative edge or returns the existing same-project/source/target edge.'}),
   'edge.delete': define({...localEdit,idempotent:true,notes:'Deletes a decorative edge; repeated input has no further effect and can return NOT_FOUND. Reference edges are rejected.'}),
   'reference.attach': define({...localAdd,idempotent:true,notes:'Adds a typed first-frame binding only to an empty slot and saves its exact replay response; no provider call.'}),
@@ -44,7 +47,7 @@ export const operationEffects = Object.freeze({
   'job.cancel': define({...localEdit,idempotent:true,notes:'Stops local waiting and updates the job. Repetition after a terminal result has no effect; no remote cancellation or refund is promised.'}),
   'job.reconcile': define({...localEdit,openWorld:true,fileWrite:true,externalIO:true,localProcess:true,notes:'Contacts the existing provider task and updates/resumes local processing; may later download and publish media. Never submits new generation; repeated calls can update revisions and repeat network I/O.'}),
   'version.list': define({...read,notes:'Reads immutable version records only.'}),
-  'version.select': define({...localEdit,notes:'Replaces the selected version and advances the shot revision; does not modify timeline clips.'}),
+  'version.select': define({...localEdit,notes:'Replaces the selected version and advances the shot revision; does not modify timeline clips.'+optionalReplay}),
   'export.create': define({...render,notes:'Queues a frozen selected-shot export once per exact request; later worker work invokes local FFmpeg/ffprobe and writes managed output. No provider call.'}),
   'export.get': define({...read,notes:'Reads the export record only; does not render or read media bytes.'}),
   'timeline.get': define({...localAdd,idempotent:true,notes:'Legacy read creates default empty tracks when no timeline exists. Repeated reads do not add another timeline.'}),

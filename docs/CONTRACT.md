@@ -8,11 +8,11 @@ All application mutations and reads go through `services.call(operation, input)`
 - project.get `{projectId}` → `{project,assets,shots,nodes,edges,jobs,versions,exports}`
 - asset.import `{projectId,name,mimeType,dataBase64}` → asset. Backend validates bytes and stores a managed filename; no arbitrary local paths or URLs.
 - asset.list `{projectId}` → asset[]
-- shot.create `{projectId,title,prompt?,referenceAssetIds?:[],aspectRatio?:"9:16",duration?:2,parameters?:{},position?:{x,y}}` → shot
-- shot.update `{shotId,expectedRevision,patch:{title?,prompt?,referenceAssetIds?,aspectRatio?,duration?,parameters?,position?}}` → shot
-- shot.reorder `{projectId,expectedRevision,shotIds}` → project. Exact permutation.
-- node.create `{projectId,type:"text"|"image"|"video",label?,text?,assetId?,position:{x,y}}` → node
-- node.update `{nodeId,expectedRevision,patch:{label?,text?,position?}}` → node
+- shot.create `{projectId,requestId?,title,prompt?,referenceAssetIds?:[],aspectRatio?:"9:16",duration?:2,parameters?:{},position?:{x,y}}` → shot
+- shot.update `{shotId,expectedRevision,requestId?,patch:{title?,prompt?,referenceAssetIds?,aspectRatio?,duration?,parameters?,position?}}` → shot
+- shot.reorder `{projectId,expectedRevision,requestId?,shotIds}` → project. Exact permutation.
+- node.create `{projectId,requestId?,type:"text"|"image"|"video"|"audio",label?,text?,assetId?,position:{x,y}}` → node
+- node.update `{nodeId,expectedRevision,requestId?,patch:{label?,text?,position?}}` → node
 - edge.create `{projectId,source,target}` → decorative edge; edge.delete `{edgeId}` → `{deleted:true}`. Visual-only; typed reference edges cannot be deleted through this operation.
 - reference.attach `{projectId,sourceNodeId,targetShotId,expectedSourceRevision,expectedShotRevision,requestId,role:"first_frame"}` → `{edge,shot}`. Atomically attaches a managed image node to a shot with no manual reference selection.
 - reference.detach `{projectId,edgeId,expectedShotRevision,requestId}` → `{edge,shot,detached:true}`. Atomically removes a first-frame edge and its owned shot reference. Original asset/node and historical jobs remain intact.
@@ -21,7 +21,7 @@ All application mutations and reads go through `services.call(operation, input)`
 - job.get `{jobId}` → job; job.list `{projectId}` → job[]
 - job.retry `{jobId,requestId}` → new job, only definitively failed jobs; original snapshot preserved; unknown never resubmits
 - job.cancel `{jobId}` → job; local cancellation explicitly separate from remote cancellation
-- version.list `{shotId}` → version[]; version.select `{shotId,versionId,expectedRevision}` → shot
+- version.list `{shotId}` → version[]; version.select `{shotId,versionId,expectedRevision,requestId?}` → shot
 - export.create `{projectId,requestId}` → export (async); export.get `{exportId}` → export
 
 ## Records
@@ -59,3 +59,14 @@ Both mutations save the exact original response in additive schema-v4 `reference
 New generation snapshots include `referenceConnections:[{edgeId,sourceNodeId,sourceAssetId,role}]` alongside the existing frozen image IDs, bytes hash, dimensions and provider settings. Detaching, reattaching or moving/renaming a node does not change queued/running jobs or their explicit retries. Attach does not upload, submit generation or guarantee model compatibility: existing model-specific validation and approved-media gates still apply when generating. This is a first-frame input, not character/style consistency, general DAG execution, prompt propagation, or timeline history.
 
 New adapter factories: `createArkProvider`, `createVeoProvider`, `createMinimaxProvider`, `createViduProvider`. All use fixed official endpoints, validated opaque task IDs, explicit backend configuration, approved managed image hashes, no automatic generation POST retries, bounded safe media downloads and truthful local-only cancellation. The private registry centralizes discovery and environment names; actual docs and supported narrow model subsets are in PROVIDERS.md.
+
+## Local edit replay extension
+
+The six optional-key operations above use an additive immutable original-response
+journal. `requestId` is 8–200 characters. Same operation/project/complete input
+replays the historical response before revision checks, after validating current
+ownership; altered reuse conflicts. Defaults are not inserted into the input
+fingerprint. No key preserves legacy behavior. Mutation and receipt are one
+synchronous transaction; no file/provider work is included. Optional-key effects
+remain `idempotent:false` / MCP `idempotentHint:false`. Full failure/recovery and
+client-storage boundaries: [MUTATION-REPLAY.md](MUTATION-REPLAY.md).

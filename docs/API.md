@@ -106,6 +106,27 @@ Assets are imported as base64 bytes, never arbitrary machine file paths or remot
 - Result versions have a database immutability trigger, unique job ID and immutable files; first output auto-selects only if no selection exists
 - export.create freezes shot order and chosen version IDs/hashes. Later edits do not change that export
 
+## Optional exact replay for local edits
+
+`shot.create`, `shot.update`, `shot.reorder`, `node.create`, `node.update` and
+`version.select` accept optional `requestId` (8–200 characters). Supply and retain
+one stable ID for each intent when recovery is needed. Without it, legacy calls
+remain non-idempotent. Exact replay returns the original immutable response,
+including original IDs/revisions, after ownership validation and before current
+revision checks; changed operation/project/input under the key returns
+`IDEMPOTENCY_CONFLICT`. New intentional edits use new keys and current revisions.
+Mutation and receipt commit in the same synchronous SQLite transaction. Replaying
+is not a read of current state; refresh before later edits. Missing/foreign/corrupt
+ownership cannot be bypassed by an old receipt.
+
+A fresh keyed business rejection can provide
+`error.details:{mutationOutcome:"not_applied",requestId:"..."}` only after the
+backend observed no prior receipt and rolled back. Other 4xx, malformed results,
+authentication failures or lost responses are not no-commit proof. No HTTP client
+or built-in Agent automatically retries these operations. Existing timeline,
+reference and generation/export contracts are unchanged. See
+[shared mutation replay](MUTATION-REPLAY.md) for UI recovery and persistence limits.
+
 ## Image-node generation inputs
 
 Use `reference.attach` with `{projectId,sourceNodeId,targetShotId,expectedSourceRevision,expectedShotRevision,requestId,role:'first_frame'}` to connect a managed image node to a shot, returning `{edge,shot}`. Use `reference.detach` with `{projectId,edgeId,expectedShotRevision,requestId}` to remove it, returning `{edge,shot,detached:true}`. The operations are atomic and share strict schemas across HTTP, CLI and MCP.

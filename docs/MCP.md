@@ -180,6 +180,16 @@ A recommended sequence is `mioon_doctor`, `provider_list`, `project_create`, `as
 
 `asset_import` takes explicitly authorized bytes (`dataBase64`), never a server filesystem path. An MCP client that has local file access can read those bytes itself; the CLI also provides `asset import --file`. MCP does not expose an arbitrary path read/write helper. To save a completed export locally, use CLI `export download` with an explicit new output path. Relative `/media/UUID` URLs are authenticated local resources, not public sharing links.
 
+The six tools `shot_create`, `shot_update`, `shot_reorder`, `node_create`,
+`node_update` and `version_select` additionally accept an **optional** `requestId`
+(8–200 characters). Supply one for recoverable edits and keep the exact arguments
+until the outcome is known. Their schema still has `requiresRequestId:false`, and
+MCP `idempotentHint:false` remains truthful for unkeyed calls. Exact keyed replay
+returns the original response even after later revisions/restart, provided current
+ownership remains valid. Changed operation/project/arguments under a key conflict.
+No model write tool is enabled in the built-in Agent by this external MCP capability.
+See [shared mutation replay](MUTATION-REPLAY.md).
+
 For every mutation that requires `requestId`, the caller owns a stable ID. After a lost HTTP or MCP result, repeat the exact original operation and complete input with the **same requestId**, preserving its original revision. The bridge never invents IDs or automatically re-submits paid tasks. Changed reuse of an ID conflicts. A fresh intended edit uses a fresh ID and current revision.
 
 Timeline operations share a namespace and return the original response on exact replay, even if newer edits exist. Do not overwrite a newer local view with an older replay result. Re-read `timeline_get` before another edit. Timeline revisions are separate from shot/project revisions. `timeline_render` freezes track/clip state and asset hashes into an export job; its result is observed with `export_get`.

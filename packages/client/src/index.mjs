@@ -1,7 +1,7 @@
 import {setTimeout as pause} from 'node:timers/promises';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {schemas, descriptions, parse, operationEffect, effectAnnotations} from '@mioon/contracts';
+import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
@@ -66,6 +66,9 @@ export function validateDiscovery(name, input) {
 }
 function interrupted() { return new ClientError('INTERRUPTED', 'Stopped waiting locally. No remote job was cancelled.'); }
 function checkSignal(signal) { if (signal?.aborted) throw interrupted(); }
+function uncertainRequestDetails(body) {
+  return body ? {operation: body.operation, ...(body.input?.requestId ? {requestId: body.input.requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})} : {};
+}
 
 export function createClient({env = process.env, fetchImpl = fetch, requestTimeoutMs = 30_000} = {}) {
   async function request(resource, {body, signal, timeoutMs = requestTimeoutMs} = {}) {
@@ -75,11 +78,14 @@ export function createClient({env = process.env, fetchImpl = fetch, requestTimeo
     checkSignal(signal);
     const timer = AbortSignal.timeout(Math.max(1, Math.ceil(timeoutMs)));
     const combined = signal ? AbortSignal.any([signal, timer]) : timer;
+    const recoveryDetails = uncertainRequestDetails(body);
     let response;
     try {
       response = await fetchImpl(base + resource, {method: body ? 'POST' : 'GET', headers: {authorization: `Bearer ${token}`, ...(body ? {'content-type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: combined, redirect: 'error'});
       const result = await response.json();
-      if (!result || typeof result.ok !== 'boolean') throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid response.');
+      if (!result || typeof result.ok !== 'boolean' ||
+          (result.ok ? (body && !Object.hasOwn(result, 'data')) || !response.ok : typeof result.error?.code !== 'string' || typeof result.error?.message !== 'string'))
+        throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid response.', {details: recoveryDetails});
       if (!result.ok || !response.ok) {
         const error = result.error || {};
         throw new ClientError(typeof error.code === 'string' ? error.code : 'BACKEND_UNAVAILABLE', typeof error.message === 'string' ? safeValue(error.message, [token]) : 'The backend rejected the request.', {status: response.status, details: safeValue(error.details || {}, [token])});
@@ -87,18 +93,22 @@ export function createClient({env = process.env, fetchImpl = fetch, requestTimeo
       return result;
     } catch (error) {
       if (error instanceof ClientError) throw error;
-      const details = body ? {operation: body.operation, ...(body.input?.requestId ? {requestId: body.input.requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})} : {};
+      const details = recoveryDetails;
       if (signal?.aborted) throw new ClientError('INTERRUPTED', 'Stopped locally. No remote job was cancelled; an in-flight request may still have completed.', {details});
       if (timer.aborted) throw new ClientError('TIMEOUT', 'The local backend request timed out.', {details});
       throw new ClientError(response ? 'BACKEND_PROTOCOL_ERROR' : 'BACKEND_UNAVAILABLE', response ? 'The backend returned an unreadable response.' : 'The local backend is unavailable. Start or reopen Mioon, then retry safely.', {details});
     }
   }
   async function rpc(operation, input = {}, options) {
-    // Parse the exact shared contracts before sending. In particular, stable request IDs
-    // are required by the schema; this client never creates them and never resubmits.
+    // Parse the exact shared contracts before sending. Required and opt-in request
+    // IDs stay caller-owned; this client never creates them and never resubmits.
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     const parsed = parse(operation, input);
-    return (await request('/api/rpc', {body: {operation, input: parsed}, ...options})).data;
+    const body = {operation, input: parsed};
+    const result = (await request('/api/rpc', {body, ...options})).data;
+    if (LOCAL_MUTATION_OPERATIONS.includes(operation) && !isLocalMutationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    return result;
   }
   async function capabilities(options) { return rpc('provider.list', {}, options); }
   async function doctor(options) {

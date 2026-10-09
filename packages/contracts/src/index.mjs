@@ -4,7 +4,9 @@ import {assertOperationEffectCoverage} from './operation-effects.mjs';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.mjs';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.mjs';
 export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.mjs';
+export {LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse} from './local-mutations.mjs';
 const id=z.string().uuid(), key=z.string().min(8).max(200), position=z.object({x:z.number().finite(),y:z.number().finite()}).strict();
+const mutationRequestId=key.optional().describe('Optional stable replay key (8–200 characters). Reuse the exact operation and caller-supplied input to recover the original response, even after later revisions. Changed reuse conflicts; without a key legacy mutation semantics apply.');
 const params=z.object({scenario:z.enum(['success','failure','delay','timeout','unknown','reject','download_fail_once','rejected_before_accept','accepted_then_response_lost','poll_timeout_then_recover','terminal_failure']).optional(),delayMs:z.number().int().min(0).max(120000).optional(),seed:z.number().int().optional()}).strict();
 const shotFields={title:z.string().min(1).max(150),prompt:z.string().max(5000),referenceAssetIds:z.array(id).max(8),aspectRatio:z.enum(['9:16','16:9','1:1','3:4','4:3','21:9']),duration:z.number().int().min(1).max(20),parameters:params,position};
 const frame=z.number().int().min(0).max(18000), durationFrames=z.number().int().min(1).max(18000);
@@ -20,11 +22,11 @@ export const schemas={
 'project.get':z.object({projectId:id}).strict(),
 'asset.import':z.object({projectId:id,name:z.string().min(1).max(200),mimeType:z.enum(['image/png','image/jpeg','image/webp','video/mp4','video/webm','audio/wav','audio/mpeg','audio/mp4']),dataBase64:z.string().max(40*1024*1024)}).strict(),
 'asset.list':z.object({projectId:id}).strict(),
-'shot.create':z.object({projectId:id,...Object.fromEntries(Object.entries(shotFields).map(([k,v])=>[k,k==='title'?v:v.optional()]))}).strict(),
-'shot.update':z.object({shotId:id,expectedRevision:z.number().int().positive(),patch:z.object(Object.fromEntries(Object.entries(shotFields).map(([k,v])=>[k,v.optional()]))).strict().refine(v=>Object.keys(v).length>0)}).strict(),
-'shot.reorder':z.object({projectId:id,expectedRevision:z.number().int().positive(),shotIds:z.array(id)}).strict(),
-'node.create':z.object({projectId:id,type:z.enum(['text','image','video','audio']),label:z.string().max(150).optional(),text:z.string().max(5000).optional(),assetId:id.optional(),position}).strict(),
-'node.update':z.object({nodeId:id,expectedRevision:z.number().int().positive(),patch:z.object({label:z.string().max(150).optional(),text:z.string().max(5000).optional(),position:position.optional()}).strict()}).strict(),
+'shot.create':z.object({requestId:mutationRequestId,projectId:id,...Object.fromEntries(Object.entries(shotFields).map(([k,v])=>[k,k==='title'?v:v.optional()]))}).strict(),
+'shot.update':z.object({requestId:mutationRequestId,shotId:id,expectedRevision:z.number().int().positive(),patch:z.object(Object.fromEntries(Object.entries(shotFields).map(([k,v])=>[k,v.optional()]))).strict().refine(v=>Object.keys(v).length>0)}).strict(),
+'shot.reorder':z.object({requestId:mutationRequestId,projectId:id,expectedRevision:z.number().int().positive(),shotIds:z.array(id)}).strict(),
+'node.create':z.object({requestId:mutationRequestId,projectId:id,type:z.enum(['text','image','video','audio']),label:z.string().max(150).optional(),text:z.string().max(5000).optional(),assetId:id.optional(),position}).strict(),
+'node.update':z.object({requestId:mutationRequestId,nodeId:id,expectedRevision:z.number().int().positive(),patch:z.object({label:z.string().max(150).optional(),text:z.string().max(5000).optional(),position:position.optional()}).strict()}).strict(),
 'edge.create':z.object({projectId:id,source:id,target:id}).strict(),
 'edge.delete':z.object({edgeId:id}).strict(),
 'reference.attach':z.object({projectId:id,sourceNodeId:id,targetShotId:id,expectedSourceRevision:z.number().int().positive(),expectedShotRevision:z.number().int().positive(),requestId:key,role:z.literal('first_frame')}).strict(),
@@ -37,7 +39,7 @@ export const schemas={
 'job.cancel':z.object({jobId:id}).strict(),
 'job.reconcile':z.object({jobId:id,providerJobId:z.string().max(200).optional()}).strict(),
 'version.list':z.object({shotId:id}).strict(),
-'version.select':z.object({shotId:id,versionId:id,expectedRevision:z.number().int().positive()}).strict(),
+'version.select':z.object({requestId:mutationRequestId,shotId:id,versionId:id,expectedRevision:z.number().int().positive()}).strict(),
 'export.create':z.object({projectId:id,requestId:key}).strict(),
 'export.get':z.object({exportId:id}).strict(),
 'timeline.get':z.object({projectId:id}).strict(),

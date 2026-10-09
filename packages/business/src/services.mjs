@@ -7,6 +7,7 @@ import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createReferenceServices} from './references.mjs';
 import {createInspectionServices} from './inspection.mjs';
+import {createLocalMutationServices} from './local-mutations.mjs';
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
@@ -14,8 +15,6 @@ export function createServices(store,providers,{env=process.env}={}){
  const {db,root,get,list,put,tx}=store;
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
  const check=(v,rev)=>{if(v.revision!==rev)throw new AppError('REVISION_CONFLICT','内容已有新版本，请重新读取后再修改',409,{entityId:v.id,expectedRevision:rev,currentRevision:v.revision,current:publicValue(v)});};
- const refs=(projectId,ids)=>{for(const id of ids){const a=required('assets',id);if(a.projectId!==projectId)throw new AppError('CROSS_PROJECT_REFERENCE','素材不属于此项目');}};
- const touchProject=id=>{const p=required('projects',id);put('projects',{...p,revision:p.revision+1,updatedAt:now()});};
  const dedupe=(scope,requestId,requestHash,table)=>{const r=db.prepare('SELECT * FROM idempotency WHERE scope=? AND requestId=?').get(scope,requestId);if(!r)return null;if(r.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同内容',409,{requestId});return required(table,r.resourceId);};
  const idem=(scope,key,h,id)=>db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run(scope,key,h,id);
  const event=(job,event)=>db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id,JSON.stringify(event),now());
@@ -48,10 +47,12 @@ export function createServices(store,providers,{env=process.env}={}){
  const timeline=createTimelineServices(store,{required,check,hash,now});
  const references=createReferenceServices(store,{required,check,hash,now});
  const inspection=createInspectionServices(store);
+ const localMutations=createLocalMutationServices(store,{check,canonical,now,references});
  const handlers={
  ...inspection.handlers,
  ...timeline.handlers,
  ...references.handlers,
+ ...localMutations.handlers,
  'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
  'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
@@ -81,11 +82,6 @@ export function createServices(store,providers,{env=process.env}={}){
   }catch(e){await unlink(file);throw new AppError('INVALID_MEDIA','无法解码素材或媒体类型不符，请检查文件');}
  },
  'asset.list':i=>{required('projects',i.projectId);return list('assets',i.projectId);},
- 'shot.create':i=>tx(()=>{required('projects',i.projectId);refs(i.projectId,i.referenceAssetIds||[]);const shot={id:randomUUID(),projectId:i.projectId,title:i.title,prompt:i.prompt||'',referenceAssetIds:i.referenceAssetIds||[],aspectRatio:i.aspectRatio||'9:16',duration:i.duration||2,parameters:i.parameters||{},position:i.position||{x:80+list('shots',i.projectId).length*300,y:100},orderIndex:list('shots',i.projectId).length,revision:1,selectedVersionId:null,createdAt:now(),updatedAt:now()};put('shots',shot);touchProject(i.projectId);return shot;}),
- 'shot.update':i=>tx(()=>{const shot=required('shots',i.shotId);check(shot,i.expectedRevision);references.guardManualUpdate(shot,i.patch.referenceAssetIds);refs(shot.projectId,i.patch.referenceAssetIds||shot.referenceAssetIds);return put('shots',{...shot,...i.patch,revision:shot.revision+1,updatedAt:now()});}),
- 'shot.reorder':i=>tx(()=>{const p=required('projects',i.projectId);check(p,i.expectedRevision);const shots=list('shots',p.id);if(i.shotIds.length!==shots.length||new Set(i.shotIds).size!==shots.length||shots.some(s=>!i.shotIds.includes(s.id)))throw new AppError('INVALID_ORDER','顺序必须包含全部镜头且不能重复');i.shotIds.forEach((id,orderIndex)=>{const s=required('shots',id);put('shots',{...s,orderIndex});});touchProject(p.id);return get('projects',p.id);}),
- 'node.create':i=>{required('projects',i.projectId);if(i.type!=='text'){if(!i.assetId)throw new AppError('ASSET_REQUIRED','图片/视频/音频节点需要素材');refs(i.projectId,[i.assetId]);const a=required('assets',i.assetId);if(!a.mimeType.startsWith(i.type+'/'))throw new AppError('INVALID_NODE_ASSET','节点类型与素材不一致');}return put('nodes',{id:randomUUID(),...i,label:i.label||'',text:i.text||'',revision:1,createdAt:now()});},
- 'node.update':i=>{const n=required('nodes',i.nodeId);check(n,i.expectedRevision);return put('nodes',{...n,...i.patch,revision:n.revision+1});},
  'edge.create':i=>{required('projects',i.projectId);for(const id of [i.source,i.target]){const n=get('shots',id)||get('nodes',id);if(!n||n.projectId!==i.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(i.source===i.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',i.projectId).find(e=>e.kind!=='reference'&&e.source===i.source&&e.target===i.target);return existing||put('edges',{id:randomUUID(),...i,kind:'decorative'});},
  'edge.delete':i=>{const edge=required('edges',i.edgeId);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(i.edgeId);return {deleted:true};},
  'provider.list':()=>[...providers.values()].map(capabilitiesFor),
@@ -96,7 +92,6 @@ export function createServices(store,providers,{env=process.env}={}){
  'job.cancel':i=>{const j=required('jobs',i.jobId);if(['succeeded','failed','cancelled'].includes(j.status))return j;return saveJob(j,{status:'cancelled',phase:'local_wait_stopped',cancelScope:'local_only',error:{code:'LOCAL_WAIT_STOPPED',message:'已停止本地等待；供应商任务未确认取消，可能仍会完成或计费',retryable:true}});},
  'job.reconcile':async i=>{const j=required('jobs',i.jobId),context={jobId:j.id,requestId:j.requestId,providerRegion:j.snapshot.capabilities?.region};if(['succeeded','failed','queued','submitting'].includes(j.status)){if(i.providerJobId)throw new AppError('INVALID_RECONCILIATION_STATE','当前任务状态不允许绑定供应商任务',409);return j;}if(i.providerJobId&&j.providerJobId&&i.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);if(i.providerJobId){const owner=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===i.providerJobId);if(owner)throw new AppError('TASK_ID_CONFLICT','供应商任务已属于另一个本地任务，不能替换其参数快照',409);if(j.providerId==='mock'){const own=await providers.get('mock').reconcile(j.requestId,context);if(!own||own.providerJobId!==i.providerJobId)throw new AppError('TASK_ID_CONFLICT','模拟任务 ID 与此提交请求不匹配',409);}}const p=providers.get(j.providerId);if(j.snapshot.capabilities?.region&&p.capabilities.region!==j.snapshot.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);const found=i.providerJobId?{providerJobId:i.providerJobId}:j.providerJobId?{providerJobId:j.providerJobId}:await p.reconcile(j.requestId,context);if(!found)return saveJob(j,{status:'submission_unknown',phase:'reconciliation_required',error:{code:'SUBMISSION_UNKNOWN',message:'无法确认是否已被受理；不会自动重新提交。请在供应商后台核实已有任务 ID',retryable:true}});await p.poll(found.providerJobId,context);const competing=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===found.providerJobId);if(competing)throw new AppError('TASK_ID_CONFLICT','供应商任务已由另一个本地任务占用',409);return saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null});},
  'version.list':i=>{const s=required('shots',i.shotId);return list('versions',s.projectId).filter(v=>v.shotId===s.id).sort((a,b)=>a.number-b.number);},
- 'version.select':i=>tx(()=>{const s=required('shots',i.shotId);check(s,i.expectedRevision);const v=required('versions',i.versionId);if(v.shotId!==s.id)throw new AppError('INVALID_VERSION','版本不属于此镜头');return put('shots',{...s,selectedVersionId:v.id,revision:s.revision+1,updatedAt:now()});}),
  'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>required('versions',s.selectedVersionId));const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);return e;}),
  'export.get':i=>required('exports',i.exportId)
  };

@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import Icon from './icons.jsx';
 import Inspector from './Inspector.jsx';
+import PendingSubmission from './PendingSubmission.jsx';
 import AgentWorkspace, { AgentDockPane } from './AgentWorkspace.jsx';
 import AssetLibrary from './AssetLibrary.jsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';
@@ -23,6 +24,7 @@ import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, statusText, versionUrl, jobStatusText, outputReviewRequired, outputReviewMessage } from './api.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
 import { pendingForProject, prepareSubmission, clearPending, reconcilePending } from './submissions.js';
+import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.js';
 import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';
 import { createWorkspacePreferences } from './workspace-preferences.js';
 import { migrateBrowserStorage } from './storage-migration.js';
@@ -311,11 +313,13 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [auth, data.project?.id, refresh]);
-  async function run(key, operation, input, message, { returnAfterNavigation = false } = {}) {
+  async function run(key, operation, input, message, { returnAfterNavigation = false, replay = false } = {}) {
     const captured = context(), projectId = captured.projectId;
-    if (isBusy(key, projectId)) return null;
+    const mutation = isMutationOperation(operation);
+    if (isBusy(key, projectId) || (mutation && isBusy('canvas:mutation', projectId))) return null;
     markBusy(projectId, key, true);
-    const durable = ['generation.submit', 'job.retry', 'export.create'].includes(operation) || operation.startsWith('timeline.') || isReferenceOperation(operation);
+    if (mutation) markBusy(projectId, 'canvas:mutation', true);
+    const durable = mutation || ['generation.submit', 'job.retry', 'export.create'].includes(operation) || operation.startsWith('timeline.') || isReferenceOperation(operation);
     const timelineMutation = operation.startsWith('timeline.') && operation !== 'timeline.render';
     const invalidateHistory = () => {
       if (!timelineMutation || currentProject.current !== projectId) return;
@@ -326,7 +330,9 @@ export default function App() {
     let stored, dispatched = false;
     try {
       if (durable) {
-        stored = prepareSubmission({ projectId, key, operation, input, createdAt: new Date().toISOString() });
+        const entry = { projectId, key, operation, input, createdAt: new Date().toISOString() };
+        if (mutation && !replay) assertMutationOwner(entry, dataRef.current);
+        stored = mutation ? prepareMutation(entry, { replay }) : prepareSubmission(entry);
         input = stored.input; operation = stored.operation;
         if (currentProject.current === projectId) setPending(pendingForProject(projectId));
       }
@@ -334,23 +340,26 @@ export default function App() {
       dispatched = true;
       const result = await rpc(operation, input);
       invalidateHistory();
+      if (mutation) validateMutationResponse(stored, result);
       if (durable) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
       if (currentProject.current === projectId) await refresh(projectId);
       // A still-mounted inspector may finish a save after its preview changes.
       // Returning its acknowledged record is safe; navigation effects are not.
-      if (!isCurrent(captured)) return returnAfterNavigation && currentProject.current === projectId ? result : null;
-      if (message) notify(message); return result;
+      if (!isCurrent(captured)) return !replay && returnAfterNavigation && currentProject.current === projectId ? result : null;
+      if (message) notify(message); return mutation && replay ? null : result;
     } catch (e) {
       if (dispatched) invalidateHistory();
-      if (durable && stored && e.definitive) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
+      const rejected = mutation ? mutationNotApplied(e, stored) : e.definitive;
+      if (durable && stored && rejected) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
       if (currentProject.current === projectId) {
         if (e.code === 'UNAUTHORIZED') setAuth(false);
-        if (durable && stored && dispatched && !e.definitive) { notify('连接中断，提交结果尚未确认。请求已保留，请在任务面板恢复同一请求；不会生成新的提交编号。', 'error'); if (isCurrent(captured)) setShowJobs(true); }
+        if (durable && stored && dispatched && !rejected) { notify('提交结果尚未确认。原请求已保留，请在任务面板恢复同一请求；不会自动重试或生成新的提交编号。', 'error'); if (isCurrent(captured)) setShowJobs(true); }
         else if (isCurrent(captured)) notify(readableError(e), 'error');
+        if (e.code === 'MUTATION_PENDING' && isCurrent(captured)) setShowJobs(true);
         await refresh(projectId);
       }
       return null;
-    } finally { markBusy(projectId, key, false); }
+    } finally { markBusy(projectId, key, false); if (mutation) markBusy(projectId, 'canvas:mutation', false); }
   }
   async function inspect(id, nextTab = 'settings', versionId = null, { reveal = false } = {}) {
     if ((id !== selectedId || workspaceMode !== 'canvas') && !await guardNavigation('当前面板有未保存的修改。放弃修改并查看画板来源？')) return false;
@@ -405,13 +414,21 @@ export default function App() {
     if (shot && await inspect(shot.id)) revealCanvas(shot.id);
   }
   async function addStructure() {
-    if (!data.project || isBusy('structure')) return;
+    const owner = data.project?.id;
+    if (!owner || owner !== currentProject.current || dataRef.current.project?.id !== owner || dataRef.current.shots.length || dataRef.current.nodes.length || isBusy('structure')) return;
     if (!await guardNavigation('当前面板有未保存的修改。放弃修改并创建镜头结构？')) return;
+    if (owner !== currentProject.current || dataRef.current.project?.id !== owner || dataRef.current.shots.length || dataRef.current.nodes.length || isBusy('structure')) return;
     const captured = context(), state = dataRef.current, projectId = state.project.id;
     markBusy(projectId, 'structure', true);
     const base = state.shots.length, firstImage = state.assets.find(a => a.mimeType.startsWith('image/'));
+    let done = 0;
     try {
-      for (const [i, title] of ['建立场景', '展开故事', '留下余韵'].entries()) await rpc('shot.create', { projectId, title: `${String(base + i + 1).padStart(2, '0')} · ${title}`, prompt: '', referenceAssetIds: firstImage ? [firstImage.id] : [], duration: 2, aspectRatio: '9:16', position: { x: 100 + i * 340, y: 130 } });
+      for (const [i, title] of ['建立场景', '展开故事', '留下余韵'].entries()) {
+        if (!isCurrent(captured)) return;
+        const created = await run('shot-create', 'shot.create', { projectId, title: `${String(base + i + 1).padStart(2, '0')} · ${title}`, prompt: '', referenceAssetIds: firstImage ? [firstImage.id] : [], duration: 2, aspectRatio: '9:16', position: { x: 100 + i * 340, y: 130 } });
+        if (!created) { if (isCurrent(captured)) notify(`已停止创建结构，已确认 ${done}/3 个镜头。如有待确认请求，请在任务面板恢复；其余镜头不会自动创建。`, 'warning'); return; }
+        done++;
+      }
       const next = await refresh(projectId);
       if (isCurrent(captured) && next) { const first = next.shots.find(shot => shot.orderIndex === base); if (first && await inspect(first.id)) revealCanvas(); notify('三个镜头已准备好，逐个写下画面描述。'); }
     } catch (e) { if (isCurrent(captured)) notify(readableError(e), 'error'); await refresh(projectId); } finally { markBusy(projectId, 'structure', false); }
@@ -454,6 +471,7 @@ export default function App() {
     dragging.current = false;
   }
   function referenceWorkBlocked() {
+    if (pendingForProject(currentProject.current).some(entry => isMutationOperation(entry.operation))) { notify('此项目有编辑请求待确认。草稿仍保留；请先在任务面板恢复原请求，再保存、连接或生成。', 'warning'); setShowJobs(true); return true; }
     if (isBusy('reference:mutation')) { notify('首帧连接正在同步，请稍候。', 'warning'); return true; }
     if (hasPendingReference(pendingForProject(currentProject.current))) { notify('首帧连接的结果尚未确认。请先在任务面板恢复同一请求，再保存或生成。', 'warning'); setShowJobs(true); return true; }
     return false;
@@ -665,7 +683,7 @@ export default function App() {
     {comparisonShot && <Comparison shot={comparisonShot} versions={data.versions} onClose={() => setComparisonId(null)} onSelect={selectVersion} busy={busy[`version:${comparisonShot.id}`]} />}
     {previewAsset && <Modal title={previewAsset.name} subtitle={`${previewAsset.mimeType} · ${(previewAsset.sizeBytes / 1024 / 1024).toFixed(2)} MB`} onClose={() => setPreviewAsset(null)} wide><div className="asset-preview-large"><Media asset={previewAsset} controls /></div><div className="modal-footer"><Button variant="ghost" className="button primary" onClick={() => { addNode(assetKind(previewAsset), previewAsset); setPreviewAsset(null); }}><Icon name="plus" size={16} />添加到画布</Button></div></Modal>}
     {realConfirm && <Modal title="确认提交真实生成" subtitle="此操作会调用外部生成服务，可能产生费用。" onClose={() => setRealConfirm(null)}><div className="modal-form"><div className="confirmation-summary"><strong>{providers.find(p => p.id === realConfirm.providerId)?.name || realConfirm.providerId}</strong>{realConfirm.retryJobId && <p>重试明确失败的任务：使用原任务的固定镜头快照。</p>}<span>{realConfirm.model} · {inputModeLabel(realConfirm.inputMode)} · {realConfirm.shot.duration} 秒 · {realConfirm.shot.aspectRatio}</span><p>将发送此镜头的提示词、参数与 {realConfirm.shot.referenceAssetIds?.length || 0} 张参考图。费用由服务商按你的账户计费；工作台不保证远端任务可以取消。</p><p className="muted">此处不提供价格或预算承诺。请先确认服务商计费、账户额度与服务器侧已授权的调用上限。</p><p className="muted">提交状态不明确时，系统会停止重试，防止重复计费。</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => { const args = realConfirm; setRealConfirm(null); submitGeneration(args); }}>确认发送并生成</Button></div></Modal>}
-    {showJobs && <Dialog open onOpenChange={open => { if (!open) { navigationEpoch.current++; setShowJobs(false); } }}><DialogContent className="jobs-drawer" showCloseButton={false}><header className="drawer-header"><div><DialogTitle>生成任务</DialogTitle><DialogDescription>{activeCount ? `${activeCount} 个任务正在处理` : '每次提交都有迹可循'}</DialogDescription></div><Button variant="ghost" className="icon-button" aria-label="关闭生成任务" onClick={() => { navigationEpoch.current++; setShowJobs(false); }}><Icon name="close" /></Button></header><div className="drawer-content">{pending.map(entry => <div className="job-card submission_unknown" key={entry.key} data-testid="pending-submission"><div className="job-title"><Icon name="info" size={17} /><strong>请求结果待确认</strong></div><p className="helper muted" style={{ marginTop: 12 }}>连接中断前的完整请求已保留。恢复时使用原编号与原参数，由服务器去重；不会重新生成请求编号。</p><div className="job-snapshot"><span>{entry.operation}</span><span>{new Date(entry.createdAt).toLocaleTimeString('zh-CN')}</span></div><div className="job-actions"><Button variant="ghost" className="button small" data-testid="resume-pending" disabled={busy[entry.key]} onClick={() => run(entry.key, entry.operation, entry.input, '原请求已恢复并确认')}><Icon name="refresh" size={13} />恢复同一请求</Button></div></div>)}{jobs.length ? jobs.map(job => <div className={`job-card ${job.status}`} key={job.id} data-testid={`job-${job.id}`}><div className="job-title"><span className={`job-state-icon ${job.status}`}>{activeJob(job) ? <span className="spinner" /> : <Icon name={job.status === 'succeeded' ? 'check' : job.status === 'failed' ? 'close' : 'info'} size={16} />}</span><strong>{data.shots.find(s => s.id === job.shotId)?.title || '镜头任务'}</strong><Badge className="small-badge neutral">{job.providerId}</Badge></div><div className="job-status"><span>{jobStatusText(job)}</span><span>{activeJob(job) ? `${Math.round(job.progress || 0)}%` : new Date(job.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span></div>{activeJob(job) && <div className="progress-track"><span style={{ width: `${Math.max(3, job.progress || 0)}%` }} /></div>}{job.error && <p className="job-error">{typeof job.error === 'string' ? job.error : job.error.message || job.error.code || '生成遇到问题'}</p>}{job.status === 'submission_unknown' && <div className="notice warning">服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交。</div>}{['submission_unknown', 'cancelled'].includes(job.status) && <div className="reconcile-job"><Label className="field-label" htmlFor={`reconcile-${job.id}`}>已有服务商任务 ID <span className="optional">可选</span></Label><Input id={`reconcile-${job.id}`} value={reconcileIds[job.id] || ''} onChange={e => setReconcileIds(ids => ({ ...ids, [job.id]: e.target.value }))} placeholder={job.providerJobId || '已知 ID 会自动恢复，无需填写'} /><Button variant="ghost" className="button small" data-testid={`reconcile-job-${job.id}`} disabled={busy[`reconcile:${job.id}`]} onClick={() => run(`reconcile:${job.id}`, 'job.reconcile', { jobId: job.id, ...(reconcileIds[job.id]?.trim() ? { providerJobId: reconcileIds[job.id].trim() } : {}) }, '已核对已有任务状态，没有重新提交生成')}><Icon name="refresh" size={13} />核对并恢复已有任务</Button></div>}{outputReviewRequired(job) && <div className="notice warning" data-testid="output-review-required">{outputReviewMessage}</div>}{job.status === 'cancelled' && !outputReviewRequired(job) && <p className="helper muted">停止范围：{job.cancelScope === 'remote' ? '远端任务已确认取消' : '仅停止本地等待，不代表服务商已取消或停止计费'}。</p>}<div className="job-snapshot"><span>{job.snapshot?.duration}s · {job.snapshot?.aspectRatio}</span><span>提交 {job.submissionCount ?? 1} 次</span></div><div className="job-actions"><Button variant="ghost" className="text-button" onClick={async () => { if (await inspect(job.shotId, job.status === 'succeeded' ? 'versions' : 'settings', null, { reveal: true })) setShowJobs(false); }}>查看镜头<Icon name="arrow" size={12} /></Button>{job.status === 'failed' && <Button variant="ghost" className="button small" data-testid={`retry-job-${job.id}`} disabled={busy[`retry:${job.id}`] || jobs.some(child => child.retryOfJobId === job.id && (activeJob(child) || child.status === 'submission_unknown'))} title={jobs.some(child => child.retryOfJobId === job.id && (activeJob(child) || child.status === 'submission_unknown')) ? '原任务已有重试正在处理或待核实，请查看新任务' : '仅对明确失败的原始快照重试'} onClick={() => retryGeneration(job)}><Icon name="refresh" size={13} />{jobs.some(child => child.retryOfJobId === job.id && (activeJob(child) || child.status === 'submission_unknown')) ? '已有重试任务' : '重试失败任务'}</Button>}{activeJob(job) && <Button variant="ghost" className="button small" disabled={busy[`cancel:${job.id}`]} onClick={async () => { const captured = context(); if (await confirm('停止本地等待不一定能取消服务商任务，也不保证停止计费。继续？') && isCurrent(captured)) run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }, '已请求停止。请查看任务记录中的实际取消范围。'); }}><Icon name="stop" size={12} />停止等待</Button>}</div></div>) : <div className="small-empty"><Icon name="clock" size={30} /><h4>还没有生成任务</h4><p>选择镜头并点击生成，这里会显示实时进度和结果。</p></div>}</div><footer className="drawer-note"><Icon name="lock" size={15} /><span>任务状态持久保存。刷新或重启不会重复提交已有任务。</span></footer></DialogContent></Dialog>}
+    {showJobs && <Dialog open onOpenChange={open => { if (!open) { navigationEpoch.current++; setShowJobs(false); } }}><DialogContent className="jobs-drawer" showCloseButton={false}><header className="drawer-header"><div><DialogTitle>生成任务</DialogTitle><DialogDescription>{activeCount ? `${activeCount} 个任务正在处理` : '每次提交都有迹可循'}</DialogDescription></div><Button variant="ghost" className="icon-button" aria-label="关闭生成任务" onClick={() => { navigationEpoch.current++; setShowJobs(false); }}><Icon name="close" /></Button></header><div className="drawer-content">{pending.map(entry => <PendingSubmission key={entry.key} entry={entry} busy={busy[entry.key] || (isMutationOperation(entry.operation) && busy['canvas:mutation'])} onReplay={() => run(entry.key, entry.operation, entry.input, '原请求已恢复并确认', { replay: true })} />)}{jobs.length ? jobs.map(job => <div className={`job-card ${job.status}`} key={job.id} data-testid={`job-${job.id}`}><div className="job-title"><span className={`job-state-icon ${job.status}`}>{activeJob(job) ? <span className="spinner" /> : <Icon name={job.status === 'succeeded' ? 'check' : job.status === 'failed' ? 'close' : 'info'} size={16} />}</span><strong>{data.shots.find(s => s.id === job.shotId)?.title || '镜头任务'}</strong><Badge className="small-badge neutral">{job.providerId}</Badge></div><div className="job-status"><span>{jobStatusText(job)}</span><span>{activeJob(job) ? `${Math.round(job.progress || 0)}%` : new Date(job.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span></div>{activeJob(job) && <div className="progress-track"><span style={{ width: `${Math.max(3, job.progress || 0)}%` }} /></div>}{job.error && <p className="job-error">{typeof job.error === 'string' ? job.error : job.error.message || job.error.code || '生成遇到问题'}</p>}{job.status === 'submission_unknown' && <div className="notice warning">服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交。</div>}{['submission_unknown', 'cancelled'].includes(job.status) && <div className="reconcile-job"><Label className="field-label" htmlFor={`reconcile-${job.id}`}>已有服务商任务 ID <span className="optional">可选</span></Label><Input id={`reconcile-${job.id}`} value={reconcileIds[job.id] || ''} onChange={e => setReconcileIds(ids => ({ ...ids, [job.id]: e.target.value }))} placeholder={job.providerJobId || '已知 ID 会自动恢复，无需填写'} /><Button variant="ghost" className="button small" data-testid={`reconcile-job-${job.id}`} disabled={busy[`reconcile:${job.id}`]} onClick={() => run(`reconcile:${job.id}`, 'job.reconcile', { jobId: job.id, ...(reconcileIds[job.id]?.trim() ? { providerJobId: reconcileIds[job.id].trim() } : {}) }, '已核对已有任务状态，没有重新提交生成')}><Icon name="refresh" size={13} />核对并恢复已有任务</Button></div>}{outputReviewRequired(job) && <div className="notice warning" data-testid="output-review-required">{outputReviewMessage}</div>}{job.status === 'cancelled' && !outputReviewRequired(job) && <p className="helper muted">停止范围：{job.cancelScope === 'remote' ? '远端任务已确认取消' : '仅停止本地等待，不代表服务商已取消或停止计费'}。</p>}<div className="job-snapshot"><span>{job.snapshot?.duration}s · {job.snapshot?.aspectRatio}</span><span>提交 {job.submissionCount ?? 1} 次</span></div><div className="job-actions"><Button variant="ghost" className="text-button" onClick={async () => { if (await inspect(job.shotId, job.status === 'succeeded' ? 'versions' : 'settings', null, { reveal: true })) setShowJobs(false); }}>查看镜头<Icon name="arrow" size={12} /></Button>{job.status === 'failed' && <Button variant="ghost" className="button small" data-testid={`retry-job-${job.id}`} disabled={busy[`retry:${job.id}`] || jobs.some(child => child.retryOfJobId === job.id && (activeJob(child) || child.status === 'submission_unknown'))} title={jobs.some(child => child.retryOfJobId === job.id && (activeJob(child) || child.status === 'submission_unknown')) ? '原任务已有重试正在处理或待核实，请查看新任务' : '仅对明确失败的原始快照重试'} onClick={() => retryGeneration(job)}><Icon name="refresh" size={13} />{jobs.some(child => child.retryOfJobId === job.id && (activeJob(child) || child.status === 'submission_unknown')) ? '已有重试任务' : '重试失败任务'}</Button>}{activeJob(job) && <Button variant="ghost" className="button small" disabled={busy[`cancel:${job.id}`]} onClick={async () => { const captured = context(); if (await confirm('停止本地等待不一定能取消服务商任务，也不保证停止计费。继续？') && isCurrent(captured)) run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }, '已请求停止。请查看任务记录中的实际取消范围。'); }}><Icon name="stop" size={12} />停止等待</Button>}</div></div>) : <div className="small-empty"><Icon name="clock" size={30} /><h4>还没有生成任务</h4><p>选择镜头并点击生成，这里会显示实时进度和结果。</p></div>}</div><footer className="drawer-note"><Icon name="lock" size={15} /><span>生成任务状态持久保存。刷新或重启不会重复提交已有生成任务。</span></footer></DialogContent></Dialog>}
     {showExports && <Modal title="导出记录" subtitle="每个文件使用创建时的固定快照。时间线合成与分镜顺序导出分别标记，后续修改不会覆盖旧文件。" onClose={() => { navigationEpoch.current++; setShowExports(false); }}><div className="export-list">{orderedExports.length ? orderedExports.map(item => <div className="export-card" key={item.id}><div className="export-icon"><Icon name="film" size={24} /></div><div className="export-detail"><strong>{data.project?.name || '成片'}.mp4</strong><span>{statusText(item.status)} · {new Date(item.createdAt).toLocaleString('zh-CN')}</span>{item.error && <p className="job-error">{typeof item.error === 'string' ? item.error : item.error.message}</p>}<small>{item.mode === 'timeline' ? `${item.purpose === 'preview' ? '时间线预览' : '时间线导出'} · rev ${item.timelineRevision}${item.timelineRevision !== timeline?.revision ? ' · 旧快照' : ' · 当前'}` : `分镜顺序导出 · ${item.orderedVersionIds?.length || 0} 个镜头`}</small></div>{(item.url || item.assetId) && ['succeeded', 'completed', 'ready'].includes(item.status) ? <a className="button primary small" href={item.url || `/media/${item.assetId}`} download={`${data.project?.name || 'film'}.mp4`} data-testid="download-export"><Icon name="download" size={15} />下载</a> : item.status === 'failed' ? <Badge className="small-badge warn">失败</Badge> : <span className="spinner" />}</div>) : <div className="small-empty"><Icon name="download" size={29} /><h4>还没有导出记录</h4><p>将媒体编排到时间线后导出，或为镜头选好版本后使用分镜导出。</p></div>}</div></Modal>}
   </main>;
 }

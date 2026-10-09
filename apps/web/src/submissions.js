@@ -1,15 +1,17 @@
 import { migratePendingStorage } from './storage-migration.js';
+import { LOCAL_MUTATION_OPERATIONS } from '@mioon/contracts';
 // A lost HTTP response is not proof that the server rejected a paid request.
 // Preserve the exact operation and input until a definite response or a durable
 // job/export with the same request ID establishes the outcome. Never re-key it.
 const PREFIX = 'mioon.pending.v1:';
+export const isMutationOperation = operation => LOCAL_MUTATION_OPERATIONS.includes(operation);
 function storageKey(projectId, key) { return `${PREFIX}${projectId}:${key}`; }
 export function readPending(projectId, key) {
   migratePendingStorage();
   const raw = sessionStorage.getItem(storageKey(projectId, key));
   if (!raw) return null;
   const entry = JSON.parse(raw);
-  if (!entry.input?.requestId || !(['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(entry.operation) || /^timeline\.(track\.(add|update)|clip\.(add|update|remove|split)|seed|render|undo|redo)$/.test(entry.operation)) || entry.projectId !== projectId || entry.key !== key) throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
+  if (!entry.input?.requestId || !(isMutationOperation(entry.operation) || ['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(entry.operation) || /^timeline\.(track\.(add|update)|clip\.(add|update|remove|split)|seed|render|undo|redo)$/.test(entry.operation)) || entry.projectId !== projectId || entry.key !== key) throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
   return entry;
 }
 export function writePending(entry) {
@@ -27,13 +29,16 @@ export function prepareSubmission(entry) {
   return persisted;
 }
 export function clearPending(projectId, key) { migratePendingStorage(); sessionStorage.removeItem(storageKey(projectId, key)); }
-export function pendingForProject(projectId) {
+export function pendingForProject(projectId, { strict = false } = {}) {
   migratePendingStorage();
   const result = [];
   for (let i = 0; i < sessionStorage.length; i++) {
     const key = sessionStorage.key(i);
     if (!key?.startsWith(`${PREFIX}${projectId}:`)) continue;
-    try { const entry = JSON.parse(sessionStorage.getItem(key)); if (entry?.input?.requestId) result.push(entry); } catch { /* Do not discard corrupted records or replace their request IDs. */ }
+    try {
+      const entry = strict ? readPending(projectId, key.slice(`${PREFIX}${projectId}:`.length)) : JSON.parse(sessionStorage.getItem(key));
+      if (entry?.input?.requestId) result.push(entry);
+    } catch (error) { if (strict) throw error; /* Do not discard corrupted records or replace their request IDs. */ }
   }
   return result;
 }

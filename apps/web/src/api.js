@@ -5,6 +5,9 @@ export async function rpc(operation, input = {}) {
   const response = await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }) });
   let body;
   try { body = await response.json(); } catch { throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'NETWORK'); }
+  if (!body || typeof body !== 'object' || typeof body.ok !== 'boolean' ||
+    (body.ok ? !Object.hasOwn(body, 'data') || !response.ok : typeof body.error?.code !== 'string' || typeof body.error?.message !== 'string'))
+    throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'BACKEND_PROTOCOL_ERROR');
   if (!response.ok || !body.ok) throw new ApiError(body.error?.message || '请求未完成', response.status === 401 ? 'UNAUTHORIZED' : body.error?.code, body.error?.details, response.status >= 400 && response.status < 500);
   return body.data;
 }

@@ -1,4 +1,5 @@
 import {DatabaseSync} from 'node:sqlite';
+import {isAsyncFunction,isPromise} from 'node:util/types';
 import {mkdirSync,openSync,writeFileSync,readFileSync,unlinkSync,existsSync,closeSync} from 'node:fs';
 import path from 'node:path';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
@@ -150,12 +151,43 @@ export function openStore(root,{lock=true}={}){
  BEGIN SELECT RAISE(ABORT,'accepted inspection context is immutable');END;
  INSERT OR IGNORE INTO schema_version VALUES(8);
  COMMIT;`);
+ // Exact local mutation replies are additive, immutable and permanently retained.
+ // Existing business records and every older request journal stay untouched.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS mutation_requests(
+ requestId TEXT PRIMARY KEY,operation TEXT NOT NULL CHECK(operation IN ('shot.create','shot.update','shot.reorder','node.create','node.update','version.select')),
+ projectId TEXT NOT NULL REFERENCES projects(id),
+ canonicalInput TEXT NOT NULL CHECK(json_valid(canonicalInput)),
+ response TEXT NOT NULL CHECK(json_valid(response)));
+ CREATE TRIGGER IF NOT EXISTS reject_mutation_request_replacement BEFORE INSERT ON mutation_requests
+ WHEN EXISTS(SELECT 1 FROM mutation_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'mutation request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS immutable_mutation_requests BEFORE UPDATE ON mutation_requests
+ BEGIN SELECT RAISE(ABORT,'mutation request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS retain_mutation_requests BEFORE DELETE ON mutation_requests
+ BEGIN SELECT RAISE(ABORT,'mutation request responses must be retained');END;
+ INSERT OR IGNORE INTO schema_version VALUES(9);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};
  const list=(t,p)=>db.prepare(`SELECT data FROM ${table(t)}${p?' WHERE projectId=?':''}`).all(...p?[p]:[]).map(r=>JSON.parse(r.data));
  const put=(t,obj)=>{table(t);const cols=t==='projects'?['id','data']:t==='versions'?['id','projectId','jobId','data']:['id','projectId','data'];const values=cols.map(k=>k==='data'?JSON.stringify(obj):obj[k]);db.prepare(`INSERT INTO ${t}(${cols.join(',')}) VALUES(${cols.map(()=>'?').join(',')}) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(...values);return obj;};
- const tx=fn=>{db.exec('BEGIN IMMEDIATE');try{const r=fn();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}};
+ // A transaction owns its complete synchronous callback. Never commit before
+ // asynchronous work, or let a nested caller roll back an outer transaction.
+ const tx=fn=>{
+  if(typeof fn!=='function'||isAsyncFunction(fn))throw new TypeError('Transactions require a synchronous callback');
+  if(db.isTransaction)throw new Error('Nested transactions are not supported');
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   const result=fn();
+   if(result&&typeof result.then==='function'){
+    if(isPromise(result))result.catch(()=>{});
+    throw new TypeError('Transactions require a synchronous result');
+   }
+   db.exec('COMMIT');return result;
+  }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+ };
  const close=()=>{db.close();if(lock&&existsSync(lockPath)&&readFileSync(lockPath,'utf8')===String(process.pid))unlinkSync(lockPath);};
  return {db,root,get,list,put,tx,close};
 }

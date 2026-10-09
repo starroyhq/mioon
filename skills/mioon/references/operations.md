@@ -69,3 +69,22 @@ If a manual image is selected, attach rejects with `REFERENCE_SELECTION_EXISTS`,
 Detach accepts `{projectId,edgeId,expectedShotRevision,requestId}` and returns `{edge,shot,detached:true}`. It removes only the typed edge and its owned shot reference, preserving the source image/node and historical tasks. Generic `edge delete` rejects typed connections. Source assets cannot be replaced through `node update`, and node/asset deletion is unsupported. Source rename/move does not change the bound image.
 
 Persist the exact mutation request until its outcome is known. Replay uses the same operation, revisions and request ID even after restart. It returns the original response, which may describe a connection that has since been removed; refresh `project get` before new work. Changed reuse of an ID, including for detach instead of attach, conflicts. New generation snapshots retain connection provenance and immutable asset hashes; subsequent detach/reattach cannot change queued/running tasks. Model constraints are still checked at generation, and connecting does not upload media or call any provider. These are first-frame inputs only, not character/style consistency or general graph execution.
+
+## Optional stable IDs for existing canvas edits
+
+`shot create`, `shot update`, `shot reorder`, `node create`, `node update`, and
+`version select` accept optional `requestId` (8–200 characters). Opt in for any
+recoverable edit; CLI/MCP do not generate or retry IDs for you. Retain the exact
+operation and input, including original revisions. The original response and
+business mutation commit atomically; replay validates ownership and returns that
+historical response before current revision checks. Changed scope/input under
+the same key conflicts. Do not reinterpret an old response as latest state.
+
+`requiresRequestId:false` and MCP `idempotentHint:false` remain correct for these
+operations because keyless calls retain legacy behavior. A new intended edit
+uses a new key and current revision. Unknown/lost/malformed output, auth failure
+or key conflict is not evidence that the earlier attempt failed. Only a valid
+exact success or the server's same-key `mutationOutcome:'not_applied'` rollback
+proof resolves that uncertainty. The built-in Agent remains read-only; an
+external operation schema does not authorize a model to write. See
+[shared mutation replay](../../../docs/MUTATION-REPLAY.md).
