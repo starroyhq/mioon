@@ -26,6 +26,8 @@ The code already has meaningful boundaries. Keep them during cleanup:
 
 ## Prioritized findings
 
+Remediation update (Q1, baseline `e2db533`): EQ-01/02 implementation now routes Runway through the shared bounded request/download/cache helpers, with unknown-submission and escaping-symlink regressions. Parent aggregate 846/846 and synthetic browser 4/4 passed. See [Q1 acceptance](ACCEPTANCE-RUNWAY-PARITY.md) for build reuse and remaining live/native/TOCTOU limitations. The findings below retain their original audit evidence; other batches remain open.
+
 Priority is delivery order: P1 before extending paid-generation/native distribution exposure; P2 in the next quality batches; P3 when the dependent capability is implemented. No confirmed unauthenticated remote compromise was established by this read-only review.
 
 ### EQ-01 · P1 · Runway submission classification drift can make an inconclusive submission retryable

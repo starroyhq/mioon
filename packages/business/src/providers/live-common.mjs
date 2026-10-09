@@ -42,7 +42,7 @@ export function liveConfiguration(env, keyName, prefix) {
 }
 
 /** Never forward provider bodies, network errors, request data, or credentials. */
-export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name }) {
+export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name, isRetryableStatus = () => true }) {
   return async (endpoint, { method = 'GET', body, context = {} } = {}) => {
     ensureEnabled();
     let response;
@@ -59,7 +59,7 @@ export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name
       // Only unambiguous request/auth/quota rejection codes are safe failures.
       // An unrecognized status (including conflict/redirect) cannot prove no task exists.
       const uncertain = method === 'POST' && ![400, 401, 402, 403, 404, 405, 413, 415, 422, 429].includes(response.status);
-      throw providerError(uncertain ? 'SUBMISSION_UNKNOWN' : `PROVIDER_HTTP_${response.status}`, uncertain ? `${name} returned an inconclusive submission response. Do not resubmit.` : `${name} request was rejected (HTTP ${response.status}).`, { uncertain, retryable: method !== 'POST', httpStatus: response.status });
+      throw providerError(uncertain ? 'SUBMISSION_UNKNOWN' : `PROVIDER_HTTP_${response.status}`, uncertain ? `${name} returned an inconclusive submission response. Do not resubmit.` : `${name} request was rejected (HTTP ${response.status}).`, { uncertain, retryable: method !== 'POST' && isRetryableStatus(response.status), httpStatus: response.status });
     }
     try {
       const data = await boundedJson(response);
@@ -77,9 +77,15 @@ export function createPollCache({ now, interval, retrieve }) {
   return {
     get(id, context = {}) {
       const current = cache.get(id);
-      if (current && now() - current.at < interval) return current.promise;
-      const entry = { at: now() };
-      entry.promise = Promise.resolve().then(() => retrieve(id, context));
+      if (current && (current.pending || now() - current.at < interval)) return current.promise;
+      const entry = { at: now(), pending: true };
+      entry.promise = Promise.resolve().then(() => retrieve(id, context)).finally(() => {
+        // Slow requests still share one GET; begin the cooldown on settlement so
+        // a late transient error cannot cause an immediate retry burst. Updating
+        // only this entry never restores one explicitly invalidated in flight.
+        entry.pending = false;
+        entry.at = now();
+      });
       cache.set(id, entry);
       return entry.promise;
     },

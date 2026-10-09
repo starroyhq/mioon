@@ -161,6 +161,8 @@ test('Runway sends exactly one documented POST with approved data URI, server au
   assert.equal(body.ratio, '720:1280'); assert.equal(body.duration, 2); assert.equal(body.seed, 12);
   assert.match(body.promptImage, /^data:image\/png;base64,/);
   assert.equal(body.promptText, input.prompt);
+  assert.deepEqual(body, { model: 'gen4_turbo', promptImage: `data:image/png;base64,${Buffer.from(await readFile(input.referenceAssets[0].path)).toString('base64')}`, promptText: input.prompt, ratio: '720:1280', duration: 2, seed: 12 });
+  assert.deepEqual(init.headers, { Authorization: 'Bearer offline-fixture-secret', 'X-Runway-Version': '2024-11-06', Accept: 'application/json', 'Content-Type': 'application/json' });
   assert.equal(JSON.stringify(provider.capabilities).includes('offline-fixture-secret'), false);
 });
 
@@ -226,9 +228,13 @@ test('Runway maps task states, clamps progress, caches five seconds, and sanitiz
 });
 
 test('Runway known task transient polling failure is retryable and malformed task IDs never fetch', async t => {
-  const { provider, calls } = await runway(t, [new Error('network down'), json({ id: ID, status: 'RUNNING', progress: 0.2 })]);
+  let clock = 0;
+  const { provider, calls } = await runway(t, [new Error('network down'), json({ id: ID, status: 'RUNNING', progress: 0.2 })], { now: () => clock });
   await assert.rejects(provider.poll('../../other'), { code: 'INVALID_PROVIDER_TASK_ID' });
   await assert.rejects(provider.poll(ID), e => e.retryable === true && !e.uncertain);
+  await assert.rejects(provider.poll(ID), e => e.retryable === true && !e.uncertain);
+  assert.equal(calls.length, 1);
+  clock = 5000;
   assert.equal((await provider.poll(ID)).progress, 0.2);
   assert.equal(calls.length, 2);
 });

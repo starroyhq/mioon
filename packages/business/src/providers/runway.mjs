@@ -1,11 +1,11 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { createJsonRequest, createPollCache, downloadMp4, outputUrl } from './live-common.mjs';
 
 const API = 'https://api.dev.runwayml.com';
 const VERSION = '2024-11-06';
 const MAX_DATA_URI = 5 * 1024 * 1024;
-const MAX_DOWNLOAD = 128 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RATIOS = { '9:16': '720:1280', '16:9': '1280:720', '1:1': '960:960', '3:4': '832:1104', '4:3': '1104:832', '21:9': '1584:672' };
 const error = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });
@@ -27,43 +27,27 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
   // The documented output CDN is allowed by default. Additional verified CDN hosts
   // can be configured server-side, never by a request, prompt, or provider response.
   const outputHosts = new Set(['dnznrvs05pmza.cloudfront.net', ...(env.RUNWAY_OUTPUT_HOSTS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(x))]);
-  const cache = new Map();
   const ensureEnabled = () => { if (!enabled) throw error('PROVIDER_DISABLED', 'Runway live calls are disabled or its server credential is missing.'); };
   const taskPath = id => {
-    if (!UUID.test(id)) throw error('INVALID_PROVIDER_TASK_ID', 'Runway task ID is invalid.');
+    if (typeof id !== 'string' || !UUID.test(id)) throw error('INVALID_PROVIDER_TASK_ID', 'Runway task ID is invalid.');
     return `/v1/tasks/${id}`;
   };
-  async function request(endpoint, { method = 'GET', body, context = {} } = {}) {
-    ensureEnabled();
-    const signal = context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000);
-    let response;
-    try {
-      response = await fetchImpl(`${API}${endpoint}`, {
-        method, headers: { Authorization: `Bearer ${secret}`, 'X-Runway-Version': VERSION, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-        ...(body ? { body: JSON.stringify(body) } : {}), signal, redirect: 'error',
-      });
-    } catch {
-      // No SDK and no fetch retry wrapper: exactly one POST attempt.
-      throw error(method === 'POST' ? 'SUBMISSION_UNKNOWN' : 'PROVIDER_UNAVAILABLE', method === 'POST' ? 'Runway submission response was not received. Do not resubmit; acceptance may have occurred.' : 'Runway status request failed. Query the existing task again.', { uncertain: method === 'POST', retryable: method !== 'POST' });
-    }
-    if (!response.ok) {
-      // Untrusted bodies may contain credentials, signed URLs, or prompt contents.
-      void response.body?.cancel().catch(() => {});
-      const uncertain = method === 'POST' && (response.status >= 500 || response.status === 408 || response.status >= 300 && response.status < 400);
-      throw error(uncertain ? 'SUBMISSION_UNKNOWN' : `PROVIDER_HTTP_${response.status}`, uncertain ? 'Runway returned an inconclusive submission response. Do not resubmit.' : `Runway request was rejected (HTTP ${response.status}).`, { uncertain, retryable: method !== 'POST' && (response.status >= 500 || response.status === 429 || response.status === 408), httpStatus: response.status });
-    }
-    try { return await response.json(); }
-    catch { throw error(method === 'POST' ? 'SUBMISSION_UNKNOWN' : 'INVALID_PROVIDER_RESPONSE', 'Runway returned an unreadable response.', { uncertain: method === 'POST', retryable: method !== 'POST' }); }
-  }
-  async function retrieve(id, context = {}) {
-    const endpoint = taskPath(id);
-    const existing = cache.get(id);
-    if (existing && now() - existing.at < 5000) return existing.task;
-    const task = await request(endpoint, { context });
+  const request = createJsonRequest({
+    api: API, headers: { Authorization: `Bearer ${secret}`, 'X-Runway-Version': VERSION },
+    fetchImpl, ensureEnabled, name: 'Runway',
+    // Preserve Runway's existing GET status retryability; POST classification is
+    // owned by the shared conservative explicit-rejection policy.
+    isRetryableStatus: status => status >= 500 || status === 429 || status === 408,
+  });
+  const cache = createPollCache({ now, interval: 5000, retrieve: async (id, context) => {
+    const task = await request(taskPath(id), { context });
     if (task.id !== id || !['PENDING', 'THROTTLED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'].includes(task.status)) throw error('INVALID_PROVIDER_RESPONSE', 'Runway task response did not match the requested task.', { retryable: true });
-    cache.set(id, { at: now(), task });
     return task;
-  }
+  } });
+  const retrieve = (id, context = {}) => {
+    taskPath(id);
+    return cache.get(id, context);
+  };
   async function imageDataUri(asset) {
     if (!root || !asset || typeof asset.path !== 'string' || !/^[0-9a-f]{64}$/i.test(asset.sha256 ?? '')) throw error('INVALID_REFERENCE', 'A managed reference image with its checksum is required.');
     if (!approvedHashes.has(asset.sha256.toLowerCase())) throw error('REFERENCE_NOT_APPROVED', 'This reference image has not been approved in the server-side Runway asset allowlist.');
@@ -114,7 +98,7 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
         ...(parameters.seed === undefined ? {} : { seed: parameters.seed }),
       };
       const response = await request('/v1/image_to_video', { method: 'POST', body, context });
-      if (!UUID.test(response?.id ?? '')) throw error('SUBMISSION_UNKNOWN', 'Runway accepted the request but no valid task ID was received. Do not resubmit.', { uncertain: true });
+      if (typeof response.id !== 'string' || !UUID.test(response.id)) throw error('SUBMISSION_UNKNOWN', 'Runway accepted the request but no valid task ID was received. Do not resubmit.', { uncertain: true });
       return { providerJobId: response.id };
     },
     async poll(providerJobId, context = {}) {
@@ -138,52 +122,9 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
       ensureEnabled();
       const task = await retrieve(providerJobId, context);
       if (task.status !== 'SUCCEEDED') throw error('PROVIDER_NOT_READY', 'Runway output is not available yet.', { retryable: true });
-      let url;
-      try { url = new URL(task.output?.[0]); } catch { throw error('INVALID_OUTPUT_URL', 'Runway did not return a valid output URL.'); }
-      if (url.protocol !== 'https:' || url.username || url.password || url.port || !outputHosts.has(url.hostname.toLowerCase())) throw error('UNAPPROVED_OUTPUT_HOST', 'Runway output host requires server-side verification before download.');
-      const base = await realpath(root), target = path.resolve(destination);
-      if (!inside(base, target)) throw error('UNSAFE_OUTPUT_PATH', 'Output must stay inside managed storage.');
-      await mkdir(path.dirname(target), { recursive: true });
-      const parent = await realpath(path.dirname(target));
-      if (parent !== base && !inside(base, parent)) throw error('UNSAFE_OUTPUT_PATH', 'Output directory is outside managed storage.');
-      const temporary = `${target}.${randomUUID()}.partial.mp4`;
-      let response;
-      try {
-        // Deliberately no Authorization header: a signed CDN URL is separate from API auth.
-        response = await fetchImpl(url.href, { method: 'GET', redirect: 'error', signal: context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000) });
-      } catch { throw error('DOWNLOAD_FAILED', 'Runway output download failed; retry the same task, not generation.', { retryable: true }); }
-      if (!response.ok || !response.body) {
-        cache.delete(providerJobId);
-        await response.body?.cancel().catch(() => {});
-        throw error('DOWNLOAD_FAILED', 'Runway output download was unavailable; refresh the task and retry.', { retryable: true });
-      }
-      const size = Number(response.headers.get('content-length'));
-      if (size > MAX_DOWNLOAD) { await response.body.cancel(); throw error('OUTPUT_TOO_LARGE', 'Runway output exceeds the managed download limit.'); }
-      const reader = response.body.getReader();
-      const handle = await open(temporary, 'wx', 0o600);
-      let total = 0, header = Buffer.alloc(0);
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          total += value.length;
-          if (total > MAX_DOWNLOAD) throw error('OUTPUT_TOO_LARGE', 'Runway output exceeds the managed download limit.');
-          if (header.length < 12) header = Buffer.concat([header, Buffer.from(value).subarray(0, 12 - header.length)]);
-          await handle.writeFile(value);
-        }
-        if (header.length < 12 || header.subarray(4, 8).toString() !== 'ftyp') throw error('INVALID_OUTPUT_MEDIA', 'Runway output is not an MP4 container.');
-        await handle.sync();
-        await handle.close();
-        await rename(temporary, target);
-        return { mimeType: 'video/mp4', sizeBytes: total, isMock: false };
-      } catch (cause) {
-        await reader.cancel().catch(() => {});
-        if (['OUTPUT_TOO_LARGE', 'INVALID_OUTPUT_MEDIA'].includes(cause.code)) throw cause;
-        throw error('DOWNLOAD_FAILED', 'Runway output could not be saved; retry downloading the same task.', { retryable: true });
-      } finally {
-        await handle.close().catch(() => {});
-        await rm(temporary, { force: true });
-      }
+      const url = outputUrl(task.output?.[0], outputHosts);
+      // Signed CDN URLs never receive API credentials or redirect permission.
+      return downloadMp4({ root, destination, url, fetchImpl, context, invalidate: () => cache.invalidate(providerJobId) });
     },
   };
 }
