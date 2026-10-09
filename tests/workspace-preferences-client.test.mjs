@@ -137,6 +137,94 @@ test('a raw legacy v1 cache defaults snapping on for safe import or offline fall
   }
 });
 
+test('GET accepts only whole-layout legacy omission and seeds both mode flags without migration writes', async t => {
+  for (const magnetLegacy of [false, true]) {
+    const { controller, server, clock } = fixture(t), legacy = durableWorkspaceState(state(42, 'editing'));
+    delete legacy.layout;
+    if (magnetLegacy) delete legacy.editing.snappingEnabled;
+    else legacy.editing.snappingEnabled = false;
+    legacy.shared.assetsCollapsed = true;
+    server.records.set(A, { projectId: A, revision: 8, state: copy(legacy) });
+    const loaded = await controller.load(A);
+    for (const mode of ['canvas', 'editing']) {
+      assert.equal(loaded.layout[mode].assetsCollapsed, true);
+      assert.equal(loaded.layout[mode].inspectorCollapsed, false);
+      assert.equal(loaded.layout[mode].assetsWidth, 242);
+    }
+    assert.equal(loaded.editing.snappingEnabled, magnetLegacy);
+    await clock.tick(2000); await controller.flush();
+    assert.equal(controller.getStatus(A).phase, 'saved'); assert.equal(controller.getStatus(A).revision, 8);
+    assert.equal(server.puts().length, 0); assert.equal(controller.hasUnsaved(), false);
+    assert.deepEqual(server.data(A).state, legacy);
+  }
+});
+
+test('raw legacy layout cache safely imports after confirmed absence and remains local when offline', async t => {
+  for (const offline of [false, true]) {
+    const { controller, server, storage, clock } = fixture(t), legacy = state(51, 'editing');
+    delete legacy.layout; legacy.shared.inspectorCollapsed = true; legacy.editing.snappingEnabled = false;
+    const raw = JSON.stringify(legacy); storage.setItem(`mioon.workspace.v1:${A}`, raw);
+    if (offline) server.hook = () => { throw new Error('offline'); };
+    const loaded = await controller.load(A);
+    assert.equal(loaded.layout.canvas.inspectorCollapsed, true); assert.equal(loaded.layout.editing.inspectorCollapsed, true);
+    assert.equal(loaded.editing.snappingEnabled, false);
+    await clock.tick(2000); await controller.flush();
+    if (offline) {
+      assert.equal(controller.getStatus(A).phase, 'local'); assert.equal(server.puts().length, 0);
+      assert.equal(storage.getItem(`mioon.workspace.v1:${A}`), raw);
+    } else {
+      assert.equal(server.puts().length, 1); assert.deepEqual(server.data(A).state.layout, loaded.layout);
+      assert.equal(server.data(A).revision, 1);
+    }
+  }
+});
+
+test('mode layout changes persist independently and a lost response replays the exact layout body', async t => {
+  const { controller, server, clock, storage } = fixture(t), original = state();
+  original.layout.canvas = { assetsWidth: 480, inspectorWidth: 555.25, assetsCollapsed: true, inspectorCollapsed: false };
+  original.layout.editing = { assetsWidth: 182, inspectorWidth: 260, assetsCollapsed: false, inspectorCollapsed: true, timelineHeight: 701 };
+  original.editing.snappingEnabled = false;
+  await controller.load(A);
+  let lost = true;
+  server.hook = (call, apply) => {
+    const result = apply();
+    if (call.options.method === 'PUT' && lost) { lost = false; throw new Error('lost after commit'); }
+    return result;
+  };
+  controller.update(A, original, { immediate: true }); await pump();
+  const later = copy(original); later.activeMode = 'editing'; later.layout.editing.timelineHeight = 612;
+  controller.update(A, later);
+  await clock.tick(10);
+  assert.deepEqual(server.puts()[0].body, server.puts()[1].body);
+  assert.deepEqual(server.data(A).state.layout, later.layout); assert.equal(server.data(A).revision, 2);
+  assert.deepEqual(readStoredWorkspaceState(A, storage).layout, later.layout);
+  assert.deepEqual((await controller.load(B)).layout, state().layout);
+  assert.deepEqual((await controller.load(A, { reload: true })).layout, later.layout);
+  assert.equal(controller.getSnapshot(A).editing.snappingEnabled, false);
+});
+
+test('PUT acknowledgement cannot omit layout or repair a missing nested field even when defaults match', async t => {
+  for (const mutate of [
+    value => { delete value.layout; },
+    value => { delete value.layout.canvas.assetsWidth; },
+    value => { delete value.layout.editing.timelineHeight; },
+    value => { value.layout.editing.extra = true; },
+    value => { value.layout.canvas.assetsCollapsed = null; },
+  ]) {
+    const { controller, server } = fixture(t);
+    await controller.load(A);
+    server.hook = (call, apply) => {
+      const result = apply(); if (call.options.method !== 'PUT') return result;
+      const data = server.data(A); mutate(data.state); return response({ ok: true, data });
+    };
+    controller.update(A, state(12), { immediate: true }); await pump();
+    assert.equal(controller.hasUnsaved(), true); assert.equal(controller.getStatus(A).revision, 0);
+    server.hook = null; await controller.flush();
+    assert.deepEqual(server.puts()[0].body, server.puts()[1].body);
+    assert.equal(server.data(A).revision, 1); assert.equal(controller.hasUnsaved(), false);
+  }
+});
+
 test('magnet off persists, reloads, and stays isolated while lost responses replay its exact CAS body', async t => {
   const { controller, server, clock, storage } = fixture(t);
   const disabled = state(); disabled.editing.snappingEnabled = false;
@@ -404,6 +492,19 @@ test('partial, unbounded or unexpected successful remote states cannot become wr
   }
   const unknownLegacy = durableWorkspaceState(state()); delete unknownLegacy.editing.snappingEnabled;
   unknownLegacy.editing.magnet = true; malformed.push(unknownLegacy);
+  for (const bad of [null, [], {}, false, { canvas: {} }]) {
+    const value = durableWorkspaceState(state()); value.layout = bad; malformed.push(value);
+  }
+  for (const mode of ['canvas', 'editing']) {
+    for (const key of Object.keys(state().layout[mode])) {
+      const value = durableWorkspaceState(state()); delete value.layout[mode][key]; malformed.push(value);
+    }
+    for (const assetsWidth of [0, 481, '242', null]) {
+      const value = durableWorkspaceState(state()); value.layout[mode].assetsWidth = assetsWidth; malformed.push(value);
+    }
+    const extra = durableWorkspaceState(state()); extra.layout[mode].extra = true; malformed.push(extra);
+  }
+  const missingShared = durableWorkspaceState(state()); delete missingShared.layout; delete missingShared.shared.assetsCollapsed; malformed.push(missingShared);
   for (const value of malformed) {
     const { controller, server, storage, clock } = fixture(t);
     writeWorkspaceState(A, state(10), storage);

@@ -3,7 +3,7 @@ import { Badge } from '@mioon/ui/components/badge';
 import { Button } from '@mioon/ui/components/button';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
 import { Label } from '@mioon/ui/components/label';
-import { WorkbenchSelect } from '@mioon/ui/components/workbench-select';
+import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import Icon from './icons.jsx';
 import { inputModeLabel, providerModels, providerStatus, providerStatusLabel } from './generation-settings.js';
 

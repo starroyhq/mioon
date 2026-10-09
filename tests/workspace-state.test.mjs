@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultWorkspaceState, normalizeWorkspaceState, readWorkspaceState, writeWorkspaceState, reconcileWorkspaceState, sourceForAsset } from '../apps/web/src/workspace-state.js';
+import { defaultWorkspaceState, normalizeWorkspaceState, readStoredWorkspaceState, readWorkspaceState, writeWorkspaceState, reconcileWorkspaceState, sourceForAsset } from '../apps/web/src/workspace-state.js';
 import { prepareSubmission, readPending, reconcilePending } from '../apps/web/src/submissions.js';
 
 class MemoryStorage {
@@ -182,4 +182,60 @@ test('a denied global localStorage getter is caught before reading or writing pr
   t.after(() => prior ? Object.defineProperty(globalThis, 'localStorage', prior) : delete globalThis.localStorage);
   assert.deepEqual(readWorkspaceState('project-a'), defaultWorkspaceState());
   assert.equal(writeWorkspaceState('project-a', saved()), false);
+});
+
+test('legacy cache seeds independent mode layouts from shared flags without rewriting its bytes', () => {
+  const storage = new MemoryStorage();
+  for (const assetsCollapsed of [true, false]) for (const inspectorCollapsed of [true, false]) {
+    const legacy = saved(); delete legacy.layout;
+    Object.assign(legacy.shared, { assetsCollapsed, inspectorCollapsed });
+    const raw = JSON.stringify(legacy); storage.setItem('mioon.workspace.v1:project-a', raw);
+    const restored = readStoredWorkspaceState('project-a', storage);
+    for (const mode of ['canvas', 'editing']) {
+      assert.equal(restored.layout[mode].assetsCollapsed, assetsCollapsed);
+      assert.equal(restored.layout[mode].inspectorCollapsed, inspectorCollapsed);
+    }
+    assert.notEqual(restored.layout.canvas, restored.layout.editing);
+    assert.equal(restored.layout.editing.timelineHeight, 320);
+    assert.equal(restored.editing.snappingEnabled, false);
+    assert.equal(storage.getItem('mioon.workspace.v1:project-a'), raw);
+  }
+});
+
+test('supplied malformed cache layouts are rejected instead of imported as repaired preferences', () => {
+  const storage = new MemoryStorage();
+  const invalid = [null, [], {}, { canvas: {} }, { ...saved().layout, extra: true }];
+  for (const mode of ['canvas', 'editing']) {
+    for (const key of Object.keys(saved().layout[mode])) {
+      const layout = saved().layout; delete layout[mode][key]; invalid.push(layout);
+    }
+    for (const assetsWidth of [0, 481, Infinity, '242', null]) {
+      const layout = saved().layout; layout[mode].assetsWidth = assetsWidth; invalid.push(layout);
+    }
+  }
+  for (const layout of invalid) {
+    const raw = JSON.stringify({ ...saved(), layout }); storage.setItem('mioon.workspace.v1:project-a', raw);
+    assert.equal(readStoredWorkspaceState('project-a', storage), null);
+    assert.deepEqual(readWorkspaceState('project-a', storage), defaultWorkspaceState());
+    assert.equal(storage.getItem('mioon.workspace.v1:project-a'), raw);
+  }
+});
+
+test('mode layouts survive project switching, reconciliation and reload independently of shared flags', () => {
+  const storage = new MemoryStorage(), initial = saved();
+  initial.layout.canvas = { assetsWidth: 411.5, inspectorWidth: 478, assetsCollapsed: true, inspectorCollapsed: false };
+  initial.layout.editing = { assetsWidth: 198, inspectorWidth: 261, assetsCollapsed: false, inspectorCollapsed: true, timelineHeight: 627.25 };
+  Object.assign(initial.shared, { assetsCollapsed: true, inspectorCollapsed: true });
+  writeWorkspaceState('project-a', initial, storage);
+  const other = readWorkspaceState('project-b', storage); other.layout.canvas.assetsWidth = 330;
+  writeWorkspaceState('project-b', other, storage);
+  const restored = readWorkspaceState('project-a', storage);
+  assert.deepEqual(restored, initial);
+  for (const activeMode of ['canvas', 'editing', 'canvas']) {
+    restored.activeMode = activeMode;
+    assert.deepEqual(reconcileWorkspaceState(restored, {}).layout, initial.layout);
+    assert.equal(restored.editing.timelineCollapsed, initial.editing.timelineCollapsed);
+    assert.equal(restored.canvas.storyboardOpen, initial.canvas.storyboardOpen);
+  }
+  assert.equal(readWorkspaceState('project-b', storage).layout.canvas.assetsWidth, 330);
 });

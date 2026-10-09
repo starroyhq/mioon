@@ -1,0 +1,5 @@
+/** Static resize control: no application scripts, media, credentials or providers. */
+import http from 'node:http';
+import {writeFile} from 'node:fs/promises';
+const port=4882,host='127.0.0.1:'+port,origin='http://'+host;
+http.createServer((req,res)=>{if(req.headers.host!==host||(req.headers.origin&&req.headers.origin!==origin))return res.writeHead(403).end();res.writeHead(200,{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'",'x-content-type-options':'nosniff'}).end('<!doctype html><meta charset="utf-8"><title>Static resize control</title><style>body{font:24px sans-serif;background:#12202a;color:white;padding:24px}section{border:3px solid #b4c985;padding:20px}</style><h1>Static browser resize control</h1><section>No JavaScript, React, application state, media or authentication.</section>');}).listen(port,'127.0.0.1',async()=>{await writeFile('/workspace/shared/video-workbench/evidence/dockable-panels/static-control.json',JSON.stringify({pid:process.pid,url:origin}));console.log(origin);});

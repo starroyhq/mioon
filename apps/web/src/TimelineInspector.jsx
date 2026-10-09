@@ -6,7 +6,7 @@ import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
-import { WorkbenchSelect } from '@mioon/ui/components/workbench-select';
+import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import { assetKind, framesLabel } from './Timeline.jsx';
 import Icon from './icons.jsx';
 

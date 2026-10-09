@@ -26,9 +26,10 @@ const sameShape = (expected, received) => {
 };
 const validRemoteState = (state, allowLegacy) => {
   const expected = durableWorkspaceState(state);
-  // A legacy v1 GET may omit this one additive field. Do not generalize this
+  // A legacy v1 GET may omit these entire additive fields. Do not generalize this
   // exception to partial states or PUT acknowledgements of the submitted body.
   if (allowLegacy && state?.editing && !Object.hasOwn(state.editing, 'snappingEnabled')) delete expected.editing.snappingEnabled;
+  if (allowLegacy && state && !Object.hasOwn(state, 'layout')) delete expected.layout;
   return sameShape(expected, state);
 };
 const errorInfo = error => ({ code: error?.code || 'NETWORK', message: error?.message || 'Workspace preferences are unavailable.' });

@@ -77,6 +77,8 @@ test('dedicated preferences HTTP survives a real killed/restarted backend and le
   value.canvas.storyboardOpen = true; value.canvas.miniMap = true; value.canvas.inspectorTab = 'versions';
   value.editing = {selectedClipId: randomUUID(), quickAssetId: randomUUID(), previewKind: 'source', playhead: 92, pixelsPerSecond: 156, scrollLeft: 800, scrollTop: 120, timelineCollapsed: true, snappingEnabled: false};
   value.shared = {assetFilter: 'audio', assetsCollapsed: true, inspectorCollapsed: true};
+  value.layout.canvas = {assetsWidth: 450, inspectorWidth: 500, assetsCollapsed: false, inspectorCollapsed: true};
+  value.layout.editing = {assetsWidth: 215, inspectorWidth: 280, assetsCollapsed: true, inspectorCollapsed: false, timelineHeight: 560};
   const payload = {expectedRevision: 0, state: value};
   const saved = await f.request(route, {method: 'PUT', input: payload});
   assert.equal(saved.status, 200); assert.deepEqual(saved.body.data, {projectId, revision: 1, state: value});
@@ -132,6 +134,11 @@ test('preferences endpoint retains token/cookie authentication, strict origin/ho
     {input: {...input, state: {...input.state, token: 'sensitive-value-must-not-persist'}}},
     {input: {...input, state: {...input.state, shared: {...input.state.shared, assetSearch: 'local-only search'}}}},
     {input: {...input, state: {...input.state, editing: {...input.state.editing, snappingEnabled: 'false'}}}},
+    {input: {...input, state: {...input.state, layout: null}}},
+    {input: {...input, state: {...input.state, layout: {canvas: input.state.layout.canvas}}}},
+    {input: {...input, state: {...input.state, layout: {...input.state.layout, canvas: {...input.state.layout.canvas, assetsWidth: 481}}}}},
+    {input: {...input, state: {...input.state, layout: {...input.state.layout, editing: {...input.state.layout.editing, timelineHeight: 159}}}}},
+    {input: {...input, state: {...input.state, layout: {...input.state.layout, editing: {...input.state.layout.editing, inspectorCollapsed: 'false'}}}}},
     {raw: JSON.stringify(input).replace('"shared":{', '"shared":{"__proto__":{},')},
     {input: {...input, state: null}},
   ];

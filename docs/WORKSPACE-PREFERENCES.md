@@ -6,12 +6,13 @@ Mioon remembers one shared local-user view per project. Browser windows and the 
 
 The additive SQLite schema version 5 creates `workspace_preferences(projectId, revision, state)` with a project foreign key. It does not change project records, shot revisions, timeline revisions, undo/redo history, immutable versions, job snapshots, media, or idempotency records.
 
-The version-1 state has a strict, complete whitelist, with one narrowly optional field for legacy compatibility:
+The version-1 state has a strict, complete whitelist, with narrowly optional additive fields for legacy compatibility:
 
 - Active Canvas/Editing mode
 - Canvas viewport, node/shot and edge selections, inspector tab, highlighted version, storyboard and minimap visibility
 - Editing clip/source selection, preview kind, playhead, timeline zoom, two-axis scroll, collapsed timeline, and timeline magnet (`snappingEnabled`, default `true`)
-- Asset type filter and collapsed library/inspector panels
+- Shared asset type filter and legacy collapsed library/inspector flags
+- Independent Canvas and Editing panel widths and collapsed library/inspector flags, plus Editing timeline height
 
 Free-text search remains renderer-memory only. Draft text, prompts, credentials, tokens, jobs, file paths, arbitrary object fields and media are never accepted as view preferences. Selections may reference a removed entity; the renderer reconciles them against current project data without changing that data.
 
@@ -20,9 +21,9 @@ Free-text search remains renderer-memory only. Draft text, prompts, credentials,
 These endpoints require the same authenticated loopback token/session and Host/Origin checks as other APIs. They are separate from business RPC, CLI command schemas, MCP tools and the durable business request-recovery log.
 
 - `GET /api/workspace-preferences/:projectId` returns `{ok:true,data:{projectId,revision,state}}`. A project without preferences returns revision `0` and state `null`.
-- `PUT` on the same path accepts exactly `{expectedRevision,state}`. The body limit is 16 KiB. The full state must have exactly the documented version-1 fields, correct primitive types, bounded finite numbers and nullable valid entity UUIDs. Only `editing.snappingEnabled` may be omitted by a legacy v1 caller; omission means `true`. An explicit value must be a boolean. All other missing and unknown fields remain invalid.
+- `PUT` on the same path accepts exactly `{expectedRevision,state}`. The body limit is 16 KiB. The full state must have exactly the documented version-1 fields, correct primitive types, bounded finite numbers and nullable valid entity UUIDs. Legacy v1 callers may omit `editing.snappingEnabled` (meaning `true`), the entire top-level `layout`, or both. A missing `layout` uses default sizes and seeds both modes' collapsed flags from the existing shared flags. A supplied layout must contain exactly both modes and all their documented fields; partial, null, extra and malformed layouts are rejected. An explicit magnet value must be a boolean. All other missing and unknown fields remain invalid.
 - Successful writes atomically advance only the preference revision. A stale different state returns HTTP 409 `PREFERENCES_CONFLICT` with the current revision.
-- Only an exact canonical retry of the latest accepted state with its original expected revision is replayable. It returns the existing revision without another write. Canonical comparison treats the legacy omitted magnet field as `true`; it never treats omission as equivalent to `false`. An older historical state cannot overwrite a newer view.
+- Only an exact canonical retry of the latest accepted state with its original expected revision is replayable. It returns the existing revision without another write. Canonical comparison treats the legacy omitted magnet field as `true` and an omitted layout as the default sizes with shared collapsed flags. It never equates omission with different preferences. An older historical state cannot overwrite a newer view.
 
 All responses are non-cacheable. Unsupported methods, missing projects and malformed input fail explicitly.
 
@@ -56,17 +57,36 @@ A complete state has this shape (the nullable viewport instead accepts exactly `
     "assetFilter": "all",
     "assetsCollapsed": false,
     "inspectorCollapsed": false
+  },
+  "layout": {
+    "canvas": {
+      "assetsWidth": 242,
+      "inspectorWidth": 310,
+      "assetsCollapsed": false,
+      "inspectorCollapsed": false
+    },
+    "editing": {
+      "assetsWidth": 242,
+      "inspectorWidth": 310,
+      "assetsCollapsed": false,
+      "inspectorCollapsed": false,
+      "timelineHeight": 320
+    }
   }
 }
 ```
 
 `activeMode` is `canvas|editing`; `inspectorTab` is `settings|versions`; `previewKind` is `timeline|source`; `assetFilter` is `all|image|video|audio`. Coordinates are within ±1,000,000; Canvas zoom is 0.2–1.75. Playhead is an integer 0–18,000; timeline scale is 28–220 pixels/second; horizontal scroll is 0–10,000,000 and vertical scroll is 0–1,000,000. Revisions are nonnegative safe integers. No value is coerced or silently clamped by the server.
 
+Panel sizes are preferred CSS pixels, allowing finite fractional values: library width defaults to 242 and is bounded to 180–480; inspector width defaults to 310 and is bounded to 240–560; Editing timeline height defaults to 320 and is bounded to 160–800. Each mode's side-panel flags are independent. Once a layout exists, legacy shared flags do not override it. Bottom-panel visibility stays in `canvas.storyboardOpen` and `editing.timelineCollapsed`; it is not duplicated in the layout.
+
+`workspace-layout.js` separates durable preferred sizes from effective viewport geometry. A smaller window can constrain visible widths and height while reserving center space; growing it restores the saved preferred sizes. Viewport resizing never writes those effective sizes or changes saved collapse flags. Explicit panel resizing changes preferred sizes within the documented bounds. The effective helper is pure and does not mutate its input.
+
 ## Loading, migration and recovery
 
 The renderer waits for an authoritative preference load before mounting the project workspace and allowing viewport/selection defaults to save. Saved backend state wins over an old renderer cache. Existing local preferences are imported only after the backend positively confirms that no saved record exists. Storage access denial, malformed cache or a failed API read never becomes permission to overwrite remote state.
 
-The magnet preference retains state version 1, SQLite schema version 5 and the `mioon.workspace.v1:` renderer-cache key. Legacy database records and cache entries without this field load with snapping enabled; an explicit `false` survives normalization, persistence and project switching. Backend reads return the normalized field without rewriting stored rows or advancing revisions. Exact replays of legacy stored records likewise leave their bytes and revisions untouched. The renderer accepts a complete legacy GET with only this field missing, without scheduling a migration write. PUT acknowledgements must still contain the complete submitted state. No broader partial-state fallback is allowed.
+The magnet and panel-layout preferences retain state version 1, SQLite schema version 5 and the `mioon.workspace.v1:` renderer-cache key. Legacy database records and cache entries without the magnet field load with snapping enabled; an explicit `false` survives normalization, persistence and project switching. Entire layout omission seeds both modes from shared collapsed flags and the default sizes, without sharing mutable mode objects. Backend reads return canonical fields without rewriting stored rows or advancing revisions. Exact replays of legacy stored records likewise leave their bytes and revisions untouched. The renderer accepts an otherwise complete legacy GET with only these documented omissions, without scheduling a migration write. PUT acknowledgements must contain the complete submitted state, including layout and magnet fields; malformed acknowledgements keep the exact CAS request pending for retry. Cache entries with a supplied malformed or partial layout are rejected rather than imported as repaired defaults. No broader partial-state fallback is allowed.
 
 During API failure, the view still works using a bounded local fallback. A visible status explains that view positions are not synchronized. Loading the saved view is an explicit action because it replaces current view choices. A stale concurrent window stops saving and shows that another window updated the view; it does not silently take ownership or retry an overwrite. The user can load the saved view and then make a new choice.
 

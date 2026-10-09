@@ -4,6 +4,7 @@ import { Handle, Position } from '@xyflow/react';
 import Icon from './icons.jsx';
 import { activeJob, assetUrl, statusText, versionUrl } from './api.js';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, VISUAL_SOURCE_HANDLE, VISUAL_TARGET_HANDLE } from './reference-connections.js';
+import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 
 export function disposeMedia(element) {
   if (!element) return;
@@ -15,6 +16,8 @@ export function disposeMedia(element) {
 
 export function Media({ asset, version, className = '', controls = false, ...props }) {
   const media = useRef(null);
+  const visible = useWorkspaceVisibility();
+  const visibleRef = useRef(visible);
   const url = version ? versionUrl(version) : assetUrl(asset);
   const video = Boolean(version || asset?.mimeType?.startsWith('video/'));
   const audio = asset?.mimeType?.startsWith('audio/');
@@ -26,9 +29,29 @@ export function Media({ asset, version, className = '', controls = false, ...pro
     if (element.getAttribute('src') !== url) element.setAttribute('src', url);
     return () => disposeMedia(element);
   }, [sourceKey]);
+  useLayoutEffect(() => {
+    visibleRef.current = visible;
+    // Hiding is not disposal: retain src and the exact playback position.
+    if (!visible) media.current?.pause();
+  }, [visible, sourceKey]);
+  function guardPlayback(event, callback) {
+    const element = event.currentTarget;
+    // A queued play/playing event may arrive after a panel was collapsed.
+    if (!visibleRef.current || element !== media.current || !element.isConnected) {
+      element.pause();
+      return;
+    }
+    callback?.(event);
+  }
+  const playbackProps = {
+    ...props,
+    onPlay: event => guardPlayback(event, props.onPlay),
+    onPlaying: event => guardPlayback(event, props.onPlaying),
+    onTimeUpdate: event => guardPlayback(event, props.onTimeUpdate),
+  };
   if (!url) return <div className={`media-placeholder ${className}`}><Icon name="film" size={32} /><span>等待你的第一个画面</span></div>;
-  if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio ref={media} key={sourceKey} className="nodrag nowheel" src={url} controls preload="metadata" {...props} /> : <span>音频素材</span>}</div>;
-  return video ? <video ref={media} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...props} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || '镜头参考图'} loading="lazy" {...props} />;
+  if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio ref={media} key={sourceKey} className="nodrag nowheel" src={url} controls preload="metadata" {...playbackProps} /> : <span>音频素材</span>}</div>;
+  return video ? <video ref={media} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...playbackProps} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || '镜头参考图'} loading="lazy" {...props} />;
 }
 const ShotNode = memo(function ShotNode({ data, selected }) {
   const { record, asset, version, job, index, onInspect, onGenerate } = data;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Label } from '@mioon/ui/components/label';
-import { WorkbenchSelect } from '@mioon/ui/components/workbench-select';
+import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import Icon from './icons.jsx';
 import { assetUrl } from './api.js';
 import { isImageReferenceNode, isReferenceEdge, referenceAttachIssue } from './reference-connections.js';

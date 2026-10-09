@@ -53,11 +53,11 @@ test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and
   const f = await fixture(t), projectId = f.projectId;
   const valid = state(); valid.canvas.viewport = {x: 0, y: 0, zoom: 1};
   const invalid = [null, [], 'state', {}, {...valid, version: 2}, {...valid, activeMode: 'other'}];
-  for (const parent of [[], ['canvas'], ['canvas', 'viewport'], ['editing'], ['shared']]) {
+  for (const parent of [[], ['canvas'], ['canvas', 'viewport'], ['editing'], ['shared'], ['layout'], ['layout', 'canvas'], ['layout', 'editing']]) {
     const branch = at(valid, parent);
     invalid.push(set(copy(valid), [...parent, 'unexpected'], true));
     for (const key of Object.keys(branch)) {
-      if (parent.join('.') === 'editing' && key === 'snappingEnabled') continue; // Sole legacy v1 omission.
+      if ((parent.join('.') === 'editing' && key === 'snappingEnabled') || (!parent.length && key === 'layout')) continue; // Documented legacy v1 omissions only.
       const value = copy(valid); delete at(value, parent)[key]; invalid.push(value);
     }
     if (parent.length) for (const bad of [null, [], false, 1]) invalid.push(set(copy(valid), parent, bad));
@@ -73,13 +73,15 @@ test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and
   const ranges = [
     [['canvas', 'viewport', 'x'], -1e6, 1e6], [['canvas', 'viewport', 'y'], -1e6, 1e6], [['canvas', 'viewport', 'zoom'], .2, 1.75],
     [['editing', 'playhead'], 0, 18000], [['editing', 'pixelsPerSecond'], 28, 220], [['editing', 'scrollLeft'], 0, 1e7], [['editing', 'scrollTop'], 0, 1e6],
+    [['layout', 'canvas', 'assetsWidth'], 180, 480], [['layout', 'canvas', 'inspectorWidth'], 240, 560],
+    [['layout', 'editing', 'assetsWidth'], 180, 480], [['layout', 'editing', 'inspectorWidth'], 240, 560], [['layout', 'editing', 'timelineHeight'], 160, 800],
   ];
   for (const [field, min, max] of ranges) {
     for (const good of [min, max]) assert.equal(at(parseWorkspacePreferencesState(set(copy(valid), field, good)), field), good);
     for (const bad of [min - 1, max + 1, NaN, Infinity, -Infinity, '1', null]) invalidWithoutNullable.push(set(copy(valid), field, bad));
   }
   invalidWithoutNullable.push(set(copy(valid), ['editing', 'playhead'], 1.5));
-  for (const field of [['canvas', 'storyboardOpen'], ['canvas', 'miniMap'], ['editing', 'timelineCollapsed'], ['editing', 'snappingEnabled'], ['shared', 'assetsCollapsed'], ['shared', 'inspectorCollapsed']]) {
+  for (const field of [['canvas', 'storyboardOpen'], ['canvas', 'miniMap'], ['editing', 'timelineCollapsed'], ['editing', 'snappingEnabled'], ['shared', 'assetsCollapsed'], ['shared', 'inspectorCollapsed'], ...['canvas', 'editing'].flatMap(mode => ['assetsCollapsed', 'inspectorCollapsed'].map(key => ['layout', mode, key]))]) {
     for (const bad of [0, 1, 'true', 'false', null, undefined, [], {}]) invalidWithoutNullable.push(set(copy(valid), field, bad));
   }
   for (const field of [['canvas', 'inspectorTab'], ['editing', 'previewKind'], ['shared', 'assetFilter']]) invalidWithoutNullable.push(set(copy(valid), field, 'unknown'));
@@ -128,7 +130,7 @@ test('legacy stored v1 preferences normalize and replay canonically without chan
   assert.deepEqual(capture(f.store), businessBefore);
 });
 
-test('legacy v1 input accepts only the magnet omission and still rejects unknown or incomplete state', async t => {
+test('legacy v1 magnet input still rejects every undocumented omission and unknown field', async t => {
   const legacy = state(); delete legacy.editing.snappingEnabled;
   assert.equal(parseWorkspacePreferencesState(legacy).editing.snappingEnabled, true);
   const explicit = state(); explicit.editing.snappingEnabled = false;
@@ -146,6 +148,56 @@ test('legacy v1 input accepts only the magnet omission and still rejects unknown
   assert.equal(JSON.parse(f.store.db.prepare('SELECT state FROM workspace_preferences WHERE projectId=?').get(f.projectId).state).editing.snappingEnabled, true);
   assert.deepEqual(f.preferences.put(f.projectId, { expectedRevision: 0, state: legacy }), saved);
   assert.equal('snappingEnabled' in legacy.editing, false);
+});
+
+test('whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay', async t => {
+  const f = await fixture(t), projectId = f.projectId, legacy = state();
+  delete legacy.layout; delete legacy.editing.snappingEnabled;
+  legacy.shared.assetsCollapsed = true; legacy.shared.inspectorCollapsed = true;
+  legacy.canvas.storyboardOpen = true; legacy.editing.timelineCollapsed = true;
+  const raw = JSON.stringify(legacy);
+  f.store.db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, 5, raw);
+  const row = () => f.store.db.prepare('SELECT * FROM workspace_preferences WHERE projectId=?').get(projectId);
+  const changes = () => f.store.db.prepare('SELECT total_changes() n').get().n;
+  const before = row(), writes = changes(), business = capture(f.store);
+  const canonical = parseWorkspacePreferencesState(legacy);
+  assert.equal(canonical.editing.snappingEnabled, true);
+  for (const mode of ['canvas', 'editing']) {
+    assert.deepEqual(Object.fromEntries(Object.entries(canonical.layout[mode]).filter(([key]) => key !== 'timelineHeight')),
+      { assetsWidth: 242, inspectorWidth: 310, assetsCollapsed: true, inspectorCollapsed: true });
+  }
+  assert.equal(canonical.layout.editing.timelineHeight, 320);
+  assert.notEqual(canonical.layout.canvas, canonical.layout.editing);
+  assert.deepEqual(f.preferences.get(projectId).state, canonical);
+  for (const value of [legacy, canonical]) {
+    const replay = f.preferences.put(projectId, { expectedRevision: 4, state: value });
+    assert.equal(replay.revision, 5); assert.deepEqual(replay.state, canonical);
+    assert.equal(changes(), writes); assert.deepEqual(row(), before);
+  }
+  const different = copy(canonical); different.layout.canvas.assetsCollapsed = false;
+  assert.throws(() => f.preferences.put(projectId, { expectedRevision: 4, state: different }), { code: 'PREFERENCES_CONFLICT' });
+  f.restart(); assert.deepEqual(row(), before); assert.deepEqual(f.preferences.get(projectId).state, canonical);
+  const saved = f.preferences.put(projectId, { expectedRevision: 5, state: different });
+  assert.equal(saved.revision, 6); assert.equal(saved.state.layout.canvas.assetsCollapsed, false);
+  assert.equal(saved.state.layout.editing.assetsCollapsed, true);
+  assert.equal(saved.state.canvas.storyboardOpen, true); assert.equal(saved.state.editing.timelineCollapsed, true);
+  assert.deepEqual(capture(f.store), business);
+  assert.throws(() => f.preferences.put(projectId, { expectedRevision: 5, state: legacy }), { code: 'PREFERENCES_CONFLICT' });
+});
+
+test('strict layout input never repairs a supplied partial layout, even for otherwise legacy records', () => {
+  for (const magnetLegacy of [false, true]) {
+    const value = state(); if (magnetLegacy) delete value.editing.snappingEnabled;
+    for (const bad of [undefined, null, [], {}, { canvas: value.layout.canvas }, { ...value.layout, extra: false }]) {
+      assert.throws(() => parseWorkspacePreferencesState({ ...value, layout: bad }), { code: 'VALIDATION_ERROR' });
+    }
+    const unknown = copy(value); unknown.layout.canvas.timelineHeight = 320;
+    assert.throws(() => parseWorkspacePreferencesState(unknown), { code: 'VALIDATION_ERROR' });
+    const symbolic = copy(value); symbolic.layout.editing[Symbol('timelineHeight')] = 320;
+    assert.throws(() => parseWorkspacePreferencesState(symbolic), { code: 'VALIDATION_ERROR' });
+    const legacy = copy(value); delete legacy.layout;
+    assert.deepEqual(parseWorkspacePreferencesState(legacy).layout, state().layout);
+  }
 });
 
 test('independent CAS revisions replay only the latest exact write and never overwrite stale state', async t => {

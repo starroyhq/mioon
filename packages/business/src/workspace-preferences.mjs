@@ -27,11 +27,35 @@ function id(value, path, nullable = true) {
 }
 const bool = (value, path) => oneOf(value, [true, false], path);
 
+function panelLayout(value, mode) {
+  const path = ['state', 'layout', mode];
+  const source = object(value, ['assetsWidth', 'inspectorWidth', 'assetsCollapsed', 'inspectorCollapsed', ...(mode === 'editing' ? ['timelineHeight'] : [])], path);
+  return {
+    assetsWidth: numeric(source.assetsWidth, 180, 480, [...path, 'assetsWidth']),
+    inspectorWidth: numeric(source.inspectorWidth, 240, 560, [...path, 'inspectorWidth']),
+    assetsCollapsed: bool(source.assetsCollapsed, [...path, 'assetsCollapsed']),
+    inspectorCollapsed: bool(source.inspectorCollapsed, [...path, 'inspectorCollapsed']),
+    ...(mode === 'editing' ? { timelineHeight: numeric(source.timelineHeight, 160, 800, [...path, 'timelineHeight']) } : {}),
+  };
+}
+
 export function parseWorkspacePreferencesState(value) {
-  const s = object(value, ['version', 'activeMode', 'canvas', 'editing', 'shared'], ['state']);
+  const s = object(value, ['version', 'activeMode', 'canvas', 'editing', 'shared'], ['state'], ['layout']);
   const c = object(s.canvas, ['viewport', 'selectedId', 'selectedEdgeId', 'inspectorTab', 'highlightedVersionId', 'storyboardOpen', 'miniMap'], ['state', 'canvas']);
   const e = object(s.editing, ['selectedClipId', 'quickAssetId', 'previewKind', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'timelineCollapsed'], ['state', 'editing'], ['snappingEnabled']);
   const shared = object(s.shared, ['assetFilter', 'assetsCollapsed', 'inspectorCollapsed'], ['state', 'shared']);
+  const legacyPanel = () => ({ assetsWidth: 242, inspectorWidth: 310,
+    assetsCollapsed: bool(shared.assetsCollapsed, ['state', 'shared', 'assetsCollapsed']),
+    inspectorCollapsed: bool(shared.inspectorCollapsed, ['state', 'shared', 'inspectorCollapsed']) });
+  let layout;
+  if (Object.hasOwn(s, 'layout')) {
+    const source = object(s.layout, ['canvas', 'editing'], ['state', 'layout']);
+    layout = { canvas: panelLayout(source.canvas, 'canvas'), editing: panelLayout(source.editing, 'editing') };
+  } else {
+    // Only whole-layout omission is a legacy exception. Never repair a partial
+    // layout, and never let old shared flags override a supplied mode layout.
+    layout = { canvas: legacyPanel(), editing: { ...legacyPanel(), timelineHeight: 320 } };
+  }
   let viewport = null;
   if (c.viewport !== null) {
     const v = object(c.viewport, ['x', 'y', 'zoom'], ['state', 'canvas', 'viewport']);
@@ -72,6 +96,7 @@ export function parseWorkspacePreferencesState(value) {
       assetsCollapsed: bool(shared.assetsCollapsed, ['state', 'shared', 'assetsCollapsed']),
       inspectorCollapsed: bool(shared.inspectorCollapsed, ['state', 'shared', 'inspectorCollapsed']),
     },
+    layout,
   };
 }
 

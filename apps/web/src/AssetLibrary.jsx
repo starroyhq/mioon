@@ -4,7 +4,7 @@ import { Input } from '@mioon/ui/components/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/tabs';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
-import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
+import { WorkbenchTooltip } from './WorkspaceControls.jsx';
 import Icon from './icons.jsx';
 import { Media } from './Nodes.jsx';
 import { assetKind, dragAsset } from './Timeline.jsx';
@@ -14,7 +14,7 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
   const editing = mode === 'editing';
   const visible = assets.filter(a => (filter === 'all' || assetKind(a) === filter) && a.name.toLowerCase().includes(search.toLowerCase()));
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label="01 素材库" />} data-testid="asset-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); } }}>
-    <div className="asset-panel-heading"><h2>素材库</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起素材库" title="收起素材库" data-testid="toggle-assets" />}><Icon name="left" size={16} /></CollapsibleTrigger></div>
+    <div className="asset-panel-heading"><h2>素材库</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起素材库" title="收起素材库" data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>
     <CollapsibleContent keepMounted className="asset-panel-content">
       <Button variant="outline" className="button import-button full" data-testid="import-button" disabled={busy.import} onClick={onImport}>{busy.import ? <span className="spinner" /> : <Icon name="upload" size={15} />}{busy.import ? '正在导入…' : '导入图片 / 视频 / 音频'}</Button>
       <p className="asset-drag-help">{editing ? '点击查看源素材 · 拖到时间线编排' : '点击快速预览 · 拖到画板构思'}</p>

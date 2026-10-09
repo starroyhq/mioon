@@ -6,7 +6,7 @@ import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
-import { WorkbenchSelect } from '@mioon/ui/components/workbench-select';
+import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import { Textarea } from '@mioon/ui/components/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/tabs';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
@@ -18,6 +18,7 @@ import ProviderSettings from './ProviderSettings.jsx';
 import { ReferenceSourcePanel, BoundReference } from './ReferenceConnections.jsx';
 import { referenceForShot } from './reference-connections.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
+import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 
 const editable = (s) => ({ title: s.title, prompt: s.prompt || '', referenceAssetIds: s.referenceAssetIds || [], duration: s.duration || 2, aspectRatio: s.aspectRatio || '9:16', parameters: s.parameters || {} });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -36,6 +37,16 @@ export default function Inspector({ shot, node, project, assets, versions, jobs,
     return () => { mounted.current = false; };
   }, []);
   const highlightedVersion = useRef(null);
+  const visible = useWorkspaceVisibility();
+  const visibleRef = useRef(visible);
+  const highlightFocusRequest = useRef(null);
+  useLayoutEffect(() => {
+    visibleRef.current = visible;
+    if (!visible && highlightFocusRequest.current) {
+      cancelAnimationFrame(highlightFocusRequest.current.frame);
+      highlightFocusRequest.current = null;
+    }
+  }, [visible]);
   const [advanced, setAdvanced] = useState(false);
   const record = shot || node;
   const boundReference = referenceForShot(edges, shot?.id);
@@ -89,12 +100,22 @@ export default function Inspector({ shot, node, project, assets, versions, jobs,
   async function generate() { if (referenceBusy || conflict || capabilityIssue || availabilityIssue) return; const latest = dirty ? await save() : shot; if (latest && mounted.current) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode }); }
   const selectedVersions = versions.filter(v => v.shotId === shot?.id).sort((a, b) => b.number - a.number);
   useEffect(() => {
-    if (!highlightedVersionId || tab !== 'versions') return;
-    const frame = requestAnimationFrame(() => {
-      highlightedVersion.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-      highlightedVersion.current?.focus({ preventScroll: true });
+    if (!visibleRef.current || !highlightedVersionId || tab !== 'versions') return;
+    const request = { frame: null };
+    highlightFocusRequest.current = request;
+    request.frame = requestAnimationFrame(() => {
+      if (!visibleRef.current || !mounted.current || highlightFocusRequest.current !== request) return;
+      highlightFocusRequest.current = null;
+      const element = highlightedVersion.current;
+      if (!element?.isConnected) return;
+      element.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      element.focus({ preventScroll: true });
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(request.frame);
+      if (highlightFocusRequest.current === request) highlightFocusRequest.current = null;
+    };
+    // A resize, panel reopen, or data refresh must not steal focus again.
   }, [highlightedVersionId, tab, shot?.id]);
   const shotJobs = jobs.filter(j => j.shotId === shot?.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const running = shotJobs.find(activeJob);

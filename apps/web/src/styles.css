@@ -322,3 +322,75 @@ body:has(.workbench-confirm) [data-slot="dialog-overlay"]{z-index:110}
 
 /* A drag preview is geometry only; nothing is edited until a valid drop. */
 .timeline-snap-toggle{white-space:nowrap;flex-shrink:0}.timeline-snap-toggle.active{color:#d7e6aa;border-color:#596944;background:#d7e6aa12}.track-lane.drag-invalid{background-color:#ff76760c;box-shadow:inset 0 0 0 1px #ef85855c}.timeline-drop-preview{position:absolute;top:5px;bottom:5px;border:2px dashed #d7e6aa;border-radius:5px;background:#d7e6aa24;z-index:8;pointer-events:none;min-width:8px;overflow:hidden}.timeline-drop-preview>span{position:absolute;left:5px;bottom:3px;font-size:10px;font-weight:600;color:#f0f8de;text-shadow:0 1px 3px #000;white-space:nowrap}.timeline-drop-preview.invalid{border-color:#f18e8e;background:#f18e8e24}.timeline-drop-preview.invalid>span{color:#ffd4d4}.timeline-snap-guide{position:absolute;top:0;bottom:0;width:1px;background:#d7e6aa;box-shadow:0 0 0 1px #d7e6aa25;z-index:9;pointer-events:none}.timeline-snap-guide>span{position:absolute;top:0;left:3px;background:#d7e6aa;color:#202a13;border-radius:3px;padding:2px 4px;font-size:9px;white-space:nowrap}.timeline-snap-guide.invalid{background:#f18e8e}.timeline-snap-guide.invalid>span{background:#f18e8e;color:#361616}.timeline-footnote.invalid{color:#f3a1a1}.timeline-footnote>[data-testid="timeline-drop-status"]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Fixed dock panels: one continuous surface, independent mode-owned geometry. */
+.workbench.workbench-v2.dock-workbench{grid-template-columns:minmax(0,1fr);grid-template-rows:60px minmax(0,1fr);--dock-gap:12px;background:#101418}
+.dock-workbench .workspace-surface{grid-column:1/-1;grid-row:2;position:relative;isolation:isolate;display:grid;grid-template-columns:var(--dock-assets) minmax(0,1fr) var(--dock-inspector);grid-template-rows:minmax(0,1fr);gap:var(--dock-gap);padding:12px;min-width:0;min-height:0;overflow:hidden;background:#101418}
+.dock-workbench.mode-editing .workspace-surface{grid-template-rows:minmax(0,1fr) var(--dock-timeline)}
+.dock-workbench.mode-editing.timeline-collapsed .workspace-surface{grid-template-rows:minmax(0,1fr) 28px}
+.dock-panel{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid #3b444b;border-radius:11px;background:#191e24;box-shadow:0 8px 28px #0004;z-index:5;overflow:visible}
+.dock-panel[data-visible=false]{visibility:hidden;pointer-events:none}
+.dock-assets{grid-column:1;grid-row:1}.dock-inspector{grid-column:3;grid-row:1}.dock-timeline{grid-column:1/-1;grid-row:2}
+.dock-workbench .dock-panel>.asset-panel,.dock-workbench .dock-panel>.inspector-region,.dock-workbench .dock-panel>.timeline-panel{width:100%;height:100%;min-height:0;min-width:0;flex:1;grid-column:auto;grid-row:auto;border:0;border-radius:10px;overflow:hidden}
+.dock-workbench .dock-panel>.asset-panel{display:flex;background:#191e24}
+.dock-workbench .dock-panel>.inspector-region{display:flex}
+.dock-workbench .dock-panel>.timeline-panel{display:flex;background:#1b222a}
+.dock-workbench .dock-panel>.asset-panel.panel-collapsed,.dock-workbench .dock-panel>.inspector-region.panel-collapsed{display:none}
+.dock-workbench .dock-canvas{grid-column:2;grid-row:1;border:0;box-shadow:none;overflow:hidden;background:#101418;z-index:1}
+.dock-workbench .dock-canvas>.canvas-area{display:flex;position:relative;grid-column:auto;grid-row:auto;min-width:0;min-height:0;width:100%;height:100%;flex:1;background:transparent;visibility:visible}
+.dock-workbench.mode-editing .dock-canvas{border:1px solid #303b43;border-radius:11px;background:#11171d}
+.dock-workbench .main-stage{min-height:0}
+.dock-workbench.mode-editing .canvas-heading{height:42px;flex:none;border-bottom-color:#303b43;background:#192027}
+.dock-workbench.mode-editing .preview-mode-bar{height:41px}
+.dock-workbench.mode-editing .preview-footer{height:49px}
+.dock-workbench.mode-editing .preview-stage{padding:12px}
+.dock-workbench.mode-canvas .workspace-surface{display:block;padding:0}
+.dock-workbench.mode-canvas .dock-canvas{position:absolute;inset:0;border:0;border-radius:0}
+.dock-workbench.mode-canvas .dock-canvas>.canvas-area{position:absolute;inset:0}
+.dock-workbench.mode-canvas .main-stage{position:absolute;inset:0}
+.dock-workbench.mode-canvas .canvas-heading{position:absolute;top:12px;left:calc(var(--dock-assets) + 24px);right:calc(var(--dock-inspector) + 24px);height:42px;min-width:0;gap:8px;padding:0 12px;border:1px solid #39444d;border-radius:9px;background:#1b222beb;backdrop-filter:blur(12px);z-index:7;box-shadow:0 4px 18px #0002}
+.dock-workbench.mode-canvas .canvas-heading .region-title{flex-shrink:0}
+.dock-workbench.mode-canvas .dock-assets{position:absolute;left:12px;top:12px;bottom:12px;width:var(--dock-assets)}
+.dock-workbench.mode-canvas .dock-inspector{position:absolute;right:12px;top:12px;bottom:12px;width:var(--dock-inspector)}
+.dock-workbench.mode-canvas .storyboard{position:absolute;bottom:12px;left:calc(var(--dock-assets) + 24px);right:calc(var(--dock-inspector) + 24px);height:142px;z-index:6;border:1px solid #3b444b;border-radius:10px;box-shadow:0 8px 25px #0004;overflow:hidden;background:#1b222bec}
+.dock-workbench.mode-canvas .storyboard.sequence-collapsed{height:34px}
+.dock-workbench.mode-canvas .storyboard-track{flex:1;min-height:0}
+.dock-workbench.mode-canvas .canvas-controls{left:calc(var(--dock-assets) + 24px);bottom:58px;z-index:7}
+.dock-workbench.mode-canvas:has(.storyboard:not(.sequence-collapsed)) .canvas-controls{bottom:166px}
+.dock-workbench.mode-canvas .canvas-connection-legend{left:calc(var(--dock-assets) + 24px);top:64px;max-width:calc(100% - var(--dock-assets) - var(--dock-inspector) - 48px);font-size:8px}
+.dock-workbench.mode-canvas .canvas-hint{display:none}
+.dock-workbench.mode-canvas .react-flow__minimap{right:calc(var(--dock-inspector) + 12px);bottom:58px!important}
+.dock-recall{align-self:stretch;justify-self:stretch;display:flex;align-items:center;justify-content:flex-start;flex-direction:column;gap:10px;height:auto;min-height:0;min-width:0;padding:12px 5px;background:#202931ee;color:#c3d5ab;border:1px solid #475445;border-radius:8px;z-index:9;writing-mode:horizontal-tb;font-size:10px;white-space:nowrap;box-shadow:0 5px 18px #0003}
+.dock-recall>span{writing-mode:vertical-rl}
+.dock-recall:hover{background:#303d32;color:#e1efcd}
+.recall-assets{grid-column:1;grid-row:1}.recall-inspector{grid-column:3;grid-row:1}
+.recall-timeline{grid-column:1/-1;grid-row:2;writing-mode:horizontal-tb;flex-direction:row;justify-content:center;padding:3px 12px;min-height:28px;gap:8px}
+.recall-timeline>span{writing-mode:horizontal-tb}
+.dock-workbench.mode-canvas .recall-assets,.dock-workbench.mode-canvas .recall-inspector{position:absolute;top:12px;bottom:12px;width:28px}
+.dock-workbench.mode-canvas .recall-assets{left:12px}.dock-workbench.mode-canvas .recall-inspector{right:12px}
+.dock-resize{position:absolute;z-index:12;touch-action:none;user-select:none;outline:none;display:flex;align-items:center;justify-content:center;border-radius:5px}
+.dock-resize[hidden]{display:none}.resize-assets{right:-9px;top:12px;bottom:12px;width:14px;cursor:col-resize}.resize-inspector{left:-9px;top:12px;bottom:12px;width:14px;cursor:col-resize}.resize-timeline{left:12px;right:12px;top:-9px;height:14px;cursor:row-resize}
+.dock-resize>span{height:36px;width:3px;background:#607060;border-radius:4px;opacity:.45;transition:opacity .15s,background .15s}.resize-timeline>span{width:48px;height:3px}
+.dock-resize:hover>span,.dock-resize:focus-visible>span,.dock-resize:active>span{opacity:1;background:#d7e6aa}.dock-resize:focus-visible{outline:2px solid #d7e6aa;outline-offset:-3px;background:#a4bb7920}
+.workspace-panels-menu{min-width:210px}.workspace-panels-menu [data-slot=dropdown-menu-label]{font-size:11px;color:#8d9aab;padding:8px}.workspace-panels-menu [data-slot=dropdown-menu-item],.workspace-panels-menu [data-slot=dropdown-menu-checkbox-item]{font-size:12px;padding-top:9px;padding-bottom:9px}
+.dock-workbench .topbar-actions>.panels-trigger{display:inline-flex;flex-shrink:0}.dock-workbench .toast{bottom:20px;z-index:45}.dock-workbench.mode-editing .toast{bottom:calc(var(--dock-timeline) + 24px)}.dock-workbench.mode-editing.timeline-collapsed .toast{bottom:56px}
+.dock-workbench .mobile-nav{display:none}
+@media(max-width:1150px){.dock-workbench .guide-trigger{display:none}.dock-workbench .topbar{gap:8px;padding:0 12px}.dock-workbench .topbar-actions>.button{padding:6px 7px}.dock-workbench.mode-canvas .canvas-heading .region-title{display:none}.dock-workbench .asset-tabs{gap:12px}}
+/* Narrow or short windows use one reachable panel at a time. Desired dock sizes
+   remain stored and are restored when there is room; this is only presentation. */
+.workbench.workbench-v2.dock-workbench.dock-narrow{grid-template-rows:82px minmax(0,1fr) 42px}
+.dock-workbench.dock-narrow .topbar{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:28px 30px;column-gap:10px;row-gap:6px;padding:8px 10px 10px}
+.dock-workbench.dock-narrow .topbar .brand{grid-row:1;grid-column:1;font-size:19px}.dock-workbench.dock-narrow .topbar .brand-mark{width:24px;height:24px}.dock-workbench.dock-narrow .topbar-divider{display:none}.dock-workbench.dock-narrow .topbar .project-trigger{grid-row:1;grid-column:2;max-width:none;width:100%;justify-content:flex-end}
+.dock-workbench.dock-narrow .topbar-workspace{grid-row:2;grid-column:1}.dock-workbench.dock-narrow .topbar-actions{grid-row:2;grid-column:2;justify-self:end;gap:3px}.dock-workbench.dock-narrow .topbar-actions>.button{font-size:10px;min-height:28px;width:auto;padding:5px 6px;gap:4px}.dock-workbench.dock-narrow .topbar-actions>.button>span{display:inline}.dock-workbench.dock-narrow .topbar-actions>.guide-trigger,.dock-workbench.dock-narrow .export-history,.dock-workbench.dock-narrow .topbar-actions>[data-testid=export-button]{display:none}.dock-workbench.dock-narrow .topbar-sync{display:none}
+.dock-workbench.dock-narrow .workspace-surface{display:block;padding:8px;grid-row:2}
+.dock-workbench.dock-narrow .dock-panel{position:absolute;inset:8px;left:8px;right:8px;top:8px;bottom:8px;width:auto!important;min-width:0;min-height:0;height:auto;grid-column:auto;grid-row:auto}
+.dock-workbench.dock-narrow .dock-panel[data-visible=false]{visibility:hidden;pointer-events:none}
+.dock-workbench.dock-narrow .dock-panel[data-visible=true]{visibility:visible;z-index:10}
+.dock-workbench.dock-narrow .dock-canvas{inset:0;border:0;border-radius:0}
+.dock-workbench.dock-narrow.mode-canvas .canvas-heading{top:8px;left:8px;right:8px;height:39px}.dock-workbench.dock-narrow.mode-canvas .canvas-heading .region-title{display:flex}.dock-workbench.dock-narrow.mode-canvas .canvas-tools{width:auto;flex:1;justify-content:flex-end}
+.dock-workbench.dock-narrow.mode-canvas .canvas-controls{left:8px;bottom:54px}.dock-workbench.dock-narrow.mode-canvas:has(.storyboard:not(.sequence-collapsed)) .canvas-controls{bottom:154px}.dock-workbench.dock-narrow.mode-canvas .canvas-connection-legend{left:8px;top:54px;max-width:calc(100% - 16px);font-size:8px}
+.dock-workbench.dock-narrow.mode-canvas .storyboard{left:8px;right:8px;bottom:8px;height:134px}.dock-workbench.dock-narrow.mode-canvas .storyboard.sequence-collapsed{height:34px}.dock-workbench.dock-narrow.mode-canvas .react-flow__minimap{right:8px;bottom:52px!important}
+.dock-workbench.dock-narrow .dock-recall{display:none}.dock-workbench.dock-narrow .mobile-nav{display:flex;grid-column:1/-1;grid-row:3;min-width:0;height:42px;z-index:30;background:#1d2730;border-top:1px solid #36414b}.dock-workbench.dock-narrow .mobile-nav>button{font-size:10px;gap:5px;min-width:0;padding:6px}
+.dock-workbench.dock-narrow .asset-panel-heading{height:42px}.dock-workbench.dock-narrow .asset-panel{padding:0 15px}.dock-workbench.dock-narrow .asset-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-content:start}.dock-workbench.dock-narrow .asset-thumbnail{height:115px}.dock-workbench.dock-narrow .asset-drag-help{display:none}.dock-workbench.dock-narrow .asset-bottom{display:flex}.dock-workbench.dock-narrow .asset-card{margin-bottom:0}.dock-workbench.dock-narrow .asset-tabs{gap:20px}.dock-workbench.dock-narrow .inspector-region-heading{height:42px}.dock-workbench.dock-narrow .inspector-region .inspector{display:flex}.dock-workbench.dock-narrow .inspector-scroll{padding:16px 20px}
+.dock-workbench.dock-narrow .timeline-header{height:auto;min-height:43px;padding:7px 10px;flex-wrap:wrap;gap:7px}.dock-workbench.dock-narrow .timeline-toolbar{height:auto;min-height:72px;flex-wrap:wrap;padding:7px 10px;gap:8px}.dock-workbench.dock-narrow .timeline-spec,.dock-workbench.dock-narrow .timeline-length{display:none}.dock-workbench.dock-narrow .timeline-header-actions{gap:6px;flex-wrap:wrap}.dock-workbench.dock-narrow .timeline-header .region-title{margin-right:auto}.dock-workbench.dock-narrow .timeline-history-controls>.button{font-size:9px;padding:4px 5px}.dock-workbench.dock-narrow .timeline-history-count{font-size:8px}.dock-workbench.dock-narrow .timeline-split-target{display:none}.dock-workbench.dock-narrow .track-add-actions{gap:5px}.dock-workbench.dock-narrow .seed-timeline{display:none}.dock-workbench.dock-narrow .timeline-zoom{margin-left:auto}.dock-workbench.dock-narrow .timeline-zoom-slider{width:65px}.dock-workbench.dock-narrow .timeline-footnote{height:auto;min-height:28px;flex:none;padding:5px 10px}.dock-workbench.dock-narrow .timeline-footnote>span:last-child{display:none}.dock-workbench.dock-narrow .timeline-footnote>span:first-child{max-width:100%;font-size:8px}.dock-workbench.dock-narrow .toast,.dock-workbench.dock-narrow.mode-editing .toast{bottom:52px;max-width:calc(100vw - 20px)}
+@media(max-width:430px){.dock-workbench.dock-narrow .topbar-actions>.button{padding:5px 4px;font-size:9px}.dock-workbench.dock-narrow .topbar-workspace .segmented button{min-width:42px;padding:4px 6px}.dock-workbench.dock-narrow .topbar-actions>[data-testid=export-timeline]{font-size:0;gap:0;width:28px}.dock-workbench.dock-narrow .asset-thumbnail{height:94px}.dock-workbench.dock-narrow .preview-mode-bar .segmented button{font-size:9px;padding:4px 7px}.dock-workbench.dock-narrow .preview-footer>div{min-width:0}.dock-workbench.dock-narrow .preview-footer>div>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}}
