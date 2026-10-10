@@ -76,3 +76,29 @@ share collision checks with source-range set and the six local canvas mutations.
 Browser pending receipts are session-only; external callers must retain recovery
 identity for as long as needed. Inspection DTOs and built-in Agent permissions
 are unchanged. See [operations.md](references/operations.md).
+
+## Opt-in source waveforms
+
+For an explicitly requested local waveform, discover `asset waveform request`
+and `asset waveform get` (MCP `asset_waveform_request/get`) before calling them.
+Both require the intended `projectId` and owned `assetId`. Request starts local
+analysis and derived SQLite cache writes, with no provider, paid generation or
+output media file. Duplicate requests reuse queued/running/ready work; it is
+not a durable replay-key mutation. After a lost acknowledgement, get status
+first. Retry interrupted/failed work only on explicit intent with `retry:true`.
+Restart never automatically executes unfinished work; retained ready entries
+survive restart, but evicted cache may need an explicit rebuild.
+
+Get is genuinely read-only: no probe, subprocess, cache creation/repair/access-
+time write or timeline initialization. It accepts optional 30fps source start
+(default 0, 0–17999), exclusive end (default source end, 1–18000, greater than
+start and within source), and points (1–2048, default 512). Missing, queued,
+running, interrupted, error and unsupported are distinct from ready. Ready
+peaks are normalized raw-source amplitudes before timeline gain/mute/fades;
+null bins mean missing decoded coverage, not silence. Ready decodedSampleFrames
+tracks actual 48kHz coverage without stretching the asset source clock;
+do not present them as rendered-output loudness. Source limits are 600 seconds
+and 512MiB, first mono/stereo audio stream, 100Hz peaks from 48kHz decoding.
+No paths, source hashes, commands or credential arguments are supported. External
+CLI/MCP access does not grant the built-in Agent new waveform tools or media
+context. See [Source waveforms](../../docs/API.md#opt-in-source-waveforms).

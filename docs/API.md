@@ -317,3 +317,68 @@ edit; legacy asset list and explicit timeline operations keep their semantics.
 No inspection DTO or built-in Agent tool/context is expanded. Browser pending
 receipts remain session-only, while backend replay receipts survive restart.
 See [asset dispositions](ASSET-DISPOSITIONS.md) for the UI and recovery boundary.
+
+## Opt-in source waveforms
+
+`asset.waveform.request({projectId,assetId,retry?})` explicitly requests a bounded
+local source-audio analysis. Both IDs are required UUIDs; `retry` defaults to
+`false`. Existing queued, running and ready cache work is reused. An interrupted
+or failed attempt requires a new explicit request with `retry:true`; neither a
+read nor a backend restart starts it again. After a lost request acknowledgement,
+call `asset.waveform.get` for the same project/asset first. This is an evictable
+derived cache, not a durable mutation receipt or an exact historical replay key.
+
+`asset.waveform.get({projectId,assetId,sourceStartFrame?,sourceEndFrame?,points?})`
+is genuinely read-only: it does not probe files, run decoding, initialize or
+repair cache rows, update access timestamps, or create a timeline. Missing cache
+returns `status:"missing"`. The default start is `0`; the end defaults to the
+source end and is exclusive in the 30fps editing timebase. Explicit start is an
+integer 0–17999, end is 1–18000 and must exceed start. The selected range must
+fit the available source. `points` is an integer 1–2048, default 512.
+
+Both operations return a strict public cache state:
+`{projectId,assetId,algorithm,status,binsPerSecond,reason?,attemptId?,duration?,sourceFrames?,decodedSampleFrames?,sourceStartFrame?,sourceEndFrame?,peaks?,clipped?}`.
+The algorithm is `peak-u16-48k-100hz-v1`, `binsPerSecond` is 100, and status is
+`missing`, `queued`, `running`, `ready`, `interrupted`, `error` or `unsupported`.
+A reason is `{code,message}` without decoder diagnostics. Ready get adds the
+resolved range and at most the requested number of normalized peaks (0–1 or
+`null` for a display bin entirely outside actual decoded coverage).
+Ready request may omit peaks/range; all ready responses require `attemptId`,
+`duration`, `sourceFrames`, `decodedSampleFrames` and `clipped`. Ready
+`duration`/`sourceFrames` use the saved
+asset source clock; `decodedSampleFrames` records actual 48kHz coverage (at most
+28,800,000 frames), within 100ms of source duration. `sourceFrames` is the
+complete 30fps frame count of that duration, with only binary-rounding tolerance.
+Bins use their fixed source time positions, with no stretching
+and no invented silent tail. A partly covered bin uses its covered maximum. `clipped` reports amplitude clipping; it is
+not a timeline clipping operation. No paths, source hashes, URLs, commands or
+credentials are accepted or returned. Unknown arguments are rejected. Missing
+and foreign assets have the same `NOT_FOUND` error.
+
+Only the first audio stream is used: mono/stereo, decoded as 48kHz float32 and
+reduced by absolute maximum into 100Hz bins. Audio/container duration mismatch
+greater than 100ms is unsupported; a tiny codec-padding tail remains explicitly
+missing. Relative first-audio start offsets exceeding 1/48000 second are
+unsupported; matching known nonnegative format/audio start timestamps are
+allowed. Unknown timestamps are supported only for untimed WAV with its known
+sample-zero origin; negative timestamps are unsupported.
+Sources longer than 600 seconds,
+larger than 512MiB, or outside supported audio bounds are unsupported for this
+feature. Analysis is local, with a 180-second whole-attempt deadline including
+bounded hash/probe/decode and a 120-second decoder deadline. Each backend has at
+most one active and four queued attempts. Cache identity is project + source
+SHA-256 + algorithm, with at most 64 entries / 16MiB; eviction can require an
+explicit rebuild. Startup may mark unfinished attempts interrupted, but never
+automatically decodes them. Completed cache data survives restart while retained.
+
+Request can run local media subprocesses and write derived SQLite cache data;
+it does not write output media files, contact external services, create paid
+generation, or edit source assets, saved ranges, versions, timeline gain/mute/
+fades, revisions or history. Peaks describe raw source audio before timeline
+mixing and are a visual editing aid, not a rendered-output meter. Get advertises
+read-only/idempotent effects; request deliberately has `idempotent:false` because
+retry and eviction can repeat work. Request also has `destructive:true` because
+admission/retry may replace or evict terminal derived-cache entries; source and
+business records are unchanged. These advisory effects do not authorize an
+action. External HTTP/CLI/MCP discovery does not add waveform tools or media
+context to the built-in Agent allowlist.

@@ -10,6 +10,7 @@ import {createInspectionServices} from './inspection.mjs';
 import {createLocalMutationServices} from './local-mutations.mjs';
 import {createSourceRangeServices} from './source-ranges.mjs';
 import {createAssetDispositionServices} from './asset-dispositions.mjs';
+import {createWaveformServices} from './waveforms.mjs';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mjs';
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
@@ -54,7 +55,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const localMutations=createLocalMutationServices(store,{check,canonical,now,references});
  const sourceRanges=createSourceRangeServices(store,{canonical});
  const assetDispositions=createAssetDispositionServices(store,{canonical});
+ const waveforms=createWaveformServices(store,{signal:ownerSignal});
  const handlers={
+ ...waveforms.handlers,
  ...sourceRanges.handlers,
  ...assetDispositions.handlers,
  ...inspection.handlers,
@@ -120,7 +123,13 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  }
  // Drain async RPC work before closing SQLite. Rejection is a settled operation;
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
- const drain=async()=>{await boundedShutdown(Promise.allSettled([...active]),'SERVICE_STOP_TIMEOUT');if(shutdownFailure)throw shutdownFailure;};
+ const drain=async()=>{
+  // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
+  // and join its explicit owner before SQLite can close, including late decode.
+  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),...active]),'SERVICE_STOP_TIMEOUT');
+  if(shutdownFailure)throw shutdownFailure;
+  if(results[0].status==='rejected')throw results[0].reason;
+ };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.
  async function updateShotInProject(projectId,input){

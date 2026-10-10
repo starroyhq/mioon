@@ -1,0 +1,40 @@
+import { useLayoutEffect, useRef, useState } from 'react';
+import { rpc } from './api.js';
+import { createWaveformController, visibleWaveformWindows } from './waveform-state.js';
+
+export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFrame, active }) {
+  const [state, setState] = useState({ enabled: false, entries: new Map(), retryable: false });
+  const [windows, setWindows] = useState([]);
+  const controller = useRef(null), latest = useRef(null), measureRef = useRef(null);
+  if (!controller.current) controller.current = createWaveformController({ api: rpc });
+  latest.current = { timeline, assets, pixelsPerFrame, active };
+  useLayoutEffect(() => {
+    const manager = controller.current;
+    manager.connect(setState);
+    const element = viewport.current;
+    function measure() {
+      const current = latest.current;
+      const shown = current.active && document.visibilityState !== 'hidden';
+      const bounds = element?.getBoundingClientRect();
+      const visibleTrackIds = new Set();
+      if (shown && element && element.clientWidth > 160 && element.clientHeight > 26) {
+        for (const track of element.querySelectorAll('[data-waveform-track]')) {
+          const rect = track.getBoundingClientRect();
+          if (rect.bottom > bounds.top + 26 && rect.top < bounds.top + element.clientHeight) visibleTrackIds.add(track.dataset.waveformTrack);
+        }
+      }
+      const next = shown && element ? visibleWaveformWindows({ ...current, visibleTrackIds, leftFrame: element.scrollLeft / current.pixelsPerFrame, rightFrame: (element.scrollLeft + Math.max(0, element.clientWidth - 160)) / current.pixelsPerFrame }) : [];
+      setWindows(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+      manager.setView({ projectId: current.timeline?.projectId || null, active: shown, windows: next });
+    }
+    measureRef.current = measure;
+    const observer = new ResizeObserver(measure);
+    if (element) { observer.observe(element); element.addEventListener('scroll', measure, { passive: true }); }
+    document.addEventListener('visibilitychange', measure);
+    measure();
+    return () => { manager.disconnect(); observer.disconnect(); element?.removeEventListener('scroll', measure); document.removeEventListener('visibilitychange', measure); measureRef.current = null; };
+  }, [viewport]);
+  useLayoutEffect(() => { measureRef.current?.(); }, [timeline, assets, pixelsPerFrame, active]);
+  // Project check also makes the first render after navigation fail closed.
+  return { ...state, enabled: state.projectId === timeline?.projectId && state.enabled, windows, setEnabled: value => controller.current.setEnabled(value), retry: () => controller.current.retryVisible() };
+}

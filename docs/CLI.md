@@ -294,3 +294,36 @@ separate. Existing asset DTOs, original files and in-use clips do not change.
 Built-in Agent context/tools are unchanged. Browser UI pending receipts are
 session-only; CLI users must keep their own recovery identity. See
 [asset dispositions](ASSET-DISPOSITIONS.md).
+
+### Opt-in source waveforms
+
+```sh
+mioon schema asset.waveform.request
+mioon schema asset.waveform.get
+mioon asset waveform request --input '{"projectId":"11111111-1111-4111-8111-111111111111","assetId":"22222222-2222-4222-8222-222222222222"}'
+mioon asset waveform get --input '{"projectId":"11111111-1111-4111-8111-111111111111","assetId":"22222222-2222-4222-8222-222222222222","sourceStartFrame":0,"sourceEndFrame":60,"points":256}'
+```
+
+Replace the illustrative UUIDs with the intended project's owned asset. Request
+starts bounded local analysis only on explicit opt-in and takes optional
+`retry:false`. Ordinary duplicate requests reuse queued/running/ready work.
+After a lost acknowledgement, get the current cache state first; use
+`"retry":true` explicitly for an interrupted or failed attempt. There is no
+`requestId`, automatic retry, or immutable historical mutation receipt. Retained
+ready cache survives restart; startup does not restart unfinished work. Eviction
+can make a later read missing, and rebuilding requires another explicit request.
+
+Get takes an optional 30fps source range with inclusive start (default 0),
+exclusive end (default source end), and `points` 1–2048 (default 512). Start is
+0–17999, end is 1–18000 and must exceed start and fit the source. Reads never
+probe, decode, repair/write cache, touch access times or create a timeline.
+Responses report missing/queued/running/ready/interrupted/error/unsupported;
+ready reads include normalized 0–1 raw source peaks, or null for a display bin
+wholly outside actual decoded coverage. `decodedSampleFrames` records actual
+48kHz coverage while duration/sourceFrames retain the asset source clock; no
+stretching or fabricated silent tail. They do not include source
+paths/hashes or reflect rendered gain, mute or fades. Request runs local media
+subprocesses and writes derived SQLite only; no external service or paid
+provider is involved. Source, queue and cache limits and full response fields:
+[Source waveforms](API.md#opt-in-source-waveforms). Built-in Agent tools and
+context remain unchanged.

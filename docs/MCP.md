@@ -274,3 +274,38 @@ revision; rejection never edits existing clips or asset bytes. Legacy inspection
 DTOs and built-in Agent model tools/context do not gain disposition fields or
 authority. Caller recovery identity must be retained; browser UI pending receipts
 are session-only. See [asset dispositions](ASSET-DISPOSITIONS.md).
+
+### Opt-in source waveforms
+
+`asset_waveform_request` and `asset_waveform_get` share the strict HTTP and CLI
+schemas. Request takes `{projectId,assetId,retry?}` (UUIDs; retry defaults false).
+Get takes `{projectId,assetId,sourceStartFrame?,sourceEndFrame?,points?}` with a
+30fps inclusive start / exclusive end, default full source and 512 points;
+points are bounded to 1–2048. Start is 0–17999, end is 1–18000 and must exceed
+start and fit the source. No hash, path, URL, command, credential or request ID
+is accepted. Uniform `NOT_FOUND` covers missing/foreign assets.
+
+Request is an explicit local-analysis opt-in, not a metadata read. It advertises
+`readOnlyHint:false`, `idempotentHint:false`, `destructiveHint:true`,
+`openWorldHint:false`: scheduled work may run local subprocesses and write
+derived SQLite cache, but never output media files, external I/O or paid
+provider generation. The destructive hint covers replacement/eviction of
+terminal disposable cache entries only, never source or business records. Get advertises `readOnlyHint:true`, `idempotentHint:true`,
+`destructiveHint:false`, `openWorldHint:false`, and no subprocess/database/file/
+external/paid work. It never probes, repairs or touches cache access times.
+Hints describe effects; they do not grant authorization.
+
+Ordinary duplicate requests reuse retained queued/running/ready work. After an
+uncertain acknowledgement, get status first. Use explicit `retry:true` only for
+an interrupted/failed attempt. Startup reconciles unfinished entries as
+interrupted without automatic execution. Ready cache survives restart while
+retained; eviction can return missing and a later explicit request can rebuild.
+This is not a durable exact-mutation replay journal. Ready get returns at most
+2048 normalized raw source peaks (or null for bins wholly beyond actual decoded
+coverage), before timeline gain/mute/fades, and safe
+state/reason fields. Ready `decodedSampleFrames` is actual 48kHz coverage;
+duration/sourceFrames retain the asset clock, without stretching or fabricated
+silent tails. No built-in Agent allowlist or inspection DTO expands.
+Full limits and response: [Source waveforms](API.md#opt-in-source-waveforms).
+
+Offline transport acceptance: `node --test tests/waveforms-transports.test.mjs`.

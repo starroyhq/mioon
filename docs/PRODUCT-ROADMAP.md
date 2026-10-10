@@ -143,3 +143,9 @@ controls target audio files or embedded video audio, with matching local rendere
 preview/export. Source playback remains dry. Current validation and limits are in
 [AUDIO-FADES.md](AUDIO-FADES.md); waveform/cache work, crossfades, ducking,
 roles, loudness checks and project-format expansion remain open.
+
+The bounded audio/performance waveform increment is implemented with opt-in
+local raw-source visualization and bounded, disposable derived cache work. Local
+verification passed; independent release review is pending. Limits and acceptance
+are tracked in [WAVEFORMS.md](WAVEFORMS.md). This does not complete proxies,
+post-mix analysis, loudness checks or the broader audio roadmap.

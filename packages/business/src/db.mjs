@@ -4,6 +4,21 @@ import path from 'node:path';
 import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 
+// Backend-only proof of the actual acquired workspace lock. Neither caller
+// options nor copied store properties can manufacture ownership. A replaced,
+// removed or altered lock permanently revokes this handle's derivation rights.
+const exclusiveOwners=new WeakMap();
+export function ownsStoreLock(store){
+ const db=store?.db,owner=db&&exclusiveOwners.get(db);
+ if(!owner||!owner.active||store.root!==owner.root||db.isOpen!==true)return false;
+ try{
+  const current=validateManagedFile(owner.lockPath,{root:owner.root,allowMissing:true,private:true,maxBytes:64});
+  if(current&&['dev','ino','size','mtimeMs','ctimeMs'].every(key=>current[key]===owner.identity[key])&&
+   readPrivateFile(owner.lockPath,{root:owner.root,private:true,maxBytes:64,encoding:'utf8'})===owner.token)return true;
+ }catch{} // Loss of a verified lock is denial, never a repair or takeover.
+ owner.active=false;exclusiveOwners.delete(db);return false;
+}
+
 /** Read-only preflight of every startup-owned entry, before any lock, token,
  * directory or SQLite write. Legacy 0755 media and 0644 SQLite remain protected
  * by the verified 0700 root, provided no other account can write them. */
@@ -33,7 +48,7 @@ export function openStore(root,{lock=true}={}){
   if(!ownedLock)return;
   try{
    const current=validateManagedFile(lockPath,{root,allowMissing:true,maxBytes:64});
-   if(current&&current.ino===ownedLock.ino&&current.dev===ownedLock.dev&&readPrivateFile(lockPath,{root,private:false,maxBytes:64,encoding:'utf8'})===String(process.pid)){
+   if(current&&['dev','ino','size','mtimeMs','ctimeMs'].every(key=>current[key]===ownedLock[key])&&readPrivateFile(lockPath,{root,private:false,maxBytes:64,encoding:'utf8'})===String(process.pid)){
     removePrivateFile(lockPath,{root,private:false,maxBytes:64});
    }
   }catch{} // Never delete a changed, linked or otherwise unsafe lock in cleanup.
@@ -323,6 +338,23 @@ export function openStore(root,{lock=true}={}){
  BEGIN SELECT RAISE(ABORT,'mutation request ID is already retained');END;
  INSERT OR IGNORE INTO schema_version VALUES(12);
  COMMIT;`);
+ // Disposable waveform derivations have an independent bounded cache. No
+ // business record, edit history, source metadata or retained receipt changes.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS waveform_cache(
+ position INTEGER PRIMARY KEY AUTOINCREMENT,cacheKey TEXT NOT NULL UNIQUE CHECK(length(CAST(cacheKey AS BLOB))=64),
+ projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),
+ sourceSha256 TEXT NOT NULL CHECK(length(CAST(sourceSha256 AS BLOB))=64),
+ algorithm TEXT NOT NULL CHECK(length(CAST(algorithm AS BLOB)) BETWEEN 1 AND 100),
+ status TEXT NOT NULL CHECK(status IN ('queued','running','ready','interrupted','error','unsupported')),
+ attemptId TEXT NOT NULL CHECK(length(CAST(attemptId AS BLOB))=36),
+ data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=393216),
+ bytes INTEGER NOT NULL CHECK(typeof(bytes)='integer' AND bytes BETWEEN 1 AND 393216),
+ reservedBytes INTEGER NOT NULL CHECK(typeof(reservedBytes)='integer' AND reservedBytes BETWEEN 0 AND 393216),
+ UNIQUE(projectId,sourceSha256,algorithm));
+ CREATE INDEX IF NOT EXISTS waveform_cache_terminal ON waveform_cache(status,position);
+ INSERT OR IGNORE INTO schema_version VALUES(13);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};
@@ -346,10 +378,16 @@ export function openStore(root,{lock=true}={}){
  // Do not create media until the complete preflight and schema initialization
  // succeed. Existing safe legacy media permissions are deliberately preserved.
  if(!validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true}))ensurePrivateDirectory(path.join(root,'media'),{create:true});
+ if(ownedLock)exclusiveOwners.set(db,{root,lockPath,identity:ownedLock,token:String(process.pid),active:true});
  let closed=false;
- const close=()=>{if(closed)return;db.close();closed=true;releaseLock();};
+ const close=()=>{
+  if(closed)return;
+  const owner=exclusiveOwners.get(db);if(owner)owner.active=false;exclusiveOwners.delete(db);
+  db.close();closed=true;releaseLock();
+ };
  return {db,root,get,list,put,tx,close};
  }catch(error){
+  if(db)exclusiveOwners.delete(db);
   try{db?.close();}catch{}
   releaseLock();
   throw error;

@@ -1,7 +1,7 @@
 import { mediaConfigurationError, mediaExecutable } from './media-environment.mjs';
 import { spawnMedia, mediaInterrupted, onMediaInterruption, interruptedMediaError, throwIfMediaAborted, terminateMediaProcess } from './media-processes.mjs';
 
-export const MEDIA_RUNTIME_LIMITS = Object.freeze({ stdoutBytes: 4 * 1024 * 1024, stderrBytes: 1024 * 1024, stderrTailBytes: 16 * 1024, timeoutMs: 120000 });
+export const MEDIA_RUNTIME_LIMITS = Object.freeze({ stdoutBytes: 4 * 1024 * 1024, streamingStdoutBytes: 600 * 48000 * 2 * 4, stderrBytes: 1024 * 1024, stderrTailBytes: 16 * 1024, timeoutMs: 120000 });
 const mediaError = (code, message) => Object.assign(new Error(message), { code });
 const byteLimit = (value, maximum) => {
   if (!Number.isSafeInteger(value) || value < 0 || value > maximum) throw mediaConfigurationError();
@@ -11,13 +11,29 @@ const byteLimit = (value, maximum) => {
 /** Bounded, shell-free runner. Errors never contain child output, argv or paths. */
 export async function run(command, args, { timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal,
   maxStdoutBytes = MEDIA_RUNTIME_LIMITS.stdoutBytes, maxStderrBytes = MEDIA_RUNTIME_LIMITS.stderrBytes } = {}) {
+  return runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStderrBytes });
+}
+
+/** Consume bounded binary stdout synchronously, without retaining its chunks.
+ * Callback failures stop/reap the exact child and produce a safe error. Async
+ * callbacks are rejected: their queued work could otherwise grow without bound.
+ * The larger streaming ceiling never applies to the buffered run() API.
+ */
+export async function runStreaming(command, args, { onStdout, timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal,
+  maxStdoutBytes = MEDIA_RUNTIME_LIMITS.stdoutBytes, maxStderrBytes = MEDIA_RUNTIME_LIMITS.stderrBytes } = {}) {
+  throwIfMediaAborted(signal);
+  if (typeof onStdout !== 'function') throw mediaConfigurationError();
+  return runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStderrBytes }, onStdout);
+}
+
+async function runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStderrBytes }, onStdout) {
   throwIfMediaAborted(signal);
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 2147483647 || !Array.isArray(args) || args.some(arg => typeof arg !== 'string' || arg.includes('\0'))) throw mediaConfigurationError();
-  const stdoutLimit = byteLimit(maxStdoutBytes, MEDIA_RUNTIME_LIMITS.stdoutBytes), stderrLimit = byteLimit(maxStderrBytes, MEDIA_RUNTIME_LIMITS.stderrBytes);
+  const stdoutLimit = byteLimit(maxStdoutBytes, onStdout ? MEDIA_RUNTIME_LIMITS.streamingStdoutBytes : MEDIA_RUNTIME_LIMITS.stdoutBytes), stderrLimit = byteLimit(maxStderrBytes, MEDIA_RUNTIME_LIMITS.stderrBytes);
   const executable = mediaExecutable(command);
   return new Promise((resolve, reject) => {
     let child, timer, removeInterruptionObserver, settled = false, failure, stdoutBytes = 0, stderrBytes = 0, stderrTail = Buffer.alloc(0);
-    const stdout = [];
+    const stdout = onStdout ? null : [];
     const finish = () => {
       if (settled) return;
       settled = true;
@@ -26,7 +42,7 @@ export async function run(command, args, { timeout = MEDIA_RUNTIME_LIMITS.timeou
       removeInterruptionObserver?.();
       if (!failure && mediaInterrupted(child)) failure = interruptedMediaError();
       if (failure) reject(failure);
-      else resolve(Buffer.concat(stdout, stdoutBytes).toString('utf8'));
+      else resolve(onStdout ? { stdoutBytes } : Buffer.concat(stdout, stdoutBytes).toString('utf8'));
     };
     const stop = error => {
       if (settled || failure) return;
@@ -45,7 +61,16 @@ export async function run(command, args, { timeout = MEDIA_RUNTIME_LIMITS.timeou
     child.stdout.on('data', chunk => {
       if (failure || settled) return;
       if (chunk.length > stdoutLimit - stdoutBytes) { stop(mediaError('MEDIA_OUTPUT_LIMIT', 'Local media tool exceeded its output limit.')); return; }
-      stdoutBytes += chunk.length; stdout.push(chunk);
+      stdoutBytes += chunk.length;
+      if (!onStdout) { stdout.push(chunk); return; }
+      try {
+        const result = onStdout(chunk);
+        if (result != null && typeof result.then === 'function') {
+          // Observe a rejected async callback even though it is unsupported.
+          Promise.resolve(result).catch(() => {});
+          stop(mediaConfigurationError());
+        }
+      } catch { stop(mediaError('MEDIA_STREAM_FAILED', 'Local media output could not be processed.')); }
     });
     child.stderr.on('data', chunk => {
       if (failure || settled) return;
