@@ -3,13 +3,14 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
+import applicationPackage from '../../../package.json' with {type: 'json'};
 import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
-export const VERSION = '0.4.0';
+export const VERSION = applicationPackage.version;
 export const EXIT_CODES = Object.freeze({success: 0, unexpected: 1, validation: 2, conflict: 3, unavailable: 4, timeout: 5, operationFailed: 6, interrupted: 130});
 export const discoverySchemas = {
   doctor: z.object({}).strict(),

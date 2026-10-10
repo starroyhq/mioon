@@ -41,7 +41,7 @@ node apps/cli/src/index.mjs schema timeline.clip.add
 node apps/cli/src/index.mjs schema timeline.render
 ```
 
-**只读本地服务检查**。`doctor` 仅请求 health 和视频 `provider.list`，不验证 FFmpeg、渲染、Images 当前配置版本或真实供应商可用性（`packages/client/src/index.mjs:146–150`）；Images 另查 profile。客户端当前 `--version` 是 `0.4.0`，根应用清单是 `0.4.1`，应分别记录，不能据此直接断言不兼容。
+**只读本地服务检查**。`doctor` 仅请求 health 和视频 `provider.list`，不验证 FFmpeg、渲染、Images 当前配置版本或真实供应商可用性（`packages/client/src/index.mjs:146–150`）；Images 另查 profile。本次历史审查基线的客户端 `--version` 是 `0.4.0`，根应用清单是 `0.4.1`；后续[版本来源修正](CLIENT-VERSION-SOURCE.md)已让 CLI/MCP 实现版本读取根清单，后端 `/health` 版本仍独立保留。版本元数据不同本身不等于协议不兼容。
 
 <!-- quickstart readiness read -->
 ```sh

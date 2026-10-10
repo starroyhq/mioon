@@ -64,7 +64,7 @@ Children use `process.execPath` with argument arrays, `shell:false`, `windowsHid
 - Root `package.json` version is the application/staging authority. Desktop manifest must match it before staging cleanup. No manifest is automatically rewritten.
 - Root's exact Electron dependency pin supplies builder configuration. Application and dependency checks share one strict SemVer validator.
 - `beforePack` now rejects stale version, any mismatched identity field, unexpected package name/main/private/desktopName or nonempty/invalid runtime dependencies. Existing fuses and disabled publication remain unchanged. No package was created in this increment.
-- Existing reported client/health/schema/MCP implementation compatibility metadata `0.4.0` remains unchanged; application version is `0.4.1`. These are not a claim about the MCP wire-protocol revision. Connection descriptor version remains integer `1`.
+- The original tooling increment retained client/health/schema/MCP metadata `0.4.0`. The later [client-version source correction](CLIENT-VERSION-SOURCE.md) makes CLI, schema, doctor clientVersion and MCP serverInfo read the root application version (`0.4.1`). Backend `/health` remains `0.4.0`; the MCP wire protocol is negotiated separately by the SDK. Connection descriptor version remains integer `1`.
 
 ## Reviewed lanes and native gates
 
