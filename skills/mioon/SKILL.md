@@ -40,3 +40,18 @@ timebase with exclusive out; they do not modify originals or existing clips.
 Adding the selection is a separate explicit timeline clip intent with its own
 revision/key. See [operations.md](references/operations.md). These external tools
 do not expand built-in Agent context or proposal permissions.
+
+## Asset review dispositions
+
+For an authorized review workflow, use `asset disposition list/set` (MCP
+`asset_disposition_list/set`) against the same service. List 1–100 unique asset
+UUIDs in the intended project; it returns exact requested order, neutral/revision
+0 for unsaved metadata, and no partial result if any asset is missing/foreign.
+Set `neutral`, `favorite` or `rejected` using the independent disposition revision
+and a required caller-retained request key. Neutral reset keeps the revision;
+rejection does not delete media or remove existing clips. Replay an uncertain
+set with exactly the same key/input, then list to learn latest state. These keys
+share collision checks with source-range set and the six local canvas mutations.
+Browser pending receipts are session-only; external callers must retain recovery
+identity for as long as needed. Inspection DTOs and built-in Agent permissions
+are unchanged. See [operations.md](references/operations.md).

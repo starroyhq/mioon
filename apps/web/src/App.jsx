@@ -17,6 +17,8 @@ import Inspector from './Inspector.jsx';
 import PendingSubmission from './PendingSubmission.jsx';
 import AgentWorkspace, { AgentDockPane } from './AgentWorkspace.jsx';
 import AssetLibrary from './AssetLibrary.jsx';
+import { useAssetDispositions } from './use-asset-dispositions.js';
+import { dispositionKey } from './asset-disposition-state.js';
 import ExportHistoryList from './ExportHistoryList.jsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';
 import TimelineInspector from './TimelineInspector.jsx';
@@ -107,6 +109,7 @@ export default function App() {
   const [clipDirty, setClipDirty] = useState(false);
   const [sourceDirty, setSourceDirty] = useState(false);
   const [sourceRangeRefresh, setSourceRangeRefresh] = useState({});
+  const [dispositionRefresh, setDispositionRefresh] = useState({});
   const inspectorDirty = shotDirty || clipDirty || sourceDirty;
   const dirtyRef = useRef(inspectorDirty); dirtyRef.current = inspectorDirty;
 
@@ -369,7 +372,7 @@ export default function App() {
         await refresh(projectId);
       }
       return null;
-    } finally { markBusy(projectId, key, false); if (mutation) markBusy(projectId, 'canvas:mutation', false); }
+    } finally { markBusy(projectId, key, false); if (mutation) markBusy(projectId, 'canvas:mutation', false); if (replay && operation === 'asset.disposition.set' && currentProject.current === projectId) setDispositionRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 })); }
   }
   async function inspect(id, nextTab = 'settings', versionId = null, { reveal = false } = {}) {
     if ((id !== selectedId || workspaceMode !== 'canvas') && !await guardNavigation('当前面板有未保存的修改。放弃修改并查看画板来源？')) return false;
@@ -639,7 +642,7 @@ export default function App() {
     if (!snapshot || snapshot.scope !== sourceRangeScope || snapshot.projectId !== captured.projectId || !sameSourceSnapshot(snapshot, sourceRanges.controller.snapshot())) return;
     const state = dataRef.current;
     const plan = sourceRangeAddPlan({ snapshot, asset: state.assets.find(asset => asset.id === snapshot.assetId), timeline: state.timeline,
-      blocked: isBusy('timeline:mutation') || isBusy('canvas:mutation') || pendingForProject(captured.projectId).some(entry => entry.operation === 'asset.range.set' || entry.operation.startsWith('timeline.')) });
+      blocked: isBusy('timeline:mutation') || isBusy('canvas:mutation') || pendingForProject(captured.projectId).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) });
     if (!plan.valid) { notify(plan.reason, 'warning'); return; }
     // Capture exact primitives before dispatch. Saving a different source range
     // later cannot change this request, its retry receipt, or existing clips.
@@ -672,6 +675,16 @@ export default function App() {
     refreshGeneration: sourceRangeRefresh[`${data.project?.id}:${rangeAsset?.id}`] || 0, onDirtyChange: setSourceDirty });
   const sourceRangeBlocked = !online || loading || Boolean(busy['canvas:mutation'] || timelineBusy || pending.some(entry => isMutationOperation(entry.operation)));
 
+  const dispositionScope = `${currentProject.current}:${projectEpoch.current}`;
+  const dispositionBlocked = !online || loading || Boolean(busy['canvas:mutation'] || pending.some(entry => isMutationOperation(entry.operation)));
+  const dispositions = useAssetDispositions({ scope: dispositionScope, projectId: data.project?.id, assets: data.assets,
+    read: input => rpc('asset.disposition.list', input),
+    save: input => run(dispositionKey(input.assetId), 'asset.disposition.set', input, '素材标记已保存。', { returnAfterNavigation: true }),
+    hasPending: projectId => pendingForProject(projectId, { strict: true }).some(entry => isMutationOperation(entry.operation)),
+    pendingState: pending.some(entry => isMutationOperation(entry.operation)), blocked: dispositionBlocked, refreshGeneration: dispositionRefresh[data.project?.id] || 0 });
+  const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === (chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0]));
+  const inUseAssetIds = new Set([...(timeline?.clips || []).map(clip => clip.assetId), ...data.nodes.map(node => node.assetId), ...data.shots.flatMap(shot => shot.referenceAssetIds || []), ...data.shots.map(shot => data.versions.find(version => version.id === shot.selectedVersionId)?.assetId)].filter(Boolean));
+
   const timelineJobs = [...data.exports].filter(e => e.mode === 'timeline').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const previewJob = timelineJobs.find(e => ['succeeded','completed','ready'].includes(e.status));
   const latestRender = timelineJobs[0];
@@ -697,7 +710,7 @@ export default function App() {
     <div className="workspace-surface" ref={panelSurface} data-testid="workspace-surface">
     {assetsCollapsed && <PanelRecall name="assets" label="素材库" icon="folder" onClick={() => setPanelOpen('assets', true)} />}
     <PanelBoundary name="assets" visible={panelVisible('assets')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('assets')}>
-    <AssetLibrary mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed} onCollapse={() => setAssetsCollapsed(true)} project={data.project} />
+    <AssetLibrary onShowTasks={() => setShowJobs(true)} dispositions={dispositions} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed} onCollapse={() => setAssetsCollapsed(true)} project={data.project} />
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
     <section className="canvas-area" aria-label={workspaceMode === 'canvas' ? '画板工作区' : '剪辑工作区'} data-testid="active-workspace"><div className="canvas-heading"><div className="region-title"><h2>{workspaceMode === 'canvas' ? '画板' : '剪辑预览'}</h2></div>{workspaceMode === 'canvas' && <div className="canvas-tools"><Button variant="ghost" className="button small" data-testid="add-text-node" onClick={() => addNode('text')}><Icon name="text" size={14} /><span>文字</span></Button><Button variant="ghost" className="button small" data-testid="add-image-node" onClick={() => addNode('image')}><Icon name="image" size={14} /><span>图片</span></Button><Button variant="ghost" className="button small" data-testid="add-video-node" onClick={() => addNode('video')}><Icon name="film" size={14} /><span>视频</span></Button><Button variant="ghost" className="button small accent-outline" data-testid="add-shot" disabled={busy['shot-create']} onClick={addShot}><Icon name="plus" size={15} />添加镜头</Button></div>}</div>

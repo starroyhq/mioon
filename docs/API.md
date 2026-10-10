@@ -268,3 +268,30 @@ required replay key. These operations do not modify asset bytes, versions or
 existing timeline clips. Full timebase, replay and UI boundaries:
 [SOURCE-RANGES.md](SOURCE-RANGES.md). Built-in Agent inspection/tool DTOs do not
 include these marks in this increment.
+
+## Asset review dispositions
+
+`asset.disposition.list({projectId,assetIds})` returns
+`{projectId,items:[{id,assetId,projectId,revision,disposition}]}` in exactly the
+requested ID order. Supply 1–100 unique asset UUIDs. The read never creates
+metadata or a timeline; an owned asset without saved metadata is `neutral` at
+revision `0`. Images, video, audio and unknown-duration assets are supported.
+Any missing/foreign asset rejects the entire batch with the same `NOT_FOUND`
+error and no partial result.
+
+`asset.disposition.set({projectId,assetId,expectedRevision,requestId,disposition})`
+accepts `neutral`, `favorite` or `rejected` and returns the strict single-item
+shape above. `expectedRevision` is the disposition's independent revision,
+starting at `0`; every new accepted set advances it by one. Resetting to neutral
+retains the row and revision. The 8–200-character request key is required and
+shares collision protection with `asset.range.set` and the original six local
+mutations. Exact historical replay precedes current revision checks, after
+current ownership validation; changed reuse conflicts.
+
+Only disposition metadata and its receipt are written. Asset bytes and existing
+asset/shot/project/timeline revisions, source ranges, versions and in-use clips
+are unchanged. `rejected` is a review label, not deletion or an automatic clip
+edit; legacy asset list and explicit timeline operations keep their semantics.
+No inspection DTO or built-in Agent tool/context is expanded. Browser pending
+receipts remain session-only, while backend replay receipts survive restart.
+See [asset dispositions](ASSET-DISPOSITIONS.md) for the UI and recovery boundary.

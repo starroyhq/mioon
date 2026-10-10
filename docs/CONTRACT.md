@@ -8,6 +8,8 @@ All application mutations and reads go through `services.call(operation, input)`
 - project.get `{projectId}` → `{project,assets,shots,nodes,edges,jobs,versions,exports}`
 - asset.import `{projectId,name,mimeType,dataBase64}` → asset. Backend validates bytes and stores a managed filename; no arbitrary local paths or URLs.
 - asset.list `{projectId}` → asset[]
+- asset.disposition.list `{projectId,assetIds}` → `{projectId,items:[{id:assetId,assetId,projectId,revision,disposition}]}`; 1–100 unique UUIDs, exact requested order, non-creating and all-or-nothing.
+- asset.disposition.set `{projectId,assetId,expectedRevision,requestId,disposition:"neutral"|"favorite"|"rejected"}` → strict disposition item; independent revision, required stable key.
 - shot.create `{projectId,requestId?,title,prompt?,referenceAssetIds?:[],aspectRatio?:"9:16",duration?:2,parameters?:{},position?:{x,y}}` → shot
 - shot.update `{shotId,expectedRevision,requestId?,patch:{title?,prompt?,referenceAssetIds?,aspectRatio?,duration?,parameters?,position?}}` → shot
 - shot.reorder `{projectId,expectedRevision,requestId?,shotIds}` → project. Exact permutation.
@@ -84,7 +86,40 @@ the known finite source duration. This is not native/VFR frame-number indexing.
 
 `expectedRevision` belongs to the range, not the asset/project/timeline. The new
 set operation requires its stable key; the six historical local operations keep
-optional keys and unchanged responses. The shared helper checks both immutable
-receipt tables in one write transaction, so those seven operations share key
-collision protection. Timeline/reference/generation journals retain their
-existing separate scopes. See [source-range details](SOURCE-RANGES.md).
+optional keys and unchanged responses. With the later disposition extension,
+the shared helper checks all three immutable receipt tables in one write
+transaction, so all eight supported local mutations share key collision
+protection. Timeline/reference/generation journals retain their existing
+separate scopes. See [source-range details](SOURCE-RANGES.md).
+
+## Asset review disposition metadata
+
+Disposition records are separate from the unchanged asset record shape. The
+strict result is `{id:assetId,assetId,projectId,revision,disposition}` with one of
+`neutral`, `favorite`, `rejected`. An owned asset with no saved metadata reads
+as neutral/revision 0, without creating rows or a timeline. List accepts 1–100
+unique UUIDs and returns every requested item in exact order, or fails the whole
+batch. Missing and foreign scope have the same `NOT_FOUND` 404 without a current
+record, partial result or definite-not-applied claim. Invalid owned metadata
+fails closed with `INVALID_ASSET_DISPOSITION_RECORD` 409.
+
+Set requires a nonnegative safe-integer `expectedRevision` and a caller-owned
+8–200-character `requestId`. Each fresh successful set increments only the
+independent disposition revision. Saving neutral preserves revision history;
+it does not delete metadata or restore revision 0. Same-value new intents also
+advance the revision. At the maximum safe integer, new sets fail with
+`DISPOSITION_REVISION_LIMIT` 409; valid historical replays still precede CAS.
+
+Schema v12 adds `asset_dispositions` and the immutable
+`asset_disposition_requests` companion. All eight local mutations share key
+collision checks across this companion, `asset_range_requests` and
+`mutation_requests`, atomically with the business write. Original six optional
+keys/responses remain unchanged; range/disposition set require their keys.
+Timeline/reference/generation/export journals retain their existing scopes.
+
+Disposition changes do not rewrite originals, saved source ranges, clips,
+versions or any asset/project/shot/timeline revision. Rejection never deletes,
+removes an in-use clip, or changes legacy `asset.list` and explicit clip-add
+semantics. Inspection and built-in Agent DTOs/model tools are unchanged. Browser
+pending recovery receipts are session-only; backend receipts persist through
+restart. See [asset dispositions](ASSET-DISPOSITIONS.md).

@@ -13,7 +13,7 @@ node apps/cli/src/index.mjs project create --input '{"name":"Agent video study"}
 
 Use IDs from actual responses. All business operations are available as space-separated words (`timeline track add`) or `rpc timeline.track.add`; `--input` is a JSON object. Inspect `schema <operation>` for exact required fields instead of guessing. `--input-file` can hold larger requests; keep local request files private when they include sensitive user material.
 
-- Projects/assets: `project create/list/get/inspect`, `asset import/list/inspect`, `asset range get/set`. Import uses `--file <explicit-local-file>` and JSON `projectId`; the client reads and uploads bytes.
+- Projects/assets: `project create/list/get/inspect`, `asset import/list/inspect`, `asset range get/set`, `asset disposition list/set`. Import uses `--file <explicit-local-file>` and JSON `projectId`; the client reads and uploads bytes.
 - Canvas/shots: `shot create/update/reorder/inspect`, `node create/update`, `edge create/delete`.
 - Generation reference: `reference attach/detach` (MCP `reference_attach` / `reference_detach`). Generic canvas edges are visual-only and do not send any image or prompt.
 - Generation: `provider list`, `generation submit`, `job get/list/retry/cancel/reconcile`.
@@ -108,5 +108,40 @@ requestId. At most18000 timeline frames are supported including the append
 position. Marks do not rewrite existing clips, versions or original media.
 Recover lost responses with identical keys/input; never replace the identity
 just because the connection closed. The range-set key shares collision checks
-with the six local canvas mutations; timeline/reference key scopes stay separate.
+with disposition set and the six local canvas mutations; timeline/reference/
+generation key scopes stay separate.
 Built-in conversational Agent read/proposal tools do not yet see or edit ranges.
+
+## Asset review dispositions
+
+`asset disposition list` / `asset_disposition_list` takes exactly
+`{projectId,assetIds}` with 1–100 unique asset UUIDs. It returns
+`{projectId,items:[{id:assetId,assetId,projectId,revision,disposition}]}` in exact
+requested order. Unsaved metadata is neutral/revision 0 without creating a row
+or timeline. One missing/foreign asset rejects the whole batch with uniform
+`NOT_FOUND`, without partial results. All asset types are supported, including
+images and unknown-duration sources.
+
+`asset disposition set` / `asset_disposition_set` takes exactly
+`{projectId,assetId,expectedRevision,requestId,disposition}`. Allowed labels are
+`neutral`, `favorite`, `rejected`. Use that asset's independent disposition
+revision, not its source-range, project or timeline revision. A caller-owned
+8–200-character key is required; CLI also accepts `--request-id`. Every new set
+advances the revision, including a same-value set or neutral reset. Neutral does
+not delete the metadata row or erase revision history.
+
+Retain the complete original operation/input until the result is known. Exact
+replay validates current ownership and returns its historical response before
+checking current revisions, including after backend restart. It may describe an
+older favorite/rejected state; list before a new intent. Changed scope, fields
+or operation under that key conflicts across all eight shared local mutations.
+The separate timeline/reference/generation/export key scopes stay unchanged.
+A missing/foreign response does not prove an unknown earlier attempt failed.
+
+These are metadata-only review labels: original files and legacy asset DTOs,
+source marks, versions, timeline revisions and existing clips are unchanged.
+Rejection does not delete an asset or silently remove it from an in-use clip;
+legacy explicit clip-add remains available. External tool availability does not
+expand built-in Agent context or tool authority. Browser pending requests live
+only for that session; CLI/MCP callers need their own retained recovery identity.
+See [asset dispositions](../../../docs/ASSET-DISPOSITIONS.md).

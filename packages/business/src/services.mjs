@@ -9,6 +9,7 @@ import {createReferenceServices} from './references.mjs';
 import {createInspectionServices} from './inspection.mjs';
 import {createLocalMutationServices} from './local-mutations.mjs';
 import {createSourceRangeServices} from './source-ranges.mjs';
+import {createAssetDispositionServices} from './asset-dispositions.mjs';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mjs';
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
@@ -52,8 +53,10 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const inspection=createInspectionServices(store);
  const localMutations=createLocalMutationServices(store,{check,canonical,now,references});
  const sourceRanges=createSourceRangeServices(store,{canonical});
+ const assetDispositions=createAssetDispositionServices(store,{canonical});
  const handlers={
  ...sourceRanges.handlers,
+ ...assetDispositions.handlers,
  ...inspection.handlers,
  ...timeline.handlers,
  ...references.handlers,

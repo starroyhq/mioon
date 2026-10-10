@@ -224,3 +224,29 @@ clips. Copy the explicitly chosen saved values into a separate
 `timeline_clip_add` intent with its own timeline revision/key. See
 [SOURCE-RANGES.md](SOURCE-RANGES.md). External MCP discovery does not grant the
 built-in conversational Agent any additional tools or context.
+
+### Asset review dispositions
+
+`asset_disposition_list` and `asset_disposition_set` are discoverable external
+SDK tools sharing the HTTP/CLI contracts. List accepts `{projectId,assetIds}`
+with 1–100 unique UUIDs, returning `{projectId,items}` in exactly requested order.
+Each item is `{id:assetId,assetId,projectId,revision,disposition}`. It is
+non-creating/read-only; absent metadata is neutral/revision 0. A missing/foreign
+asset fails the entire batch with uniform `NOT_FOUND`, without partial data.
+
+Set accepts `{projectId,assetId,expectedRevision,requestId,disposition}` with
+`neutral`, `favorite` or `rejected`. It requires a retained 8–200-character key
+and the independent disposition revision; it writes only local metadata and its
+receipt. Both tools advertise `idempotentHint:true`, `openWorldHint:false` and
+no file/provider/process/paid work. Only list has `readOnlyHint:true`. These
+hints grant no authorization. Original optional-key tools still advertise
+`idempotentHint:false` for legacy keyless calls.
+
+Exact set replay returns the historical result after checking current ownership
+and before current CAS, including after restart or a later neutral reset.
+Changed key reuse conflicts across all eight local mutations. Existing timeline,
+reference and generation key scopes remain separate. Neutral reset retains its
+revision; rejection never edits existing clips or asset bytes. Legacy inspection
+DTOs and built-in Agent model tools/context do not gain disposition fields or
+authority. Caller recovery identity must be retained; browser UI pending receipts
+are session-only. See [asset dispositions](ASSET-DISPOSITIONS.md).

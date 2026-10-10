@@ -241,3 +241,29 @@ exclusive in the fixed 30-fps editing timebase. To add a saved selection, copy
 those confirmed values into ordinary `timeline clip add` with its separate
 revision and key; later marks do not change that clip. See
 [SOURCE-RANGES.md](SOURCE-RANGES.md) for bounds, replay scopes and limitations.
+
+### Review asset dispositions
+
+Use `mioon asset disposition list --input <JSON>` and
+`mioon asset disposition set --input <JSON>` (or the equivalent `rpc` operation).
+Discover their strict inputs with `mioon schema asset.disposition.list` and
+`mioon schema asset.disposition.set` before writing.
+
+List takes `{projectId,assetIds}` with 1–100 unique UUIDs and returns
+`{projectId,items}` in that exact order. Each item is
+`{id:assetId,assetId,projectId,revision,disposition}`. Missing metadata reads as
+neutral/revision 0 without creating it; any missing/foreign asset fails the
+whole batch without a partial result.
+
+Set takes `{projectId,assetId,expectedRevision,requestId,disposition}`. Use the
+item's independent revision and `neutral`, `favorite` or `rejected`. A stable
+8–200-character key is mandatory, supplied in JSON or via `--request-id`; the
+CLI neither creates it nor retries automatically. Retain the complete request
+and repeat it exactly after an uncertain result, even after restart or newer
+edits. A historical response is not latest state; list before a new intent.
+Neutral reset advances and retains the revision. Keys collide across all eight
+shared local mutations, while timeline/reference/generation journals remain
+separate. Existing asset DTOs, original files and in-use clips do not change.
+Built-in Agent context/tools are unchanged. Browser UI pending receipts are
+session-only; CLI users must keep their own recovery identity. See
+[asset dispositions](ASSET-DISPOSITIONS.md).

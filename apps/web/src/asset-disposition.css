@@ -1,0 +1,23 @@
+.asset-disposition-filter { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; margin: 0 0 3px; }
+.asset-disposition-filter [data-slot="button"] { height: auto; min-height: 28px; padding: 4px 2px; font-size: 9px; gap: 3px; }
+.asset-disposition-filter [aria-pressed="true"] { color: #d8e8ba; background: #354431; }
+.asset-disposition-summary { flex: none; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 26px; font-size: 9px; line-height: 1.4; color: #a3afbd; margin-bottom: 3px; }
+.asset-disposition-summary > [role="status"] { flex: 1; min-width: 0; }
+.asset-disposition-summary > .text-button { flex: none; }
+.asset-disposition-details { grid-column: 1 / -1; margin-bottom: 8px; font-size: 10px; line-height: 1.55; color: #a3afbd; }
+.asset-disposition-details p { margin: 3px 0; }
+.asset-disposition-summary .text-button, .asset-disposition-details .text-button { font-size: 10px; height: auto; padding: 3px 0; }
+.asset-disposition-details [role="alert"] { color: #e7b892; overflow-wrap: anywhere; }
+.asset-disposition-controls { padding: 6px 8px; border-top: 1px solid #303740; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.asset-disposition-label { font-size: 9px; color: #a3afbd; }
+.asset-disposition-label.favorite { color: #d8e8ba; }
+.asset-disposition-label.rejected { color: #e7b892; }
+.asset-disposition-label.unknown { color: #dbbb7a; }
+.asset-disposition-buttons { display: flex; flex-wrap: wrap; gap: 3px; }
+.asset-disposition-buttons [data-slot="button"] { min-height: 26px; height: auto; flex: 1; padding: 4px; font-size: 9px; white-space: nowrap; }
+.asset-disposition-buttons [aria-pressed="true"] { background: #354431; color: #d8e8ba; opacity: 1; }
+.asset-disposition-selected { grid-column: 1 / -1; min-width: 0; border: 1px solid #677958; border-radius: 6px; padding: 7px; margin-bottom: 8px; font-size: 10px; line-height: 1.6; }
+.asset-disposition-selected strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-disposition-selected p { margin: 3px 0; color: #c6d2c1; }
+.asset-disposition-selected .asset-disposition-controls { padding: 5px 0 0; }
+.asset-disposition-selected .text-button { font-size: 10px; height: auto; padding: 3px 0; }

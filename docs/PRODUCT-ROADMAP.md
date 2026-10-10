@@ -129,3 +129,8 @@ range into a new timeline clip. Verification and limitations are tracked in
 [SOURCE-RANGES.md](SOURCE-RANGES.md). The broader selection/editing group above
 remains open; one saved range is not a favorites/tags, proxy, waveform, or
 native-timebase implementation.
+
+The next bounded selection increment is independent favorite/拒选/neutral asset
+metadata and explicit local library filtering. Its current implementation and
+verification status is in [ASSET-DISPOSITIONS.md](ASSET-DISPOSITIONS.md). Tags,
+notes, unused filters and jump-to-usage remain open.

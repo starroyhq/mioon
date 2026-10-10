@@ -287,6 +287,42 @@ export function openStore(root,{lock=true}={}){
  BEGIN SELECT RAISE(ABORT,'mutation request ID is already retained');END;
  INSERT OR IGNORE INTO schema_version VALUES(11);
  COMMIT;`);
+ // Shared asset disposition is independent of the asset, source range and
+ // timeline. Preserve all earlier schema/receipt bytes; extend their global
+ // request namespace additively in all directions under the same write lock.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS asset_dispositions(
+ assetId TEXT PRIMARY KEY REFERENCES assets(id),projectId TEXT NOT NULL REFERENCES projects(id),
+ revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),
+ disposition TEXT NOT NULL CHECK(disposition IN ('neutral','favorite','rejected')));
+ CREATE INDEX IF NOT EXISTS asset_dispositions_project ON asset_dispositions(projectId,assetId);
+ CREATE TRIGGER IF NOT EXISTS immutable_asset_disposition_identity BEFORE UPDATE ON asset_dispositions
+ WHEN NEW.assetId IS NOT OLD.assetId OR NEW.projectId IS NOT OLD.projectId
+ BEGIN SELECT RAISE(ABORT,'asset disposition identity is immutable');END;
+ CREATE TABLE IF NOT EXISTS asset_disposition_requests(
+ requestId TEXT PRIMARY KEY,operation TEXT NOT NULL CHECK(operation='asset.disposition.set'),
+ projectId TEXT NOT NULL REFERENCES projects(id),
+ canonicalInput TEXT NOT NULL CHECK(json_valid(canonicalInput) AND length(CAST(canonicalInput AS BLOB))<=4096),
+ response TEXT NOT NULL CHECK(json_valid(response) AND length(CAST(response AS BLOB))<=4096));
+ CREATE TRIGGER IF NOT EXISTS reject_asset_disposition_request_replacement BEFORE INSERT ON asset_disposition_requests
+ WHEN EXISTS(SELECT 1 FROM asset_disposition_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'asset disposition request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS immutable_asset_disposition_requests BEFORE UPDATE ON asset_disposition_requests
+ BEGIN SELECT RAISE(ABORT,'asset disposition request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS retain_asset_disposition_requests BEFORE DELETE ON asset_disposition_requests
+ BEGIN SELECT RAISE(ABORT,'asset disposition request responses must be retained');END;
+ CREATE TRIGGER IF NOT EXISTS reject_asset_disposition_cross_request BEFORE INSERT ON asset_disposition_requests
+ WHEN EXISTS(SELECT 1 FROM mutation_requests WHERE requestId=NEW.requestId) OR
+ EXISTS(SELECT 1 FROM asset_range_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'mutation request ID is already retained');END;
+ CREATE TRIGGER IF NOT EXISTS reject_mutation_cross_disposition_request BEFORE INSERT ON mutation_requests
+ WHEN EXISTS(SELECT 1 FROM asset_disposition_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'mutation request ID is already retained');END;
+ CREATE TRIGGER IF NOT EXISTS reject_asset_range_cross_disposition_request BEFORE INSERT ON asset_range_requests
+ WHEN EXISTS(SELECT 1 FROM asset_disposition_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'mutation request ID is already retained');END;
+ INSERT OR IGNORE INTO schema_version VALUES(12);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

@@ -8,7 +8,7 @@ That release exposed only the built-in Agent's four approved read operations.
 The later [reviewed-edit increment](AGENT-EDITS.md) separately adds its durable
 proposal and approval boundary.
 
-## Exactly six operations
+## Original six operations
 
 `shot.create`, `shot.update`, `shot.reorder`, `node.create`, `node.update` and
 `version.select` gain an optional `requestId`, using the existing stable-key
@@ -133,10 +133,37 @@ The subsequent source-range increment adds `asset.range.set` as a seventh local
 operation with a **required**, rather than optional, request key. The original
 six schemas/responses and keyless behavior above stay unchanged. Schema v11
 adds a single-purpose `asset_range_requests` companion while retaining every
-original `mutation_requests` row and trigger. All seven operations use the same
-helper and check both tables inside one synchronous write transaction; duplicate
-presence or wrong operation/table placement fails closed. This shared key space
+original `mutation_requests` row and trigger. At that increment, all seven
+operations used the same helper and checked both tables inside one synchronous
+write transaction; duplicate presence or wrong operation/table placement fails closed. This shared key space
 is not a workspace-wide deduplication namespace: existing timeline, reference,
 generation and export journals keep their previous scopes. See
 [SOURCE-RANGES.md](SOURCE-RANGES.md) for independent range revisions and client
 recovery constraints. No built-in model tool authority is added.
+
+## Additive asset-disposition extension (2026-10-10)
+
+Schema v12 adds `asset.disposition.set` as the eighth supported local mutation,
+also with a required stable key. The original six optional keys, response shapes
+and keyless semantics remain intact. `asset_disposition_requests` is a new
+single-purpose immutable companion; no previous receipt or journal is rewritten.
+The shared helper checks all three local receipt tables inside one synchronous
+transaction. Duplicate key presence or wrong operation/table placement fails
+closed. Keys still do not collide with timeline, reference, generation or export
+journals, whose separate recovery semantics are unchanged.
+
+The disposition row and exact original result commit atomically. Replay checks
+current ownership before exposing the retained result, then returns that result
+before CAS even if the current state has advanced or been reset to neutral.
+Changed input, operation or project under a retained key conflicts. Missing or
+foreign ownership yields uniform `NOT_FOUND` without a saved/current response or
+`mutationOutcome:'not_applied'`, so clients preserve any pending identity.
+
+`asset.disposition.list` is a strict bounded non-creating read, and neutral reset
+retains the independent revision rather than deleting the metadata row. Only
+disposition metadata/receipts change: no original bytes, source marks, in-use
+clips, business revisions, Agent context or model tool catalog changes. Browser
+pending requests use the existing session-only recovery mechanism. Backend
+receipts survive restart, but the browser/Electron session's destruction may
+lose the pending request identity; no cross-session discovery guarantee is
+claimed. See [asset dispositions](ASSET-DISPOSITIONS.md).

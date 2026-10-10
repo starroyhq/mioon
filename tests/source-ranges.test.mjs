@@ -181,9 +181,11 @@ test('v11 upgrades preserve all old receipt bytes and records and match fresh sc
  const old=f.store.db.prepare('SELECT * FROM mutation_requests').get();
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  const fresh=f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all();
+ // Model the actual v10 schema, before either additive asset companion exists.
+ f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version=12;');
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_range_request; DROP TABLE asset_range_requests; DROP TABLE asset_ranges; DELETE FROM schema_version WHERE version=11;');
  const before=snapshot(f,['schema_version']);f.restart();
- assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests']),before);
+ assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests']),before);
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
