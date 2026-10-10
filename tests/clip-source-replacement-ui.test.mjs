@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import * as replacement from '../apps/web/src/clip-source-replacement.js';
 import * as submissions from '../apps/web/src/submissions.js';
 import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
@@ -255,7 +255,7 @@ test('actual parent guard rechecks current project, selection, scope, revision, 
 
 function runHarness(rpc) {
   const currentProject = { current: projectId }, calls = [], notices = [], busy = new Set(), dataRef = { current: { project: { id: projectId }, timeline: timeline() } };
-  const deps = { ...submissions, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage,
+  const deps = { ...submissions, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage,
     readableError: error => error.message, context: () => ({ projectId }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: key => busy.has(key), markBusy: (_project, key, value) => value ? busy.add(key) : busy.delete(key),
     isReferenceOperation: () => false, currentProject, dataRef, requestCounter: { current: 0 }, setData: value => { if (typeof value === 'function') value(dataRef.current); },

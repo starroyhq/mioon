@@ -63,9 +63,9 @@ inspection/preflight read budget is separate and cannot invalidate generic repla
 ## Reference boundary and persistence limits
 
 Reference attach/detach errors now conservatively retain pending recovery without
-matching backend proof. Their deeper receipt validation and ownership hardening
-remain a separately tracked follow-on; this increment does not claim that work is
-complete. In particular, a historical detach response can describe an edge that
+matching backend proof. Their subsequent receipt validation and ownership hardening are described in
+[REFERENCE-RECOVERY.md](REFERENCE-RECOVERY.md); the timeline increment itself did
+not implement that follow-on. In particular, a historical detach response can describe an edge that
 no longer exists, and attach can validly return an existing binding.
 
 Pending UI receipts use the existing session storage. Project navigation and

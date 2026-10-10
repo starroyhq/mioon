@@ -1,6 +1,6 @@
 # Mioon approved product roadmap
 
-Updated: 2026-10-09 UTC. This is approved iteration scope, not a completion claim.
+Updated: 2026-10-10 UTC. This is approved iteration scope, not a completion claim.
 Baseline: `66a0193`. Verified deliverables remain in STATUS.md and their acceptance reports.
 
 ## Product direction
@@ -55,6 +55,7 @@ and full cut using originals with matching timing and sound.
 - Version comparison, explicit replacement of a timeline source, and video-frame references.
 - Reusable versioned character/product/location/look reference entities linked to shots.
   Changed references flag affected shots for review; they never silently regenerate footage.
+  The approved decoupled subject/keyframe/motion workflow below defines the staged scope.
 - Scene/shot purpose, planned duration and dialogue/voiceover; timed still-frame animatics
   and explicit transfer of the chosen storyboard sequence into Editing.
 - Visible generation provenance and reusable recipes/one-parameter variants, built on existing
@@ -62,6 +63,68 @@ and full cut using originals with matching timing and sound.
 
 Acceptance: plan a six-shot film cheaply, reuse a consistent product reference, replace one
 weak shot while preserving deliberate timeline timing, and inspect the recipe for each output.
+
+#### Decoupled subject, keyframe and motion workflow (approved 2026-10-10)
+
+This is planned scope, not an implemented subject library, image-generation flow,
+motion-reference adapter or Blender integration. Existing managed assets, saved
+versions, explicit reference bindings and fixed timeline replacement are reusable
+foundations. These stages do not block the first usable trial build; continued
+iteration is allowed after that milestone, and the user should be notified when
+a runnable, honestly limited trial is available.
+
+1. **Versioned subject library and typed bindings.** Add project-scoped, versioned
+   character/product/location/look entities backed by selected managed assets.
+   Represent subject, style, first frame, last frame and motion as distinct roles,
+   with explicit shot/version bindings and saved provenance. A later reference
+   version flags affected shots for review; it never silently changes an existing
+   clip, frozen job snapshot or generated result. Acceptance: bind one subject to
+   multiple shots, change its reference version, review affected bindings, and
+   reproduce the exact older selection after restart without hidden propagation.
+
+2. **Capability-checked inputs and reviewed keyframe-to-video stages.** Subject
+   references and first/last images can be uploaded, extracted from managed video,
+   generated as images, or imported from external rendering. Motion references
+   can come from any supported managed video source. Validate each provider/model's
+   supported role combinations, number/type/size/duration limits and region before
+   preparing a request; unsupported combinations require an explicit user choice,
+   never silently dropped references or substituted providers. Offer an optional
+   two-stage flow: produce/select keyframes, review them, then separately approve
+   the exact video input and its cost limits. Acceptance: reject unsupported
+   combinations consistently in UI/API/CLI/MCP, retain exact approved assets and
+   request identity across interruption, and never submit stage two automatically
+   merely because stage one completed. Mock verification is not live certification.
+
+3. **Source provenance independent of creation tool.** Track external-file import,
+   extracted frame, previs render and generated-version provenance as typed,
+   versioned source relationships. Optional original project files, including
+   `.blend`, are provenance attachments only; they are never needed to open a
+   project, bind reference images/video, generate video or edit/export its timeline.
+   Acceptance: perform the same source-selection/version-return workflow with
+   uploaded media, extracted frames and externally rendered media, without Blender
+   installed, while original bytes and old snapshots remain unchanged.
+
+4. **External result return, then optional Blender adapter.** First expose bounded
+   managed-result import and explicit version return through shared MCP/CLI
+   business services. Validate project ownership, media content, provenance,
+   revision and replay identity; returned media never auto-replaces a timeline
+   source. An optional later adapter may ask an externally installed Blender to
+   rerender a supported project and return a managed result. Do not embed Blender,
+   require `.blend`, or make the earlier stages depend on that adapter. Acceptance:
+   a non-Blender external workflow imports a new version exactly once, conflicting
+   or foreign returns fail safely, and optional rerender failures/cancellation do
+   not damage the prior version. External-tool installation/execution and access
+   remain explicitly scoped; a project file cannot grant its own permissions.
+
+Dependencies: shared asset/version provenance and request recovery first; bounded
+image/frame extraction and role schemas before the optional two-stage UI; current
+official provider capability/model-ID review plus profile-specific fixtures before
+live integration; external result import before a tool-specific rerender adapter.
+Blender is one optional source adapter, not a shared-service dependency. Provider
+capabilities may constrain input combinations; the product modules remain
+independent. Reference reuse aims for continuity and does not guarantee absolute
+identity locking or cloud-model reproducibility. This roadmap approval grants no
+live generation, media upload, credential entry or spending authorization.
 
 ### 4. Finish and deliver several versions safely
 

@@ -190,3 +190,15 @@ Historical replay may return an older timeline; refresh current project state
 separately. Reference 4xx without proof also remains unknown. Public render records
 cannot prove current receipt/source ownership or a private-path preflight digest;
 explicitly replay every unknown timeline render with its original input. See [timeline recovery](../../docs/TIMELINE-RECOVERY.md).
+
+### Reference acknowledgement recovery
+
+For `reference.attach` / `reference.detach`, keep the exact request until its
+complete operation-bound acknowledgement or matching reference-specific
+operation/project/request rollback proof. Generic 4xx, owner/receipt errors and
+malformed success remain unknown. Historical responses do not describe current
+selection: an old edge may be detached/rebound, and attaching an existing binding
+can validly keep its revision. Refresh current state separately; never re-key or
+automatically retry. The existing journal retains original response bytes and
+rejects deletion/replacement. This adds no model write or generation authority.
+See [reference recovery](../../docs/REFERENCE-RECOVERY.md).

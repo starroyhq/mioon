@@ -442,3 +442,12 @@ ambiguous. Preserve the original operation/input/key, inspect state, then explic
 replay those exact bytes. A new request ID is a new intent, never a recovery method.
 Valid old responses and command schemas remain unchanged. See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md).
+
+### Reference acknowledgement recovery
+
+`reference attach` and `reference detach` now validate the complete historical
+shot/typed-edge response, preserving valid existing-binding no-ops and detached
+edge replays. Invalid success retains the original request as unknown. A fresh
+rollback proof must match this operation, project and request ID; generic errors
+never justify a replacement key. Commands, successful wire shapes and journal
+namespace are unchanged. See [reference recovery](REFERENCE-RECOVERY.md).

@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
@@ -182,7 +182,7 @@ test('actual App recovery replays the exact key and refreshes current marks sepa
   const input = { projectId, assetId: assetId(1), expectedRevision: 0, disposition: 'favorite' };
   const scope = { context: () => ({ projectId, epoch: 1 }), currentProject: { current: projectId }, isCurrent: () => true,
     isBusy: key => busy.has(key), markBusy: (_id, key, value) => value ? busy.add(key) : busy.delete(key),
-    TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof,
+    TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, validateMutationResponse, mutationNotApplied, prepareSubmission, clearPending, pendingForProject,
     isReferenceOperation: () => false, dataRef: { current: { project: { id: projectId }, assets: [asset()] } }, setPending() {}, setShowJobs() {}, setAuth() {}, notify() {}, readableError: error => error.message,
     refresh: async () => { refreshes++; }, setDispositionRefresh: updater => { markRefreshes++; updater({}); },

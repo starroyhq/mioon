@@ -113,6 +113,11 @@ export function openStore(root,{lock=true}={}){
  CREATE TABLE IF NOT EXISTS reference_requests(requestId TEXT PRIMARY KEY,requestHash TEXT NOT NULL,response TEXT NOT NULL);
  CREATE TRIGGER IF NOT EXISTS immutable_reference_responses BEFORE UPDATE ON reference_requests
  BEGIN SELECT RAISE(ABORT,'reference request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS reject_reference_request_replacement BEFORE INSERT ON reference_requests
+ WHEN EXISTS(SELECT 1 FROM reference_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'reference request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS retain_reference_requests BEFORE DELETE ON reference_requests
+ BEGIN SELECT RAISE(ABORT,'reference request responses must be retained');END;
  INSERT OR IGNORE INTO schema_version VALUES(4);
  COMMIT;`);
  // Single-user project view preferences have an independent revision. This

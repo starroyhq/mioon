@@ -11,7 +11,7 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import Icon from './icons.jsx';
 import Inspector from './Inspector.jsx';
@@ -330,11 +330,12 @@ export default function App() {
     const captured = context(), projectId = captured.projectId;
     const mutation = isMutationOperation(operation);
     const timeline = TIMELINE_MUTATION_OPERATIONS.includes(operation);
-    const requestBound = timeline || isReferenceOperation(operation);
+    const reference = REFERENCE_MUTATION_OPERATIONS.includes(operation);
+    const requestBound = timeline || reference;
     if (isBusy(key, projectId) || (mutation && isBusy('canvas:mutation', projectId))) return null;
     markBusy(projectId, key, true);
     if (mutation) markBusy(projectId, 'canvas:mutation', true);
-    const durable = mutation || timeline || ['generation.submit', 'job.retry', 'export.create'].includes(operation) || isReferenceOperation(operation);
+    const durable = mutation || requestBound || ['generation.submit', 'job.retry', 'export.create'].includes(operation);
     const timelineMutation = timeline && operation !== 'timeline.render';
     const invalidateHistory = () => {
       if (!timelineMutation || currentProject.current !== projectId) return;
@@ -349,10 +350,10 @@ export default function App() {
       if (durable) {
         const entry = { projectId, key, operation, input, createdAt: new Date().toISOString() };
         if (mutation && !replay) assertMutationOwner(entry, dataRef.current);
-        // A new timeline click must not silently replay an older uncertain edit
-        // or preview. Only the task panel may recover its saved original input.
-        if (timeline && !replay && pendingForProject(projectId, { strict: true }).some(item => item.key === key))
-          throw Object.assign(new Error('上一条时间线请求的结果尚未确认。原请求已保留，请先在任务面板恢复同一请求。'), { code: 'MUTATION_PENDING' });
+        // A new timeline or reference click must not silently replay an older
+        // uncertain request. Only the task panel may recover its original input.
+        if (requestBound && !replay && pendingForProject(projectId, { strict: true }).some(item => item.key === key))
+          throw Object.assign(new Error(`上一条${reference ? '首帧参考' : '时间线'}请求的结果尚未确认。原请求已保留，请先在任务面板恢复同一请求。`), { code: 'MUTATION_PENDING' });
         if (requestBound && replay) stored = prepareRequestReplay(entry);
         else stored = mutation ? prepareMutation(entry, { replay }) : prepareSubmission(entry);
         if (requestBound && stored.operation !== operation)
@@ -368,6 +369,7 @@ export default function App() {
       invalidateHistory();
       if (mutation) validateMutationResponse(stored, result);
       if (timeline && !isTimelineMutationResponse(operation, input, result)) throw Object.assign(new Error('未收到与原请求一致的时间线确认。'), { code: 'BACKEND_PROTOCOL_ERROR' });
+      if (reference && !isReferenceMutationResponse(operation, input, result)) throw Object.assign(new Error('未收到与原请求一致的首帧参考确认。'), { code: 'BACKEND_PROTOCOL_ERROR' });
       validateResponse?.(result);
       if (replay && operation === 'asset.range.set' && currentProject.current === projectId) {
         const assetId = stored.input.assetId;
@@ -381,7 +383,7 @@ export default function App() {
       if (message) notify(message); return mutation && replay ? null : result;
     } catch (e) {
       if (dispatched) invalidateHistory();
-      const rejected = mutation ? mutationNotApplied(e, stored) : timeline || isReferenceOperation(operation)
+      const rejected = mutation ? mutationNotApplied(e, stored) : requestBound
         ? Boolean(stored && hasRequestNotAppliedProof(e, stored.input, { operation })) : e.definitive;
       onFailure?.(e, { dispatched, rejected });
       if (durable && stored && rejected) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.js';
 import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.js';
 
@@ -102,8 +103,40 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry\)/);
   assert.match(app, /mutation && replay \? null : result/);
   assert.match(app, /entry\.input, '原请求已恢复并确认', \{ replay: true \}/);
-  assert.match(app, /mutation \? mutationNotApplied\(e, stored\) : timeline \|\| isReferenceOperation\(operation\)/);
-  assert.match(app, /hasRequestNotAppliedProof\(e, stored\.input, \{ operation \}\)/);
+  // Evaluate the actual App classifier rather than require its former inline
+  // `timeline || isReferenceOperation(...)` spelling. Reference proof handling
+  // must remain stricter than a generic definitive 4xx after the alias refactor.
+  const run = app.slice(app.indexOf('async function run('), app.indexOf('async function inspect('));
+  const flags = run.slice(run.indexOf('const mutation ='), run.indexOf('if (isBusy('));
+  const decision = run.slice(run.indexOf('const rejected ='), run.indexOf('onFailure?.'));
+  assert.ok(flags && decision, 'The test must evaluate the real App failure path');
+  const classify = Function('operation', 'e', 'stored', 'isMutationOperation', 'TIMELINE_MUTATION_OPERATIONS', 'REFERENCE_MUTATION_OPERATIONS',
+    'mutationNotApplied', 'hasRequestNotAppliedProof', `${flags}\n${decision}\nreturn rejected;`);
+  const owner = '87000000-0000-4000-8000-000000000001', other = '87000000-0000-4000-8000-000000000002';
+  const stored = { input: { projectId: owner, requestId: 'original-app-classification-request' } };
+  const check = (operation, error, receipt = stored) => classify(operation, error, receipt, isMutationOperation,
+    TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, mutationNotApplied, hasRequestNotAppliedProof);
+  const rejection = { code: 'REVISION_CONFLICT', definitive: true, details: {} };
+  for (const operation of ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', ...TIMELINE_MUTATION_OPERATIONS]) {
+    assert.equal(check(operation, rejection), false, `${operation} does not trust a bare 4xx`);
+    assert.equal(check(operation, { ...rejection, details: { mutationOutcome: 'not_applied', requestId: stored.input.requestId } }), true,
+      `${operation} retains its existing request-bound proof contract`);
+  }
+  for (const operation of REFERENCE_MUTATION_OPERATIONS) {
+    const details = { mutationOutcome: 'not_applied', operation, projectId: owner, requestId: stored.input.requestId };
+    assert.equal(check(operation, rejection), false);
+    assert.equal(check(operation, { ...rejection, details }), true, `${operation} uses explicit reference proof`);
+    assert.equal(check(operation, { ...rejection, details }, null), false, 'No saved receipt means no release');
+    for (const field of ['operation', 'projectId', 'requestId']) {
+      const missing = { ...details }; delete missing[field];
+      assert.equal(check(operation, { ...rejection, details: missing }), false, `Missing ${field} cannot release a reference key`);
+    }
+    for (const patch of [{ operation: operation === 'reference.attach' ? 'reference.detach' : 'reference.attach' },
+      { projectId: other }, { requestId: 'different-reference-request' }])
+      assert.equal(check(operation, { ...rejection, details: { ...details, ...patch } }), false);
+    for (const code of ['TIMELINE_LIMIT', 'IDEMPOTENCY_CONFLICT', 'UNAUTHORIZED', 'BACKEND_PROTOCOL_ERROR'])
+      assert.equal(check(operation, { ...rejection, code, details }), false, `${code} is not a reference rollback proof`);
+  }
   assert.match(app, /isBusy\('canvas:mutation', projectId\)/);
   assert.doesNotMatch(app, /await rpc\('(shot\.create|shot\.update|shot\.reorder|node\.create|node\.update|version\.select)'/);
   const structure = app.slice(app.indexOf('async function addStructure()'), app.indexOf('async function addNode('));

@@ -1,7 +1,7 @@
 import {setTimeout as pause} from 'node:timers/promises';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
@@ -93,7 +93,7 @@ export function createClient(clientOptions = {}) {
       if (!result.ok || !response.ok) {
         const error = result.error || {};
         let details = safeValue(error.details || {}, [token]);
-        if (body && (TIMELINE_MUTATION_OPERATIONS.includes(body.operation) || ['reference.attach', 'reference.detach'].includes(body.operation))) {
+        if (body && (TIMELINE_MUTATION_OPERATIONS.includes(body.operation) || REFERENCE_MUTATION_OPERATIONS.includes(body.operation))) {
           const proven = hasRequestNotAppliedProof({...error, status: response.status}, body.input, {operation: body.operation});
           details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
             ...(proven ? {operation: body.operation, requestId: body.input.requestId, submissionMayHaveSucceeded: false} : recoveryDetails)};
@@ -123,6 +123,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (TIMELINE_MUTATION_OPERATIONS.includes(operation) && !isTimelineMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (REFERENCE_MUTATION_OPERATIONS.includes(operation) && !isReferenceMutationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid reference acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
     return result;

@@ -150,6 +150,7 @@ Use `reference.attach` with `{projectId,sourceNodeId,targetShotId,expectedSource
 - Clear and save a manual image choice explicitly before attaching (`REFERENCE_SELECTION_EXISTS`). Connected images cannot be silently changed via `shot.update` or `edge.delete` (`REFERENCE_CONNECTED`); detach first.
 - Source node and shot revisions must be current. Detach checks the shot revision. Source image IDs cannot be edited through `node.update`.
 - Preserve the exact request after an uncertain result. Replay returns its saved original response even after later edits or restart; changed reuse conflicts. A repeated attach with a new ID and current revisions returns the existing edge without duplicates.
+- UI/CLI/MCP validate complete operation-bound acknowledgements. Malformed success and later generic errors retain the original key; only fresh, pre-write, rolled-back reference rejection with exact operation/project/request proof permits clearing it. Historical replay revalidates ownership without requiring the old edge to remain present. Existing receipts gain DELETE/replacement retention triggers without data or schema-version changes. See [reference recovery](REFERENCE-RECOVERY.md).
 - Detach preserves the managed asset, source node, generated versions and immutable in-flight snapshots. New generation snapshots also record the typed connection provenance.
 - `edge.create` and all historical untyped edges remain decorative. They never supply generation inputs. No general graph execution or character/style consistency is implemented.
 
@@ -573,5 +574,5 @@ Pending timeline renders require explicit exact replay. Even a well-shaped
 progressed public export cannot prove current receipt/source ownership; public
 snapshots also omit private paths included in preflight digests. Project refresh
 therefore never automatically clears an unknown render receipt. Reference errors conservatively retain uncertainty;
-reference backend receipt hardening is separately deferred. See
+reference recovery now also validates operation-bound acknowledgements and retained ownership; see [REFERENCE-RECOVERY.md](REFERENCE-RECOVERY.md). See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md) for scope and session-storage limits.

@@ -425,6 +425,16 @@ request-bound rollback-proof checks with the CLI and UI. A malformed successful
 payload produces a protocol error with uncertainty guidance. A later 4xx does not
 prove a prior call failed; preserve its original arguments/request ID. The bridge
 never automatically resubmits. Reference errors also conservatively retain
-uncertainty while their backend receipt hardening remains a follow-on. No new tool,
+uncertainty unless a matching reference-specific rollback proof is verified. No new tool,
 input schema, authorization or journal namespace is introduced. See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md).
+
+### Reference acknowledgement recovery
+
+`reference_attach` and `reference_detach` use the same bounded acknowledgement
+validator and transactional ownership/receipt boundary as UI/CLI. The bridge
+rejects malformed successful payloads without retrying; preserve exact arguments
+and request ID. A historical detached edge may no longer exist, and an attach
+can acknowledge an existing binding without a new shot revision. No new tools,
+authority, generation call or namespace are introduced. See
+[reference recovery](REFERENCE-RECOVERY.md).

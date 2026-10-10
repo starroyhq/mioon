@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof } from '@mioon/contracts';
 import * as submissions from '../apps/web/src/submissions.js';
 import * as mutations from '../apps/web/src/mutation-submissions.js';
 import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
@@ -73,7 +73,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
   const state = { epoch: 0, calls: [], notices: [], refreshes: [], pending: submissions.pendingForProject(projectId), jobs: false, auth: true };
   const currentProject = { current: projectId }, busy = new Set();
   const dataRef = { current: { project: { id: projectId }, timeline: timeline(7), timelineHistory: { revision: 7 } } };
-  const scope = { ...submissions, ...mutations, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
+  const scope = { ...submissions, ...mutations, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
     currentProject, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
     isCurrent: owner => owner.projectId === currentProject.current && owner.epoch === state.epoch,
     isBusy: (key, owner) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),

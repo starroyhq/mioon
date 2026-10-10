@@ -15,8 +15,12 @@ export function assertClientRecoveryError(error, backendError, {operation, input
   const backendDetails = backendError.details || {};
   const proven = backendDetails.mutationOutcome === 'not_applied';
   if (proven) {
-    assert.ok(operation.startsWith('timeline.'), 'reference errors do not currently provide rollback proof');
+    assert.ok(operation.startsWith('timeline.') || ['reference.attach', 'reference.detach'].includes(operation));
     assert.equal(backendDetails.requestId, input.requestId, 'the backend proof belongs to the exact request');
+    if (operation.startsWith('reference.')) {
+      assert.equal(backendDetails.operation, operation, 'reference proof is operation-bound');
+      assert.equal(backendDetails.projectId, input.projectId, 'reference proof is project-bound');
+    }
   }
   assert.equal(error.details.operation, operation);
   assert.equal(error.details.requestId, input.requestId);

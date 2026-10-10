@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
@@ -208,7 +208,7 @@ test('actual App range replay uses its original request and triggers latest scop
   const scope = {
     currentProject, context: () => ({ projectId: currentProject.current, epoch: 1 }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: (key, project) => busy.has(`${project}:${key}`), markBusy: (project, key, value) => value ? busy.add(`${project}:${key}`) : busy.delete(`${project}:${key}`),
-    TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof,
+    TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, clearPending, pendingForProject,
     isReferenceOperation: () => false, setPending: () => {}, setShowJobs: () => {}, setAuth: () => {}, readableError: error => error.message,
     requestCounter: { current: 0 }, dataRef: { current: { project: { id: 'project-a' }, assets: [asset()] } }, setData: () => {},

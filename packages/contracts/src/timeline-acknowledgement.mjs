@@ -1,5 +1,6 @@
 import {isTimelineRecord, isTimelineReplacementResponse} from './timeline-replacement.mjs';
 import {sourceFrameCount} from './source-range.mjs';
+import {REFERENCE_MUTATION_OPERATIONS} from './reference-acknowledgement.mjs';
 
 export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
@@ -131,8 +132,16 @@ const proofCodes = new Set([
   'AUDIO_HIDDEN_UNSUPPORTED', 'TIMELINE_LIMIT', 'CLIP_OVERLAP', 'SPLIT_BOUNDS', 'SPLIT_FADE_BOUNDS',
   'TIMELINE_NOT_EMPTY', 'MISSING_SELECTION', 'NOTHING_TO_UNDO', 'NOTHING_TO_REDO', 'EMPTY_TIMELINE', 'PREFLIGHT_STALE', 'TIMELINE_REVISION_LIMIT',
 ]);
+const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT']);
 export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
   const details = error?.details;
+  // Reference rejections must be owner-checked by their own transaction and
+  // explicitly bind every identity field. Legacy timeline proofs retain their
+  // existing optional operation/project fields and original code allowlist.
+  if (REFERENCE_MUTATION_OPERATIONS.includes(operation)) return Boolean(object(input) && uuid(input.projectId) && text(input.requestId, 8, 200) && object(details) &&
+    (integer(error.status, 400, 499) && ![401, 403].includes(error.status) || error.status === undefined && error.definitive === true) &&
+    referenceProofCodes.has(error.code) && ['mutationOutcome', 'operation', 'projectId', 'requestId'].every(key => Object.hasOwn(details, key)) &&
+    details.mutationOutcome === 'not_applied' && details.operation === operation && details.projectId === input.projectId && details.requestId === input.requestId);
   return Boolean(object(input) && text(input.requestId, 8, 200) && object(details) &&
     (integer(error.status, 400, 499) && ![401, 403].includes(error.status) || error.status === undefined && error.definitive === true) &&
     proofCodes.has(error.code) && details.mutationOutcome === 'not_applied' && details.requestId === input.requestId &&
