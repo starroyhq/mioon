@@ -36,6 +36,7 @@ import { useSourceRange } from './use-source-range.js';
 import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.js';
 import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, versionUrl } from './api.js';
+import { importAcknowledged, importBusyFeedback, importFeedback } from './import-feedback.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
 import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending } from './submissions.js';
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.js';
@@ -138,6 +139,11 @@ export default function App() {
 
   const [reconcileIds, setReconcileIds] = useState({});
   const fileInput = useRef(null);
+  const importSession = useRef({ active: true, selection: 0 });
+  useEffect(() => {
+    importSession.current.active = true;
+    return () => { importSession.current.active = false; importSession.current.selection++; requestCounter.current++; };
+  }, []);
   const currentProject = useRef(null);
   const [taskState, setTaskState] = useState({ phase: 'idle', items: [], uncertain: [], busy: [], error: null });
   const tasksRef = useRef(null);
@@ -598,20 +604,58 @@ export default function App() {
     if (node && await inspect(node.id)) revealCanvas(node.id);
   }
   async function importFiles(files) {
+    if (!importSession.current.active || !files?.length) return;
+    const selection = ++importSession.current.selection;
+    ++requestCounter.current; // Invalidate an older batch's pending refresh.
     if (!data.project) return setShowCreate(true);
-    if (!files?.length || isBusy('import')) return;
-    const captured = context(), projectId = data.project.id; markBusy(projectId, 'import', true);
-    let done = 0;
+    const projectId = data.project.id;
+    if (projectId !== currentProject.current || dataRef.current.project?.id !== projectId) return;
+    const batch = Array.from(files), inputElement = fileInput.current;
+    if (isBusy('import')) {
+      notify(importBusyFeedback(batch), 'warning');
+      if (inputElement === fileInput.current && inputElement) inputElement.value = '';
+      return;
+    }
+    const captured = context();
+    const ownsSelection = () => importSession.current.active && selection === importSession.current.selection && isCurrent(captured);
+    markBusy(projectId, 'import', true);
+    let done = 0, dispatched = false;
     try {
-      for (const file of files) {
-        if (!['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a'].includes(file.type)) throw new Error(`「${file.name}」格式不支持。请使用 PNG、JPG、WEBP、MP4、WEBM、MP3、WAV 或 M4A。`);
-        if (file.size > 30 * 1024 * 1024) throw new Error(`「${file.name}」超过 30 MiB，请压缩后导入。`);
-        const base64 = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
-        await rpc('asset.import', { projectId, name: file.name, mimeType: ({ 'audio/x-wav': 'audio/wav', 'audio/x-m4a': 'audio/mp4' }[file.type] || file.type), dataBase64: base64 }); done++;
+      for (const file of batch) {
+        if (!ownsSelection()) return;
+        dispatched = false;
+        if (!['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a'].includes(file.type)) throw new Error('格式不支持。请使用 PNG、JPG、WEBP、MP4、WEBM、MP3、WAV 或 M4A。');
+        if (file.size > 30 * 1024 * 1024) throw new Error('超过 30 MiB，请压缩后导入。');
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result !== 'string' || !result.includes(',')) return reject(new Error('无法读取文件内容，请检查文件。'));
+            resolve(result.slice(result.indexOf(',') + 1));
+          };
+          reader.onerror = () => reject(new Error('无法读取文件，请检查文件是否可访问。'));
+          reader.onabort = () => reject(new Error('文件读取已中止。'));
+          reader.readAsDataURL(file);
+        });
+        if (!ownsSelection()) return;
+        const input = { projectId, name: file.name, mimeType: ({ 'audio/x-wav': 'audio/wav', 'audio/x-m4a': 'audio/mp4' }[file.type] || file.type), dataBase64: base64 };
+        dispatched = true;
+        const asset = await rpc('asset.import', input);
+        if (!importAcknowledged(asset, input)) throw new Error('未收到有效导入确认。');
+        done++;
       }
-      if (isCurrent(captured)) notify(`已导入 ${done} 个素材。拖入画板或时间线，即可开始编排。`);
-    } catch (e) { if (isCurrent(captured)) notify(`${done ? `已导入 ${done} 个素材。` : ''}${readableError(e)}`, 'error'); }
-    finally { await refresh(projectId); markBusy(projectId, 'import', false); if (isCurrent(captured) && fileInput.current) fileInput.current.value = ''; }
+      if (ownsSelection()) notify(importFeedback(batch, done));
+    } catch (error) {
+      const kind = !dispatched ? 'local' : error?.definitive === true && error.status >= 400 && error.status < 500 ? 'rejected' : 'unknown';
+      if (ownsSelection()) notify(importFeedback(batch, done, { kind, reason: kind === 'unknown' ? '' : readableError(error) }), 'error');
+    } finally {
+      try { if (ownsSelection()) await refresh(projectId); }
+      finally {
+        if (importSession.current.active) markBusy(projectId, 'import', false);
+        else busyRef.current.delete(`${projectId}:import`);
+        if (ownsSelection() && inputElement === fileInput.current && inputElement) inputElement.value = '';
+      }
+    }
   }
   async function saveShot(shotId, expectedRevision, patch) {
     if (referenceWorkBlocked()) return null;
