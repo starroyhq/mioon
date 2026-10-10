@@ -31,6 +31,27 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 
 For an executable no-cost import → shot → generate → select → timeline → export workflow, read [mock-workflow.md](references/mock-workflow.md). Mock produces visibly labeled synthetic motion, not prompt-faithful AI output. All shipped provider contracts have offline tests; live provider output is unverified unless separately established in the user's session.
 
+## Clip audio fades
+
+For an authorized timeline edit, use the existing `timeline clip add/update`
+(MCP `timeline_clip_add/update`) with optional `fadeInFrames` and
+`fadeOutFrames`; updates put them in `patch`. Read the current full timeline and
+schema first. These are integer 30fps frame counts, 0–18000, each and together
+bounded by the resulting clip duration. Positive values require an audio/video
+asset with `hasAudio:true`. Never infer audio from an extension or silently
+clamp fades when shortening a clip; submit the intended duration/fades together.
+Omitted legacy fields mean zero without rewriting them, omitted patch fields
+stay unchanged, and explicit zero clears a fade.
+
+Keep the complete timeline request and mandatory stable key for exact replay
+after a lost response or restart. Fades use the existing revision and undo/redo
+history. Split only at an interior plateau or exact fade boundary; a cut inside
+a ramp rejects atomically with `SPLIT_FADE_BOUNDS`. Successful splits preserve
+outer envelopes and zero only corresponding present inner-edge fields. Hear
+the result through a rendered preview/export; source playback remains dry.
+Inspection DTOs and built-in Agent permissions remain unchanged. See
+[Timeline audio fades](../../docs/TIMELINE.md#audio-fades).
+
 ## Saved source ranges
 
 For an authorized source-selection workflow, use `asset range get/set` (MCP

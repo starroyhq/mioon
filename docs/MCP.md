@@ -203,11 +203,35 @@ A generation in `submission_unknown` may already be accepted and billable. Inspe
 
 No blocking MCP watch helper is exposed. Agent clients should poll `job_get`/`export_get` with a reasonable interval and explicit deadline, or use the CLI's bounded watch. A timeout/disconnect stops observation; it does not imply a remote task stopped or justify a fresh paid submit.
 
+### Clip audio fades
+
+`timeline_clip_add` and `timeline_clip_update` expose optional `fadeInFrames`
+and `fadeOutFrames` through their existing shared schemas; update fields belong
+in `patch`. Discover with `mioon_schema({"operation":"timeline.clip.update"})`.
+Values are integer 30fps frame counts from 0 to 18000, each and together bounded
+by the resulting clip duration. Omitted legacy fields mean zero without record
+normalization; omitted patch fields stay unchanged, and explicit zero clears a
+fade. Positive values require an audio/video source with `hasAudio:true`.
+
+The same timeline revision, mandatory caller-owned request ID, atomic history,
+and exact original-response replay apply. Keep the complete original arguments
+after uncertainty or restart. `INVALID_FADE`, `FADE_AUDIO_UNSUPPORTED`, schema
+`VALIDATION_ERROR` and `SPLIT_FADE_BOUNDS` do not commit changes. Split offsets
+must be outside ramp interiors; exact fade boundaries are accepted if interior
+to the clip. A valid split preserves outer envelopes and zeros only present
+inner-edge fade fields.
+
+Fades affect rendered preview/export with existing gain/mute, while source
+playback stays dry. This adds no new tool family, effect category, inspection
+DTO fields or built-in Agent permission. Existing `timeline_get` creation
+behavior remains unchanged. See [Timeline audio fades](TIMELINE.md#audio-fades).
+
 ## Offline verification
 
 ```sh
 node --test tests/mcp-discovery.test.mjs tests/mcp-v4.test.mjs
 node --test tests/mcp.test.mjs tests/timeline-mcp.test.mjs
+node --test tests/timeline-fades-transports.test.mjs
 pnpm test:cli
 ```
 

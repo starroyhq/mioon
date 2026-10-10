@@ -170,6 +170,33 @@ Revisions above are illustrative for a fresh, otherwise unmodified project. Read
 
 For simple shot-order export use `export create` with `projectId` and a stable `requestId`; use `export watch` and `export download` on the returned export ID. `timeline render` freezes the independent multitrack timeline. The returned media URL is a relative authenticated local resource, not a public sharing URL.
 
+### Clip audio fades
+
+Use existing `timeline clip add` or `timeline clip update` commands; inspect
+`mioon schema timeline.clip.add` / `mioon schema timeline.clip.update` first.
+For an existing 120-frame confirmed-audio clip, after reading its current
+revision:
+
+```sh
+mioon timeline clip update --input '{"projectId":"PROJECT_UUID","clipId":"CLIP_UUID","expectedRevision":7,"requestId":"clip-fades-0001","patch":{"fadeInFrames":15,"fadeOutFrames":30}}'
+```
+
+Replace the IDs/revision with current values. Both fields are optional integer
+30fps frame counts, 0–18000; each and their sum must fit the resulting clip
+duration. Missing fields mean zero for legacy clips; omitting a field in an
+update leaves it unchanged. Set a field to zero to clear it. Positive fades
+require an audio/video asset with `hasAudio:true`; no audio is inferred from its
+file extension. Duration and fade changes can be submitted in one patch.
+
+`timeline clip split` allows plateau positions and exact fade boundaries, while
+still requiring an interior clip frame. Cuts inside a ramp reject with
+`SPLIT_FADE_BOUNDS` and leave history unchanged. Successful splits retain the
+outer envelopes and zero present inner-edge fields. Rendered preview/export
+applies the fades; original-source playback remains dry. This uses the same
+revision and stable-key recovery as other timeline edits: preserve the exact
+request after a lost response, including the original fade values and revision.
+Full bounds and rendering semantics: [Timeline audio fades](TIMELINE.md#audio-fades).
+
 ### Local imports and downloads
 
 `asset import --file` reads local bytes in the CLI process, infers supported MIME type from the extension, and defaults the display name to the basename. Pass `name` or `mimeType` in JSON to override those defaults. Maximum input is 30 MiB. Only bytes, display name, MIME type, and project ID are sent. No local path is sent or accepted as a server-side file import. `--file` and `dataBase64` are mutually exclusive.

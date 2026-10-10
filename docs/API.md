@@ -168,8 +168,8 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | --- | --- |
 | `timeline.track.add` | `kind:'video'|'audio'`, optional `name` |
 | `timeline.track.update` | `trackId`, nonempty `patch:{name?,hidden?,muted?}` |
-| `timeline.clip.add` | `trackId,assetId,startFrame,durationFrames`, optional `name,sourceInFrame,rect,gain` |
-| `timeline.clip.update` | `clipId`, nonempty `patch:{trackId?,name?,startFrame?,durationFrames?,sourceInFrame?,rect?,gain?}` |
+| `timeline.clip.add` | `trackId,assetId,startFrame,durationFrames`, optional `name,sourceInFrame,rect,gain,fadeInFrames,fadeOutFrames` |
+| `timeline.clip.update` | `clipId`, nonempty `patch:{trackId?,name?,startFrame?,durationFrames?,sourceInFrame?,rect?,gain?,fadeInFrames?,fadeOutFrames?}` |
 | `timeline.clip.remove` | `clipId` |
 | `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
@@ -192,6 +192,28 @@ Times are integer frames at 30fps. Output is 720×1280; maximum 12 tracks,
 wrong track media types, cross-project references and invalid rectangles.
 Unknown input fields (including nested patches and rectangles) reject. See
 [`TIMELINE.md`](TIMELINE.md) for full rendering, bounds and migration semantics.
+
+Clip `fadeInFrames` and `fadeOutFrames` are optional integer 30fps frame counts
+from 0 to 18000. Each must fit the clip duration, and their sum cannot exceed it.
+Missing fields mean zero without rewriting legacy clips, snapshots or saved
+responses; explicit zero clears an existing fade. Positive fades require an
+audio/video asset with `hasAudio:true`. Update validation uses the resulting
+clip, so shortening a clip may require reducing its fades in the same patch.
+Business bounds failures use `INVALID_FADE`; unsupported positive fades use
+`FADE_AUDIO_UNSUPPORTED`; malformed fields use `VALIDATION_ERROR`. Rejections
+change no timeline, history, redo branch or request journal.
+
+Splits must also be outside the interior of a fade: the offset from the clip's
+start must be at least `fadeInFrames` and at most
+`durationFrames - fadeOutFrames`. Exact ramp boundaries are allowed if strictly
+inside the clip. Otherwise `SPLIT_FADE_BOUNDS` returns absolute `minFrame` and
+`maxFrame`. A successful split preserves the original outer fade-in/fade-out
+and zeros only the corresponding present fields at the new inner edges.
+
+Rendered previews and exports apply linear clip-local audio fades with existing
+gain/mute behavior; source playback stays dry. The existing timeline revision,
+undo/redo and exact-replay contracts apply. Bounded inspection DTOs and built-in
+Agent permissions are unchanged. See [audio fades](TIMELINE.md#audio-fades).
 
 `asset.import` also supports `audio/wav`, `audio/mpeg` and `audio/mp4` (M4A),
 with byte-signature/decoded-stream validation and the existing 30MiB limit.

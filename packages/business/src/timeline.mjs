@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {AppError,sourceFrameCount} from '@mioon/contracts';
+import {AppError,sourceFrameCount,getTimelineFadeIssue} from '@mioon/contracts';
 
 export const TIMELINE_LIMITS=Object.freeze({fps:30,width:720,height:1280,tracks:12,clips:100,durationFrames:18000});
 const defaultRect=()=>({x:0,y:0,width:720,height:1280});
@@ -49,6 +49,8 @@ export function createTimelineServices(store,{required,check,hash,now}){
    const lane=track(timeline,item.trackId),source=asset(timeline.projectId,item.assetId);
    if(!(lane.kind==='audio'?audioTypes:visualTypes).has(source.mimeType))
     throw new AppError('INVALID_CLIP_TYPE','视频轨道只接收图片/视频，音频轨道只接收音频',400,{clipId:item.id,trackId:lane.id,assetId:source.id});
+   const fadeIssue=getTimelineFadeIssue(item,source);
+   if(fadeIssue)throw new AppError(fadeIssue.code,fadeIssue.message,400,fadeIssue.details);
    const end=item.startFrame+item.durationFrames;
    if(end>TIMELINE_LIMITS.durationFrames)
     throw new AppError('TIMELINE_LIMIT','时间线总时长不能超过18000帧（10分钟）',400,{maxDurationFrames:TIMELINE_LIMITS.durationFrames});
@@ -168,7 +170,8 @@ export function createTimelineServices(store,{required,check,hash,now}){
   }),
   'timeline.clip.add':input=>mutate('timeline.clip.add',input,timeline=>{
    const source=asset(timeline.projectId,input.assetId);
-   timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(),gain:input.gain??1});
+   timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(),gain:input.gain??1,
+    ...Object.fromEntries(['fadeInFrames','fadeOutFrames'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
   'timeline.clip.update':input=>mutate('timeline.clip.update',input,timeline=>{
    Object.assign(clip(timeline,input.clipId),input.patch);
@@ -182,10 +185,17 @@ export function createTimelineServices(store,{required,check,hash,now}){
    if(input.atFrame<=left.startFrame||input.atFrame>=end)
     throw new AppError('SPLIT_BOUNDS','分割点必须位于所选片段内部，不能位于起止帧',400,{clipId:left.id,startFrame:left.startFrame,endFrame:end,atFrame:input.atFrame});
    const source=asset(timeline.projectId,left.assetId),leftDuration=input.atFrame-left.startFrame;
+   const fadeInFrames=left.fadeInFrames??0,fadeOutFrames=left.fadeOutFrames??0;
+   if(leftDuration<fadeInFrames||leftDuration>left.durationFrames-fadeOutFrames)
+    throw new AppError('SPLIT_FADE_BOUNDS','分割点不能位于音频淡入或淡出内部；可在淡入结束或淡出开始帧分割',400,{clipId:left.id,atFrame:input.atFrame,minFrame:left.startFrame+fadeInFrames,maxFrame:end-fadeOutFrames});
    // A still has no advancing source clock. Moving media keeps contiguous
    // source ranges; copying the complete clip also preserves frozen references.
    const right={...clone(left),id:randomUUID(),startFrame:input.atFrame,durationFrames:end-input.atFrame,
     sourceInFrame:source.mimeType.startsWith('image/')?0:left.sourceInFrame+leftDuration};
+   // Preserve the original envelope at its two outer edges. Do not introduce
+   // keys into legacy clips or make an omitted zero explicit at an inner edge.
+   if(Object.hasOwn(left,'fadeInFrames'))right.fadeInFrames=0;
+   if(Object.hasOwn(left,'fadeOutFrames'))left.fadeOutFrames=0;
    left.durationFrames=leftDuration;
    timeline.clips.splice(timeline.clips.indexOf(left)+1,0,right);
   }),

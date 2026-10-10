@@ -134,3 +134,12 @@ The next bounded selection increment is independent favorite/拒选/neutral asse
 metadata and explicit local library filtering. Its current implementation and
 verification status is in [ASSET-DISPOSITIONS.md](ASSET-DISPOSITIONS.md). Tags,
 notes, unused filters and jump-to-usage remain open.
+
+## Audio editing delivery checkpoint (2026-10-10)
+
+The first bounded audio edit is optional clip-local fade-in/fade-out using the
+existing timeline revision, replay and history contracts. Right Properties
+controls target audio files or embedded video audio, with matching local rendered
+preview/export. Source playback remains dry. Current validation and limits are in
+[AUDIO-FADES.md](AUDIO-FADES.md); waveform/cache work, crossfades, ducking,
+roles, loudness checks and project-format expansion remain open.

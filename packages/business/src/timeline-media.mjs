@@ -1,8 +1,9 @@
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {run,probe} from './media.mjs';
-import {sourceFrameCount} from '@mioon/contracts';
+import {sourceFrameCount,getTimelineFadeIssue} from '@mioon/contracts';
 import {throwIfMediaAborted} from './media-processes.mjs';
+import {timelineAudioFadeFilters} from './timeline-audio.mjs';
 
 const FPS=30,WIDTH=720,HEIGHT=1280,SAMPLES_PER_FRAME=1600;
 const seconds=frames=>(frames/FPS).toFixed(9);
@@ -23,6 +24,7 @@ function validateTimeline(timeline,assets){
   if(!integer(c.startFrame,0,18000)||!integer(c.durationFrames,1,18000)||!integer(c.sourceInFrame,0,Number.MAX_SAFE_INTEGER-18000)||c.startFrame+c.durationFrames>18000)invalid('Invalid frame range');
   if(!r||!integer(r.x,0,WIDTH)||!integer(r.y,0,HEIGHT)||!integer(r.width,2,WIDTH)||!integer(r.height,2,HEIGHT)||[r.x,r.y,r.width,r.height].some(v=>v%2)||r.x+r.width>WIDTH||r.y+r.height>HEIGHT)invalid('Invalid clip rectangle');
   if(!Number.isFinite(c.gain)||c.gain<0||c.gain>2)invalid('Invalid clip gain');
+  const fadeIssue=getTimelineFadeIssue(c,a);if(fadeIssue)invalid(fadeIssue.message);
   const isImage=a.mimeType?.startsWith('image/'),isVideo=a.mimeType?.startsWith('video/'),isAudio=['audio/wav','audio/mpeg','audio/mp4'].includes(a.mimeType);
   if(t.kind==='video'?(!isImage&&!isVideo):!isAudio)invalid('Asset is not supported on this track');
   if(t.kind==='video'&&!a.hasVideo||t.kind==='audio'&&!a.hasAudio)invalid('Asset has no required media stream');
@@ -74,7 +76,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal}={}){
     }
     if(audio){
      const label=`a${input}`;
-     filters.push(`[${input}:${asset.audioStreamIndex??'a:0'}]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},asetpts=N/SR/TB[${label}]`);sounds.push(label);
+     filters.push(`[${input}:${asset.audioStreamIndex??'a:0'}]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},${timelineAudioFadeFilters(clip,begin)}asetpts=N/SR/TB[${label}]`);sounds.push(label);
     }
    }
    filters.push(`${sounds.map(s=>`[${s}]`).join('')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},asetpts=N/SR/TB[outa]`);

@@ -24,6 +24,26 @@ test('strict integer interior, selected clip, correct workspace and clip limit g
 test('split fails closed for dirty, loading, offline, pending, busy and mismatched snapshots',()=>{
  for(const patch of [{dirty:true},{online:false},{busy:true},{pending:true},{history:null},{history:{...fixture().history,revision:4}},{history:{...fixture().history,projectId:'other'}}]){const state=timelineSplitState({...fixture(),...patch});assert.equal(state.canSplit,false,JSON.stringify(patch));assert.ok(state.blockedReason);}
 });
+test('fade-safe splits accept both fade boundaries and reject cuts within either fade',()=>{
+ const state=fixture();Object.assign(state.timeline.clips[0],{fadeInFrames:10,fadeOutFrames:15});
+ for(const playhead of [11,19,46,59]){const result=timelineSplitState({...state,playhead});assert.equal(result.canSplit,false,String(playhead));assert.match(result.blockedReason,/音频淡入\/淡出.*含边界/);}
+ for(const playhead of [20,21,30,44,45])assert.equal(timelineSplitState({...state,playhead}).canSplit,true,String(playhead));
+ Object.assign(state.timeline.clips[0],{fadeInFrames:20,fadeOutFrames:30});
+ assert.equal(timelineSplitState({...state,playhead:30}).canSplit,true,'Touching fade boundaries retain their one exact safe cut');
+ for(const playhead of [29,31])assert.equal(timelineSplitState({...state,playhead}).canSplit,false);
+ for(const patch of [{dirty:true},{busy:true},{pending:true},{online:false}])assert.equal(timelineSplitState({...state,...patch,playhead:30}).canSplit,false);
+});
+test('omitted, one-sided and explicit-zero fades preserve ordinary interior split eligibility',()=>{
+ for(const fades of [{},{fadeInFrames:0},{fadeOutFrames:0},{fadeInFrames:0,fadeOutFrames:0}]){
+  const state=fixture();Object.assign(state.timeline.clips[0],fades);
+  for(const playhead of [11,30,59])assert.equal(timelineSplitState({...state,playhead}).canSplit,true);
+  for(const playhead of [10,60])assert.equal(timelineSplitState({...state,playhead}).canSplit,false);
+ }
+ const fadeIn=fixture();fadeIn.timeline.clips[0].fadeInFrames=10;
+ assert.equal(timelineSplitState({...fadeIn,playhead:19}).canSplit,false);assert.equal(timelineSplitState({...fadeIn,playhead:20}).canSplit,true);assert.equal(timelineSplitState({...fadeIn,playhead:59}).canSplit,true);
+ const fadeOut=fixture();fadeOut.timeline.clips[0].fadeOutFrames=15;
+ assert.equal(timelineSplitState({...fadeOut,playhead:11}).canSplit,true);assert.equal(timelineSplitState({...fadeOut,playhead:45}).canSplit,true);assert.equal(timelineSplitState({...fadeOut,playhead:46}).canSplit,false);
+});
 test('split shortcut requires a single primary modifier and leaves editing/IME/repeats alone',()=>{
  for(const patch of [{},{key:'B'},{ctrlKey:false,metaKey:true}])assert.equal(timelineSplitActionForKey(event(patch)),'split');
  for(const patch of [{key:'s'},{key:undefined},{ctrlKey:false},{metaKey:true},{altKey:true},{shiftKey:true},{repeat:true},{isComposing:true},{keyCode:229},{defaultPrevented:true},{target:{isContentEditable:true}},{target:{closest:()=>({})}},{target:{parentElement:{closest:()=>({})}}},{composedPath:()=>[{isContentEditable:true}]},{target:{ownerDocument:{activeElement:{closest:()=>({})}}}}])assert.equal(timelineSplitActionForKey(event(patch)),null,JSON.stringify(patch));

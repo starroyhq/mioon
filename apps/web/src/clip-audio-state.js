@@ -1,0 +1,31 @@
+const fadeKeys = ['fadeInFrames', 'fadeOutFrames'];
+const owns = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+
+// Missing metadata is deliberately distinct from an explicitly saved zero.
+// Rendering a default must never add fields to an unrelated clip update.
+export function clipAudioDraft(clip) {
+  return Object.fromEntries(fadeKeys.filter(key => owns(clip, key)).map(key => [key, clip[key]]));
+}
+
+export function clipAudioPatch(draft) {
+  return Object.fromEntries(fadeKeys.filter(key => owns(draft, key)).map(key => [key, Number(draft[key])]));
+}
+
+export function supportsClipAudioFades(asset) {
+  return asset?.hasAudio === true && ['audio', 'video'].includes(asset?.mimeType?.split('/')[0]);
+}
+
+function frameValue(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return NaN;
+  return Number(value);
+}
+
+export function clipAudioIssue(draft, asset) {
+  const fades = fadeKeys.map(key => owns(draft, key) ? frameValue(draft[key]) : 0);
+  if (fades.some(value => !Number.isSafeInteger(value) || value < 0)) return '淡入与淡出帧数必须为大于或等于 0 的整数。';
+  const duration = frameValue(draft.durationFrames);
+  if (!Number.isSafeInteger(duration) || duration < 1 || duration > 18000) return '请先将片段持续帧数设为 1–18000 的整数。';
+  if (fades.some(value => value > duration) || fades[0] + fades[1] > duration) return `淡入与淡出合计不能超过片段时长（${duration} 帧）。缩短片段后，请同时检查并调整两项。`;
+  if (fades.some(value => value > 0) && !supportsClipAudioFades(asset)) return '只有已确认含音轨的视频或音频素材可以设置非零音频淡入/淡出。';
+  return '';
+}

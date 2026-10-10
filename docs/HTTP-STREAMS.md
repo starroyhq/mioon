@@ -48,11 +48,14 @@ and private-workspace policy remain in force.
   HTTP connections; the existing server shutdown socket deadline still applies.
 - Server shutdown aborts file transports and waits for their cleanup alongside
   the existing bounded server lifecycle. A late open is immediately closed,
-  not streamed. Existing five-second shutdown failure behavior bounds the
-  caller's wait, not the filesystem operation: it rejects rather than report
-  successful cleanup if an open/stat/close promise has not settled. The exact
-  active record remains retained until actual cleanup. No automatic replacement
-  backend is authorized by that timeout.
+  not streamed. The existing shutdown race schedules a five-second rejection
+  timer after its cleanup calls are evaluated. If that timer fires while an
+  open/stat/close promise is unresolved, close rejects without claiming release;
+  the filesystem operation itself is not interrupted. This is an event-loop
+  timer budget, not a strict wall-clock guarantee from `close()` entry: synchronous
+  pre-arm work, timer delivery delays and post-race database closure can increase
+  total elapsed time. The exact active record remains retained until actual
+  cleanup. No automatic replacement backend is authorized by that timeout.
 
 ## Agent SSE
 
@@ -171,3 +174,26 @@ Reviewed 2026-10-10: [Node FileHandle streams](https://nodejs.org/api/fs.html#fi
 and [HTTP response lifecycle](https://nodejs.org/api/http.html#class-httpserverresponse).
 These are current documentation; execution is verified on the installed Node 24
 and Electron runtimes, not inferred from another version's documentation.
+
+## Shutdown timing test clarification (2026-10-10)
+
+A later audio-fades parent aggregate found the HEAD/empty shutdown test's total
+elapsed assertion exceeded its upper bound: 5441.615 ms while close completed.
+Shutdown production files were unchanged; the original isolated test then passed.
+That old duration included work before the three-second force timer was armed
+and after socket drain, so the log alone cannot identify scheduler, pre-arm or
+post-drain delay as the historical cause.
+
+The isolated fixture now records actual native timer requests, arm/fire/cancel
+timestamps and owning callsites, two real stalled response sockets, descriptor
+release counts, `closeAllConnections` invocation and socket-close events. It
+requires one unchanged 3000 ms callback to destroy both owned sockets, both fds
+to remain closed, real socket close notifications, and cancellation rather than
+firing of the successful path's distinct 5000 ms worker/service/server timers.
+Node may deliver socket close listeners after the HTTP server-close callback;
+the fixture observes those events rather than assuming callback order proves them.
+A separate deterministic 2600 ms pre-arm pause reproduces total elapsed over
+five seconds while preserving those exact production timer settings and cleanup.
+Finite test watchdogs remain; no production timeout was increased. This tests
+causal ownership and timer configuration, not hard realtime scheduling or a
+strict monotonic completion deadline.
