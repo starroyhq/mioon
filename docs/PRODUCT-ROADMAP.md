@@ -69,9 +69,12 @@ weak shot while preserving deliberate timeline timing, and inspect the recipe fo
 The first narrow subject-library increment is implemented. Focused checks, final
 web/desktop builds and Linux native acceptance passed; the independent full-suite
 release gate passed as recorded in [SUBJECT-LIBRARY.md](SUBJECT-LIBRARY.md). Image
-generation now has a first local Mock slice described below; secure live-image
-configuration/activation, motion-reference adapters and Blender integration
-remain planned.
+generation has an accepted local Mock slice and now an implemented dedicated
+Images settings/reviewed-activation increment. Its affected gate, fresh builds and
+Linux native synthetic-network acceptance passed; the independent final full-suite
+gate is pending. Custom compatible image endpoints,
+motion-reference adapters and Blender integration remain planned. The current
+activation scope and its limits are in [Images activation](IMAGE-ACTIVATION.md).
 Existing managed assets, saved versions, explicit reference bindings and fixed
 timeline replacement are reusable foundations. The first usable Linux trial is
 already available independently of these stages; native macOS/Windows and live
@@ -114,16 +117,30 @@ providers remain unverified. Continued iteration does not block that limited tri
    request identity across interruption, and never submit stage two automatically
    merely because stage one completed. Mock verification is not live certification.
 
-   **First image slice:** a separate image composer, shared project-scoped
+   **Historical first image slice (2026-10-10, baseline `82c70f3`):** a separate
+   image composer, shared project-scoped
    image task/group/version/request operations, exact-request recovery and real
    deterministic Mock 1024×1024 PNG assets. The named standard OpenAI image
-   preset has an offline-tested adapter and stays hard-disabled in the product.
+   preset had an offline-tested adapter and stayed hard-disabled at that checkpoint.
    No image key setting, custom endpoint, live activation, model-tool authority
-   or automatic second-stage video submission is added. Existing library assets
+   or automatic second-stage video submission was added by that slice. Existing library assets
    are reused through explicit timeline/reference/subject edits. Secure image
-   provider configuration and separately approved live activation are the
-   immediate follow-on, not dropped scope. See [Image generation](IMAGE-GENERATION.md)
-   for limits, truthful local/unknown recovery and current verification scope.
+   configuration and reviewed activation were its immediate follow-on, now the
+   active implementation below. See [Image generation](IMAGE-GENERATION.md) for
+   the preserved initial evidence and unchanged local/unknown recovery.
+
+   **Current Images activation increment (2026-10-10):** dedicated fixed OpenAI
+   settings and an independent credential, retained exact request reviews and
+   explicit visible paid-button approval for at most one POST are implemented.
+   The 461-test affected gate, fresh builds and Linux native synthetic-network
+   acceptance passed; the independent final full suite passed
+   (2758 total, 2756 passed, 0 failed, 2 skipped). This
+   is not live-provider or macOS/Windows acceptance. Public API/CLI/MCP gains only
+   review prepare/get/list, never approval, credential tools or paid Agent authority.
+   Usage-based unknown cost is disclosed rather than represented as a currency
+   cap. Custom compatible endpoints remain follow-on; the credential route is
+   implemented. A live canary still needs its separate exact configuration/media/
+   fees approval. See [Images activation](IMAGE-ACTIVATION.md).
 
 3. **Source provenance independent of creation tool.** Track external-file import,
    extracted frame, previs render and generated-version provenance as typed,
@@ -216,6 +233,22 @@ These apply to every group, not just a final cleanup phase.
 
 The concrete code/platform audit is maintained in ENGINEERING-QUALITY-ROADMAP.md.
 
+### Optional extensions and catalog (implementation approved for a later milestone, 2026-10-10)
+
+Follow [EXTENSIONS-ARCHITECTURE.md](EXTENSIONS-ARCHITECTURE.md): keep project data,
+assets/versions, task recovery, permissions and paid execution in the stable core;
+add bounded connectors, processors, import/export, workflow skills and declarative
+right-dock contributions. Start with an extensions manager and official catalog,
+then prove the SDK with an optional external ComfyUI connector and a distinct offline
+export adapter. Third-party execution needs enforceable isolation and distribution
+gates; publishing/review/revocation and a paid marketplace come later. This is planned
+work approved for implementation at an appropriate milestone, not an implemented
+store. Current Images and trial usability take priority; preserve the existing
+delivery order instead of starting an immediate framework rewrite. Third-party
+installation/execution, hardware provisioning/access, live calls and store publication
+still require separate applicable authorization. This work does not block the first
+limited trial or the active image/Agent/editing increments.
+
 ## Research references and limits
 
 Sources checked 2026-10-09. They inform workflow decisions, not claims of feature parity.
@@ -285,7 +318,14 @@ tracks scope, acceptance and retained limitations. Visual A/B comparison, automa
 generation/spending remain outside this increment.
 
 
-## Approved next image-generation slice (2026-10-10, not implemented)
+## Original image-generation approval (2026-10-10, historical scope)
+
+The following records the original approved direction. The Mock workflow is now
+accepted, and fixed-preset Images settings/reviewed activation are implemented
+with affected/build/Linux native synthetic-network checks passed and the independent
+final full suite passed (2758 total, 2756 passed, 0 failed, 2 skipped). A custom
+editable base URL remains follow-on work. This history is not live-call approval;
+current scope is [Images activation](IMAGE-ACTIVATION.md).
 
 After the wired model-input-limit slice, prioritize an independent OpenAI Images
 API text-to-image workflow and editable preset. Generated images must enter the

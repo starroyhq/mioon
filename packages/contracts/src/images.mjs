@@ -1,7 +1,7 @@
 import {z} from 'zod';
 
-// This first slice has no custom endpoints, configurable dimensions or live
-// activation. A provider label is evidence of intent, never permission to send.
+// Fixed image profiles; a provider label or local enable flag is never approval
+// to send. Live acceptance additionally requires an immutable user review.
 export const IMAGE_PROVIDER_IDS=Object.freeze(['mock','openai']);
 export const IMAGE_MODELS=Object.freeze({mock:'mock-image-v1',openai:'gpt-image-2.5-flare-2026-09-08'});
 export const IMAGE_FIXED_OPTIONS=Object.freeze({size:'1024x1024',quality:'low',outputFormat:'png',background:'opaque',n:1});
@@ -46,8 +46,8 @@ export const imageGroupResponseSchema=z.object({id,projectId:id,name,revision,he
 export const imageVersionResponseSchema=z.object({id,projectId:id,groupId:id,taskId:id,number:revision,assetId:id,sha256:hash,mimeType:z.literal('image/png'),width:z.literal(1024),height:z.literal(1024),byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.boolean(),providerId,model,options:imageOptionsSchema,createdAt:timestamp}).strict()
  .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock'),'Mock identity mismatch');
 export const imageProfileResponseSchema=z.object({providerId,model,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.boolean(),evidence:z.enum(['deterministic-mock','offline-tested-not-live']),options:imageOptionsSchema}).strict()
- .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock')&&v.enabled===v.isMock&&v.evidence===(v.isMock?'deterministic-mock':'offline-tested-not-live'),'Live images are disabled');
-export const imageProfilesResponseSchema=z.object({items:z.array(imageProfileResponseSchema).max(2),liveEnabled:z.literal(false)}).strict().refine(v=>new Set(v.items.map(i=>i.providerId)).size===v.items.length);
+ .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock')&&(!v.isMock||v.enabled)&&v.evidence===(v.isMock?'deterministic-mock':'offline-tested-not-live'),'Invalid image profile evidence');
+export const imageProfilesResponseSchema=z.object({items:z.array(imageProfileResponseSchema).max(2),liveEnabled:z.boolean()}).strict().refine(v=>new Set(v.items.map(i=>i.providerId)).size===v.items.length&&v.liveEnabled===v.items.some(i=>i.providerId==='openai'&&i.enabled));
 export const imageRequestResponseSchema=z.object({projectId:id,requestId:key,operation:z.enum(IMAGE_MUTATION_OPERATIONS),response:imageTaskResponseSchema}).strict()
  .refine(v=>v.response.projectId===v.projectId&&(v.operation!=='image.generate'||v.response.requestId===v.requestId))
  .refine(v=>v.operation==='image.generate'?v.response.state==='queued'&&v.response.revision===1&&!v.response.dispatched

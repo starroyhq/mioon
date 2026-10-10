@@ -6,21 +6,44 @@ The production registry now publishes and enforces [exact model input limits](GE
 
 ## Separate image profiles
 
-The first [image-generation slice](IMAGE-GENERATION.md) is separate from this
-video registry. `image.profile.list` returns local Mock `mock-image-v1` and a
-hard-disabled OpenAI `gpt-image-2.5-flare-2026-09-08` preset. Both are fixed to
-1024×1024, low-quality, opaque PNG, one result. Mock makes deterministic,
-visibly labeled local bytes and is not prompt-conditioned. OpenAI has injected
-offline adapter/transport fixtures only; it has no production transport or
-credential resolver and rejects live use before work. No environment flag,
-Agent key or video-provider setting enables it.
+Images remain independent of the video registry. `image.profile.list` returns
+local Mock `mock-image-v1` and the fixed OpenAI
+`gpt-image-2.5-flare-2026-09-08` preset: 1024×1024, low quality, opaque PNG,
+one result. Mock creates deterministic visibly labeled local bytes and is not
+prompt-conditioned. At the accepted first-slice checkpoint `82c70f3` on
+2026-10-10, OpenAI was hard-disabled and had only injected offline fixtures;
+that dated evidence is preserved in [Image generation](IMAGE-GENERATION.md).
 
-Secure image-provider configuration and explicitly approved live activation
-remain the immediate follow-on. Existing video/Agent secrets are unchanged;
-no image credential settings, custom endpoint or paid activation are included
-here. Current metadata and passing synthetic fixtures are not live model,
-account, cost or output certification. Image read/list/startup paths do not
-submit upstream generation, and explicit local result recovery never resubmits.
+The active 2026-10-10 increment implements dedicated Images settings/credentials,
+retained exact request reviews and explicit UI-approved one-POST dispatch to
+`https://api.openai.com/v1/images/generations`. The preset model/options are
+unchanged. The 461-test affected gate, fresh builds and Linux native
+synthetic-network acceptance passed; the independent final full suite passed
+(2758 total, 2756 passed, 0 failed, 2 skipped). No real provider call is authorized for this acceptance, and neither
+macOS/Windows nor live-provider acceptance is established. The evidence label stays
+`offline-tested-not-live`; local configured/enabled status is not model access,
+pricing or output certification.
+
+Web secrets are session-only for the backend lifetime. Electron supports
+explicit OS-encrypted persistence through a narrow Images-only main-process
+codec, without renderer/preload decryption or plaintext fallback. Agent/video
+keys and environment flags cannot enable Images. Saving settings grants no
+request approval. Each visible paid-generation/review button confirms the exact
+project, prompt, fixed model/options and destination for at most one POST at
+unknown usage-based cost; the bound is not a currency cap. Settings/approve/reject
+are private authenticated UI routes, not CLI/MCP/model tools. Public review
+prepare/get/list cannot approve or dispatch.
+
+Custom compatible endpoints remain follow-on work; the independent credential
+route is now implemented. Official model and Images request docs were rechecked
+2026-10-10: [model and pinned snapshot](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare),
+[Images generation fields](https://developers.openai.com/api/reference/resources/images/methods/generate).
+This source review does not establish account eligibility, actual charges or live
+output. A live canary still requires one separate exact configuration/prompt/media/
+fees approval. Image reads, review preparation/replay and startup do not submit;
+explicit result recovery only publishes existing task-bound local staged bytes.
+See [Images activation](IMAGE-ACTIVATION.md) for the dispatch fence, secret boundary,
+review contracts, additive schema 17 and current validation record.
 
 ## Shared behavior
 

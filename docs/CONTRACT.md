@@ -1,14 +1,40 @@
 # Shared contract v1 (2026-10-09)
 
-All application mutations and reads go through `services.call(operation, input)`, used by authenticated HTTP `POST /api/rpc` and official SDK MCP stdio and CLI shared client. UI calls same HTTP API. JSON response `{ok:true,data}` or `{ok:false,error:{code,message,details}}`; conflict HTTP 409, validation 400, not found 404. Dates ISO UTC. IDs opaque UUID. Revisions integers starting at 1. All updates require expectedRevision. SQLite transactions, WAL, foreign keys and busy timeout. Project `revision` protects project-wide shot ordering; each shot/node has its own revision. Position never defines sequence.
+Shared public business operations go through `services.call(operation, input)`, used by authenticated HTTP `POST /api/rpc` and official SDK MCP stdio and CLI shared client. UI business calls use that API; private authenticated settings and user-approval routes remain outside the public operation catalog. JSON response `{ok:true,data}` or `{ok:false,error:{code,message,details}}`; conflict HTTP 409, validation 400, not found 404. Dates ISO UTC. IDs opaque UUID. Revisions integers starting at 1. All updates require expectedRevision. SQLite transactions, WAL, foreign keys and busy timeout. Project `revision` protects project-wide shot ordering; each shot/node has its own revision. Position never defines sequence.
 
 ## Image task/version contract
 
-The additive image contract is defined in `packages/contracts/src/images.mjs`;
-see [Image generation](IMAGE-GENERATION.md) for all ten strict operations,
-DTOs, exact options/limits and interruption states. Only local deterministic
-Mock PNG generation is enabled. The standard OpenAI image preset is
-hard-disabled, irrespective of existing Agent/video configuration.
+The original ten image operations are defined in
+`packages/contracts/src/images.mjs`; the additive activation contract adds only
+`image.review.prepare/get/list` in `image-reviews.mjs`. See
+[Image generation](IMAGE-GENERATION.md) for task/version DTOs and limits, and
+[Images activation](IMAGE-ACTIVATION.md) for exact reviews, settings and approval.
+The accepted first slice at baseline `82c70f3` enabled only Mock and hard-disabled
+OpenAI. As of the active 2026-10-10 increment, dedicated fixed-preset Images
+settings and explicit UI-reviewed one-POST dispatch are implemented. The 461-test
+affected gate, fresh builds and Linux native synthetic-network acceptance passed;
+the independent final full suite passed (2758 total, 2756 passed,
+0 failed, 2 skipped). This does not establish
+live-provider or macOS/Windows acceptance. Existing Agent/video keys never activate
+Images; new direct OpenAI RPC remains blocked without private review approval.
+
+Review preparation takes exactly `{input:<complete OpenAI generation request>,
+settingsRevision}` and writes a retained immutable intent locally, without
+approval, task creation or provider work. Get takes `{projectId,reviewId}`; list
+takes `{projectId,limit?,cursor?}` and returns `{projectId,items,nextCursor}`,
+default 20/max 50. The generation request's stable key stays nested in `input`.
+Settings and approval/rejection routes are absent from CLI/MCP/model tools;
+local authentication is not cryptographic human-presence proof or paid authority.
+Approval binds the visible exact request and current configuration to at most
+one POST, at usage-based unknown cost rather than an enforced currency cap.
+
+Schema 17 adds only the review table/index/triggers; it does not rewrite existing
+rows, receipts or serialized bytes. The immutable review intent cap is 32 KiB,
+review-row cap 64 KiB, retained reviews 1000/project and 10,000/workspace, without
+cleanup. The nested generation input retains its original 24-KiB bound. Review
+requests and prompts remain plaintext local SQLite. `image.generate` effects now
+include possible approved external/paid worker activity; review preparation is
+local-database-only and review get/list are read-only.
 
 `image.generate` returns an immutable original queued-task receipt, while
 `image.task.get` reads the current task. `image.request.get` reads the saved
@@ -66,7 +92,7 @@ Job states: queued → submitting → running → downloading → succeeded; fai
 `createMockProvider({db,root})`, `createRunwayProvider({root})` return `{id,capabilities,submit(snapshot,context),poll(providerJobId,context),download(providerJobId,destination,context),reconcile(requestId,context),cancel?(providerJobId,context)}`. Async methods. context `{requestId,jobId}`. submit returns `{providerJobId}` or throws error tagged `uncertain=true`; poll `{status:"running"|"succeeded"|"failed",progress?,error?}`. download writes destination MP4, returns optional metadata. reconcile returns `{providerJobId}` or null (null does NOT prove safe resubmission). capabilities `{id,name,models:[...],inputModes:["image"],aspectRatios:["9:16"],durations:[2,4,8],mock,configured,enabled}`. Snapshot includes `referenceAssets:[{id,path,mimeType,sha256}]`; paths only internal adapter context and omitted in public serialization. Only backend reads credentials. Provider worker owns mock.mjs/runway.mjs and provider contract tests; backend owns db/services/jobs/http; frontend owns src. Adapter errors must not echo secrets.
 
 ## Runtime/security decisions
-Node 24 native SQLite 3.53.3 with ESM JavaScript and shared strict Zod runtime schemas is deliberate: no C++ addon build and one process. React Flow UI is Vite-built. HTTP listens only on 127.0.0.1; Host is restricted to localhost/127.0.0.1 selected port; foreign Origin is rejected. All API/media requests require a local Bearer token or HttpOnly SameSite=Strict cookie; token is not put in URL or source. The backend reads provider secrets from environment only, never returns them or stores them in project/task snapshots. Imported bytes go under generated managed IDs; path APIs and arbitrary remote URL ingestion are absent; media routes resolve realpath beneath managed media root. Login is the only unauthenticated mutation and requires the local token. Stdio MCP is a thin authenticated HTTP client and never opens a second writer.
+Node 24 native SQLite 3.53.3 with ESM JavaScript and shared strict Zod runtime schemas is deliberate: no C++ addon build and one process. React Flow UI is Vite-built. HTTP listens only on 127.0.0.1; Host is restricted to localhost/127.0.0.1 selected port; foreign Origin is rejected. All API/media requests require a local Bearer token or HttpOnly SameSite=Strict cookie; token is not put in URL or source. The legacy video registry reads its provider secrets from backend environment configuration, never returning them or storing them in project/task snapshots. Dedicated Images credentials instead use the separate authenticated settings route, backend-lifetime session storage or explicit Electron OS-encrypted persistence; see [Images activation](IMAGE-ACTIVATION.md). Imported bytes go under generated managed IDs; path APIs and arbitrary remote URL ingestion are absent; media routes resolve realpath beneath managed media root. Login is the only unauthenticated mutation and requires the local token. Stdio MCP is a thin authenticated HTTP client and never opens a second writer.
 
 ## V4 additions
 

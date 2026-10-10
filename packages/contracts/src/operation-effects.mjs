@@ -21,8 +21,11 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
-  'image.profile.list': define({...read,notes:'Reads fixed local image profiles. Mock is enabled; OpenAI is explicitly disabled and never probed.'}),
-  'image.generate': define({...localAdd,idempotent:true,fileWrite:true,notes:'Durably accepts one exact image intent, then creates a bounded local Mock PNG and immutable managed image version. Production OpenAI rejects before acceptance; no external I/O, credentials or paid work. Future live activation must revise this effect. Historical request replay never reschedules work.'}),
+  'image.profile.list': define({...read,notes:'Reads fixed profiles and local configuration availability without probing providers or decrypting credentials. Enabled is not live verification.'}),
+  'image.review.prepare': define({...localAdd,idempotent:true,notes:'Retains exact project/input/settings-bound pending image review, without granting approval, dispatch or payment authority. Same key with changed content conflicts; user approval is a separate authenticated UI route.'}),
+  'image.review.get': define({...read,notes:'Reads an existing owned immutable image review and bounded attempt state. Never approves or dispatches.'}),
+  'image.review.list': define({...read,notes:'Reads a bounded project-scoped review page. Never approves or dispatches.'}),
+  'image.generate': define({...localAdd,idempotent:true,fileWrite:true,externalIO:true,openWorld:true,paidGeneration:true,notes:'Image generation can create local Mock output or a separately user-approved one-POST OpenAI task through shared acceptance. Direct unapproved OpenAI RPC is blocked; secrets and approval are not tool arguments. Exact historical replay never reschedules work. Declared effects include possible approved worker activity.'}),
   'image.request.get': define({...read,notes:'Reads the original project-scoped image acceptance receipt without dispatch, retry, recovery or status mutation.'}),
   'image.task.get': define({...read,notes:'Reads an existing owned image task; never calls an adapter or resumes it.'}),
   'image.task.list': define({...read,notes:'Reads a bounded project/group-scoped image task page without resuming work.'}),

@@ -105,8 +105,8 @@ export function createMockImageAdapter() {
     },
   });
 }
-/** The absence of any default transport is intentional. No environment variable,
- * product setting or snapshot can enable this separately tested offline adapter. */
+/** The adapter has no ambient credential/network discovery. Only the trusted
+ * reviewed Images gateway supplies its fixed-origin transport. */
 export function createOpenAIImageAdapter({transport} = {}) {
   return Object.freeze({
     async generate(snapshot, {signal, beforeDispatch} = {}) {

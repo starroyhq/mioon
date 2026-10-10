@@ -178,5 +178,5 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    return saveJob(current,patch);
   });
  }
- return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection};
+ return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
 }

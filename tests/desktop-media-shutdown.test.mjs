@@ -479,17 +479,19 @@ test('native smoke explicitly skips unsafe orphan-crash recovery without countin
   assert.match(source, /record\('graceful-restart-interrupts-and-recovers-active-render'\)/);
 });
 
-async function backendHarness({ close = async () => {}, start, settingsClose = () => {} } = {}) {
+async function backendHarness({ close = async () => {}, start, settingsClose = () => {}, imageClose = () => {}, imageRefresh = async () => {} } = {}) {
   const source = (await readFile(new URL('../apps/desktop/src/backend.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   const port = new EventEmitter(), processEvents = new EventEmitter(), messages = [], exits = [];
+  let enterStart; const started = new Promise(resolve => { enterStart = resolve; });
   port.postMessage = message => { messages.push(message); };
   const sandbox = { process: { parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: code => exits.push(code) },
-    DatabaseSync: function () {}, startServer: start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })),
+    DatabaseSync: function () {}, startServer: options => { enterStart(options); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
     onMediaProcess: () => {}, createAgentSettingsClient: () => ({ close: settingsClose }),
+    createImageSecretClient: () => ({close: imageClose, refreshStorage: imageRefresh}),
     setInterval: () => 1, clearInterval: () => {}, setImmediate };
   vm.runInNewContext(source, sandbox, { filename: 'backend-lifecycle-fixture.mjs' });
-  return { messages, exits, port, start: () => port.emit('message', { data: { type: 'start' } }),
+  return { messages, exits, port, started, start: () => port.emit('message', { data: { type: 'start' } }),
     stop: () => port.emit('message', { data: { type: 'stop' } }) };
 }
 
@@ -518,7 +520,7 @@ test('backend successful close emits stopped only once and exits zero', async ()
 test('backend stop during startup suppresses a late ready and drains the created server', async () => {
   let finish, closes = 0;
   const runtime = await backendHarness({ start: () => new Promise(resolve => { finish = resolve; }) });
-  runtime.start(); runtime.stop();
+  runtime.start(); await runtime.started; runtime.stop();
   finish({ url: 'http://127.0.0.1:43210', close: async () => { closes++; } });
   await tick();
   assert.equal(runtime.messages.some(message => message.type === 'ready'), false);
@@ -533,4 +535,12 @@ test('backend startup and shutdown failures cannot serialize an arbitrary error 
   assert.ok(!JSON.stringify(runtime.messages).includes(syntheticFailure));
   assert.equal(runtime.messages.some(message => message.type === 'stopped'), false);
   assert.ok(runtime.exits.every(code => code === 1));
+});
+
+test('backend waits for image codec availability and closes its own narrow client on shutdown', async () => {
+  let refreshed, closeCount=0; const gate=new Promise(resolve=>{refreshed=resolve;});
+  const runtime=await backendHarness({imageRefresh:()=>gate,imageClose:()=>{closeCount++;}});
+  runtime.start(); runtime.stop(); assert.equal(runtime.messages.length,0); assert.equal(closeCount,0);
+  refreshed(); const options=await runtime.started; assert.equal(typeof options.imageSecretCodec.refreshStorage,'function');
+  await tick(); assert.deepEqual(runtime.exits,[0]); assert.equal(closeCount,1); assert.equal(runtime.messages.some(v=>v.type==='ready'),false);
 });

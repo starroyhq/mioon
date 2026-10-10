@@ -1,0 +1,69 @@
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Badge } from '@mioon/ui/components/badge';
+import { Button } from '@mioon/ui/components/button';
+import { Input } from '@mioon/ui/components/input';
+import { Label } from '@mioon/ui/components/label';
+import { WorkbenchSelect } from './WorkspaceControls.jsx';
+import { useWorkspaceVisibility } from './workspace-visibility.jsx';
+import { IMAGE_SETTINGS_LIMITS, createImageSettingsSession, imageSettingsCanSave, imageSettingsDirty, imageSettingsEditable, initialImageSettingsState } from './image-settings.js';
+import Icon from './icons.jsx';
+import './image-settings.css';
+
+const noop = () => {};
+const storageLabel = value => ({ none: '未保存', session: '仅本次后端运行', persistent: '系统加密保存' }[value] || '请选择保存方式');
+export const imageStorageReason = storage => ({ WEB_SESSION_ONLY: '当前服务器不提供系统安全存储。仅本次后端运行可用，后端退出后密钥清除。', LINUX_BASIC_TEXT: '系统仅提供 basic_text，不支持安全持久保存。可明确选择仅本次后端运行。', OS_SECRET_STORE_UNAVAILABLE: '系统安全存储不可用。可明确选择仅本次后端运行。' }[storage?.reasonCode] || '系统安全存储可用。持久保存需要你的明确选择；不会退回明文文件。');
+
+/** Mounted across dock navigation. Only the write-only input ever holds a key. */
+export default function ImageSettings({ active = false, contextKey, client, onClose = noop, onSnapshot = noop, onDirtyChange = noop }) {
+  const [state, setState] = useState(initialImageSettingsState), [hasKey, setHasKey] = useState(false), [keyNotice, setKeyNotice] = useState('');
+  const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  const ancestorVisible = useWorkspaceVisibility(), visible = ancestorVisible && active && pageVisible;
+  const keyInput = useRef(null), session = useRef(null), lifetime = useRef(null), callbacks = useRef({ onSnapshot, onDirtyChange });
+  const interaction = useMemo(() => ({ visible, contextKey }), [visible, contextKey]), interactionRef = useRef(interaction);
+  const clearKey = () => { if (keyInput.current) keyInput.current.value = ''; setHasKey(false); };
+  useLayoutEffect(() => { callbacks.current = { onSnapshot, onDirtyChange }; });
+  useLayoutEffect(() => {
+    const owner = { closed: false }; lifetime.current = owner;
+    const current = createImageSettingsSession({ client, onChange: next => { if (!owner.closed && lifetime.current === owner) setState(next); }, onSnapshot: next => { if (!owner.closed && lifetime.current === owner) callbacks.current.onSnapshot(next); } });
+    session.current = current; void current.load();
+    return () => { owner.closed = true; if (keyInput.current) keyInput.current.value = ''; current.dispose(); if (session.current === current) session.current = null; callbacks.current.onDirtyChange(false); };
+  }, [client]);
+  useLayoutEffect(() => {
+    interactionRef.current = interaction; session.current?.setVisible(visible);
+    if (keyInput.current?.value) { clearKey(); setKeyNotice('隐藏设置或切换项目时已清空新输入的密钥；启用与保存方式草稿仍保留。需要替换密钥时请重新输入。'); }
+  }, [interaction]);
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+    const changed = () => { const shown = document.visibilityState !== 'hidden'; if (!shown) { interactionRef.current = null; session.current?.setVisible(false); if (keyInput.current?.value) { clearKey(); setKeyNotice('页面隐藏时已清空新输入的密钥；非秘密草稿仍保留。'); } } setPageVisible(shown); };
+    document.addEventListener('visibilitychange', changed); return () => document.removeEventListener('visibilitychange', changed);
+  }, []);
+  useLayoutEffect(() => { callbacks.current.onDirtyChange(imageSettingsDirty(state) || hasKey); }, [state.snapshot, state.draft, state.secretAction, hasKey]);
+  const owner = lifetime.current;
+  const usable = () => Boolean(visible && interactionRef.current === interaction && owner && !owner.closed && lifetime.current === owner && (typeof document === 'undefined' || document.visibilityState !== 'hidden'));
+  const close = () => { if (!usable()) return; if (keyInput.current?.value) setKeyNotice('离开设置时已清空新输入的密钥；非秘密草稿仍保留。'); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onClose(); };
+  function submit(event) { event.preventDefault(); if (!usable() || !imageSettingsCanSave(session.current?.getState() || state)) return; const value = keyInput.current?.value || ''; clearKey(); void session.current?.save(value); }
+  const { snapshot, draft } = state, editable = visible && imageSettingsEditable(state);
+  return <section className="image-settings-page" data-testid="image-settings-page" data-phase={state.phase} hidden={!visible} inert={!visible} aria-label="图像连接设置">
+    <header className="image-generation-heading"><div><span className="image-generation-eyebrow">IMAGE · CONNECTION</span><h2>图像设置</h2><p>一次配置，逐次确认付费生成</p></div><Button type="button" variant="ghost" className="button quiet" data-testid="image-settings-back" aria-label="返回图像工坊" disabled={!visible} onClick={close}><Icon name="left" size={14} />返回</Button></header>
+    <form className="image-settings-form" noValidate autoComplete="off" onSubmit={submit}>
+      <p className="image-settings-help">保存只更新本机图像设置，不发送描述、不生成图片。Agent 与视频设置相互独立。</p>
+      {!snapshot ? <div role="status"><p>{state.phase === 'loading' ? '正在读取图像设置…' : state.message}</p>{state.phase !== 'loading' && <Button type="button" variant="ghost" className="button" data-testid="image-settings-load" disabled={!visible} onClick={() => { if (usable()) void session.current?.load(); }}>重新读取</Button>}</div> : <>
+        <Label className="image-settings-enable" htmlFor="image-settings-enable"><Input id="image-settings-enable" data-testid="image-settings-enable" type="checkbox" checked={draft.enabled} disabled={!editable} onChange={event => { if (usable()) session.current?.setEnabled(event.target.checked); }} /><span><strong>启用 OpenAI 图像</strong><small>启用不代表授权任何一次付费请求</small></span></Label>
+        <div className="image-settings-fixed" data-testid="image-settings-fixed"><strong>OpenAI · Images</strong><span>{draft.baseUrl}/images/generations</span><span>{draft.model}</span><span>1024 × 1024 · low · PNG · 不透明 · 1 张</span><Badge className="small-badge neutral">真实调用尚未验证</Badge></div>
+        <Label htmlFor="image-settings-key">专用于图像的 API 密钥</Label>
+        <Input ref={keyInput} id="image-settings-key" data-testid="image-settings-key" type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={IMAGE_SETTINGS_LIMITS.secretBytes} disabled={!editable || state.secretAction === 'remove'} placeholder={state.secretAction === 'remove' ? '保存时移除已有密钥' : snapshot.secret.configured ? '留空保留；输入新密钥替换' : '输入 OpenAI API 密钥'} onChange={event => { if (usable()) { setHasKey(Boolean(event.target.value)); setKeyNotice(''); } else if (keyInput.current) keyInput.current.value = ''; }} aria-describedby="image-settings-key-help" />
+        <p id="image-settings-key-help" className="image-settings-help">密钥写入后不回显，不进入项目、聊天、浏览器存储或日志。离开、隐藏或切换项目会清空尚未提交的密钥。</p>
+        <Label htmlFor="image-settings-storage">密钥保存方式</Label>
+        <WorkbenchSelect id="image-settings-storage" data-testid="image-settings-storage" value={state.storage} disabled={!editable || state.secretAction === 'remove'} onChange={event => { if (usable()) session.current?.setStorage(event.target.value); }}><option value="" disabled>请选择保存方式</option><option value="session">仅本次后端运行</option><option value="persistent" disabled={!snapshot.storage.persistentAvailable}>系统加密保存{snapshot.storage.persistentAvailable ? '' : '（当前不可用）'}</option></WorkbenchSelect>
+        <p className="image-settings-help" data-testid="image-settings-storage-status">{imageStorageReason(snapshot.storage)}{snapshot.secret.configured && !hasKey ? ' 更改已有密钥的保存方式需重新输入密钥。' : ''}</p>
+        <div className="image-settings-current" data-testid="image-settings-current"><span>服务器当前设置：{snapshot.configuration.enabled ? '已启用' : '未启用'}</span><span>密钥：{snapshot.secret.configured ? storageLabel(snapshot.secret.storage) : '未配置'}</span><span>配置版本 r{snapshot.revision}</span></div>
+        {snapshot.secret.configured && <Button type="button" variant="ghost" className="button" data-testid="image-settings-remove-key" aria-pressed={state.secretAction === 'remove'} disabled={!editable} onClick={() => { if (usable()) { clearKey(); session.current?.removeKey(state.secretAction !== 'remove'); } }}>{state.secretAction === 'remove' ? '撤销移除密钥' : '移除图像密钥'}</Button>}
+        <p className="image-settings-help" data-testid="image-settings-intent">此次保存：{hasKey ? `${snapshot.secret.configured ? '替换' : '写入'}密钥 · ${storageLabel(state.storage)}` : state.secretAction === 'remove' ? '移除已有密钥' : snapshot.secret.configured ? '保留已有密钥' : '仅保存启用设置，尚无密钥'}</p>
+        {state.recovery && <div className="image-generation-notice" data-testid="image-settings-recovery"><p>保存结果待核对，不会自动重试。</p><div className="image-generation-actions"><Button type="button" variant="ghost" className="button" data-testid="image-settings-reload" disabled={!editable} onClick={() => { if (usable()) { clearKey(); void session.current?.reload(); } }}>重新读取</Button><Button type="button" variant="ghost" className="button" data-testid="image-settings-use-latest" disabled={!editable || state.phase === 'blocked'} onClick={() => { if (usable()) { clearKey(); session.current?.useLatest(); } }}>使用已保存设置</Button><Button type="button" variant="ghost" className="button" data-testid="image-settings-keep-draft" disabled={!editable || state.phase !== 'review'} onClick={() => { if (usable()) { clearKey(); session.current?.acknowledge(); } }}>核对后保留草稿</Button></div></div>}
+        <Button type="submit" variant="ghost" className="button primary" data-testid="image-settings-save" disabled={!visible || !imageSettingsCanSave(state) || hasKey && !state.storage}>{state.phase === 'saving' ? '正在保存…' : '保存图像设置'}</Button>
+      </>}
+      {keyNotice && <p className="image-generation-notice" role="status" data-testid="image-settings-key-notice">{keyNotice}</p>}
+      {snapshot && state.message && <p className="image-generation-notice" role="status" data-testid="image-settings-message">{state.message}</p>}
+    </form>
+  </section>;
+}

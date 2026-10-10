@@ -31,12 +31,12 @@ test('task receipts bind exact submitted intent and keep action key separate fro
  assert.equal(isImageListResponse('image.task.list',{projectId},{projectId,items:[task,task],nextCursor:null}),false);
 });
 
-test('receipt excludes paths and base64; profile DTO cannot advertise live activation',()=>{
+test('receipt excludes paths and base64; profile DTO distinguishes configured activation from live verification',()=>{
  const receipt={schemaVersion:1,taskId,projectId,groupId,inputHash:'a'.repeat(64),assetId,versionId,sha256:'b'.repeat(64),mimeType:'image/png',width:1024,height:1024,byteLength:100,isMock:true};
  assert.ok(imageReceiptSchema.safeParse(receipt).success);
  for(const extra of [{path:'/tmp/a'},{dataBase64:'AAAA'},{byteLength:IMAGE_LIMITS.resultBytes+1}])assert.equal(imageReceiptSchema.safeParse({...receipt,...extra}).success,false);
  const profile={providerId:'openai',model:IMAGE_MODELS.openai,name:'OpenAI',enabled:false,isMock:false,evidence:'offline-tested-not-live',options:IMAGE_FIXED_OPTIONS};
- assert.ok(isImageProfilesResponse({items:[profile],liveEnabled:false}));assert.equal(isImageProfilesResponse({items:[{...profile,enabled:true}],liveEnabled:true}),false);
+ assert.ok(isImageProfilesResponse({items:[profile],liveEnabled:false}));assert.ok(isImageProfilesResponse({items:[{...profile,enabled:true}],liveEnabled:true}));assert.equal(isImageProfilesResponse({items:[{...profile,enabled:true}],liveEnabled:false}),false);assert.equal(isImageProfilesResponse({items:[{...profile,evidence:'live-verified'}],liveEnabled:false}),false);
 });
 
 test('subject typed image provenance is additive and never mixes legacy identifiers',()=>{

@@ -1,3 +1,4 @@
+import {validateImageTaskReview} from './images/reviews.mjs';
 import {createHash} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import {canonicalImageInput as canonical,IMAGE_LIMITS,IMAGE_UNRESOLVED_STATES,imageSchemas,imageSnapshotSchema,imageReceiptSchema,imageTaskResponseSchema,imageGroupResponseSchema,imageVersionResponseSchema} from '../../contracts/src/images.mjs';
@@ -51,6 +52,7 @@ export function createImageOwnershipReader(db,projectId,{consume=()=>{},fail=una
   const value=rawVersion(id),owner=group(value.groupId),source=task(value.taskId),receipt=source.receipt;
   if(source.row.groupId!==value.groupId||source.row.state!=='succeeded'||source.row.versionId!==value.id||!receipt||receipt.versionId!==value.id||receipt.assetId!==value.assetId||value.number>owner.revision||owner.headVersionId===null)fail();
   for(const key of ['sha256','mimeType','width','height','byteLength','isMock'])if(value[key]!==receipt[key])fail();
+  const review=validateImageTaskReview(db,projectId,source.row.id,source.input);if(review)consume(JSON.stringify(review));
   if(value.providerId!==source.snapshot.providerId||value.model!==source.snapshot.model||!same(value.options,source.snapshot.options))fail();
   const head=owner.headVersionId===value.id?value:rawVersion(owner.headVersionId);
   if(head.groupId!==value.groupId||head.number<value.number||head.number>owner.revision)fail();

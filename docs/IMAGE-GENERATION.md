@@ -1,11 +1,29 @@
-# Image generation: first local slice
+# Image generation: shared workflow and original local slice
+
+## Current activation increment: 2026-10-10
+
+The checkout now implements dedicated fixed-preset Images settings, an independent
+credential route, retained request reviews and explicit UI-approved one-POST
+OpenAI dispatch. The 461-test affected gate, fresh builds and Linux native
+synthetic-network acceptance passed; the independent final full suite passed
+(2758 total, 2756 passed, 0 failed, 2 skipped). This does not establish live-provider or macOS/Windows acceptance.
+See [Images activation](IMAGE-ACTIVATION.md) for the current settings, review,
+approval, security and schema-17 contracts. Mock remains available without a
+provider. New OpenAI requests through public `image.generate` still require the
+separate private UI approval flow; discovery is not permission to spend.
+
+## Historical first-slice scope: 2026-10-10, baseline `82c70f3`
+
+The scope statements in this section describe the accepted initial slice before
+activation, and are retained as dated evidence. Current availability is described
+above and in [Images activation](IMAGE-ACTIVATION.md).
 
 This increment adds a separate image composer, durable image tasks, immutable
 image versions and managed PNG assets to the shared UI/API/CLI/MCP service.
 It does not change the existing video providers or Agent credentials, settings,
 read-tool catalog or reviewed-shot-edit catalog.
 
-## What is available
+### What was available in the first slice
 
 - **Mock** (`mock`, `mock-image-v1`) produces a real, visibly labeled,
   deterministic 1024×1024 PNG locally. It does not use the prompt to synthesize
@@ -39,13 +57,16 @@ operation-effect metadata before any upstream generation is supported.
 Every operation uses the existing authenticated local `POST /api/rpc`.
 CLI command words replace dots with spaces; official MCP tool names replace
 dots with underscores, preserving case. There is one business implementation
-and one database owner. Runtime schemas in `packages/contracts/src/images.mjs`
-are authoritative; all objects reject unknown fields.
+and one database owner. Runtime schemas in `packages/contracts/src/images.mjs` and
+`packages/contracts/src/image-reviews.mjs` are authoritative; all objects reject unknown fields.
 
 | Operation | Input | Result / effect |
 | --- | --- | --- |
-| `image.profile.list` | `{}` | `{items,liveEnabled:false}`; local discovery only |
-| `image.generate` | See example below | Original queued task receipt; schedules local Mock work |
+| `image.profile.list` | `{}` | `{items,liveEnabled}`; local configuration discovery only, no provider verification |
+| `image.generate` | See example below | Original queued task receipt; new public requests schedule Mock only; OpenAI requires private reviewed approval |
+| `image.review.prepare` | `{input:<complete OpenAI image.generate input>,settingsRevision}` | Local immutable-intent review only; no approval or dispatch |
+| `image.review.get` | `{projectId,reviewId}` | Existing owned review; read-only |
+| `image.review.list` | `{projectId,limit?,cursor?}` | Bounded review page; read-only |
 | `image.request.get` | `{projectId,requestId}` | `{projectId,requestId,operation,response}` or `null`; `response` is the original mutation receipt |
 | `image.task.get` | `{projectId,taskId}` | Current task DTO; no dispatch or reconciliation |
 | `image.task.list` | `{projectId,groupId?,limit?,cursor?}` | Bounded task page |
@@ -88,7 +109,10 @@ The name is nonblank, 1–120 characters. The prompt is nonblank, at most 2000
 UTF-16 code units and 8000 UTF-8 bytes; control-character validation also
 applies. A provider must match its exact named model. No omitted options or
 unsupported options are silently substituted. Request IDs are 8–200
-characters and required on all three image mutations.
+characters and required on the original three image mutations. Review preparation
+retains the same key inside its complete nested generation input; its immutable
+settings-bound review has no additional top-level key. See
+[Images activation](IMAGE-ACTIVATION.md#shared-public-review-operations).
 
 Omit `groupId` and `expectedRevision` together to create a group. To request a
 new immutable version of an existing group, provide both its UUID and current
@@ -177,12 +201,13 @@ also retain their exact original receipts.
   known metadata is bounded, with compressed text/color profiles rejected.
   No FFmpeg or other media subprocess is needed for this fixed-size slice.
 
-Discovery effects describe what this product currently supports:
-`image.generate` writes database and managed files, but performs no external
-I/O, paid generation or local subprocess work. Image reads are read-only.
-`cancelQueued` writes only local records; `recoverResult` can write local
-managed output. Effects and MCP annotations remain advisory, not authority to
-act for a user.
+Current discovery effects include separately approved worker activity:
+`image.generate` declares database/file writes, external I/O, open-world access
+and paid generation, with no local subprocess. This does not make an unapproved
+OpenAI RPC executable. Review preparation writes only local database records;
+image/review reads are read-only. `cancelQueued` writes only local records;
+`recoverResult` can write local managed output. Effects and MCP annotations
+remain advisory, not authority to act for a user.
 
 ## Reusing an image is a separate edit
 
@@ -194,7 +219,11 @@ It does not select a video shot version, move an existing timeline clip to a
 new source, change a subject binding or submit a video stage. No compound
 shortcut is provided in this increment.
 
-## Verification scope
+## Historical first-slice verification scope: 2026-10-10
+
+These checks describe the original Mock acceptance. Activation has its own
+[validation boundary](IMAGE-ACTIVATION.md#migration-and-validation-boundary);
+its final full suite passed with 2758 total, 2756 passed, 0 failed and 2 skipped.
 
 `tests/image-generation-transports.test.mjs` exercises the normal local server,
 real HTTP, the actual CLI and the official MCP SDK stdio bridge. It covers

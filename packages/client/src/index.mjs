@@ -1,3 +1,4 @@
+import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
@@ -130,6 +131,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (IMAGE_MUTATION_OPERATIONS.includes(operation) && !isImageMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid image acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    const reviewValid=operation==='image.review.prepare'?isImageReviewPreparationResponse(parsed,result):operation==='image.review.get'?isImageReviewResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.reviewId:operation==='image.review.list'?isImageReviewListResponse(parsed,result):true;
+    if(!reviewValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid image review response',{details:{submissionMayHaveSucceeded:operation==='image.review.prepare',operation,...(parsed.input?.requestId?{requestId:parsed.input.requestId}:{})}});
     const imageReadValid=operation==='image.profile.list'?isImageProfilesResponse(result)
       :operation==='image.task.get'?isImageTaskResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.taskId
       :operation==='image.group.get'?isImageGroupResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.groupId

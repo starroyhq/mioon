@@ -33,10 +33,9 @@ export async function resolveImageDestination({lookup, signal, maxDnsAnswers = I
   if (!Array.isArray(answers) || !answers.length || answers.length > maxDnsAnswers || answers.some(item => !item || ![4, 6].includes(item.family) || isIP(item.address) !== item.family || !isPublicAgentAddress(item.address))) throw imageAdapterError('IMAGE_NETWORK_DENIED');
   return {hostname: url.hostname, port: 443, secure: true, address: answers[0].address, family: answers[0].family, path: url.pathname};
 }
-/** OFFLINE CONSTRUCTION ONLY. There is intentionally no import/default for DNS,
- * HTTPS, fetch, SDK or a credential store. Production cannot construct a live
- * transport in this slice. Trusted tests supply both inert dependencies and a
- * fake sentinel. Enabling real dispatch requires a separately reviewed change.
+/** Dependencies are explicit: no ambient fetch, SDK or credential discovery.
+ * The dedicated reviewed Images gateway supplies the platform DNS/HTTPS pair;
+ * synthetic tests supply inert dependencies and a fake sentinel.
  * No retries, redirects, proxy/environment handling, pooled agents or URL input. */
 export function createImageJsonTransport({lookup, httpsRequest, apiKey, limits: overrides} = {}) {
   if (typeof lookup !== 'function' || typeof httpsRequest !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');

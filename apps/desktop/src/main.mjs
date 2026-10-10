@@ -8,6 +8,7 @@ import { BackendSupervisor } from './supervisor.mjs';
 import { stopBackendForQuit } from './shutdown.mjs';
 import { createDesktopStartup } from './startup.mjs';
 import { createDesktopAgentSettings } from './secret-store.mjs';
+import { createDesktopImageSecretCodec } from './image-secret-store.mjs';
 import { QuitCoordinator, installUnsavedGuard, installPreferencesCloseDrain } from './lifecycle.mjs';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.mjs';
 
@@ -77,7 +78,8 @@ async function start() {
   startup.checkpoint();
   const token = randomBytes(32).toString('hex');
   backend = new BackendSupervisor({ fork: utilityProcess.fork,
-    modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings });
+    modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
+    imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }) });
   backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
   const started = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'), token });
   startup.checkpoint();

@@ -230,7 +230,7 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
       const effects = definition.effects;
       assert.equal(effects.idempotent, true);
       assert.equal(effects.readOnly, !IMAGE_MUTATION_OPERATIONS.includes(operation));
-      for (const flag of ['externalIO', 'localProcess', 'paidGeneration', 'openWorld']) assert.equal(effects[flag], false);
+      for (const flag of ['externalIO', 'localProcess', 'paidGeneration', 'openWorld']) assert.equal(effects[flag], operation === 'image.generate' && flag !== 'localProcess', 'possible explicitly approved paid worker effect');
       assert.deepEqual(tool.annotations, {readOnlyHint: effects.readOnly, destructiveHint: effects.destructive,
         idempotentHint: effects.idempotent, openWorldHint: effects.openWorld});
     }
@@ -265,7 +265,7 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
       {projectId: f.project.id, requestId: cancel.requestId, operation: 'image.task.cancelQueued', response: cancelled});
   });
 
-  await t.test('OpenAI is hard-disabled and scoped rejections never create image work', async () => {
+  await t.test('OpenAI is disabled without dedicated settings and scoped rejections never create image work', async () => {
     const before = f.checkpoint();
     await parity('image.generate', inputFor(f.project.id, {providerId: 'openai', model: IMAGE_MODELS.openai}), 'IMAGE_LIVE_DISABLED');
     await parity('image.task.get', {projectId: f.other.id, taskId: f.queued.id}, 'IMAGE_NOT_FOUND');

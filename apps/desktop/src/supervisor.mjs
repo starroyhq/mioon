@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { trustedOrigin } from './security.mjs';
 import { createAgentSettingsBroker } from './secret-broker.mjs';
+import { createImageSecretBroker } from './image-secret-broker.mjs';
 
 // Normal worker drains finish inside the first phase. A signal being accepted
 // is not proof of exit: keep the owned handle until Electron reports its exit.
@@ -18,13 +19,13 @@ const forceOwnedUtility = child => {
 export class BackendSupervisor extends EventEmitter {
   constructor({ fork, modulePath, environment, startupTimeout = 20000, stopTimeout = BACKEND_STOP_BUDGET.gracefulMs,
     terminateTimeout = BACKEND_STOP_BUDGET.terminateMs, exitTimeout = BACKEND_STOP_BUDGET.confirmMs,
-    forceKill = forceOwnedUtility, agentSettings }) {
+    forceKill = forceOwnedUtility, agentSettings, imageSecretCodec }) {
     super();
     for (const value of [startupTimeout, stopTimeout, terminateTimeout, exitTimeout]) {
       if (!Number.isSafeInteger(value) || value < 0 || value > 60000) throw new Error('Invalid backend lifecycle budget');
     }
     Object.assign(this, { fork, modulePath, environment, startupTimeout, stopTimeout, terminateTimeout, exitTimeout,
-      forceKill, agentSettings });
+      forceKill, agentSettings, imageSecretCodec });
     this.state = 'idle';
     this.mediaPids = new Set();
     this.mediaKinds = new Map();
@@ -68,6 +69,11 @@ export class BackendSupervisor extends EventEmitter {
         send: message => child.postMessage(message),
         isActive: () => this.child === child && ['running', 'stopping'].includes(this.state),
         getSelfPort: () => this.origin ? Number(new URL(this.origin).port) : null });
+      // Startup needs vault status/decryption while the Images engine is loaded
+      // in the utility. This bridge owns no settings or session credential RAM.
+      const imageSecretBroker = createImageSecretBroker({ imageSecretCodec: this.imageSecretCodec,
+        send: message => child.postMessage(message),
+        isActive: () => this.child === child && ['starting', 'running', 'stopping'].includes(this.state) });
       timer = setTimeout(() => { fail(new Error('本地服务启动超时')); kill(); }, this.startupTimeout);
       child.on('error', () => {
         if (this.child !== child || !['starting', 'running'].includes(this.state)) return;
@@ -75,6 +81,7 @@ export class BackendSupervisor extends EventEmitter {
       });
       child.on('message', message => {
         if (settingsBroker.handle(message)) return;
+        if (imageSecretBroker.handle(message)) return;
         if (this.child !== child) return;
         if (message?.type === 'media-process') {
           const pid = message.pid;
@@ -100,6 +107,7 @@ export class BackendSupervisor extends EventEmitter {
       });
       child.once('exit', code => {
         settingsBroker.close();
+        imageSecretBroker.close();
         clearTimeout(timer);
         clearInterval(heartbeat);
         if (this.child !== child) return;

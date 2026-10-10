@@ -16,27 +16,83 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are 
 
 `provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. Existing submit/retry schemas and historical replay are unchanged. See [model input limits](GENERATION-INPUT-LIMITS.md).
 
-## Local image generation
+## Local image generation and review preparation
 
-The same RPC adds `image.profile.list`, `image.generate`, `image.request.get`,
+The same RPC exposes `image.profile.list`, `image.generate`, `image.request.get`,
 `image.task.get/list`, `image.group.get/list`, `image.version.list`,
-`image.task.cancelQueued` and `image.task.recoverResult`. Image schemas and
-bounded DTOs are in `packages/contracts/src/images.mjs` and
-[Image generation](IMAGE-GENERATION.md), including the exact generation example.
+`image.task.cancelQueued`, `image.task.recoverResult` and exactly three review
+operations below. Image schemas and bounded DTOs are authoritative in
+`packages/contracts/src/images.mjs` and `image-reviews.mjs`.
+[Image generation](IMAGE-GENERATION.md) includes the exact generation request.
 
-Only deterministic Mock 1024×1024 PNG generation is enabled. The named OpenAI
-preset is hard-disabled before task creation or upstream work; existing Agent
-or video credentials cannot activate it. Discovery, task reads and request
-lookup never dispatch. A local RPC POST used for reads is not a provider POST.
+Mock produces deterministic local 1024×1024 PNG output. Dedicated fixed OpenAI
+Images settings and explicit UI-reviewed dispatch are implemented. The 461-test
+affected gate, fresh builds and Linux native synthetic-network acceptance passed;
+the independent final full suite passed (2758 total, 2756 passed,
+0 failed, 2 skipped). No real-provider or macOS/Windows
+acceptance is established by this increment. The fixed destination
+is `https://api.openai.com/v1/images/generations`; the pinned model/options are
+unchanged. Agent/video credentials cannot activate Images. Discovery reports
+local configured availability, retaining `offline-tested-not-live` evidence.
 
-All image mutations require an exact stable request ID. `image.generate`
-returns its original queued task receipt; query `image.task.get` for current
-state. After lost acknowledgement use `image.request.get` in the same project
-or replay the exact original input. New group versions need both `groupId`
-and `expectedRevision`; generated assets never automatically alter a timeline,
-subject or first-frame reference. The image request namespace is separate from
-the older mutation journals. Read/list pages default to 20 records (maximum
-50); public image DTOs omit raw/base64 bytes, secrets and filesystem paths.
+| Review RPC | Strict input | Result / effect |
+| --- | --- | --- |
+| `image.review.prepare` | `{input:<complete OpenAI image.generate input>,settingsRevision}` | Retained exact request/configuration review; local database write only |
+| `image.review.get` | `{projectId,reviewId}` | Existing owned review; read-only |
+| `image.review.list` | `{projectId,limit?,cursor?}` | `{projectId,items,nextCursor}`; read-only |
+
+`settingsRevision` is a positive safe integer. The stable generation `requestId`
+is nested in `input`; no extra top-level key, secret, approval flag or endpoint
+is accepted. Preparing never approves or dispatches. Exact preparation repeats
+return the same identity with its retained current state; changed input/project/
+settings revision under its key conflicts. Review fields, state transitions,
+plain-local-SQLite storage and limits are specified in
+[Images activation](IMAGE-ACTIVATION.md#shared-public-review-operations).
+
+New direct OpenAI `image.generate` calls remain blocked without private review
+approval. `image.generate` effect metadata nevertheless includes possible
+separately approved worker activity: external I/O, paid generation, open-world
+access and database/file writes, without local subprocesses. Review preparation
+writes only local records; reads never dispatch. A local RPC POST used for reads
+is not a provider POST. No metadata grants paid Agent authority.
+
+The original three image mutations require an exact stable request ID.
+`image.generate` returns its original queued task receipt; query `image.task.get`
+for current state. After lost acknowledgement use `image.request.get` in the same
+project or replay the exact original input. Do not automatically reapprove or
+re-key unknown work. New group versions need both `groupId` and `expectedRevision`;
+generated assets never automatically alter a timeline, subject or first-frame
+reference. The image request namespace is separate from older mutation journals.
+Image/review pages default to 20 records (maximum 50); public DTOs omit result
+bytes, secrets and filesystem paths. Review intents are bounded at 32 KiB, rows
+at 64 KiB, retained reviews at 1000/project and 10,000/workspace, with no cleanup.
+The nested generation input retains its original 24-KiB bound.
+
+### Private Images application routes
+
+Authenticated `GET`/`PUT /api/images/settings` manages the dedicated fixed preset
+and redacted secret metadata. It is not an RPC/CLI/MCP/model-tool setting. Web
+credentials are session-only for the backend lifetime; Electron persistent
+storage uses a narrow main-process OS codec, never renderer/preload decryption
+or plaintext fallback. Saving settings neither generates nor approves a request.
+The exact secret-write/read contract is in
+[Images activation](IMAGE-ACTIVATION.md#private-authenticated-http-settings-contract).
+
+Authenticated `POST /api/images/reviews/approve` and `/reject` each take exactly
+`{projectId,reviewId,expectedRevision}`. Approval returns the original queued
+image-task receipt; rejection returns the retained review. These private UI
+routes are absent from RPC, CLI, MCP and model-tool discovery. Local token/session
+authentication is not cryptographic human-presence proof or permission for an
+external agent to approve. The user explicitly approves the visible exact
+prompt/project/model/options/destination and at most one POST, at unknown
+usage-based cost. This is not a currency spending cap or a per-image budget wizard.
+
+The dispatch gateway checks changed settings and pending saves synchronously at
+the same final boundary as the durable review/task dispatch fence and network
+`end()`. No automatic retry follows unknown outcomes or restart; result recovery
+only validates and publishes an existing task-bound local receipt and staged PNG.
+See [Images activation](IMAGE-ACTIVATION.md) for the authority, persistence,
+network and current validation boundary.
 
 ## File and event transports
 

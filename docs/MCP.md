@@ -117,27 +117,62 @@ Provider IDs currently include `mock`, `runway`, `ark`, `veo`, `minimax`, and `v
 
 ### Image tools
 
-The shared catalog also exposes `image_profile_list`, `image_generate`,
-`image_request_get`, `image_task_get`, `image_task_list`, `image_group_get`, `image_group_list`,
-`image_version_list`, `image_task_cancelQueued` and `image_task_recoverResult`.
-Preserve the capital letters in the last two names. Use `mioon_schema` with
-the dotted operation name for exact inputs/effects and
-[Image generation](IMAGE-GENERATION.md) for receipt/state semantics.
+The shared catalog exposes `image_profile_list`, `image_generate`,
+`image_request_get`, `image_task_get`, `image_task_list`, `image_group_get`,
+`image_group_list`, `image_version_list`, `image_task_cancelQueued`,
+`image_task_recoverResult`, plus exactly `image_review_prepare`,
+`image_review_get` and `image_review_list`. Preserve the camel case. Use
+`mioon_schema` with the dotted name for the exact inputs and advisory effects.
 
-Only local deterministic Mock 1024×1024 PNG generation is enabled. The named
-OpenAI profile has offline fixture evidence and is hard-disabled. Image
-discovery is separate from the existing video `mioon_capabilities` response;
-no image credentials or activation settings are MCP tools. A successful
-generate result is the original queued receipt; use `image_task_get` for the
-current result. `image_request_get` is a read-only restart/lost-ACK lookup.
-Never invent a replacement key for an uncertain request. Cancellation is
-undispatched-only; result recovery is local staged-byte publication only.
+Mock produces deterministic local 1024×1024 PNG output. Dedicated fixed-preset
+OpenAI settings, retained reviews and explicit UI-approved dispatch are
+implemented. The 461-test affected gate, fresh builds and Linux native
+synthetic-network acceptance passed; the independent final full suite passed
+(2758 total, 2756 passed, 0 failed, 2 skipped). This is not live-provider or macOS/Windows acceptance. Image
+discovery is separate from video `mioon_capabilities`; enabled means local
+configuration is available, not verified output or spending permission.
 
-The image journal is a separate request namespace and all reads are
-project-scoped. Full prompt text is local journal/task data visible to
-authorized clients; raw/base64 result bytes, credentials and filesystem
-paths are not image DTO fields. These external tools add no built-in Agent
-model tools or autonomous generation authority.
+- `image_review_prepare` takes exactly
+  `{input:<complete OpenAI image.generate input>,settingsRevision}`. The positive
+  settings revision comes from the user's dedicated Images settings; the original
+  stable `requestId` is nested in `input`. Preparation only writes a retained
+  immutable intent to local SQLite. It neither approves nor creates a task.
+- `image_review_get` takes `{projectId,reviewId}` and returns an existing owned
+  review. `image_review_list` takes `{projectId,limit?,cursor?}` and returns
+  `{projectId,items,nextCursor}`, default 20/max 50. Both are read-only. Pass
+  returned cursors unchanged with the same project/limit; restart expires them.
+- The original generation schema is unchanged. No secret, approval flag, raw
+  request executor or arbitrary endpoint is a tool argument. New direct OpenAI
+  `image_generate` is blocked; accepted exact replay only returns its receipt.
+
+Settings and approve/reject routes are private authenticated application actions,
+not MCP/CLI/model tools. The user approves the exact visible project/prompt/model/
+options/destination and at most one POST from the application. Fees are usage-based
+and unknown, so this is not a currency cap or a per-image budget wizard. Local
+session authentication is not cryptographic proof of a human click; knowing a
+route/token does not authorize an external agent to approve. Built-in Agent
+catalogs and paid-generation authority do not expand.
+
+Effects now conservatively mark `image_generate` as possible external/paid,
+open-world work with database/file writes but no local subprocess, covering
+separately approved worker activity. `image_review_prepare` is idempotent,
+non-destructive and local-database-only; review get/list have read-only effects.
+Annotations are advisory, never permission to spend.
+
+A successful generate result is the original queued receipt; read
+`image_task_get` for the current result and `image_request_get` after lost ACK or
+restart. Never automatically reapprove, resubmit or replace the uncertain key.
+Cancellation is undispatched-only; result recovery only publishes existing
+task-bound local staged bytes and never contacts the provider. Changed settings
+and pending saves block stale authority at the final synchronous dispatch fence.
+
+The image journal is separate from older request namespaces; all review reads
+are project-scoped. Full prompts and exact review requests remain plain local
+SQLite, visible to authorized readers. Review intent/row limits are 32/64 KiB,
+retention 1000/project and 10,000/workspace with no cleanup; the nested generation
+input still has its original 24-KiB cap. DTOs omit credentials, raw/base64 results
+and filesystem paths. See [Image generation](IMAGE-GENERATION.md) and
+[Images activation](IMAGE-ACTIVATION.md) for current contracts and validation.
 
 ### Bounded, non-creating inspection
 

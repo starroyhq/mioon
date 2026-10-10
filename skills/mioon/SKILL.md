@@ -23,7 +23,7 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 1. Resolve the intended project, or create one when requested. Import only the local files the user authorized. CLI import reads bytes on the client's computer; the backend has no arbitrary-path import.
 2. Read provider/model capabilities and the latest shot revision. Production discovery includes exact model/region input profiles and server-dated lifecycle evaluations. Only currently implemented roles may be used; subject/style bindings remain local planning. Veo's earliest-retirement policy can block new submission without blocking historical recovery. See [model input limits](../../docs/GENERATION-INPUT-LIMITS.md). Reference count determines text versus first-frame image mode. Do not silently drop images, crop them, change providers or replace the requested model to make a request pass.
    To connect a canvas image as the actual first frame, use `reference attach` / `reference_attach` with current source-node and shot revisions. Visual `edge create` links never feed generation. Only one managed, project-local image connection is supported; never clear a manual image choice without the user's intent. Use `reference detach` before changing a connected reference. See [operations.md](references/operations.md) for the exact inputs and removal semantics.
-3. Before live generation, obtain provider/model, prompt and reference-media scope, generation count and total currency limit approval. Credentials are configured only in the backend through a secure local route. A configured key or available provider is not permission to incur charges; count limits are not dollar-spend guarantees.
+3. Before live video generation, obtain provider/model, prompt and reference-media scope, generation count and total currency limit approval. Images use the separate user-visible review boundary below; external agents cannot approve paid Images requests. Credentials are configured only in the backend through a secure local route. A configured key or available provider is not permission to incur charges; count limits are not dollar-spend guarantees.
 4. Use a stable request ID for generation, retry, reference attach/detach, timeline mutation and render. Also opt into the optional `requestId` on shot create/update/reorder, node create/update and version select for recoverable edits; omission has legacy non-idempotent behavior. Retain the complete exact request until the response is known. After a lost response, replay that same request; never invent a new ID for the same attempted generation or reference mutation.
 5. Watch the existing job for a bounded interval. A timeout or Ctrl+C stops local watching; it does not cancel provider work or prevent charges. Read [recovery.md](references/recovery.md) before handling unknown submission, retry, revision conflict or cancellation.
 6. Select an immutable result version, then edit the timeline with current timeline revisions. Adding/ seeding a version fixes its asset reference. Later version selection does not replace existing timeline clips.
@@ -31,32 +31,77 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 
 For an executable no-cost import → shot → generate → select → timeline → export workflow, read [mock-workflow.md](references/mock-workflow.md). Mock produces visibly labeled synthetic motion, not prompt-faithful AI output. All shipped provider contracts have offline tests; live provider output is unverified unless separately established in the user's session.
 
-## Local image generation
+## Local image generation and review preparation
 
-Inspect `image profile list` and `schema image.generate` before using the
-[image workflow](../../docs/IMAGE-GENERATION.md). Only deterministic, visibly
-labeled Mock 1024×1024 PNG generation is enabled. The named OpenAI preset is
-hard-disabled; existing Agent/video credentials and provider-count settings
-cannot activate it. Secure image settings and approved live activation remain
-future work. Do not substitute Mock for a user-requested real provider.
+Inspect `image profile list`, `schema image.generate` and
+`schema image.review.prepare` before using the
+[image workflow](../../docs/IMAGE-GENERATION.md). Mock remains deterministic,
+visibly labeled local 1024×1024 PNG output. Dedicated independent Images settings,
+retained review preparation and explicit UI-approved one-POST OpenAI dispatch are
+implemented. The 461-test affected gate, fresh builds and Linux native
+synthetic-network acceptance passed; the independent final full suite passed
+(2758 total, 2756 passed, 0 failed, 2 skipped). This is not live-provider or macOS/Windows acceptance, and no real provider
+call is authorized for this acceptance increment. Existing Agent/video
+credentials do not activate Images. Do not substitute Mock for a requested real
+provider, or treat a configured/enabled profile as verified output or approval.
 
-Use a stable key and the complete strict request for `image generate`.
-It returns the original queued task receipt. Read `image task get` for current
-state and `image version list` for the resulting immutable version/asset.
-After lost acknowledgement or restart, use `image request get` in the same
-project, or replay the exact original request/key. The image journal has its
-own namespace; do not assume global deduplication against other operations.
+For Mock, use the complete strict `image generate` input and stable key. For a
+user-requested OpenAI intent, external clients can only prepare/read its review:
+
+- `image review prepare` / `image_review_prepare` takes exactly
+  `{input:<complete OpenAI image.generate input>,settingsRevision}`. Use the
+  current positive settings revision from the dedicated Images UI and retain the
+  required original `requestId` inside `input`; no extra top-level key exists.
+  Preparation stores the exact prompt/project/model/options/settings-bound intent
+  locally without task creation, approval, provider calls or charges.
+- `image review get` / `image_review_get` takes `{projectId,reviewId}`.
+  `image review list` / `image_review_list` takes `{projectId,limit?,cursor?}` and
+  returns `{projectId,items,nextCursor}`. Pages default to 20/max 50. Pass only the
+  returned cursor unchanged with the same project/limit; restart invalidates it.
+- Only these three review operations are public. Settings, approval and rejection
+  are private authenticated UI routes, not CLI/MCP/model tools. Never use raw HTTP
+  or an arbitrary executor to bypass that boundary. Token/session authentication
+  is not cryptographic human-presence proof and grants no paid Agent authority.
+
+The user configures Images once, then explicitly clicks the visible paid button
+for each exact original prompt, project, model/options and destination, authorizing
+at most one POST at usage-based unknown cost. There is no per-image budget wizard;
+one attempt is not a currency cap. Settings save alone grants no generation
+approval. A real canary still needs one separate exact configuration/prompt/media/
+fees approval; synthetic acceptance does not provide it. Custom compatible
+endpoints remain follow-on; the independent credential route is implemented.
+Never request keys in a prompt, CLI argument or tool input. Web secrets last only
+for the backend lifetime; Electron secure persistence is explicitly selected and
+uses a main-only narrow OS codec, with no renderer/preload decryption.
+
+Preparation repeats return the original review identity and retained current
+state, not new work; changed request/project/settings revision under the same key
+conflicts. Public review DTOs and strict limits are documented in
+[Images activation](../../docs/IMAGE-ACTIVATION.md). Complete reviews/prompts are
+plain local SQLite, visible to authenticated readers: intent 32 KiB, row 64 KiB,
+1000 retained reviews/project and 10,000/workspace, without cleanup. The original
+generation input limit remains 24 KiB. Do not insert secrets into prompts.
+
+Generation acceptance returns its original queued receipt. Read `image task get`
+for current state and `image version list` for the immutable version/asset. After
+lost acknowledgement or restart, use `image request get` in the same project and
+read the original review/task; exact accepted replay never reschedules. Never
+automatically approve again, retry, or invent a replacement key. The image journal
+has its own namespace, not global deduplication against other operation families.
+Changed settings or a pending save block stale approval at the final synchronous
+settings/dispatch/network boundary.
 
 Read/profile/list/request lookup never generates. Restarted queued work stays
 `interrupted_before_dispatch`; dispatched work without durable result stays
 `outcome_unknown`. `image task cancelQueued` is explicit and undispatched-only;
-`image task recoverResult` only republishes eligible staged local bytes and
-never submits another generation. Preserve the camel case. New group versions
-require both `groupId` and current `expectedRevision`. A completed image is a
-managed asset, not an instruction to attach a reference, change a subject,
-replace a timeline source or generate video. Perform those edits separately
-only when authorized. Full prompts are retained in local SQLite and visible
-to authorized local task/receipt readers; never insert secrets into prompts.
+`image task recoverResult` only republishes eligible task-bound local staged bytes,
+never generates or fetches a missing provider result. Preserve the camel case.
+New group versions require both `groupId` and current `expectedRevision`.
+`image.generate` effects include possible separately approved paid/external worker
+work; preparation is local-database-only and review reads are read-only. Advisory
+effects are not authorization. A completed image is a managed asset, not an
+instruction to attach a reference, change a subject, replace a timeline source or
+generate video. Perform those edits separately only when authorized.
 
 ## Explicit clip source replacement
 

@@ -197,16 +197,17 @@ test('image request lookup rejects impossible original-receipt operation/state c
   }
 });
 
-test('image profile DTO rejects live enablement, duplicate profiles and private/unsupported fields', async () => {
+test('image profile DTO accepts explicit configured activation but rejects inconsistent state, forged live evidence and private fields', async () => {
   const mock = {providerId: 'mock', model: IMAGE_MODELS.mock, name: 'Mock', enabled: true, isMock: true,
     evidence: 'deterministic-mock', options: {...IMAGE_FIXED_OPTIONS}};
   const openai = {providerId: 'openai', model: IMAGE_MODELS.openai, name: 'OpenAI', enabled: false, isMock: false,
     evidence: 'offline-tested-not-live', options: {...IMAGE_FIXED_OPTIONS}};
   const value = {items: [mock, openai], liveEnabled: false};
   await verifyRead('image.profile.list', {}, value);
+  await verifyRead('image.profile.list', {}, {...value,items:[mock,{...openai,enabled:true}],liveEnabled:true});
   await rejectRead('image.profile.list', {}, [null, [], {}, {...value, liveEnabled: true},
     {...value, items: [mock, mock]}, {...value, items: [mock, {...openai, enabled: true}]},
-    {...value, items: [mock, {...openai, apiKey: 'never-allowed'}]},
+    {...value, items: [mock, {...openai, apiKey: 'never-allowed'}]}, {...value, items:[mock,{...openai,evidence:'live-verified'}]},
     {...value, items: [{...mock, options: {...mock.options, quality: 'high'}}]},
     {...value, endpoint: 'https://unrequested.example'}]);
 });

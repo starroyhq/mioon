@@ -146,7 +146,7 @@ Replace placeholders and revisions with the current `project get` results. The s
 
 Attach/detach both need a caller-owned request ID. After an uncertain response, replay the exact original operation and input, including its original revisions. The response is the original saved result, not a fresh project read, even after the connection was removed or the backend restarted. Refresh before another edit. MCP exposes the identical `reference_attach` and `reference_detach` schemas and behavior. Attaching neither generates nor uploads media; per-model support and live authorization are checked when submitting generation.
 
-## Local image generation
+## Local image generation and review preparation
 
 Image commands use the same backend and schema catalog:
 
@@ -157,21 +157,57 @@ mioon image generate --input-file ./image-request.json
 mioon image request get --input '{"projectId":"PROJECT_UUID","requestId":"image-opening-0001"}'
 mioon image task get --input '{"projectId":"PROJECT_UUID","taskId":"TASK_UUID"}'
 mioon image version list --input '{"projectId":"PROJECT_UUID","groupId":"GROUP_UUID"}'
+mioon schema image.review.prepare
+mioon image review prepare --input-file ./image-review.json
+mioon image review get --input '{"projectId":"PROJECT_UUID","reviewId":"REVIEW_UUID"}'
+mioon image review list --input '{"projectId":"PROJECT_UUID","limit":20}'
 ```
 
-Replace placeholders with actual IDs. See [Image generation](IMAGE-GENERATION.md)
-for the exact request JSON, bounded fields and restart states. Only local,
-deterministic Mock PNG output is enabled; the OpenAI preset is hard-disabled.
-Image provider discovery is `image profile list`, separate from the existing
-video `capabilities` command. There is no image-specific `watch` shortcut.
-Poll the existing task explicitly; timeout or Ctrl+C does not cancel it.
+Replace placeholders with actual IDs. The direct `image generate` example is
+for local deterministic Mock PNG generation. New OpenAI requests cannot be
+approved through the CLI. Dedicated Images settings and explicit UI approval
+are now implemented. The 461-test affected gate, fresh builds and Linux native
+synthetic-network acceptance passed; the independent final full suite passed
+(2758 total, 2756 passed, 0 failed, 2 skipped). This is not live-provider or macOS/Windows acceptance evidence. No real
+provider call is authorized for this acceptance increment.
 
-Retain the complete request/key; lookup never generates and exact replay
-returns the original queued receipt rather than current task state. Explicit
-`image task cancelQueued` only cancels undispatched/interrupted work.
-`image task recoverResult` only republishes eligible staged local bytes;
-neither is a provider retry. Preserve these camel-case command words. Prompt
-text is retained in local SQLite and can be returned to authorized local clients.
+A review file contains exactly `{input:<complete OpenAI image.generate input>,
+settingsRevision:<current positive settings revision>}`. Obtain that revision
+from the dedicated Images settings UI; do not guess it. The complete nested
+`input` retains the existing stable `requestId`, prompt/project, pinned model,
+fixed options and optional group/revision pair. There is no top-level request
+key, approval flag, key input or destination override. Prepare only retains this
+immutable intent locally. Get/list read retained reviews; none dispatches or
+charges. Only the user's explicit application paid/review button may continue
+this workflow. There is no CLI approval/rejection or Images credential command,
+and raw authenticated HTTP access does not grant authority to bypass that UI.
+
+Review get takes exactly `{projectId,reviewId}`. List takes
+`{projectId,limit?,cursor?}` and returns `{projectId,items,nextCursor}`, default
+20/max 50 records. Retain returned cursors unchanged with the same project and
+limit; backend restart invalidates them. Review requests/prompts are plain local
+SQLite: the intent limit is 32 KiB, row limit 64 KiB, retention 1000/project and
+10,000/workspace without cleanup. The nested generation input remains 24 KiB.
+Exact prepare repeats retain the same identity/current state; changed content
+or settings revision under its key conflicts.
+
+See [Image generation](IMAGE-GENERATION.md) and
+[Images activation](IMAGE-ACTIVATION.md) for exact inputs, review DTOs and limits.
+Image discovery is `image profile list`, separate from video `capabilities`.
+Enabled means local configuration is present, not live verification or permission
+to spend. The `image.generate` effects conservatively include separately approved
+paid/external worker work; prepare is local-database-only, get/list read-only.
+These effects do not grant agents approval authority.
+
+Retain the complete request/key; lookup never generates and exact replay returns
+the original queued receipt rather than current task state. Never automatically
+reapprove, resubmit or replace a key after an unknown outcome or restart.
+Explicit `image task cancelQueued` only cancels undispatched/interrupted work.
+`image task recoverResult` only republishes eligible task-bound staged local
+bytes; neither is a provider retry. Preserve these camel-case command words.
+There is no image-specific `watch` shortcut. Poll the existing task explicitly;
+timeout or Ctrl+C does not cancel it. Full prompt text is retained locally and
+returned to authenticated readers; never put credentials in prompts or files.
 
 ## Safe mock workflow
 
