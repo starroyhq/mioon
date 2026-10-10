@@ -4,6 +4,7 @@ import {validateImageSecretPlaintext} from '@mioon/business/images/settings';
 export const MAX_IMAGE_SECRET_MESSAGE_BYTES = 64 * 1024;
 const MAX_CIPHERTEXT_CHARACTERS = 48 * 1024;
 const REQUEST = 'image-secret-codec-request', RESPONSE = 'image-secret-codec-response';
+const CANCEL = 'image-secret-codec-cancel';
 const NAMESPACE = 'images', VERSION = 1, MAX_PENDING = 16, MAX_COMPLETED_IDS = 128;
 const unavailableStorage = () => ({persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
 const messages = Object.freeze({
@@ -64,12 +65,13 @@ function response(requestId, value, error) {
 }
 
 // Main-only endpoint over the already-owned utility channel. Dispatch is fixed
-// to synchronous native OS status/encrypt/decrypt; no paths, URLs, other secret
+// to bounded async OS status/encrypt/decrypt; no paths, URLs, other secret
 // namespaces beyond the two validated Images profiles, renderer IPC, settings
-// engine or arbitrary methods are accepted. The private wire shape is unchanged.
+// engine or arbitrary methods are accepted. Deadlines/cancel stay on this private
+// owned-child channel; no credential or arbitrary native method is exposed.
 export function createImageSecretBroker({imageSecretCodec, send, isActive = () => true}) {
   let closed = false;
-  const pending = new Set(), completed = new Set();
+  const pending = new Map(), completed = new Set();
   const active = () => !closed && isActive();
   const reply = message => {
     if (!active()) return;
@@ -83,11 +85,18 @@ export function createImageSecretBroker({imageSecretCodec, send, isActive = () =
   };
   return Object.freeze({
     handle(message) {
+      if (message?.type === CANCEL) {
+        if (active() && exactObject(message, ['type', 'version', 'namespace', 'requestId']) &&
+            message.version === VERSION && message.namespace === NAMESPACE && validId(message.requestId)) pending.get(message.requestId)?.abort();
+        return true;
+      }
       if (message?.type !== REQUEST) return false;
       if (!validId(message.requestId) || !active()) return true;
       const {requestId, operation} = message;
       const keys = ['type', 'version', 'namespace', 'requestId', 'operation', ...(operation === 'status' ? [] : ['input'])];
+      if (Object.hasOwn(message, 'deadline')) keys.push('deadline');
       if (!exactObject(message, keys) || !boundedJson(message) || message.version !== VERSION || message.namespace !== NAMESPACE ||
+          (message.deadline !== undefined && (!Number.isSafeInteger(message.deadline) || message.deadline < 1 || message.deadline > Date.now() + 60000)) ||
           !validInput(operation, message.input)) {
         reply(response(requestId, null, codecError('IMAGE_SECRET_CODEC_VALIDATION'))); return true;
       }
@@ -98,27 +107,37 @@ export function createImageSecretBroker({imageSecretCodec, send, isActive = () =
           typeof imageSecretCodec.encrypt !== 'function' || typeof imageSecretCodec.decrypt !== 'function') {
         reply(response(requestId, null, codecError())); return true;
       }
-      pending.add(requestId);
+      const controller = new AbortController();
+      pending.set(requestId, controller);
+      const deadline = Math.min(message.deadline ?? Infinity, Date.now() + 2000);
+      const isActiveRequest = () => active() && pending.get(requestId) === controller && !controller.signal.aborted && Date.now() < deadline;
       // Only a bounded immutable string is captured, never the input envelope.
       const input = message.input;
-      queueMicrotask(() => {
-        if (!active() || !pending.has(requestId)) { pending.delete(requestId); return; }
+      queueMicrotask(async () => {
+        if (!isActiveRequest()) { pending.delete(requestId); return; }
+        const timer = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
         let result;
         try {
-          // The native codec is deliberately synchronous. Do not await arbitrary
-          // promises that could outlive the child or consume unbounded resources.
-          const value = operation === 'status' ? imageSecretCodec.storage() : operation === 'encrypt'
-            ? imageSecretCodec.encrypt(input) : imageSecretCodec.decrypt(input);
+          // Only the owned codec is awaited. Its shared native slot outlives
+          // this request's timeout/close until the actual native call settles.
+          const options = {signal: controller.signal, isActive: isActiveRequest};
+          const value = operation === 'status' ? await imageSecretCodec.storage(options) : operation === 'encrypt'
+            ? await imageSecretCodec.encrypt(input, options) : await imageSecretCodec.decrypt(input, options);
+          if (!isActiveRequest()) throw codecError();
           result = response(requestId, safeResult(operation, value));
           if (!boundedJson(result)) throw codecError();
         } catch (error) { result = response(requestId, null, codecError(error?.code)); }
-        pending.delete(requestId);
-        remember(requestId);
-        reply(result);
+        finally {
+          clearTimeout(timer);
+          const canReply = isActiveRequest();
+          pending.delete(requestId);
+          if (!closed) remember(requestId);
+          if (canReply && result) reply(result);
+        }
       });
       return true;
     },
-    close() { closed = true; pending.clear(); completed.clear(); }
+    close() { closed = true; for (const controller of pending.values()) controller.abort(); completed.clear(); }
   });
 }
 
@@ -127,18 +146,26 @@ export function createImageSecretBroker({imageSecretCodec, send, isActive = () =
 export function createImageSecretClient({port, timeout = 2000}) {
   if (!port || typeof port.on !== 'function' || typeof port.postMessage !== 'function' ||
       !Number.isInteger(timeout) || timeout < 1 || timeout > 60000) throw codecError();
-  let closed = false, availability = unavailableStorage(), refreshing = null;
+  let closed = false, availability = unavailableStorage(), refreshing = null, epoch = 0;
   const pending = new Map();
   const complete = (requestId, error, value) => {
     const entry = pending.get(requestId);
     if (!entry) return;
     pending.delete(requestId); clearTimeout(entry.timer);
-    if (error) { availability = unavailableStorage(); entry.reject(error); }
+    if (error) {
+      availability = unavailableStorage(); epoch++;
+      try { port.postMessage({type: CANCEL, version: VERSION, namespace: NAMESPACE, requestId}); } catch {}
+      entry.reject(error);
+    }
     else entry.resolve(value);
   };
   const onMessage = ({data: message} = {}) => {
     if (message?.type !== RESPONSE || !validId(message.requestId) || !pending.has(message.requestId)) return;
     const {requestId} = message;
+    if (Date.now() >= pending.get(requestId).deadline) {
+      complete(requestId, codecError('IMAGE_SECRET_CODEC_TIMEOUT'));
+      return;
+    }
     try {
       const keys = ['type', 'version', 'namespace', 'requestId', 'ok', message.ok ? 'data' : 'error'];
       if (!exactObject(message, keys) || !boundedJson(message) || message.version !== VERSION ||
@@ -162,20 +189,21 @@ export function createImageSecretClient({port, timeout = 2000}) {
     if (!validInput(operation, input)) return Promise.reject(codecError('IMAGE_SECRET_CODEC_VALIDATION'));
     if (pending.size >= MAX_PENDING) return Promise.reject(codecError('IMAGE_SECRET_CODEC_BUSY'));
     const requestId = randomUUID();
-    const message = {type: REQUEST, version: VERSION, namespace: NAMESPACE, requestId, operation,
+    const message = {type: REQUEST, version: VERSION, namespace: NAMESPACE, requestId, operation, deadline: Date.now() + timeout,
       ...(operation !== 'status' ? {input} : {})};
     if (!boundedJson(message)) return Promise.reject(codecError('IMAGE_SECRET_CODEC_VALIDATION'));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => complete(requestId, codecError('IMAGE_SECRET_CODEC_TIMEOUT')), timeout);
-      pending.set(requestId, {resolve, reject, timer, operation});
+      pending.set(requestId, {resolve, reject, timer, operation, deadline: message.deadline});
       try { port.postMessage(message); } catch { complete(requestId, codecError()); }
     });
   };
   const refreshStorage = () => {
     if (closed) return Promise.reject(codecError());
     if (!refreshing) {
+      const currentEpoch = epoch;
       refreshing = request('status').then(value => {
-        if (closed) throw codecError();
+        if (closed || currentEpoch !== epoch) throw codecError();
         availability = safeStorage(value); return {...availability};
       }).finally(() => { refreshing = null; });
     }

@@ -2,13 +2,13 @@
 
 这份说明用于在自己的 Mac 上，从源码启动 Mioon 开发版，试用导入素材、画板、时间线和本地 MP4 导出。首次试用只用新建项目和模拟供应商，不需要 API 密钥。
 
-当前状态：2026-10-10 按源码基线 `7b85186` 核对说明；没有执行 Mac 安装、构建或原生验收。应用源码版本为 `0.4.1`，依赖固定为 Electron `44.7.0`。这些版本信息不是 Mac 运行结果。实际试用必须记录所用源码快照；本文不提供已验证的 Mac 安装包。
+当前状态：2026-10-10 按源码基线 `9e9598d887b21b8e1b7dc742e5d15c66a3ff93d4` 重新核对说明；初稿的 `7b85186` 仅为历史说明基线。此次核对没有执行 Mac 安装、构建或原生验收。应用源码版本为 `0.4.1`，依赖固定为 Electron `44.7.0`。这些版本信息不是 Mac 运行结果。实际试用必须记录所用源码快照；本文不提供已验证的 Mac 安装包。
 
 ## 开始前
 
 - 使用最终确认的同一份源码快照。不要把 Linux 的 node_modules、Electron 可执行文件或 release 目录复制到 Mac。
 - 在本机普通目录放置源码，例如用户目录下的 Projects/MioonTrial。首次试用避开外置盘、云同步目录、符号链接和 /tmp 路径，减少路径和权限差异。
-- 本次建议使用 Node.js 24.x、固定的 pnpm 11.25.0，以及适合本机架构的 FFmpeg 和 ffprobe。源码要求 Node ≥24，本文按 24.x 准备；Mioon 不会自动安装这些工具。
+- 使用 Node.js ≥24、固定的 pnpm 11.25.0，以及适合本机架构的 FFmpeg 和 ffprobe。已有符合要求的 Node（例如 26.x）不必降级到 24.x；通过版本要求不等于该组合已完成原生验收。Mioon 不会自动安装这些工具。
 - 在“关于本机”查看芯片和 macOS 版本。Apple Silicon 使用原生 arm64 工具；Intel 使用 x64 工具。本次没有验证任何具体 macOS 版本或架构组合。
 - 使用自己的普通 macOS 账户。遇到安全阻止或私有目录检查失败时先停止并保留错误，不调整系统安全设置来继续。
 
@@ -25,7 +25,7 @@ node --version
 pnpm --version
 ```
 
-Node 应为 24.x，pnpm 应为 11.25.0。若已有 Node/npm，且决定通过 npm 安装指定 pnpm，可执行下面的命令；它会安装全局命令。遇到权限问题先检查自己的 Node 安装方式，不加 sudo 强行继续。
+Node 应为 ≥24，pnpm 应为 11.25.0。若已有 Node/npm，且决定通过 npm 安装指定 pnpm，可执行下面的命令；它会安装全局命令。遇到权限问题先检查自己的 Node 安装方式，不加 sudo 强行继续。
 
 ```sh
 npm install --global pnpm@11.25.0
@@ -86,13 +86,16 @@ export MIOON_ENABLE_LIVE_PROVIDER=0
 
 ```sh
 node scripts/tooling.mjs doctor
+node scripts/tooling.mjs test --suite=portable --concurrency=1
 node scripts/tooling.mjs build --channel=development
 MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop
 ```
 
-build 会依次构建网页和桌面代码；不要在第一步失败后继续。桌面进程使用 Electron 自带的 Node 和 SQLite。首次进入桌面工作区会自动连接本机服务，不需要手动复制令牌。
+build 会依次构建网页和桌面代码；不要在前一步失败后继续。portable 仅运行明确列出的可移植测试，不等于完整测试或原生验收。`pnpm desktop` 只运行现有暂存产物，不会重新构建。桌面进程使用 Electron 自带的 Node 和 SQLite。首次进入桌面工作区会自动连接本机服务，不需要手动复制令牌。
 
 doctor 检查 Node、构建身份、依赖包版本、内存 SQLite 和媒体工具版本；它不验证编码器、Electron 可执行文件能否启动、Mac 窗口、媒体导出、Keychain 或安装包。普通 doctor 通过可返回 0，同时 nativeReadiness 仍为未验证。若另行运行 `node scripts/tooling.mjs doctor --native-ready`，本地前提检查通过后 macOS 仍返回未验证状态和退出码 2；前提检查失败则返回 1。不能把此固定门槛当作实际 Mac 测试结果。
+
+应用、CLI/MCP 实现元数据与暂存包版本均为 `0.4.1`；后端 `/health` 当前仍独立报告兼容版本 `0.4.0`，不能仅凭此数值判定运行了旧构建。MCP 协议日期和连接描述文件版本也是不同版本域。记录终端 Node 与 Electron utilityProcess 的实际版本时必须分开。
 
 本文只指导源码构建与试用，不运行安装包、签名或公证流程。完整测试入口的 `--suite=full` 当前限 Linux；不能把 Linux 检查或 Mac 上的可移植检查写成 Mac 原生通过。
 
@@ -120,22 +123,22 @@ export MIOON_DESKTOP_USER_DATA="$HOME/Library/Application Support/app.starroy.mi
 
 ## 先试这条最短流程
 
-1. 新建一个试用项目，导入自己选定的一张图片或一个短视频。
+1. 新建一个试用项目，导入仓库自带的合成素材 `examples/timeline-synthetic/scene-a.png` 与 `examples/timeline-synthetic/scene-b.mp4`；后者带合成音频。先记录原文件 SHA-256，不使用用户真实素材。无需运行素材生成脚本，其 Linux 字体/Pillow 依赖不属于 Mac 首次试用前提。
 2. 从素材的“加入时间线”入口进入剪辑，修改一个片段属性并保存。
 3. 点“更新预览”，确认新画面。点“导出时间线”，等待“交付检查”通过后点“确认导出”；检查报告不代表导出完成。完成后从导出结果或“查看导出记录”的“下载”入口打开原生另存为，保存到自己选定的位置，打开 MP4 检查播放。
 4. 完全退出 Mioon，再按同一条启动命令打开，重新进入同一项目，检查素材、片段和已完成导出。
 5. 想试生成流程时，创建镜头并只选带“本地模拟”标记的 `Mock · simulated motion`，使用“正常完成”场景。模拟 MP4 带有 SIMULATED MOCK 标记，它验证流程，不会根据提示词生成真实 AI 画面；模拟视频本身不带音频。
 
-先使用无关紧要的试用素材。首次验收不要输入供应商或 Agent 密钥，不配置或调用 Agent 模型，也不要用重要项目测试中断或恢复。MIOON_ENABLE_LIVE_PROVIDER=0 是视频供应商的开关，不应把它当作所有模型联网调用的总开关。完整记录表见 [Mac 试用记录](MAC-TRIAL-CHECKLIST.zh-CN.md)。
+先使用无关紧要的试用素材。首次验收不要输入供应商、Agent 或 Images 密钥，不配置或调用 Agent 模型；官方/自定义 Images 与 ComfyUI 保持未启用，也不点击 ComfyUI 的连接检查（检查本身会发送 HTTP）。不要用重要项目测试中断或恢复。MIOON_ENABLE_LIVE_PROVIDER=0 是视频供应商的开关，不应把它当作所有模型联网调用的总开关。完整记录表见 [Mac 试用记录](MAC-TRIAL-CHECKLIST.zh-CN.md)。
 
 ## 任务中心与恢复的范围
 
 顶部“任务”打开“任务中心”，分别显示“本地编辑请求”“当前会话的待确认请求”和“生成任务”。没有记录与加载失败不是一回事；恢复列表还在加载或报错时，相关编辑会被阻止。
 
-- 12 类本地编辑请求可将原始请求编号和完整参数保存在当前 workspace：轨道新增/更新，片段新增/更新/替换来源/移除/分割，从分镜导入时间线，撤销/重做，以及首帧连接/断开。它们并非整个应用所有操作的恢复保证。
+- 15 类本地编辑请求可将原始请求编号和完整参数保存在当前 workspace：轨道新增/更新，片段新增/更新/替换来源/移除/分割，从分镜导入时间线，撤销/重做，首帧连接/断开，以及主体创建/追加版本/设置镜头关联（`subject.create`、`subject.version.add`、`subject.binding.set`）。它们并非整个应用所有操作的恢复保证；主体/风格关联当前仅用于本地规划，不会自动提交给供应商。
 - 启动、打开任务中心、查看或转存旧会话请求都不会自动执行编辑。结果待确认时，先处理当前未保存草稿，再使用该记录的“恢复同一请求”或“核对同一请求”。恢复使用已保存的原参数与原编号，不使用当前草稿，不另造新请求。
-- 其余 8 类画板/素材元数据编辑、时间线渲染及生成/导出提交的待确认请求参数仍依赖当前浏览器会话。生成、导出等领域已有的任务与完成记录继续独立保存；不能据此认为丢失的会话参数一定能恢复。
-- 只有仍存在且参数完整、属于上述 12 类的旧会话请求可以明确转存。已丢失的旧会话不能从当前项目状态推测重建；不要通过清空浏览器数据、删数据库记录或反复提交来解决不确定结果。
+- 其余 8 类画板/素材元数据编辑、时间线渲染及原有视频生成/导出提交的待确认请求参数仍依赖当前浏览器会话。生成、导出等领域已有的任务与完成记录继续独立保存；不能据此认为丢失的会话参数一定能恢复。Images/ComfyUI 另有专属审批、任务和结果恢复，不纳入这 15 类编辑账本，也不能用“重启重发”代替各自的恢复规则。
+- 只有仍存在且参数完整、属于上述 15 类的旧会话请求可以明确转存。已丢失的旧会话不能从当前项目状态推测重建；不要通过清空浏览器数据、删数据库记录或反复提交来解决不确定结果。
 - 该恢复账本初始最多保留 4,096 条任务身份，容量用尽会阻止新任务；长期归档/压缩策略尚未实现。它不是数据库或 WAL 文件总大小的上限。
 
 首次试用只观察日常保存与重开；故障注入和同一请求恢复验收留给隔离的工程试用项目。更多边界见 [任务恢复契约](TASK-RECOVERY.md)。
@@ -190,6 +193,6 @@ cat "$HOME/Library/Application Support/Mioon Browser Trial/access-token"
 
 ## 依据与交付前核对
 
-本说明按 `7b85186` 核对了 package.json、pnpm-workspace.yaml、桌面启动/工具配置、portable tooling、本机服务 CLI、模拟供应商、交付检查和任务中心代码，以及 [DESKTOP.md](DESKTOP.md)、[PORTABLE-TOOLING.md](PORTABLE-TOOLING.md)、[PRIVATE-STORAGE.md](PRIVATE-STORAGE.md) 和 [TASK-RECOVERY.md](TASK-RECOVERY.md)。
+本次按 `9e9598d887b21b8e1b7dc742e5d15c66a3ff93d4` 重新核对了 package.json、pnpm-workspace.yaml、桌面启动/工具配置、portable tooling、本机服务 CLI、模拟供应商、交付检查和任务中心代码，以及 [DESKTOP.md](DESKTOP.md)、[PORTABLE-TOOLING.md](PORTABLE-TOOLING.md)、[PRIVATE-STORAGE.md](PRIVATE-STORAGE.md) 和 [TASK-RECOVERY.md](TASK-RECOVERY.md)。
 
 实际交付与试用应记录最终源码快照、构建文件哈希、macOS 版本和架构；集成后的验证结果另行记录，不把本说明的源码核对或历史 Linux 验收当作 Mac 实测。

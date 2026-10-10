@@ -28,7 +28,7 @@ function boundedCredentialRead(operation, signal) {
     const timer = setTimeout(aborted, 5000);
     if (signal?.aborted) return aborted();
     signal?.addEventListener('abort', aborted, {once: true});
-    Promise.resolve().then(operation).then(value => finish(null, value), () => finish(true));
+    Promise.resolve().then(() => { if (signal?.aborted) throw agentSettingsError('AGENT_SETTINGS_CLOSED'); return operation(); }).then(value => finish(null, value), () => finish(true));
   });
 }
 const storageReasons = new Set([null, 'WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT']);
@@ -66,13 +66,27 @@ function parseEnvelope(value) {
 }
 /** Single active Agent profile; not the video-provider registry. Secrets are
  * write-only publicly; trusted inference acquisition is an unexported-to-HTTP capability. */
-export async function createAgentSettings({persistence, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}) {
+export async function createAgentSettings({persistence, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, signal}) {
   let state = {version: 2, revision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null};
-  let session = null, fault = null, tail = Promise.resolve(), closing = false, vaultReadBlocked = false;
+  let session = null, fault = null, tail = Promise.resolve(), closing = false, vaultReadBlocked = false, refreshBlocked = false;
+  const lifetime = new AbortController();
+  const controls = (options = {}) => ({...options, signal: options.signal ? AbortSignal.any([lifetime.signal, options.signal]) : lifetime.signal});
+  const checkpoint = options => {
+    if (closing || options?.signal?.aborted || options?.isActive?.() === false) throw agentSettingsError('AGENT_SETTINGS_CLOSED');
+  };
+  const refreshCapabilities = async options => {
+    if (typeof secretCodec?.refreshStorage !== 'function') return;
+    try {
+      const value = await boundedCredentialRead(() => secretCodec.refreshStorage(options), options?.signal);
+      refreshBlocked = !publicStorage(value).persistentAvailable;
+    } catch { refreshBlocked = true; }
+  };
   const capabilities = () => {
     const value = publicStorage(typeof storage === 'function' ? storage() : storage);
-    return vaultReadBlocked ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;
+    return vaultReadBlocked || refreshBlocked ? {...value, persistentAvailable: false, reasonCode: value.reasonCode || 'OS_SECRET_STORE_UNAVAILABLE'} : value;
   };
+  const initialization = controls({signal});
+  await refreshCapabilities(initialization);
   try {
     const loaded = await persistence.load();
     if (loaded !== null) state = parseEnvelope(loaded);
@@ -81,7 +95,7 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
       if (!secretCodec) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
       if (capabilities().persistentAvailable) {
         try {
-          const decoded = JSON.parse(await secretCodec.decrypt(state.secret.encrypted));
+          const decoded = JSON.parse(await boundedCredentialRead(() => secretCodec.decrypt(state.secret.encrypted, initialization), initialization.signal));
           if (!exactObject(decoded, ['version', 'binding', 'value']) || decoded.version !== 1 || decoded.binding !== state.secret.binding) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
           // Reuse key bounds/control validation without ever exposing a getter.
           parseAgentSettingsUpdate({expectedRevision: state.revision, configuration: state.configuration, secret: {action: 'replace', storage: 'persistent', value: decoded.value}});
@@ -96,26 +110,30 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
   } catch { fault = agentSettingsError('AGENT_SETTINGS_CORRUPT'); }
   function schedule(operation) {
     if (closing) return Promise.reject(agentSettingsError('AGENT_SETTINGS_CLOSED'));
-    const result = tail.then(() => { if (fault) throw fault; return operation(); });
+    const result = tail.then(() => { if (closing) throw agentSettingsError('AGENT_SETTINGS_CLOSED'); if (fault) throw fault; return operation(); });
     tail = result.catch(() => {});
     return result;
   }
   const snapshot = () => sanitizeAgentSettingsResult({revision: state.revision, configuration: state.configuration, secret: {configured: Boolean(state.secret || session), storage: state.secret ? 'persistent' : session ? 'session' : 'none'}, storage: capabilities()});
   return {
-    get() { return schedule(snapshot); },
+    get(options = {}) {
+      const context = controls(options);
+      return schedule(async () => { checkpoint(context); await refreshCapabilities(context); checkpoint(context); return snapshot(); });
+    },
     [AGENT_CREDENTIAL_ACQUIRE](input, options = {}) {
       let expected;
       try { expected = parseAgentCredentialRequest(input, options); } catch (error) { return Promise.reject(error); }
-      const signal = options.signal;
+      const context = controls(options), signal = context.signal;
       return schedule(async () => {
-        if (signal?.aborted || closing) throw agentSettingsError('AGENT_SETTINGS_CLOSED');
+        checkpoint(context);
         if (state.revision !== expected.expectedRevision || JSON.stringify(state.configuration) !== JSON.stringify(expected.configuration)) throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
         const binding = agentCredentialBinding(expected.configuration);
         let apiKey = null;
         if (state.secret) {
+          await refreshCapabilities(context); checkpoint(context);
           if (!secretCodec || !capabilities().persistentAvailable || state.secret.binding !== binding) throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
           try {
-            const decoded = JSON.parse(await boundedCredentialRead(() => secretCodec.decrypt(state.secret.encrypted), signal));
+            const decoded = JSON.parse(await boundedCredentialRead(() => secretCodec.decrypt(state.secret.encrypted, context), signal));
             if (!exactObject(decoded, ['version', 'binding', 'value']) || decoded.version !== 1 || decoded.binding !== binding) throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
             apiKey = decoded.value;
           } catch { throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'); }
@@ -123,7 +141,7 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
           if (session.binding !== binding) throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
           apiKey = session.value;
         }
-        if (signal?.aborted || closing) throw agentSettingsError('AGENT_SETTINGS_CLOSED');
+        checkpoint(context);
         return sanitizeAgentCredentialResult({revision: state.revision, configuration: state.configuration, apiKey}, expected);
       });
     },
@@ -131,7 +149,9 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
       // Snapshot/validate before scheduling so callers cannot mutate queued input.
       let update;
       try { update = parseAgentSettingsUpdate(input, options); } catch (error) { return Promise.reject(error); }
+      const context = controls(options);
       return schedule(async () => {
+        checkpoint(context);
         if (update.expectedRevision !== state.revision) throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
         if (state.revision === Number.MAX_SAFE_INTEGER) throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');
         const binding = agentCredentialBinding(update.configuration);
@@ -142,9 +162,10 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
         if (update.secret.action === 'replace') {
           nextSecret = null; nextSession = null;
           if (update.secret.storage === 'persistent') {
+            await refreshCapabilities(context); checkpoint(context);
             if (!secretCodec || !capabilities().persistentAvailable) throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
             let encrypted;
-            try { encrypted = await secretCodec.encrypt(JSON.stringify({version: 1, binding, value: update.secret.value})); }
+            try { encrypted = await boundedCredentialRead(() => secretCodec.encrypt(JSON.stringify({version: 1, binding, value: update.secret.value}), context), context.signal); }
             catch { throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE'); }
             nextSecret = {binding, encrypted};
           } else nextSession = {binding, value: update.secret.value};
@@ -152,6 +173,9 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
         const candidate = {version: 2, revision: state.revision + 1, configuration: update.configuration, secret: nextSecret};
         // Validate the encrypted codec result before it reaches persistent storage.
         try { parseEnvelope(candidate); } catch { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); }
+        // Cancellation can stop a late encryption result before the atomic save
+        // starts. Once save has begun, preserve the durable/RAM commit pairing.
+        checkpoint(context);
         try { await persistence.save(candidate); }
         catch { throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED'); }
         // Only commit RAM after the single atomic envelope has committed.
@@ -159,6 +183,6 @@ export async function createAgentSettings({persistence, secretCodec, storage = {
         return snapshot();
       });
     },
-    async close() { closing = true; await tail; session = null; },
+    async close() { closing = true; lifetime.abort(); secretCodec?.close?.(); await tail; session = null; },
   };
 }

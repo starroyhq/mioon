@@ -1,121 +1,95 @@
-# Timeline Undo/Redo 恢复审查
+# Electron 密钥库超时审查
 
-2026-10-10（UTC）。结论：本轮只读源码核对未证实运行时缺陷；发现的是需要补齐的组合测试，以及当前环境不能执行的验证层。不得将静态阅读、注入测试或依赖失败计为真实后端验收通过。
+以下正文保留原8c694d1同步实现的历史审查。当前9e归档、文档串写更正及后续macOS异步整合的证据身份见文末；本文旧行号和“当前worktree”均指当时的隔离审查环境。
 
-## 范围与环境
+审查日期：2026-10-10（UTC）。基线：`8c694d191e6c90379c32c9f8db0a778c35c31e14`。隔离分支：`codex/keychain-timeout-6415a02c`。
 
-- 唯一工作树：Mac 独立隔离 checkout。
-- 分支：`codex/timeline-recovery-audit-f683b10d`；基线：`8c694d191e6c90379c32c9f8db0a778c35c31e14`。开始核验时工作区干净。
-- 已读取该工作树适用的开发约束。本轮仅新增本报告与 `tests/timeline-recovery-audit.test.mjs`；不修改运行时代码或其他工作树。
-- 使用现有 Node `v26.9.0`；未安装依赖、构建、启动应用/服务、访问真实媒体/凭据、调用供应商、提交或推送。
-- 请求的执行参数为 `gpt-6-astra` / `ultra`；此处只记录请求，不能据此核验实际承载的模型后端。
-- 当前缺少 `@mioon/contracts`、`zod`、`esbuild`、`react`。真实 controller 和 timeline 的 import 探针均在初始化阶段受阻，exit 2；业务断言没有开始执行。
+结论：**Images 后端默认 2 秒超时只结束等待，不会取消主进程已经开始的同步密钥库调用。注入同步阻塞时，主事件循环探针、排队退出请求和已启动的退出预算均无法推进。**这是本次可复现的既有控制流缺陷／设计限制，不是新引入的回归，也不是 macOS Keychain 原生复现。已有 [IMAGE-COMPATIBLE.md](IMAGE-COMPATIBLE.md#inherited-desktop-keychain-limitation) 和 [IMAGE-ACTIVATION.md](IMAGE-ACTIVATION.md) 已说明这一限制。
 
-## 已核对的后端不变量
+本次只新增本说明与 `tests/keychain-timeout-audit.test.mjs`，没有修改运行时或其他工作树。
 
-| 行为 | 源码证据 |
+## 导入安全与证明边界
+
+执行前逐一读取并核对了 broker、codec、supervisor、shutdown、identity/security 模块及其导入；这些模块通过注入参数取得 safeStorage，不直接导入 Electron。未导入有启动副作用的 `main.mjs`、`backend.mjs`，未调用创建真实设置引擎或文件持久化的入口。
+
+当前 worktree 没有安装依赖。测试从该 worktree 读取真实模块主体，以内存 data URL 加载，只替换明确列举的 import：
+
+- 保留真实 Images broker/client、共享 secret codec、Images codec、BackendSupervisor、stopBackendForQuit 的控制流，以及真实 identity/security 实现。
+- 业务 schema、错误构造和持久化依赖使用显式合成替身；明文校验仅接受一个固定测试字符串。未使用的 Agent settings、文件存储和目录校验入口调用即抛错。**没有执行真实 Zod/schema、业务持久化或完整设置流程。**
+- data URL 模块的导入检查仅允许已审查的模块和所需 Node 内建模块，拒绝新增动态／副作用导入和未登记依赖；直接按文件加载的 identity.cjs 另有无 import／require 的断言。这些检查是当前已审查源码的变更探针，不是通用递归安全沙箱。不加载 Electron、child_process 或联网工具。导入与 codec 构造阶段的假 vault 调用数为零。
+- 所有值均为新造内存数据；假加密仅用 Buffer 包装，不代表密码学验证，也不读写密钥文件、真实媒体或用户数据。
+
+测试用一个 Worker 代表 main，用测试线程代表 utility，两者拥有独立事件循环，经消息适配调用真实 broker/client。同步假 safeStorage 用 SharedArrayBuffer 与 Atomics.wait 阻塞 Worker；实际客户端使用默认 2000 ms，没有缩短该期限。对照用例同步捕获真实请求的 setTimeout 参数并断言为 2000，以独立锁定默认值；墙钟下限只证明没有缩短等待，不设置易受调度影响的窄上限。共享状态证明调用已进入、尚未返回及主循环探针不再推进。阻塞有 8 秒安全上限，各阻塞测试有 12 秒总上限，清理始终先释放 gate，再终止本测试拥有的 Worker；不使用真实进程 PID。
+
+Worker 发出 entered 后可能在进入 Atomics.wait 前被调度暂停。因此测试接受释放后返回 ok 或 not-equal（gate 已提前释放），明确拒绝 8 秒安全上限导致的 timed-out。结论依据释放前的共享状态与独立客户端超时，不单凭 Atomics.wait 返回 ok 判断。
+
+10 ms 定时探针只测量 main 替身的 JavaScript 事件循环。**它不是 renderer 动画、Electron UI 心跳或原生窗口的测量。**已加载的 renderer 动画是否继续、具体交互是否受影响，本次均未执行。
+
+## 已证明 bug：客户端超时不能约束主循环阻塞
+
+触发条件是主线程调用的 status/encrypt/decrypt 同步函数长时间不返回。真实 Keychain 是否触发、持续多久不在本次证明范围内。
+
+| 证明测试 | 实际观察 |
 | --- | --- |
-| 精确回执优先于当前 revision 检查；同 key 改输入/operation 冲突 | `packages/business/src/timeline.mjs:41–54` |
-| Undo/Redo 共用 travel，原子更新 timeline、cursor、回执；revision 单调加一 | `packages/business/src/timeline.mjs:103–118` |
-| 历史只保存 tracks、clips、durationFrames，不恢复 aggregate ID、createdAt 或 revision | `packages/business/src/timeline.mjs:76–80`；`timeline-recovery.mjs:99–104` |
-| 新编辑裁剪 redo 分支；失败事务不能留下分支删除或游标移动 | `packages/business/src/timeline.mjs:94–101,120–131` |
-| `not_applied` 仅用于已回滚、原 key 无回执、未开始写入的白名单拒绝 | `packages/business/src/timeline-recovery.mjs:14–23` |
-| 精确重放仍核验当前所属项目和素材，返回历史响应而非当前 timeline | `packages/business/src/timeline-recovery.mjs:143–153` |
-| 事务回调必须同步，禁止嵌套；异常回滚 | `packages/business/src/db.mjs:405–416` |
+| 导入及 codec 构造 | 无 vault 调用；显式操作仅进入注入的假服务 |
+| 默认期限与非阻塞 broker/client 对照 | 捕获真实请求 timer 参数，严格等于 2000 ms；真实调度和 codec 主体完成合成加解密，客户端可用性为 true |
+| broker 在微任务执行前关闭 | 未开始的 vault 操作没有执行，也没有回包 |
+| status 同步阻塞 | 客户端约 2001 ms 返回 IMAGE_SECRET_CODEC_TIMEOUT；调用仍阻塞，探针冻结，排队退出处理未进入 |
+| encrypt 同步阻塞 | 客户端约 2002 ms 超时；同样观察到未返回、探针冻结和退出延迟 |
+| decrypt 同步阻塞 | 客户端约 2001 ms 超时；同样观察到未返回、探针冻结和退出延迟 |
+| 已启动的 supervisor 停止预算 | 使用注入的 20+20+20 ms 预算，实际客户端 2 秒期限到达时停止仍 pending，fake child.kill 尚未执行；释放后才继续停止 |
 
-因此，丢失响应不能直接视为撤销失败。保留原 operation、projectId、expectedRevision、requestId；恢复历史回执后，重新读取当前 timeline/history，再形成新的编辑意图。普通 4xx、冲突字样或连接错误不能单独证明此前未提交。
+三个阻塞用例释放 gate 后，都检查了**同一个超时 requestId** 的迟到成功响应：客户端仍保持不可用，没有恢复原请求、发送取消或重新执行操作。排队退出随后通过真实 quit helper 和假 child 完成清理。
 
-## 现有覆盖，不重复声称缺失
+停止预算用例仅证明依赖同一事件循环的计时器不能抢占同步阻塞。释放后允许逾期终止与确认回调出现合法竞态；若先得到 BACKEND_STOP_UNCONFIRMED，则通过合成 owned-child exit 完成确认。没有向 OS 发送终止信号，没有声称生产 13 秒停止预算已做原生实测。
 
-以下为已有测试源码中的断言，不代表本轮已执行这些依赖完整环境的测试。
+## 静态调用链与设计风险
 
-| 已有覆盖 | 测试证据 |
+以下行号均对应上述基线，运行时文件未改动。
+
+| 位置 | 事实及边界 |
 | --- | --- |
-| 空历史不初始化；完整域快照往返、稳定 ID、单调 revision | `tests/timeline-history.test.mjs:34–82` |
-| seed 保留固定素材；不撤销镜头选择、jobs、exports | `tests/timeline-history.test.mjs:84–103` |
-| 分支替换后旧 edit/undo/redo 回执跨重开仍精确；改内容冲突 | `tests/timeline-history.test.mjs:105–122` |
-| 同请求重复、竞争 revision、独立 SQLite 连接重复 undo | `tests/timeline-history.test.mjs:124–148` |
-| 回执失败回滚、迁移、项目隔离、并发读取一致性 | `tests/timeline-history.test.mjs:150–202` |
-| 全部 11 种 timeline 写入的回执重放、stale proof、归属/回执损坏、写后失败 | `tests/timeline-recovery-business.test.mjs:89–179` |
-| 历史不能注入身份/revision，大历史记录重开重放 | `tests/timeline-recovery-business.test.mjs:181–190,258–282` |
-| malformed-success 的 undo/redo 不自动重试 | `tests/timeline-recovery-transports.test.mjs:72–83` |
-| durable 五个故障阶段跨重开恢复，现有矩阵使用 track.add | `tests/edit-tasks-business.test.mjs:28,72–82` |
-| durable 正常路径包含 undo/redo，复用相同业务回执 | `tests/edit-tasks-business.test.mjs:160–182` |
+| `apps/desktop/src/image-secret-broker.mjs:104–117` | queueMicrotask 内同步调用 codec；微任务没有把工作移出主事件循环 |
+| `apps/desktop/src/secret-store.mjs:19,41,53` | 直接调用 isEncryptionAvailable、encryptString、decryptString；外层 Promise 不会抢占它们 |
+| `apps/desktop/src/image-secret-broker.mjs:127,132–140,169` | 默认 2 秒只删除客户端 pending 并 reject，迟到响应被忽略，没有传输级取消消息 |
+| `apps/desktop/src/image-secret-broker.mjs:184–187` | crypto 先 status 再 encrypt/decrypt；2 秒是每条 wire request 的期限，不能描述为整个 crypto 操作的端到端 2 秒 |
+| `packages/business/src/images/settings.mjs:112–123` | 另有 5 秒业务等待包装，不会停止 main 中已开始的同步函数 |
+| `apps/desktop/src/supervisor.mjs:103–105`；`backend.mjs:35–37` | main 每 10 秒发 ping；utility 每 5 秒检查距最后 ping 是否超过 30 秒。长 main 阻塞可能令 utility 自行关闭；时间依赖上次 ping 和检查相位，不能说“阻塞恰好 30 秒必退出” |
+| `apps/desktop/src/main.mjs:206–224,247–250`；`supervisor.mjs:173–185` | before-quit、停止调度和确认计时器也依赖 main。排队退出可能尚未进入；已进入的默认 10+2+1 秒停止预算也不是 main 卡住时的墙钟保证 |
+| `apps/desktop/src/main.mjs:74–84`；`packages/business/src/agent/settings.mjs:80–85` | Agent 持久化初始化解密发生在创建／启动 supervisor 前，utility 启动 20 秒预算尚未开始 |
+| `apps/desktop/src/secret-broker.mjs:96,117,148,158,203`；`packages/business/src/agent/settings.mjs:19–31,118` | Agent 是另一组期限：client 默认 10 秒，acquire 有取消消息、7 秒 broker 与 5 秒读取包装。main 的计时器和 abort 处理仍无法抢占同步调用；不得套用 Images 的 2 秒结论 |
 
-## 三个具体后端组合缺口
+基于这些接线，主进程依赖的交互、窗口生命周期和退出可能延迟；只停止 utility 不会停止 main 内的 vault 调用。30 秒 lease、Agent 启动和 Agent acquire 在此为静态风险分析，未做对应时长或原生动态验收。Agent put 超时后仍可能在底层返回后继续保存（`agent/settings.mjs:147–158`），属于既有结果未知／需重新读取语义；本次未执行持久化，也不将它误报成 Images 的迟到回包恢复。
 
-1. **Undo/Redo 回执落库失败后，同一原请求跨重开恢复。** 对两个方向注入 `BEFORE INSERT ON timeline_requests` 失败；断言 timeline/history/cursor/receipts 不变且没有 `not_applied`。移除故障、关闭重开 store，再提交原输入/key：仅应用一次，重复提交不再推进 revision/cursor。现有 `timeline-history.test.mjs:150–159` 恢复时改用新 key；`timeline-recovery-business.test.mjs:172–179` 只检查失败瞬间。split 有类似测试（`timeline-split.test.mjs:334–360`），不能代替两个 travel 方向。
+已证明的保护仍有效：未开始的 broker 操作可在 close 后被阻止；迟到结果不会让超时客户端恢复可用。没有发现本次条件下的自动重试、自动降级明文或凭据回显；这不是完整安全审计结论。
 
-2. **Undo/Redo 已 COMMIT、响应阶段抛错后恢复。** 真实 `store.tx(callback)` 返回后抛异常，模拟提交成功但上层未取得 ACK；应没有 `not_applied`，且已经保留一个回执和一次游标变化。重开后原请求恢复历史响应，不重复遍历历史。现有提交后异常只测 track.add（`timeline-recovery-business.test.mjs:115–125`），未覆盖两个 travel 方向的后续重开。
+## 目标 OS 未验证
 
-3. **当前时间线为空、历史目标素材归属失效时的 fresh travel。** Undo 用“添加 clip 后移除”，Redo 用“添加 clip 后 undo”；仅改变合成历史目标素材的 SQL owner。原请求应以 `TIMELINE_SOURCE_UNAVAILABLE` 失败、无 `not_applied`，四类状态不变；修复合成 owner 并重开后，同一原请求才能成功。现有归属损坏主要覆盖已成功回执的 replay（`timeline-recovery-business.test.mjs:128–139`），不是这个历史目标恢复路径。
+- 未调用真实 macOS Keychain、Electron safeStorage、解锁／拒绝／授权弹窗；不知道原生调用在目标版本上的实际阻塞条件和时长。
+- 未启动 Electron、renderer、utilityProcess 或应用；Worker 只用于分离事件循环，不代表原生进程或 UI 验收。
+- 未执行生产 10 秒 heartbeat／30 秒 lease 的真实过期、应用强制退出、安装／签名／公证、Keychain 身份或既有密文兼容性验证。
+- 其他 OS 的 vault 行为也未验证；不会据合成 `platform: 'darwin'` 参数宣称 macOS 通过。
 
-以上均为覆盖建议，不是已复现缺陷。所有素材可只用合成 metadata，禁止为这些测试启动 worker、导入或读取媒体。
+## 最小修复边界
 
-## 当前 durable 入口与旧 runSession 的差异
+若目标是“密钥库卡住时 main 仍可响应和退出”，修复必须改变同步 vault 工作的执行位置或采用经目标 Electron/OS 验证的非阻塞执行方式。仅添加 Promise.race、AbortController、微任务、同线程队列或延长超时，都不能实现这个目标。
 
-当前 UI 顺序是 `changeTimelineHistory` → `mutateTimeline` → `run` → `runDurable`。触发前检查编辑模式、项目、history 同步、busy/pending/dirty/online；mutation 还检查任务 lane（`apps/web/src/App.jsx:728–753`）。Undo/Redo 属于 durable allowlist，render 不属于（`packages/contracts/src/edit-tasks.mjs:7–10,21–24`）。
+范围至少涵盖共享 secret-store 的 status/encrypt/decrypt、Images broker，以及直接由 main 持有的 Agent 初始化／读写路径。执行单元需由可响应的监督方限制并发、管理 deadline、拒绝关闭后的新请求、隔离迟到结果，并保留原有渠道与凭据绑定、不可用时拒绝持久化和显式 session-only 选择。不能用无限重试或杀 utility 代替取消 main 的调用。
 
-`run()` 对新 durable 意图调用任务控制器，只有 excluded 操作或 `options.replay` 走 `runSession`（`App.jsx:354–356`）。`runDurable` 经 prepare/execute/acknowledge，失效 history、保留未知结果、按当前项目刷新；不会直接调用 RPC 或以 sessionStorage 作为新任务的事实来源（`:358–409`）。
+在选择 Worker、utility 或独立 helper 前，必须验证目标 Electron API 是否支持该执行位置，以及原 app 身份、Keychain 权限和既有密文能否保持兼容；本次不预先指定某种实现一定可行。这是后续修复边界，不是本轮运行时修改或原生验证授权。
 
-实际 controller 负责加载完整任务页、冻结原输入、禁止未确认 lane 新编辑、导航后禁止迟到派发；显式恢复先 get，再按状态 reconcile/execute（`apps/web/src/edit-task-controller.js:54–120`）。这些行为不能仅靠注入假的任务服务证明。
+## 验证记录
 
-`tests/timeline-recovery-ui.test.mjs:10–16` 精确提取的是旧 `runSession`。它仍覆盖兼容恢复路径，但不能独自代表当前 Undo/Redo 新提交入口。`tests/edit-task-app.test.mjs:15,55–65` 已有真实 controller 与当前 App 分派测试，但其主要 fixture 固定为 `timeline.track.update`；`tests/edit-task-client.test.mjs:10` 同样如此。当前环境因依赖缺失未能执行这两个文件。
-
-候选“冲突仍显示旧文案”已否定：`readableError` 按 `CONFLICT` / `REVISION_CONFLICT` code 转换提示（`apps/web/src/App.jsx:55–59`）；不能只看 durable 分支构造的原始 message 就报告 UI 缺陷。
-
-## 新增测试矩阵与可信边界
-
-| 层级 | 用例 | 执行边界 |
-| --- | --- | --- |
-| 纯 Node 导入真实模块 | history 状态、busy/pending/dirty/offline、快照不一致；键盘/输入控件/弹窗屏蔽 | 实际 `timeline-history.js:13–38`、`timeline-keyboard.js:12–25`，无 React/SQLite |
-| 当前 App 普通 JS 函数 | 精确提取 run/runDurable、history 触发与 mutation 包装；注入任务服务验证成功/拒绝/未知/导航/重复点击 | 执行真实函数体，任务服务端口由合成替身提供；未执行 controller、HTTP、SQLite，不称端到端 |
-| 真实业务恢复 | undo/redo × 回执插入失败、COMMIT 后抛错 × store 重开/原 key 重放 | 需实际 contracts/Zod；缺依赖显式 skip，不改用重写的内存业务模型冒充 |
-| durable 针对性扩展 | undo/redo × afterClaim、beforeDispatch、afterBusinessCommit、beforeOutcomePersist、afterOutcomePersist × 重开 | 实际 `edit-tasks.mjs:228–260`、`:284–297`；覆盖 startup 不派发、旧 instance 拒绝、原 key 最多应用一次 |
-| 历史来源边界 | 两方向历史目标 owner 失效、恢复后原 key 重放 | 仅列明具体后续用例；本轮新增测试未纳入这一项，也未执行 |
-
-durable 五阶段不是完全未测：旧矩阵已有 track.add；这里要求补充 Undo/Redo 与历史 cursor 的交叉断言。缺依赖时应保留明确 skip 原因，不能将未执行的真实路径计入纯 Node 通过数。
-
-## 执行记录
-
-所有命令在上述工作树运行，使用 Node `v26.9.0`。初次失败与受限重跑分别保留，不把前一次失败改写为通过。
-
-| 检查 | 已知结果 |
-| --- | --- |
-| controller / timeline 真实 import 探针 | exit 2，缺依赖导致初始化阻塞；没有业务断言通过 |
-| 首次现有 UI suite，`--test-name-pattern='^(?!history controls render)'` | 未排除 render 子测；12 tests，11 pass，1 fail，0 skipped，exit 1；失败因 esbuild 缺失，非业务断言 |
-| 改用下方 `--test-skip-pattern` | exit 0；Node 报告 11 tests / 11 pass / 0 fail / 0 skipped。显式排除 1 项依赖 esbuild 的控件渲染测试，不能写成 skipped 1 |
-| 新增 audit 完整文件 | exit 0；25 tests，11 pass，0 fail，14 skipped。14 项真实 SQLite/durable 组合因缺少 `@mioon/contracts`、`zod` 在初始化前显式跳过；未执行，不是通过 |
-| 新测试语法检查、最终 diff/范围检查 | `node --check` exit 0；tracked/staged diff 为空，新文件空白检查无诊断，仅两份指定新增文件，分支/HEAD 未变。这些不计入业务通过项 |
-
-新增审查测试与语法检查命令：
+使用现有 Node v26.9.0，在本 worktree 根目录执行：
 
 ```sh
-env -u NODE_OPTIONS -u NODE_PATH node --test --test-concurrency=1 tests/timeline-recovery-audit.test.mjs
-env -u NODE_OPTIONS -u NODE_PATH node --check tests/timeline-recovery-audit.test.mjs
+env -u NODE_OPTIONS -u NODE_PATH node --check tests/keychain-timeout-audit.test.mjs
+env -u NODE_OPTIONS -u NODE_PATH node --test --test-concurrency=1 tests/keychain-timeout-audit.test.mjs
 ```
 
-新增 11 项通过：Undo/Redo 各 5 项 App 控制流（重复触发、明确拒绝、普通 409、函数作用域重建后显式恢复、关闭任务中心后的执行回调），另 1 项直接导入的历史状态时序检查。重建函数作用域和保留内存合成任务不等于真实关闭/重开应用；业务模块依赖完备后才会执行其余 14 项。源码导入或 fixture 若在依赖解析成功后失败，测试直接失败，不捕获成通过。
+最终测试代码实际执行 **7 项通过、0 失败、0 跳过、0 取消**，约 8.38 秒。诊断输出只有操作名、合成状态和计时，不含真实凭据。所有本次新增可运行用例都已执行；没有把导入失败当通过或跳过。
 
-已执行的现有 suite 重跑命令：
-
-```sh
-env -u NODE_OPTIONS -u NODE_PATH node --test --test-concurrency=1 \
-  --test-skip-pattern='history controls render shared Base UI' \
-  tests/client-timeline-history-ui.test.mjs
-```
-
-执行目录为上述唯一工作树。这个受限通过结果只支持 history/keyboard 与该文件其余无第三方依赖检查；不证明 React 控件渲染、真实 controller、SQLite、HTTP/CLI/MCP 或浏览器恢复已经通过。
-
-后续在已授权且依赖完备的环境补跑真实路径即可；本次不安装依赖、不改生产代码以消除环境失败，也不依据上述缺口预设需要修复运行时。
-
-
-## 云端补验：2026-10-10
-
-在 `3ece477` 之上的整合 checkout，依赖已完备。相同新增文件执行 **25 项、25 通过、0 失败、0 跳过**；之前未执行的 14 项真实 SQLite/durable undo/redo 路径全部运行。整合聚焦门还保留旧 CLI/MCP、Comfy 恢复与连接权限覆盖。
-
-这些结果证实本报告逐项列出的回滚、提交后响应丢失、五处 durable 中断及同 key 恢复断言；并不把前 11 项合成 App 函数测试升级为 React/native 恢复验收。历史快照素材所有权改变后的新 travel 仍是本审查未覆盖项，不能因这一组通过就宣称任意损坏状态均已验证。生产 timeline/recovery 代码未改变。
-
+未运行依赖未安装的既有完整 settings/desktop 套件，也未安装依赖或绕入其他 worktree。未执行 build、packaging、应用、真实网络、Keychain 或文件持久化。新增测试仅作上述审查证明，不代表完整应用回归通过。
 
 ## 云端整合复验：2026-10-10
 
@@ -124,3 +98,10 @@ env -u NODE_OPTIONS -u NODE_PATH node --test --test-concurrency=1 \
 这是同步设计的历史故障基线。未来正式采用异步 safeStorage 时，应将该组迁移为“旧基线独立复现 + 新异步行为不阻塞”的明确测试，不得为了绿灯弱化断言，也不得要求新运行时继续满足同步阻塞缺陷。macOS 用户提示、拒绝、旧密文互操作及实际正常退出仍需另行原生验证。
 
 父级最终独立整合 full：3035 项、3033 通过、0 失败、2 项既有平台/权限跳过；此 Keychain 合成基线 7 项均通过，不意味着同步阻塞已经修复。
+
+
+## 文档身份更正：2026-10-10
+
+提交 `9e9598d` 中本文件正文被错误写为 Timeline 审查，还带入了 Timeline 的25项云端补验；这是云端整合文档串写，不是 Keychain 的运行结果。本次从完整 SHA-256 为 `0f96d8700f667252f3c678ac932f87b62e54661a5f7c0b6c1e1b9a62da597fab` 的原始 Mac 补丁恢复上面的正确 Keychain 正文，仅保留属于 Keychain 的7项云端追加结果。Timeline 报告与其25项结果仍保留在 [TIMELINE-RECOVERY-AUDIT.md](TIMELINE-RECOVERY-AUDIT.md)。
+
+实际9e原审计测试 SHA-256 为 `c8da3aef5577cd47fb1e049ee5ac4a14f82220e6bb0f4ce732c00171cd6e8863`。本轮将原测试及8个精确依赖源码固定在 `tests/fixtures/keychain-sync-9e9598d.json`，由历史重放测试按原字节重建；7项历史同步缺陷复现不表示当前 macOS 仍应阻塞。当前异步正向测试与 Linux 保留的同步强 keyring 语义分别验收，见 [KEYCHAIN-ASYNC-CANDIDATE.md](KEYCHAIN-ASYNC-CANDIDATE.md)。

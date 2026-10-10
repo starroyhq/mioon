@@ -7,7 +7,7 @@ const RESPONSE = 'agent-settings-response';
 const CANCEL = 'agent-credential-cancel';
 const VERSION = 1;
 const MAX_PENDING = 32;
-const REQUEST_KEYS = new Set(['type', 'version', 'requestId', 'operation', 'input', 'selfPort']);
+const REQUEST_KEYS = new Set(['type', 'version', 'requestId', 'operation', 'input', 'selfPort', 'deadline']);
 const RESPONSE_KEYS = new Set(['type', 'version', 'requestId', 'ok', 'data', 'error']);
 const ERROR_MESSAGES = Object.freeze({
   AGENT_SETTINGS_UNAVAILABLE: 'Agent settings are unavailable. Retry after restarting the local service.',
@@ -32,6 +32,7 @@ function boundedJson(value) {
   catch { return false; }
 }
 function validPort(value) { return value === undefined || (Number.isInteger(value) && value >= 1 && value <= 65535); }
+function validDeadline(value) { return value === undefined || (Number.isSafeInteger(value) && value > 0 && value <= Date.now() + 60000); }
 function safeError(error) {
   if (Object.hasOwn(ERROR_MESSAGES, error?.code)) {
     const fixed = transportError(error.code);
@@ -71,7 +72,7 @@ export function createAgentSettingsBroker({ agentSettings, send, isActive = () =
       if (!validId(message.requestId) || !active()) return true;
       const { requestId } = message;
       if (!plainObject(message) || !boundedJson(message) || message.version !== VERSION ||
-        Object.keys(message).some(key => !REQUEST_KEYS.has(key)) || !validPort(message.selfPort) ||
+        Object.keys(message).some(key => !REQUEST_KEYS.has(key)) || !validPort(message.selfPort) || !validDeadline(message.deadline) ||
         !['get', 'put', 'acquire'].includes(message.operation) ||
         (message.operation === 'get' ? Object.hasOwn(message, 'input') : !plainObject(message.input))) {
         reply(errorResponse(requestId, transportError('VALIDATION_ERROR')));
@@ -93,15 +94,20 @@ export function createAgentSettingsBroker({ agentSettings, send, isActive = () =
       if (!agentSettings || typeof agentSettings[message.operation === 'acquire' ? AGENT_CREDENTIAL_ACQUIRE : message.operation] !== 'function') {
         reply(errorResponse(requestId, transportError('AGENT_SETTINGS_UNAVAILABLE'))); return true;
       }
-      const controller = message.operation === 'acquire' ? new AbortController() : null;
+      const controller = new AbortController();
       pending.set(requestId, {controller});
       // Snapshot only the bounded input. Nothing after this point references the
       // incoming envelope, and errors cannot serialize it or its plaintext key.
       const input = message.operation !== 'get' ? JSON.parse(JSON.stringify(message.input)) : undefined;
       const operation = message.operation;
-      const options = { selfPort: selfPort ?? message.selfPort };
+      // The original utility deadline fences a late encrypt before save even
+      // when its cancellation message has not reached main yet. Legacy requests
+      // without a deadline still get a bounded main-side lifetime.
+      const deadline = Math.min(message.deadline ?? Infinity, Date.now() + 7000);
+      const options = { selfPort: selfPort ?? message.selfPort, signal: controller.signal,
+        isActive: () => active() && Date.now() < deadline };
       void (async () => {
-        let response, timer;
+        let response, timer = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
         // Acquisition has its own abort/deadline, independent of HTTP lifetime.
         const acquire = async () => {
           const expected = parseAgentCredentialRequest(input, options);
@@ -114,7 +120,6 @@ export function createAgentSettingsBroker({ agentSettings, send, isActive = () =
             };
             const abort = () => finish(transportError('AGENT_SETTINGS_UNAVAILABLE'));
             controller.signal.addEventListener('abort', abort, {once: true});
-            timer = setTimeout(() => controller.abort(), 7000);
             if (!active() || controller.signal.aborted) return abort();
             Promise.resolve().then(() => {
               if (controller.signal.aborted || !active()) throw transportError('AGENT_SETTINGS_UNAVAILABLE');
@@ -125,16 +130,16 @@ export function createAgentSettingsBroker({ agentSettings, send, isActive = () =
           });
         };
         try {
-          if (!active()) return;
+          if (!options.isActive() || controller.signal.aborted) return;
           const data = operation === 'acquire' ? await acquire() : sanitizeAgentSettingsResult(operation === 'get' ? await agentSettings.get(options) : await agentSettings.put(input, options));
           response = { type: RESPONSE, version: VERSION, requestId, ok: true, data };
           if (!boundedJson(response)) throw transportError('AGENT_SETTINGS_UNAVAILABLE');
         } catch (error) { response = errorResponse(requestId, error); }
         finally { clearTimeout(timer); pending.delete(requestId); }
-        if (active()) {
+        if (options.isActive() && !controller.signal.aborted) {
           // Never cache an acquisition result or replay a plaintext credential.
           remember(requestId, fingerprint, operation === 'acquire' ? null : response);
-          if (!controller?.signal.aborted) reply(response);
+          reply(response);
         }
       })();
       return true;
@@ -155,11 +160,15 @@ export function createAgentSettingsClient({ port, timeout = 10000 }) {
     if (!entry) return;
     pending.delete(requestId);
     clearTimeout(entry.timer); entry.signal?.removeEventListener('abort', entry.abort);
-    if (error && entry.operation === 'acquire') { try { port.postMessage({type: CANCEL, version: VERSION, requestId}); } catch {} }
+    if (error) { try { port.postMessage({type: CANCEL, version: VERSION, requestId}); } catch {} }
     if (error) entry.reject(error); else entry.resolve(data);
   };
   const onMessage = ({ data: message } = {}) => {
     if (message?.type !== RESPONSE || !validId(message.requestId) || !pending.has(message.requestId)) return;
+    if (Date.now() >= pending.get(message.requestId).deadline) {
+      complete(message.requestId, transportError('AGENT_SETTINGS_TIMEOUT'));
+      return;
+    }
     if (!plainObject(message) || !boundedJson(message) || message.version !== VERSION ||
       Object.keys(message).some(key => !RESPONSE_KEYS.has(key)) || typeof message.ok !== 'boolean') {
       complete(message.requestId, transportError('AGENT_SETTINGS_UNAVAILABLE'));
@@ -189,21 +198,22 @@ export function createAgentSettingsClient({ port, timeout = 10000 }) {
   const request = (operation, input, options) => {
     if (closed) return Promise.reject(transportError('AGENT_SETTINGS_UNAVAILABLE'));
     if (pending.size >= MAX_PENDING) return Promise.reject(transportError('AGENT_SETTINGS_BUSY'));
-    if (!plainObject(options) || Object.keys(options).some(key => key !== 'selfPort' && !(operation === 'acquire' && key === 'signal')) || !validPort(options.selfPort)) {
+    if (!plainObject(options) || Object.keys(options).some(key => !['selfPort', 'signal'].includes(key)) || !validPort(options.selfPort)) {
       return Promise.reject(transportError('VALIDATION_ERROR'));
     }
     let expected;
     try { if (operation === 'acquire') expected = parseAgentCredentialRequest(input, options); }
     catch { return Promise.reject(transportError('VALIDATION_ERROR')); }
     const requestId = randomUUID();
-    const message = { type: REQUEST, version: VERSION, requestId, operation, ...(options.selfPort !== undefined ? {selfPort: options.selfPort} : {}),
+    const deadline = Date.now() + timeout;
+    const message = { type: REQUEST, version: VERSION, requestId, operation, deadline, ...(options.selfPort !== undefined ? {selfPort: options.selfPort} : {}),
       ...(operation !== 'get' ? { input: expected ?? input } : {}) };
     if (!boundedJson(message)) return Promise.reject(transportError('VALIDATION_ERROR'));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => complete(requestId, transportError('AGENT_SETTINGS_TIMEOUT')), timeout);
-      const signal = operation === 'acquire' ? options.signal : null;
+      const signal = options.signal;
       const abort = () => complete(requestId, transportError('AGENT_SETTINGS_UNAVAILABLE'));
-      pending.set(requestId, { resolve, reject, timer, operation, expected, signal, abort });
+      pending.set(requestId, { resolve, reject, timer, operation, expected, signal, abort, deadline });
       if (signal?.aborted) return abort();
       signal?.addEventListener('abort', abort, {once: true});
       try { port.postMessage(message); }

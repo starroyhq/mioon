@@ -1,5 +1,7 @@
 # Electron 桌面版
 
+当前说明核对基线：`9e9598d887b21b8e1b7dc742e5d15c66a3ff93d4`（2026-10-10）。下方 V3/V4/V4.1 运行记录保留其历史归属；此次文档核对不产生 Mac/Windows 原生通过记录。
+
 桌面版使用 Electron 44.7.0，运行同一份 React 页面、HTTP 适配层和业务包。没有另写一套生成、时间线、幂等或数据库逻辑。桌面主进程只负责窗口、安全边界、工具配置与服务生命周期。
 
 ## 运行模型
@@ -14,26 +16,26 @@ Electron 主进程
 独立 MCP 客户端 → stdio MCP bridge → 同一个正在运行的 HTTP 服务
 ```
 
-打包后的桌面应用不调用系统 `node`，不使用 `child_process.fork`，也不会悄悄回退到 PATH 中的 Node。Electron 44.7.0 的实际二进制探测结果为 Node 24.21.0、SQLite 3.53.4。最终运行验证还须覆盖 utilityProcess，而不能仅凭版本或 Node 模式探测声称通过。
+打包后的桌面应用不调用系统 `node`，不使用 `child_process.fork`，也不会悄悄回退到 PATH 中的 Node。此前 Linux Electron 44.7.0 的实际二进制探测结果为 Node 24.21.0、SQLite 3.53.4；其他平台必须记录其实际运行结果。最终运行验证还须覆盖 utilityProcess，而不能仅凭版本或 Node 模式探测声称通过。
 
-`apps/desktop/scripts/build.mjs` 用 esbuild 将共享服务及其运行依赖打入 `backend.cjs`，将桌面壳打入 `main.cjs`，复制 `apps/web/dist`。暂存目录与最终 ASAR 均排除 workspace 软链接、`node_modules`、原素材、项目数据库或访问令牌。生产依赖许可证和 checked-in shadcn/ui 的 MIT 许可证一同装入 `licenses/`；Electron/Chromium 许可证由 Electron 分发包提供。`inspect-package.mjs` 会逐项检查最终 ASAR 及实际二进制 fuse 字节，防止打包工具从父目录额外收集依赖。
+`apps/desktop/scripts/build.mjs` 用 esbuild 将共享服务及其运行依赖打入 `backend.cjs`，将桌面壳打入 `main.cjs`，复制 `apps/web/dist`。暂存目录与最终 ASAR 均排除 workspace 软链接、`node_modules`、原素材、项目数据库或访问令牌。生产依赖许可证和 checked-in shadcn/ui 的 MIT 许可证一同装入 `licenses/`；Electron/Chromium 许可证由 Electron 分发包提供。现有 Linux 专用 `inspect-package.mjs` 会逐项检查最终 ASAR 及实际二进制 fuse 字节，防止打包工具从父目录额外收集依赖。
 
 ## 从源码启动
 
 Mac 首次源码试用见 [Mac 源码试用指南](MAC-SOURCE-TRIAL.zh-CN.md) 与 [试用记录表](MAC-TRIAL-CHECKLIST.zh-CN.md)；Mac 原生行为仍未验证。
 
-需要 Node 24、pnpm 11.25.0 和可信来源安装的 FFmpeg / ffprobe。Node 与 pnpm 是构建工具要求，发布桌面包的后端不依赖它们。
+需要 Node ≥24、pnpm 11.25.0 和可信来源安装的 FFmpeg / ffprobe。Node 与 pnpm 是构建工具要求，发布桌面包的后端不依赖它们。
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm build
-pnpm desktop:build
-pnpm desktop
+node scripts/tooling.mjs doctor
+node scripts/tooling.mjs build --channel=development
+MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop
 ```
 
 Electron 44 的 npm 分发会在需要时下载官方运行时。构建主机需要能访问 npm registry 及 Electron 官方下载，缓存目录需要可写。Electron npm 安装器实际读取 `electron_config_cache`；electron-builder 可使用自己的 `ELECTRON_CACHE`。受限 CI 还可明确设置 `XDG_CACHE_HOME`、`XDG_DATA_HOME` 和 pnpm store；不要因此关闭 Chromium 沙箱。
 
-第一次启动会用原生文件对话框要求选择已安装的 `ffmpeg` 与 `ffprobe`。不会自动下载或运行来源不明的二进制。也可由启动者明确给出绝对路径：
+未提供或无法验证已保存/环境指定的视频工具路径时，启动会用原生文件对话框要求选择已安装的 `ffmpeg` 与 `ffprobe`。不会自动下载或运行来源不明的二进制。也可由启动者明确给出绝对路径：
 
 ```sh
 MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm desktop
@@ -48,7 +50,7 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm deskt
 - 正式版 application / bundle ID：`app.starroy.mioon`
 - 开发版 application / bundle ID：`app.starroy.mioon.dev`
 - `pnpm desktop:build` 默认构建开发版；`pnpm desktop:build:production` 明确构建正式版暂存产物。之后 `pnpm desktop` 运行刚刚构建的渠道。
-- 渠道在构建时写入主进程和 `build/package.json` 的 `workbenchDesktop`，启动时不读取 `NODE_ENV`、`MIOON_DESKTOP_CHANNEL` 等环境变量，也不把 `app.isPackaged` 当作渠道。因此开发版打包后仍是 `.dev`。
+- 渠道在构建时写入主进程和 `build/package.json` 的 `mioonDesktop`，启动时不读取 `NODE_ENV`、`MIOON_DESKTOP_CHANNEL` 等环境变量，也不把 `app.isPackaged` 当作渠道。因此开发版打包后仍是 `.dev`。
 - `app.setAppUserModelId`（Windows）、Linux desktop name / WM_CLASS 与打包 ID 保持一致；macOS bundle ID 来自 builder 配置，尚未实机验证。
 - 开发版系统应用名称/可执行文件增加 Dev / `-dev` 以便并存；界面统一为 Mioon，npm workspace 为 `@mioon/*`，CLI 为 `mioon`，不提供旧命令别名。
 - 打包前检查暂存渠道，拒绝把开发版暂存目录当成正式版，或反过来。源码版本为 `0.4.1`。
@@ -70,7 +72,7 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm deskt
 
 V3/V4 原来的 `video-workbench/` 目录原封不动保留。V4.1 首次启动默认打开新渠道目录，旧项目不会自动出现，也不会被删除。要保留项目，请先正常退出旧/新应用并备份整个旧 `workspace/`，再使用下面的复制助手。Linux 旧数据通常来自 `~/.config/video-workbench/workspace`，macOS 旧数据来自 `~/Library/Application Support/video-workbench/workspace`。目标是所选新渠道中尚不存在的 `workspace/`。如果新版本已创建目标 workspace，选择全新的 `MIOON_DESKTOP_USER_DATA` 目录；不要覆盖、删除或合并已有项目。工具路径需重新选择，不复制旧 Chromium 配置或凭据。迁移完成后也保留旧数据，确认项目和媒体完整后再由用户决定如何归档。
 
-提供明确执行的源码迁移助手（需要 Node 24）。先正常关闭两边应用，再指定旧数据目录与尚不存在的新 `workspace/` 路径：
+提供明确执行的源码迁移助手（需要 Node ≥24）。先正常关闭两边应用，再指定旧数据目录与尚不存在的新 `workspace/` 路径：
 
 ```sh
 node apps/desktop/scripts/migrate-data.mjs --source=/absolute/old/data --destination=/absolute/desktop-user-data/workspace
@@ -101,9 +103,11 @@ Loopback token 与 OS 账户权限共同构成本地单用户信任边界。本�
 
 正常停止先中断操作，再等待已持有句柄的本地媒体进程退出，随后关闭 worker、HTTP、SQLite 并清理 discovery。媒体停止尝试最多 3 秒，worker/server 最多 5 秒，utility 停止尝试最多 13 秒；未确认退出时返回明确失败，不能把发送信号当作回收成功。仍有准确句柄时应用继续等待实际退出，不承诺整个应用一定在 13 秒内关闭。utility 意外退出后，记录的数字 PID 不足以证明进程归属，因此不会据此杀进程；媒体清理不明时阻止该应用内自动替换/重启，并提供明确的“退出应用”警告。退出后的新应用生命周期无法证明旧媒体进程已结束，再次工作前可能需要用户在系统任务管理器中检查。
 
-服务崩溃时提供原生“重启本地服务/退出”选择。重启使用新端口/新令牌并重新载入同一数据目录；未保存界面状态可能丢失。渲染进程崩溃可单独重新载入，后台保持独立。已知生成任务继续查询，提交结果未知的任务先对账，不因 Electron 重启自动重发收费请求。被中断的本地时间线渲染重新排队，旧结果文件保持不可变。utility 另有 30 秒主进程心跳租约。历史无活动媒体的 utility 崩溃恢复与当前正常退出证据，不代表活动媒体异常退出的自动回收能力；旧的“崩溃后按 PID 杀媒体并自动恢复”验收已撤销。操作系统同时强杀整个进程树也可能绕过清理方；原生 macOS/Windows 与异常孤儿进程恢复仍需专项验收。
+服务崩溃时提供原生“重启本地服务/退出”选择。重启使用新端口/新令牌并重新载入同一数据目录；未保存界面状态可能丢失。渲染进程崩溃可单独重新载入，后台保持独立。原有视频生成任务按已知远端任务继续查询，提交结果未知的任务先对账，不因 Electron 重启自动重发收费请求。Images/ComfyUI 采用各自的结果恢复规则；ComfyUI 重启后不会自动查询或再次 POST，需要显式观察同一已保存任务。被中断的本地时间线渲染重新排队，旧结果文件保持不可变。utility 另有 30 秒主进程心跳租约。历史无活动媒体的 utility 崩溃恢复与当前正常退出证据，不代表活动媒体异常退出的自动回收能力；旧的“崩溃后按 PID 杀媒体并自动恢复”验收已撤销。操作系统同时强杀整个进程树也可能绕过清理方；原生 macOS/Windows 与异常孤儿进程恢复仍需专项验收。
 
-macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开窗口，明确退出才关闭服务。此行为已写入源码，但仍需 macOS 实机验证。源代码尚未实现发布升级、签名、公证或系统密钥链凭据配置。
+macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开窗口，明确退出才关闭服务。此行为已写入源码，但仍需 macOS 实机验证。发布升级、正式签名和公证仍未完成。Agent 与官方/自定义 Images 专用设置及 Electron safeStorage 接入已实现；密钥保持独立绑定，不向 renderer 返回密钥，不用一个配置槽静默替换另一个。ComfyUI 有独立无密钥连接设置。真实 macOS Keychain 可用性/拒绝/重启兼容尚未原生认证；9e基线使用同步 safeStorage；本次整合候选的 macOS 路径使用官方异步 API，超时/失败不回退同步，真实 Keychain 仍待验证。Linux 保留原四类强 keyring 同步路径和旧密文，客户端超时不能解除其主线程阻塞；Windows 仍 fail-closed。候选详情见 [Keychain 异步边界](KEYCHAIN-ASYNC-CANDIDATE.md)。安全存储不可用时仅允许明确的 session-only 模式，不回退到明文持久化；Agent 会话密钥在主进程关闭时丢失，Images 会话密钥在其 backend 生命周期结束时丢失。
+
+本地编辑协调账本当前覆盖 15 类固定操作：原有时间线/首帧连接十二类，加 `subject.create`、`subject.version.add`、`subject.binding.set`。启动或列表读取不会自动执行；其余八类画板/素材编辑和 `timeline.render` 等保持各自原有恢复边界。Images/ComfyUI 的审批与结果恢复是独立任务语义，不通过这份编辑账本执行。详见 [任务恢复契约](TASK-RECOVERY.md)。
 
 ## 项目视图记忆
 
@@ -119,7 +123,7 @@ macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开
 
 MCP bridge 可以配置 `MIOON_CONNECTION_FILE` 指向所选渠道的 descriptor；每次工具调用重新读取，因此能跟随桌面端口和认证轮换。它通过同一 HTTP service 工作，不另开 SQLite、worker 或第二套业务服务。客户端配置和 Node CLI 要求见 `docs/MCP.md`。
 
-供应商设置只允许明确列出的服务端环境变量传入 utility，包括 `RUNWAYML_API_SECRET`、`MIOON_ENABLE_LIVE_PROVIDER`、授权素材哈希、输出域名和额度门槛；不会传到页面。真实供应商联调仍未获授权，本次测试只使用模拟供应商与原创合成素材。
+视频供应商配置只允许明确列出的服务端环境变量传入 utility，包括 `RUNWAYML_API_SECRET`、`MIOON_ENABLE_LIVE_PROVIDER`、授权素材哈希、输出域名和额度门槛；不会传到页面。Agent/Images 使用各自专用设置与授权边界，不依赖该视频环境开关作为总开关。首次源码试用只用模拟供应商与原创合成素材，不填写真实密钥，不启用 Agent、官方/自定义 Images 或 ComfyUI，也不点击会联网的连接检查。
 
 ## 本地打包
 
@@ -136,7 +140,7 @@ pnpm --filter @mioon/desktop package:dir:dev
 
 正式版输出在 `release/desktop/production/`，开发版在 `release/desktop/development/`：Linux x64 解包目录及 `tar.gz`。两个渠道输出互不覆盖，旧 `release/desktop/` 历史产物保持原样。压缩包中包含 Electron / Node / SQLite / 页面 / 后端；解包后运行正式版 `mioon` 或开发版 `mioon-dev`，仍需外部 FFmpeg / ffprobe。必须在支持 Chromium 沙箱的非 root Linux 图形会话中运行。若系统策略阻止用户命名空间或沙箱辅助程序，保持安全失败，不添加 `--no-sandbox` 或静默降级。
 
-`apps/desktop/electron-builder.cjs` 与 `.dev.cjs` 另有 macOS arm64/x64 DMG 配置；只是配置，没有在本次任务里运行 Mac 构建、签名、公证、Gatekeeper 验证或安装升级测试。未生成可声称已验证的 macOS 安装包。
+`pnpm --filter @mioon/desktop package:mac` 与 `package:mac:dev` 先通过 tooling 串行构建 Web 和对应渠道，再运行 builder（`--publish never`）；不能并行共用 staging。`apps/desktop/electron-builder.cjs` 与 `.dev.cjs` 配置 macOS arm64/x64 DMG，目前 `identity:null`，没有已验证的签名/公证、Gatekeeper 或安装升级结果，不能将构建成功称为可分发认证。入口依据见 [打包入口说明](PACKAGE-ENTRYPOINTS.md)，平台门槛见 [发布门槛](PLATFORM-RELEASE-GATES.md)。
 
 ## 验证
 
@@ -173,7 +177,7 @@ Q3 当前媒体环境/退出验收与原生限制见 [MEDIA-RUNTIME.md](MEDIA-RU
 
 V4 最初桌面源码版本为 0.4.0；V4.1 身份补丁为 0.4.1。utility 的显式环境白名单新增 ARK、GEMINI/VEO、MINIMAX 和 VIDU 配置；名单由 provider registry 维护，仍不继承任意环境或将密钥发送到 renderer。MiniMax/Vidu 的区域只接受 `global` / `cn`，不会跨区切换；Vidu 还必须配置经核实的精确输出主机。
 
-CLI 与 MCP 都可使用同一 `MIOON_CONNECTION_FILE`，每次请求重新读取，跟随桌面端口/令牌轮换。Web 模式还支持 `MIOON_BASE_URL` + `MIOON_TOKEN_FILE`。连接与命令见 CLI.md / MCP.md。应用的 Node 来自 Electron；源代码 CLI/MCP 仍需客户端电脑安装 Node24 和工作区依赖。
+CLI 与 MCP 都可使用同一 `MIOON_CONNECTION_FILE`，每次请求重新读取，跟随桌面端口/令牌轮换。Web 模式还支持 `MIOON_BASE_URL` + `MIOON_TOKEN_FILE`。连接与命令见 CLI.md / MCP.md。应用的 Node 来自 Electron；源代码 CLI/MCP 仍需客户端电脑安装 Node ≥24 和工作区依赖。当前应用/CLI/MCP 实现元数据为0.4.1；后端 `/health` 兼容版本仍为0.4.0，MCP协议日期和descriptor版本独立，不能混用。
 
 上文 V3 的 19 项/6 项及 `0.3.0` Linux 归档是历史证据，不含新适配器。本轮 V4 的 fresh development-runtime smoke 与实际源码验收以 ACCEPTANCE-V4.md 为准。旧包保持原样，未声称其已更新；没有重建/发布安装包或做 macOS 实机验证。
 

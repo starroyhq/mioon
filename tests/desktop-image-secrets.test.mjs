@@ -26,6 +26,9 @@ function fakeVault() {
   let counter = 0;
   const key = Buffer.alloc(32, 12);
   return {
+    async isAsyncEncryptionAvailable() { return this.isEncryptionAvailable(); },
+    async encryptStringAsync(value) { return this.encryptString(value); },
+    async decryptStringAsync(value) { return {result: this.decryptString(value), shouldReEncrypt: false}; },
     isEncryptionAvailable: () => true,
     getSelectedStorageBackend: () => 'gnome_libsecret',
     encryptString(value) {
@@ -41,8 +44,8 @@ function fakeVault() {
     }
   };
 }
-function imageCodec(safeStorage = fakeVault()) {
-  return createDesktopImageSecretCodec({safeStorage, appId: APP_ID, platform: 'linux'});
+function imageCodec(safeStorage = fakeVault(), platform = 'darwin') {
+  return createDesktopImageSecretCodec({safeStorage, appId: APP_ID, platform});
 }
 function request(operation = 'status', extra = {}) {
   return {type: 'image-secret-codec-request', version: 1, namespace: 'images', requestId: randomUUID(), operation, ...extra};
@@ -61,31 +64,31 @@ function pairedPort() {
   port.postMessage = message => port.sent.push(message);
   return port;
 }
-function connected(safeStorage = fakeVault()) {
+function connected(safeStorage = fakeVault(), platform = 'darwin') {
   const port = pairedPort(), replies = [];
-  const broker = createImageSecretBroker({imageSecretCodec: imageCodec(safeStorage),
+  const broker = createImageSecretBroker({imageSecretCodec: imageCodec(safeStorage, platform),
     send: data => { replies.push(data); port.emit('message', {data}); }});
   port.postMessage = data => { port.sent.push(data); broker.handle(data); };
   const client = createImageSecretClient({port});
   return {port, broker, client, replies, close() { client.close(); broker.close(); }};
 }
 
-test('Images codec preserves the existing channel wrapper and fixes utility session scope', () => {
-  const safeStorage = fakeVault(), codec = imageCodec(safeStorage);
-  assert.deepEqual(codec.storage(), storage);
-  const encrypted = codec.encrypt(plaintext);
-  assert.equal(codec.decrypt(encrypted), plaintext);
+for (const platform of ['linux', 'darwin']) test('Images codec preserves the existing channel wrapper and fixes utility session scope (' + platform + ')', async () => {
+  const safeStorage = fakeVault(), codec = imageCodec(safeStorage, platform);
+  assert.deepEqual(await codec.storage(), storage);
+  const encrypted = await codec.encrypt(plaintext);
+  assert.equal(await codec.decrypt(encrypted), plaintext);
   assert.equal(encrypted.includes(SENTINEL), false);
   assert.equal(Buffer.from(encrypted, 'base64').includes(Buffer.from(SENTINEL)), false);
   const wrapper = JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, 'base64')));
   assert.deepEqual(wrapper, {version: 1, appId: APP_ID, plaintext});
-  const production = createDesktopImageSecretCodec({safeStorage, appId: 'app.starroy.mioon', platform: 'linux'});
-  assert.throws(() => production.decrypt(encrypted), assertSanitized);
+  const production = createDesktopImageSecretCodec({safeStorage, appId: 'app.starroy.mioon', platform});
+  await assert.rejects(async () => production.decrypt(encrypted), assertSanitized);
 });
 
-test('Images codec cannot encrypt arbitrary plaintext or disclose copied Agent/video ciphertext', () => {
-  const safeStorage = fakeVault(), codec = imageCodec(safeStorage);
-  const legacy = createDesktopSecretCodec({safeStorage, appId: APP_ID, platform: 'linux'});
+for (const platform of ['linux', 'darwin']) test('Images codec cannot encrypt arbitrary plaintext or disclose copied Agent/video ciphertext (' + platform + ')', async () => {
+  const safeStorage = fakeVault(), codec = imageCodec(safeStorage, platform);
+  const legacy = createDesktopSecretCodec({safeStorage, appId: APP_ID, platform});
   const bad = [AGENT_SENTINEL, JSON.stringify({version: 1, binding, value: AGENT_SENTINEL}),
     JSON.stringify({...JSON.parse(plaintext), namespace: 'mioon.agent.v1'}),
     JSON.stringify({...JSON.parse(plaintext), binding: binding.replace('https://api.openai.com/v1', 'https://attacker.example/v1')}),
@@ -95,30 +98,33 @@ test('Images codec cannot encrypt arbitrary plaintext or disclose copied Agent/v
     JSON.stringify({...JSON.parse(plaintext), value: SENTINEL + '\n'}),
     JSON.stringify({...JSON.parse(plaintext), value: 'x'.repeat(8193)})];
   for (const value of bad) {
-    assert.throws(() => codec.encrypt(value), assertSanitized);
-    const copied = legacy.encrypt(value);
-    assert.throws(() => codec.decrypt(copied), assertSanitized);
-    assert.equal(legacy.decrypt(copied), value);
+    await assert.rejects(async () => codec.encrypt(value), assertSanitized);
+    const copied = await legacy.encrypt(value);
+    await assert.rejects(async () => codec.decrypt(copied), assertSanitized);
+    assert.equal(await legacy.decrypt(copied), value);
   }
-  assert.throws(() => codec.encrypt('x'.repeat(17 * 1024)), assertSanitized);
+  await assert.rejects(async () => codec.encrypt('x'.repeat(17 * 1024)), assertSanitized);
 });
 
-test('Images codec rechecks unavailable Linux storage and sanitizes native failures', () => {
-  const safeStorage = fakeVault(), codec = imageCodec(safeStorage), encrypted = codec.encrypt(plaintext);
+test('Images Linux codec rejects weak backends and sanitizes actual strong-keyring native failures', async () => {
+  const safeStorage = fakeVault(), codec = createDesktopImageSecretCodec({safeStorage, appId: APP_ID, platform: 'linux'});
+  const encrypted = Buffer.from('synthetic-ciphertext').toString('base64');
   let calls = 0;
   safeStorage.encryptString = () => { calls++; throw new Error(SENTINEL); };
   safeStorage.decryptString = () => { calls++; throw new Error(AGENT_SENTINEL); };
   safeStorage.getSelectedStorageBackend = () => 'basic_text';
-  assert.deepEqual(codec.storage(), {persistentAvailable: false, sessionScope: 'server', reasonCode: 'LINUX_BASIC_TEXT'});
-  assert.throws(() => codec.encrypt(plaintext), assertSanitized);
-  assert.throws(() => codec.decrypt(encrypted), assertSanitized);
+  assert.deepEqual(await codec.storage(), {persistentAvailable: false, sessionScope: 'server', reasonCode: 'LINUX_BASIC_TEXT'});
+  await assert.rejects(codec.encrypt(plaintext), assertSanitized);
+  await assert.rejects(codec.decrypt(encrypted), assertSanitized);
   assert.equal(calls, 0);
   safeStorage.getSelectedStorageBackend = () => 'unknown';
-  assert.equal(codec.storage().persistentAvailable, false);
+  assert.equal((await codec.storage()).persistentAvailable, false);
   safeStorage.getSelectedStorageBackend = () => 'gnome_libsecret';
-  assert.throws(() => codec.encrypt(plaintext), assertSanitized);
-  assert.throws(() => codec.decrypt(encrypted), assertSanitized);
-  assert.equal(calls, 2);
+  await assert.rejects(codec.encrypt(plaintext), assertSanitized);
+  await assert.rejects(codec.decrypt(encrypted), assertSanitized);
+  assert.equal(calls, 2, 'Both actual Linux crypto failures are sanitized');
+  await assert.rejects(imageCodec(safeStorage).encrypt(plaintext), assertSanitized);
+  assert.equal(calls, 3, 'The macOS probe failure is separately exercised');
 });
 
 test('Images broker rejects all nonfixed operations, namespaces and oversized envelopes', async () => {
@@ -142,7 +148,7 @@ test('Images broker rejects all nonfixed operations, namespaces and oversized en
 });
 
 test('Images broker queues bounded work and never replays completed plaintext responses', async () => {
-  const messages = [], codec = imageCodec(), encrypted = codec.encrypt(plaintext);
+  const messages = [], codec = imageCodec(), encrypted = await codec.encrypt(plaintext);
   let decrypts = 0;
   const broker = createImageSecretBroker({imageSecretCodec: {...codec, decrypt(value) { decrypts++; return codec.decrypt(value); }},
     send: value => messages.push(value)});
@@ -175,8 +181,8 @@ test('Images broker sanitizes malformed outputs and fences queued work on close 
   assert.equal(calls, 1); assert.equal(messages.length, 3);
 });
 
-test('Images utility client refreshes redacted availability before every cryptographic operation', async t => {
-  const safeStorage = fakeVault(), pair = connected(safeStorage); t.after(() => pair.close());
+for (const platform of ['linux', 'darwin']) test('Images utility client refreshes redacted availability before every cryptographic operation (' + platform + ')', async t => {
+  const safeStorage = fakeVault(), pair = connected(safeStorage, platform); t.after(() => pair.close());
   assert.deepEqual(pair.client.storage(), {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
   assert.deepEqual(await pair.client.refreshStorage(), storage);
   const encrypted = await pair.client.encrypt(plaintext);
@@ -184,18 +190,21 @@ test('Images utility client refreshes redacted availability before every cryptog
   assert.deepEqual(pair.port.sent.map(value => value.operation), ['status', 'status', 'encrypt', 'status', 'decrypt']);
   const detached = pair.client.storage(); detached.persistentAvailable = false;
   assert.equal(pair.client.storage().persistentAvailable, true);
-  safeStorage.getSelectedStorageBackend = () => 'basic_text';
-  await assert.rejects(pair.client.encrypt(plaintext), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  safeStorage.isEncryptionAvailable = () => false;
+  await assert.rejects(async () => pair.client.encrypt(plaintext), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.equal(pair.port.sent.at(-1).operation, 'status');
   assert.equal(pair.client.storage().persistentAvailable, false);
-  safeStorage.getSelectedStorageBackend = () => 'gnome_libsecret';
-  assert.equal(await pair.client.decrypt(encrypted), plaintext);
+  safeStorage.isEncryptionAvailable = () => true;
+  if (platform === 'darwin') await assert.rejects(async () => pair.client.decrypt(encrypted), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  else assert.equal(await pair.client.decrypt(encrypted), plaintext, 'Linux availability recovery preserves the same ciphertext');
+  const restarted = connected(fakeVault(), platform); t.after(() => restarted.close());
+  assert.equal(await restarted.client.decrypt(encrypted), plaintext);
 });
 
 test('Images utility never receives another namespace key through copied ciphertext', async t => {
   const safeStorage = fakeVault(), pair = connected(safeStorage); t.after(() => pair.close());
-  const legacy = createDesktopSecretCodec({safeStorage, appId: APP_ID, platform: 'linux'});
-  const encrypted = legacy.encrypt(JSON.stringify({version: 1, binding: 'agent', value: AGENT_SENTINEL}));
+  const legacy = createDesktopSecretCodec({safeStorage, appId: APP_ID, platform: 'darwin'});
+  const encrypted = await legacy.encrypt(JSON.stringify({version: 1, binding: 'agent', value: AGENT_SENTINEL}));
   await assert.rejects(pair.client.decrypt(encrypted), assertSanitized);
   pair.replies.forEach(assertSanitized);
   assert.equal(pair.client.storage().persistentAvailable, false);
@@ -251,7 +260,7 @@ test('supervisor serves Images startup status and fences crypto across child rep
   const starting = supervisor.start({});
   first.emit('message', request()); await nextTurn(); await starting;
   assert.equal(first.sent.find(value => value.type === 'image-secret-codec-response').data.sessionScope, 'server');
-  const encrypted = codec.encrypt(plaintext), before = first.sent.length;
+  const encrypted = await codec.encrypt(plaintext), before = first.sent.length;
   first.emit('message', request('decrypt', {input: encrypted})); first.emit('exit', 1);
   next = second; await supervisor.start({});
   assert.equal(first.sent.length, before);
@@ -262,10 +271,10 @@ test('supervisor serves Images startup status and fences crypto across child rep
   await supervisor.stop();
 });
 
-test('utility engine persists only ciphertext and drops session Images credentials at utility close', async t => {
+for (const platform of ['linux', 'darwin']) test('utility engine persists only ciphertext and drops session Images credentials at utility close (' + platform + ')', async t => {
   let stored = null;
   const persistence = {async load() { return structuredClone(stored); }, async save(value) { stored = structuredClone(value); }};
-  const safeStorage = fakeVault(), pair = connected(safeStorage); t.after(() => pair.close());
+  const safeStorage = fakeVault(), pair = connected(safeStorage, platform); t.after(() => pair.close());
   let engine = await createImageSettings({persistence, secretCodec: pair.client, storage: pair.client.storage});
   t.after(() => engine.close());
   const initial = await engine.get();
@@ -276,7 +285,7 @@ test('utility engine persists only ciphertext and drops session Images credentia
   await engine.close();
   engine = await createImageSettings({persistence, secretCodec: pair.client, storage: pair.client.storage});
   assert.equal((await engine[IMAGE_CREDENTIAL_ACQUIRE]({expectedRevision: saved.revision, configuration: saved.configuration})).apiKey, SENTINEL);
-  safeStorage.getSelectedStorageBackend = () => 'basic_text';
+  safeStorage.isEncryptionAvailable = () => false;
   const locked = await engine.get(); assert.equal(locked.storage.persistentAvailable, false);
   const session = await engine.put({expectedRevision: locked.revision, configuration: locked.configuration,
     secret: {action: 'replace', storage: 'session', value: SENTINEL}});

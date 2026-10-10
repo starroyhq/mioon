@@ -71,7 +71,7 @@ async function start() {
   startup.checkpoint();
   // Main owns the single settings instance across trusted backend restarts.
   if (!agentSettings) {
-    const settings = await createDesktopAgentSettings({ safeStorage, userData: app.getPath('userData'), appId: identity.appId });
+    const settings = await createDesktopAgentSettings({ safeStorage, userData: app.getPath('userData'), appId: identity.appId, signal: startup.signal });
     if (startup.signal.aborted) { await settings.close(); startup.checkpoint(); }
     agentSettings = settings;
   }

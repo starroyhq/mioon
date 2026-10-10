@@ -21,6 +21,9 @@ function fakeVault({ backend = 'gnome_libsecret', available = true } = {}) {
   let counter = 0;
   const key = Buffer.alloc(32, 7);
   return {
+    async isAsyncEncryptionAvailable() { return this.isEncryptionAvailable(); },
+    async encryptStringAsync(value) { return this.encryptString(value); },
+    async decryptStringAsync(value) { return {result: this.decryptString(value), shouldReEncrypt: false}; },
     isEncryptionAvailable: () => available,
     getSelectedStorageBackend: () => backend,
     encryptString(text) {
@@ -50,14 +53,14 @@ function assertSanitized(error) {
 // same public DTO serializer as production rather than inventing a parallel API.
 async function sampleSettings() {
   const directory = await mkdtemp(path.join(tmpdir(), 'mioon-agent-sample-'));
-  const engine = await createDesktopAgentSettings({ safeStorage: fakeVault(), userData: directory, appId: 'app.starroy.mioon.dev', platform: 'linux' });
+  const engine = await createDesktopAgentSettings({ safeStorage: fakeVault(), userData: directory, appId: 'app.starroy.mioon.dev', platform: 'darwin' });
   const settings = await engine.get();
   await engine.close();
   await rm(directory, { recursive: true, force: true });
   return settings;
 }
 
-test('desktop persistent capability fails closed without real OS encryption', () => {
+test('desktop capability preserves Linux strong keyrings and requires proved macOS async crypto', async () => {
   for (const vault of [undefined, fakeVault({ available: false }), { isEncryptionAvailable() { throw new Error(DUMMY_KEY); } }]) {
     assert.deepEqual(desktopSecretStorage(vault, 'linux'), {
       persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'
@@ -72,38 +75,42 @@ test('desktop persistent capability fails closed without real OS encryption', ()
   }
   const vault = fakeVault(); delete vault.getSelectedStorageBackend;
   assert.equal(desktopSecretStorage(vault, 'linux').persistentAvailable, false);
-  for (const platform of ['darwin', 'win32']) assert.equal(desktopSecretStorage(vault, platform).persistentAvailable, true);
+  const codec = createDesktopSecretCodec({safeStorage: vault, appId: 'app.starroy.mioon.dev', platform: 'darwin'});
+  assert.equal(desktopSecretStorage(vault, 'darwin').persistentAvailable, false);
+  await codec.refreshStorage();
+  assert.equal(desktopSecretStorage(vault, 'darwin').persistentAvailable, true);
+  assert.equal(desktopSecretStorage(vault, 'win32').persistentAvailable, false);
   for (const backend of ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']) {
     assert.equal(desktopSecretStorage(fakeVault({ backend }), 'linux').persistentAvailable, true);
   }
 });
 
-test('desktop codec encrypts channel-bound payloads and rejects copied or corrupt ciphertext', () => {
+for (const platform of ['linux', 'darwin']) test('desktop codec encrypts channel-bound payloads and rejects copied or corrupt ciphertext (' + platform + ')', async () => {
   const safeStorage = fakeVault();
-  const dev = createDesktopSecretCodec({ safeStorage, appId: 'app.starroy.mioon.dev', platform: 'linux' });
-  const production = createDesktopSecretCodec({ safeStorage, appId: 'app.starroy.mioon', platform: 'linux' });
-  const encrypted = dev.encrypt(DUMMY_KEY);
+  const dev = createDesktopSecretCodec({ safeStorage, appId: 'app.starroy.mioon.dev', platform });
+  const production = createDesktopSecretCodec({ safeStorage, appId: 'app.starroy.mioon', platform });
+  const encrypted = await dev.encrypt(DUMMY_KEY);
   assert.equal(encrypted.includes(DUMMY_KEY), false);
   assert.equal(Buffer.from(encrypted, 'base64').includes(Buffer.from(DUMMY_KEY)), false);
-  assert.equal(dev.decrypt(encrypted), DUMMY_KEY);
-  assert.throws(() => production.decrypt(encrypted), assertSanitized);
-  assert.throws(() => dev.decrypt(Buffer.from(DUMMY_KEY).toString('base64')), assertSanitized);
-  for (const invalid of ['!', '', 'AAAA=', encrypted + '\n', null, 12]) assert.throws(() => dev.decrypt(invalid), assertSanitized);
+  assert.equal(await dev.decrypt(encrypted), DUMMY_KEY);
+  await assert.rejects(async () => production.decrypt(encrypted), assertSanitized);
+  await assert.rejects(async () => dev.decrypt(Buffer.from(DUMMY_KEY).toString('base64')), assertSanitized);
+  for (const invalid of ['!', '', 'AAAA=', encrypted + '\n', null, 12]) await assert.rejects(async () => dev.decrypt(invalid), assertSanitized);
 });
 
-test('desktop codec rechecks availability and never leaks native error text', () => {
+test('desktop codec latches unavailable status and never leaks native error text', async () => {
   const safeStorage = fakeVault();
-  const codec = createDesktopSecretCodec({ safeStorage, appId: 'app.starroy.mioon.dev', platform: 'linux' });
-  const encrypted = codec.encrypt(DUMMY_KEY);
-  safeStorage.getSelectedStorageBackend = () => 'basic_text';
+  const codec = createDesktopSecretCodec({ safeStorage, appId: 'app.starroy.mioon.dev', platform: 'darwin' });
+  const encrypted = await codec.encrypt(DUMMY_KEY);
+  safeStorage.isEncryptionAvailable = () => false;
   safeStorage.encryptString = () => { throw new Error('Should not run ' + DUMMY_KEY); };
-  assert.throws(() => codec.encrypt(DUMMY_KEY), assertSanitized);
-  assert.throws(() => codec.decrypt(encrypted), assertSanitized);
-  safeStorage.getSelectedStorageBackend = () => 'gnome_libsecret';
-  assert.throws(() => codec.encrypt(DUMMY_KEY), assertSanitized);
+  await assert.rejects(codec.encrypt(DUMMY_KEY), assertSanitized);
+  await assert.rejects(codec.decrypt(encrypted), assertSanitized);
+  safeStorage.isEncryptionAvailable = () => true;
+  await assert.rejects(codec.encrypt(DUMMY_KEY), assertSanitized);
   safeStorage.decryptString = () => { throw new Error(DUMMY_KEY); };
-  assert.throws(() => codec.decrypt(encrypted), assertSanitized);
-  assert.throws(() => codec.encrypt('a'.repeat(33 * 1024)), assertSanitized);
+  await assert.rejects(codec.decrypt(encrypted), assertSanitized);
+  await assert.rejects(codec.encrypt('a'.repeat(33 * 1024)), assertSanitized);
 });
 
 test('broker exposes only bounded get/put requests with safe errors', async () => {
@@ -156,7 +163,7 @@ test('broker handles duplicates once, pins service port and ignores late replies
   let finish, calls = 0;
   const messages = [];
   const broker = createAgentSettingsBroker({ send: value => messages.push(value), getSelfPort: () => 4319,
-    agentSettings: { put(input, options) { calls++; assert.deepEqual(options, { selfPort: 4319 }); return new Promise(resolve => { finish = resolve; }); } } });
+    agentSettings: { put(input, options) { calls++; assert.equal(options.selfPort, 4319); assert.ok(options.signal instanceof AbortSignal); assert.equal(options.isActive(), true); return new Promise(resolve => { finish = resolve; }); } } });
   broker.handle(request('put', { input: {}, selfPort: 4320 }));
   assert.equal(messages.at(-1).ok, false); assert.equal(calls, 0);
   const message = request('put', { input: {}, selfPort: 4319 });
@@ -259,12 +266,12 @@ test('desktop source keeps the renderer sandbox and native secret channel privat
   }
 });
 
-test('desktop settings persist ciphertext outside project data with owner-only files', async () => {
+for (const platform of ['linux', 'darwin']) test('desktop settings persist ciphertext outside project data with owner-only files (' + platform + ')', async () => {
   const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-persistent-'));
   const safeStorage = fakeVault();
   let engine;
   try {
-    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux' });
+    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform });
     const initial = await engine.get();
     const saved = await engine.put({ expectedRevision: initial.revision, configuration: initial.configuration,
       secret: { action: 'replace', value: DUMMY_KEY, storage: 'persistent' } });
@@ -278,19 +285,19 @@ test('desktop settings persist ciphertext outside project data with owner-only f
     assert.equal((await stat(file)).mode & 0o777, 0o600);
     assert.deepEqual(await readdir(userData), ['agent-settings']);
     await engine.close();
-    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux' });
+    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform });
     const restored = await engine.get();
     assert.deepEqual(restored.secret, saved.secret); assert.equal(restored.revision, saved.revision); assertSanitized(restored);
   } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
 });
 
-test('desktop legacy migration preserves encrypted channel wrapper v1 through locked-vault protocol save', async t => {
+for (const platform of ['linux', 'darwin']) test('desktop legacy migration preserves encrypted channel wrapper v1 through locked-vault protocol save (' + platform + ')', async t => {
   const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-legacy-desktop-'));
   const safeStorage = fakeVault(), appId = 'app.starroy.mioon.dev';
-  const vault = createDesktopSecretCodec({safeStorage, appId, platform: 'linux'});
+  const vault = createDesktopSecretCodec({safeStorage, appId, platform});
   const {protocol, ...configuration} = DEFAULT_AGENT_CONFIGURATION;
   const binding = agentCredentialBinding(configuration);
-  const encrypted = vault.encrypt(JSON.stringify({version: 1, binding, value: DUMMY_KEY}));
+  const encrypted = await vault.encrypt(JSON.stringify({version: 1, binding, value: DUMMY_KEY}));
   const directory = path.join(userData, 'agent-settings'), file = path.join(directory, 'settings.json');
   await mkdir(directory, {mode: 0o700});
   const bytes = JSON.stringify({version: 1, revision: 12, configuration, secret: {binding, encrypted}});
@@ -298,7 +305,7 @@ test('desktop legacy migration preserves encrypted channel wrapper v1 through lo
   const decrypt = safeStorage.decryptString; let reads = 0;
   safeStorage.decryptString = value => { reads++; return decrypt(value); };
   safeStorage.isEncryptionAvailable = () => false;
-  let engine = await createDesktopAgentSettings({safeStorage, userData, appId, platform: 'linux'});
+  let engine = await createDesktopAgentSettings({safeStorage, userData, appId, platform});
   t.after(async () => { await engine.close(); await rm(userData, {recursive: true, force: true}); });
   const port = pairedPort(), replies = [];
   const broker = createAgentSettingsBroker({agentSettings: engine, send: data => { replies.push(data); port.emit('message', {data}); }});
@@ -314,7 +321,7 @@ test('desktop legacy migration preserves encrypted channel wrapper v1 through lo
   assert.equal(stored.version, 2); assert.deepEqual(stored.secret, {binding, encrypted}); assert.equal(reads, 0);
   assert.ok(replies.every(reply => reply.version === 1)); replies.forEach(assertSanitized);
   await engine.close(); safeStorage.isEncryptionAvailable = () => true;
-  engine = await createDesktopAgentSettings({safeStorage, userData, appId, platform: 'linux'});
+  engine = await createDesktopAgentSettings({safeStorage: fakeVault(), userData, appId, platform});
   const restored = await engine.get();
   assert.equal((await engine[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: restored.revision, configuration: restored.configuration})).apiKey, DUMMY_KEY);
   const wrapper = JSON.parse(decrypt(Buffer.from(encrypted, 'base64')));
@@ -353,21 +360,29 @@ test('unavailable Linux vault supports explicit session-only entry until app eng
   } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
 });
 
-test('native encryption failure preserves the previously committed credential and hides native errors', async () => {
+for (const platform of ['linux', 'darwin']) test('native encryption failure preserves the previously committed credential and hides native errors (' + platform + ')', async () => {
   const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-failure-'));
   const safeStorage = fakeVault();
   let engine;
   try {
-    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux' });
+    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform });
     const initial = await engine.get();
     const saved = await engine.put({ expectedRevision: initial.revision, configuration: initial.configuration,
       secret: { action: 'replace', value: DUMMY_KEY, storage: 'persistent' } });
     const file = path.join(userData, 'agent-settings/settings.json'), before = await readFile(file, 'utf8');
-    safeStorage.encryptString = () => { throw new Error(DUMMY_KEY); };
-    await assert.rejects(engine.put({ expectedRevision: saved.revision, configuration: saved.configuration,
+    const encrypt = safeStorage.encryptString; let payloadFailures = 0;
+    safeStorage.encryptString = value => {
+      if (value.startsWith('{')) { payloadFailures++; throw new Error(DUMMY_KEY); }
+      return encrypt(value); // The disposable availability probe must succeed.
+    };
+    await assert.rejects(async () => engine.put({ expectedRevision: saved.revision, configuration: saved.configuration,
       secret: { action: 'replace', value: DUMMY_KEY + '-replacement', storage: 'persistent' } }), assertSanitized);
     assert.equal(await readFile(file, 'utf8'), before);
-    assert.deepEqual(await engine.get(), saved);
+    assert.equal(payloadFailures, 1);
+    const after = await engine.get();
+    assert.equal(after.revision, saved.revision); assert.deepEqual(after.secret, saved.secret);
+    assert.deepEqual(after.configuration, saved.configuration);
+    assert.equal(after.storage.persistentAvailable, platform === 'linux', 'Linux status remains dynamically checked; macOS native failure is latched');
   } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
 });
 
@@ -406,4 +421,19 @@ test('supervisor lets an in-flight settings request reply during graceful HTTP s
   assert.equal(child.sent.at(-1).type, 'agent-settings-response');
   assert.equal(child.sent.at(-1).ok, true);
   child.emit('exit', 0); await stopping;
+});
+
+
+test('Linux public factory rechecks availability and reads the same prior ciphertext after recovery', () => {
+  const safeStorage = fakeVault();
+  for (const method of ['isAsyncEncryptionAvailable', 'encryptStringAsync', 'decryptStringAsync']) safeStorage[method] = () => {throw Error('Linux must never use async vault selection');};
+  const codec = createDesktopSecretCodec({safeStorage, appId: 'app.starroy.mioon.dev', platform: 'linux'});
+  const encrypted = codec.encrypt(DUMMY_KEY);
+  safeStorage.isEncryptionAvailable = () => false;
+  assert.throws(() => codec.decrypt(encrypted), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+  safeStorage.isEncryptionAvailable = () => true;
+  assert.equal(codec.decrypt(encrypted), DUMMY_KEY);
+  assert.equal(codec.storage().persistentAvailable, true);
+  codec.close();
+  assert.equal(codec.storage().persistentAvailable, false);
 });

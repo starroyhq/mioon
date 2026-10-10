@@ -18,39 +18,42 @@ const expected = value => ({expectedRevision: value.revision, configuration: val
 function fakeVault() {
   const key = Buffer.alloc(32, 19); let counter = 0;
   return {
+    async isAsyncEncryptionAvailable() { return this.isEncryptionAvailable(); },
+    async encryptStringAsync(value) { return this.encryptString(value); },
+    async decryptStringAsync(value) { return {result: this.decryptString(value), shouldReEncrypt: false}; },
     isEncryptionAvailable: () => true, getSelectedStorageBackend: () => 'gnome_libsecret',
     encryptString(value) { const iv = Buffer.alloc(12); iv.writeUInt32BE(++counter, 8); const enc = createCipheriv('aes-256-gcm', key, iv); return Buffer.concat([iv, enc.update(value), enc.final(), enc.getAuthTag()]); },
     decryptString(value) { const dec = createDecipheriv('aes-256-gcm', key, value.subarray(0, 12)); dec.setAuthTag(value.subarray(-16)); return Buffer.concat([dec.update(value.subarray(12, -16)), dec.final()]).toString(); },
   };
 }
-const codecFor = safeStorage => createDesktopImageSecretCodec({safeStorage, appId: APP_ID, platform: 'linux'});
+const codecFor = (safeStorage, platform = 'darwin') => createDesktopImageSecretCodec({safeStorage, appId: APP_ID, platform});
 function memory() { let stored = null; return {load: async () => structuredClone(stored), save: async value => { stored = structuredClone(value); }, get value() { return stored; }}; }
-function connected(safeStorage = fakeVault()) {
+function connected(safeStorage = fakeVault(), platform = 'darwin') {
   const port = new EventEmitter(), responses = [], requests = [];
-  const broker = createImageSecretBroker({imageSecretCodec: codecFor(safeStorage), send: data => { responses.push(data); port.emit('message', {data}); }});
+  const broker = createImageSecretBroker({imageSecretCodec: codecFor(safeStorage, platform), send: data => { responses.push(data); port.emit('message', {data}); }});
   port.postMessage = value => { requests.push(value); broker.handle(value); };
   const client = createImageSecretClient({port});
   return {client, broker, responses, requests, close() { client.close(); broker.close(); }};
 }
 function safe(value) { assert.equal((String(value?.message) + JSON.stringify(value)).includes(SENTINEL), false); return true; }
 
-test('main codec accepts exactly official and custom complete Images bindings while keeping legacy channel wrapper unchanged', () => {
-  const vault = fakeVault(), codec = codecFor(vault);
+for (const platform of ['linux', 'darwin']) test('main codec accepts exactly official and custom complete Images bindings while keeping legacy channel wrapper unchanged (' + platform + ')', async () => {
+  const vault = fakeVault(), codec = codecFor(vault, platform);
   const official = DEFAULT_IMAGE_CONFIGURATION;
   const officialPlain = JSON.stringify({version: 1, namespace: IMAGE_SETTINGS_NAMESPACE, value: 'synthetic-official',
     binding: JSON.stringify([IMAGE_SETTINGS_NAMESPACE, official.providerId, official.profileId, official.baseUrl, official.model, official.options])});
   for (const plain of [officialPlain, plaintext]) {
-    const encrypted = codec.encrypt(plain);
-    assert.equal(codec.decrypt(encrypted), plain);
+    const encrypted = await codec.encrypt(plain);
+    assert.equal(await codec.decrypt(encrypted), plain);
     assert.deepEqual(JSON.parse(vault.decryptString(Buffer.from(encrypted, 'base64'))), {version: 1, appId: APP_ID, plaintext: plain});
     assert.equal(Buffer.from(encrypted, 'base64').includes(Buffer.from(SENTINEL)), false);
   }
-  const otherChannel = createDesktopImageSecretCodec({safeStorage: vault, appId: 'app.starroy.mioon', platform: 'linux'});
-  assert.throws(() => otherChannel.decrypt(codec.encrypt(plaintext)), safe);
+  const otherChannel = createDesktopImageSecretCodec({safeStorage: vault, appId: 'app.starroy.mioon', platform});
+  await assert.rejects(async () => otherChannel.decrypt(await codec.encrypt(plaintext)), safe);
 });
 
-test('custom plaintext validation rejects arbitrary profiles, incomplete or noncanonical bindings, secret smuggling and oversize', () => {
-  const vault = fakeVault(), codec = codecFor(vault), legacy = createDesktopSecretCodec({safeStorage: vault, appId: APP_ID, platform: 'linux'});
+test('custom plaintext validation rejects arbitrary profiles, incomplete or noncanonical bindings, secret smuggling and oversize', async () => {
+  const vault = fakeVault(), codec = codecFor(vault), legacy = createDesktopSecretCodec({safeStorage: vault, appId: APP_ID, platform: 'darwin'});
   const mutateBinding = change => JSON.stringify({...wrapper, binding: JSON.stringify(change(JSON.parse(binding)))});
   const bad = [SENTINEL, JSON.stringify({...wrapper, namespace: 'mioon.agent.v1'}), JSON.stringify({...wrapper, namespace: 'mioon.images.compatible.v1'}),
     JSON.stringify({...wrapper, extra: SENTINEL}), JSON.stringify({...wrapper, version: 2}), JSON.stringify({...wrapper, binding: []}),
@@ -63,12 +66,12 @@ test('custom plaintext validation rejects arbitrary profiles, incomplete or nonc
   bad.push(mutateBinding(values => [...values, 'unexpected']));
   for (const plain of bad) {
     assert.throws(() => validateImageSecretPlaintext(plain), safe);
-    assert.throws(() => codec.encrypt(plain), safe);
-    const encrypted = legacy.encrypt(plain);
-    assert.throws(() => codec.decrypt(encrypted), safe);
+    await assert.rejects(codec.encrypt(plain), safe);
+    const encrypted = await legacy.encrypt(plain);
+    await assert.rejects(codec.decrypt(encrypted), safe);
   }
   let reads = 0; vault.decryptString = () => { reads++; throw Error(SENTINEL); };
-  for (const ciphertext of [null, {}, '', 'Zh==', 'not base64', 'YWFh'.repeat(12289)]) assert.throws(() => codec.decrypt(ciphertext), safe);
+  for (const ciphertext of [null, {}, '', 'Zh==', 'not base64', 'YWFh'.repeat(12289)]) await assert.rejects(codec.decrypt(ciphertext), safe);
   assert.equal(reads, 0);
 });
 
@@ -89,8 +92,8 @@ test('private broker/client transports custom keys only after both strict Images
   assert.equal(calls, 1); assert.equal(messages[1].ok, false); safe(messages[1]);
 });
 
-test('two utility engines share only an OS codec, persistent bindings stay separate and session keys die with backend engines', async t => {
-  const vault = fakeVault(), pair = connected(vault); t.after(() => pair.close());
+for (const platform of ['linux', 'darwin']) test('two utility engines share only an OS codec, persistent bindings stay separate and session keys die with backend engines (' + platform + ')', async t => {
+  const vault = fakeVault(), pair = connected(vault, platform); t.after(() => pair.close());
   const officialFile = memory(), customFile = memory(), options = {secretCodec: pair.client, storage: pair.client.storage};
   const official = await createImageSettings({persistence: officialFile, ...options}); t.after(() => official.close());
   let custom = await createCustomImageSettings({persistence: customFile, ...options}); t.after(() => custom.close());
@@ -102,8 +105,8 @@ test('two utility engines share only an OS codec, persistent bindings stay separ
   assert.equal((await official[IMAGE_CREDENTIAL_ACQUIRE](expected(a))).apiKey, 'synthetic-official');
   await custom.close(); custom = await createCustomImageSettings({persistence: customFile, ...options});
   assert.equal((await custom[IMAGE_CREDENTIAL_ACQUIRE](expected(b))).apiKey, SENTINEL);
-  vault.getSelectedStorageBackend = () => 'basic_text';
-  await assert.rejects(custom.put({expectedRevision: 1, configuration: config, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  vault.isEncryptionAvailable = () => false;
+  await assert.rejects(async () => custom.put({expectedRevision: 1, configuration: config, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.equal((await custom.get()).secret.storage, 'persistent'); assert.deepEqual(officialFile.value, savedOfficial);
   const session = await custom.put({expectedRevision: 1, configuration: config, secret: {action: 'replace', storage: 'session', value: SENTINEL}});
   assert.equal(session.secret.storage, 'session'); assert.equal(customFile.value.secret, null); safe(customFile.value);

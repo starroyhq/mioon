@@ -1,5 +1,5 @@
 import {IMAGE_SETTINGS_LIMITS} from '@mioon/contracts';
-import {desktopSecretStorage, createDesktopSecretCodec} from './secret-store.mjs';
+import {createDesktopSecretCodec} from './secret-store.mjs';
 import {imageSettingsError, validateImageSecretPlaintext} from '@mioon/business/images/settings';
 
 const validCiphertext = value => typeof value === 'string' && value.length > 0 && value.length <= IMAGE_SETTINGS_LIMITS.ciphertextCharacters &&
@@ -7,39 +7,34 @@ const validCiphertext = value => typeof value === 'string' && value.length > 0 &
 
 // Main owns only an OS codec. Images configuration, revision and session keys
 // belong to the utility's dedicated Images settings engine, not to Agent main.
-export function createDesktopImageSecretCodec({safeStorage, appId, platform = process.platform}) {
+export function createDesktopImageSecretCodec({safeStorage, appId, platform = process.platform, timeout}) {
   let codec;
-  try { codec = createDesktopSecretCodec({safeStorage, appId, platform}); }
+  try { codec = createDesktopSecretCodec({safeStorage, appId, platform, timeout}); }
   catch { throw imageSettingsError('IMAGE_SETTINGS_STORAGE_UNAVAILABLE'); }
-  const storage = () => ({...desktopSecretStorage(safeStorage, platform), sessionScope: 'server'});
-  const requireVault = () => {
-    if (!storage().persistentAvailable) throw imageSettingsError('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
-  };
+  const storage = async options => ({...await codec.refreshStorage(options), sessionScope: 'server'});
   return Object.freeze({
     storage,
-    encrypt(plaintext) {
-      requireVault();
+    async encrypt(plaintext, options) {
       // The complete binding must match one of exactly two Images namespace/
       // profile pairs. Arbitrary strings and Agent/video envelopes are denied.
       try { validateImageSecretPlaintext(plaintext); }
       catch { throw imageSettingsError('IMAGE_SETTINGS_VALIDATION'); }
       try {
-        const encrypted = codec.encrypt(plaintext);
+        const encrypted = await codec.encrypt(plaintext, options);
         if (!validCiphertext(encrypted)) throw Error();
         return encrypted;
       }
       catch { throw imageSettingsError('IMAGE_SETTINGS_STORAGE_UNAVAILABLE'); }
     },
-    decrypt(ciphertext) {
-      requireVault();
+    async decrypt(ciphertext, options) {
       try {
         if (!validCiphertext(ciphertext)) throw Error();
-        const plaintext = codec.decrypt(ciphertext);
+        const plaintext = await codec.decrypt(ciphertext, options);
         // The legacy channel wrapper is unchanged. This extra Images-only gate
         // prevents its reuse as a decryption oracle for Agent or video secrets.
         validateImageSecretPlaintext(plaintext);
         return plaintext;
-      } catch { throw imageSettingsError('IMAGE_SETTINGS_CORRUPT'); }
+      } catch (error) { throw imageSettingsError(error?.code === 'AGENT_SETTINGS_STORAGE_UNAVAILABLE' ? 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE' : 'IMAGE_SETTINGS_CORRUPT'); }
     }
   });
 }
