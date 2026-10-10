@@ -3,8 +3,9 @@
 Implementation: 2026-10-09; acceptance continued 2026-10-10 UTC. Q3 baseline: `dceb8dd`.
 
 Status: implemented; final affected tests, fresh bundles and ordinary Linux
-Electron verification passed. The parent's independent full-suite release gate
-is pending at this source freeze. This batch changes local process safety, not
+Electron verification passed. Released as `d01ea23`; the parent's independent
+final suite passed 1,472 tests, failed zero and explicitly skipped two
+foreign-owner cases (1,474 total). This batch changes local process safety, not
 Agent tools, generation authorization or media editing semantics.
 
 ## Shared execution boundary
@@ -203,7 +204,7 @@ This verifies observed direct children on Linux, not an exhaustive packet
 capture, arbitrary grandchildren, native macOS/Windows, or a forced orphan's
 cleanup. The abnormal utility-exit uncertainty path is covered by deterministic
 owned-handle tests; no unrelated real process was killed to demonstrate it.
-EQ-05 HTTP file-stream error handling remains a separate open batch.
+EQ-05 HTTP file-stream error handling is tracked separately in [HTTP-STREAMS.md](HTTP-STREAMS.md).
 
 ## Official API references
 

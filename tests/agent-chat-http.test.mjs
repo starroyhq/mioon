@@ -185,7 +185,7 @@ test('saturated SSE response detaches locally without sending Stop or retrying i
   const routeHandler = createChatHttp({runtime}), res = new EventEmitter();
   Object.assign(res, {headersSent: false, writableLength: 300 * 1024, writableEnded: false, destroyed: false,
     writeHead() { this.headersSent = true; }, flushHeaders() {}, write() { assert.fail('Saturated subscriber must not queue another event'); },
-    end() { this.writableEnded = true; }, destroy() { this.destroyed = true; }});
+    end() { this.writableEnded = true; this.writableFinished = true; this.emit('finish'); }, destroy() { this.destroyed = true; this.emit('close'); }});
   const id = randomUUID();
   const handled = await routeHandler.handle({method: 'GET', headers: {}}, res, new URL(`http://localhost/api/agent/chat/project/runs/${id}/events?instanceId=${randomUUID()}&after=0`));
   assert.equal(handled, true); assert.equal(detached, 1); assert.equal(sent, 1); assert.equal(res.destroyed, true);
@@ -202,7 +202,7 @@ test('journal fault closes SSE without inventing an uncommitted terminal event',
   const routeHandler = createChatHttp({runtime}), res = new EventEmitter();
   Object.assign(res, {headersSent: false, writableLength: 0, writableEnded: false, destroyed: false,
     writeHead() { this.headersSent = true; }, flushHeaders() {}, write(value) { written.push(value); },
-    end() { this.writableEnded = true; }, destroy() { this.destroyed = true; }});
+    end() { this.writableEnded = true; this.writableFinished = true; this.emit('finish'); }, destroy() { this.destroyed = true; this.emit('close'); }});
   await routeHandler.handle({method: 'GET', headers: {}}, res, new URL(`http://localhost/api/agent/chat/project/runs/${randomUUID()}/events?instanceId=${randomUUID()}&after=0`));
   closeSubscriber(); closeSubscriber(); routeHandler.close();
   assert.equal(res.writableEnded, true); assert.equal(detached, 1);

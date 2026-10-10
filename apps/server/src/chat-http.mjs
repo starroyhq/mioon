@@ -1,9 +1,9 @@
-import {safeChatRuntimeError} from '@mioon/business/agent/chat-runtime';
+import {safeChatRuntimeError, chatRuntimeError} from '@mioon/business/agent/chat-runtime';
 import {agentChatError} from '@mioon/business/agent/chat-errors';
 import {createAgentEditHttp} from './agent-edit-http.mjs';
+import {createChatSse, CHAT_SSE_LIMITS} from './chat-sse.mjs';
 
 const MAX_BODY_BYTES = 16 * 1024;
-const MAX_BUFFERED_BYTES = 256 * 1024;
 const json = (res, status, data) => { res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'}); res.end(JSON.stringify(data)); };
 async function readBody(req) {
   if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) throw agentChatError('AGENT_CHAT_VALIDATION');
@@ -22,8 +22,11 @@ function query(url, allowed) {
 }
 /** Dedicated authenticated route family. Authentication/host/origin are checked
  * by startServer before calling this handler, never bypassed for SSE. */
-export function createChatHttp({runtime}) {
+export function createChatHttp({runtime, sseOptions}) {
   const clients = new Set();
+  // Constructor-only synthetic QA overrides; no request or environment input.
+  const maxClients = sseOptions?.clients ?? CHAT_SSE_LIMITS.clients;
+  if (!Number.isSafeInteger(maxClients) || maxClients <= 0) throw new TypeError('Invalid SSE client limit');
   const editHttp = createAgentEditHttp({runtime});
   return {
     async handle(req, res, url) {
@@ -57,34 +60,14 @@ export function createChatHttp({runtime}) {
           query(url, ['instanceId', 'after']);
           const cursor = url.searchParams.get('after') ?? '0';
           if (!/^(?:0|[1-9][0-9]{0,15})$/u.test(cursor) || !Number.isSafeInteger(Number(cursor))) throw agentChatError('AGENT_CHAT_VALIDATION');
-          let detach, timer, ended = false;
-          const finish = () => {
-            if (ended) return;
-            ended = true; clearInterval(timer); clients.delete(finish); detach?.();
-            res.removeListener('close', finish);
-            if (!res.writableEnded) res.end();
-          };
-          const listener = event => {
-            if (ended || res.destroyed) return;
-            if (!res.headersSent) {
-              res.writeHead(200, {'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no'});
-              res.flushHeaders();
-            }
-            if (res.writableLength > MAX_BUFFERED_BYTES) { finish(); res.destroy(); return; }
-            res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-            if (event.type === 'terminal' || event.run && event.run.status !== 'running') finish();
-          };
-          res.on('close', finish); clients.add(finish);
-          try { detach = runtime.subscribe(projectId, runId, url.searchParams.get('instanceId'), Number(cursor), listener, finish); }
-          catch (error) { clients.delete(finish); res.removeListener('close', finish); throw error; }
-          if (ended) detach();
-          else {
-            timer = setInterval(() => {
-              if (res.destroyed || res.writableLength > MAX_BUFFERED_BYTES) return finish();
-              res.write(': keepalive\n\n');
-            }, 15000);
-            timer.unref();
-          }
+          if (clients.size >= maxClients) throw chatRuntimeError('AGENT_CHAT_BUSY');
+          let stream;
+          stream = createChatSse({res, options: sseOptions, onSettled: () => clients.delete(stream)});
+          clients.add(stream);
+          try {
+            stream.attach(runtime.subscribe(projectId, runId, url.searchParams.get('instanceId'), Number(cursor), stream.event, stream.end));
+            stream.start();
+          } catch (error) { stream.reject(); throw error; }
         }
       } catch (error) {
         if (res.headersSent) res.destroy();
@@ -92,6 +75,6 @@ export function createChatHttp({runtime}) {
       }
       return true;
     },
-    close() { for (const finish of [...clients]) finish(); },
+    close() { for (const stream of [...clients]) stream.close(); },
   };
 }

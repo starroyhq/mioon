@@ -14,6 +14,21 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these same schemas through tools/list.
 
+## File and event transports
+
+Authenticated `GET /media/:assetId` and `HEAD /media/:assetId` retain single-byte
+range support, including suffix/open-ended ranges and 416 rejection. Missing
+managed file bytes return fixed 404 `FILE_UNAVAILABLE`. Per-backend file-transfer
+admission can return 503 `FILE_RESPONSE_BUSY`. Errors after response headers
+close that transport; they cannot return a second JSON envelope.
+
+Agent SSE consumers may reconnect with the committed event cursor. A slow or
+disconnected consumer is detached without stopping or retrying inference or
+business mutations. Explicit Stop remains a separate authenticated request.
+An acknowledgement lost after a write remains ambiguous: recover the exact
+durable request identity, never infer failure or generate a new key merely
+because the transport closed. Bounds and cleanup details: [HTTP streaming](HTTP-STREAMS.md).
+
 ## Non-creating project inspection
 
 Use these additive operations to inspect bounded, allowlisted metadata without

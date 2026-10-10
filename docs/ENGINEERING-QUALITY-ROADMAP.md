@@ -30,7 +30,9 @@ Remediation update (Q1, baseline `e2db533`): EQ-01/02 implementation now routes 
 
 Q2 was released as `dceb8dd`; parent final aggregate passed 1,399 tests with two explicitly skipped foreign-owner cases (1,401 total): shared workspace/token/settings validation, non-destructive refusal, secret-file exclusions and an explicit Windows ACL readiness gate. See [private storage policy and acceptance](PRIVATE-STORAGE.md). Original findings below remain historical audit evidence; native Windows ACL and macOS verification are still open.
 
-Q3 is implemented against `dceb8dd`: EQ-04/06 shared media environment/resource bounds and bounded cancellation/shutdown. Final affected suites, fresh bundles and ordinary Linux Electron export/quit/recreation passed; the parent's independent full-suite release gate is pending at source freeze. The earlier 1,466-test aggregate is explicitly pre-fix evidence. See [media runtime policy and acceptance](MEDIA-RUNTIME.md). EQ-05 HTTP file-stream error handling remains a separate open batch.
+Q3 was released as `d01ea23`: EQ-04/06 shared media environment/resource bounds and bounded cancellation/shutdown. Parent final aggregate passed 1,472 tests with two explicit foreign-owner skips (1,474 total). Fresh bundles and ordinary Linux Electron export/quit/recreation passed; see [media runtime policy and acceptance](MEDIA-RUNTIME.md).
+
+Q4 is implemented against `d01ea23`: EQ-05 file response ownership/error handling plus bounded SSE transport cleanup. Final affected tests passed 166/166; fresh builds and ordinary Linux native missing-file/playback/seek/quit verification passed. Parent independent main suite passed 1,507 tests with two explicit skips (1,509 total); two subsequently added shutdown-edge tests passed separately, with production unchanged. Ready for final source review/local commit. See [HTTP streaming policy and acceptance](HTTP-STREAMS.md).
 
 Priority is delivery order: P1 before extending paid-generation/native distribution exposure; P2 in the next quality batches; P3 when the dependent capability is implemented. No confirmed unauthenticated remote compromise was established by this read-only review.
 

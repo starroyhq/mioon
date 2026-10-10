@@ -2,8 +2,7 @@ import http from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createChatHttp} from './chat-http.mjs';
-import {stat} from 'node:fs/promises';
-import {createReadStream, existsSync} from 'node:fs';
+import {createFileResponses} from './file-response.mjs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
@@ -74,6 +73,7 @@ export async function startServer({
   const store = openStore(root);
   const shutdown = new AbortController();
   let worker, server, agentSettings, chatRuntime, chatHttp, services;
+  const files = createFileResponses({signal: shutdown.signal});
   try {
     if (token === undefined) {
       token = randomBytes(32).toString('hex');
@@ -158,33 +158,24 @@ export async function startServer({
         if (url.pathname.startsWith('/media/') && ['GET', 'HEAD'].includes(req.method)) {
           const asset = store.get('assets', url.pathname.slice(7));
           if (!asset) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
-          const file = await safePath(root, asset.relativePath), metadata = await stat(file);
+          let file;
+          try { file = await safePath(root, asset.relativePath); }
+          catch { return json(res, 404, {ok: false, error: {code: 'FILE_UNAVAILABLE', message: '本地文件不可用。'}}); }
           const headers = {'Content-Type': asset.mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
           if (url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${asset.mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
-          const range = req.headers.range;
-          if (range) {
-            const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-            if (!match || (!match[1] && !match[2])) return res.writeHead(416).end();
-            const start = match[1] ? Number(match[1]) : Math.max(0, metadata.size - Number(match[2]));
-            const end = Math.min(match[1] ? (match[2] ? Number(match[2]) : metadata.size - 1) : metadata.size - 1, metadata.size - 1);
-            if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= metadata.size) return res.writeHead(416).end();
-            res.writeHead(206, {...headers, 'Content-Range': `bytes ${start}-${end}/${metadata.size}`, 'Content-Length': end - start + 1});
-            return req.method === 'HEAD' ? res.end() : createReadStream(file, {start, end}).pipe(res);
-          }
-          res.writeHead(200, {...headers, 'Content-Length': metadata.size});
-          return req.method === 'HEAD' ? res.end() : createReadStream(file).pipe(res);
+          return await files.send(req, res, {file, headers, ranges: true});
         }
         if (url.pathname.startsWith('/api/') || req.method !== 'GET') return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '接口不存在'}});
         const requested = decodeURIComponent(url.pathname);
         if (requested.includes('..') || requested.includes('\\')) return res.writeHead(400).end();
-        let file = path.join(dist, requested === '/' ? 'index.html' : requested);
+        const file = path.join(dist, requested === '/' ? 'index.html' : requested);
         if (!file.startsWith(dist + path.sep) && file !== dist) return res.writeHead(403).end();
-        if (!existsSync(file) || !(await stat(file)).isFile()) file = path.join(dist, 'index.html');
-        if (!existsSync(file)) return json(res, 503, {ok: false, error: {code: 'BUILD_REQUIRED', message: '请先运行 pnpm build'}});
-        const mime = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png'}[path.extname(file)] || 'application/octet-stream';
-        res.writeHead(200, {'Content-Type': mime, 'Cache-Control': 'no-cache'});
-        createReadStream(file).pipe(res);
+        return await files.send(req, res, {file, fallbackFile: path.join(dist, 'index.html'), headers: selected => ({
+          'Content-Type': {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png'}[path.extname(selected)] || 'application/octet-stream',
+          'Cache-Control': 'no-cache',
+        })});
       } catch (error) {
+        if (res.destroyed || res.writableEnded) return;
         if (res.headersSent) return res.destroy();
         json(res, error.status || 500, {ok: false, error: {code: error.code || 'INTERNAL_ERROR', message: error.status ? error.message : '操作失败，请检查输入或后端状态', details: error.details || {}, retryable: false}});
       }
@@ -211,7 +202,7 @@ export async function startServer({
       forceDrain.unref();
       try {
         await boundedShutdown(Promise.all([
-          worker.stop(), services.drain(),
+          worker.stop(), services.drain(), files.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
           !suppliedAgentSettings ? agentSettings?.close() : undefined,
         ]), 'SERVER_STOP_TIMEOUT');
@@ -225,7 +216,7 @@ export async function startServer({
     chatRuntime?.close(); chatHttp?.close();
     const drain = server?.listening ? new Promise(resolve => server.close(resolve)) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, worker?.stop(), services?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }
