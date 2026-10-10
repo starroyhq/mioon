@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { prepareMutation, isMutationOperation, assertMutationOwner, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.js';
@@ -22,6 +23,7 @@ function harness(t, dispatch) {
     currentProject, context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (key, id) => busy.has(`${id}:${key}`), markBusy: (id, key, value) => value ? busy.add(`${id}:${key}`) : busy.delete(`${id}:${key}`),
+    TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, clearPending, pendingForProject,
     isReferenceOperation: () => false, setPending: value => { state.pending = value; },
     rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return dispatch(operation, input, state); },

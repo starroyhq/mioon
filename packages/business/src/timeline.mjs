@@ -1,9 +1,10 @@
 import {randomUUID} from 'node:crypto';
-import {AppError,sourceFrameCount,getTimelineFadeIssue} from '@mioon/contracts';
-import {freezeTimelineSnapshot,validateSavedTimeline,TIMELINE_LIMITS} from './timeline-inputs.mjs';
+import {AppError,sourceFrameCount,isTimelineMutationResponse} from '@mioon/contracts';
+import {freezeTimelineSnapshot} from './timeline-inputs.mjs';
 export {TIMELINE_LIMITS} from './timeline-inputs.mjs';
 import {readTimelinePreflightSnapshot} from './timeline-sources.mjs';
-import {createTimelineReplacementBoundary,REPLACEMENT_RESPONSE_BYTES} from './timeline-replacement.mjs';
+import {createTimelineReplacementBoundary} from './timeline-replacement.mjs';
+import {createTimelineRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.mjs';
 
 const defaultRect=()=>({x:0,y:0,width:720,height:1280});
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -11,7 +12,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 // The timeline is its own aggregate: revision checks and idempotent responses
 // must be committed in the same SQLite transaction as every mutation.
 export function createTimelineServices(store,{required,check,hash,now}){
- const {db,get,list,put,tx}=store;
+ const {db,put,tx}=store;
  function find(projectId){
   const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
   return row?JSON.parse(row.data):null;
@@ -37,27 +38,39 @@ export function createTimelineServices(store,{required,check,hash,now}){
   if(!result)throw new AppError('CLIP_NOT_FOUND','片段不属于此时间线',404,{clipId:id});
   return result;
  }
- function asset(projectId,id){
-  const result=required('assets',id);
-  if(result.projectId!==projectId)throw new AppError('CROSS_PROJECT_REFERENCE','素材不属于此项目');
-  return result;
+ function transaction(operation,input,apply,boundary=createTimelineRecoveryBoundary(db,input)){
+  const state={receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
+  const write=()=>{state.writesStarted=true;};
+  try{return tx(()=>{
+   state.transactionEntered=true;
+   try{
+    const requestHash=hash({operation,input}),previous=readTimelineReceipt(db,input,operation);
+    if(previous&&previous.requestHash!==requestHash)
+     throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
+    if(previous)return boundary.replay(operation,previous.response);
+    state.receiptAbsent=true;
+    return apply({boundary,requestHash,write});
+   }catch(error){state.callbackFailed=true;throw error;}
+  });}catch(error){rejectTimelineMutation(db,input,error,state);throw error;}
  }
- const validate=timeline=>validateSavedTimeline(timeline,{track,asset});
- function replay(operation,input,readResponse){
-  const requestHash=hash({operation,input});
-  const hashColumn=readResponse?`CASE WHEN typeof(requestHash)='text' AND length(CAST(requestHash AS BLOB))=64 THEN requestHash END AS requestHash`:'requestHash';
-  const responseColumn=readResponse?`CASE WHEN typeof(response)='text' AND length(CAST(response AS BLOB)) BETWEEN 1 AND ${REPLACEMENT_RESPONSE_BYTES} THEN response END AS response`:'response';
-  const previous=db.prepare(`SELECT ${hashColumn},${responseColumn} FROM timeline_requests WHERE requestId=?`).get(input.requestId);
-  if(readResponse&&previous&&(typeof previous.requestHash!=='string'||!/^[a-f0-9]{64}$/.test(previous.requestHash)))
-   throw new AppError('INVALID_TIMELINE_SNAPSHOT','已保存的替换请求无效',409);
-  if(previous&&previous.requestHash!==requestHash)
-   throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
-  return {requestHash,response:previous?(readResponse?readResponse(previous.response):JSON.parse(previous.response)):null,receiptAbsent:!previous};
+ function editable(timeline,input){
+  check(timeline,input.expectedRevision);
+  if(timeline.revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
  }
- function saveResponse(input,requestHash,response){
+ function currentOrEnsure(input,boundary,write,{sourceSemantics=true}={}){
+  const current=boundary.read({legacyMissingProject:true,sourceSemantics});
+  if(current)return current;
+  // ensure() is itself a write on legacy projects. A later error in this
+  // attempt is deliberately ineligible for pre-write rejection proof.
+  write();ensure(input.projectId);
+  const created=boundary.read();if(!created)invalidTimeline();return created;
+ }
+ function saveResponse(operation,input,requestHash,response,boundary){
   // Do not reconstruct a response from the current aggregate on retries. An
   // old successful request must return precisely its original response.
+  if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
   db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run(input.requestId,requestHash,JSON.stringify(response));
+  boundary.verify(operation,response,requestHash);
   return response;
  }
  // History owns only editable timeline state. Revisions, IDs/timestamps of the
@@ -88,50 +101,35 @@ export function createTimelineServices(store,{required,check,hash,now}){
   setCursor(timeline.projectId,position);
  }
  function travel(operation,input,direction){
-  return tx(()=>{
-   const previous=replay(operation,input);
-   if(previous.response)return previous.response;
-   required('projects',input.projectId);
-   const timeline=find(input.projectId);
+  return transaction(operation,input,({boundary,requestHash,write})=>{
+   let timeline=boundary.read({legacyMissingProject:true});
    const empty=()=>new AppError(direction<0?'NOTHING_TO_UNDO':'NOTHING_TO_REDO',direction<0?'没有可撤销的时间线编辑':'没有可重做的时间线编辑',409);
    if(!timeline)throw empty();
-   check(timeline,input.expectedRevision);
-   const position=cursor(input.projectId);
-   const entry=db.prepare('SELECT beforeSnapshot,afterSnapshot FROM timeline_history WHERE projectId=? AND position=?').get(input.projectId,position+(direction>0?1:0));
+   editable(timeline,input);
+   const position=cursor(input.projectId),column=direction<0?'beforeSnapshot':'afterSnapshot';
+   const entry=db.prepare(`SELECT CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${TIMELINE_RESPONSE_BYTES} THEN ${column} END AS snapshot FROM timeline_history WHERE projectId=? AND position=?`).get(input.projectId,position+(direction>0?1:0));
    if(!entry)throw empty();
-   Object.assign(timeline,JSON.parse(direction<0?entry.beforeSnapshot:entry.afterSnapshot));
-   validate(timeline);
+   timeline=boundary.restored(timeline,entry.snapshot);
    timeline.revision++;
    timeline.updatedAt=now();
-   put('timelines',timeline);
+   write();put('timelines',timeline);
    setCursor(input.projectId,position+direction);
-   return saveResponse(input,previous.requestHash,timeline);
+   return saveResponse(operation,input,requestHash,timeline,boundary);
   });
  }
- function mutate(operation,input,apply,boundary){
-  let receiptAbsent=false,writesStarted=false;
-  try{return tx(()=>{
-   const previous=replay(operation,input,boundary?.replay);
-   if(previous.response)return previous.response;
-   receiptAbsent=previous.receiptAbsent;
-   const timeline=boundary?boundary.read():ensure(input.projectId);
-   check(timeline,input.expectedRevision);
-   if(boundary&&timeline.revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
+ function mutate(operation,input,apply,specialBoundary){
+  return transaction(operation,input,({boundary,requestHash,write})=>{
+   const timeline=specialBoundary?boundary.read():currentOrEnsure(input,boundary,write);
+   editable(timeline,input);
    const before=snapshot(timeline);
-   apply(timeline);
-   if(boundary)boundary.validate(timeline);else validate(timeline);
+   apply(timeline,boundary);
+   boundary.validate(timeline);
    timeline.revision++;
    timeline.updatedAt=now();
-   writesStarted=true;
-   put('timelines',timeline);
+   write();put('timelines',timeline);
    recordEdit(operation,timeline,before);
-   const response=saveResponse(input,previous.requestHash,timeline);
-   boundary?.verify(response,previous.requestHash);
-   return response;
-  });}catch(error){
-   boundary?.rejected(error,{receiptAbsent,writesStarted});
-   throw error;
-  }
+   return saveResponse(operation,input,requestHash,timeline,boundary);
+  },specialBoundary);
  }
  const handlers={
   'timeline.get':input=>ensure(input.projectId),
@@ -148,8 +146,8 @@ export function createTimelineServices(store,{required,check,hash,now}){
     throw new AppError('AUDIO_HIDDEN_UNSUPPORTED','音频轨道不支持隐藏画面，请使用静音');
    Object.assign(lane,input.patch);
   }),
-  'timeline.clip.add':input=>mutate('timeline.clip.add',input,timeline=>{
-   const source=asset(timeline.projectId,input.assetId);
+  'timeline.clip.add':input=>mutate('timeline.clip.add',input,(timeline,boundary)=>{
+   const source=boundary.inputAsset(input.assetId);
    timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(),gain:input.gain??1,
     ...Object.fromEntries(['fadeInFrames','fadeOutFrames'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
@@ -164,11 +162,11 @@ export function createTimelineServices(store,{required,check,hash,now}){
    clip(timeline,input.clipId);
    timeline.clips=timeline.clips.filter(item=>item.id!==input.clipId);
   }),
-  'timeline.clip.split':input=>mutate('timeline.clip.split',input,timeline=>{
+  'timeline.clip.split':input=>mutate('timeline.clip.split',input,(timeline,boundary)=>{
    const left=clip(timeline,input.clipId),end=left.startFrame+left.durationFrames;
    if(input.atFrame<=left.startFrame||input.atFrame>=end)
     throw new AppError('SPLIT_BOUNDS','分割点必须位于所选片段内部，不能位于起止帧',400,{clipId:left.id,startFrame:left.startFrame,endFrame:end,atFrame:input.atFrame});
-   const source=asset(timeline.projectId,left.assetId),leftDuration=input.atFrame-left.startFrame;
+   const source=boundary.asset(left.assetId),leftDuration=input.atFrame-left.startFrame;
    const fadeInFrames=left.fadeInFrames??0,fadeOutFrames=left.fadeOutFrames??0;
    if(leftDuration<fadeInFrames||leftDuration>left.durationFrames-fadeOutFrames)
     throw new AppError('SPLIT_FADE_BOUNDS','分割点不能位于音频淡入或淡出内部；可在淡入结束或淡出开始帧分割',400,{clipId:left.id,atFrame:input.atFrame,minFrame:left.startFrame+fadeInFrames,maxFrame:end-fadeOutFrames});
@@ -183,17 +181,17 @@ export function createTimelineServices(store,{required,check,hash,now}){
    left.durationFrames=leftDuration;
    timeline.clips.splice(timeline.clips.indexOf(left)+1,0,right);
   }),
-  'timeline.seed':input=>mutate('timeline.seed',input,timeline=>{
+  'timeline.seed':input=>mutate('timeline.seed',input,(timeline,boundary)=>{
    if(timeline.clips.length)throw new AppError('TIMELINE_NOT_EMPTY','只有空时间线可以从镜头顺序导入',409);
-   const shots=list('shots',input.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);
+   const shots=boundary.shots();
    if(!shots.length||shots.some(item=>!item.selectedVersionId))throw new AppError('MISSING_SELECTION','请先为每个镜头选择已生成的视频版本');
    const lane=timeline.tracks.filter(item=>item.kind==='video').sort((a,b)=>a.orderIndex-b.orderIndex)[0];
    if(!lane)throw new AppError('TRACK_NOT_FOUND','时间线没有视频轨道',404);
    let startFrame=0;
    for(const shot of shots){
-    const version=required('versions',shot.selectedVersionId);
+    const version=boundary.version(shot.selectedVersionId,shot.id);
     if(version.projectId!==timeline.projectId||version.shotId!==shot.id)throw new AppError('INVALID_VERSION','版本不属于此镜头');
-    const source=asset(timeline.projectId,version.assetId);
+    const source=boundary.asset(version.assetId);
     if(source.sha256!==version.sha256)throw new AppError('ASSET_HASH_MISMATCH','镜头版本与素材哈希不一致',409);
     const durationFrames=sourceFrameCount(source.duration);
     if(!Number.isSafeInteger(durationFrames)||durationFrames<1)throw new AppError('SOURCE_BOUNDS','所选版本没有有效时长');
@@ -201,14 +199,12 @@ export function createTimelineServices(store,{required,check,hash,now}){
     startFrame+=durationFrames;
    }
   }),
-  'timeline.render':input=>tx(()=>{
-   const previous=replay('timeline.render',input);
-   if(previous.response)return previous.response;
-   const timeline=ensure(input.projectId);
+  'timeline.render':input=>transaction('timeline.render',input,({boundary,requestHash,write})=>{
+   const timeline=currentOrEnsure(input,boundary,write,{sourceSemantics:false});
    check(timeline,input.expectedRevision);
-   validate(timeline);
+   boundary.validate(clone(timeline));
    if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
-   const assets=new Map([...new Set(timeline.clips.map(item=>item.assetId))].map(id=>[id,asset(input.projectId,id)]));
+   const assets=boundary.sources(timeline);
    const frozen=freezeTimelineSnapshot(timeline,assets);
    if(input.preflightSnapshotHash!==undefined){
     let current;
@@ -219,8 +215,8 @@ export function createTimelineServices(store,{required,check,hash,now}){
    }
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
-   put('exports',result);
-   return saveResponse(input,previous.requestHash,result);
+   write();put('exports',result);
+   return saveResponse('timeline.render',input,requestHash,result,boundary);
   })
  };
  return {ensure,history,handlers};

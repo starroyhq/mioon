@@ -179,3 +179,14 @@ omission preserves legacy input/response shape; keep that omission on replay.
 Preview behavior is unchanged. Observe the accepted export before claiming a
 file exists. These external tools add no built-in Agent tools or media context.
 See [the report contract](../../docs/API.md#local-timeline-export-preflight).
+
+### Timeline acknowledgement recovery
+
+For all eleven timeline writes, undo/redo and render included, retain the exact
+operation/input/request ID until a complete matching acknowledgement or credible
+request-bound `not_applied` rollback proof. Generic 4xx, ownership/receipt errors
+and malformed success remain unknown. Never replace the key or silently retry.
+Historical replay may return an older timeline; refresh current project state
+separately. Reference 4xx without proof also remains unknown. Public render records
+cannot prove current receipt/source ownership or a private-path preflight digest;
+explicitly replay every unknown timeline render with its original input. See [timeline recovery](../../docs/TIMELINE-RECOVERY.md).

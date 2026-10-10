@@ -137,8 +137,15 @@ async function fixture(t) {
     for (const [index, extra] of [{}, {preflightSnapshotHash: 'b'.repeat(64)}].entries()) {
       const request = {projectId: IDS.project, expectedRevision: 1, requestId: `historical-preflight-render-${index}`, purpose: 'export', ...extra};
       const response = {id: uuid(90 + index), projectId: IDS.project, requestId: request.requestId, mode: 'timeline', purpose: 'export',
-        timelineRevision: 1, snapshot: {fps: 30, width: 720, height: 1280, durationFrames: 30, tracks: [], clips: [], assets: []},
-        status: 'failed', assetId: null, url: null, error: {code: 'SYNTHETIC_FAILURE', message: 'Historical synthetic render'}, createdAt: NOW, updatedAt: NOW};
+        timelineRevision: 1, snapshot: {
+          timeline: {...seed.get('timelines', IDS.timeline), revision: 1, durationFrames: 30,
+            clips: seed.get('timelines', IDS.timeline).clips.map(clip => ({...clip, durationFrames: 30}))},
+          // Real legacy frozen shape, deliberately omitting optional hasAudio
+          // and private relativePath fields rather than seeding a malformed DTO.
+          assets: [imageId, audioId].map(id => {const source = seed.get('assets', id);
+            return Object.fromEntries(['id', 'sha256', 'mimeType', 'duration', 'width', 'height'].map(key => [key, source[key]]));}),
+        },
+        status: 'failed', assetId: null, url: null, error: {code: 'SYNTHETIC_FAILURE', message: 'Historical synthetic render', retryable: false}, createdAt: NOW, updatedAt: NOW};
       seed.put('exports', response);
       const raw = JSON.stringify(response);
       seed.db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(request.requestId, canonicalHash({operation: 'timeline.render', input: request}), raw);

@@ -33,7 +33,7 @@ async function fixture(t,options={}){
   state:()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()])),
   async asset(patch={}){const id=randomUUID(),bytes=patch.bytes??wav(),relativePath=`media/${id}.wav`;await writeFile(path.join(root,relativePath),bytes);const {bytes:_,...rest}=patch;return store.put('assets',{id,projectId:project.id,name:'Synthetic source',mimeType:'audio/wav',relativePath,sha256:sha(bytes),sizeBytes:bytes.length,duration:1,width:0,height:0,hasAudio:true,...rest});},
   save(timeline){f.timeline=store.put('timelines',timeline);return f.timeline;},
-  async seed(patch={}){const asset=await f.asset(patch),trackId=randomUUID();f.assetValue=asset;f.save({id:randomUUID(),projectId:project.id,revision:1,fps:30,width:720,height:1280,tracks:[{id:trackId,name:'Audio',kind:'audio',orderIndex:0,hidden:false,muted:false}],clips:[{id:randomUUID(),trackId,assetId:asset.id,startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1}],durationFrames:30,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z'});return asset;},
+  async seed(patch={}){const asset=await f.asset(patch),trackId=randomUUID();f.assetValue=asset;f.save({id:randomUUID(),projectId:project.id,revision:1,fps:30,width:720,height:1280,tracks:[{id:trackId,name:'Audio',kind:'audio',orderIndex:0,hidden:false,muted:false}],clips:[{id:randomUUID(),trackId,assetId:asset.id,name:'Synthetic audio clip',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1}],durationFrames:30,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z'});return asset;},
  };
  t.after(async()=>{await preflight.drain();await services.drain();store.close();await rm(root,{recursive:true,force:true});});return f;
 }
@@ -164,9 +164,40 @@ test('oversized relational timeline identity is replaced with SQL NULL before ma
 });
 
 test('a caller deadline retains the exact uncooperative preparation admission until settlement',async t=>{
- const gate=deferred(),entered=deferred();const f=await fixture(t,{limits:{...EXPORT_PREFLIGHT_LIMITS,timeoutMs:20},probe:async()=>{entered.resolve();await gate.promise;return meta();}});await f.seed();
- const result=await f.call();assert.equal(result.issues[0].code,'PREFLIGHT_TIMEOUT');assert.equal((await f.call()).issues[0].code,'PREFLIGHT_BUSY');gate.resolve();await tick();await tick();
- assert.notEqual((await f.call()).issues[0]?.code,'PREFLIGHT_BUSY');
+ const gate=deferred(),entered=deferred(),cleanup=deferred(),cleanupEntered=deferred(),settled=deferred();
+ let probes=0,activeProbes=0,maximumActive=0;
+ const f=await fixture(t,{probe:async()=>{
+  const first=++probes===1;maximumActive=Math.max(maximumActive,++activeProbes);
+  try{if(first){entered.resolve();await gate.promise;}return meta();}
+  finally{if(first){cleanupEntered.resolve();await cleanup.promise;}activeProbes--;if(first)settled.resolve();}
+ }});await f.seed();const before=f.state(),writes=f.writes();
+ // Move only the production deadline timer. Filesystem open/hash/close still
+ // completes normally, and the probe must actually enter before time expires.
+ // Keep a real bounded observation deadline independent of the mocked clock.
+ const realTimeout=setTimeout,realClearTimeout=clearTimeout;
+ const bounded=async(promise,label)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{
+  timer=realTimeout(()=>reject(Error(`${label} did not settle within 3 seconds`)),3000);
+ })]);}finally{realClearTimeout(timer);}};
+ t.mock.timers.enable({apis:['setTimeout']});let pending;
+ try{
+  pending=f.call();await bounded(entered.promise,'Initial probe entry');
+  t.mock.timers.tick(EXPORT_PREFLIGHT_LIMITS.timeoutMs);
+  const result=await bounded(pending,'Caller deadline');assert.equal(result.issues[0].code,'PREFLIGHT_TIMEOUT');const returned=clone(result);
+  assert.equal((await bounded(f.call(),'Held probe admission')).issues[0].code,'PREFLIGHT_BUSY');assert.equal(probes,1);
+  gate.resolve();await bounded(cleanupEntered.promise,'Probe cleanup entry');
+  assert.equal((await bounded(f.call(),'Held cleanup admission')).issues[0].code,'PREFLIGHT_BUSY','returned probe value cannot release an outstanding cleanup');
+  assert.equal(activeProbes,1);assert.equal(probes,1);
+  cleanup.resolve();await bounded(settled.promise,'Exact probe settlement');
+  const next=await bounded((async()=>{
+   // Admission is authoritative only after preparation and its owned cleanup
+   // settle. Observe it rather than assuming any fixed count of event-loop ticks.
+   const until=performance.now()+2500;
+   while(performance.now()<until){const value=await f.call();if(value.issues[0]?.code!=='PREFLIGHT_BUSY')return value;await tick();}
+   throw Error('Settled preparation did not release admission');
+  })(),'Preparation admission release');
+  assert.equal(next.status,'ready');assert.equal(probes,2);assert.equal(maximumActive,1);
+  assert.deepEqual(result,returned);assert.equal(f.writes(),writes);assert.deepEqual(f.state(),before);
+ }finally{gate.resolve();cleanup.resolve();t.mock.timers.reset();if(pending)await bounded(pending.catch(()=>{}),'Caller cleanup settlement');}
 });
 
 test('valid imported, generated, mock and export source ownership all remain usable',async t=>{

@@ -557,3 +557,21 @@ original digest or omission.
 This additive external HTTP/CLI/MCP capability does not expand built-in Agent
 model tools, inspection DTOs, media context, or approval scope. Offline transport
 acceptance: `node --test tests/timeline-preflight-transports.test.mjs`.
+
+### Timeline recovery acknowledgement boundary
+
+All eleven keyed timeline writes (track/clip edits, seed, undo, redo and render)
+validate complete operation-bound acknowledgements. A later 4xx, malformed success,
+corrupt receipt or ownership failure leaves the original outcome unknown. Only a
+matching request-bound `mutationOutcome:"not_applied"` proof from a fresh,
+pre-write business rejection after rollback establishes non-application. Exact
+historical replay checks current ownership before returning unchanged stored data;
+it does not require the historical clip to remain present or a newer revision to
+match. Request schemas, response shapes, history and journal namespaces are unchanged.
+
+Pending timeline renders require explicit exact replay. Even a well-shaped
+progressed public export cannot prove current receipt/source ownership; public
+snapshots also omit private paths included in preflight digests. Project refresh
+therefore never automatically clears an unknown render receipt. Reference errors conservatively retain uncertainty;
+reference backend receipt hardening is separately deferred. See
+[TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md) for scope and session-storage limits.

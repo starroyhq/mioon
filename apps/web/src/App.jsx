@@ -11,7 +11,7 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isTimelineReplacementResponse } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import Icon from './icons.jsx';
 import Inspector from './Inspector.jsx';
@@ -33,7 +33,7 @@ import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.js'
 import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, versionUrl, jobStatusText, outputReviewRequired, outputReviewMessage } from './api.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
-import { pendingForProject, prepareSubmission, clearPending, reconcilePending } from './submissions.js';
+import { pendingForProject, prepareSubmission, prepareRequestReplay, clearPending, reconcilePending } from './submissions.js';
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.js';
 import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';
 import { createWorkspacePreferences } from './workspace-preferences.js';
@@ -329,11 +329,13 @@ export default function App() {
   async function run(key, operation, input, message, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError } = {}) {
     const captured = context(), projectId = captured.projectId;
     const mutation = isMutationOperation(operation);
+    const timeline = TIMELINE_MUTATION_OPERATIONS.includes(operation);
+    const requestBound = timeline || isReferenceOperation(operation);
     if (isBusy(key, projectId) || (mutation && isBusy('canvas:mutation', projectId))) return null;
     markBusy(projectId, key, true);
     if (mutation) markBusy(projectId, 'canvas:mutation', true);
-    const durable = mutation || ['generation.submit', 'job.retry', 'export.create'].includes(operation) || operation.startsWith('timeline.') || isReferenceOperation(operation);
-    const timelineMutation = operation.startsWith('timeline.') && operation !== 'timeline.render';
+    const durable = mutation || timeline || ['generation.submit', 'job.retry', 'export.create'].includes(operation) || isReferenceOperation(operation);
+    const timelineMutation = timeline && operation !== 'timeline.render';
     const invalidateHistory = () => {
       if (!timelineMutation || currentProject.current !== projectId) return;
       ++requestCounter.current;
@@ -342,10 +344,21 @@ export default function App() {
     };
     let stored, dispatched = false;
     try {
+      if (requestBound && input?.projectId !== projectId)
+        throw Object.assign(new Error('项目已变化，已阻止旧面板提交。请回到原项目的任务面板核对请求。'), { code: 'MUTATION_PROJECT_MISMATCH' });
       if (durable) {
         const entry = { projectId, key, operation, input, createdAt: new Date().toISOString() };
         if (mutation && !replay) assertMutationOwner(entry, dataRef.current);
-        stored = mutation ? prepareMutation(entry, { replay }) : prepareSubmission(entry);
+        // A new timeline click must not silently replay an older uncertain edit
+        // or preview. Only the task panel may recover its saved original input.
+        if (timeline && !replay && pendingForProject(projectId, { strict: true }).some(item => item.key === key))
+          throw Object.assign(new Error('上一条时间线请求的结果尚未确认。原请求已保留，请先在任务面板恢复同一请求。'), { code: 'MUTATION_PENDING' });
+        if (requestBound && replay) stored = prepareRequestReplay(entry);
+        else stored = mutation ? prepareMutation(entry, { replay }) : prepareSubmission(entry);
+        if (requestBound && stored.operation !== operation)
+          throw Object.assign(new Error('原请求操作不一致，已阻止提交。请先核对任务面板中的原请求。'), { code: 'MUTATION_REPLAY_MISMATCH' });
+        if (requestBound && stored.input.projectId !== projectId)
+          throw Object.assign(new Error('原请求所属项目不一致，已阻止提交。请先核对原项目的任务记录。'), { code: 'MUTATION_PROJECT_MISMATCH' });
         input = stored.input; operation = stored.operation;
         if (currentProject.current === projectId) setPending(pendingForProject(projectId));
       }
@@ -354,7 +367,7 @@ export default function App() {
       const result = await rpc(operation, input);
       invalidateHistory();
       if (mutation) validateMutationResponse(stored, result);
-      if (operation === 'timeline.clip.replaceSource' && !isTimelineReplacementResponse(result, input)) throw Object.assign(new Error('未收到与原请求一致的来源替换确认。'), { code: 'BACKEND_PROTOCOL_ERROR' });
+      if (timeline && !isTimelineMutationResponse(operation, input, result)) throw Object.assign(new Error('未收到与原请求一致的时间线确认。'), { code: 'BACKEND_PROTOCOL_ERROR' });
       validateResponse?.(result);
       if (replay && operation === 'asset.range.set' && currentProject.current === projectId) {
         const assetId = stored.input.assetId;
@@ -368,7 +381,8 @@ export default function App() {
       if (message) notify(message); return mutation && replay ? null : result;
     } catch (e) {
       if (dispatched) invalidateHistory();
-      const rejected = mutation || operation === 'timeline.clip.replaceSource' ? mutationNotApplied(e, stored) : e.definitive;
+      const rejected = mutation ? mutationNotApplied(e, stored) : timeline || isReferenceOperation(operation)
+        ? Boolean(stored && hasRequestNotAppliedProof(e, stored.input, { operation })) : e.definitive;
       onFailure?.(e, { dispatched, rejected });
       if (durable && stored && rejected) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
       if (currentProject.current === projectId) {
@@ -376,7 +390,7 @@ export default function App() {
         if (durable && stored && dispatched && !rejected) { notify('提交结果尚未确认。原请求已保留，请在任务面板恢复同一请求；不会自动重试或生成新的提交编号。', 'error'); if (isCurrent(captured)) setShowJobs(true); }
         else if (isCurrent(captured)) notify(operation === 'timeline.clip.replaceSource' ? clipReplacementErrorMessage(e) : errorMessage(e), 'error');
         if (e.code === 'MUTATION_PENDING' && isCurrent(captured)) setShowJobs(true);
-        await refresh(projectId);
+        if (dispatched || !requestBound) await refresh(projectId);
       }
       return null;
     } finally { markBusy(projectId, key, false); if (mutation) markBusy(projectId, 'canvas:mutation', false); if (replay && operation === 'asset.disposition.set' && currentProject.current === projectId) setDispositionRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 })); }

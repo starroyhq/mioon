@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {assertClientRecoveryError} from './recovery-transport-assertions.mjs';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -179,7 +180,10 @@ test('fades agree across real HTTP, CLI and official MCP with atomic errors, spl
       assert.match(result.details.clipId, /^[a-f0-9-]{36}$/);
       return {...result, details: {...result.details, clipId: '<uncommitted-clip-id>'}};
     };
-    for (const result of results) assert.deepEqual(comparable(result), comparable(results[0]), `${operation} ${error || 'result'} transport parity`);
+    for (const result of results.slice(1)) {
+      if (error) assertClientRecoveryError(comparable(result), comparable(results[0]), {operation, input});
+      else assert.deepEqual(result, results[0], `${operation} result transport parity`);
+    }
     return results[0];
   }
   const saved = [];

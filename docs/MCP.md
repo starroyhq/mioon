@@ -417,3 +417,14 @@ request and must retain its original digest or omission on replay.
 
 Offline official SDK/CLI/HTTP acceptance:
 `node --test tests/timeline-preflight-transports.test.mjs`.
+
+### Timeline recovery validation
+
+All eleven existing timeline-write tools now share complete acknowledgement and
+request-bound rollback-proof checks with the CLI and UI. A malformed successful
+payload produces a protocol error with uncertainty guidance. A later 4xx does not
+prove a prior call failed; preserve its original arguments/request ID. The bridge
+never automatically resubmits. Reference errors also conservatively retain
+uncertainty while their backend receipt hardening remains a follow-on. No new tool,
+input schema, authorization or journal namespace is introduced. See
+[TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md).

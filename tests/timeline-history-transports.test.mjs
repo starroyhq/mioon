@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {assertClientRecoveryError} from './recovery-transport-assertions.mjs';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -292,10 +293,12 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
   await t.test('exact successful replay wins over stale revisions and changed request data conflicts on every transport', async () => {
     const before = backend.storage();
     const expectedErrors = new Map();
+    const rejectedInputs = new Map(['undo', 'redo'].map(action => [`timeline.${action}:REVISION_CONFLICT`, {...query, expectedRevision: 1, requestId: randomUUID()}]));
+    rejectedInputs.set('timeline.redo:NOTHING_TO_REDO', {...query, expectedRevision: current.revision, requestId: randomUUID()});
     async function identicalError(call, operation, input, code) {
       const error = await call(operation, input, code);
       const key = `${operation}:${code}`;
-      if (expectedErrors.has(key)) assert.deepEqual(error, expectedErrors.get(key), 'HTTP, CLI and MCP preserve the same structured error');
+      if (expectedErrors.has(key)) assertClientRecoveryError(error, expectedErrors.get(key), {operation, input});
       else expectedErrors.set(key, error);
       if (code === 'REVISION_CONFLICT') {
         assert.equal(error.details.expectedRevision, input.expectedRevision);
@@ -309,9 +312,9 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
       await call('timeline.redo', {...redoInput, expectedRevision: current.revision}, 'IDEMPOTENCY_CONFLICT');
       await call('timeline.redo', undoInput, 'IDEMPOTENCY_CONFLICT');
       for (const action of ['undo', 'redo']) {
-        await identicalError(call, `timeline.${action}`, {...query, expectedRevision: 1, requestId: randomUUID()}, 'REVISION_CONFLICT');
+        await identicalError(call, `timeline.${action}`, rejectedInputs.get(`timeline.${action}:REVISION_CONFLICT`), 'REVISION_CONFLICT');
       }
-      await identicalError(call, 'timeline.redo', {...query, expectedRevision: current.revision, requestId: randomUUID()}, 'NOTHING_TO_REDO');
+      await identicalError(call, 'timeline.redo', rejectedInputs.get('timeline.redo:NOTHING_TO_REDO'), 'NOTHING_TO_REDO');
     }
     assert.deepEqual(backend.storage(), before, 'replays and conflicts cannot modify cursor, journal, aggregate, or saved responses');
     await consistent(1, 1);

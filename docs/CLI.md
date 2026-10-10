@@ -431,3 +431,14 @@ After uncertainty, replay the whole exact render request with its original
 revision, digest (or original omission), and key. Never generate a new key just
 because observation failed. Watch/download the existing export as usual.
 This external command adds no built-in Agent tool or media context.
+
+### Timeline recovery validation
+
+The shared client validates all eleven timeline-write acknowledgements, including
+undo/redo and render. Invalid success is `BACKEND_PROTOCOL_ERROR` with the original
+request identity and uncertainty guidance; no POST is automatically retried.
+Timeline/reference 4xx errors without a matching rollback proof are also
+ambiguous. Preserve the original operation/input/key, inspect state, then explicitly
+replay those exact bytes. A new request ID is a new intent, never a recovery method.
+Valid old responses and command schemas remain unchanged. See
+[TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md).

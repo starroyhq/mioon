@@ -13,6 +13,13 @@ async function seed(root) {
   const {openStore} = await import('../../packages/business/src/db.mjs');
   const store = openStore(root);
   try {
+    // The shared mutation fixture's zero-track timeline is an intentionally
+    // opaque preservation sentinel, not a service-produced aggregate. This
+    // scenario later edits the timeline, so give it the three default tracks
+    // produced by timeline.get; leave the shared fixture/journal sentinels alone.
+    store.put('timelines', {...store.get('timelines', IDS.timeline),
+      tracks: [['video', 'Video 1'], ['video', 'Video 2'], ['audio', 'Audio 1']].map(([kind, name], orderIndex) =>
+        ({id: uuid(88 + orderIndex), name, kind, orderIndex, hidden: false, muted: false}))});
     // The mutation fixture intentionally shares one asset across two versions.
     // Inspection rejects that ambiguous reverse relation, so this wire seed
     // keeps only the single generated version needed by the range scenario.

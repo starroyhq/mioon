@@ -83,7 +83,7 @@ test('shared client retains exact replacement recovery identity on malformed val
   }
 });
 
-test('shared client accepts historical exact replacement acknowledgement after explicit replay without expanding legacy validation', async () => {
+test('shared client accepts historical exact replacement and legacy edit acknowledgements after explicit replay', async () => {
   for (const version of [false, true]) {
     const {input, timeline} = fixture({version}), seen = [];
     const client = createClient({env, fetchImpl: async (_url, options) => {seen.push(JSON.parse(options.body)); return response(timeline);}});
@@ -91,7 +91,8 @@ test('shared client accepts historical exact replacement acknowledgement after e
     assert.deepEqual(await client.rpc(operation, input), timeline);
     assert.deepEqual(seen, [{operation, input}, {operation, input}]);
   }
-  const {input} = fixture(), legacy = createClient({env, fetchImpl: async () => response({legacy: 'unchanged'})});
+  const {input, timeline} = fixture(); timeline.clips[0].name = 'Legacy edit';
+  const legacy = createClient({env, fetchImpl: async () => response(timeline)});
   const {assetId, ...fields} = input;
-  assert.deepEqual(await legacy.rpc('timeline.clip.update', {...fields, patch: {name: 'Legacy edit'}}), {legacy: 'unchanged'});
+  assert.deepEqual(await legacy.rpc('timeline.clip.update', {...fields, patch: {name: 'Legacy edit'}}), timeline);
 });

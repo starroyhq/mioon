@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { isTimelineRenderRecord } from '@mioon/contracts';
 import {prepareSubmission,readPending,clearPending,pendingForProject,reconcilePending} from '../apps/web/src/submissions.js';
 class SessionStore{
  values=new Map();get length(){return this.values.size;}key(n){return [...this.values.keys()][n]??null;}getItem(k){return this.values.get(k)??null;}setItem(k,v){this.values.set(k,String(v));}removeItem(k){this.values.delete(k);}
@@ -8,8 +9,67 @@ function fixture(t){const prior=Object.getOwnPropertyDescriptor(globalThis,'sess
 const request=(operation='timeline.clip.update',key='timeline:mutation')=>({projectId:'project-v2',key,operation,createdAt:'2026-10-09T10:00:00.000Z',input:{projectId:'project-v2',expectedRevision:7,requestId:'timeline-original-request',clipId:'clip-original',patch:{trackId:'track-two',startFrame:47,durationFrames:82,sourceInFrame:11,rect:{x:100,y:200,width:300,height:400},gain:0.5}}});
 test('timeline mutations retain exact frame, rect, revision and request identity across a lost response',t=>{fixture(t);const original=request();prepareSubmission(original);const replacement=request('timeline.track.add');replacement.input={...replacement.input,expectedRevision:8,requestId:'must-never-replace'};assert.deepEqual(prepareSubmission(replacement),original);assert.deepEqual(readPending('project-v2','timeline:mutation'),original);});
 test('fetching a newer timeline cannot prove an uncertain mutation succeeded; only explicit replay clears it',t=>{fixture(t);const original=request();prepareSubmission(original);reconcilePending('project-v2',{timeline:{revision:99,clips:[]},jobs:[],exports:[]});assert.deepEqual(pendingForProject('project-v2'),[original]);clearPending('project-v2','timeline:mutation');assert.equal(pendingForProject('project-v2').length,0);});
-test('all supported timeline mutation operations and render accept durable recovery records',t=>{fixture(t);for(const [i,op] of ['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.remove','timeline.clip.replaceSource','timeline.seed','timeline.render','timeline.undo','timeline.redo'].entries()){const entry=request(op,`timeline:${i}`);entry.input.requestId+=i;assert.deepEqual(prepareSubmission(entry),entry);}assert.equal(pendingForProject('project-v2').length,10);});
-test('preview and export recovery identities remain separate and reconcile against durable export records',t=>{fixture(t);const preview=request('timeline.render','timeline:render:preview');preview.input={projectId:'project-v2',expectedRevision:7,requestId:'preview-original',purpose:'preview'};const exported=request('timeline.render','timeline:render:export');exported.input={...preview.input,requestId:'export-original',purpose:'export'};prepareSubmission(preview);prepareSubmission(exported);reconcilePending('project-v2',{exports:[{requestId:preview.input.requestId}],jobs:[]});assert.equal(readPending('project-v2',preview.key),null);assert.deepEqual(readPending('project-v2',exported.key),exported);});
+test('all supported timeline mutation operations and render accept durable recovery records',t=>{fixture(t);for(const [i,op] of ['timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.remove','timeline.clip.split','timeline.clip.replaceSource','timeline.seed','timeline.render','timeline.undo','timeline.redo'].entries()){const entry=request(op,`timeline:${i}`);entry.input.requestId+=i;assert.deepEqual(prepareSubmission(entry),entry);}assert.equal(pendingForProject('project-v2').length,11);});
+const id = value => `81000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+function renderRecord(input, status = 'queued') {
+  const timeline = { id: id(2), projectId: input.projectId, revision: input.expectedRevision, fps: 30, width: 720, height: 1280,
+    durationFrames: 30, createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:00.000Z',
+    tracks: [{ id: id(3), name: 'Video', kind: 'video', orderIndex: 0, hidden: false, muted: false }],
+    clips: [{ id: id(4), trackId: id(3), assetId: id(5), name: 'Clip', startFrame: 0, durationFrames: 30, sourceInFrame: 0, gain: 1, rect: { x: 0, y: 0, width: 720, height: 1280 } }] };
+  return { id: id(6), projectId: input.projectId, requestId: input.requestId, mode: 'timeline', purpose: input.purpose, timelineRevision: input.expectedRevision,
+    snapshot: { timeline, assets: [{ id: id(5), sha256: 'a'.repeat(64), mimeType: 'video/mp4', duration: 5, width: 720, height: 1280, hasAudio: true }] },
+    status, assetId: status === 'succeeded' ? id(7) : null, url: status === 'succeeded' ? `/media/${id(7)}` : null,
+    error: status === 'failed' ? { code: 'RENDER_FAILED', message: 'Synthetic failure', retryable: false } : null,
+    createdAt: timeline.createdAt, updatedAt: timeline.updatedAt };
+}
+
+test('preview and export recovery identities stay separate and public render records never release either key', t => {
+  fixture(t); const projectId = id(1);
+  const preview = { ...request('timeline.render', 'timeline:render:preview'), projectId, input: { projectId, expectedRevision: 7, requestId: 'preview-original', purpose: 'preview' } };
+  const exported = { ...preview, key: 'timeline:render:export', input: { ...preview.input, requestId: 'export-original', purpose: 'export' } };
+  prepareSubmission(preview); prepareSubmission(exported);
+  const valid = renderRecord(preview.input, 'succeeded');
+  const invalid = [{ requestId: preview.input.requestId }, { ...valid, mode: 'sequence' }, { ...valid, projectId: id(99) },
+    { ...valid, purpose: 'export' }, { ...valid, timelineRevision: 8 }, { ...valid, snapshot: {} },
+    { ...valid, requestId: 'different-request' }, { ...valid, assetId: id(99) }];
+  for (const value of invalid) {
+    reconcilePending(projectId, { exports: [value], jobs: [{ requestId: preview.input.requestId }] });
+    assert.deepEqual(readPending(projectId, preview.key), preview);
+    assert.deepEqual(readPending(projectId, exported.key), exported);
+  }
+  reconcilePending(projectId, { exports: [valid] });
+  assert.equal(isTimelineRenderRecord(valid, preview.input), true);
+  assert.deepEqual(readPending(projectId, preview.key), preview);
+  assert.deepEqual(readPending(projectId, exported.key), exported);
+  reconcilePending(projectId, { exports: [renderRecord(exported.input, 'failed')] });
+  assert.deepEqual(readPending(projectId, exported.key), exported);
+});
+
+test('every valid public render lifecycle record preserves the original receipt after same-session reload', t => {
+  fixture(t); const projectId = id(1);
+  for (const status of ['queued', 'running', 'succeeded', 'failed']) {
+    const entry = { ...request('timeline.render', 'timeline:render:export'), projectId, input: { projectId, expectedRevision: 7, requestId: `original-${status}`, purpose: 'export' } };
+    prepareSubmission(entry);
+    assert.deepEqual(pendingForProject(projectId, { strict: true }), [entry]);
+    const record = renderRecord(entry.input, status);
+    assert.equal(isTimelineRenderRecord(record, entry.input), true, status);
+    reconcilePending(projectId, { exports: [record] });
+    assert.deepEqual(readPending(projectId, entry.key), entry, status);
+    clearPending(projectId, entry.key);
+  }
+});
+
+test('digest-bound render receipts require exact replay because public records cannot prove their private-path digest', t => {
+  fixture(t); const projectId = id(1);
+  const entry = { ...request('timeline.render', 'timeline:render:export'), projectId,
+    input: { projectId, expectedRevision: 7, requestId: 'digest-bound-original', purpose: 'export', preflightSnapshotHash: 'b'.repeat(64) } };
+  prepareSubmission(entry);
+  for (const status of ['queued', 'running', 'succeeded', 'failed']) {
+    reconcilePending(projectId, { exports: [renderRecord(entry.input, status)] });
+    assert.deepEqual(readPending(projectId, entry.key), entry, status);
+  }
+  assert.deepEqual(prepareSubmission({ ...entry, input: { ...entry.input, preflightSnapshotHash: 'c'.repeat(64), requestId: 'must-not-replace' } }), entry);
+});
 
 test('undo and redo replay the exact original request even after a changed history cursor', t => {
   fixture(t);

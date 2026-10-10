@@ -2,9 +2,11 @@ import React from 'react';
 import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.jsx';
 import { isMutationOperation } from './mutation-submissions.js';
+import { TIMELINE_MUTATION_OPERATIONS } from '@mioon/contracts';
+import { isReferenceOperation } from './reference-connections.js';
 
 export default function PendingSubmission({ entry, busy, onReplay }) {
-  const mutation = isMutationOperation(entry.operation);
+  const mutation = isMutationOperation(entry.operation) || TIMELINE_MUTATION_OPERATIONS.includes(entry.operation) || isReferenceOperation(entry.operation);
   return <div className="job-card submission_unknown" data-testid="pending-submission">
     <div className="job-title"><Icon name="info" size={17} /><strong>请求结果待确认</strong></div>
     <p className="helper muted" style={{ marginTop: 12 }}>原编号与完整参数已保留。恢复时由服务器去重；不会自动重试或创建新的请求编号。</p>

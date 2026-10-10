@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {assertClientRecoveryError} from './recovery-transport-assertions.mjs';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -51,7 +52,7 @@ test('CLI attach, MCP detach, HTTP replay and real backend restart retain one du
  const input={projectId,sourceNodeId:node.id,targetShotId:shot.id,expectedSourceRevision:node.revision,expectedShotRevision:shot.revision,requestId:randomUUID(),role:'first_frame'};
  const added=await cli(['reference','attach','--input',JSON.stringify(input)],f.env);assert.equal(added.edge.kind,'reference');assert.deepEqual(added.shot.referenceAssetIds,[asset.id]);assert.deepEqual(await client.call('reference_attach',input),added);assert.deepEqual(await f.http('reference.attach',input),added);
  let snapshot=await f.http('project.get',{projectId});assert.equal(snapshot.edges.length,1);assert.equal(snapshot.shots[0].revision,shot.revision+1);
- const stale={...input,requestId:randomUUID()},httpConflict=await f.http('reference.attach',stale,'REVISION_CONFLICT');assert.deepEqual(await client.call('reference_attach',stale,'REVISION_CONFLICT'),{...httpConflict,retryable:false});assert.deepEqual(await cli(['reference','attach','--input',JSON.stringify(stale)],f.env,'REVISION_CONFLICT'),{...httpConflict,retryable:false});
+ const stale={...input,requestId:randomUUID()},httpConflict=await f.http('reference.attach',stale,'REVISION_CONFLICT');assertClientRecoveryError(await client.call('reference_attach',stale,'REVISION_CONFLICT'),httpConflict,{operation:'reference.attach',input:stale});assertClientRecoveryError(await cli(['reference','attach','--input',JSON.stringify(stale)],f.env,'REVISION_CONFLICT'),httpConflict,{operation:'reference.attach',input:stale});
  const remove={projectId,edgeId:added.edge.id,expectedShotRevision:added.shot.revision,requestId:randomUUID()},removed=await client.call('reference_detach',remove);assert.equal(removed.detached,true);assert.deepEqual(removed.shot.referenceAssetIds,[]);
  const before=await f.http('project.get',{projectId}),pid=f.pid;assert.notEqual(await f.restart(),pid);assert.deepEqual(await f.http('project.get',{projectId}),before);
  for(const [operation,params,result] of [['reference.attach',input,added],['reference.detach',remove,removed]]){assert.deepEqual(await f.http(operation,params),result);assert.deepEqual(await cli([...operation.split('.'),'--input',JSON.stringify(params)],f.env),result);assert.deepEqual(await client.call(operation.replaceAll('.','_'),params),result);}

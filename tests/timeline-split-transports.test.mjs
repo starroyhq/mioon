@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {assertClientRecoveryError} from './recovery-transport-assertions.mjs';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -190,7 +191,7 @@ test('split HTTP, CLI, MCP and shared client agree on durable results, errors, u
   for (const [input, code] of cases) {
     const errors = [];
     for (const {call} of transports) errors.push(await call(operation, input, code));
-    errors.forEach(error => assert.deepEqual(error, errors[0], `${code} must have the same structured error on every transport`));
+    errors.slice(1).forEach(error => assertClientRecoveryError(error, errors[0], {operation, input}));
     if (code === 'REVISION_CONFLICT') assert.deepEqual(errors[0].details.current, timeline);
   }
   assert.deepEqual(backend.storage(), beforeErrors);

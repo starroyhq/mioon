@@ -1,7 +1,6 @@
-// A replacement acknowledgement is a complete saved timeline, never a patch.
-// This new-operation-only guard does not normalize old timelines or claim the
-// historical response is current. It binds only what the caller can verify;
-// project-owned media/version lineage remains the backend's responsibility.
+// Saved timeline acknowledgements are complete records, never patches. These
+// guards do not normalize records or claim a historical response is current.
+// Project-owned media/version lineage remains the backend's responsibility.
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
@@ -9,20 +8,23 @@ const text = (value, max) => typeof value === 'string' && value.length >= 1 && v
 const fields = (value, required, optional = []) => object(value) && required.every(key => Object.hasOwn(value, key)) && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
 const timestamp = value => text(value, 64) && Number.isFinite(Date.parse(value));
 const provenance = ['versionId', 'shotId', 'jobId'];
-const responseBytes = 128 * 1024, encoder = new TextEncoder();
+// The complete legacy shape may exceed 128 KiB when valid names need JSON
+// escaping. 256 KiB bounds 100 clips (<2 KiB each), 12 tracks (<2 KiB each),
+// and aggregate metadata. Explicit source replacement retains its original cap.
+export const TIMELINE_RESPONSE_BYTES = 256 * 1024;
+export const TIMELINE_REPLACEMENT_RESPONSE_BYTES = 128 * 1024;
+const encoder = new TextEncoder();
 const timelineFields = ['id', 'projectId', 'revision', 'fps', 'width', 'height', 'tracks', 'clips', 'durationFrames', 'createdAt', 'updatedAt'];
 const trackFields = ['id', 'name', 'kind', 'orderIndex', 'hidden', 'muted'];
 const clipFields = ['id', 'trackId', 'assetId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain'];
 
-export function isTimelineReplacementResponse(value, input) {
-  if (!object(input) || !text(input.requestId, 200) || input.requestId.length < 8 || !uuid(input.projectId) || !uuid(input.clipId) || !uuid(input.assetId) ||
-      !integer(input.expectedRevision, 1, Number.MAX_SAFE_INTEGER - 1) ||
-      (input.versionId !== undefined && !uuid(input.versionId)) ||
-      !fields(value, timelineFields) || !uuid(value.id) || value.projectId !== input.projectId ||
-      value.revision !== input.expectedRevision + 1 || value.fps !== 30 || value.width !== 720 || value.height !== 1280 ||
-      !integer(value.durationFrames, 1, 18000) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
+export function isTimelineRecord(value, {projectId} = {}) {
+  if (!fields(value, timelineFields) || !uuid(value.id) || !uuid(value.projectId) ||
+      (projectId !== undefined && value.projectId !== projectId) || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER) ||
+      value.fps !== 30 || value.width !== 720 || value.height !== 1280 ||
+      !integer(value.durationFrames, 0, 18000) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
       !Array.isArray(value.tracks) || value.tracks.length < 1 || value.tracks.length > 12 ||
-      !Array.isArray(value.clips) || value.clips.length < 1 || value.clips.length > 100) return false;
+      !Array.isArray(value.clips) || value.clips.length > 100) return false;
   const tracks = new Map(), ids = new Set();
   for (const track of value.tracks) {
     if (!fields(track, trackFields) || !uuid(track.id) || tracks.has(track.id) || !text(track.name, 150) ||
@@ -30,7 +32,7 @@ export function isTimelineReplacementResponse(value, input) {
         typeof track.hidden !== 'boolean' || typeof track.muted !== 'boolean' || (track.kind === 'audio' && track.hidden)) return false;
     tracks.set(track.id, []);
   }
-  let duration = 0, target;
+  let duration = 0;
   for (const clip of value.clips) {
     if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames']) ||
         !uuid(clip.id) || ids.has(clip.id) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
@@ -46,16 +48,24 @@ export function isTimelineReplacementResponse(value, input) {
     if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > clip.durationFrames) return false;
     ids.add(clip.id); tracks.get(clip.trackId).push(clip);
     duration = Math.max(duration, clip.startFrame + clip.durationFrames);
-    if (clip.id === input.clipId) target = clip;
   }
   for (const clips of tracks.values()) {
     clips.sort((a, b) => a.startFrame - b.startFrame);
     for (let i = 1; i < clips.length; i++) if (clips[i].startFrame < clips[i - 1].startFrame + clips[i - 1].durationFrames) return false;
   }
-  if (duration !== value.durationFrames || !target || target.assetId !== input.assetId || Object.hasOwn(target, 'jobId')) return false;
-  // The backend bounds retained timeline rows at the same 128 KiB. Structural
-  // caps above make serialization bounded even before checking encoded size.
-  if (encoder.encode(JSON.stringify(value)).byteLength > responseBytes) return false;
+  if (duration !== value.durationFrames) return false;
+  // Structural caps bound serialization before checking the retained row cap.
+  return encoder.encode(JSON.stringify(value)).byteLength <= TIMELINE_RESPONSE_BYTES;
+}
+
+export function isTimelineReplacementResponse(value, input) {
+  if (!object(input) || !text(input.requestId, 200) || input.requestId.length < 8 || !uuid(input.projectId) || !uuid(input.clipId) || !uuid(input.assetId) ||
+      !integer(input.expectedRevision, 1, Number.MAX_SAFE_INTEGER - 1) ||
+      (input.versionId !== undefined && !uuid(input.versionId)) ||
+      !isTimelineRecord(value, {projectId: input.projectId}) || value.revision !== input.expectedRevision + 1 ||
+      encoder.encode(JSON.stringify(value)).byteLength > TIMELINE_REPLACEMENT_RESPONSE_BYTES) return false;
+  const target = value.clips.find(clip => clip.id === input.clipId);
+  if (!target || target.assetId !== input.assetId || Object.hasOwn(target, 'jobId')) return false;
   if (input.versionId === undefined) return provenance.every(key => !Object.hasOwn(target, key));
   return target.versionId === input.versionId && uuid(target.shotId);
 }

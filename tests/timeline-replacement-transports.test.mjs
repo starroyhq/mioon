@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {assertClientRecoveryError} from './recovery-transport-assertions.mjs';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -280,7 +281,7 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   for (const [input, code] of cases) {
     const errors = [];
     for (const {call} of transports) errors.push(await call(operation, input, code));
-    errors.forEach(error => assert.deepEqual(error, errors[0], `${code} has the same safe envelope on every transport`));
+    errors.slice(1).forEach(error => assertClientRecoveryError(error, errors[0], {operation, input}));
     if (code === 'REVISION_CONFLICT') assert.deepEqual(errors[0].details.current, timeline);
     if (code === 'TIMELINE_SOURCE_UNAVAILABLE') assert.deepEqual(errors[0].details, {});
     if (['SOURCE_UNCHANGED', 'SOURCE_BOUNDS', 'INVALID_CLIP_TYPE', 'FADE_AUDIO_UNSUPPORTED', 'REVISION_CONFLICT'].includes(code)) {
@@ -335,9 +336,12 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
     installReceipt(db, JSON.stringify(malformed));
   });
   let deniedState = backend.storage();
-  for (const {call} of transports) {
+  let deniedBackendError;
+  for (const {name, call} of transports) {
     const error = await call(operation, uncertainInput, 'INVALID_TIMELINE_SNAPSHOT');
     assert.ok(!Object.hasOwn(error.details, 'mutationOutcome'), 'corrupt prior receipt cannot produce not-applied proof');
+    if (name === 'HTTP') deniedBackendError = error;
+    else assertClientRecoveryError(error, deniedBackendError, {operation, input: uncertainInput});
   }
   assert.deepEqual(backend.storage(), deniedState);
   await backend.restart(db => {
@@ -346,9 +350,12 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   });
   deniedState = backend.storage();
   const deniedOutside = backend.storage(outsideTables);
-  for (const {call} of transports) {
+  for (const {name, call} of transports) {
     const error = await call(operation, uncertainInput, 'TIMELINE_SOURCE_UNAVAILABLE');
-    assert.deepEqual(error.details, {}, 'ownership failure after a committed lost response cannot release its original request');
+    if (name === 'HTTP') {
+      assert.deepEqual(error.details, {}, 'ownership failure after a committed lost response cannot release its original request');
+      deniedBackendError = error;
+    } else assertClientRecoveryError(error, deniedBackendError, {operation, input: uncertainInput});
   }
   assert.deepEqual(backend.storage(), deniedState);
   assert.deepEqual(backend.storage(outsideTables), deniedOutside);
