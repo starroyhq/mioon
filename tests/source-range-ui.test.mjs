@@ -201,7 +201,7 @@ test('exact snapshot comparison admits a clicked saved range before freezing, ne
 test('actual App range replay uses its original request and triggers latest scoped reread without installing historical ACK', async t => {
   storage(t);
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  const code = app.slice(app.indexOf('async function run('), app.indexOf('async function inspect('));
+  const code = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
   let remote = row(), historical, generation = {}, controller;
   const calls = [], busy = new Set(), notices = [];
   const currentProject = { current: 'project-a' };

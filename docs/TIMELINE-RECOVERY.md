@@ -147,3 +147,8 @@ The third parent aggregate passed: 2143 total / 2141 pass / 0 fail / 2 skips,
 remain preserved with their diagnoses above. Since that successful run, only
 this acceptance documentation and the evidence manifest have changed; production,
 tests, built artifacts and native runtime evidence are unchanged.
+
+
+## Durable UI follow-on
+
+The original increment above covered same-session UI recovery. The follow-on [Task recovery slice](TASK-RECOVERY.md) adds backend-persisted intent and cold-start UI discovery for ten non-rendering timeline edits. `timeline.render` stays on its existing session-based UI recovery path. Business journal semantics and original response bytes are unchanged; see the follow-on document for separate acceptance status and limits.

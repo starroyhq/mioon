@@ -438,3 +438,12 @@ and request ID. A historical detached edge may no longer exist, and an attach
 can acknowledge an existing binding without a new shot revision. No new tools,
 authority, generation call or namespace are introduced. See
 [reference recovery](REFERENCE-RECOVERY.md).
+
+### UI task discovery boundary
+
+[Durable UI task recovery](TASK-RECOVERY.md) is a dedicated authenticated UI
+coordinator for ten non-rendering timeline edits and two reference operations.
+It does not register a generic execute/recover MCP tool or expand built-in Agent
+authority. Existing MCP tools still use the same shared business handlers and
+strict historical acknowledgements; retain exact arguments and request IDs.
+UI cold-start discovery does not automatically persist every external-agent intent.

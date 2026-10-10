@@ -7,7 +7,7 @@ import * as mutations from '../apps/web/src/mutation-submissions.js';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
 
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-const runSource = source.slice(source.indexOf('async function run('), source.indexOf('async function inspect('));
+const runSource = source.slice(source.indexOf('async function runSession('), source.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
 const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function selectProject('));
 const id = number => `83000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const projectId = id(1), otherProjectId = id(2), sourceNodeId = id(3), shotId = id(4), edgeId = id(5), assetId = id(6);
@@ -78,7 +78,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
 const failure = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic reference rejection'), { code, details, definitive });
 const proofFor = (operation, input) => ({ mutationOutcome: 'not_applied', operation, projectId: input.projectId, requestId: input.requestId });
 
-test('actual App.run validates both reference writes and preserves existing-binding attach no-op acknowledgements', async t => {
+test('actual App legacy session runner validates both reference writes and preserves existing-binding attach no-op acknowledgements', async t => {
   storage(t); assert.deepEqual(new Set(REFERENCE_MUTATION_OPERATIONS), new Set(operations));
   for (const [operation, noop] of [['reference.attach', false], ['reference.attach', true], ['reference.detach', false]]) {
     const input = inputFor(operation), result = acknowledged(operation, input, { noop });

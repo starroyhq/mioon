@@ -7,7 +7,7 @@ import { prepareSubmission, readPending, clearPending, pendingForProject } from 
 import { ApiError } from '../apps/web/src/api.js';
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
-const runSource = section('async function run(', 'async function inspect(');
+const runSource = section('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(');
 const structureSource = section('async function addStructure()', 'async function addNode(');
 function compile(code, name, scope) { return Function(...Object.keys(scope), `${code}; return ${name};`)(...Object.values(scope)); }
 function storage(t) {
@@ -36,7 +36,7 @@ function harness(t, dispatch) {
 const input = { shotId: 'shot-a', expectedRevision: 3, patch: { prompt: 'Original draft' } };
 const saved = { id: 'shot-a', projectId: 'project-a', revision: 4, prompt: 'Original draft' };
 
-test('actual App run keeps changed draft blocked until explicit original replay, with no automatic POST', async t => {
+test('actual App legacy session runner keeps changed draft blocked until explicit original replay, with no automatic POST', async t => {
   let fail = true;
   const h = harness(t, async () => { if (fail) throw Error('Response lost'); return saved; });
   assert.equal(await h.run('save:shot-a', 'shot.update', input), null);
@@ -53,7 +53,7 @@ test('actual App run keeps changed draft blocked until explicit original replay,
   assert.equal(h.busy.size, 0);
 });
 
-test('actual App run retains auth/ID-conflict/protocol failures and clears only bound rollback proof', async t => {
+test('actual App legacy session runner retains auth/ID-conflict/protocol failures and clears only bound rollback proof', async t => {
   let error = new ApiError('Expired', 'UNAUTHORIZED', {}, true);
   const h = harness(t, async () => { throw error; });
   await h.run('save:shot-a', 'shot.update', input);

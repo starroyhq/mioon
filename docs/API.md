@@ -576,3 +576,48 @@ snapshots also omit private paths included in preflight digests. Project refresh
 therefore never automatically clears an unknown render receipt. Reference errors conservatively retain uncertainty;
 reference recovery now also validates operation-bound acknowledgements and retained ownership; see [REFERENCE-RECOVERY.md](REFERENCE-RECOVERY.md). See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md) for scope and session-storage limits.
+
+### Durable UI edit tasks (twelve-operation slice)
+
+The authenticated `/api/tasks` route family coordinates only the ten timeline
+metadata edits (all timeline mutations except `timeline.render`) and
+`reference.attach` / `reference.detach`. It is a UI recovery control plane, not
+an additional generic RPC, MCP tool or Agent capability. The underlying shared
+business handlers, request schemas and exact response journals remain unchanged.
+See [TASK-RECOVERY.md](TASK-RECOVERY.md) for implementation/acceptance status.
+
+- `POST /api/tasks/prepare`: `{projectId,operation,input,origin}` where origin is
+  `new` or explicitly adopted `legacy_session`. Preserve input's exact original
+  request ID. Returns `{task,instanceId}` after durable preparation, without
+  executing the edit.
+- `GET /api/tasks?projectId=...&pendingOnly=true&limit=20&cursor=...`: bounded,
+  noncreating `{items,nextCursor,instanceId}`. `pendingOnly=false` includes
+  acknowledged retained identities. Limit is 1–50; cursors bind project/filter.
+- `GET /api/tasks/:taskId?projectId=...`: noncreating task lookup.
+- `POST /api/tasks/:taskId/execute`: `{projectId,digest,instanceId}`. Explicitly
+  execute or recover only the immutable stored intent. A stale backend lifetime
+  nonce is rejected; no endpoint automatically retries the request.
+- `POST /api/tasks/:taskId/reconcile`: `{projectId,digest}`. Read the original
+  business receipt and update coordination state only; never dispatch an edit.
+- `POST /api/tasks/:taskId/acknowledge`: `{projectId,digest,expectedRevision,status}`
+  with terminal status `applied` or `not_applied`. Acknowledgement hides a finished
+  card, not its immutable identity or business receipt.
+
+Action replies are `{task,instanceId,result?}`. A result is the original validated
+business response, not a current project snapshot. Task identity, project,
+operation, input, digest, backend instance and monotonic revision must be checked
+before clearing uncertainty. A malformed 200 or generic 4xx does not establish
+non-application. Re-read a lost acknowledgement; never substitute another key.
+
+Preparation accepts at most 8 KiB exact input; HTTP preparation envelopes are
+capped at 12 KiB, other action bodies at 1 KiB and request URLs at 2 KiB. Task
+storage reserves 16 KiB per identity, up to 4,096 identities / 64 MiB logically.
+Capacity refusal occurs before business dispatch and is distinct from disk full.
+No silent eviction is implemented; this is not a bound on SQLite/WAL disk size.
+GET/list cannot initialize timelines, execute recovery or clear pending state.
+
+The eight local canvas/asset edits, rendering and generation retain their existing
+UI recovery/storage paths. External callers still use their existing operation
+and original key directly; this route family does not upgrade their request
+persistence automatically. No task input contains credentials or media bytes;
+local task parameters are ordinary SQLite data, not vault-encrypted.

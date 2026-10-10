@@ -202,3 +202,14 @@ can validly keep its revision. Refresh current state separately; never re-key or
 automatically retry. The existing journal retains original response bytes and
 rejects deletion/replacement. This adds no model write or generation authority.
 See [reference recovery](../../docs/REFERENCE-RECOVERY.md).
+
+### Durable UI task scope
+
+The workbench can coordinate persisted recovery for ten timeline edits excluding
+`timeline.render`, plus `reference.attach` and `reference.detach`; consult
+[scope and acceptance](../../docs/TASK-RECOVERY.md). This adds no generic Agent/MCP
+execution authority. External tools still require their exact original arguments
+and key. Do not infer that all edits, renders or paid submissions receive this
+new UI cold-start recovery. A prepared task is an intent awaiting confirmation,
+not proof that no other interface used its key. Reading or importing a task never
+executes it; only an explicit user recovery can continue its stored operation.

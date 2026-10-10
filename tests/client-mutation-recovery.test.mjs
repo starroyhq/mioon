@@ -102,11 +102,11 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry\)/);
   assert.match(app, /mutation && replay \? null : result/);
-  assert.match(app, /entry\.input, '原请求已恢复并确认', \{ replay: true \}/);
+  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8'), /entry\.input, '原请求已恢复并确认', \{ replay: true \}/);
   // Evaluate the actual App classifier rather than require its former inline
   // `timeline || isReferenceOperation(...)` spelling. Reference proof handling
   // must remain stricter than a generic definitive 4xx after the alias refactor.
-  const run = app.slice(app.indexOf('async function run('), app.indexOf('async function inspect('));
+  const run = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
   const flags = run.slice(run.indexOf('const mutation ='), run.indexOf('if (isBusy('));
   const decision = run.slice(run.indexOf('const rejected ='), run.indexOf('onFailure?.'));
   assert.ok(flags && decision, 'The test must evaluate the real App failure path');
@@ -152,7 +152,7 @@ test('six-op recovery warns about session-only unencrypted receipts without chan
   assert.match(card, /恢复记录仅存于当前浏览器会话，未经保险库加密/);
   assert.match(card, /关闭窗口或重建应用会话可能丢失记录/);
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(app, /生成任务状态持久保存/);
+  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8'), /生成任务状态持久保存/);
 });
 
 test('a colliding legacy receipt can never silently turn a new edit into another operation', t => {

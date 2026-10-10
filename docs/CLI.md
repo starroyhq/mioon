@@ -451,3 +451,12 @@ edge replays. Invalid success retains the original request as unknown. A fresh
 rollback proof must match this operation, project and request ID; generic errors
 never justify a replacement key. Commands, successful wire shapes and journal
 namespace are unchanged. See [reference recovery](REFERENCE-RECOVERY.md).
+
+### UI task discovery boundary
+
+The new [durable UI task slice](TASK-RECOVERY.md) covers ten non-rendering timeline
+edits and two reference operations. It adds no CLI task-execution command and
+does not change existing command inputs, original receipts or journal key scopes.
+CLI callers must continue retaining their complete original request and key.
+Native UI restart discovery does not imply durable storage of arbitrary external
+client requests, generation submissions or timeline render intentions.

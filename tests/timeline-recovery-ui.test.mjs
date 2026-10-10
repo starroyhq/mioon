@@ -8,7 +8,7 @@ import * as mutations from '../apps/web/src/mutation-submissions.js';
 import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
 
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-const runSource = source.slice(source.indexOf('async function run('), source.indexOf('async function inspect('));
+const runSource = source.slice(source.indexOf('async function runSession('), source.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
 const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function selectProject('));
 const id = n => `82000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProjectId = id(2), trackId = id(3), clipId = id(4), assetId = id(5);
@@ -99,7 +99,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
 const keyFor = operation => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
 
-test('actual App.run guards exactly the eleven timeline writes and accepts their complete matching acknowledgements', async t => {
+test('actual App legacy session runner guards exactly the eleven timeline writes and accepts their complete matching acknowledgements', async t => {
   storage(t); assert.deepEqual(new Set(TIMELINE_MUTATION_OPERATIONS), new Set(operations));
   const h = harness(acknowledged);
   for (const operation of operations) {

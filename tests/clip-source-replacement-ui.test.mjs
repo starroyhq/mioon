@@ -238,7 +238,7 @@ function sessionFixture(t) {
 function parentHarness() {
   const c = context(), calls = [], dataRef = { current: { project: { id: projectId }, ...c } }, viewRef = { current: { activeMode: 'editing', editing: { selectedClipId: clipId, quickAssetId: null } } };
   const deps = { ...replacement, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
-    pendingForProject: () => [], online: true, auth: true, loading: false, mutateTimeline: async (...args) => { calls.push(args); return acknowledged(args[3].review || replacement.createClipReplacementReview(c, `asset:${newAssetId}`)); } };
+    tasksRef: { current: { blocked: () => false } }, pendingForProject: () => [], online: true, auth: true, loading: false, mutateTimeline: async (...args) => { calls.push(args); return acknowledged(args[3].review || replacement.createClipReplacementReview(c, `asset:${newAssetId}`)); } };
   const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function clipReplacementContext()', 'function exportCheckContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps);
   return { ...compiled, deps, calls, c };
 }
@@ -261,11 +261,11 @@ function runHarness(rpc) {
     isReferenceOperation: () => false, currentProject, dataRef, requestCounter: { current: 0 }, setData: value => { if (typeof value === 'function') value(dataRef.current); },
     setPending() {}, setSourceRangeRefresh() {}, setDispositionRefresh() {}, setAuth() {}, setShowJobs() {}, notify: (...args) => notices.push(args),
     refresh: async () => {}, rpc: async (operation, input) => { calls.push({ operation, input: structuredClone(input) }); return rpc(operation, input); } };
-  const run = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('async function run(', 'async function inspect(')} return run;`)(deps);
+  const run = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(')} return run;`)(deps);
   return { run, calls, notices };
 }
 
-test('actual App.run retains the exact replacement receipt for malformed success and unknown→404/409 replays', async t => {
+test('actual App legacy session runner retains the exact replacement receipt for malformed success and unknown→404/409 replays', async t => {
   sessionFixture(t);
   const input = { projectId, clipId, assetId: newAssetId, expectedRevision: 7, requestId: 'source-replacement-original' };
   let response = null, error = Error('Lost connection');
@@ -286,7 +286,7 @@ test('actual App.run retains the exact replacement receipt for malformed success
   assert.ok(h.notices.every(([message]) => !/private|ownership/.test(message)));
 });
 
-test('actual App.run clears replacement only for a matching request-bound fresh not-applied proof', async t => {
+test('actual App legacy session runner clears replacement only for a matching request-bound fresh not-applied proof', async t => {
   sessionFixture(t);
   const input = { projectId, clipId, assetId: newAssetId, expectedRevision: 7, requestId: 'source-replacement-rejected' };
   let details = { mutationOutcome: 'not_applied', requestId: 'wrong-request' };

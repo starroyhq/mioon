@@ -1,7 +1,9 @@
 import http from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
+import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createChatHttp} from './chat-http.mjs';
+import {createEditTasksHttp} from './edit-tasks-http.mjs';
 import {createFileResponses} from './file-response.mjs';
 import {callObservedRpc} from './rpc-observation.mjs';
 import path from 'node:path';
@@ -55,6 +57,7 @@ export async function startServer({
   agentSettings: suppliedAgentSettings,
   chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
   agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
+  taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
 
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
@@ -73,7 +76,7 @@ export async function startServer({
   }
   const store = openStore(root);
   const shutdown = new AbortController();
-  let worker, server, agentSettings, chatRuntime, chatHttp, services;
+  let worker, server, agentSettings, chatRuntime, chatHttp, services, editTasks;
   const files = createFileResponses({signal: shutdown.signal});
   try {
     if (token === undefined) {
@@ -82,6 +85,11 @@ export async function startServer({
     }
     const providers = createProviderRegistry({db: store.db, root});
     services = createServices(store, providers, {signal: shutdown.signal});
+    editTasks = createEditTasks({store, services, ...(taskFault ? {fault: taskFault} : {})});
+    // openStore already owns the exclusive workspace lock. Startup only
+    // reconciles durable evidence and never dispatches a prepared edit.
+    await editTasks.reconcileStartup();
+    const editTasksHttp = createEditTasksHttp({tasks: editTasks, signal: shutdown.signal});
     const workspacePreferences = createWorkspacePreferences(store);
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
@@ -135,6 +143,7 @@ export async function startServer({
           }
         }
         if (await chatHttp.handle(req, res, url)) return;
+        if (await editTasksHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {
@@ -205,7 +214,7 @@ export async function startServer({
       forceDrain.unref();
       try {
         await boundedShutdown(Promise.all([
-          worker.stop(), services.drain(), files.close(),
+          worker.stop(), services.drain(), editTasks.drain(), files.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
           !suppliedAgentSettings ? agentSettings?.close() : undefined,
         ]), 'SERVER_STOP_TIMEOUT');
@@ -219,7 +228,7 @@ export async function startServer({
     chatRuntime?.close(); chatHttp?.close();
     const drain = server?.listening ? new Promise(resolve => server.close(resolve)) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }

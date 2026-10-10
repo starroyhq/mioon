@@ -129,3 +129,8 @@ six-file rerun passed 74/74; the failed full log remains preserved. The subseque
 parent final full gate passed with the counts above. Both aggregate logs are
 retained in the acceptance evidence; no production, test or built artifact
 changed after the final gate.
+
+
+## Durable UI follow-on
+
+The original increment above covered same-session UI recovery. The follow-on [Task recovery slice](TASK-RECOVERY.md) adds backend-persisted intent and cold-start UI discovery for reference attach/detach. Existing legacy session records need explicit adoption under their exact original key; lost older sessions cannot be reconstructed. See that document for its separate acceptance status and limits.

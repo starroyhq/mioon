@@ -188,7 +188,7 @@ test('actual App recovery replays the exact key and refreshes current marks sepa
     refresh: async () => { refreshes++; }, setDispositionRefresh: updater => { markRefreshes++; updater({}); },
     rpc: async (operation, current) => { calls.push({ operation, input: structuredClone(current) }); if (lost) throw Error('Lost'); return row(1, 1, 'favorite'); },
   };
-  const source = app.slice(app.indexOf('async function run('), app.indexOf('async function inspect('));
+  const source = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
   const run = Function(...Object.keys(scope), `${source}; return run;`)(...Object.values(scope));
   await run(dispositionKey(assetId(1)), 'asset.disposition.set', input);
   const original = readPending(projectId, dispositionKey(assetId(1))); assert.ok(original);
