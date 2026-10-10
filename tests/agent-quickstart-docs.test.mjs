@@ -224,6 +224,13 @@ test('external examples cannot expose private settings or approval; UI handoff r
   assert.ok(images.includes('export const imageProfileResponseSchema=z.union([legacyProfileResponseSchema,'));
   assert.equal(Object.hasOwn(shape(images, 'const legacyProfileResponseSchema=z.object('), 'revision'), false);
   assert.match(document, /用户从对应 Images 设置槽交接/u);
+  const discovery = examples.find(item => item.id === 'image-revision-discovery');
+  assert.deepEqual(discovery.input, {includeSettingsRevision:true});
+  assert.equal(discovery.operation, 'image.profile.list');
+  assert.equal(discovery.effect, 'read');
+  assert.equal(operationEffects['image.profile.list'].databaseWrite, false);
+  assert.equal(operationEffects['image.profile.list'].externalIO, false);
+  assert.match(document, /不自动改已保留意图或重分配 key/u);
   assert.match(document, /亲自点击“批准并付费生成”/u);
   assert.match(document, /image request get` 为 null 是正常的/u);
   for (const [, , , body] of blocks) assert.doesNotMatch(body, /\/api\/images\//u);

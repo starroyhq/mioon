@@ -136,8 +136,13 @@ available, not verified output, compatibility or spending permission.
 
 - `image_review_prepare` takes exactly
   `{input:<complete official/custom/local-ComfyUI image.generate input>,settingsRevision}`. The positive
-  settings revision comes from the selected Images connection slot; the original
-  stable `requestId` is nested in `input`. Preparation only writes a retained
+  settings revision can be discovered by `image_profile_list` with
+  `{"includeSettingsRevision":true}`. Use only the selected provider item's
+  positive `settingsRevision`; Mock/missing/invalid/unreadable values are omitted.
+  No endpoint/keys/settings are exposed, and the read never probes, decrypts,
+  prepares or approves. Empty input (or false) keeps the legacy response unchanged.
+  This is freshness metadata, not authority; changed settings still fail existing
+  CAS. The original stable `requestId` is nested in `input`. Preparation only writes a retained
   immutable intent to local SQLite. It neither approves nor creates a task.
 - `image_review_get` takes `{projectId,reviewId}` and returns an existing owned
   review. `image_review_list` takes `{projectId,limit?,cursor?}` and returns

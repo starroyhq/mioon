@@ -21,7 +21,7 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
-  'image.profile.list': define({...read,notes:'Reads fixed profiles and local configuration availability without probing providers or decrypting credentials. Enabled is not live verification.'}),
+  'image.profile.list': define({...read,notes:'Reads profiles and local availability; explicit includeSettingsRevision:true may include each eligible slot\'s non-secret configuration revision from the same safe snapshot. Default output is unchanged. No provider probe, decryption, approval or dispatch; enabled is not live verification.'}),
   'image.review.prepare': define({...localAdd,idempotent:true,notes:'Retains exact project/input/settings-bound pending image review, without granting approval, dispatch or payment authority. Same key with changed content conflicts; user approval is a separate authenticated UI route.'}),
   'image.review.get': define({...read,notes:'Reads an existing owned immutable image review and bounded attempt state. Never approves or dispatches.'}),
   'image.review.list': define({...read,notes:'Reads a bounded project-scoped review page. Never approves or dispatches.'}),

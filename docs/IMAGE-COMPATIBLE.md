@@ -218,7 +218,11 @@ API/CLI/MCP operation. An illustrative `image-review.json` is:
 ```
 
 Replace the project, model and revision with the actual selected values. The
-positive revision comes from the custom settings UI, not the official slot.
+positive revision can be read from the `openai-compatible` profile using
+`mioon image profile list --input '{"includeSettingsRevision":true}'`, or from
+the custom settings UI. Never substitute the official/Comfy slot revision or a
+number from an older review. If omitted, stop for configuration help; discovery
+never approves or changes the retained intent. See [discovery rules](IMAGE-PROFILE-DISCOVERY.md).
 Use `mioon image review prepare --input-file ./image-review.json`, MCP
 `image_review_prepare` with that object, or RPC
 `{operation:"image.review.prepare",input:<that object>}`. Preparation writes only

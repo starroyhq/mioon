@@ -52,9 +52,15 @@ its review:
 
 - `image review prepare` / `image_review_prepare` takes exactly
   `{input:<complete official/custom/local-ComfyUI image.generate input>,settingsRevision}`. Use the
-  current positive settings revision from the selected Images connection
-  slot and retain the original `requestId` inside `input`; no extra top-level key
-  exists. Custom input uses `providerId:"openai-compatible"` and the exact
+  selected provider item's positive `settingsRevision` from
+  `image profile list --input '{"includeSettingsRevision":true}'` (MCP:
+  `image_profile_list` with the same JSON). This opt-in read exposes no keys,
+  endpoint or settings object and never probes, prepares, approves or dispatches.
+  Mock/missing/invalid/unreadable revisions are omitted: stop and ask the user to
+  finish configuration rather than guess or use another slot. Empty input keeps
+  legacy output unchanged. Retain the original `requestId` inside `input`; no
+  extra top-level key exists. A settings race must fail CAS, never silently
+  rewrite the retained revision/input/key or reprepare with a new key. Custom input uses `providerId:"openai-compatible"` and the exact
   configured ASCII model with unchanged fixed options. Never add an endpoint,
   connection ID, key or approval override to public generation/review input.
   Preparation stores the exact prompt/project/model/options/settings-bound intent

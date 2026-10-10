@@ -76,7 +76,7 @@ and one database owner. Runtime schemas in `packages/contracts/src/images.mjs` a
 
 | Operation | Input | Result / effect |
 | --- | --- | --- |
-| `image.profile.list` | `{}` | `{items,liveEnabled}`; local configuration discovery only, no provider verification |
+| `image.profile.list` | `{includeSettingsRevision?:boolean}` | `{items,liveEnabled}`; default unchanged. Explicit true may add each eligible profile's non-secret revision; [exact discovery rules](IMAGE-PROFILE-DISCOVERY.md). No provider verification or approval |
 | `image.generate` | See example below | Original queued task receipt; new public requests schedule Mock only; official/custom live requests require private reviewed approval |
 | `image.review.prepare` | `{input:<complete official/custom image.generate input>,settingsRevision}` | Local immutable-intent review only; no approval or dispatch |
 | `image.review.get` | `{projectId,reviewId}` | Existing owned review; read-only |

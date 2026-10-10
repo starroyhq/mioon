@@ -162,7 +162,7 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI remote record.');
     const reviewValid=operation==='image.review.prepare'?isImageReviewPreparationResponse(parsed,result):operation==='image.review.get'?isImageReviewResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.reviewId:operation==='image.review.list'?isImageReviewListResponse(parsed,result):true;
     if(!reviewValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid image review response',{details:{submissionMayHaveSucceeded:operation==='image.review.prepare',operation,...(parsed.input?.requestId?{requestId:parsed.input.requestId}:{})}});
-    const imageReadValid=operation==='image.profile.list'?isImageProfilesResponse(result)
+    const imageReadValid=operation==='image.profile.list'?isImageProfilesResponse(result,parsed)
       :operation==='image.task.get'?isImageTaskResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.taskId
       :operation==='image.group.get'?isImageGroupResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.groupId
       :operation==='image.request.get'?isImageRequestResponse(result)&&(result===null||result.projectId===parsed.projectId&&result.requestId===parsed.requestId)

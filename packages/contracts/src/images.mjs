@@ -28,7 +28,7 @@ const comfyGenerate=z.object({projectId:id,name,...comfyGeneration,requestId:key
 const generate=z.union([legacyGenerate,comfyGenerate]);
 const page={projectId:id,limit:z.number().int().min(1).max(IMAGE_LIMITS.maxPageSize).optional(),cursor:z.string().min(1).max(768).optional()};
 export const imageSchemas=Object.freeze({
- 'image.profile.list':z.object({}).strict(),
+ 'image.profile.list':z.object({includeSettingsRevision:z.boolean().optional()}).strict(),
  'image.generate':generate,
  'image.request.get':z.object({projectId:id,requestId:key}).strict(),
  'image.task.get':z.object({projectId:id,taskId:id}).strict(),
@@ -57,9 +57,9 @@ export const imageGroupResponseSchema=z.object({id,projectId:id,name,revision,he
 const legacyVersionResponseSchema=z.object({id,projectId:id,groupId:id,taskId:id,number:revision,assetId:id,sha256:hash,mimeType:z.literal('image/png'),width:z.literal(1024),height:z.literal(1024),byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.boolean(),providerId,model,options:imageOptionsSchema,createdAt:timestamp}).strict()
  .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock'),'Mock identity mismatch');
 export const imageVersionResponseSchema=z.union([legacyVersionResponseSchema,z.object({id,projectId:id,groupId:id,taskId:id,number:revision,assetId:id,sha256:hash,mimeType:z.literal('image/png'),width:z.literal(512),height:z.literal(512),byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.literal(false),providerId:z.literal('comfy-local'),model:comfyCheckpointSchema,options:comfyImageOptionsSchema,createdAt:timestamp}).strict()]);
-const legacyProfileResponseSchema=z.object({providerId,model,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.boolean(),evidence:z.enum(['deterministic-mock','offline-tested-not-live']),options:imageOptionsSchema}).strict()
- .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock')&&(!v.isMock||v.enabled)&&v.evidence===(v.isMock?'deterministic-mock':'offline-tested-not-live'),'Invalid image profile evidence');
-export const imageProfileResponseSchema=z.union([legacyProfileResponseSchema,z.object({providerId:z.literal('comfy-local'),model:comfyCheckpointSchema,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.literal(false),evidence:z.literal('offline-tested-not-live'),options:comfyImageOptionsSchema}).strict()]);
+const legacyProfileResponseSchema=z.object({providerId,model,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.boolean(),evidence:z.enum(['deterministic-mock','offline-tested-not-live']),options:imageOptionsSchema,settingsRevision:revision.optional()}).strict()
+ .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock')&&(!v.isMock||v.enabled&&!Object.hasOwn(v,'settingsRevision'))&&v.evidence===(v.isMock?'deterministic-mock':'offline-tested-not-live'),'Invalid image profile evidence');
+export const imageProfileResponseSchema=z.union([legacyProfileResponseSchema,z.object({providerId:z.literal('comfy-local'),model:comfyCheckpointSchema,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.literal(false),evidence:z.literal('offline-tested-not-live'),options:comfyImageOptionsSchema,settingsRevision:revision.optional()}).strict()]);
 export const imageProfilesResponseSchema=z.object({items:z.array(imageProfileResponseSchema).max(4),liveEnabled:z.boolean()}).strict().refine(v=>new Set(v.items.map(i=>i.providerId)).size===v.items.length&&v.liveEnabled===v.items.some(i=>i.providerId!=='mock'&&i.enabled));
 export const imageRequestResponseSchema=z.object({projectId:id,requestId:key,operation:z.enum(IMAGE_MUTATION_OPERATIONS),response:imageTaskResponseSchema}).strict()
  .refine(v=>v.response.projectId===v.projectId&&(v.operation!=='image.generate'||v.response.requestId===v.requestId))
@@ -70,7 +70,7 @@ export const isImageTaskResponse=v=>imageTaskResponseSchema.safeParse(v).success
 export const isImageGroupResponse=v=>imageGroupResponseSchema.safeParse(v).success;
 export const isImageVersionResponse=v=>imageVersionResponseSchema.safeParse(v).success;
 export const isImageRequestResponse=v=>imageRequestResponseSchema.safeParse(v).success;
-export const isImageProfilesResponse=v=>imageProfilesResponseSchema.safeParse(v).success;
+export const isImageProfilesResponse=(v,input={})=>imageSchemas['image.profile.list'].safeParse(input).success&&imageProfilesResponseSchema.safeParse(v).success&&(input.includeSettingsRevision===true||v.items.every(item=>!Object.hasOwn(item,'settingsRevision')));
 export function isImageMutationResponse(operation,input,result){
  if(!IMAGE_MUTATION_OPERATIONS.includes(operation)||!imageSchemas[operation].safeParse(input).success||!isImageTaskResponse(result)||result.projectId!==input.projectId)return false;
  if(operation==='image.generate')return result.requestId===input.requestId&&result.name===input.name&&result.prompt===input.prompt&&result.providerId===input.providerId&&result.model===input.model&&canonicalImageInput(result.options)===canonicalImageInput(input.options)&&result.state==='queued'&&result.revision===1&&!result.dispatched&&result.versionId===null&&(input.groupId===undefined||result.groupId===input.groupId);

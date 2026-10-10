@@ -81,6 +81,11 @@ async function localServer(handler) {
 }
 
 function fakeNetwork(responseBody) {
+  const started = performance.now(), events = [];
+  const trace = (phase, detail = {}) => {
+    events.push({phase, atMs: Math.round(performance.now() - started), ...detail});
+    if (events.length > 64) events.shift();
+  };
   const destinations = new Map([
     ['api.openai.com/v1/images/generations', {key: officialKey, models: [IMAGE_MODELS.openai]}],
     ['images.example.test/tenant-a/api/v9/images/generations', {key: customKey, models: [customConfiguration.model]}],
@@ -91,6 +96,7 @@ function fakeNetwork(responseBody) {
   const lookup = async (hostname, options) => {
     assert.ok([...destinations.keys()].some(value => value.startsWith(`${hostname}/`)), 'unexpected DNS destination');
     assert.deepEqual(options, {all: true, verbatim: true}); state.lookups.push(hostname);
+    trace('lookup', {number: state.lookups.length});
     return [{address: '8.8.8.8', family: 4}];
   };
   const httpsRequest = (options, callback) => {
@@ -100,6 +106,7 @@ function fakeNetwork(responseBody) {
     assert.equal(options.servername, options.hostname); assert.equal(options.rejectUnauthorized, true); assert.equal(options.agent, false);
     assert.equal(options.headers.Authorization, `Bearer ${destination.key}`);
     state.requests.push({hostname: options.hostname, path: options.path});
+    const number = state.requests.length; trace('request', {number});
     const request = new EventEmitter(); let ended = false;
     request.destroy = () => {};
     request.end = payload => {
@@ -108,11 +115,13 @@ function fakeNetwork(responseBody) {
       const body = JSON.parse(payload); assert.ok(destination.models.includes(body.model));
       assert.deepEqual(body, wireBody(body));
       state.posts.push({hostname: options.hostname, path: options.path, key: destination.key, body});
-      if (state.holdResponse) return;
+      trace('post', {number});
+      if (state.holdResponse) {trace('response-held', {number}); return;}
       const response = Readable.from([responseBody]);
       Object.assign(response, {statusCode: 200, complete: true,
         headers: {'content-type': 'application/json', 'x-request-id': `synthetic-custom-${state.posts.length}`}});
-      callback(response);
+      response.once('end', () => trace('response-end', {number}));
+      trace('response-callback', {number}); callback(response);
     };
     queueMicrotask(() => {
       const socket = new EventEmitter();
@@ -123,7 +132,7 @@ function fakeNetwork(responseBody) {
   };
   // This pair is always passed together to BOTH production gateway instances.
   // The fixture has no real DNS resolver, TLS socket, or provider credential.
-  return {state, dependencies: {lookup, httpsRequest}};
+  return {state, trace, events, dependencies: {lookup, httpsRequest}};
 }
 async function fixture(t) {
   const png = await renderMockImagePng();
@@ -132,6 +141,11 @@ async function fixture(t) {
   assert.equal(typeof network.dependencies.lookup, 'function'); assert.equal(typeof network.dependencies.httpsRequest, 'function');
   const options = {dataDir: root, port: 0, token, imageNetwork: network.dependencies};
   let server = await startServer(options), db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
+  const failedSettlements = new Set();
+  const lifecycle = id => {
+    try {return db.prepare('SELECT state, revision, dispatched, errorCode, createdAt, updatedAt FROM image_tasks WHERE id=?').get(id) ?? null;}
+    catch {return {unavailable: true};}
+  };
   const f = {root, png, network: network.state, get server() {return server;}, get db() {return db;},
     get env() {return {MIOON_BASE_URL: server.url, MIOON_TOKEN: token};}, get client() {return createClient({env: f.env});},
     counts() {return [f.network.lookups.length, f.network.requests.length, f.network.posts.length];},
@@ -156,19 +170,43 @@ async function fixture(t) {
     },
     async prepare(input, settingsRevision = 1) {return f.client.rpc('image.review.prepare', {input, settingsRevision});},
     async approve(review, expectedCode, patch = {}) {
+      network.trace('approval-start', {providerId: review.input.providerId});
       const response = await f.request('/api/images/reviews/approve', {method: 'POST', input: {...approvalFor(review), ...patch}});
+      network.trace('approval-ack', {providerId: review.input.providerId, ok: response.body.ok});
       assert.equal(response.body.ok, !expectedCode, JSON.stringify(response.body));
       if (expectedCode) assert.equal(response.body.error.code, expectedCode); else assert.ok(isImageTaskResponse(response.body.data));
       return response.body.data;
     },
     async settled(ack, state = 'succeeded') {
+      // Diagnostics only: retain the original deadline, polling, and assertions.
+      // No payload, credential, request body, path, or arbitrary error is logged.
+      const started = performance.now(), wallStarted = Date.now(), observations = [];
+      let polls = 0, lastPoll = started, maximumPollGapMs = 0, maximumReadMs = 0, reached = false;
+      network.trace('settle-start', {providerId: ack.providerId, wanted: state});
       const deadline = Date.now() + 10000;
-      while (Date.now() < deadline) {
-        const task = await f.client.rpc('image.task.get', {projectId: ack.projectId, taskId: ack.id});
-        if (task.state === state) return task;
-        assert.ok(['queued', 'dispatching', 'receiving', 'persisting'].includes(task.state), JSON.stringify(task)); await pause(10);
+      try {
+        while (Date.now() < deadline) {
+          const beforeRead = performance.now();
+          maximumPollGapMs = Math.max(maximumPollGapMs, beforeRead - lastPoll); lastPoll = beforeRead; polls++;
+          const task = await f.client.rpc('image.task.get', {projectId: ack.projectId, taskId: ack.id});
+          maximumReadMs = Math.max(maximumReadMs, performance.now() - beforeRead);
+          if (observations.at(-1)?.revision !== task.revision || observations.at(-1)?.state !== task.state) {
+            observations.push({atMs: Math.round(performance.now() - started), state: task.state,
+              revision: task.revision, dispatched: task.dispatched, errorCode: task.errorCode,
+              createdAt: task.createdAt, updatedAt: task.updatedAt});
+            if (observations.length > 16) observations.shift();
+          }
+          if (task.state === state) {reached = true; return task;}
+          assert.ok(['queued', 'dispatching', 'receiving', 'persisting'].includes(task.state), JSON.stringify(task)); await pause(10);
+        }
+        assert.fail(`Image task did not reach ${state}`);
+      } finally {
+        if (!reached) failedSettlements.add(ack.id);
+        t.diagnostic('image settlement ' + JSON.stringify({providerId: ack.providerId, wanted: state, reached, polls,
+          elapsedMs: Math.round(performance.now() - started), wallElapsedMs: Date.now() - wallStarted,
+          maximumPollGapMs: Math.round(maximumPollGapMs), maximumReadMs: Math.round(maximumReadMs),
+          observations, networkCounts: f.counts(), ...(!reached ? {lifecycle: lifecycle(ack.id), phases: network.events} : {})}));
       }
-      assert.fail(`Image task did not reach ${state}`);
     },
     snapshot() {return JSON.stringify(['image_groups', 'image_tasks', 'image_versions', 'image_requests', 'image_reviews', 'assets']
       .map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
@@ -204,7 +242,10 @@ async function fixture(t) {
       } finally {await proxy.close();}
     },
   };
-  t.after(async () => {db?.close(); await server.close(); await rm(root, {recursive: true, force: true});});
+  t.after(async () => {
+    for (const id of failedSettlements) t.diagnostic('failed settlement at teardown ' + JSON.stringify({lifecycle: lifecycle(id), networkCounts: f.counts()}));
+    db?.close(); await server.close(); await rm(root, {recursive: true, force: true});
+  });
   return f;
 }
 

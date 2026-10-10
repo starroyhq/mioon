@@ -2,7 +2,9 @@
 
 2026-10-10（Asia/Taipei）；基线 `8c694d191e6c90379c32c9f8db0a778c35c31e14`。工作树 `/Users/kouzen/Documents/data/mioon-dot-agent-quickstart-b1aee020`，分支 `dot/agent-quickstart-b1aee020`。开始时身份匹配、工作区干净，两个新增目标不存在，未发现额外 AGENTS.md。此前发布审查工作树未操作。
 
-结论：现有 CLI/MCP 可以连接用户选定的服务，按显式项目读写、准备图片 review、读取结果并编排导出；付费图片批准必须交回用户界面。新 review 所需的当前 `settingsRevision` 没有公共发现接口，须由用户从对应 Images 设置槽交接。以下全部是**未执行草案**，静态检查不证明实际连接、上传、生成或导出成功。
+当前补充（2026-10-10，基线 `090a8e3`）：原审查的 Q1 已由显式只读 revision 发现契约修复，见 [发现性验收](IMAGE-PROFILE-DISCOVERY.md)。以上 Mac 基线和环境仍是原始审查证据，不代表后续变更已在 Mac 原生验证。
+
+结论：现有 CLI/MCP 可以连接用户选定的服务，按显式项目读写、准备图片 review、读取结果并编排导出；付费图片批准必须交回用户界面。新 review 可显式只读发现对应 Images 槽的当前 `settingsRevision`；没有可用值时仍须由用户从对应 Images 设置槽交接并完成配置。以下全部是**未执行草案**，静态检查不证明实际连接、上传、生成或导出成功。
 
 ## 1. 前提、发现和连接
 
@@ -94,9 +96,16 @@ create/import 均没有 `requestId` 字段，不能添加 `--request-id`。ACK �
 
 ## 3. 图片 review → 用户批准 → 结果读取
 
-### 3.1 准备之前的人工交接
+### 3.1 准备之前的配置与只读发现
 
-用户在 Mioon 图像工坊的**对应官方/自定义 Images 设置槽**完成配置，并提供当前“配置版本 rN”（`apps/web/src/ImageSettings.jsx:72`）。公共 `image.profile.list` 只有 profile/model/options/enabled 等元数据，没有当前 settings revision（`packages/contracts/src/images.mjs:49–51`）；历史 review 的 `settingsRevision` 也不能证明当前配置。没有当前值就停在这里，不猜 `1`、不使用其他槽版本，不用私有 HTTP 获取设置。
+用户先在 Mioon 图像工坊配置所选官方/自定义 Images 或本机 ComfyUI 槽。外部 Agent 可以显式请求非秘密配置版本，响应中使用同一 provider 项的 `settingsRevision`：
+
+<!-- quickstart image-revision-discovery read -->
+```sh
+node apps/cli/src/index.mjs image profile list --input '{"includeSettingsRevision":true}'
+```
+
+MCP 是 `image_profile_list`，同一严格 JSON。默认 `{}`（或 false）保留旧响应；显式 true 只增加来自同一安全快照的正安全整数。Mock、缺失、0、无效或不可读版本不猜测；未完整配置的 custom/Comfy 项仍不返回。无当前值就停在这里，请用户配置，不猜 `1`、不借其他槽版本，不用私有 HTTP 获取设置。此读不返回 endpoint/key/secret/settings，不探测、不解密、不准备、不批准。历史 review 的版本不证明当前配置；设置变化仍由原 CAS 拒绝，不自动改已保留意图或重分配 key。
 
 `enabled` 和 `configured` 不是付费批准或实测兼容性。Images 专用配置与视频/内置聊天 Agent 配置不同；`MIOON_ENABLE_LIVE_PROVIDER=0` 也不是所有模型联网功能的总开关。
 
@@ -104,7 +113,7 @@ create/import 均没有 `requestId` 字段，不能添加 `--request-id`。ACK �
 
 prepare 精确输入是 `{input:<完整 image.generate 输入>,settingsRevision}`；稳定 key 位于 **`input.requestId`**。`--request-id` 只注入顶层字段，不能用于 prepare；`requiresRequestId:false` 元数据也只检查顶层，不能据此省略内层 key（`packages/client/src/index.mjs:55–58`）。
 
-以下假设用户交接的是 r7，必须替换为实际值；prompt 保留用户批准前待审的原文。当前官方模型字面量来自 `packages/contracts/src/images.mjs:6–8`，fixed options 不可自行省略/改名：
+以下假设所选 profile 返回 r7，必须替换为实际发现值；prompt 保留用户批准前待审的原文。当前官方模型字面量来自 `packages/contracts/src/images.mjs:6–8`，fixed options 不可自行省略/改名：
 
 <!-- quickstart image-review write -->
 ```sh
@@ -216,12 +225,12 @@ node apps/cli/src/index.mjs export download --input '{"exportId":"88888888-8888-
 
 | 项目 | 已证实事实与位置 | 影响 / 后续处理 |
 | --- | --- | --- |
-| Q1 当前 Images 配置版本需人工交接 | profile DTO 无 revision（`packages/contracts/src/images.mjs:49–51`）；prepare 精确比对当前值（`packages/business/src/images/reviews.mjs:115–131,182`）；UI 展示 rN（`apps/web/src/ImageSettings.jsx:72`） | 公共接口不能独立完成从零 prepare。现有 CLI 文档已要求所选槽版本（`docs/CLI.md:176–180`）；这是能力边界，不是新增回归。先采用本文人工交接，若要自动化，父级另评估只读安全发现契约，不能以此开放批准/密钥访问 |
+| Q1 原配置版本人工交接缺口（已修复） | 原 `8c694d1` profile DTO 不含 revision；后续显式 `includeSettingsRevision:true` 从对应槽同一安全快照返回可用正整数，默认响应不变 | 新 review 可只读发现；缺失值仍需用户完成配置。历史审查事实保留，不能将 revision 当批准或开放密钥访问 |
 | Q2 顶层 requestId 元数据不足以指导 review | `operationDefinition.requiresRequestId` 仅查顶层（`packages/client/src/index.mjs:58`）；prepare 必填 key 在 input 内（`packages/contracts/src/image-reviews.mjs:28–29`、`images.mjs:23–24`） | 不以 false 认定无 key；使用完整 schema。本文检查锁定嵌套位置；后续文档/SDK 改进另行决定 |
 | Q3 演示脚本恢复保证有范围 | Skill 第 27 行建议 shot/node/version 选用 key；`skills/mioon/scripts/mock_workflow.py:67–68,73` 未提供。`:32–35` 只保存 data，不保存 extra，导入路径在 `:66` 经 extra 传入；`references/mock-workflow.md:15` 的“每个原请求”说明未区分这一点 | 脚本符合旧契约，但这些写入没有精确重放保证，journal 也不足以重建完整导入调用。不把演示当全流程恢复模板；未来只补明确的 key/记录说明，不自动重跑非幂等步骤 |
 | Q4 连接和 watch 能力是显式边界 | 环境 token 优先级（`packages/client/src/connection.mjs:37–41`）；watch 仅 job/export（`packages/client/src/index.mjs:152–153`） | 清除其他连接模式，图片用有界 get；不编造自动发现/image watch。这些已有实现/说明，不作为运行时缺陷 |
 
-批准界面、外部 pending review 列表、同一意图精确回执和固定资产入时间线已有代码依据，无需为了接入重新实现。本文不修改 Skill、API/CLI/MCP 文档、共享契约、设置、Images 业务或迁移。
+批准界面、外部 pending review 列表、同一意图精确回执和固定资产入时间线已有代码依据，无需为了接入重新实现。原 Mac 审查未修改 Skill、API/CLI/MCP 文档或业务；本次发现性补充同步更新共享契约、只读 profile 投影及使用指引。准备/批准/CAS/POST fence 与数据库 schema 不变。
 
 ## 6. 静态检查范围
 

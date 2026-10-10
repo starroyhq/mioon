@@ -39,6 +39,19 @@ not public inputs. Agent/video credentials cannot activate Images. Discovery
 reports local availability with `offline-tested-not-live` evidence, not live
 compatibility or permission to spend.
 
+`image.profile.list` accepts `{}` (unchanged legacy response) or
+`{"includeSettingsRevision":true}`. The latter may add `settingsRevision`, a
+positive safe integer, to an existing official/custom/local-ComfyUI profile.
+It comes from the same safe snapshot as that slot's displayed metadata. Mock,
+missing/zero/invalid/unreadable revisions never get an invented value; incomplete
+custom/Comfy configurations remain omitted as before. `false` behaves like omission.
+No endpoint, key, secret storage data or settings object is returned. The read
+neither decrypts nor probes, prepares, approves or dispatches. A revision is a
+freshness value, not permission; unavailable profiles remain unavailable.
+Use the selected provider's returned revision for a new review, and let existing
+CAS reject later changes. Do not replace a retained intent's revision or request
+key automatically. See [profile discovery](IMAGE-PROFILE-DISCOVERY.md).
+
 | Review RPC | Strict input | Result / effect |
 | --- | --- | --- |
 | `image.review.prepare` | `{input:<complete official/custom/local-ComfyUI image.generate input>,settingsRevision}` | Retained exact request/configuration review; local database write only |

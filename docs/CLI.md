@@ -175,8 +175,14 @@ or macOS/Windows acceptance. No real provider call is authorized by these checks
 
 A review file contains exactly `{input:<complete official/custom/local-ComfyUI image.generate input>,
 settingsRevision:<current positive settings revision>}`. Obtain that revision
-from the selected slot in Images settings; do not guess it or use the other
-slot's revision. The complete nested `input` retains the existing field shape,
+with `mioon image profile list --input '{"includeSettingsRevision":true}'`
+and use the selected provider item's `settingsRevision`. Missing/zero/unreadable
+revisions are omitted; stop for configuration help rather than guess a number or
+borrow another slot's value. Mock never has this field. The ordinary empty-input
+call remains byte-compatible; `false` also keeps the old output. This read
+returns no keys/settings/endpoint and never approves, probes or dispatches.
+A later settings change is still rejected by existing CAS; never silently replace
+an already retained intent's revision or key. The complete nested `input` retains the existing field shape,
 stable `requestId`, prompt/project, selected model, fixed options and optional
 group/revision pair. Custom input uses `providerId:"openai-compatible"` and that
 slot's configured model; see the
