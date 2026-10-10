@@ -8,6 +8,34 @@ export const referenceForShot = (edges = [], shotId) => edges.find(edge => isRef
 export const isReferenceOperation = operation => ['reference.attach', 'reference.detach'].includes(operation);
 export const hasPendingReference = (entries = []) => entries.some(entry => isReferenceOperation(entry.operation));
 
+const referenceName = (value, fallback) => typeof value === 'string' && value.trim() ? value : fallback;
+const hasReferenceId = value => typeof value === 'string' && value.length > 0;
+
+export function referenceSourceDetails({ sourceId, assetId, projectId, nodes = [], assets = [] }) {
+  const scoped = hasReferenceId(projectId);
+  // Resolve the edge's stored asset independently; a stale node must never
+  // silently replace it or expose a record from another project.
+  const source = scoped && hasReferenceId(sourceId) && hasReferenceId(assetId)
+    ? nodes.find(node => node.id === sourceId && node.projectId === projectId && node.type === 'image' && node.assetId === assetId) : undefined;
+  const asset = scoped && hasReferenceId(assetId)
+    ? assets.find(item => item.id === assetId && item.projectId === projectId && item.mimeType?.startsWith('image/')) : undefined;
+  // SourcePanel only receives one node, so a shortened ID cannot be checked
+  // for collisions. Keep the full identity alongside the human-readable name.
+  const sourceName = source ? referenceName(source.label, '未命名图片节点') : '来源节点不可用';
+  const sourceLabel = source ? `${sourceName}（节点 ${source.id}）` : sourceName;
+  const assetLabel = asset ? referenceName(asset.name, '未命名图片素材') : '引用素材不可用，请检查项目';
+  return { source, asset, sourceName, sourceLabel, assetLabel, displayDescription: `来源素材：${assetLabel}；来源节点：${sourceName}`, description: `来源素材：${assetLabel}；来源节点：${sourceLabel}` };
+}
+
+export function referenceTargetOptions(shots = [], projectId) {
+  if (!hasReferenceId(projectId)) return [];
+  // The caller supplies storyboard order. Number that scoped list, rather than
+  // orderIndex values which need not be contiguous, to distinguish equal titles.
+  return shots.filter(shot => shot.projectId === projectId && hasReferenceId(shot.id)).map((shot, index) => ({
+    shot, label: `镜头 ${String(index + 1).padStart(2, '0')} · ${referenceName(shot.title, '未命名镜头')}`,
+  }));
+}
+
 export function isImageReferenceNode(node, assets = [], projectId = node?.projectId) {
   const asset = assets.find(item => item.id === node?.assetId);
   // Attach validates managed-asset metadata; generation resolves and verifies

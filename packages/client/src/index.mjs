@@ -1,10 +1,12 @@
 import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
+import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
+import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = '0.4.0';
@@ -51,11 +53,20 @@ export function errorEnvelope(error) {
   return {ok: false, error: {code: known ? error.code : 'INTERNAL_ERROR', message: known ? safeValue(error.message) : 'The client could not complete the operation.', details: known ? safeValue(error.details || {}) : {}, retryable: false}};
 }
 export const successEnvelope = data => ({ok: true, data});
-export function jsonSchema(schema) { return zodToJsonSchema(schema, {strictUnions: true, pipeStrategy: 'input'}); }
+const objectBranches = schema => schema?.type === 'object' || ['anyOf','oneOf'].some(key=>
+  Array.isArray(schema?.[key])&&schema[key].length>0&&schema[key].every(objectBranches));
+export function jsonSchema(schema) {
+  const result=zodToJsonSchema(schema, {strictUnions: true, pipeStrategy: 'input'});
+  // MCP requires object input at the root. Retain each exact discriminated
+  // branch rather than flattening properties or weakening strictness.
+  return result.type===undefined&&objectBranches(result)?{...result,type:'object'}:result;
+}
+const requiresField = (schema,field) => schema.required?.includes(field) || ['anyOf','oneOf'].some(key=>
+  Array.isArray(schema[key])&&schema[key].length>0&&schema[key].every(branch=>requiresField(branch,field)));
 export function operationDefinition(operation) {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
   const inputSchema = jsonSchema(schemas[operation]);
-  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: descriptions[operation] || operation, inputSchema, requiresRequestId: inputSchema.required?.includes('requestId') || false, effects: operationEffect(operation)};
+  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: descriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: operationEffect(operation)};
 }
 export function discoverSchema(input = {}) {
   const parsed = validateDiscovery('schema', input);
@@ -70,6 +81,13 @@ function interrupted() { return new ClientError('INTERRUPTED', 'Stopped waiting 
 function checkSignal(signal) { if (signal?.aborted) throw interrupted(); }
 function uncertainRequestDetails(body) {
   return body ? {operation: body.operation, ...(body.input?.requestId ? {requestId: body.input.requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})} : {};
+}
+function comfyObservationNotAccepted(error,status,input) {
+  const statuses={COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
+  const proof=error?.details?.observation;
+  return Object.hasOwn(statuses,error?.code)&&status===statuses[error.code]&&proof?.outcome==='not_accepted'&&
+    proof.operation==='image.task.observeRemote'&&proof.projectId===input.projectId&&proof.taskId===input.taskId&&proof.requestId===input.requestId&&
+    proof.inputHash===createHash('sha256').update(canonicalImageInput(input)).digest('hex');
 }
 
 export function createClient(clientOptions = {}) {
@@ -103,6 +121,12 @@ export function createClient(clientOptions = {}) {
           // adding recovery guidance: downstream clients could mistake it for proof.
           if (!proven) delete details.mutationOutcome;
         }
+        if(body?.operation==='image.task.observeRemote'){
+          const proven=comfyObservationNotAccepted(error,response.status,body.input);
+          details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),
+            ...(proven?{operation:body.operation,requestId:body.input.requestId,submissionMayHaveSucceeded:false}:recoveryDetails)};
+          if(!proven)delete details.observation;
+        }
         throw new ClientError(typeof error.code === 'string' ? error.code : 'BACKEND_UNAVAILABLE', typeof error.message === 'string' ? safeValue(error.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
       }
       return result;
@@ -131,6 +155,10 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (IMAGE_MUTATION_OPERATIONS.includes(operation) && !isImageMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid image acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if(operation==='image.task.observeRemote'&&!isComfyObserveResponse(parsed,result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI observation acknowledgement.',{details:{...uncertainRequestDetails(body),submissionMayHaveSucceeded:true}});
+    if(operation==='image.task.remote.get'&&(!isComfyRemoteResponse(result)||result.projectId!==parsed.projectId||result.taskId!==parsed.taskId))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI remote record.');
     const reviewValid=operation==='image.review.prepare'?isImageReviewPreparationResponse(parsed,result):operation==='image.review.get'?isImageReviewResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.reviewId:operation==='image.review.list'?isImageReviewListResponse(parsed,result):true;
     if(!reviewValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid image review response',{details:{submissionMayHaveSucceeded:operation==='image.review.prepare',operation,...(parsed.input?.requestId?{requestId:parsed.input.requestId}:{})}});
     const imageReadValid=operation==='image.profile.list'?isImageProfilesResponse(result)

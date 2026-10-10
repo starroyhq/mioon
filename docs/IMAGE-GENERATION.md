@@ -1,6 +1,15 @@
 # Image generation: shared workflow and original local slice
 
-## Current custom increment: 2026-10-10
+## Local ComfyUI increment: 2026-10-10
+
+The [first-party local ComfyUI connector](COMFY-CONNECTOR.md) adds a separate
+fixed 512×512 PNG profile, immutable workflow review and explicit remote result
+observation. Focused tests, fresh builds and Linux native synthetic acceptance
+and independent full suite passed (2993 total /2991 pass /0 fail /2 skip); real
+GPU/runtime compatibility is unverified. Its independent settings do not alter the 1024×1024 official or
+custom Images profiles described below.
+
+## Accepted custom increment: 2026-10-10
 
 The [custom Images slot](IMAGE-COMPATIBLE.md) is implemented with a
 separate credential, canonical public-DNS HTTPS destination and configured ASCII

@@ -1,4 +1,4 @@
-import {randomUUID, randomBytes, createHash, createHmac, timingSafeEqual} from 'node:crypto';
+import {randomUUID, randomInt, randomBytes, createHash, createHmac, timingSafeEqual} from 'node:crypto';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '@mioon/contracts';
 import {canonicalImageInput as canonical, IMAGE_LIMITS, imageSchemas} from '../../../contracts/src/images.mjs';
@@ -7,6 +7,8 @@ import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, IMAGE_REVIEW_LIMITS, imag
 import {createImageOwnershipReader} from '../image-ownership.mjs';
 import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination} from '../../../contracts/src/image-settings.mjs';
 import {ownsStoreLock} from '../db.mjs';
+import {COMFY_IMAGE_POLICY, COMFY_IMAGE_PROFILE_ID, COMFY_IMAGE_VERSION, comfyImageConfigurationSchema, isCompleteComfyImageConfiguration, getComfyImageDestination} from '../../../contracts/src/comfy-images.mjs';
+import {buildComfyWorkflow, hashComfyWorkflow, validateComfyExecution} from '../comfy/workflow.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const now = () => new Date().toISOString();
@@ -51,8 +53,10 @@ function decodeReviewRow(row) {
     inputHash: row.inputHash, settingsRevision: intent.settingsRevision, destination: intent.destination, policy: intent.policy,
     state: row.state, revision: row.revision, taskId: row.taskId, postAttempts: row.postAttempts, createdAt: row.createdAt, updatedAt: row.updatedAt,
     approvedAt: row.approvedAt, rejectedAt: row.rejectedAt, dispatchedAt: row.dispatchedAt,
-    ...(intent.schemaVersion === 2 ? {configuration: intent.configuration} : {})};
+    ...(intent.schemaVersion >= 2 ? {configuration: intent.configuration} : {}),
+    ...(intent.schemaVersion === 3 ? {execution: intent.execution} : {})};
   if (!imageReviewResponseSchema.safeParse(dto).success) invalid();
+  if(intent.schemaVersion===3){try{validateComfyExecution(intent.execution,{prompt:input.prompt,checkpoint:input.model});}catch{invalid();}}
   return {row, intent, dto};
 }
 
@@ -126,6 +130,12 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
       if (current.destination !== destination || frozenIntent && (frozenIntent.schemaVersion !== 2 ||
           frozenIntent.destination !== destination || canonical(frozenIntent.configuration) !== canonical(configuration))) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
       expected = {revision: settingsRevision, destination, configuration};
+    } else if(generation.providerId==='comfy-local'){
+      const parsed=comfyImageConfigurationSchema.safeParse(current.configuration);
+      if(!parsed.success||!parsed.data.enabled||!isCompleteComfyImageConfiguration(parsed.data)||parsed.data.model!==generation.model||canonical(parsed.data.options)!==canonical(generation.options))fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+      const configuration=parsed.data,destination=getComfyImageDestination(configuration.baseUrl);
+      if(current.destination!==destination||frozenIntent&&(frozenIntent.schemaVersion!==3||frozenIntent.destination!==destination||canonical(frozenIntent.configuration)!==canonical(configuration)))fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+      expected={revision:settingsRevision,destination,configuration};
     } else if (generation.providerId !== 'openai' || current.destination !== IMAGE_REVIEW_DESTINATION ||
         frozenIntent && frozenIntent.schemaVersion !== 1) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     if (assertSettings && synchronous(assertSettings, expected, generation.providerId) !== true) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
@@ -177,13 +187,15 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
         if (original.intent.settingsRevision !== input.settingsRevision) fail('IMAGE_REVIEW_CONFLICT');
         return original.dto; // Exact history survives setting changes, restarts, rejection, and dispatch.
       }
-      if (db.prepare('SELECT 1 FROM image_requests WHERE requestId=? LIMIT 1').get(generation.requestId)) fail('IMAGE_REVIEW_CONFLICT');
+      if (db.prepare('SELECT 1 FROM image_requests WHERE requestId=? LIMIT 1').get(generation.requestId)||db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_observations'").get()&&db.prepare('SELECT 1 FROM image_remote_observations WHERE requestId=? LIMIT 1').get(generation.requestId)) fail('IMAGE_REVIEW_CONFLICT');
       if (generation.groupId) createImageOwnershipReader(db, generation.projectId, {fail: invalid}).group(generation.groupId);
       const selected = settings(input.settingsRevision, generation); capacity(generation.projectId);
       const id = randomUUID(), timestamp = now();
-      const intent = {schemaVersion: generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
-        destination: selected.destination, policy: IMAGE_REVIEW_POLICY,
-        ...(generation.providerId === 'openai-compatible' ? {configuration: selected.configuration} : {})};
+      let execution;
+      if(generation.providerId==='comfy-local'){const seed=randomInt(0,2**48-1),promptId=randomUUID(),clientId=randomUUID(),outputNonce=randomUUID();const graph=buildComfyWorkflow({prompt:generation.prompt,checkpoint:generation.model,seed,outputNonce});execution={workflowId:COMFY_IMAGE_PROFILE_ID,workflowVersion:1,comfyVersion:COMFY_IMAGE_VERSION,seed,promptId,clientId,outputNonce,filenamePrefix:`mioon_${outputNonce}`,graphHash:hashComfyWorkflow(graph),graph};}
+      const intent = {schemaVersion: generation.providerId==='comfy-local'?3:generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
+        destination: selected.destination, policy: generation.providerId==='comfy-local'?COMFY_IMAGE_POLICY:IMAGE_REVIEW_POLICY,
+        ...(['openai-compatible','comfy-local'].includes(generation.providerId) ? {configuration: selected.configuration} : {}),...(execution?{execution}:{})};
       if (!imageReviewIntentSchema.safeParse(intent).success) invalid();
       const canonicalIntent = canonical(intent);
       if (Buffer.byteLength(canonicalIntent) > IMAGE_REVIEW_LIMITS.intentBytes) fail('IMAGE_REVIEW_CAPACITY', 507);

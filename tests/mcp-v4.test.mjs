@@ -9,7 +9,9 @@ import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '@mioon/server';
-import {schemas} from '@mioon/contracts';
+import {schemas, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, COMFY_IMAGE_OPTIONS} from '@mioon/contracts';
+import {operationDefinition} from '@mioon/client';
+import {assertOperationInputBranches} from './helpers/catalog-input-branches.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'synthetic-v4-mcp-token-never-live';
@@ -41,7 +43,6 @@ async function bridge(t, env = {}) {
     return envelope.data;
   }};
 }
-function objectShape(schema) {return schema.shape || objectShape(schema._def.schema || schema._def.innerType);}
 async function httpRpc(service, operation, input = {}) {
   const response = await fetch(service.url + '/api/rpc', {method:'POST', headers:{authorization:`Bearer ${service.token}`, 'content-type':'application/json'}, body:JSON.stringify({operation,input})});
   return {status:response.status, body:await response.json()};
@@ -62,13 +63,7 @@ test('MCP initializes offline; discovery schemas exactly cover shared contracts 
     assert.equal(definition.toolName, tool.name);
     assert.equal(definition.command, operation.replaceAll('.',' '));
     assert.deepEqual(tool.inputSchema, definition.inputSchema, `${operation} uses one schema converter`);
-    assert.equal(tool.inputSchema.type, 'object');
-    assert.equal(tool.inputSchema.additionalProperties, false);
-    const shape = objectShape(schemas[operation]);
-    assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), Object.keys(shape).sort());
-    const required = Object.entries(shape).filter(([, field]) => !field.safeParse(undefined).success).map(([name]) => name).sort();
-    assert.deepEqual([...(tool.inputSchema.required || [])].sort(), required, `${operation} required inputs`);
-    assert.equal(definition.requiresRequestId, required.includes('requestId'));
+    assertOperationInputBranches({...definition, inputSchema: tool.inputSchema});
   }
   const submit = await mcp.call('mioon_schema', {operation:'generation.submit'});
   assert.equal(submit.requiresRequestId, true);
@@ -79,11 +74,41 @@ test('MCP initializes offline; discovery schemas exactly cover shared contracts 
   await mcp.call('project_create', {name:'must not dispatch', unexpected:true}, 'VALIDATION_ERROR');
   await mcp.call('generation_submit', {shotId:randomUUID(), expectedRevision:1, providerId:'mock'}, 'VALIDATION_ERROR');
   await mcp.call('project_get', {projectId:'not-a-uuid'}, 'VALIDATION_ERROR');
+  for (const [providerId, model, options] of [['mock', IMAGE_MODELS.mock, IMAGE_FIXED_OPTIONS],
+    ['openai', IMAGE_MODELS.openai, IMAGE_FIXED_OPTIONS], ['openai-compatible', 'vendor/model', IMAGE_FIXED_OPTIONS],
+    ['comfy-local', 'model.safetensors', COMFY_IMAGE_OPTIONS]]) {
+    const input = {projectId: randomUUID(), requestId: randomUUID(), name: 'Offline schema fixture', prompt: 'A red tree', providerId, model, options};
+    assert.equal(schemas['image.generate'].safeParse(input).success, true);
+    await mcp.call('image_generate', input, 'CONNECTION_CONFIG_ERROR');
+    for (const patch of [{unexpected:true}, {seed:1}, {options:{...options, unexpected:true}}]) {
+      assert.equal(schemas['image.generate'].safeParse({...input, ...patch}).success, false);
+      await mcp.call('image_generate', {...input, ...patch}, 'VALIDATION_ERROR');
+    }
+  }
   await mcp.call('unregistered_tool', {}, 'UNKNOWN_OPERATION');
   await mcp.call('project_list', {}, 'CONNECTION_CONFIG_ERROR');
   await mcp.call('mioon_doctor', {}, 'CONNECTION_CONFIG_ERROR');
   await mcp.call('mioon_capabilities', {}, 'CONNECTION_CONFIG_ERROR');
   assert.ok(!mcp.stderr().includes('Bearer'));
+});
+
+test('catalog assertions reject lost, reordered or weakened image union branches and replay-key claims', () => {
+  const definition = operationDefinition('image.generate');
+  const inspected = assertOperationInputBranches(definition);
+  assert.equal(inspected.branches.length, 2); assert.equal(inspected.requiresRequestId, true);
+  assert.equal(inspected.optionalRequestId, false);
+  for (const change of [
+    value => value.inputSchema.anyOf.pop(),
+    value => value.inputSchema.anyOf.reverse(),
+    value => { value.inputSchema.anyOf[1].additionalProperties = true; },
+    value => { delete value.inputSchema.anyOf[1].properties.model; },
+    value => { value.inputSchema.anyOf[1].required = value.inputSchema.anyOf[1].required.filter(key => key !== 'requestId'); },
+    value => { value.inputSchema.anyOf[1].properties.unexpected = {type:'boolean'}; },
+    value => { value.requiresRequestId = false; },
+  ]) {
+    const altered = structuredClone(definition); change(altered);
+    assert.throws(() => assertOperationInputBranches(altered), assert.AssertionError);
+  }
 });
 
 test('one MCP process follows private desktop descriptor and token rotation, preserving durable state and conflicts', {timeout:30_000}, async t => {

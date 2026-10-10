@@ -1,5 +1,7 @@
 # Mioon extensions architecture and catalog plan
 
+Implementation checkpoint (2026-10-10): the [fixed first-party ComfyUI image connector](COMFY-CONNECTOR.md) has passed focused/build/Linux native synthetic acceptance and its independent full gate (2993 total, 2991 passed, 0 failed, 2 skipped). Its internal `check/submit/observe` interface is actually used by the image lifecycle. This does not complete the manifest broker, third-party execution isolation, second-category SDK proof or extension store described below.
+
 Date: 2026-10-10 UTC. Status: **planned; approved for implementation at an
 appropriate milestone; not implemented**.
 Inspected repository HEAD: `bd76c724de757e68b2683ca7928316a5c4f92174`.

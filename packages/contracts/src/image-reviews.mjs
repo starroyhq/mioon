@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {canonicalImageInput, imageSchemas} from './images.mjs';
 import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination, CUSTOM_IMAGE_ENDPOINT_LIMIT} from './image-settings.mjs';
+import {comfyImageConfigurationSchema,isCompleteComfyImageConfiguration,getComfyImageDestination,comfyImageExecutionSchema,comfyImagePolicySchema} from './comfy-images.mjs';
 
 // This contract intentionally leaves image.generate and its old receipts intact.
 // Review preparation is not authority to send. Approval is a private UI route,
@@ -17,6 +18,10 @@ const timestamp = z.string().min(1).max(40).refine(value => Number.isFinite(Date
 const generation = imageSchemas['image.generate'].refine(value => value.providerId !== 'mock', 'Only live image requests need a review');
 const officialGeneration = generation.refine(value => value.providerId === 'openai');
 const customGeneration = generation.refine(value => value.providerId === 'openai-compatible');
+const comfyGeneration = generation.refine(value => value.providerId === 'comfy-local');
+const reviewedComfyConfiguration = comfyImageConfigurationSchema.refine(value=>value.enabled&&isCompleteComfyImageConfiguration(value));
+const matchesComfyConfiguration=value=>isCompleteComfyImageConfiguration(value.configuration)&&value.configuration.enabled&&value.input.model===value.configuration.model&&canonicalImageInput(value.input.options)===canonicalImageInput(value.configuration.options)&&
+  value.destination===getComfyImageDestination(value.configuration.baseUrl)&&value.execution.graph?.['1']?.inputs?.ckpt_name===value.input.model&&value.execution.graph?.['3']?.inputs?.text===value.input.prompt;
 const reviewedConfiguration = customImageConfigurationSchema.refine(value => value.enabled && isCompleteCustomImageConfiguration(value));
 const customDestination = z.string().min(1).max(CUSTOM_IMAGE_ENDPOINT_LIMIT);
 const matchesConfiguration = value => isCompleteCustomImageConfiguration(value.configuration) && value.configuration.enabled && value.input.model === value.configuration.model &&
@@ -40,7 +45,9 @@ const officialIntent = z.object({schemaVersion: z.literal(1), reviewId: id,
 const customIntent = z.object({schemaVersion: z.literal(2), reviewId: id,
   input: customGeneration, settingsRevision: revision, destination: customDestination,
   policy: imageReviewPolicySchema, configuration: reviewedConfiguration}).strict().refine(matchesConfiguration, 'Custom review configuration mismatch');
-export const imageReviewIntentSchema = z.union([officialIntent, customIntent]);
+const comfyIntent=z.object({schemaVersion:z.literal(3),reviewId:id,input:comfyGeneration,settingsRevision:revision,destination:z.string().max(80),
+  policy:comfyImagePolicySchema,configuration:reviewedComfyConfiguration,execution:comfyImageExecutionSchema}).strict().refine(matchesComfyConfiguration,'Local review configuration mismatch');
+export const imageReviewIntentSchema = z.union([officialIntent, customIntent, comfyIntent]);
 const responseFields = {id, projectId: id, requestId: key, input: officialGeneration,
   inputHash: hash, settingsRevision: revision, destination: z.literal(IMAGE_REVIEW_DESTINATION), policy: imageReviewPolicySchema,
   state: z.enum(IMAGE_REVIEW_STATES), revision, taskId: id.nullable(), postAttempts: z.number().int().min(0).max(1),
@@ -58,7 +65,9 @@ const verifyResponse = (value, context) => {
 const officialResponse = z.object(responseFields).strict().superRefine(verifyResponse);
 const customResponse = z.object({...responseFields, input: customGeneration, destination: customDestination, configuration: reviewedConfiguration})
   .strict().refine(matchesConfiguration, 'Custom review configuration mismatch').superRefine(verifyResponse);
-export const imageReviewResponseSchema = z.union([officialResponse, customResponse]);
+const comfyResponse=z.object({...responseFields,input:comfyGeneration,destination:z.string().max(80),policy:comfyImagePolicySchema,configuration:reviewedComfyConfiguration,execution:comfyImageExecutionSchema})
+  .strict().refine(matchesComfyConfiguration,'Local review configuration mismatch').superRefine(verifyResponse);
+export const imageReviewResponseSchema = z.union([officialResponse, customResponse, comfyResponse]);
 export const isImageReviewResponse = value => imageReviewResponseSchema.safeParse(value).success;
 export function isImageReviewListResponse(input, result) {
   if (!imageReviewSchemas['image.review.list'].safeParse(input).success || !result || typeof result !== 'object' || Array.isArray(result) ||

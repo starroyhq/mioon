@@ -12,6 +12,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
 import {discoverSchema} from '../packages/client/src/index.mjs';
+import {optionalRequestIdOperations} from './helpers/catalog-input-branches.mjs';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.mjs';
 import {IDS, TOKEN, snapshot} from './helpers/mutation-wire-fixture.mjs';
@@ -232,7 +233,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
         assert.equal(definition.inputSchema.properties.requestId.maxLength, 200);
       }
     }
-    assert.deepEqual(catalog.operations.filter(item => item.inputSchema.properties.requestId && !item.requiresRequestId).map(item => item.operation).sort(), oldMutations.sort());
+    assert.deepEqual(optionalRequestIdOperations(catalog), oldMutations.sort());
     assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name).sort(), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect'].sort());
     assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_propose_shot_update']);
     backend.unchanged(before, 'discovery');

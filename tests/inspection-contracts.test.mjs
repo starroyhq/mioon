@@ -7,7 +7,7 @@ import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {ToolAnnotationsSchema} from '@modelcontextprotocol/sdk/types.js';
-import {schemas, inspectionArgumentSchemas, inspectionSchemas, operationEffects,
+import {schemas, inspectionArgumentSchemas, inspectionSchemas, operationEffects,IMAGE_FIXED_OPTIONS,IMAGE_MODELS,COMFY_IMAGE_OPTIONS,
   operationEffect, assertOperationEffectCoverage, effectAnnotations, parse} from '@mioon/contracts';
 import {operationDefinition, discoverSchema, discoveryEffects, jsonSchema} from '@mioon/client';
 import {readToolRequestFields, chatToolAccumulator, responseToolSnapshot} from '../packages/business/src/agent/tool-wire.mjs';
@@ -69,7 +69,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
     assert.throws(() => operationEffect(operation), /not defined/);
   assert.throws(() => effectAnnotations(undefined), /Explicit operation effects/);
   assert.throws(() => effectAnnotations({readOnly:true}), /Explicit operation effects/);
-  const readOnly = new Set([...inspections, 'image.review.get', 'image.review.list', 'image.profile.list', 'image.request.get', 'image.task.get', 'image.task.list', 'image.group.get', 'image.group.list', 'image.version.list', 'subject.list', 'subject.version.list', 'subject.binding.list', 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'timeline.export.preflight']);
+  const readOnly = new Set([...inspections, 'image.review.get', 'image.review.list', 'image.profile.list', 'image.request.get', 'image.task.remote.get', 'image.task.get', 'image.task.list', 'image.group.get', 'image.group.list', 'image.version.list', 'subject.list', 'subject.version.list', 'subject.binding.list', 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'timeline.export.preflight']);
   for (const [operation, effect] of Object.entries(operationEffects)) {
     assert.equal(Object.isFrozen(effect), true);
     assert.equal(effect.notes.length > 20, true);
@@ -157,6 +157,12 @@ test('offline CLI schema and official MCP list/schema expose identical inspectio
     assert.equal((await call(toolName, {projectId, token:'must-not-dispatch'})).error.code, 'VALIDATION_ERROR');
     assert.equal((await call(toolName, {projectId})).error.code, 'CONNECTION_CONFIG_ERROR');
   }
+  for(const [providerId,model,options] of [['mock',IMAGE_MODELS.mock,IMAGE_FIXED_OPTIONS],['openai',IMAGE_MODELS.openai,IMAGE_FIXED_OPTIONS],['openai-compatible','vendor/model',IMAGE_FIXED_OPTIONS],['comfy-local','model.safetensors',COMFY_IMAGE_OPTIONS]]){
+    const input={projectId,requestId:'comfy-catalog-request',name:'Schema example',prompt:'One tree',providerId,model,options};
+    assert.equal(schemas['image.generate'].safeParse(input).success,true);
+    assert.equal((await call('image_generate',input)).error.code,'CONNECTION_CONFIG_ERROR');
+    assert.equal((await call('image_generate',{...input,seed:1})).error.code,'VALIDATION_ERROR');
+  }
   for (const name of ['doctor', 'capabilities', 'schema'])
     assert.deepEqual(tools.find(tool => tool.name === `mioon_${name}`).annotations, effectAnnotations(discoveryEffects[name]));
   assert.equal((await call('mioon_doctor')).error.code, 'CONNECTION_CONFIG_ERROR');
@@ -180,4 +186,16 @@ test('shared subject operations cannot enter either protocol built-in Agent cata
       assert.throws(() => responseToolSnapshot({id:'item-subject', call_id:'call-subject', type:'function_call', name, arguments:'{}', status:'completed'}, 'completed', request), {code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
     }
   }
+});
+
+// Public observation capability is separate from built-in model tool authority.
+test('Comfy remote operations have truthful effects and remain outside built-in Agent tools',()=>{
+ const read=operationEffects['image.task.remote.get'],observe=operationEffects['image.task.observeRemote'];
+ assert.equal(read.readOnly,true);assert.equal(read.externalIO,false);assert.equal(read.databaseWrite,false);
+ for(const field of ['databaseWrite','externalIO','fileWrite','openWorld','idempotent'])assert.equal(observe[field],true,field);
+ for(const field of ['readOnly','paidGeneration','localProcess','destructive'])assert.equal(observe[field],false,field);
+ for(const scope of [undefined,'selected_shot_edit']){const request={phase:'request',...(scope?{scope}:{})};for(const operation of ['image.task.remote.get','image.task.observeRemote'])for(const name of [operation,`mioon_${operation.replaceAll('.','_')}`]){
+  assert.throws(()=>chatToolAccumulator(request).add([{index:0,id:'call-comfy',type:'function',function:{name,arguments:'{}'}}]),{code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
+  assert.throws(()=>responseToolSnapshot({id:'item-comfy',call_id:'call-comfy',type:'function_call',name,arguments:'{}',status:'completed'},'completed',request),{code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
+ }}
 });

@@ -224,6 +224,9 @@ function renderer(f) {
     if (name === '@mioon/contracts') return { IMAGE_LIMITS };
     if (name === './image-generation.js') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
+    if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
+    if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
+    if (name === './comfy-image-settings.js') return { createComfyImageSettingsClient: () => ({ read: async () => null }) };
     if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
     if (name === './image-settings.js') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
     if (name === './icons.jsx') return { default: 'Icon' };

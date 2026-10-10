@@ -23,6 +23,29 @@ Use IDs from actual responses. All business operations are available as space-se
 
 MCP tool names replace dots with underscores: `generation_submit`, `timeline_clip_add`, etc. These are actual SDK tools whose schemas use the same contracts as HTTP and CLI. MCP sends ordinary `asset_import` with bytes, not a local path. Use CLI for local-file conveniences and bounded watch/download when the MCP host cannot read or save files directly.
 
+## Local ComfyUI operations
+
+The first-party fixed local connector is under acceptance; no live runtime/GPU
+validation is implied. Discover `schema image.review.prepare`,
+`schema image.task.remote.get` and `schema image.task.observeRemote` before use.
+Provider `comfy-local` requires the selected local slot revision and its fixed
+512×512 options; [the connector contract](../../../docs/COMFY-CONNECTOR.md)
+contains the complete input. Settings/check/approval are private application
+actions, never MCP/CLI tools or built-in Agent authority.
+
+- `image task remote get` / `image_task_remote_get`: `{projectId,taskId}`; read
+  retained local evidence only, no network, creation or resumption.
+- `image task observeRemote` / `image_task_observeRemote`:
+  `{projectId,taskId,expectedRevision,requestId}`; use current `remote.revision`
+  and a distinct retained 8–200-character key. Durably admits one bounded job GET
+  and possible exact verified result GET/publication, never a generation POST.
+- Exact observation replay returns the original queued ACK without another GET.
+  Read current remote/task state separately. A later explicit query uses a new
+  observation key/current remote revision after the previous query ends.
+- `image task recoverResult` remains local-only and `cancelQueued` remains
+  undispatched-only. There is no remote cancellation, automatic polling or
+  startup GET/POST. Do not treat a prompt UUID as remote deduplication.
+
 ## Bounded inspection and effect metadata
 
 Use `project inspect`, `asset inspect`, `shot inspect` and `timeline inspect` for

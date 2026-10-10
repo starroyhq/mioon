@@ -47,12 +47,12 @@ authorized by these checks. Existing Agent/video credentials do not activate
 Images. Do not substitute Mock for a requested real provider, or treat a configured/enabled profile as verified output or approval.
 
 For Mock, use the complete strict `image generate` input and stable key. For a
-user-requested official/custom live intent, external clients can only prepare/read
+user-requested official/custom or local-ComfyUI intent, external clients can only prepare/read
 its review:
 
 - `image review prepare` / `image_review_prepare` takes exactly
-  `{input:<complete official/custom image.generate input>,settingsRevision}`. Use the
-  current positive settings revision from the selected official/custom Images
+  `{input:<complete official/custom/local-ComfyUI image.generate input>,settingsRevision}`. Use the
+  current positive settings revision from the selected Images connection
   slot and retain the original `requestId` inside `input`; no extra top-level key
   exists. Custom input uses `providerId:"openai-compatible"` and the exact
   configured ASCII model with unchanged fixed options. Never add an endpoint,
@@ -68,16 +68,16 @@ its review:
   or an arbitrary executor to bypass that boundary. Token/session authentication
   is not cryptographic human-presence proof and grants no paid Agent authority.
 
-The user configures Images once, then explicitly clicks the visible paid button
-for each exact original prompt, project, model/options and destination, authorizing
+For official/custom Images, the user configures the slot, then explicitly clicks
+the visible paid button for each exact original prompt, project, model/options and destination, authorizing
 at most one POST at usage-based unknown cost. There is no per-image budget wizard;
 one attempt is not a currency cap. Settings save alone grants no generation
 approval. A real canary still needs one separate exact configuration/prompt/media/
 fees approval; synthetic acceptance does not provide it. Custom settings are a
 separate key/file/namespace slot using public-DNS HTTPS:443 and the fixed single
 `b64_json` PNG profile. Saving does not probe, negotiate a model or prove vendor
-compatibility. No URL-result download, local ComfyUI or automatic fallback is
-supported. Changing a keyed base URL/model requires explicit removal or fresh
+compatibility. The custom slot has no URL-result download, ComfyUI protocol or automatic
+fallback. The separate first-party local-ComfyUI profile is described below. Changing a keyed base URL/model requires explicit removal or fresh
 key input; the official slot stays untouched.
 Never request keys in a prompt, CLI argument or tool input. Web secrets last only
 for the backend lifetime; Electron secure persistence is explicitly selected and
@@ -114,6 +114,54 @@ work; preparation is local-database-only and review reads are read-only. Advisor
 effects are not authorization. A completed image is a managed asset, not an
 instruction to attach a reference, change a subject, replace a timeline source or
 generate video. Perform those edits separately only when authorized.
+
+### First-party local ComfyUI (synthetic validation)
+
+The separate `comfy-local` profile targets only ComfyUI `0.39.0`, an explicitly
+selected installed checkpoint and one fixed seven-node/six-class workflow for a
+512×512 PNG. Read [COMFY-CONNECTOR.md](../../docs/COMFY-CONNECTOR.md) before preparing
+its review; its fixed options differ from the 1024×1024 official/custom profiles.
+The application owns no-secret settings, explicit bounded connection check and
+user approval. Viewing/saving settings never probes. No agent operation installs
+or starts a runtime, downloads models, uploads an image or accepts arbitrary
+graphs/plugins. This increment has synthetic fixture work only; real runtime,
+GPU/model and completed full/native acceptance have not been established.
+
+Use `image review prepare/get/list` for a user-requested intent with the selected
+local slot revision. The backend freezes configuration, destination, graph/hash,
+seed, prompt/client UUIDs and output nonce before the user approves one POST at
+unknown local compute cost. Do not approve by raw HTTP. A loopback endpoint and
+reported node/version/model names do not prove trusted, offline or free behavior.
+The runtime is independently trusted and not sandboxed by Mioon.
+
+For an existing dispatched local-ComfyUI task:
+
+- `image task remote get` / `image_task_remote_get` with `{projectId,taskId}` reads
+  only retained local remote evidence and latest observation. It performs no GET
+  to ComfyUI and never starts or repairs work.
+- When the user authorizes checking/retrieving that existing result, use
+  `image task observeRemote` / `image_task_observeRemote` with exactly
+  `{projectId,taskId,expectedRevision,requestId}`. Use `remote.revision`, not the
+  task/settings/review revision, and retain a distinct stable observation key.
+  It admits one durable observation and schedules one bounded job GET plus at
+  most one exact verified PNG GET. It never sends a generation POST.
+- An accepted result is the original queued ACK. After uncertainty replay that
+  exact input/key without changing its revision; this does not repeat GET. Read
+  current local remote/task records separately. A later explicit query needs a
+  new observation key/current remote revision after the previous query ends.
+  `finished` observation state alone is not image-generation success.
+- No automatic polling, repeated POST or runtime GET on startup. A prompt UUID
+  is correlation, not ComfyUI deduplication. Only matching terminal
+  graph/client/nonce/execution status and pinned descriptor/hash/bytes may yield
+  a result. Existing `recoverResult` stays local-only; remote cancellation is
+  absent and `cancelQueued` is undispatched-only. Closing or stopping local
+  observation cannot stop remote GPU work.
+
+These shared operations do not join the built-in Agent allowlist or grant new
+approval authority. Observation retention is bounded with no eviction; report
+capacity/ownership/verification blockers without deleting records or resubmitting
+generation. See [recovery.md](references/recovery.md) for the distinct observation
+and local staged-result recovery paths.
 
 ## Explicit clip source replacement
 

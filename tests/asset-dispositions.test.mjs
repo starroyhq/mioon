@@ -270,10 +270,13 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',randomUUID(),'old-hash',randomUUID());
  const schema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
  const fresh=schema();
- f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version>=12;');
+ // Reapply the targeted additive schema and the subject namespace extension
+ // whose trigger belongs to the removed table. Unrelated later schemas remain
+ // installed; deleting their markers would manufacture a review downgrade.
+ f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
  const old=snapshot(f,['schema_version']);f.restart();
  assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests']),old);assert.deepEqual(schema(),fresh);
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,18);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,19);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
 });
 

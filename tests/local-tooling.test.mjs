@@ -5,7 +5,7 @@ import {mkdtemp, realpath, mkdir, writeFile, readFile, rm} from 'node:fs/promise
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, preflight, discoverTests,
+import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, inspectPackageManager, preflight, discoverTests,
   PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand} from '../scripts/lib/local-tooling.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -14,7 +14,7 @@ async function fixture(t) {
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon tooling 中 '));
   t.after(() => rm(directory, {recursive: true, force: true}));
   const json = async (name, value) => {await mkdir(path.dirname(path.join(directory, name)), {recursive: true}); await writeFile(path.join(directory, name), JSON.stringify(value));};
-  await json('package.json', {version: '0.4.1', devDependencies: {esbuild: '0.27.7', electron: '44.7.0'}});
+  await json('package.json', {version: '0.4.1', packageManager: 'pnpm@11.25.0', devDependencies: {esbuild: '0.27.7', electron: '44.7.0'}});
   await json('apps/desktop/package.json', {version: '0.4.1'});
   await json('apps/web/package.json', {devDependencies: {vite: '7.3.1'}});
   for (const [name, version, entry] of [['vite', '7.3.1', 'bin/vite.js'], ['esbuild', '0.27.7', 'lib/main.js'], ['electron', '44.7.0', 'index.js']]) {
@@ -26,6 +26,75 @@ async function fixture(t) {
   for (const name of [...PORTABLE_TEST_FILES, 'z-native.test.mjs', 'a-full.test.mjs', 'not-a-test.mjs']) await writeFile(path.join(directory, 'tests', name), '');
   return {directory, json};
 }
+
+async function managerFixture(t, version = '11.25.0') {
+  const state = await fixture(t), {directory, json} = state;
+  const bin = path.join(directory, 'manager/bin'), sentinel = path.join(directory, 'must-not-execute');
+  await json('manager/package.json', {name: 'pnpm', version, bin: {pnpm: 'bin/pnpm'}});
+  await mkdir(bin);
+  await writeFile(path.join(bin, 'pnpm'), `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(sentinel)}, 'executed');\n`, {mode: 0o755});
+  // Exercise metadata recognition using a synthetic POSIX command layout even
+  // on Windows; the actual Windows observation remains explicitly unverified.
+  return {...state, bin, sentinel, options: {env: {PATH: bin}, platform: 'linux'}};
+}
+
+test('pnpm metadata observation distinguishes exact pin and mismatch without executing the command', async t => {
+  for (const version of ['11.25.0', '10.8.1']) {
+    const {directory, options, sentinel} = await managerFixture(t, version);
+    const observation = await inspectPackageManager(directory, options);
+    assert.equal(observation.status, version === '11.25.0' ? 'matched' : 'mismatch');
+    assert.equal(observation.requiredVersion, '11.25.0'); assert.equal(observation.observedVersion, version);
+    assert.equal(observation.source, 'package-metadata');
+    assert.doesNotMatch(JSON.stringify(observation), new RegExp(directory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    await assert.rejects(readFile(sentinel), {code: 'ENOENT'});
+  }
+});
+test('missing and unrecognized pnpm remain distinct; the first wrapper shadows a later installation', async t => {
+  const {directory, bin, options, sentinel} = await managerFixture(t);
+  const empty = path.join(directory, 'empty'), wrapper = path.join(directory, 'wrapper');
+  await mkdir(empty); await mkdir(wrapper);
+  assert.equal((await inspectPackageManager(directory, {...options, env: {PATH: empty}})).status, 'missing');
+  await writeFile(path.join(wrapper, 'pnpm'), '#!/bin/sh\nexit 99\n', {mode: 0o755});
+  const observation = await inspectPackageManager(directory, {...options, env: {PATH: `${wrapper}${path.delimiter}${bin}`}});
+  assert.equal(observation.status, 'unverified'); assert.equal(observation.observedVersion, null);
+  for (const PATH of [undefined, '', '.', `${path.delimiter}${bin}`]) {
+    assert.equal((await inspectPackageManager(directory, {...options, env: {PATH}})).status, 'unverified');
+  }
+  assert.equal((await inspectPackageManager(directory, {...options, platform: 'win32'})).status, 'unverified');
+  await assert.rejects(readFile(sentinel), {code: 'ENOENT'});
+});
+test('Corepack, invalid versions and mismatched bin declarations never masquerade as verified pnpm', async t => {
+  const {directory, json, options} = await managerFixture(t);
+  for (const metadata of [
+    {name: 'corepack', version: '11.25.0', bin: {pnpm: 'bin/pnpm'}},
+    {name: 'pnpm', version: 'SYNTHETIC_SECRET', bin: {pnpm: 'bin/pnpm'}},
+    {name: 'pnpm', version: '11.25.0', bin: {pnpm: 'other-entry.cjs'}},
+    {name: 'pnpm', version: '11.25.0', bin: {pnpm: '../outside.cjs'}},
+  ]) {
+    await json('manager/package.json', metadata);
+    const observation = await inspectPackageManager(directory, options);
+    assert.equal(observation.status, 'unverified'); assert.equal(observation.observedVersion, null);
+    assert.doesNotMatch(JSON.stringify(observation), /SYNTHETIC_SECRET/);
+  }
+  await json('package.json', {packageManager: 'pnpm@latest'});
+  assert.equal((await inspectPackageManager(directory, options)).code, 'PNPM_DECLARATION_INVALID');
+});
+test('doctor observes pnpm separately without changing direct Node build prerequisites or native gates', async t => {
+  const {directory, options} = await managerFixture(t, '10.8.1');
+  const probe = async name => `${name} version 7.1.5 Copyright`;
+  const result = await preflight(directory, {media: true, nodeVersion: '26.9.0', platform: 'linux', probe, packageManagerEnvironment: options.env});
+  assert.equal(result.report.packageManager.status, 'mismatch');
+  assert.equal(result.report.buildReady, true); assert.equal(result.report.prerequisitesReady, true);
+  assert.equal(result.report.nativeReadiness.ready, false);
+  await rm(path.join(directory, 'manager'), {recursive: true});
+  const direct = await preflight(directory, {packageManagerEnvironment: {get PATH() { assert.fail('Build/test must not inspect pnpm'); }}});
+  assert.equal(direct.report.buildReady, true); assert.equal(direct.report.prerequisitesReady, true);
+  assert.equal(Object.hasOwn(direct.report, 'packageManager'), false);
+  await rm(path.join(directory, 'node_modules'), {recursive: true});
+  const missing = await preflight(directory, {media: true, platform: 'linux', probe, packageManagerEnvironment: options.env});
+  assert.equal(missing.report.buildReady, false); assert.equal(missing.report.packageManager.status, 'missing');
+  assert.match(missing.report.checks.find(row => row.name === 'installedDependencies').nextStep, /--frozen-lockfile/);
+});
 
 test('tooling options are explicit and bounded; no shell or arbitrary command arguments', () => {
   assert.equal(parseArguments(['test']).suite, 'portable');
@@ -71,16 +140,37 @@ test('missing dependency and declaration ranges fail actionably without install 
 });
 test('preflight checks SQLite only in memory and separates native and build readiness', async t => {
   const {directory} = await fixture(t); const calls = [];
-  const result = await preflight(directory, {platform: 'win32', media: true, probe: async (...args) => {calls.push(args); return `${args[0]} version 7.1.5 Copyright`;}});
+  const result = await preflight(directory, {platform: 'win32', media: true, packageManagerEnvironment: {}, probe: async (...args) => {calls.push(args); return `${args[0]} version 7.1.5 Copyright`;}});
   assert.equal(result.report.buildReady, true); assert.equal(result.report.prerequisitesReady, true);
   assert.equal(result.report.nativeReadiness.status, 'blocked'); assert.equal(calls.length, 2);
   for (const [name, args, options] of calls) {assert.ok(['ffmpeg', 'ffprobe'].includes(name)); assert.deepEqual(args, ['-version']); assert.equal(options.timeout, 10000); assert.equal(options.maxStdoutBytes, 65536);}
 });
 test('media probe failure is sanitized and cannot become a build or native success claim', async t => {
   const {directory} = await fixture(t);
-  const result = await preflight(directory, {media: true, probe: async () => {throw Error('SYNTHETIC_SECRET path');}});
+  const result = await preflight(directory, {media: true, packageManagerEnvironment: {}, probe: async () => {throw Error('SYNTHETIC_SECRET path');}});
   assert.equal(result.report.buildReady, true); assert.equal(result.report.prerequisitesReady, false);
   assert.doesNotMatch(JSON.stringify(result.report), /SYNTHETIC_SECRET/);
+});
+test('doctor identifies each media failure and provides safe next steps without hiding the other tool', async t => {
+  const {directory} = await fixture(t);
+  for (const code of ['MEDIA_SPAWN_FAILED', 'MEDIA_TIMEOUT', 'MEDIA_EXIT_FAILED', 'MEDIA_INVALID_CONFIGURATION', 'MEDIA_OUTPUT_LIMIT',
+    'MEDIA_PROCESS_FAILED', 'MEDIA_CANCELLED', 'MEDIA_TERMINATION_UNCONFIRMED', 'SYNTHETIC_SECRET']) {
+    const {report} = await preflight(directory, {media: true, packageManagerEnvironment: {}, probe: async name => {
+      if (name === 'ffmpeg') throw Object.assign(new Error('SYNTHETIC_SECRET /private/path'), {code});
+      return 'ffprobe version 7.1.5 Copyright';
+    }});
+    const failed = report.checks.find(row => row.name === 'ffmpeg');
+    assert.equal(failed.code, code === 'SYNTHETIC_SECRET' ? 'PREREQUISITE_FAILED' : code);
+    assert.ok(failed.message); assert.ok(failed.nextStep);
+    assert.equal(report.checks.find(row => row.name === 'ffprobe').status, 'passed');
+    assert.equal(report.buildReady, true); assert.equal(report.prerequisitesReady, false);
+    assert.equal(report.nativeReadiness.ready, false);
+    assert.doesNotMatch(JSON.stringify(report), /SYNTHETIC_SECRET|\/private\/path/);
+    if (code === 'MEDIA_SPAWN_FAILED') assert.match(failed.message, /inaccessible or incompatible/);
+  }
+  const invalid = await preflight(directory, {media: true, packageManagerEnvironment: {}, probe: async () => 'unexpected SYNTHETIC_SECRET'});
+  assert.equal(invalid.report.checks.find(row => row.name === 'ffprobe').code, 'MEDIA_VERSION_INVALID');
+  assert.doesNotMatch(JSON.stringify(invalid.report), /SYNTHETIC_SECRET/);
 });
 test('old Node and mismatched application versions fail preflight', async t => {
   const {directory, json} = await fixture(t);

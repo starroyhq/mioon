@@ -1,6 +1,9 @@
 import { ApiError, rpc, requestId as newRequestId } from './api.js';
-import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination } from '@mioon/contracts';
+import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
 import { safeImageSettings } from './image-settings.js';
+import { safeComfyImageSettings } from './comfy-image-settings.js';
+import { createComfyObservationSession, comfyObservationActive, comfyCanObserve } from './comfy-image-observation.js';
+export { comfyCanObserve } from './comfy-image-observation.js';
 import { createImageReviewClient, imageReviewIdentity as reviewIdentity } from './image-review.js';
 
 export { IMAGE_FIXED_OPTIONS, IMAGE_MODELS };
@@ -35,15 +38,17 @@ export function imageInputIssue(draft) {
   return '';
 }
 export function initialImageGenerationState() {
-  return { draft: { name: '', prompt: '' }, providerId: 'mock', settings: null, customSettings: null, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
+  return { draft: { name: '', prompt: '' }, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
 }
 export const imageDraftDirty = state => Boolean(state.draft.name || state.draft.prompt || state.target);
 const paidProvider = providerId => ['openai', 'openai-compatible'].includes(providerId);
-export const imageSelectedSettings = (state, providerId = state.providerId) => providerId === 'openai-compatible' ? state.customSettings : providerId === 'openai' ? state.settings : null;
+const reviewedProvider = providerId => paidProvider(providerId) || providerId === 'comfy-local';
+export const imageSelectedSettings = (state, providerId = state.providerId) => providerId === 'comfy-local' ? state.comfySettings : providerId === 'openai-compatible' ? state.customSettings : providerId === 'openai' ? state.settings : null;
 export function imageReviewCanApprove(state, review) {
   const settings = imageSelectedSettings(state, review?.input?.providerId);
-  return isImageReviewResponse(review) && review.state === 'pending' && settings?.revision === review.settingsRevision && settings.configuration.enabled && settings.secret.configured &&
-    (review.input.providerId !== 'openai-compatible' || canonicalImageInput(settings.configuration) === canonicalImageInput(review.configuration));
+  if (!isImageReviewResponse(review) || review.state !== 'pending' || settings?.revision !== review.settingsRevision || !settings.configuration.enabled) return false;
+  if (review.input.providerId === 'comfy-local') return settings.readiness.checked && isCompleteComfyImageConfiguration(settings.configuration) && canonicalImageInput(settings.configuration) === canonicalImageInput(review.configuration);
+  return settings.secret.configured && (review.input.providerId !== 'openai-compatible' || canonicalImageInput(settings.configuration) === canonicalImageInput(review.configuration));
 }
 export function imageTaskReview(state, task) {
   if (!isImageTaskResponse(task)) return null;
@@ -57,15 +62,17 @@ export function imagePaidAuthorization(state) {
 }
 export function imageCanGenerate(state) {
   const group = state.target && state.groups.find(item => item.id === state.target.groupId), settings = imageSelectedSettings(state);
-  return state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && (state.providerId === 'mock' || paidProvider(state.providerId) && settings?.configuration.enabled && settings.secret.configured && settings.revision > 0 && (state.providerId !== 'openai-compatible' || isCompleteCustomImageConfiguration(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision));
+  return state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && !state.remotePending && !state.remoteStorageBlocked && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && (state.providerId === 'mock' || state.providerId === 'comfy-local' && settings?.configuration.enabled && settings.readiness.checked && settings.revision > 0 && isCompleteComfyImageConfiguration(settings.configuration) || paidProvider(state.providerId) && settings?.configuration.enabled && settings.secret.configured && settings.revision > 0 && (state.providerId !== 'openai-compatible' || isCompleteCustomImageConfiguration(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision));
 }
 const pendingMatchesReview = (pending, review) => canonicalImageInput(pending.input) === canonicalImageInput(review.input) && pending.settingsRevision === review.settingsRevision &&
-  (pending.input.providerId !== 'openai-compatible' || pending.version === 2 && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination);
+  (pending.input.providerId !== 'openai-compatible' || pending.version === 2 && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination) &&
+  (pending.input.providerId !== 'comfy-local' || pending.version === 3 && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination && (!pending.execution || canonicalImageInput(pending.execution) === canonicalImageInput(review.execution)));
 const fixedIntent = (projectId, value) => {
   if (!value || !imageSchemas[value.operation]?.safeParse(value.input).success || value.input.projectId !== projectId || !['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(value.operation)) return false;
   if (value.operation !== 'image.generate' || value.input.providerId === 'mock') return value.version === 1;
   if (!Number.isSafeInteger(value.settingsRevision) || value.settingsRevision < 1 || typeof value.approvalAttempted !== 'boolean' || !(value.reviewId === null || typeof value.reviewId === 'string')) return false;
   if (value.input.providerId === 'openai') return value.version === 1;
+  if (value.input.providerId === 'comfy-local') return value.version === 3 && isCompleteComfyImageConfiguration(value.configuration) && value.configuration.enabled && value.configuration.model === value.input.model && canonicalImageInput(value.configuration.options) === canonicalImageInput(value.input.options) && value.destination === getComfyImageDestination(value.configuration.baseUrl) && (value.execution === null && value.reviewId === null && !value.approvalAttempted || comfyImageExecutionSchema.safeParse(value.execution).success);
   return value.version === 2 && isCompleteCustomImageConfiguration(value.configuration) && value.configuration.enabled && value.configuration.model === value.input.model && canonicalImageInput(value.configuration.options) === canonicalImageInput(value.input.options) && value.destination === getCustomImageDestination(value.configuration.baseUrl);
 };
 const safeTask = (value, projectId) => {
@@ -91,10 +98,11 @@ async function notAccepted(error, operation, input) {
 }
 
 /** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
-export function createImageGenerationSession({ projectId, api = rpc, reviewClient = createImageReviewClient(), settings, settingsReader, customSettings, customSettingsReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 } = {}) {
+export function createImageGenerationSession({ projectId, api = rpc, reviewClient = createImageReviewClient(), settings, settingsReader, customSettings, customSettingsReader, comfySettings, comfySettingsReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 } = {}) {
   let state = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer = null, polls = 0, reading = false;
   if (settings) state.settings = safeImageSettings(settings);
   if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom');
+  if (comfySettings) state.comfySettings = safeComfyImageSettings(comfySettings);
   const announced = new Set(), tracked = new Map(), calls = new Set();
   async function call(operation, input) {
     const controller = new AbortController(); calls.add(controller); let deadline;
@@ -104,6 +112,8 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
   }
   const store = () => storage === undefined ? globalThis.sessionStorage : storage;
   const emit = patch => { if (disposed) return; state = { ...state, ...patch }; onChange(copy(state)); };
+  const observations = createComfyObservationSession({ projectId, call, storage, requestId, onChange: emit });
+  state = { ...state, ...observations.snapshot() };
   const stopTimer = () => { if (timer !== null) clearTimer(timer); timer = null; };
   const owned = epoch => !disposed && readEpoch === epoch;
   function savePending(value) {
@@ -151,7 +161,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
   }
   function schedule() {
     stopTimer();
-    if (disposed || !visible || reading || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || !(state.pending || state.tasks.some(task => ACTIVE.has(task.state)))) return;
+    if (disposed || !visible || reading || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || !(state.pending || state.remotePending || Object.values(state.remotes).some(comfyObservationActive) || state.tasks.some(task => ACTIVE.has(task.state)))) return;
     if (polls >= pollLimit) { emit({ pollPaused: true }); return; }
     timer = setTimer(() => { timer = null; polls++; void load({ automatic: true }); }, pollMs);
   }
@@ -169,7 +179,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
         if (review.state === 'rejected' && clearPending(pending)) { emit({ phase: 'ready', message: '原请求已被拒绝，没有重新生成。' }); return; }
         if (review.state === 'pending') { emit({ phase: 'unknown', message: '原始描述仍在等待审批。只有明确点击批准才会发送，不会自动继续。' }); return; }
       }
-      emit({ phase: 'unknown', message: paidProvider(pending.input.providerId) && !pending.approvalAttempted ? '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。' }); return;
+      emit({ phase: 'unknown', message: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? '尚未确认本地运行准备结果；没有批准运行。请重新读取，或明确放弃此未批准请求。' : '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。' }); return;
     }
     const latest = safeTask(await call('image.task.get', { projectId, taskId: receipt.response.id }), projectId);
     if (!owned(epoch)) return;
@@ -178,12 +188,21 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     if (clearPending(pending)) emit({ phase: 'ready', ...(pending.operation === 'image.generate' ? { ...(!pending.preserveDraft ? { draft: { name: '', prompt: '' }, target: null } : {}), selectedGroupId: latest.groupId, versionCursor: null, versionTrail: [] } : {}), message: '已找到原请求，没有重新生成。' });
   }
   async function load({ automatic = false } = {}) {
-    if (disposed || !visible || reading || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || state.phase === 'targeting') return false;
+    if (disposed || !visible || reading || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || state.phase === 'targeting') return false;
     if (!automatic) { polls = 0; emit({ pollPaused: false }); }
-    stopTimer(); const epoch = ++readEpoch; reading = epoch;
+    stopTimer(); const epoch = ++readEpoch; reading = epoch; let pendingRemoteTask = null;
     if (!state.loaded) emit({ phase: state.pending ? 'unknown' : 'loading' });
     try {
       await resolvePending(epoch); if (!owned(epoch)) return false;
+      if (state.remotePending) {
+        const task = safeTask(await call('image.task.get', { projectId, taskId: state.remotePending.input.taskId }), projectId);
+        if (!owned(epoch)) return false;
+        if (task.providerId !== 'comfy-local' || task.id !== state.remotePending.input.taskId) throw problem('INVALID_RESPONSE');
+        pendingRemoteTask = task;
+        await observations.read(task.id, imageTaskReview(state, task));
+        if (!owned(epoch)) return false;
+        if (!state.selectedGroupId) emit({ selectedGroupId: task.groupId });
+      }
       if (settingsReader) {
         try { const latest = safeImageSettings(await settingsReader()); if (!owned(epoch)) return false; emit({ settings: latest }); }
         catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，Mock 与已保存记录仍可使用。' }); }
@@ -191,6 +210,10 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (customSettingsReader) {
         try { const latest = safeImageSettings(await customSettingsReader(), 'custom'); if (!owned(epoch)) return false; emit({ customSettings: latest }); }
         catch { if (!owned(epoch)) return false; emit({ customSettings: null }); }
+      }
+      if (comfySettingsReader) {
+        try { const latest = safeComfyImageSettings(await comfySettingsReader()); if (!owned(epoch)) return false; emit({ comfySettings: latest }); }
+        catch { if (!owned(epoch)) return false; emit({ comfySettings: null }); }
       }
       const groupInput = { projectId, limit: IMAGE_LIMITS.pageSize, ...(state.groupCursor ? { cursor: state.groupCursor } : {}) };
       const groups = safePage('image.group.list', groupInput, await call('image.group.list', groupInput));
@@ -208,6 +231,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       const taskInput = { projectId, limit: IMAGE_LIMITS.pageSize, ...(selectedGroupId ? { groupId: selectedGroupId } : {}) };
       const versionInput = { projectId, groupId: selectedGroupId, limit: IMAGE_LIMITS.pageSize, ...(!changed && state.versionCursor ? { cursor: state.versionCursor } : {}) };
       const tasks = safePage('image.task.list', taskInput, await call('image.task.list', taskInput));
+      if (pendingRemoteTask && !tasks.items.some(task => task.id === pendingRemoteTask.id)) tasks.items.push(copy(pendingRemoteTask));
       if (!owned(epoch)) return false;
       // Observe completion before reading its committed group/version data. A
       // parallel older empty version page must not stop polling after success.
@@ -232,7 +256,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
         if (!isImageReviewListResponse(input, page)) throw problem('INVALID_RESPONSE');
         for (const review of page.items) mergeReview(review);
         const pendingReview = state.pending && page.items.find(review => review.requestId === state.pending.input.requestId && pendingMatchesReview(state.pending, review));
-        if (pendingReview && !state.pending.reviewId) updatePending(state.pending, { ...state.pending, reviewId: pendingReview.id });
+        if (pendingReview && !state.pending.reviewId) updatePending(state.pending, { ...state.pending, reviewId: pendingReview.id, ...(pendingReview.input.providerId === 'comfy-local' ? { execution: copy(pendingReview.execution) } : {}) });
         const pinned = state.reviews.find(item => item.id === state.pending?.reviewId);
         emit({ reviews: [...(pinned && !page.items.some(item => item.id === pinned.id) ? [pinned] : []), ...page.items.map(review => state.reviews.find(item => item.id === review.id))], nextReviewCursor: page.nextCursor });
       }
@@ -243,6 +267,10 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
         tasks.items.push(task);
       }
       if (!owned(epoch)) return false;
+      for (const task of tasks.items.filter(item => item.providerId === 'comfy-local')) {
+        try { await observations.read(task.id, imageTaskReview(state, task)); } catch { if (owned(epoch)) emit({ message: '暂时无法读取此任务的本地远端身份记录。没有查询 ComfyUI 或重新提交生成。' }); }
+        if (!owned(epoch)) return false;
+      }
       const monotonicTasks = tasks.items.map(task => newestTask(state.tasks.find(item => item.id === task.id), task));
       for (const version of versions.items) { const old = state.versions.find(item => item.id === version.id); if (old && canonicalImageInput(old) !== canonicalImageInput(version)) throw problem('INVALID_RESPONSE'); }
       emit({ groups: groups.items, nextGroupCursor: groups.nextCursor, selectedGroupId, tasks: monotonicTasks, versions: versions.items, nextVersionCursor: versions.nextCursor, ...(changed ? { versionCursor: null, versionTrail: [] } : {}), loaded: true, phase: state.pending ? 'unknown' : 'ready' });
@@ -257,7 +285,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     } finally { if (reading === epoch) reading = false; if (owned(epoch)) schedule(); }
   }
   async function dispatch(operation, input) {
-    if (disposed || !visible || state.pending || state.storageBlocked || state.actionTaskId || state.reviewActionId) return false;
+    if (disposed || !visible || state.pending || state.storageBlocked || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId) return false;
     const pending = { version: 1, operation, input: copy(input) };
     try { savePending(pending); } catch { emit({ message: '无法保存本地请求凭据，本次尚未发送。请恢复页面存储后再试。' }); return false; }
     stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', actionTaskId: input.taskId || null });
@@ -297,9 +325,9 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (disposed || state.pending !== next) return false;
       if (!isImageMutationResponse('image.generate', next.input, result)) throw problem('INVALID_RESPONSE');
       mergeTask(safeTask(result, projectId));
-      if (clearPending(next)) emit({ phase: 'ready', ...(!next.preserveDraft ? { draft: { name: '', prompt: '' }, target: null } : {}), selectedGroupId: result.groupId, groupCursor: null, groupTrail: [], versionCursor: null, versionTrail: [], message: '付费请求已保存。最多发送一次，不会自动重试。' });
+      if (clearPending(next)) emit({ phase: 'ready', ...(!next.preserveDraft ? { draft: { name: '', prompt: '' }, target: null } : {}), selectedGroupId: result.groupId, groupCursor: null, groupTrail: [], versionCursor: null, versionTrail: [], message: review.input.providerId === 'comfy-local' ? '本地运行请求已保存。最多提交一次；关闭面板不会取消远端 GPU 工作。' : '付费请求已保存。最多发送一次，不会自动重试。' });
     } catch {
-      if (!disposed && state.pending === next) emit({ phase: 'unknown', message: '尚未确认付费审批结果。只会读取原请求，不会自动重新批准或生成。' });
+      if (!disposed && state.pending === next) emit({ phase: 'unknown', message: review.input.providerId === 'comfy-local' ? '尚未确认本地运行审批结果。只读取原请求，不会自动重新批准、提交或查询远端。' : '尚未确认付费审批结果。只会读取原请求，不会自动重新批准或生成。' });
     } finally { if (!disposed) { emit({ reviewActionId: null }); if (visible) await load(); } }
     return !state.pending;
   }
@@ -325,8 +353,27 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     } catch { if (!disposed) emit({ phase: 'unknown', message: '审批准备结果待核对。尚未发起付费审批，不会自动重试。' }); return false; }
     finally { if (!disposed && state.phase === 'submitting') emit({ phase: 'unknown' }); if (!disposed && visible && !state.reviewActionId) await load(); }
   }
+  async function prepareComfy() {
+    if (disposed || !visible || state.providerId !== 'comfy-local' || !imageCanGenerate(state)) return false;
+    const selected = state.comfySettings;
+    const input = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'comfy-local', model: selected.configuration.model, options: { ...COMFY_IMAGE_OPTIONS }, requestId: requestId(), ...(state.target || {}) };
+    if (!imageSchemas['image.generate'].safeParse(input).success) return false;
+    const pending = { version: 3, operation: 'image.generate', input, settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, configuration: copy(selected.configuration), destination: getComfyImageDestination(selected.configuration.baseUrl), execution: null };
+    try { savePending(pending); } catch { emit({ message: '无法保存本地运行请求凭据，没有准备或发送生成。' }); return false; }
+    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '' });
+    try {
+      const prepareInput = { input: copy(input), settingsRevision: pending.settingsRevision };
+      const review = await call('image.review.prepare', prepareInput);
+      if (disposed || state.pending !== pending) return false;
+      if (!isImageReviewPreparationResponse(prepareInput, review) || !pendingMatchesReview(pending, review) || review.state !== 'pending') throw problem('INVALID_RESPONSE');
+      mergeReview(review);
+      if (!updatePending(pending, { ...pending, reviewId: review.id, execution: copy(review.execution) })) return false;
+      emit({ phase: 'unknown', message: '本地运行请求已准备。请核对下方实际地址、种子和完整冻结工作流，再单独批准；目前未发送生成。' }); return true;
+    } catch { if (!disposed) emit({ phase: 'unknown', message: '准备结果待核对。尚未批准运行，不会自动重试。请重新读取已保存审批。' }); return false; }
+    finally { if (!disposed && state.phase === 'submitting') emit({ phase: 'unknown' }); if (!disposed && visible) await load(); }
+  }
   async function chooseTarget(groupId) {
-    if (disposed || !visible || state.pending || state.actionTaskId || state.reviewActionId || reading || state.phase === 'targeting') return false;
+    if (disposed || !visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || reading || state.phase === 'targeting') return false;
     const group = groupId ? state.groups.find(item => item.id === groupId) : null;
     if (groupId && (!group || group.activeTaskId)) return false;
     if (!groupId) { emit({ target: null, targetRequest: null, draft: { name: '', prompt: '' }, message: '' }); return true; }
@@ -344,16 +391,17 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     finally { if (!disposed && selectionEpoch === epoch) { emit({ phase: state.pending ? 'unknown' : 'ready' }); schedule(); } }
   }
   return {
-    getState: () => copy(state), load, generatePaid,
+    getState: () => copy(state), load, generatePaid, prepareComfy,
     setSettings(value) { if (disposed) return false; const settings = safeImageSettings(value); if (canonicalImageInput(state.settings) !== canonicalImageInput(settings)) interactionEpoch++; emit({ settings }); return true; },
     setCustomSettings(value) { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom'); if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
-    selectProvider(providerId) { if (disposed || !visible || state.pending || state.actionTaskId || state.reviewActionId || !['mock', 'openai', 'openai-compatible'].includes(providerId)) return false; interactionEpoch++; emit({ providerId }); return true; },
+    setComfySettings(value) { if (disposed) return false; const comfySettings = safeComfyImageSettings(value); if (canonicalImageInput(state.comfySettings) !== canonicalImageInput(comfySettings)) interactionEpoch++; emit({ comfySettings }); return true; },
+    selectProvider(providerId) { if (disposed || !visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || !['mock', 'openai', 'openai-compatible', 'comfy-local'].includes(providerId)) return false; interactionEpoch++; emit({ providerId }); return true; },
     async approveReview(review) {
-      if (disposed || !visible || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || !reviewUsable(review) || !state.reviews.some(item => item.id === review.id && canonicalImageInput(item) === canonicalImageInput(review))) return false;
+      if (disposed || !visible || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || !reviewUsable(review) || !state.reviews.some(item => item.id === review.id && canonicalImageInput(item) === canonicalImageInput(review))) return false;
       if (state.pending && (state.pending.reviewId !== review.id || !pendingMatchesReview(state.pending, review))) return false;
       let pending = state.pending;
       if (!pending) {
-        pending = { version: review.input.providerId === 'openai-compatible' ? 2 : 1, operation: 'image.generate', input: copy(review.input), settingsRevision: review.settingsRevision, reviewId: review.id, approvalAttempted: false, preserveDraft: true, ...(review.input.providerId === 'openai-compatible' ? { configuration: copy(review.configuration), destination: review.destination } : {}) };
+        pending = { version: review.input.providerId === 'comfy-local' ? 3 : review.input.providerId === 'openai-compatible' ? 2 : 1, operation: 'image.generate', input: copy(review.input), settingsRevision: review.settingsRevision, reviewId: review.id, approvalAttempted: false, preserveDraft: true, ...(['openai-compatible', 'comfy-local'].includes(review.input.providerId) ? { configuration: copy(review.configuration), destination: review.destination } : {}), ...(review.input.providerId === 'comfy-local' ? { execution: copy(review.execution) } : {}) };
         try { savePending(pending); } catch { emit({ message: '无法保存原始审批请求，本次未发送。' }); return false; }
         emit({ pending });
       }
@@ -361,7 +409,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       return approveSaved(review, pending);
     },
     async rejectReview(review) {
-      if (disposed || !visible || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || review.state !== 'pending' || !state.reviews.some(item => item.id === review.id && canonicalImageInput(item) === canonicalImageInput(review))) return false;
+      if (disposed || !visible || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || review.state !== 'pending' || !state.reviews.some(item => item.id === review.id && canonicalImageInput(item) === canonicalImageInput(review))) return false;
       stopTimer(); readEpoch++; reading = false; emit({ reviewActionId: review.id });
       try {
         const result = await reviewClient.reject(copy(review));
@@ -375,10 +423,10 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     },
     abandonUnapproved() {
       const pending = state.pending;
-      if (disposed || !visible || state.phase === 'submitting' || state.reviewActionId || !pending || !paidProvider(pending.input.providerId) || pending.approvalAttempted || pending.reviewId) return false;
+      if (disposed || !visible || state.phase === 'submitting' || state.reviewActionId || !pending || !reviewedProvider(pending.input.providerId) || pending.approvalAttempted || pending.reviewId) return false;
       if (clearPending(pending)) { emit({ phase: 'ready', message: '已放弃本页尚未批准的请求。若准备记录随后出现，仍需明确批准或拒绝。' }); return true; } return false;
     },
-    edit(field, value) { if (!disposed && visible && !state.pending && !state.actionTaskId && !state.reviewActionId && state.phase !== 'targeting' && ['name', 'prompt'].includes(field) && !(field === 'name' && state.target)) { emit({ draft: { ...state.draft, [field]: value }, targetRequest: null }); return true; } return false; },
+    edit(field, value) { if (!disposed && visible && !state.pending && !state.remotePending && !state.remoteActionTaskId && !state.actionTaskId && !state.reviewActionId && state.phase !== 'targeting' && ['name', 'prompt'].includes(field) && !(field === 'name' && state.target)) { emit({ draft: { ...state.draft, [field]: value }, targetRequest: null }); return true; } return false; },
     async generate() {
       if (!visible || state.providerId !== 'mock' || !imageCanGenerate(state)) return false;
       const input = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, requestId: requestId(), ...(state.target || {}) };
@@ -391,14 +439,21 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (action === 'cancelQueued' ? !CANCELABLE.has(task.state) || task.dispatched : action !== 'recoverResult' || !['local_result_error', 'outcome_unknown'].includes(task.state)) return false;
       return dispatch(`image.task.${action}`, { projectId, taskId: task.id, expectedRevision: task.revision, requestId: requestId() });
     },
-    requestTarget(groupId = null) { if (!visible || state.pending || state.actionTaskId || state.reviewActionId) return false; if (imageDraftDirty(state)) { emit({ targetRequest: { groupId } }); return false; } return chooseTarget(groupId); },
+    async observeRemote(task) {
+      if (disposed || !visible || reading || state.pending || state.actionTaskId || state.reviewActionId || !state.tasks.some(item => item.id === task?.id && canonicalImageInput(item) === canonicalImageInput(task)) || !comfyCanObserve(state, task)) return false;
+      stopTimer(); readEpoch++; reading = false;
+      const accepted = await observations.observe(task);
+      if (!disposed && visible) await load();
+      return accepted;
+    },
+    requestTarget(groupId = null) { if (!visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId) return false; if (imageDraftDirty(state)) { emit({ targetRequest: { groupId } }); return false; } return chooseTarget(groupId); },
     confirmTarget() { if (!state.targetRequest) return false; return chooseTarget(state.targetRequest.groupId); },
     keepDraft() { emit({ targetRequest: null }); },
-    async selectGroup(groupId) { if (!visible || reading || !state.groups.some(group => group.id === groupId)) return false; emit({ selectedGroupId: groupId, versionCursor: null, versionTrail: [] }); return load(); },
-    async pageGroups(older) { if (!visible || reading || (older ? !state.nextGroupCursor : !state.groupTrail.length)) return false; const trail = [...state.groupTrail], cursor = older ? state.nextGroupCursor : trail.pop(); if (older) trail.push(state.groupCursor); emit({ groupCursor: cursor, groupTrail: trail, selectedGroupId: null, versionCursor: null, versionTrail: [] }); return load(); },
-    async pageVersions(older) { if (!visible || reading || (older ? !state.nextVersionCursor : !state.versionTrail.length)) return false; const trail = [...state.versionTrail], cursor = older ? state.nextVersionCursor : trail.pop(); if (older) trail.push(state.versionCursor); emit({ versionCursor: cursor, versionTrail: trail }); return load(); },
+    async selectGroup(groupId) { if (!visible || state.remotePending || state.remoteActionTaskId || reading || !state.groups.some(group => group.id === groupId)) return false; emit({ selectedGroupId: groupId, versionCursor: null, versionTrail: [] }); return load(); },
+    async pageGroups(older) { if (!visible || state.remotePending || state.remoteActionTaskId || reading || (older ? !state.nextGroupCursor : !state.groupTrail.length)) return false; const trail = [...state.groupTrail], cursor = older ? state.nextGroupCursor : trail.pop(); if (older) trail.push(state.groupCursor); emit({ groupCursor: cursor, groupTrail: trail, selectedGroupId: null, versionCursor: null, versionTrail: [] }); return load(); },
+    async pageVersions(older) { if (!visible || state.remotePending || state.remoteActionTaskId || reading || (older ? !state.nextVersionCursor : !state.versionTrail.length)) return false; const trail = [...state.versionTrail], cursor = older ? state.nextVersionCursor : trail.pop(); if (older) trail.push(state.versionCursor); emit({ versionCursor: cursor, versionTrail: trail }); return load(); },
     async pageReviews(older) { if (!visible || reading || state.reviewActionId || (older ? !state.nextReviewCursor : !state.reviewTrail.length)) return false; const trail = [...state.reviewTrail], cursor = older ? state.nextReviewCursor : trail.pop(); if (older) trail.push(state.reviewCursor); emit({ reviewCursor: cursor, reviewTrail: trail }); return load(); },
-    setVisible(value) { if (disposed) return; const changed = visible !== Boolean(value); visible = Boolean(value); if (changed) interactionEpoch++; if (!visible) { stopTimer(); selectionEpoch++; if (state.phase === 'targeting') emit({ phase: 'ready' }); } else if (changed) { polls = 0; void load(); } },
-    dispose() { disposed = true; readEpoch++; selectionEpoch++; interactionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
+    setVisible(value) { if (disposed) return; const changed = visible !== Boolean(value); visible = Boolean(value); observations.setVisible(visible); if (changed) interactionEpoch++; if (!visible) { stopTimer(); selectionEpoch++; if (state.phase === 'targeting') emit({ phase: 'ready' }); } else if (changed) { polls = 0; void load(); } },
+    dispose() { observations.dispose(); disposed = true; readEpoch++; selectionEpoch++; interactionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
   };
 }

@@ -1,3 +1,4 @@
+import {validateComfyReceiptOwnership} from './comfy/ownership.mjs';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {constants,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
@@ -6,6 +7,7 @@ import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePri
 
 const failure=()=>Object.assign(new Error('The local image result cannot be verified.'),{code:'IMAGE_RESULT_INVALID'});
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+const dimensions=task=>task.snapshot.providerId==='comfy-local'?{width:512,height:512}:{width:1024,height:1024};
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 
 /** Bounded, task-derived private files. A complete manifest is the durable
@@ -25,7 +27,8 @@ export function createImageStorage(store,{validatePng}){
   return {png:path.join(directory,`${task.id}.png`),receipt:path.join(directory,`${task.id}.json`)};
  };
  function validateReceipt(task,value){
-  if(!imageReceiptSchema.safeParse(value).success||value.taskId!==task.id||value.projectId!==task.projectId||value.groupId!==task.groupId||value.inputHash!==task.inputHash||value.isMock!==(task.snapshot.providerId==='mock'))throw failure();
+  if(!imageReceiptSchema.safeParse(value).success||value.taskId!==task.id||value.projectId!==task.projectId||value.groupId!==task.groupId||value.inputHash!==task.inputHash||value.isMock!==(task.snapshot.providerId==='mock')||(task.snapshot.providerId==='comfy-local'?(value.schemaVersion!==2||value.providerId!=='comfy-local'||value.width!==512||value.height!==512):(value.schemaVersion!==1||value.width!==1024||value.height!==1024)))throw failure();
+  if(task.snapshot.providerId==='comfy-local'){let input;try{input=JSON.parse(task.input);}catch{throw failure();}validateComfyReceiptOwnership(store.db,task,input,value);}
   return value;
  }
  function readReceipt(task){
@@ -41,20 +44,24 @@ export function createImageStorage(store,{validatePng}){
   const staged=readPrivateFile(paths(task).png,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   const bytes=staged??readPrivateFile(final,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   if(!bytes||bytes.length!==receipt.byteLength||digest(bytes)!==receipt.sha256)throw failure();
-  await validatePng(bytes,{width:1024,height:1024,opaque:true});check();
+  await validatePng(bytes,{...dimensions(task),opaque:true});check();
   return {bytes,final};
  }
  async function stage(task,result,check){
   check();
   if(!Buffer.isBuffer(result?.bytes)||!result.bytes.length||result.bytes.length>IMAGE_LIMITS.resultBytes)throw failure();
-  await validatePng(result.bytes,{width:1024,height:1024,opaque:true});check();
-  const receipt={schemaVersion:1,taskId:task.id,projectId:task.projectId,groupId:task.groupId,inputHash:task.inputHash,
-   assetId:randomUUID(),versionId:randomUUID(),sha256:digest(result.bytes),mimeType:'image/png',width:1024,height:1024,
+  await validatePng(result.bytes,{...dimensions(task),opaque:true});check();
+  const receipt={schemaVersion:task.snapshot.providerId==='comfy-local'?2:1,...(task.snapshot.providerId==='comfy-local'?{providerId:'comfy-local'}:{}),taskId:task.id,projectId:task.projectId,groupId:task.groupId,inputHash:task.inputHash,
+   assetId:randomUUID(),versionId:randomUUID(),sha256:digest(result.bytes),mimeType:'image/png',...dimensions(task),
    byteLength:result.bytes.length,isMock:task.snapshot.providerId==='mock'};
   validateReceipt(task,receipt);
   ensurePrivateDirectory(directory,{create:true});
   validateManagedDirectory(directory,{root,private:true});syncDirectory(root);check();
-  writePrivateFileAtomic(paths(task).png,result.bytes,{root,maxBytes:IMAGE_LIMITS.resultBytes,replace:false});
+  // Only an explicitly re-observed Comfy result can reuse a partial stage.
+  // The caller has already pinned the full remote graph and exact byte hash.
+  const partial=task.snapshot.providerId==='comfy-local'?readPrivateFile(paths(task).png,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes}):null;
+  if(partial){if(partial.length!==receipt.byteLength||digest(partial)!==receipt.sha256)throw failure();}
+  else writePrivateFileAtomic(paths(task).png,result.bytes,{root,maxBytes:IMAGE_LIMITS.resultBytes,replace:false});
   syncDirectory(directory);
   // The manifest is published only after complete, verified PNG bytes. Its
   // immutable input hash binds recovery to this exact accepted generation.

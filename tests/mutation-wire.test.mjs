@@ -11,6 +11,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {IDS, TOKEN, snapshot, uuid} from './helpers/mutation-wire-fixture.mjs';
+import {optionalRequestIdOperations} from './helpers/catalog-input-branches.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/mutation-wire-fixture.mjs');
@@ -222,7 +223,7 @@ test('six optional mutation keys retain exact results through lost HTTP response
     const before = backend.storage(), dataVersion = backend.version();
     const catalog = (await runCli(t, ['schema'], backend.env)).data;
     assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
-    const optionalKeyOperations = catalog.operations.filter(item => item.inputSchema.properties.requestId && !item.requiresRequestId).map(item => item.operation).sort();
+    const optionalKeyOperations = optionalRequestIdOperations(catalog);
     assert.deepEqual(optionalKeyOperations, [...operations].sort(), 'optional keys are added only to the approved six operations');
     const tools = (await mcp.client.listTools()).tools;
     for (const operation of operations) {

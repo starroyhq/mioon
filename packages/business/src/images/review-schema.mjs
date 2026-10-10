@@ -118,3 +118,77 @@ export function migrateCustomImageReviewSchema(db) {
   if (JSON.stringify(afterObjects) !== JSON.stringify(retainedObjects)) throw new Error('Image review migration did not preserve SQL objects');
   if (db.prepare('PRAGMA foreign_key_check').get()) throw new Error('Image review migration failed foreign key verification');
 }
+
+// Extend only the named v18 intent CHECK. Copy raw SQL values and rowids, then
+// restore all preexisting indexes/triggers verbatim within the caller's tx.
+export function migrateComfyImageReviewSchema(db) {
+  if(!db.isTransaction)throw new Error('Comfy image review migration requires a transaction');
+  const existing=db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get();
+  if(!existing)throw new Error('Comfy image review migration requires schema18');
+  if(existing.sql.includes('image_review_intent_v19'))return;
+  if(!existing.sql.includes('image_review_intent_v18'))throw new Error('Comfy image review migration requires schema18');
+  const retainedObjects=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").all();
+  const boundary="      ),\n      CHECK(json_extract(canonicalIntent,'$.policy.maxPostAttempts')";
+  const localBranch=`
+        OR
+        (json_extract(canonicalIntent,'$.schemaVersion') IS 3 AND json_extract(canonicalInput,'$.providerId') IS 'comfy-local'
+          AND json_type(canonicalIntent,'$.configuration') IS 'object'
+          AND json_type(canonicalIntent,'$.configuration.enabled') IS 'true'
+          AND json_extract(canonicalIntent,'$.configuration.providerId') IS 'comfy-local'
+          AND json_extract(canonicalIntent,'$.configuration.connectionId') IS 'comfy-local'
+          AND json_extract(canonicalIntent,'$.configuration.profileId') IS 'comfy-t2i-png-v1'
+          AND json_extract(canonicalIntent,'$.configuration.comfyVersion') IS '0.39.0'
+          AND json_type(canonicalIntent,'$.configuration.baseUrl') IS 'text'
+          AND ((json_extract(canonicalIntent,'$.configuration.baseUrl') GLOB 'http://127.0.0.1:[1-9]*'
+            AND substr(json_extract(canonicalIntent,'$.configuration.baseUrl'),18) NOT GLOB '*[^0-9]*'
+            AND CAST(substr(json_extract(canonicalIntent,'$.configuration.baseUrl'),18) AS INTEGER) BETWEEN 1 AND 65535)
+            OR (substr(json_extract(canonicalIntent,'$.configuration.baseUrl'),1,13) IS 'http://[::1]:'
+            AND substr(json_extract(canonicalIntent,'$.configuration.baseUrl'),14,1) GLOB '[1-9]'
+            AND substr(json_extract(canonicalIntent,'$.configuration.baseUrl'),14) NOT GLOB '*[^0-9]*'
+            AND CAST(substr(json_extract(canonicalIntent,'$.configuration.baseUrl'),14) AS INTEGER) BETWEEN 1 AND 65535))
+          AND json_type(canonicalInput,'$.model') IS 'text'
+          AND length(CAST(json_extract(canonicalInput,'$.model') AS BLOB)) BETWEEN 1 AND 240
+          AND json_extract(canonicalIntent,'$.configuration.model') IS json_extract(canonicalInput,'$.model')
+          AND json_type(canonicalIntent,'$.configuration.options') IS 'object'
+          AND json_extract(canonicalIntent,'$.configuration.options') IS json_extract(canonicalInput,'$.options')
+          AND json_extract(canonicalInput,'$.options.size') IS '512x512'
+          AND json_extract(canonicalInput,'$.options.steps') IS 20 AND json_extract(canonicalInput,'$.options.cfg') IS 8
+          AND json_extract(canonicalInput,'$.options.sampler') IS 'euler' AND json_extract(canonicalInput,'$.options.scheduler') IS 'normal'
+          AND json_extract(canonicalInput,'$.options.denoise') IS 1 AND json_extract(canonicalInput,'$.options.n') IS 1
+          AND json_extract(canonicalIntent,'$.destination') IS json_extract(canonicalIntent,'$.configuration.baseUrl')||'/prompt'
+          AND json_extract(canonicalIntent,'$.policy.price') IS 'local-compute-unknown'
+          AND json_extract(canonicalIntent,'$.policy.promptStorage') IS 'local-plaintext'
+          AND json_type(canonicalIntent,'$.execution') IS 'object'
+          AND json_extract(canonicalIntent,'$.execution.workflowId') IS 'comfy-t2i-png-v1'
+          AND json_extract(canonicalIntent,'$.execution.workflowVersion') IS 1
+          AND json_extract(canonicalIntent,'$.execution.comfyVersion') IS '0.39.0'
+          AND json_type(canonicalIntent,'$.execution.seed') IS 'integer'
+          AND json_extract(canonicalIntent,'$.execution.seed') BETWEEN 0 AND 9007199254740991
+          AND length(json_extract(canonicalIntent,'$.execution.promptId')) IS 36
+          AND length(json_extract(canonicalIntent,'$.execution.clientId')) IS 36
+          AND length(json_extract(canonicalIntent,'$.execution.outputNonce')) IS 36
+          AND json_extract(canonicalIntent,'$.execution.filenamePrefix') IS 'mioon_'||json_extract(canonicalIntent,'$.execution.outputNonce')
+          AND length(json_extract(canonicalIntent,'$.execution.graphHash')) IS 64
+          AND json_type(canonicalIntent,'$.execution.graph') IS 'object'
+          AND length(CAST(json_extract(canonicalIntent,'$.execution.graph') AS BLOB)) BETWEEN 1 AND 32768
+          AND json_extract(canonicalIntent,'$.execution.graph."1".inputs.ckpt_name') IS json_extract(canonicalInput,'$.model')
+          AND json_extract(canonicalIntent,'$.execution.graph."3".inputs.text') IS json_extract(canonicalInput,'$.prompt')
+          AND json_extract(canonicalIntent,'$.execution.graph."5".inputs.seed') IS json_extract(canonicalIntent,'$.execution.seed')
+          AND json_extract(canonicalIntent,'$.execution.graph."7".inputs.filename_prefix') IS json_extract(canonicalIntent,'$.execution.filenamePrefix'))
+${boundary}`;
+  if(!existing.sql.includes(boundary))throw new Error('Unrecognized schema18 image review shape');
+  const create=existing.sql.replace(/^CREATE TABLE\s+(?:"image_reviews"|image_reviews)\s*\(/,'CREATE TABLE image_reviews_v19(')
+    .replace('CONSTRAINT image_review_intent_v18','CONSTRAINT image_review_intent_v19').replace(boundary,localBranch);
+  if(!create.startsWith('CREATE TABLE image_reviews_v19('))throw new Error('Unrecognized image review table');
+  db.exec(create);
+  const columns=db.prepare('PRAGMA table_info(image_reviews)').all().map(row=>row.name);
+  const shape=`rowid,${columns.map(name=>`"${name}"`).join(',')}`;
+  db.exec(`INSERT INTO image_reviews_v19(${shape}) SELECT ${shape} FROM image_reviews ORDER BY rowid`);
+  for(const [left,right] of [['image_reviews','image_reviews_v19'],['image_reviews_v19','image_reviews']])
+    if(db.prepare(`SELECT 1 FROM (SELECT ${shape} FROM ${left} EXCEPT SELECT ${shape} FROM ${right}) LIMIT 1`).get())throw new Error('Comfy image review migration changed retained rows');
+  db.exec('DROP TABLE image_reviews; ALTER TABLE image_reviews_v19 RENAME TO image_reviews;');
+  for(const object of retainedObjects)db.exec(object.sql);
+  const after=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='image_reviews' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").all();
+  if(JSON.stringify(after)!==JSON.stringify(retainedObjects))throw new Error('Comfy image review migration changed SQL objects');
+  if(db.prepare('PRAGMA foreign_key_check').get())throw new Error('Comfy image review migration failed foreign key verification');
+}

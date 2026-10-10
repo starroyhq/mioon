@@ -11,6 +11,9 @@ import {createImageReviewServices,validateImageTaskReview} from './images/review
 import {createLiveImageGateway,createCompatibleImageGateway} from './images/gateway.mjs';
 import {IMAGE_SETTINGS_ASSERT_CURRENT,IMAGE_SETTINGS_READ_CURRENT} from './images/settings.mjs';
 import {DEFAULT_IMAGE_CONFIGURATION,isCompleteCustomImageConfiguration,getCustomImageDestination} from '../../contracts/src/image-settings.mjs';
+import {createComfyRemoteServices} from './comfy/remote.mjs';
+import {COMFY_SETTINGS_ASSERT_CURRENT,COMFY_SETTINGS_READ_CURRENT} from './comfy/settings.mjs';
+import {isCompleteComfyImageConfiguration,getComfyImageDestination} from '../../contracts/src/comfy-images.mjs';
 import {IMAGE_REVIEW_DESTINATION} from '../../contracts/src/image-reviews.mjs';
 
 const owners=new WeakMap();
@@ -33,20 +36,20 @@ const defaultGenerate=createMockImageAdapter().generate;
 /** Image-specific durable lifecycle. No chat/tool authority and no generic
  * operation dispatch. Live images require dedicated settings and immutable
  * user approval; injected dependencies are trusted tests, never RPC options. */
-export function createImageServices(store,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway}={}){
+export function createImageServices(store,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector}={}){
  const old=owners.get(store.db);
- if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
+ if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
  const {db,tx}=store,queue=[],pending=new Map(),active=new Set(),secret=randomBytes(32);
  const controller=new AbortController(),signal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
  let stopped=false,running=false,reconciled=false,reported=false;
- const selectedSettings=providerId=>providerId==='openai'?settings:providerId==='openai-compatible'?customSettings:null;
+ const selectedSettings=providerId=>providerId==='openai'?settings:providerId==='openai-compatible'?customSettings:providerId==='comfy-local'?comfySettings:null;
  const expectedSettings=(revision,configuration)=>({expectedRevision:revision,configuration:configuration??{...DEFAULT_IMAGE_CONFIGURATION,enabled:true}});
  const reviews=createImageReviewServices(store,{signal,fault,
-  getSettings:providerId=>{const engine=selectedSettings(providerId);if(!engine)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};const current=engine[IMAGE_SETTINGS_READ_CURRENT]();return {revision:current.revision,enabled:current.configuration.enabled,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
-  assertSettings:({revision,configuration},providerId)=>{const engine=selectedSettings(providerId);if(!engine)fail('IMAGE_LIVE_DISABLED',403);return engine[IMAGE_SETTINGS_ASSERT_CURRENT](expectedSettings(revision,configuration));}});
+  getSettings:providerId=>{const engine=selectedSettings(providerId);if(!engine)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};const current=engine[providerId==='comfy-local'?COMFY_SETTINGS_READ_CURRENT:IMAGE_SETTINGS_READ_CURRENT]();if(providerId==='comfy-local')return {revision:current.revision,enabled:current.configuration.enabled&&current.readiness.checked,destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};return {revision:current.revision,enabled:current.configuration.enabled,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
+  assertSettings:({revision,configuration},providerId)=>{const engine=selectedSettings(providerId);if(!engine)fail('IMAGE_LIVE_DISABLED',403);return engine[providerId==='comfy-local'?COMFY_SETTINGS_ASSERT_CURRENT:IMAGE_SETTINGS_ASSERT_CURRENT](expectedSettings(revision,configuration));}});
  const live=liveGateway??(settings?createLiveImageGateway({settings}):null);
  const compatible=customGateway??(customSettings?createCompatibleImageGateway({settings:customSettings}):null);
- const selectedGateway=providerId=>providerId==='openai'?live:providerId==='openai-compatible'?compatible:null;
+ const selectedGateway=providerId=>providerId==='openai'?live:providerId==='openai-compatible'?compatible:providerId==='comfy-local'?comfyConnector:null;
  const reviewBinding=value=>validateImageTaskReview(db,value.row.projectId,value.row.id,value.input);
  const schemaPresent=()=>{
   const present=db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('image_groups','image_tasks','image_versions','image_requests')").get().n;
@@ -82,6 +85,7 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   return task(value.row.projectId,value.row.id);
  }
  function prior(operation,input){
+  if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_observations'").get()&&db.prepare('SELECT 1 FROM image_remote_observations WHERE requestId=?').get(input.requestId))fail('IMAGE_REQUEST_CONFLICT');
   const row=db.prepare(`SELECT ${requestColumns} FROM image_requests WHERE requestId=?`).get(input.requestId);if(!row)return null;
   if(row.projectId!==input.projectId||row.operation!==operation||row.inputHash!==hash(input)||row.canonicalInput!==canonical(input))fail('IMAGE_REQUEST_CONFLICT');
   let response;try{response=JSON.parse(row.response);}catch{invalid();}
@@ -111,13 +115,14 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   capacity(input.projectId,operation==='image.generate');
   let value;
   if(operation==='image.generate'){
-   if(input.providerId!=='mock'){const engine=selectedSettings(input.providerId);if(!engine||!selectedGateway(input.providerId))fail('IMAGE_LIVE_DISABLED',403);if(!approval){const configured=engine[IMAGE_SETTINGS_READ_CURRENT]();if(!configured.configuration.enabled||!configured.secret.configured)fail('IMAGE_LIVE_DISABLED',403);fail('IMAGE_REVIEW_REQUIRED',403);}}
+   if(input.providerId!=='mock'){const engine=selectedSettings(input.providerId);if(!engine||!selectedGateway(input.providerId))fail('IMAGE_LIVE_DISABLED',403);if(!approval){const configured=engine[input.providerId==='comfy-local'?COMFY_SETTINGS_READ_CURRENT:IMAGE_SETTINGS_READ_CURRENT]();if(!configured.configuration.enabled||(input.providerId==='comfy-local'?!configured.readiness.checked:!configured.secret.configured))fail('IMAGE_LIVE_DISABLED',403);fail('IMAGE_REVIEW_REQUIRED',403);}}
    const id=randomUUID(),timestamp=now();let groupId;
    if(input.groupId){const g=group(input.projectId,input.groupId);if(g.revision!==input.expectedRevision)fail('IMAGE_REVISION_CONFLICT');if(g.activeTaskId!==null)fail('IMAGE_GROUP_BUSY');if(g.name!==input.name)fail('IMAGE_STATE_CONFLICT');maxRevision(g.revision);groupId=g.id;db.prepare('UPDATE image_groups SET activeTaskId=?,revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(id,timestamp,g.id,g.projectId,g.revision);}
    else{groupId=randomUUID();db.prepare('INSERT INTO image_groups(id,projectId,name,revision,headVersionId,activeTaskId,createdAt,updatedAt) VALUES(?,?,?,1,NULL,?,?,?)').run(groupId,input.projectId,input.name,id,timestamp,timestamp);}
    const snapshot={schemaVersion:1,projectId:input.projectId,groupId,taskId:id,name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options};
    db.prepare("INSERT INTO image_tasks(id,projectId,groupId,requestId,inputHash,input,snapshot,state,revision,dispatched,stagedReceipt,versionId,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,?,?)").run(id,input.projectId,groupId,input.requestId,hash(input),canonical(input),canonical(snapshot),timestamp,timestamp);
    if(input.providerId!=='mock')reviews.authorizeAcceptance(input,id,approval);
+   if(input.providerId==='comfy-local')remote.prepareTask(input.projectId,id);
    value=task(input.projectId,id).dto;
   }else{
    const target=task(input.projectId,input.taskId);reviewBinding(target);if(target.row.revision!==input.expectedRevision)fail('IMAGE_REVISION_CONFLICT');
@@ -156,8 +161,8 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   const result=tx(()=>{
    const latest=current(target),g=group(latest.row.projectId,latest.row.groupId);if(g.activeTaskId!==latest.row.id)invalid();
    const maximum=db.prepare('SELECT max(number) AS n FROM image_versions WHERE groupId=?').get(g.id).n??0;maxRevision(maximum);const timestamp=now();
-   const asset={id:receipt.assetId,projectId:g.projectId,name:`${g.name} · 图像 ${maximum+1}.png`,mimeType:'image/png',sha256:receipt.sha256,width:1024,height:1024,sizeBytes:receipt.byteLength,relativePath:file.relativePath,url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
-   const version={id:receipt.versionId,projectId:g.projectId,groupId:g.id,taskId:latest.row.id,number:maximum+1,assetId:asset.id,sha256:receipt.sha256,mimeType:'image/png',width:1024,height:1024,byteLength:receipt.byteLength,isMock:receipt.isMock,providerId:latest.snapshot.providerId,model:latest.snapshot.model,options:latest.snapshot.options,createdAt:timestamp};
+   const asset={id:receipt.assetId,projectId:g.projectId,name:`${g.name} · 图像 ${maximum+1}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,relativePath:file.relativePath,url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
+   const version={id:receipt.versionId,projectId:g.projectId,groupId:g.id,taskId:latest.row.id,number:maximum+1,assetId:asset.id,sha256:receipt.sha256,mimeType:'image/png',width:receipt.width,height:receipt.height,byteLength:receipt.byteLength,isMock:receipt.isMock,providerId:latest.snapshot.providerId,model:latest.snapshot.model,options:latest.snapshot.options,createdAt:timestamp};
    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
    db.prepare('INSERT INTO image_versions(id,projectId,groupId,taskId,number,assetId,data) VALUES(?,?,?,?,?,?,?)').run(version.id,g.projectId,g.id,latest.row.id,version.number,asset.id,JSON.stringify(version));
    const completed=change(latest,{state:'succeeded',versionId:version.id,errorCode:null},{release:true,headVersionId:version.id});
@@ -165,6 +170,14 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   });
   try{storage.discardStagedPng(stageTask(result),()=>current(result));}catch{/* A retained private stage is safe; never undo a committed result. */}
  }
+ const remote=createComfyRemoteServices(store,{signal,owner,readTask:task,readReview:reviews.getForTask,connector:comfyConnector,fault,
+  failTask:target=>change(target,{state:'failed',errorCode:'COMFY_EXECUTION_FAILED'},{release:true}),
+  stageResult:async(target,candidate,claim)=>{
+   let original=current(target);const check=()=>{claim();return current(original);};
+   try{check();const receipt=await storage.stage(stageTask(original),candidate,check);fault('after_result_manifest',{taskId:original.row.id});
+    original=tx(()=>{check();return change(original,{state:'persisting',stagedReceipt:canonical(receipt),errorCode:null});});fault('after_result_receipt',{taskId:original.row.id});await finalize(original);
+   }catch(cause){try{const checked=current(original,{allowStopped:true});claim();let receipt=checked.receipt;try{receipt??=storage.readReceipt(stageTask(checked));}catch{}tx(()=>{claim();if(receipt)change(checked,{state:'local_result_error',stagedReceipt:checked.row.stagedReceipt??canonical(receipt),errorCode:'IMAGE_RESULT_INVALID'},{allowStopped:true});else if(checked.row.state!=='outcome_unknown')change(checked,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'},{allowStopped:true});});}catch{}throw cause;}
+  }});
  async function execute(entry){
   let original;
   try{
@@ -175,7 +188,11 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
    const liveReview=projection.providerId!=='mock'?reviews.getForTask(entry.projectId,entry.id):null;
    const gateway=selectedGateway(projection.providerId);
    if(liveReview&&!gateway)fail('IMAGE_LIVE_DISABLED',403);
-   const dispatch=()=>{original=tx(()=>{current(original);if(liveReview)reviews.beforeDispatch(original.input,original.row.id);return change(original,{state:'dispatching',dispatched:1,errorCode:null});});fault('after_dispatch_fence',{taskId:original.row.id});};
+   const dispatch=()=>{original=tx(()=>{current(original);if(liveReview)reviews.beforeDispatch(original.input,original.row.id);const changed=change(original,{state:'dispatching',dispatched:1,errorCode:null});if(projection.providerId==='comfy-local')remote.beforeSubmit(entry.projectId,entry.id);return changed;});fault('after_dispatch_fence',{taskId:original.row.id});};
+   if(projection.providerId==='comfy-local'){
+    await awaitProvider(()=>comfyConnector.submit({execution:liveReview.execution,config:liveReview.configuration,signal,beforeSubmit:dispatch}),signal,{submit:true});
+    current(original);tx(()=>{remote.submitted(entry.projectId,entry.id);original=change(original,{state:'receiving',errorCode:null});});return;
+   }
    const result=await awaitProvider(()=>liveReview?gateway.generate(projection,{signal,beforeDispatch:dispatch,settingsRevision:liveReview.settingsRevision,...(projection.providerId==='openai-compatible'?{configuration:liveReview.configuration}:{})}):generate(projection,{signal,beforeDispatch:dispatch}),signal,{submit:true});
    current(original);if(original.row.state!=='dispatching'||!original.dto.dispatched)invalid();
    const receipt=await storage.stage(stageTask(original),result,()=>current(original));fault('after_result_manifest',{taskId:original.row.id});
@@ -188,6 +205,7 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
     const checked=current(original,{allowStopped:true});reviewBinding(checked);
     let receipt=checked.receipt;try{receipt??=storage.readReceipt(stageTask(checked));}catch{}
     tx(()=>{
+     if(checked.input.providerId==='comfy-local'&&checked.dto.dispatched)remote.submissionUnknown(checked.row.projectId,checked.row.id);
      if(receipt)change(checked,{state:'local_result_error',stagedReceipt:checked.row.stagedReceipt??canonical(receipt),errorCode:'IMAGE_RESULT_INVALID'},{allowStopped:true});
      else if(checked.dto.dispatched)change(checked,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'},{allowStopped:true});
      else if(stopped||signal.aborted)change(checked,{state:'interrupted_before_dispatch',errorCode:'IMAGE_INTERRUPTED'},{allowStopped:true});
@@ -236,10 +254,11 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   const value=structuredClone(profiles);
   try{const state=settings?.[IMAGE_SETTINGS_READ_CURRENT]();value.liveEnabled=Boolean(live&&state?.configuration.enabled&&state?.secret.configured);value.items[1].enabled=value.liveEnabled;value.items[1].name=value.liveEnabled?'OpenAI Images · 需逐次确认':'OpenAI Images · 未启用';}catch{}
   try{const state=customSettings?.[IMAGE_SETTINGS_READ_CURRENT]();if(isCompleteCustomImageConfiguration(state?.configuration)){const enabled=Boolean(compatible&&state.configuration.enabled&&state.secret.configured);value.items.push({providerId:'openai-compatible',model:state.configuration.model,name:enabled?'自定义 Images · 需逐次确认':'自定义 Images · 未启用',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options});value.liveEnabled||=enabled;}}catch{}
+  try{const state=comfySettings?.[COMFY_SETTINGS_READ_CURRENT]();if(isCompleteComfyImageConfiguration(state?.configuration)){const enabled=Boolean(comfyConnector&&state.configuration.enabled&&state.readiness.checked);value.items.push({providerId:'comfy-local',model:state.configuration.model,name:enabled?'ComfyUI 本机 · 逐次确认':'ComfyUI 本机 · 尚未检查',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options});value.liveEnabled||=enabled;}}catch{}
   return value;
  }
- const handlers={...reviews.handlers,'image.profile.list':listProfiles,...Object.fromEntries(Object.entries(readHandlers).map(([operation,read])=>[operation,snapshotRead(read)])),...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,input=>mutate(operation,input)]))};
- async function drain(){if(stopped)return boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT');stopped=true;controller.abort();reviews.stop();queue.length=0;await boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT');}
+ const handlers={...reviews.handlers,...remote.handlers,'image.profile.list':listProfiles,...Object.fromEntries(Object.entries(readHandlers).map(([operation,read])=>[operation,snapshotRead(read)])),...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,input=>mutate(operation,input)]))};
+ async function drain(){if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);}
  for(const operation of Object.keys(handlers)){const handler=handlers[operation];handlers[operation]=input=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
- const service={handlers,drain,approveReviewed:approval=>{const input=reviews.readForApproval(approval);return mutate('image.generate',input,approval);},rejectReview:reviews.reject};owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,service});reconcile();return service;
+ const service={handlers,drain,approveReviewed:approval=>{const input=reviews.readForApproval(approval);return mutate('image.generate',input,approval);},rejectReview:reviews.reject};owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,service});reconcile();remote.reconcile();return service;
 }

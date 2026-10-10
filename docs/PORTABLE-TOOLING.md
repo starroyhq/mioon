@@ -5,7 +5,7 @@ Status: implementation, affected/portable checks, fresh builds and artifact comp
 
 ## Commands
 
-After installing the reviewed lockfile dependencies through the existing approved setup workflow, the command launcher needs Node.js ≥24; doctor additionally requires the selected local FFmpeg/ffprobe executables. They do not invoke a package manager, shell scripts, `.cmd` shims, installers or remote CI.
+Doctor can run before dependency installation using Node.js ≥24. Build/test require the reviewed lockfile dependencies; doctor reports missing dependencies and unavailable FFmpeg/ffprobe separately. These direct Node commands do not invoke a package manager, shell scripts, `.cmd` shims, installers or remote CI.
 
 ```text
 node scripts/tooling.mjs doctor
@@ -20,9 +20,29 @@ node scripts/tooling.mjs test --suite=portable --file=agent-protocol.test.mjs
 
 `check:local`, `build:local`, `test:local` are optional root package aliases. Existing `pnpm build`, package scripts and test scripts remain available; they have not all been made cross-platform. `node scripts/doctor.mjs` / `pnpm run doctor` now delegates to the same doctor and prints its structured report.
 
-- **Doctor:** checks Node, root/desktop metadata, exact installed dependency versions, in-memory SQLite and bounded FFmpeg/ffprobe version responses. It does not open a workspace, read credentials/user settings, initialize a token, install, repair permissions or call a provider. Explicit `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` overrides are honored by the existing media runner; otherwise its ordinary executable lookup applies. Version probes do not verify codecs, render correctness or native Electron runtime availability.
+- **Doctor:** checks Node, root/desktop metadata, exact installed dependency versions, in-memory SQLite and bounded FFmpeg/ffprobe version responses. It also reports a separate, advisory static pnpm version observation. It does not open a workspace, read credentials/user settings, initialize a token, install, repair permissions or call a provider. Explicit `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` overrides are honored by the existing media runner; otherwise its ordinary executable lookup applies. Version probes do not verify codecs, render correctness or native Electron runtime availability.
 - **Build:** validates prerequisites before invoking the verified local Vite JavaScript entrypoint, then the existing desktop staging build, strictly serially. The Vite heap budget is passed as a Node argument (768 MiB), not an inline shell environment assignment. Failure or interruption stops the sequence; there is no retry, automatic installation, signing or packaging. Ordinary staging output is still replaced as before after preflight passes.
 - **Tests:** portable is the default. Files come from a reviewed explicit manifest, or an explicit sorted directory enumeration for the full lane. `--file` accepts only existing basename entries within the chosen lane; no globs, traversal, arbitrary command strings or silently missing tests. Concurrency defaults to 1 and accepts 1–4. The argument budget is 24,000 characters and at most 512 files; select smaller groups if a future suite exceeds it.
+
+### First-run diagnostics
+
+Use `node scripts/tooling.mjs doctor` (or `node scripts/doctor.mjs`) for diagnostics without invoking pnpm. Running `pnpm run doctor`, or even using pnpm itself to inspect its version, can let a version-managing installation download/switch to the project's pin before this script runs. Doctor does not do that.
+
+The JSON keeps these independent meanings:
+
+| Field | Meaning |
+| --- | --- |
+| `checks` | Node, application metadata, repository-local dependencies, in-memory SQLite, and separate FFmpeg/ffprobe results. Failures include a fixed, sanitized `message` and `nextStep`. |
+| `buildReady` | The installed source-build prerequisites passed. This does not mean a build ran, the media tools work, or Electron can launch. |
+| `prerequisitesReady` | The preceding checks plus the requested media version probes passed. This retains the existing doctor exit-code behavior. |
+| `packageManager` | Advisory observation for preparing dependencies; it does not change either readiness flag or exit codes. Direct Node build/test do not require or inspect pnpm. |
+| `nativeReadiness` | Separate exact-artifact/platform release gate. Neither doctor success nor source build success changes it. |
+
+`packageManager.requiredVersion` comes from the exact root `packageManager` pin, currently **11.25.0**. On POSIX, doctor follows the first executable `pnpm` on an absolute PATH and reads recognizable package metadata with a matching package-contained `bin.pnpm` entry. It never executes that entry. `source: "package-metadata"` is an observation, not an execution/integrity check. `matched` and `mismatch` compare the observed version to the pin; `missing` means no executable candidate was found on the inspected PATH. `unverified` covers Corepack/other wrappers, standalone binaries, Windows shims, missing/empty/relative PATH entries and unrecognizable metadata. An unknown first candidate is not bypassed to report a later installation's version. Paths, environment values and raw exceptions are not included.
+
+For example, Node **26.9.0** satisfies the existing ≥24 check; it is not rejected merely because the source-trial guide recommends 24.x. Observed pnpm **10.8.1** is a mismatch with the project pin. When dependencies are absent, prepare the pinned pnpm through a deliberate setup step, then explicitly run `pnpm install --frozen-lockfile`; doctor neither runs nor automatically retries installation. After dependencies exist, direct Node build/test remain available independently of pnpm availability.
+
+`MEDIA_SPAWN_FAILED` means the selected executable could not start, not proof that FFmpeg is uninstalled. Check PATH or the corresponding absolute `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` override, permissions, OS/CPU compatibility and required libraries. Timeout, nonzero exit, output-limit and unexpected-version failures have distinct guidance; the other tool is still checked. Once the version probes pass, native trial must still verify libx264/AAC, drawtext for mock generation, playback and real export. The desktop may require explicit tool selection even when a terminal PATH probe passes.
 
 ### Exit outcomes
 
@@ -59,7 +79,13 @@ Full-suite selection currently remains Linux-only because existing tests include
 | Windows | Private-storage ACL backend remains unimplemented and runtime fail-closed. Portable/source checks do not bypass that gate; full lane refuses. Native installer, vault/ACL, media/path/process QA remain unverified. |
 | Other OS | No native support claim. Doctor reports an unsupported native platform. |
 
-## Acceptance
+## First-run diagnostic follow-up verification
+
+Baseline: `4e66a9621babc4b1b8aed4d03685bbf15eb747d3`. On macOS arm64 with Node 26.9.0, the direct command `node --test --test-concurrency=1 tests/local-tooling.test.mjs tests/local-tooling-links.test.mjs` passed **32/32**, with no skips. The explicit POSIX link/FIFO tests use disposable synthetic fixtures (including the system `/usr/bin/mkfifo`), not application data. This is not the full portable/full suite or native application acceptance.
+
+Actual `node scripts/tooling.mjs doctor` exited **1**: Node, build identity and in-memory SQLite passed; repository dependencies were missing; FFmpeg and ffprobe could not start. Static pnpm metadata reported **10.8.1**, mismatching required **11.25.0**. No pnpm invocation, installation or repair occurred. Native release readiness remained unverified. Build, UI, Electron launch, signing and Windows execution were not performed in this follow-up. Existing Windows fail-closed storage and dependency-containment policies remain unchanged.
+
+## Historical Q6 acceptance
 
 Local evidence root: `evidence/q6-portable-tooling/`.
 

@@ -164,7 +164,7 @@ mioon image review list --input '{"projectId":"PROJECT_UUID","limit":20}'
 ```
 
 Replace placeholders with actual IDs. The direct `image generate` example is
-for local deterministic Mock PNG test cards. New official/custom live requests
+for local deterministic Mock PNG test cards. New official/custom/local-ComfyUI requests
 cannot be approved through the CLI. Fixed-OpenAI activation at `4e66a96`
 (2026-10-10) passed its affected/build/Linux synthetic-native checks and full
 suite (2758 total, 2756 passed, 0 failed, 2 skipped). The current
@@ -173,7 +173,7 @@ own passed focused/build/Linux synthetic-native gates and full suite
 (2857 total, 2855 passed, 0 failed, 2 skipped). These do not establish live-provider
 or macOS/Windows acceptance. No real provider call is authorized by these checks.
 
-A review file contains exactly `{input:<complete official/custom image.generate input>,
+A review file contains exactly `{input:<complete official/custom/local-ComfyUI image.generate input>,
 settingsRevision:<current positive settings revision>}`. Obtain that revision
 from the selected slot in Images settings; do not guess it or use the other
 slot's revision. The complete nested `input` retains the existing field shape,
@@ -183,7 +183,7 @@ slot's configured model; see the
 [exact example](IMAGE-COMPATIBLE.md#public-request-preparation-private-paid-approval).
 There is no top-level request key, approval flag, key input or destination override. Prepare only retains this
 immutable intent locally. Get/list read retained reviews; none dispatches or
-charges. Only the user's explicit application paid/review button may continue
+charges. Only the user's explicit application review/approval button may continue
 this workflow. There is no CLI approval/rejection or Images credential command,
 and raw authenticated HTTP access does not grant authority to bypass that UI.
 
@@ -215,6 +215,46 @@ bytes; neither is a provider retry. Preserve these camel-case command words.
 There is no image-specific `watch` shortcut. Poll the existing task explicitly;
 timeout or Ctrl+C does not cancel it. Full prompt text is retained locally and
 returned to authenticated readers; never put credentials in prompts or files.
+
+### Local ComfyUI and explicit result retrieval
+
+The first-party `comfy-local` increment is implemented and has been checked with
+synthetic fixtures only; see its linked guide for the current full-gate status. It supports ComfyUI `0.39.0`, a selected installed checkpoint and
+one fixed seven-node 512×512 PNG workflow. Its no-secret settings and explicit
+connection check are private application actions. No CLI operation installs or
+starts ComfyUI, downloads models, probes on discovery, or approves generation.
+See [the fixed connector contract](COMFY-CONNECTOR.md) for exact local review
+input/options, endpoint limits and remaining acceptance gates.
+
+After the user has approved the frozen review in the application, the shared
+remote operations are available through the normal catalog:
+
+```sh
+mioon schema image.task.remote.get
+mioon schema image.task.observeRemote
+mioon image task remote get --input '{"projectId":"PROJECT_UUID","taskId":"TASK_UUID"}'
+mioon image task observeRemote --input-file ./comfy-observation.json
+```
+
+The observation file contains exactly
+`{projectId,taskId,expectedRevision,requestId}`. Set `expectedRevision` to the
+current `remote.revision` returned by `remote get`, not the image task revision.
+Retain the complete input with a distinct 8–200-character observation key.
+`remote get` only reads local records; it makes no ComfyUI request. An accepted
+`observeRemote` returns its original queued acknowledgement and schedules one
+bounded job GET plus, on verified terminal success, one fixed PNG GET and managed
+publication. It never submits a prompt. `finished` observation state alone is not
+success; inspect the remote evidence and image task.
+
+Lost ACK: replay the exact observation input/key to recover the original ACK
+without another GET, then read current local records. A later explicit query
+requires a new observation key and current remote revision after the old query
+is no longer active. There is no automatic runtime polling or GET/POST on startup;
+a prompt UUID is not generation idempotency. The old `recoverResult` operation
+still only publishes task-bound local bytes. Stopping the CLI or local observation
+cannot cancel ComfyUI work; remote cancellation is not implemented. These
+operations add no built-in Agent authority. Do not infer offline, safe or free
+computation from a loopback address or reported model/class name.
 
 ## Safe mock workflow
 

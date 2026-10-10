@@ -1,5 +1,5 @@
 export class ApiError extends Error {
-  constructor(message, code, details, definitive = false) { super(message); this.code = code; this.details = details; this.definitive = definitive; }
+  constructor(message, code, details, definitive = false, status) { super(message); this.code = code; this.details = details; this.definitive = definitive; if (Number.isInteger(status)) this.status = status; }
 }
 export async function rpc(operation, input = {}, { signal } = {}) {
   const response = await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }), ...(signal ? { signal } : {}) });
@@ -8,7 +8,7 @@ export async function rpc(operation, input = {}, { signal } = {}) {
   if (!body || typeof body !== 'object' || typeof body.ok !== 'boolean' ||
     (body.ok ? !Object.hasOwn(body, 'data') || !response.ok : typeof body.error?.code !== 'string' || typeof body.error?.message !== 'string'))
     throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'BACKEND_PROTOCOL_ERROR');
-  if (!response.ok || !body.ok) throw new ApiError(body.error?.message || '请求未完成', response.status === 401 ? 'UNAUTHORIZED' : body.error?.code, body.error?.details, response.status >= 400 && response.status < 500);
+  if (!response.ok || !body.ok) throw new ApiError(body.error?.message || '请求未完成', response.status === 401 ? 'UNAUTHORIZED' : body.error?.code, body.error?.details, response.status >= 400 && response.status < 500, response.status);
   return body.data;
 }
 export const requestId = () => crypto.randomUUID();

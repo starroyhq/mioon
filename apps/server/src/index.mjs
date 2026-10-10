@@ -5,6 +5,9 @@ import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createChatHttp} from './chat-http.mjs';
 import {createEditTasksHttp} from './edit-tasks-http.mjs';
 import {createImageHttp} from './image-http.mjs';
+import {createComfyHttp} from './comfy-http.mjs';
+import {createComfySettings} from '@mioon/business/comfy/settings';
+import {createComfyConnector} from '@mioon/business/comfy/connector';
 import {createImageSettings,createCustomImageSettings} from '@mioon/business/images/settings';
 import {createImageSettingsFile,createCustomImageSettingsFile} from '@mioon/business/images/settings-file';
 import {createLiveImageGateway,createCompatibleImageGateway} from '@mioon/business/images/gateway';
@@ -61,12 +64,14 @@ export async function startServer({
   agentSettings: suppliedAgentSettings,
   imageSecretCodec, // Trusted desktop main codec only; never supplied by HTTP.
   imageNetwork, // Trusted synthetic DNS/HTTPS fixture only; never HTTP/environment.
+  comfyNetwork, // Trusted synthetic HTTP fixture only; never HTTP/environment.
   chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
   agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
   taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
 
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
+  if (comfyNetwork !== undefined && (comfyNetwork === null || typeof comfyNetwork.httpRequest !== 'function')) throw Error('Invalid local ComfyUI transport');
   const root = path.resolve(dataDir), dist = path.resolve(distDir);
   if (suppliedToken !== undefined) validToken(suppliedToken);
   const tokenFile = path.join(root, 'access-token');
@@ -82,7 +87,7 @@ export async function startServer({
   }
   const store = openStore(root);
   const shutdown = new AbortController();
-  let worker, server, agentSettings, imageSettings, customImageSettings, chatRuntime, chatHttp, services, editTasks;
+  let worker, server, agentSettings, imageSettings, customImageSettings, comfySettings, chatRuntime, chatHttp, services, editTasks;
   const files = createFileResponses({signal: shutdown.signal});
   try {
     if (token === undefined) {
@@ -94,8 +99,14 @@ export async function startServer({
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
     customImageSettings = await createCustomImageSettings({persistence:createCustomImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
-    services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork})}});
+    // Evaluate at every real I/O boundary, including desktop's port:0 binding.
+    // This process knows its backend listener, not unrelated frontend processes.
+    const comfyReservedPorts = () => new Set([port, server?.address()?.port].filter(value => Number.isInteger(value) && value > 0));
+    comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
+    const comfyConnector = createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})});
+    services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector}});
     const imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
+    const comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,signal:shutdown.signal});
     editTasks = createEditTasks({store, services, ...(taskFault ? {fault: taskFault} : {})});
     // openStore already owns the exclusive workspace lock. Startup only
     // reconciles durable evidence and never dispatches a prepared edit.
@@ -153,6 +164,7 @@ export async function startServer({
             return json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: {}, retryable: false}});
           }
         }
+        if (await comfyHttp(req,res,url)) return;
         if (await imageHttp(req,res,url)) return;
         if (await chatHttp.handle(req, res, url)) return;
         if (await editTasksHttp(req, res, url)) return;
@@ -228,7 +240,7 @@ export async function startServer({
         await boundedShutdown(Promise.all([
           worker.stop(), services.drain(), editTasks.drain(), files.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
-          !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(),
+          !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close(),
         ]), 'SERVER_STOP_TIMEOUT');
       }
       finally { clearTimeout(forceDrain); }
@@ -240,7 +252,7 @@ export async function startServer({
     chatRuntime?.close(); chatHttp?.close();
     const drain = server?.listening ? new Promise(resolve => server.close(resolve)) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }

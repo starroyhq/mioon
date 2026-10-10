@@ -176,21 +176,26 @@ test('retained source receipts reject update/delete/replacement, and cross-table
  assert.deepEqual(snapshot(f),before);f.restart();assert.deepEqual(snapshot(f),before);
 });
 
-test('v11 upgrades preserve all old receipt bytes and records and match fresh schema invariants',async t=>{
+test('targeted v11/v12 additive reapplication preserves all old receipt bytes and fresh schema invariants',async t=>{
  const f=await fixture(t);await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
  const old=f.store.db.prepare('SELECT * FROM mutation_requests').get();
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  const fresh=f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all();
- // Remove both additive asset companions and all later version markers so
- // every later migration recreates its reciprocal companion protections.
- f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version>=12;');
- f.store.db.exec('DROP TRIGGER reject_mutation_cross_range_request; DROP TABLE asset_range_requests; DROP TABLE asset_ranges; DELETE FROM schema_version WHERE version>=11;');
+ const fullSchema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
+ const completeFresh=fullSchema();
+ // Reapply only the two removed asset companions and the subject extension
+ // that owns reciprocal triggers on them. Keep unrelated later schema markers:
+ // deleting those while retaining their tables would fabricate a downgrade.
+ f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
+ f.store.db.exec('DROP TRIGGER reject_mutation_cross_range_request; DROP TABLE asset_range_requests; DROP TABLE asset_ranges; DELETE FROM schema_version WHERE version=11;');
  const before=snapshot(f,['schema_version']);f.restart();
  assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests']),before);
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
- const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,19);
+ assert.deepEqual(fullSchema(),completeFresh);
+ const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(fullSchema(),completeFresh);
 });
 
 // Child processes use two genuinely independent SQLite connections. The winner

@@ -1,7 +1,8 @@
 import path from 'node:path';
 import {constants} from 'node:os';
+import {constants as fsConstants} from 'node:fs';
 import {createRequire} from 'node:module';
-import {readFile, realpath, readdir, stat} from 'node:fs/promises';
+import {access, readFile, realpath, readdir, stat} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import desktopIdentity from '../../apps/desktop/identity.cjs';
 import buildMetadata from '../../apps/desktop/build-metadata.cjs';
@@ -88,13 +89,82 @@ export async function installedPackages(root) {
   return result;
 }
 
+// Advisory only: running even `pnpm --version` can download the project's pinned
+// manager. Inspect a recognizable POSIX installation, never execute a shim or
+// skip an unknown first candidate to report a different command's version.
+export async function inspectPackageManager(root, {env = process.env, platform = process.platform} = {}) {
+  let requiredVersion;
+  try {
+    const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+    requiredVersion = buildMetadata.requireExactVersion(/^pnpm@(.+)$/.exec(manifest.packageManager)?.[1], 'pnpm version');
+  } catch {
+    return {name: 'pnpm', status: 'unverified', requiredVersion: null, observedVersion: null, source: null,
+      code: 'PNPM_DECLARATION_INVALID', nextStep: 'Check the exact pnpm pin in package.json before preparing dependencies.'};
+  }
+  const result = (status, observedVersion = null) => ({name: 'pnpm', status, requiredVersion, observedVersion,
+    source: observedVersion === null ? null : 'package-metadata',
+    ...(status === 'matched' ? {} : {code: `PNPM_${status.toUpperCase()}`,
+      nextStep: `Prepare pnpm ${requiredVersion} before installing dependencies. This is a static observation; no pnpm command was executed. Unknown shims or wrappers require separate verification.`})});
+  // Windows shims/standalone executables and implicit/relative PATH lookup have
+  // no reliable package metadata mapping here. Unknown is not missing or passed.
+  if (platform === 'win32' || typeof env.PATH !== 'string' || !env.PATH) return result('unverified');
+  for (const directory of env.PATH.split(path.delimiter)) {
+    if (!path.isAbsolute(directory)) return result('unverified');
+    let executable;
+    try {
+      executable = await realpath(path.join(directory, 'pnpm'));
+      if (!(await stat(executable)).isFile()) continue;
+      await access(executable, fsConstants.X_OK);
+    } catch (error) {
+      if (['ENOENT', 'ENOTDIR', 'EACCES'].includes(error.code)) continue;
+      return result('unverified');
+    }
+    try {
+      const packageRoot = path.dirname(path.dirname(executable));
+      const packageFile = await realpath(path.join(packageRoot, 'package.json'));
+      const packageInfo = await stat(packageFile);
+      if (path.dirname(packageFile) !== packageRoot || !packageInfo.isFile() || packageInfo.size > 64 * 1024) throw Error();
+      const metadata = JSON.parse(await readFile(packageFile, 'utf8'));
+      if (metadata.name !== 'pnpm' || typeof metadata.bin?.pnpm !== 'string' || path.isAbsolute(metadata.bin.pnpm)) throw Error();
+      buildMetadata.requireExactVersion(metadata.version, 'Installed pnpm version');
+      const declaredEntry = path.resolve(packageRoot, metadata.bin.pnpm);
+      if (!isContainedPath(packageRoot, declaredEntry) || await realpath(declaredEntry) !== executable) throw Error();
+      return result(metadata.version === requiredVersion ? 'matched' : 'mismatch', metadata.version);
+    } catch { return result('unverified'); }
+  }
+  return result('missing');
+}
+
+function prerequisiteFailure(name, error) {
+  const failures = {
+    NODE_VERSION_REQUIRED: ['Node.js 24 or newer is required.', 'Select Node.js >=24 and rerun this command.'],
+    BUILD_METADATA_INVALID: ['Root and desktop application versions or the Electron pin are invalid.', 'Check the root and desktop package.json versions and exact Electron pin before rebuilding.'],
+    LOCAL_DEPENDENCY_MISSING: ['Repository node_modules is missing or cannot be resolved.', 'Prepare the package.json-pinned pnpm, then explicitly run pnpm install --frozen-lockfile. No installation was attempted.'],
+    LOCAL_DEPENDENCY_INVALID: ['Local Vite, esbuild or Electron metadata, entrypoint or path containment failed validation.', 'Check repository-local dependency paths and exact pins; restore lockfile dependencies with the pinned pnpm after resolving the path issue.'],
+    MEDIA_INVALID_CONFIGURATION: ['The media executable override is invalid.', 'Use an absolute executable path for the corresponding MIOON_FFMPEG_PATH or MIOON_FFPROBE_PATH override.'],
+    MEDIA_SPAWN_FAILED: ['The selected media tool could not be started; it may be missing, inaccessible or incompatible.', 'Check PATH or the corresponding MIOON_FFMPEG_PATH / MIOON_FFPROBE_PATH override, executable permission and OS/CPU compatibility.'],
+    MEDIA_TIMEOUT: ['The media version probe timed out.', 'Check that the selected executable can return -version promptly; no application or media operation was started.'],
+    MEDIA_EXIT_FAILED: ['The media version probe exited unsuccessfully.', 'Check the selected executable and its required libraries using -version; no installation or repair was attempted.'],
+    MEDIA_VERSION_INVALID: ['The executable did not return the expected media version header.', 'Select the actual ffmpeg or ffprobe executable, rather than another binary or wrapper.'],
+    MEDIA_OUTPUT_LIMIT: ['The media version probe exceeded its output limit.', 'Check that the override selects the actual ffmpeg or ffprobe executable.'],
+    MEDIA_PROCESS_FAILED: ['The media probe process or its output stream failed.', 'Check the selected executable and local runtime, then rerun doctor.'],
+    MEDIA_CANCELLED: ['The media version probe was interrupted.', 'Rerun doctor after the interruption is resolved.'],
+    MEDIA_TERMINATION_UNCONFIRMED: ['A previous media probe has not confirmed its exit.', 'Check the owned probe process before rerunning doctor; no replacement process was started.'],
+  };
+  const code = Object.hasOwn(failures, error?.code) ? error.code : 'PREREQUISITE_FAILED';
+  const [message, nextStep] = failures[code] || ['Local prerequisite check failed.',
+    name === 'sqliteMemory' ? 'Check that this Node runtime provides working node:sqlite support; no workspace database was opened.'
+      : 'Check the documented local prerequisite. Raw errors and tool output are intentionally omitted.'];
+  return {name, status: 'failed', code, message, nextStep};
+}
+
 export async function preflight(root, {channel = 'development', media = false, probe = runMedia,
-  nodeVersion = process.versions.node, platform = process.platform, arch = process.arch} = {}) {
+  nodeVersion = process.versions.node, platform = process.platform, arch = process.arch,
+  packageManagerEnvironment = process.env} = {}) {
   const checks = [], entries = {};
   const check = async (name, fn) => {
     try {const detail = await fn(); checks.push({name, status: 'passed', ...detail});}
-    catch (error) {checks.push({name, status: 'failed', code: error.code || 'PREREQUISITE_FAILED',
-      message: ['BUILD_METADATA_INVALID', 'BUILD_VERSION_MISMATCH', 'LOCAL_DEPENDENCY_INVALID', 'LOCAL_DEPENDENCY_MISSING', 'NODE_VERSION_REQUIRED'].includes(error.code) ? error.message : 'Local prerequisite check failed; see the documented requirement.'});}
+    catch (error) {checks.push(prerequisiteFailure(name, error));}
   };
   await check('node', async () => {
     if (!/^\d+\./.test(nodeVersion) || Number(nodeVersion.split('.')[0]) < 24) throw fail('NODE_VERSION_REQUIRED', 'Node.js 24 or newer is required.');
@@ -116,7 +186,9 @@ export async function preflight(root, {channel = 'development', media = false, p
     return {version: match[1]};
   });
   return {report: {schemaVersion: 1, scope: 'local-prerequisites', checks, buildReady,
-    prerequisitesReady: checks.every(item => item.status === 'passed'), nativeReadiness: nativeReadiness(platform, arch)}, entries, metadata};
+    prerequisitesReady: checks.every(item => item.status === 'passed'), nativeReadiness: nativeReadiness(platform, arch),
+    ...(media ? {packageManager: await inspectPackageManager(root, {env: packageManagerEnvironment, platform}),
+      note: 'buildReady checks installed source-build prerequisites, not a completed build. prerequisitesReady also includes media version probes. The pnpm observation is advisory for dependency installation and does not change these flags or exit codes. Native release verification is separate.'} : {})}, entries, metadata};
 }
 
 export async function discoverTests(root, {suite = 'portable', files = [], platform = process.platform} = {}) {

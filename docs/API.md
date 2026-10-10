@@ -20,9 +20,9 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are 
 
 The same RPC exposes `image.profile.list`, `image.generate`, `image.request.get`,
 `image.task.get/list`, `image.group.get/list`, `image.version.list`,
-`image.task.cancelQueued`, `image.task.recoverResult` and exactly three review
-operations below. Image schemas and bounded DTOs are authoritative in
-`packages/contracts/src/images.mjs` and `image-reviews.mjs`.
+`image.task.cancelQueued`, `image.task.recoverResult`, the two local-ComfyUI
+remote operations below, and exactly three review operations. Image schemas and bounded DTOs are authoritative in
+`packages/contracts/src/images.mjs`, `image-reviews.mjs` and `comfy-images.mjs`.
 [Image generation](IMAGE-GENERATION.md) includes the exact generation request.
 
 Mock produces a deterministic local 1024×1024 PNG test card, not prompt-conditioned
@@ -41,7 +41,7 @@ compatibility or permission to spend.
 
 | Review RPC | Strict input | Result / effect |
 | --- | --- | --- |
-| `image.review.prepare` | `{input:<complete official/custom image.generate input>,settingsRevision}` | Retained exact request/configuration review; local database write only |
+| `image.review.prepare` | `{input:<complete official/custom/local-ComfyUI image.generate input>,settingsRevision}` | Retained exact request/configuration review; local database write only |
 | `image.review.get` | `{projectId,reviewId}` | Existing owned review; read-only |
 | `image.review.list` | `{projectId,limit?,cursor?}` | `{projectId,items,nextCursor}`; read-only |
 
@@ -53,7 +53,7 @@ settings revision under its key conflicts. Review fields, state transitions,
 plain-local-SQLite storage and limits are specified in
 [Images activation](IMAGE-ACTIVATION.md#shared-public-review-operations).
 
-New direct official/custom `image.generate` calls remain blocked without private
+New direct official/custom/local-ComfyUI `image.generate` calls remain blocked without private
 review approval. `image.generate` effect metadata nevertheless includes possible
 separately approved worker activity: external I/O, paid generation, open-world
 access and database/file writes, without local subprocesses. Review preparation
@@ -97,8 +97,8 @@ image-task receipt; rejection returns the retained review. These private UI
 routes are absent from RPC, CLI, MCP and model-tool discovery. Local token/session
 authentication is not cryptographic human-presence proof or permission for an
 external agent to approve. The user explicitly approves the visible exact
-prompt/project/model/options/destination and at most one POST, at unknown
-usage-based cost. This is not a currency spending cap or a per-image budget wizard.
+prompt/project/model/options/destination and at most one POST. Official/custom
+Images have unknown usage-based cost; local ComfyUI has unknown local compute cost. This is not a currency spending cap or a per-image budget wizard.
 
 The dispatch gateway checks changed settings and pending saves synchronously at
 the same final boundary as the durable review/task dispatch fence and network
@@ -107,6 +107,53 @@ only validates and publishes an existing task-bound local receipt and staged PNG
 See [Images activation](IMAGE-ACTIVATION.md) for the authority, persistence,
 network boundary, and [custom Images](IMAGE-COMPATIBLE.md) for schema 18 and the
 current validation results and remaining live/native-platform limits.
+
+### First-party local ComfyUI increment (synthetic validation)
+
+`comfy-local` adds a separate fixed `comfy-t2i-png-v1` text-to-image profile for
+ComfyUI `0.39.0`: seven nodes/six standard classes, exactly one 512×512 PNG.
+It requires a user-selected installed checkpoint, explicit connection check and
+per-request application review. Opening/saving settings does not probe. No
+runtime/model installation, image upload, arbitrary workflow, public endpoint,
+remote cancellation or real-runtime acceptance is included.
+
+`GET`/`PUT /api/images/comfy-settings` reads/saves the independent no-secret
+configuration; PUT is exactly `{expectedRevision,configuration}`.
+`POST /api/images/comfy-check` takes `{baseUrl,model?}` and explicitly performs
+bounded GETs for version/nodes/checkpoints. Its successful evidence is RAM-only.
+Only root HTTP origins with literal `127.0.0.1` or `[::1]` and an explicit port
+are accepted, excluding Mioon's actual backend port. These private application
+routes are not RPC/CLI/MCP/Agent tools. Local runtime trust remains the user's;
+loopback and reported node/version names prove neither safety nor offline/free
+execution.
+
+The v3 review freezes full configuration, destination, graph/hash, seed,
+prompt/client UUIDs and output nonce. User approval permits at most one POST;
+prompt UUID reuse does not provide ComfyUI idempotency. No automatic retry or
+runtime polling follows submission or startup.
+
+| Shared operation | Strict input | Effect |
+| --- | --- | --- |
+| `image.task.remote.get` | `{projectId,taskId}` | Local read of retained `{projectId,taskId,remote,observation}`; never contacts runtime |
+| `image.task.observeRemote` | `{projectId,taskId,expectedRevision,requestId}` | Durable explicit observation, then bounded job GET and at most one verified result GET |
+
+Observation `expectedRevision` is the current `remote.revision`; use a distinct
+stable 8–200-character request key. Exact replay returns the original queued
+acknowledgement without another GET. Read the two task records for current state;
+observation `finished` is not proof of successful generation. New explicit queries
+use a new observation key and current remote revision. No operation permits
+another generation POST or joins the built-in Agent allowlist. Old
+`image.task.recoverResult` remains local-only. Terminal graph/client/nonce/status
+checks and immutable descriptor/hash/byte pinning precede result staging.
+
+Schema 19 adds remote runs/observations and v3 reviews while preserving legacy
+rows/rowids/inputs/receipts and SQL objects, except the documented narrow
+ComfyUI-verified `outcome_unknown` → `failed` lifecycle trigger branch. Observation
+retention is 1000/project and 10,000/workspace, without eviction. This increment's
+focused/build/Linux native synthetic checks and independent full suite passed
+(2993 total /2991 pass /0 fail /2 skip); its first aggregate failures are retained. No real runtime, GPU
+or model has been used. Exact contracts, bounded effects, migration and remaining
+gates: [local ComfyUI connector](COMFY-CONNECTOR.md).
 
 ## File and event transports
 

@@ -225,7 +225,11 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
       assert.ok(definition, operation + ' is discoverable');
       const tool = tools.find(item => item.name === toolName(operation));
       assert.ok(tool); assert.deepEqual(tool.inputSchema, definition.inputSchema);
-      assert.equal(definition.inputSchema.additionalProperties, false);
+      assert.equal(definition.inputSchema.type, 'object');
+      if(operation==='image.generate'){
+        assert.equal(definition.inputSchema.anyOf.length,2);
+        for(const branch of definition.inputSchema.anyOf){assert.equal(branch.type,'object');assert.equal(branch.additionalProperties,false);assert.ok(branch.required.includes('requestId'));}
+      }else assert.equal(definition.inputSchema.additionalProperties, false);
       assert.equal(definition.requiresRequestId, IMAGE_MUTATION_OPERATIONS.includes(operation) || operation === 'image.request.get');
       const effects = definition.effects;
       assert.equal(effects.idempotent, true);

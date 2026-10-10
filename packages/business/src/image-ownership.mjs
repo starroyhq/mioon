@@ -1,3 +1,4 @@
+import {validateComfyReceiptOwnership} from './comfy/ownership.mjs';
 import {validateImageTaskReview} from './images/reviews.mjs';
 import {createHash} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
@@ -29,6 +30,7 @@ export function createImageOwnershipReader(db,projectId,{consume=()=>{},fail=una
   if(tasks.has(id))return tasks.get(id);
   const row=db.prepare(`SELECT ${taskColumns} FROM image_tasks WHERE id=? LIMIT 1`).get(id);if(!row||row.id!==id||row.projectId!==projectId)fail();
   const input=decode(row.input,imageSchemas['image.generate']),snapshot=decode(row.snapshot,imageSnapshotSchema),receipt=row.stagedReceipt===null?null:decode(row.stagedReceipt,imageReceiptSchema);
+  if(receipt&&(snapshot.providerId==='comfy-local'?(receipt.schemaVersion!==2||receipt.providerId!=='comfy-local'||receipt.width!==512||receipt.height!==512):(receipt.schemaVersion!==1||receipt.width!==1024||receipt.height!==1024)))fail();
   if(createHash('sha256').update(canonical(input)).digest('hex')!==row.inputHash||input.requestId!==row.requestId||input.projectId!==projectId||snapshot.projectId!==projectId||snapshot.taskId!==id||snapshot.groupId!==row.groupId||input.groupId!==undefined&&input.groupId!==row.groupId)fail();
   if(!same({...snapshot,schemaVersion:undefined,projectId:undefined,groupId:undefined,taskId:undefined},{name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options}))fail();
   const dto={id:row.id,projectId,groupId:row.groupId,requestId:row.requestId,name:snapshot.name,prompt:snapshot.prompt,providerId:snapshot.providerId,model:snapshot.model,options:snapshot.options,state:row.state,revision:row.revision,dispatched:row.dispatched===1,versionId:row.versionId,errorCode:row.errorCode,createdAt:row.createdAt,updatedAt:row.updatedAt};
@@ -37,6 +39,7 @@ export function createImageOwnershipReader(db,projectId,{consume=()=>{},fail=una
   const owner=group(row.groupId);if(snapshot.name!==owner.name)fail();
   if(IMAGE_UNRESOLVED_STATES.includes(row.state)?owner.activeTaskId!==id:owner.activeTaskId===id)fail();
   if(['persisting','local_result_error','succeeded'].includes(row.state)&&!receipt)fail();
+  if(receipt&&input.providerId==='comfy-local')validateComfyReceiptOwnership(db,row,input,receipt,{fail,consume});
   const result={row,dto,snapshot,input,receipt};tasks.set(id,result);return result;
  }
  function rawVersion(id){

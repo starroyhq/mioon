@@ -78,9 +78,11 @@ test('packaging refuses missing or opposite-channel staging, including packaged 
 test('package commands explicitly rebuild the correct channel before electron-builder', async () => {
   const pkg = JSON.parse(await readFile(new URL('../apps/desktop/package.json', import.meta.url), 'utf8'));
   for (const target of ['linux', 'dir', 'mac']) {
-    assert.match(pkg.scripts[`package:${target}`], /build\.mjs --channel=production && electron-builder --config electron-builder\.cjs/);
-    assert.match(pkg.scripts[`package:${target}:dev`], /build\.mjs --channel=development && electron-builder --config electron-builder\.dev\.cjs/);
-    assert.match(pkg.scripts[`package:${target}:dev`], /--publish never$/);
+    const build = target === 'mac' ? 'node ../../scripts/tooling.mjs build' : 'node scripts/build.mjs';
+    const targetFlags = target === 'dir' ? '--linux --dir' : `--${target}`;
+    for (const [suffix, channel, config] of [['', 'production', 'electron-builder.cjs'], [':dev', 'development', 'electron-builder.dev.cjs']]) {
+      assert.equal(pkg.scripts[`package:${target}${suffix}`], `${build} --channel=${channel} && electron-builder --config ${config} ${targetFlags} --publish never`);
+    }
   }
 });
 

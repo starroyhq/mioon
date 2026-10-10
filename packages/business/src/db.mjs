@@ -6,7 +6,8 @@ import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {bootstrapEditTaskSchema,migrateSubjectEditTasks} from './edit-task-schema.mjs';
 import {migrateSubjectSchema} from './subject-schema.mjs';
 import {migrateImageSchema} from './image-schema.mjs';
-import {migrateImageReviewSchema,migrateCustomImageReviewSchema} from './images/review-schema.mjs';
+import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImageReviewSchema} from './images/review-schema.mjs';
+import {migrateComfyImageSchema} from './comfy-image-schema.mjs';
 
 // Backend-only proof of the actual acquired workspace lock. Neither caller
 // options nor copied store properties can manufacture ownership. A replaced,
@@ -36,11 +37,11 @@ export function validateWorkspaceStorage(root){
  }
  validateManagedFile(path.join(root,'server.lock'),{root,allowMissing:true,maxBytes:64});
  validateManagedFile(path.join(root,'access-token'),{root,allowMissing:true,private:true,maxBytes:4098});
- for(const name of ['agent-settings','image-settings']){
+ for(const name of ['agent-settings','image-settings','comfy-settings']){
   const settings=path.join(root,name);
   if(validateManagedDirectory(settings,{root,allowMissing:true,private:true})){
    for(const filename of name==='image-settings'?['settings.json','custom-settings.json']:['settings.json'])
-    validateManagedFile(path.join(settings,filename),{root,allowMissing:true,private:true,maxBytes:64*1024});
+    validateManagedFile(path.join(settings,filename),{root,allowMissing:true,private:true,maxBytes:name==='comfy-settings'?16*1024:64*1024});
   }
  }
 }
@@ -393,6 +394,11 @@ export function openStore(root,{lock=true}={}){
  if(!db.prepare('SELECT 1 FROM schema_version WHERE version=18').get()){
   db.exec('BEGIN IMMEDIATE');
   try{migrateCustomImageReviewSchema(db);db.exec('INSERT INTO schema_version VALUES(18);COMMIT;');}
+  catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+ }
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=19').get()){
+  db.exec('BEGIN IMMEDIATE');
+  try{migrateComfyImageReviewSchema(db);migrateComfyImageSchema(db);db.exec('INSERT INTO schema_version VALUES(19);COMMIT;');}
   catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);

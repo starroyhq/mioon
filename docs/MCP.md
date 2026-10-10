@@ -120,8 +120,8 @@ Provider IDs currently include `mock`, `runway`, `ark`, `veo`, `minimax`, and `v
 The shared catalog exposes `image_profile_list`, `image_generate`,
 `image_request_get`, `image_task_get`, `image_task_list`, `image_group_get`,
 `image_group_list`, `image_version_list`, `image_task_cancelQueued`,
-`image_task_recoverResult`, plus exactly `image_review_prepare`,
-`image_review_get` and `image_review_list`. Preserve the camel case. Use
+`image_task_recoverResult`, `image_task_remote_get`, `image_task_observeRemote`,
+plus exactly `image_review_prepare`, `image_review_get` and `image_review_list`. Preserve the camel case. Use
 `mioon_schema` with the dotted name for the exact inputs and advisory effects.
 
 Mock produces deterministic local 1024×1024 PNG test cards without synthesizing
@@ -135,8 +135,8 @@ separate from video `mioon_capabilities`; enabled means local configuration is
 available, not verified output, compatibility or spending permission.
 
 - `image_review_prepare` takes exactly
-  `{input:<complete official/custom image.generate input>,settingsRevision}`. The positive
-  settings revision comes from the selected official/custom Images slot; the original
+  `{input:<complete official/custom/local-ComfyUI image.generate input>,settingsRevision}`. The positive
+  settings revision comes from the selected Images connection slot; the original
   stable `requestId` is nested in `input`. Preparation only writes a retained
   immutable intent to local SQLite. It neither approves nor creates a task.
 - `image_review_get` takes `{projectId,reviewId}` and returns an existing owned
@@ -145,7 +145,7 @@ available, not verified output, compatibility or spending permission.
   returned cursors unchanged with the same project/limit; restart expires them.
 - The generation request/receipt shapes stay unchanged, with additive provider
   `openai-compatible` and the configured custom ASCII model. No secret, approval
-  flag, raw executor or endpoint is a tool argument. New direct official/custom
+  flag, raw executor or endpoint is a tool argument. New direct official/custom/local-ComfyUI
   `image_generate` is blocked; accepted exact replay only returns its receipt.
 - Custom review DTOs add the backend-retained full immutable `configuration`
   and use its actual `destination`; official v1 DTOs remain unchanged. See the
@@ -153,8 +153,9 @@ available, not verified output, compatibility or spending permission.
 
 Settings and approve/reject routes are private authenticated application actions,
 not MCP/CLI/model tools. The user approves the exact visible project/prompt/model/
-options/destination and at most one POST from the application. Fees are usage-based
-and unknown, so this is not a currency cap or a per-image budget wizard. Local
+options/destination and at most one POST from the application. Official/custom
+fees are usage-based and unknown; local ComfyUI has unknown local compute cost.
+This is not a currency cap or a per-image budget wizard. Local
 session authentication is not cryptographic proof of a human click; knowing a
 route/token does not authorize an external agent to approve. Built-in Agent
 catalogs and paid-generation authority do not expand.
@@ -179,6 +180,44 @@ retention 1000/project and 10,000/workspace with no cleanup; the nested generati
 input still has its original 24-KiB cap. DTOs omit credentials, raw/base64 results
 and filesystem paths. See [Image generation](IMAGE-GENERATION.md) and
 [Images activation](IMAGE-ACTIVATION.md) for current contracts and validation.
+
+### Local ComfyUI observation tools (synthetic validation)
+
+`comfy-local` uses the fixed ComfyUI `0.39.0` seven-node text-to-image profile,
+with one selected installed checkpoint and one 512×512 PNG. Use the
+[exact preparation contract](COMFY-CONNECTOR.md#review-and-one-submission) and
+fixed local options; never pass a graph, endpoint, seed or credentials as tool
+arguments. Full configuration/graph/seed/prompt-client UUIDs/output nonce are
+frozen by the backend before user review. Local settings/check and review approval
+remain application-only; no tool installs or starts a runtime, downloads a model,
+uploads an image, or executes an arbitrary workflow. Only synthetic fixtures have
+been used for this increment; full/native/live acceptance is not established.
+
+- `image_task_remote_get` takes exactly `{projectId,taskId}` and reads the existing
+  local `{projectId,taskId,remote,observation}`. It is read-only, does not contact
+  ComfyUI and cannot start or resume observation.
+- `image_task_observeRemote` takes exactly
+  `{projectId,taskId,expectedRevision,requestId}`. Use the current `remote.revision`
+  and a distinct caller-retained 8–200-character observation key. It admits a
+  durable request before I/O, then makes one bounded job GET and at most one fixed
+  PNG GET after complete terminal graph/client/nonce/status verification. Result
+  descriptor/hash/bytes are pinned before managed staging/publication.
+- The accepted result is the original queued observation ACK, not completion.
+  Exact replay returns that ACK without another GET; read local remote/task
+  records for current progress. A later explicitly requested query needs a new
+  observation key and current remote revision. `finished` does not imply success.
+  `image_request_get` remains the original image-mutation lookup, not an
+  observation lookup.
+
+`observeRemote` has local database/file-write and external-I/O effects, but no
+new generation, POST, paid submission or local subprocess effect. Annotations
+are advisory. No new operation enters the built-in Agent allowlist. Neither
+startup nor ordinary reads poll the runtime; no automatic retry is permitted.
+Prompt UUID reuse is not ComfyUI idempotency. `image_task_recoverResult` keeps its
+local-only semantics, and `cancelQueued` remains undispatched-only. Closing a
+client or stopping observation does not cancel remote work. A literal loopback
+address and declared version/node names are not runtime safety/offline/free
+attestation. See [connector limits and recovery](COMFY-CONNECTOR.md).
 
 ### Bounded, non-creating inspection
 

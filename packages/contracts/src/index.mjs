@@ -4,6 +4,8 @@ export * from './images.mjs';
 import {imageReviewSchemas} from './image-reviews.mjs';
 export * from './image-reviews.mjs';
 export * from './image-settings.mjs';
+import {comfyRemoteSchemas} from './comfy-images.mjs';
+export * from './comfy-images.mjs';
 import {getCapabilityProfile,getGenerationProfileRegion,INPUT_PROFILE_VERSION} from './generation-input-profiles.mjs';
 import {getGenerationProfileIssue} from './generation-input-validation.mjs';
 export {INPUT_PROFILE_VERSION,PROFILE_VERSION,GENERATION_INPUT_ROLES,INPUT_ROLES,GENERATION_INPUT_PROFILES,CAPABILITY_PROFILES,getCapabilityProfile,getGenerationProfileRegion} from './generation-input-profiles.mjs';
@@ -44,6 +46,7 @@ const clipFields={trackId:id,name:z.string().min(1).max(200),startFrame:frame,du
 export const schemas={
 ...imageSchemas,
 ...imageReviewSchemas,
+...comfyRemoteSchemas,
 ...inspectionSchemas,
 ...subjectSchemas,
 ...sourceRangeSchemas,
@@ -96,10 +99,10 @@ export const descriptions={
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
  'image.profile.list':'读取固定图像预设及本地配置启用状态；不探测网络、解密密钥或证明真实可用性',
- 'image.review.prepare':'保存当前项目的精确官方 OpenAI 或自定义兼容图像请求及固定目的地，供用户明确确认；不批准、不生成、不发送付费请求',
+ 'image.review.prepare':'保存当前项目的精确官方 OpenAI、自定义兼容或本机 ComfyUI 图像请求；本机工作流含后端生成并冻结的种子和任务标识，供用户完整确认；不批准、不生成、不发送请求',
  'image.review.get':'读取当前项目已保存的图像请求确认记录；不会批准、执行或重试',
  'image.review.list':'分页读取当前项目图像请求确认记录；不会批准或执行',
- 'image.generate':'持久化精确 Mock 图像请求，或重放原图像任务回执；新的官方 OpenAI 或自定义兼容请求必须先准备 review 并由用户界面明确批准，不自动编辑镜头或时间线',
+ 'image.generate':'持久化精确 Mock 图像请求，或重放原图像任务回执；新的官方 OpenAI、自定义兼容或本机 ComfyUI 请求必须先准备 review 并由用户界面明确批准，不自动编辑镜头或时间线',
  'image.request.get':'只读查找原图像请求的不可变受理回执；返回历史状态，不重试、不启动工作，当前状态另查 task.get',
  'image.task.get':'只读查询本项目图像任务与可恢复状态，不恢复或重新生成',
  'image.task.list':'分页只读列出项目或图像组任务，最新记录在前，不启动任务',
@@ -108,6 +111,8 @@ Object.assign(descriptions,{
  'image.version.list':'分页只读列出图像组的不可变结果，版本号降序；仅返回安全托管素材元数据',
  'image.task.cancelQueued':'用稳定请求 ID 和任务版本明确取消尚未分派的排队或中断任务，不代表供应商退款',
  'image.task.recoverResult':'用稳定请求 ID 明确核验并保存已存在的本地结果；缺失结果保持待确认，绝不重新调用图像供应商',
+ 'image.task.remote.get':'只读当前项目已有本机 ComfyUI 任务的本地远端状态记录和最近观察进度；不联网、不创建任务、不恢复或启动观察',
+ 'image.task.observeRemote':'按远端记录版本和稳定请求 ID 持久化一次观察；异步仅查询已冻结 ComfyUI 任务，验证完成身份后可取回一个固定 PNG；不提交、不重试生成、不自动轮询，原受理回执永久保留',
  'subject.create':'创建项目内版本化主体，仅固定已有托管图片及来源，不生成媒体；必须使用稳定请求 ID',
  'subject.version.add':'添加主体的不可变参考版本；已有绑定固定旧选择并提示复核，不自动更新镜头或生成',
  'subject.binding.set':'按独立绑定版本和主体版本明确固定、复核或解除主体/风格引用；不会修改首帧或时间线',
