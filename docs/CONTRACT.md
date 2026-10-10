@@ -70,3 +70,21 @@ fingerprint. No key preserves legacy behavior. Mutation and receipt are one
 synchronous transaction; no file/provider work is included. Optional-key effects
 remain `idempotent:false` / MCP `idempotentHint:false`. Full failure/recovery and
 client-storage boundaries: [MUTATION-REPLAY.md](MUTATION-REPLAY.md).
+
+## Saved video/audio source-range metadata
+
+- `asset.range.get {projectId,assetId}` → `{id:assetId,assetId,projectId,revision,range,sourceFrameCount,fps:30}`.
+- `asset.range.set {projectId,assetId,expectedRevision,requestId,inFrame,outFrame}` → the same envelope with a persisted range and next revision.
+
+No saved row returns revision `0` and `range:null`, without creating a row or a
+timeline. The UI may show the full source as a draft; that is not a persisted
+selection. Saved `range` is `{inFrame,outFrame}`: safe integer positions in the
+30-fps timeline timebase, inclusive in/exclusive out, at least one frame within
+the known finite source duration. This is not native/VFR frame-number indexing.
+
+`expectedRevision` belongs to the range, not the asset/project/timeline. The new
+set operation requires its stable key; the six historical local operations keep
+optional keys and unchanged responses. The shared helper checks both immutable
+receipt tables in one write transaction, so those seven operations share key
+collision protection. Timeline/reference/generation journals retain their
+existing separate scopes. See [source-range details](SOURCE-RANGES.md).

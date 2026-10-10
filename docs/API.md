@@ -258,3 +258,13 @@ not apply it. Discovery is backend-persistent and independent of renderer
 session storage. Endpoint shapes, limits, states and current acceptance status:
 [reviewed selected-shot edits](AGENT-EDITS.md). These review endpoints are not
 business RPC operations or callable model tools.
+
+## Saved source ranges
+
+`asset.range.get({projectId,assetId})` is a non-creating read for an owned video or
+audio asset. `asset.range.set({projectId,assetId,expectedRevision,requestId,inFrame,outFrame})`
+saves local selection metadata under an independent range revision and an exact
+required replay key. These operations do not modify asset bytes, versions or
+existing timeline clips. Full timebase, replay and UI boundaries:
+[SOURCE-RANGES.md](SOURCE-RANGES.md). Built-in Agent inspection/tool DTOs do not
+include these marks in this increment.

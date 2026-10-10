@@ -229,3 +229,15 @@ Offline acceptance tests use actual CLI subprocesses, the official MCP SDK stdio
 pnpm test:cli
 node --test tests/mcp-v4.test.mjs tests/mcp-discovery.test.mjs
 ```
+
+### Saved source ranges
+
+Use `mioon asset range get --input <JSON>` and `mioon asset range set --input <JSON>`
+(or `rpc asset.range.get/set`). Inspect their current schemas first. Get requires
+`projectId` and `assetId`; set additionally requires the independent range
+`expectedRevision`, caller-retained `requestId`, and integer `inFrame`/`outFrame`.
+No key is invented and no write is automatically retried. The out point is
+exclusive in the fixed 30-fps editing timebase. To add a saved selection, copy
+those confirmed values into ordinary `timeline clip add` with its separate
+revision and key; later marks do not change that clip. See
+[SOURCE-RANGES.md](SOURCE-RANGES.md) for bounds, replay scopes and limitations.

@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {AppError} from '@mioon/contracts';
+import {AppError,sourceFrameCount} from '@mioon/contracts';
 
 export const TIMELINE_LIMITS=Object.freeze({fps:30,width:720,height:1280,tracks:12,clips:100,durationFrames:18000});
 const defaultRect=()=>({x:0,y:0,width:720,height:1280});
@@ -57,7 +57,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
    }else{
     // A fractional final frame cannot supply a complete output frame. The tiny
     // tolerance only absorbs the binary representation of exact 30fps times.
-    const sourceFrames=Number.isFinite(source.duration)?Math.floor(source.duration*30+1e-6):0;
+    const sourceFrames=sourceFrameCount(source.duration)??0;
     if(sourceFrames<1||item.sourceInFrame+item.durationFrames>sourceFrames)
      throw new AppError('SOURCE_BOUNDS','素材入点和片段时长超出素材范围',400,{clipId:item.id,assetId:source.id,availableFrames:sourceFrames});
    }
@@ -201,7 +201,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
     if(version.projectId!==timeline.projectId||version.shotId!==shot.id)throw new AppError('INVALID_VERSION','版本不属于此镜头');
     const source=asset(timeline.projectId,version.assetId);
     if(source.sha256!==version.sha256)throw new AppError('ASSET_HASH_MISMATCH','镜头版本与素材哈希不一致',409);
-    const durationFrames=Math.floor(source.duration*30+1e-6);
+    const durationFrames=sourceFrameCount(source.duration);
     if(!Number.isSafeInteger(durationFrames)||durationFrames<1)throw new AppError('SOURCE_BOUNDS','所选版本没有有效时长');
     timeline.clips.push({id:randomUUID(),trackId:lane.id,assetId:source.id,name:shot.title,startFrame,durationFrames,sourceInFrame:0,rect:defaultRect(),gain:1});
     startFrame+=durationFrames;

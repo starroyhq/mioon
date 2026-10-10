@@ -13,7 +13,7 @@ node apps/cli/src/index.mjs project create --input '{"name":"Agent video study"}
 
 Use IDs from actual responses. All business operations are available as space-separated words (`timeline track add`) or `rpc timeline.track.add`; `--input` is a JSON object. Inspect `schema <operation>` for exact required fields instead of guessing. `--input-file` can hold larger requests; keep local request files private when they include sensitive user material.
 
-- Projects/assets: `project create/list/get/inspect`, `asset import/list/inspect`. Import uses `--file <explicit-local-file>` and JSON `projectId`; the client reads and uploads bytes.
+- Projects/assets: `project create/list/get/inspect`, `asset import/list/inspect`, `asset range get/set`. Import uses `--file <explicit-local-file>` and JSON `projectId`; the client reads and uploads bytes.
 - Canvas/shots: `shot create/update/reorder/inspect`, `node create/update`, `edge create/delete`.
 - Generation reference: `reference attach/detach` (MCP `reference_attach` / `reference_detach`). Generic canvas edges are visual-only and do not send any image or prompt.
 - Generation: `provider list`, `generation submit`, `job get/list/retry/cancel/reconcile`.
@@ -90,3 +90,23 @@ a model to write. Built-in Agent reviewed edits use a separate bounded proposal
 and user approval workflow, not an MCP/CLI approval tool; see its scope and
 current status in [reviewed edits](../../../docs/AGENT-EDITS.md). See also
 [shared mutation replay](../../../docs/MUTATION-REPLAY.md).
+
+## Source selection before editing
+
+`asset range get` requires `{projectId,assetId}` and never creates selection or
+timeline state. Unset marks are revision0/range:null, not an implicit saved full
+range. `asset range set` additionally requires `expectedRevision`, caller-owned
+`requestId`, `inFrame`, `outFrame`; save at least one frame in bounds, using the
+30-fps timeline timebase and exclusive out. Read the returned independent range
+revision before the next save. Images and unknown-duration sources are not part
+of this feature.
+
+To use the confirmed selection, explicitly create `timeline clip add` with
+`sourceInFrame=inFrame`, `durationFrames=outFrame-inFrame`, a compatible track,
+legal start frame, the timeline's own expectedRevision and a separately retained
+requestId. At most18000 timeline frames are supported including the append
+position. Marks do not rewrite existing clips, versions or original media.
+Recover lost responses with identical keys/input; never replace the identity
+just because the connection closed. The range-set key shares collision checks
+with the six local canvas mutations; timeline/reference key scopes stay separate.
+Built-in conversational Agent read/proposal tools do not yet see or edit ranges.

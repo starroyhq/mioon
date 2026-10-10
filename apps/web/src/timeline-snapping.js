@@ -1,9 +1,10 @@
+import { sourceFrameCount } from '@mioon/contracts';
 // Renderer-only geometry. Explicit CLI/MCP/business frame edits never snap.
 export const SNAP_THRESHOLD_PX = 8;
 export const MAX_TIMELINE_FRAME = 18000;
 export function assetTimelineDuration(asset) {
   if (asset?.mimeType?.startsWith('image/')) return { durationFrames: 90, known: true, note: '图片默认 90 帧' };
-  const frames = typeof asset?.duration === 'number' && Number.isFinite(asset.duration) ? Math.floor(asset.duration * 30 + 1e-6) : 0;
+  const frames = sourceFrameCount(asset?.duration);
   if (Number.isSafeInteger(frames) && frames >= 1) return { durationFrames: frames, known: true, note: '' };
   return { durationFrames: 60, known: false, note: '素材时长未知，60 帧仅为示意；不能放置' };
 }

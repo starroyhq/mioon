@@ -30,3 +30,13 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 7. Render the timeline, watch its export record and download the resulting managed MP4 to an explicitly chosen new local file. Confirm the actual output exists before reporting completion.
 
 For an executable no-cost import → shot → generate → select → timeline → export workflow, read [mock-workflow.md](references/mock-workflow.md). Mock produces visibly labeled synthetic motion, not prompt-faithful AI output. All shipped provider contracts have offline tests; live provider output is unverified unless separately established in the user's session.
+
+## Saved source ranges
+
+For an authorized source-selection workflow, use `asset range get/set` (MCP
+`asset_range_get/set`) through the same shared service. Preserve the independent
+range revision and exact required set key. Source marks use a 30-fps editing
+timebase with exclusive out; they do not modify originals or existing clips.
+Adding the selection is a separate explicit timeline clip intent with its own
+revision/key. See [operations.md](references/operations.md). These external tools
+do not expand built-in Agent context or proposal permissions.

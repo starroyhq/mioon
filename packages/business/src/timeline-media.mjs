@@ -1,6 +1,7 @@
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {run,probe} from './media.mjs';
+import {sourceFrameCount} from '@mioon/contracts';
 import {throwIfMediaAborted} from './media-processes.mjs';
 
 const FPS=30,WIDTH=720,HEIGHT=1280,SAMPLES_PER_FRAME=1600;
@@ -25,7 +26,7 @@ function validateTimeline(timeline,assets){
   const isImage=a.mimeType?.startsWith('image/'),isVideo=a.mimeType?.startsWith('video/'),isAudio=['audio/wav','audio/mpeg','audio/mp4'].includes(a.mimeType);
   if(t.kind==='video'?(!isImage&&!isVideo):!isAudio)invalid('Asset is not supported on this track');
   if(t.kind==='video'&&!a.hasVideo||t.kind==='audio'&&!a.hasAudio)invalid('Asset has no required media stream');
-  if(isImage?c.sourceInFrame!==0:(!Number.isFinite(a.duration)||c.sourceInFrame+c.durationFrames>Math.floor(a.duration*FPS+1e-6)))invalid('Clip exceeds source duration');
+  if(isImage?c.sourceInFrame!==0:(c.sourceInFrame+c.durationFrames>(sourceFrameCount(a.duration)??0)))invalid('Clip exceeds source duration');
   for(const effect of ['transition','transitions','effects','speed','rate','opacity','blendMode'])if(c[effect]!==undefined)invalid(`Unsupported timeline effect: ${effect}`);
   duration=Math.max(duration,c.startFrame+c.durationFrames);
  }

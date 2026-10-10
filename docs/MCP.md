@@ -212,3 +212,15 @@ pnpm test:cli
 ```
 
 The acceptance tests launch the official SDK `Client` with `StdioClientTransport`, perform real initialize/list/call exchanges, and compare state against the same HTTP backend. Coverage includes strict schema parity, CLI/MCP/HTTP visibility, mock generation, exact replay, lost-response recovery, conflict handling, bounded watch/SIGINT without cancellation, file download, and a long-lived MCP process across desktop descriptor/token/port rotation. Tests use isolated temporary data and synthetic mock media; no live credentials or paid generations are used.
+
+### Saved source-range metadata
+
+`asset_range_get` and `asset_range_set` expose the same shared contracts as HTTP
+and CLI. Get is non-creating/read-only; set writes only local range metadata and
+its immutable receipt, with a required `requestId` and independent range
+`expectedRevision`. In/out are the fixed 30-fps editing timebase with exclusive
+out, not native/VFR source frame numbers. Saving marks never edits existing
+clips. Copy the explicitly chosen saved values into a separate
+`timeline_clip_add` intent with its own timeline revision/key. See
+[SOURCE-RANGES.md](SOURCE-RANGES.md). External MCP discovery does not grant the
+built-in conversational Agent any additional tools or context.

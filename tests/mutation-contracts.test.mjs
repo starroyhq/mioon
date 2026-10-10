@@ -15,7 +15,7 @@ const inputs={
 };
 
 test('exactly six existing local schemas accept an optional stable replay key without filling defaults',()=>{
- assert.deepEqual(LOCAL_MUTATION_OPERATIONS,Object.keys(inputs));assert.ok(Object.isFrozen(LOCAL_MUTATION_OPERATIONS));
+ assert.deepEqual(LOCAL_MUTATION_OPERATIONS,[...Object.keys(inputs),'asset.range.set']);assert.ok(Object.isFrozen(LOCAL_MUTATION_OPERATIONS));
  for(const [operation,input] of Object.entries(inputs)){
   assert.deepEqual(parse(operation,input),input);
   for(const requestId of ['a'.repeat(8),randomUUID(),'b'.repeat(200)])
@@ -31,7 +31,7 @@ test('exactly six existing local schemas accept an optional stable replay key wi
 });
 
 test('local replay remains explicitly opt-in in discovery and unconditional idempotent hints remain false',()=>{
- for(const operation of LOCAL_MUTATION_OPERATIONS){
+ for(const operation of Object.keys(inputs)){
   const schema=jsonSchema(schemas[operation]);
   assert.equal(schema.properties.requestId.minLength,8);assert.equal(schema.properties.requestId.maxLength,200);
   assert.ok(!schema.required.includes('requestId'));assert.match(schema.properties.requestId.description,/Optional stable replay key/);

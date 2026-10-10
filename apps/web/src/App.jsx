@@ -21,6 +21,9 @@ import ExportHistoryList from './ExportHistoryList.jsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';
 import TimelineInspector from './TimelineInspector.jsx';
 import Preview from './Preview.jsx';
+import SourceRangeInspector from './SourceRangeInspector.jsx';
+import { useSourceRange } from './use-source-range.js';
+import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.js';
 import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, versionUrl, jobStatusText, outputReviewRequired, outputReviewMessage } from './api.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
@@ -102,7 +105,9 @@ export default function App() {
   const [nodes, setNodes] = useState([]);
   const [shotDirty, setShotDirty] = useState(false);
   const [clipDirty, setClipDirty] = useState(false);
-  const inspectorDirty = shotDirty || clipDirty;
+  const [sourceDirty, setSourceDirty] = useState(false);
+  const [sourceRangeRefresh, setSourceRangeRefresh] = useState({});
+  const inspectorDirty = shotDirty || clipDirty || sourceDirty;
   const dirtyRef = useRef(inspectorDirty); dirtyRef.current = inspectorDirty;
 
   const [showGuide, setShowGuide] = useState(false);
@@ -201,7 +206,7 @@ export default function App() {
     const captured = context();
     if ((dirtyRef.current || additionalDirty) && !await confirm(message)) return false;
     if (!isCurrent(captured)) return false;
-    if (dirtyRef.current) { dirtyRef.current = false; setShotDirty(false); setClipDirty(false); setInspectorEpoch(value => value + 1); }
+    if (dirtyRef.current) { dirtyRef.current = false; setShotDirty(false); setClipDirty(false); setSourceDirty(false); setInspectorEpoch(value => value + 1); }
     return true;
   }
   async function changeMode(mode) {
@@ -248,7 +253,7 @@ export default function App() {
     viewReady.current = false;
     setPreferenceStatus({ phase: 'loading', pending: false });
     setPending(pendingForProject(id)); setShowProjects(false); setData(emptyData); dataRef.current = emptyData; setNodes([]); setLoading(true); dragging.current = false;
-    setShotDirty(false); setClipDirty(false); setInspectorEpoch(value => value + 1); setShowJobs(false); setShowExports(false); setComparisonId(null); setPreviewAsset(null); setRealConfirm(null); setToast(null); setMobilePanel('canvas');
+    setShotDirty(false); setClipDirty(false); setSourceDirty(false); setInspectorEpoch(value => value + 1); setShowJobs(false); setShowExports(false); setComparisonId(null); setPreviewAsset(null); setRealConfirm(null); setToast(null); setMobilePanel('canvas');
     const url = new URL(window.location.href); url.searchParams.set('project', id);
     if (!fromHistory) window.history[initial ? 'replaceState' : 'pushState']({ projectId: id }, '', url);
     try { localStorage.setItem('mioon.project', id); } catch { /* Session view still works without storage. */ }
@@ -342,6 +347,10 @@ export default function App() {
       const result = await rpc(operation, input);
       invalidateHistory();
       if (mutation) validateMutationResponse(stored, result);
+      if (replay && operation === 'asset.range.set' && currentProject.current === projectId) {
+        const assetId = stored.input.assetId;
+        setSourceRangeRefresh(value => ({ ...value, [`${projectId}:${assetId}`]: (value[`${projectId}:${assetId}`] || 0) + 1 }));
+      }
       if (durable) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
       if (currentProject.current === projectId) await refresh(projectId);
       // A still-mounted inspector may finish a save after its preview changes.
@@ -560,7 +569,7 @@ export default function App() {
     return run('timeline:mutation', operation, { projectId: currentProject.current, expectedRevision: expectedRevision ?? dataRef.current.timeline.revision, requestId: requestId(), ...input }, undefined, options);
   }
   async function selectClip(id, showPreview = true) {
-    if ((id !== selectedClipId || workspaceMode !== 'editing') && !await guardNavigation('当前面板有未保存修改。放弃修改并切换片段？')) return;
+    if ((id !== selectedClipId || quickAssetId || workspaceMode !== 'editing') && !await guardNavigation('当前面板有未保存修改。放弃修改并切换片段？')) return;
     const clip = dataRef.current.timeline?.clips.find(c => c.id === id); if (!clip) return;
     navigationEpoch.current++;
     updateView('editing', { selectedClipId: id, quickAssetId: null, playhead: clip.startFrame, ...(showPreview ? { previewKind: 'source' } : {}) });
@@ -617,7 +626,28 @@ export default function App() {
     const result = await run(`timeline:render:${purpose}`, 'timeline.render', { projectId: currentProject.current, expectedRevision: dataRef.current.timeline.revision, requestId: requestId(), purpose });
     if (result) { if (purpose === 'preview') { updateView('activeMode', 'editing'); setPreviewKind('timeline'); } else setShowExports(true); notify(purpose === 'preview' ? '时间线正在渲染；完成后会自动显示可播放的合成预览。' : '时间线导出已开始，使用当前编排的固定快照。'); }
   }
-  function previewSource(asset) { if (viewRef.current.activeMode === 'canvas') { setPreviewAsset(asset); return; } navigationEpoch.current++; updateView('editing', { quickAssetId: asset.id, previewKind: 'source' }); }
+  async function previewSource(asset) {
+    if (viewRef.current.activeMode === 'canvas') { setPreviewAsset(asset); return; }
+    const owner = context();
+    if (viewRef.current.editing.quickAssetId !== asset.id && !await guardNavigation('当前面板有未保存修改。放弃修改并查看另一个源素材？')) return;
+    if (!isCurrent(owner) || !dataRef.current.assets.some(item => item.id === asset.id && item.projectId === owner.projectId)) return;
+    navigationEpoch.current++;
+    updateView('editing', { quickAssetId: asset.id, selectedClipId: null, previewKind: 'source' });
+  }
+  async function addSavedSourceRange(snapshot) {
+    const captured = context(), panelChoice = panelIntent.current;
+    if (!snapshot || snapshot.scope !== sourceRangeScope || snapshot.projectId !== captured.projectId || !sameSourceSnapshot(snapshot, sourceRanges.controller.snapshot())) return;
+    const state = dataRef.current;
+    const plan = sourceRangeAddPlan({ snapshot, asset: state.assets.find(asset => asset.id === snapshot.assetId), timeline: state.timeline,
+      blocked: isBusy('timeline:mutation') || isBusy('canvas:mutation') || pendingForProject(captured.projectId).some(entry => entry.operation === 'asset.range.set' || entry.operation.startsWith('timeline.')) });
+    if (!plan.valid) { notify(plan.reason, 'warning'); return; }
+    // Capture exact primitives before dispatch. Saving a different source range
+    // later cannot change this request, its retry receipt, or existing clips.
+    const result = await mutateTimeline('timeline.clip.add', { ...plan.input }, plan.expectedRevision);
+    if (!result || !isCurrent(captured)) return;
+    if (panelIntent.current === panelChoice) setPanelOpen('timeline', true, 'editing');
+    notify('已保存范围已作为固定素材片段加入时间线。');
+  }
   function canvasDrop(event) {
     const assetId = event.dataTransfer.getData(ASSET_DRAG);
     if (!assetId) return;
@@ -631,6 +661,17 @@ export default function App() {
   const chosenVersion = data.versions.find(v => v.id === chosenShot?.selectedVersionId);
   const sourceAsset = data.assets.find(a => a.id === (quickAssetId || chosenClip?.assetId));
   const clipSource = chosenClip && sourceForAsset(data, chosenClip.assetId);
+  const rangeAsset = workspaceMode === 'editing' && quickAssetId ? sourceAsset : null;
+  const rangeSelectionKey = `${currentProject.current}:${projectEpoch.current}:${workspaceMode}:${quickAssetId || ''}:${inspectorEpoch}`;
+  const rangeSelectionEpoch = useRef({ key: null, serial: 0 });
+  if (rangeSelectionEpoch.current.key !== rangeSelectionKey) rangeSelectionEpoch.current = { key: rangeSelectionKey, serial: rangeSelectionEpoch.current.serial + 1 };
+  const sourceRangeScope = `${rangeSelectionKey}:${rangeSelectionEpoch.current.serial}`;
+  const sourceRanges = useSourceRange({ scope: sourceRangeScope, projectId: data.project?.id, asset: rangeAsset,
+    read: input => rpc('asset.range.get', input),
+    save: input => run(`source-range:${input.assetId}`, 'asset.range.set', input, '源范围已保存，已有片段保持独立。', { returnAfterNavigation: true }),
+    refreshGeneration: sourceRangeRefresh[`${data.project?.id}:${rangeAsset?.id}`] || 0, onDirtyChange: setSourceDirty });
+  const sourceRangeBlocked = !online || loading || Boolean(busy['canvas:mutation'] || timelineBusy || pending.some(entry => isMutationOperation(entry.operation)));
+
   const timelineJobs = [...data.exports].filter(e => e.mode === 'timeline').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const previewJob = timelineJobs.find(e => ['succeeded','completed','ready'].includes(e.status));
   const latestRender = timelineJobs[0];
@@ -667,14 +708,14 @@ export default function App() {
       {data.project && !nodes.length && !loading && <div className="canvas-empty"><div className="empty-canvas-symbol"><Icon name="film" size={35} /><span className="small-plus">+</span></div><div className="eyebrow">A BLANK CANVAS, A NEW PERSPECTIVE</div><h1>给故事一个开场。</h1><p>从单个镜头开始，或先搭好三幕的故事结构。</p><div className="empty-actions"><Button variant="ghost" className="button primary" onClick={addShot}><Icon name="plus" size={16} />创建镜头</Button><Button variant="ghost" className="button" data-testid="create-three-shots" disabled={busy.structure} onClick={addStructure}><Icon name="layers" size={16} />创建三镜头结构</Button></div></div>}
       {loading && <div className="canvas-loading"><span className="spinner" />正在打开项目…</div>}
       <div className="canvas-controls"><WorkbenchTooltip content="缩小画布"><Button variant="ghost" className="icon-button" aria-label="缩小" onClick={() => flow.zoomOut({ duration: 150 })}><Icon name="minus" size={16} /></Button></WorkbenchTooltip><span>{zoom}%</span><WorkbenchTooltip content="放大画布"><Button variant="ghost" className="icon-button" aria-label="放大" onClick={() => flow.zoomIn({ duration: 150 })}><Icon name="plus" size={16} /></Button></WorkbenchTooltip><i /><WorkbenchTooltip content="适应画布 · 保留节点位置"><Button variant="ghost" className="icon-button" aria-label="适应画布" data-testid="fit-canvas" onClick={() => flow.fitView({ padding: 0.18, duration: 350, maxZoom: 1 })}><Icon name="zoom" size={16} /></Button></WorkbenchTooltip><Button variant="ghost" className={`icon-button ${miniMap ? 'active' : ''}`} aria-label="显示缩略地图" aria-pressed={miniMap} onClick={() => setMiniMap(!miniMap)}><Icon name="grid" size={16} /></Button></div><div className="canvas-hint"><Icon name="link" size={12} />双击媒体放大查看 · 拖动画布平移</div>
-      </div> : <div className="preview-tab-panel"><Preview key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={kind => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob} pendingJob={latestRender} playhead={playhead} onSeek={setPlayhead} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} /></div>}</div>
+      </div> : <div className="preview-tab-panel"><Preview key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={kind => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob} pendingJob={latestRender} playhead={playhead} onSeek={setPlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame, scope) => sourceRanges.controller.position(frame, scope)} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} /></div>}</div>
     {workspaceMode === 'canvas' && <Collapsible open={sequenceOpen} onOpenChange={setSequenceOpen} className={`storyboard ${sequenceOpen ? '' : 'sequence-collapsed'}`} render={<section aria-label="分镜顺序" />}><header><div><Icon name="film" size={16} /><h2>分镜 · 故事顺序</h2><span className="storyboard-summary">{sortedShots.length} 个镜头<span>·</span>{sortedShots.reduce((sum, s) => sum + Number(data.versions.find(v => v.id === s.selectedVersionId)?.snapshot?.duration || s.duration), 0)} 秒</span></div><span className="order-hint"><Icon name="grip" size={13} />拖动排序 · 独立于时间线</span><Button variant="ghost" className="text-button" onClick={addShot}><Icon name="plus" size={14} />添加</Button><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={sequenceOpen ? '收起分镜' : '展开分镜'} />}><Icon name={sequenceOpen ? 'minus' : 'plus'} size={14} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="storyboard-track" data-testid="storyboard">{sortedShots.map((shot, index) => { const v = data.versions.find(v => v.id === shot.selectedVersionId); const a = data.assets.find(a => a.id === shot.referenceAssetIds?.[0]); return <div key={shot.id} className={`storyboard-shot ${selectedId === shot.id ? 'selected' : ''} ${sequenceDrag === shot.id ? 'dragging' : ''}`} data-testid={`storyboard-shot-${shot.id}`} draggable={!busy.reorder} onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', shot.id); if (v?.assetId) e.dataTransfer.setData(ASSET_DRAG, v.assetId); e.dataTransfer.effectAllowed = 'copyMove'; setSequenceDrag(shot.id); }} onDragEnd={() => setSequenceDrag(null)} onDragOver={e => { if (sequenceDrag) e.preventDefault(); }} onDrop={e => { if (sequenceDrag) { e.preventDefault(); reorder(sequenceDrag, index); setSequenceDrag(null); } }}><Button variant="ghost" className="storyboard-preview" onClick={async () => { if (!await inspect(shot.id)) return; flow.fitView({ nodes: [{ id: shot.id }], duration: 250, maxZoom: 1 }); }} aria-label={`选择分镜 ${index + 1} ${shot.title}`}><Media version={v} asset={a} /><span className="storyboard-index">{String(index + 1).padStart(2, '0')}</span><span className="storyboard-duration">{v?.snapshot?.duration || shot.duration}s</span>{v && <span className="storyboard-version">V{v.number}</span>}</Button><div className="storyboard-shot-meta"><span title={shot.title}>{shot.title}</span><div><Button variant="ghost" aria-label={`将 ${shot.title} 前移`} disabled={index === 0 || busy.reorder} onClick={() => reorder(shot.id, index - 1)}><Icon name="left" size={11} /></Button><Button variant="ghost" aria-label={`将 ${shot.title} 后移`} disabled={index === sortedShots.length - 1 || busy.reorder} onClick={() => reorder(shot.id, index + 1)}><Icon name="arrow" size={11} /></Button></div></div></div>; })}{!sortedShots.length ? <div className="storyboard-empty"><Icon name="film" size={22} /><span>镜头会出现在这里。画布负责探索，分镜板负责叙事。</span></div> : <Button variant="ghost" className="storyboard-add" aria-label="添加下一个镜头" onClick={addShot}><Icon name="plus" size={22} /><span>下一幕</span></Button>}</CollapsibleContent></Collapsible>}
     </section></PanelBoundary>
     {inspectorCollapsed && <PanelRecall name="inspector" label={rightDockTab === 'agent' ? 'Agent' : '属性'} icon="settings" onClick={() => setPanelOpen('inspector', true)} />}
     <PanelBoundary name="inspector" visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
     <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label="属性与 Agent" />}><header className="inspector-region-heading"><Tabs value={rightDockTab} onValueChange={value => { if (['properties', 'agent'].includes(value)) setRightDockTab(value); }} className="right-dock-tabs"><TabsList aria-label="右侧工作区" className="segmented"><TabsTrigger id="right-dock-properties-tab" value="properties" data-testid="right-dock-tab-properties" aria-controls="right-dock-properties">属性</TabsTrigger><TabsTrigger id="right-dock-agent-tab" value="agent" data-testid="right-dock-tab-agent" aria-controls="right-dock-agent"><Icon name="sparkle" size={12} />Agent</TabsTrigger></TabsList></Tabs><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起右侧面板" title="收起右侧面板" data-testid="toggle-inspector" />}><Icon name="minus" size={16} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy="right-dock-properties-tab" visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]">{workspaceMode === 'canvas' ? <div className="inspector-container">
     <Inspector key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={(id, nextTab) => inspect(id, nextTab, null, { reveal: true })} onAddVersion={assetId => addTimelineAsset(assetId)} />
-    </div> : chosenClip ? <TimelineInspector key={`${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`} onReturnToSource={clipSource ? () => returnToSource(chosenClip.assetId) : undefined} sourceDescription={clipSource?.version ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>片段属性</span></header><div className="inspector-empty"><h3>选择时间线片段</h3><p>在这里调整起止帧、源入点、画面位置和音量。</p></div></aside>}</AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentWorkspace projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} /></AgentDockPane></CollapsibleContent></Collapsible>
+    </div> : quickAssetId && sourceAsset ? <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange} /> : chosenClip ? <TimelineInspector key={`${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`} onReturnToSource={clipSource ? () => returnToSource(chosenClip.assetId) : undefined} sourceDescription={clipSource?.version ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>片段属性</span></header><div className="inspector-empty"><h3>选择时间线片段</h3><p>在这里调整起止帧、源入点、画面位置和音量。</p></div></aside>}</AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentWorkspace projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} /></AgentDockPane></CollapsibleContent></Collapsible>
     {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>
     {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={panelVisible('timeline')} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline key={data.project.id} viewState={view.editing} onViewStateChange={patch => { if (data.project?.id === currentProject.current && viewRef.current.activeMode === 'editing') updateView('editing', patch); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} splitState={splitState} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={selectedClipId} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={() => setPanelOpen('timeline', false)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{timelineCollapsed && <PanelRecall name="timeline" label="时间线" icon="layers" onClick={() => setPanelOpen('timeline', true)} />}</>}
     </div>

@@ -120,3 +120,12 @@ Sources checked 2026-10-09. They inform workflow decisions, not claims of featur
 
 Stars are approximate observations, not a maturity or security guarantee. Direct code reuse,
 dependencies and distribution licenses require a version-specific review before integration.
+
+## Selection delivery checkpoint (2026-10-10)
+
+The first bounded selection increment is saved per-asset video/audio source
+ranges, an independent range revision, and explicit copying of the confirmed
+range into a new timeline clip. Verification and limitations are tracked in
+[SOURCE-RANGES.md](SOURCE-RANGES.md). The broader selection/editing group above
+remains open; one saved range is not a favorites/tags, proxy, waveform, or
+native-timebase implementation.

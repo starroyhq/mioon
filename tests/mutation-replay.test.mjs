@@ -7,7 +7,7 @@ import path from 'node:path';
 import {openStore} from '../packages/business/src/db.mjs';
 import {createServices,canonical} from '../packages/business/src/services.mjs';
 import {createMutationReplay} from '../packages/business/src/mutation-replay.mjs';
-import {AppError,LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
+import {AppError} from '@mioon/contracts';
 
 async function fixture(t) {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-mutation-'));
@@ -37,6 +37,9 @@ function capture(f,omit=[]) {
 }
 const journal=f=>f.store.db.prepare('SELECT * FROM mutation_requests ORDER BY requestId').all();
 const changes=f=>f.store.db.prepare('SELECT total_changes() AS n').get().n;
+// These fixtures deliberately characterize the six legacy optional-key operations.
+// The required-key source-range extension has its own replay/collision matrix.
+const LEGACY_OPERATIONS=['shot.create','shot.update','shot.reorder','node.create','node.update','version.select'];
 const key=()=>randomUUID();
 const conflict=error=>error.code==='IDEMPOTENCY_CONFLICT'&&error.status===409&&!Object.hasOwn(error.details,'mutationOutcome');
 function corrupt(f,table,id,patch={},columns={}) {
@@ -61,7 +64,7 @@ async function advance(f,operation,response) {
  else await f.call('shot.update',{shotId:response.id,expectedRevision:response.revision,patch:{prompt:'A later edit'}});
 }
 
-for(const operation of LOCAL_MUTATION_OPERATIONS)test(`${operation}: immutable exact response replays before current revision checks without writes, including restart`,async t=>{
+for(const operation of LEGACY_OPERATIONS)test(`${operation}: immutable exact response replays before current revision checks without writes, including restart`,async t=>{
  const f=await fixture(t),input=await inputFor(f,operation),response=await f.call(operation,input);
  assert.ok(!Object.hasOwn(response,'requestId'));
  const row=journal(f)[0];assert.equal(row.operation,operation);assert.equal(row.projectId,f.project.id);
@@ -74,7 +77,7 @@ for(const operation of LOCAL_MUTATION_OPERATIONS)test(`${operation}: immutable e
  if(operation.endsWith('create'))assert.equal(f.store.list(operation.startsWith('node')?'nodes':'shots',f.project.id).length,1);
 });
 
-for(const operation of LOCAL_MUTATION_OPERATIONS)test(`${operation}: journal insertion failure rolls the business mutation back atomically`,async t=>{
+for(const operation of LEGACY_OPERATIONS)test(`${operation}: journal insertion failure rolls the business mutation back atomically`,async t=>{
  const f=await fixture(t),input=await inputFor(f,operation),before=capture(f);
  f.store.db.exec("CREATE TRIGGER reject_mutation_receipt BEFORE INSERT ON mutation_requests BEGIN SELECT RAISE(ABORT,'injected journal failure');END;");
  await assert.rejects(f.call(operation,input),/injected journal failure/);

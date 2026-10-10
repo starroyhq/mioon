@@ -254,6 +254,39 @@ export function openStore(root,{lock=true}={}){
  BEGIN SELECT RAISE(ABORT,'accepted shot edit target is immutable');END;
  INSERT OR IGNORE INTO schema_version VALUES(10);
  COMMIT;`);
+ // Source ranges are independent metadata. Keep the original six-operation
+ // journal and every retained response byte intact; new receipts use a narrow
+ // companion, with one global request-ID namespace enforced in both directions.
+ db.exec(`BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS asset_ranges(
+ assetId TEXT PRIMARY KEY REFERENCES assets(id),projectId TEXT NOT NULL REFERENCES projects(id),
+ revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),
+ inFrame INTEGER NOT NULL CHECK(typeof(inFrame)='integer' AND inFrame BETWEEN 0 AND 9007199254740991),
+ outFrame INTEGER NOT NULL CHECK(typeof(outFrame)='integer' AND outFrame>inFrame AND outFrame<=9007199254740991));
+ CREATE INDEX IF NOT EXISTS asset_ranges_project ON asset_ranges(projectId,assetId);
+ CREATE TRIGGER IF NOT EXISTS immutable_asset_range_identity BEFORE UPDATE ON asset_ranges
+ WHEN NEW.assetId IS NOT OLD.assetId OR NEW.projectId IS NOT OLD.projectId
+ BEGIN SELECT RAISE(ABORT,'source range identity is immutable');END;
+ CREATE TABLE IF NOT EXISTS asset_range_requests(
+ requestId TEXT PRIMARY KEY,operation TEXT NOT NULL CHECK(operation='asset.range.set'),
+ projectId TEXT NOT NULL REFERENCES projects(id),
+ canonicalInput TEXT NOT NULL CHECK(json_valid(canonicalInput)),
+ response TEXT NOT NULL CHECK(json_valid(response)));
+ CREATE TRIGGER IF NOT EXISTS reject_asset_range_request_replacement BEFORE INSERT ON asset_range_requests
+ WHEN EXISTS(SELECT 1 FROM asset_range_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'source range request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS immutable_asset_range_requests BEFORE UPDATE ON asset_range_requests
+ BEGIN SELECT RAISE(ABORT,'source range request responses are immutable');END;
+ CREATE TRIGGER IF NOT EXISTS retain_asset_range_requests BEFORE DELETE ON asset_range_requests
+ BEGIN SELECT RAISE(ABORT,'source range request responses must be retained');END;
+ CREATE TRIGGER IF NOT EXISTS reject_asset_range_cross_request BEFORE INSERT ON asset_range_requests
+ WHEN EXISTS(SELECT 1 FROM mutation_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'mutation request ID is already retained');END;
+ CREATE TRIGGER IF NOT EXISTS reject_mutation_cross_range_request BEFORE INSERT ON mutation_requests
+ WHEN EXISTS(SELECT 1 FROM asset_range_requests WHERE requestId=NEW.requestId)
+ BEGIN SELECT RAISE(ABORT,'mutation request ID is already retained');END;
+ INSERT OR IGNORE INTO schema_version VALUES(11);
+ COMMIT;`);
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

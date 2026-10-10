@@ -1,10 +1,12 @@
 import {z} from 'zod';
 import {inspectionSchemas} from './inspection.mjs';
+import {sourceRangeSchemas} from './source-range.mjs';
 import {assertOperationEffectCoverage} from './operation-effects.mjs';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.mjs';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.mjs';
 export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.mjs';
 export {LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse} from './local-mutations.mjs';
+export {SOURCE_RANGE_FPS, sourceFrameCount, isSourceRangeResponse, sourceRangeSchemas} from './source-range.mjs';
 const id=z.string().uuid(), key=z.string().min(8).max(200), position=z.object({x:z.number().finite(),y:z.number().finite()}).strict();
 const mutationRequestId=key.optional().describe('Optional stable replay key (8–200 characters). Reuse the exact operation and caller-supplied input to recover the original response, even after later revisions. Changed reuse conflicts; without a key legacy mutation semantics apply.');
 const params=z.object({scenario:z.enum(['success','failure','delay','timeout','unknown','reject','download_fail_once','rejected_before_accept','accepted_then_response_lost','poll_timeout_then_recover','terminal_failure']).optional(),delayMs:z.number().int().min(0).max(120000).optional(),seed:z.number().int().optional()}).strict();
@@ -17,6 +19,7 @@ const timelineMutation={projectId:id,expectedRevision:z.number().int().positive(
 const clipFields={trackId:id,name:z.string().min(1).max(200),startFrame:frame,durationFrames,sourceInFrame:sourceFrame,rect,gain:z.number().finite().min(0).max(2)};
 export const schemas={
 ...inspectionSchemas,
+...sourceRangeSchemas,
 'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional()}).strict(),
 'project.list':z.object({}).strict(),
 'project.get':z.object({projectId:id}).strict(),
@@ -61,6 +64,8 @@ assertOperationEffectCoverage(schemas);
 export const descriptions={
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
+ 'asset.range.get':'只读查询已有视频或音频素材的独立源范围；未保存时返回 revision 0 和 range null，不创建记录；使用30fps时间线时基，非原生/VFR逐帧精度',
+ 'asset.range.set':'按独立范围版本保存素材入点和排他出点；至少1帧，可超过时间线18000帧上限；必须使用稳定requestId精确重放，不修改素材、版本或时间线',
  'project.inspect':'只读检查指定项目的有界安全元数据；不创建时间线，不返回路径、URL或媒体',
  'asset.inspect':'分页只读检查指定项目的安全素材元数据；默认10条、最多25条，不读取媒体',
  'shot.inspect':'分页只读检查指定项目的安全镜头元数据；默认10条、最多25条，提示词最多返回1000UTF-8字节并标明截断，不返回媒体',

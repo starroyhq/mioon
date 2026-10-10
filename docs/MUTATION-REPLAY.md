@@ -126,3 +126,17 @@ checks only, with no application changes after the final builds.
 No live providers or real credentials were used. Linux evidence does not certify
 native macOS/Windows. Independent review and a release commit remain separate
 from this local acceptance record.
+
+## Additive source-range extension (2026-10-10)
+
+The subsequent source-range increment adds `asset.range.set` as a seventh local
+operation with a **required**, rather than optional, request key. The original
+six schemas/responses and keyless behavior above stay unchanged. Schema v11
+adds a single-purpose `asset_range_requests` companion while retaining every
+original `mutation_requests` row and trigger. All seven operations use the same
+helper and check both tables inside one synchronous write transaction; duplicate
+presence or wrong operation/table placement fails closed. This shared key space
+is not a workspace-wide deduplication namespace: existing timeline, reference,
+generation and export journals keep their previous scopes. See
+[SOURCE-RANGES.md](SOURCE-RANGES.md) for independent range revisions and client
+recovery constraints. No built-in model tool authority is added.

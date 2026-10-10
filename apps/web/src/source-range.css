@@ -1,0 +1,9 @@
+.source-range-form { display: flex; flex-direction: column; gap: 10px; overflow: visible; }
+.source-range-name { overflow-wrap: anywhere; }
+.source-range-status { color: var(--text-secondary); font-size: 12px; }
+.source-range-position { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.source-range-position span { color: var(--text-secondary); }
+.source-range-step { display: flex; gap: 8px; }
+.source-range-step > * { flex: 1; }
+.source-range-actions { display: grid; gap: 8px; margin-top: 6px; }
+.source-range-recovery { opacity: .8; }

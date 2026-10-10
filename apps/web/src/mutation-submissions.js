@@ -7,9 +7,10 @@ const canonical = value => JSON.stringify(value, (_, item) => item && typeof ite
 
 export function assertMutationOwner(entry, snapshot) {
   const projectId = entry.projectId;
-  const target = entry.input.shotId || entry.input.nodeId;
-  const records = entry.input.nodeId ? snapshot?.nodes : snapshot?.shots;
-  if (!projectId || snapshot?.project?.id !== projectId ||
+  const sourceRange = entry.operation === 'asset.range.set';
+  const target = sourceRange ? entry.input.assetId : entry.input.shotId || entry.input.nodeId;
+  const records = sourceRange ? snapshot?.assets : entry.input.nodeId ? snapshot?.nodes : snapshot?.shots;
+  if (!projectId || snapshot?.project?.id !== projectId || (sourceRange && !target) ||
     (entry.input.projectId !== undefined && entry.input.projectId !== projectId) ||
     (target && !records?.some(record => record.id === target && record.projectId === projectId)))
     throw failure('MUTATION_PROJECT_MISMATCH', '项目或编辑目标已变化，已阻止旧面板提交。请在当前项目重新选择目标。');

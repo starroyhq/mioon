@@ -29,6 +29,8 @@ export const operationEffects = Object.freeze({
   'project.list': define({...read,notes:'Reads existing project records only.'}),
   'project.get': define({...localAdd,idempotent:true,notes:'Legacy full-project read may create the default empty timeline. Response shape and lazy initialization are preserved.'}),
   'asset.import': define({...localAdd,fileWrite:true,localProcess:true,notes:'Writes supplied bytes to a new managed file, invokes local ffprobe, and adds an asset. Failed decoding removes its new file.'}),
+  'asset.range.get': define({...read,notes:'Reads the independent range of an existing owned video/audio asset; absence returns revision 0 and range null without creating any row or timeline. Uses the 30fps timeline timebase, not native/VFR frame indexes.'}),
+  'asset.range.set': define({...replayEdit,notes:'Saves only independent source-range metadata under its own revision. Requires a stable requestId; exact retries return the immutable original response. Does not change assets, media, versions or timelines, run media processes, or contact providers.'}),
   'asset.list': define({...read,notes:'Reads existing asset records, including legacy media URLs; does not read media bytes.'}),
   'shot.create': define({...localAdd,notes:'Adds a shot and advances project revision; each successful keyless call creates a new ID.'+optionalReplay}),
   'shot.update': define({...localEdit,notes:'Replaces requested shot fields under revision checks; may remove previous text or reference choices.'+optionalReplay}),
