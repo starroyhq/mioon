@@ -23,6 +23,8 @@ pnpm desktop
 
 桌面版把 Electron 内置的 Node 用于独立业务进程；渲染器禁用 Node 并启用 sandbox/contextIsolation。初次启动会让你选择本机 FFmpeg 和 ffprobe 可执行文件，也可用 MIOON_FFMPEG_PATH、MIOON_FFPROBE_PATH 提供绝对路径。它们是明确的外部运行要求，并没有捆绑进安装包。正式版 ID 为 `app.starroy.mioon`，开发版为 `app.starroy.mioon.dev`；源码启动默认开发版，两个渠道使用独立的 userData 路径，初次启动自动登录本地服务。详见 [桌面运行和数据迁移](docs/DESKTOP.md)。
 
+首次无密钥试用按[十步工作区指南](docs/WORKSPACE-GUIDE.zh-CN.md)完成导入、模拟版本、剪辑与真实 MP4 导出。Mac 源码启动见 [Mac 试用指南](docs/MAC-SOURCE-TRIAL.zh-CN.md)与[原生检查表](docs/MAC-TRIAL-CHECKLIST.zh-CN.md)；当前尚无已验证的 Mac 安装包，历史 V3 Linux 二进制不代表本次源码。
+
 继续使用浏览器入口：
 
 ```sh
@@ -135,7 +137,7 @@ pnpm test:timeline
 pnpm test:browser:timeline
 ```
 
-`pnpm test` 启动隔离的后端进程并做真实 HTTP、真实 MCP SDK、SIGKILL/重启、并发幂等、冲突、不可变版本和导出验证；供应商测试使用注入 HTTP，不调用真实供应商。浏览器测试实际打开运行中的页面，并保存操作与截图。V4 验收见 `docs/ACCEPTANCE-V4.md`；V3 历史桌面打包证据见 `docs/ACCEPTANCE-V3.md`，更早记录保留在 `docs/ACCEPTANCE.md`。
+`pnpm test` 启动隔离的后端进程并做真实 HTTP、真实 MCP SDK、SIGKILL/重启、并发幂等、冲突、不可变版本和导出验证；供应商测试使用注入 HTTP，不调用真实供应商。已有 Python 浏览器套件保留为历史验收，部分选择器与任务恢复路径仍待刷新，不代表当前全部通过。新的 `python3 tests/browser_first_trial.py --repo "$PWD" --out "$PWD/evidence/first-trial-唯一运行名"`（或 `pnpm test:browser:first-trial` 加同样参数）是可供本机执行的独立试用脚本；本次只做静态核对，未运行该脚本。当前 Linux 原生 CUA 全流程与实际另存为已独立验收，见[首次试用验收](docs/ACCEPTANCE-FIRST-TRIAL.md)；不代表 Mac 或 Windows 原生通过，也不能用脚本存在替代验收。V4 验收见 `docs/ACCEPTANCE-V4.md`；V3 历史桌面打包证据见 `docs/ACCEPTANCE-V3.md`，更早记录保留在 `docs/ACCEPTANCE.md`。
 
 ## 数据与恢复
 
@@ -148,6 +150,8 @@ Web入口的业务数据在 `MIOON_DATA_DIR`（默认 `data/`）：SQLite WAL、
 - `docs/API.md`：认证、操作、错误及客户端示例
 - `docs/MCP.md`：本地 MCP 配置和协议验证
 - `docs/PROVIDERS.md`：真实适配器、官方依据和扩展接口
+- [供应商试用准备](docs/PROVIDER-TRIAL-READINESS.zh-CN.md)：模型/区域时效与文档、离线、真实验证的区别
+- [未来真实核验确认表](docs/LIVE-VERIFICATION-APPROVAL.zh-CN.md)：素材、次数、报价与费用边界；该表本身不授权调用
 - `docs/CONTRACT.md`：完整字段和业务不变量
 
 真实生成默认禁用。准备一次联调需确认供应商/模型、授权图片范围、次数和金额上限，并在本机后端安全配置。仅实现适配器和通过离线测试，不代表真实生成已验证；A9明确待真实验证。

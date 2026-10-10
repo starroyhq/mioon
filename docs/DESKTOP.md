@@ -20,6 +20,8 @@ Electron 主进程
 
 ## 从源码启动
 
+Mac 首次源码试用见 [Mac 源码试用指南](MAC-SOURCE-TRIAL.zh-CN.md) 与 [试用记录表](MAC-TRIAL-CHECKLIST.zh-CN.md)；Mac 原生行为仍未验证。
+
 需要 Node 24、pnpm 11.25.0 和可信来源安装的 FFmpeg / ffprobe。Node 与 pnpm 是构建工具要求，发布桌面包的后端不依赖它们。
 
 ```sh

@@ -16,6 +16,7 @@
     "mcp": "node apps/mcp/src/index.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:browser": "python3 tests/browser_flow.py",
+    "test:browser:first-trial": "python3 tests/browser_first_trial.py",
     "demo": "node scripts/demo.mjs",
     "doctor": "node scripts/doctor.mjs",
     "check:local": "node scripts/tooling.mjs doctor",
