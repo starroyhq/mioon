@@ -39,6 +39,8 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm deskt
 
 这两个路径必须指向可执行文件，并通过 `-version` 检查；FFmpeg 还必须提供 `libx264` 和 `aac` 编码器。只有路径会写入 `desktop-config.json`。FFmpeg 是明确的外部依赖，没有捆绑；安装来源、GPL/LGPL 组合及其许可义务由实际采用的 FFmpeg 构建决定。Electron 自带的 `libffmpeg` 仅服务于 Chromium 媒体播放，不代替这里的 FFmpeg CLI。
 
+媒体子进程的最小环境、输出和探测限制、退出时限与恢复语义，见 [MEDIA-RUNTIME.md](MEDIA-RUNTIME.md)。停止本地等待不表示供应商已取消或费用已退还；退出未获确认时不会自动启动第二个本地服务。
+
 ## V4.1 应用身份与构建渠道
 
 - 正式版 application / bundle ID：`app.starroy.mioon`
@@ -95,9 +97,9 @@ Loopback token 与 OS 账户权限共同构成本地单用户信任边界。本�
 
 主进程等待 utilityProcess 就绪、验证它返回的 loopback origin，再创建已认证窗口。启动超时或服务失败会显示本地错误，不会留下永远等待的空白窗口。正常关窗先通过一个固定、无特权的页面函数排空视图偏好的同源 HTTP 保存，最多等待 1.5 秒。失败或超时会询问“仍然退出 / 继续编辑”；选择继续编辑会保持窗口和后端运行。此函数不暴露 IPC、Electron、文件系统或令牌。随后仍执行原有未保存属性草稿确认，窗口真正关闭后才停止服务。
 
-正常停止会中断并回收本地媒体子进程、停止 worker、关闭 HTTP 与 SQLite、清理 discovery 文件。主进程同时追踪 utility 报告的媒体子进程；如果 utility 意外退出，剩余的本应用媒体进程会在恢复前被回收。超过关闭期限会终止 utility，数据库 WAL 与原有任务恢复规则仍生效。不会杀死系统上无关的 FFmpeg。
+正常停止先中断操作，再等待已持有句柄的本地媒体进程退出，随后关闭 worker、HTTP、SQLite 并清理 discovery。媒体停止尝试最多 3 秒，worker/server 最多 5 秒，utility 停止尝试最多 13 秒；未确认退出时返回明确失败，不能把发送信号当作回收成功。仍有准确句柄时应用继续等待实际退出，不承诺整个应用一定在 13 秒内关闭。utility 意外退出后，记录的数字 PID 不足以证明进程归属，因此不会据此杀进程；媒体清理不明时阻止该应用内自动替换/重启，并提供明确的“退出应用”警告。退出后的新应用生命周期无法证明旧媒体进程已结束，再次工作前可能需要用户在系统任务管理器中检查。
 
-服务崩溃时提供原生“重启本地服务/退出”选择。重启使用新端口/新令牌并重新载入同一数据目录；未保存界面状态可能丢失。渲染进程崩溃可单独重新载入，后台保持独立。已知生成任务继续查询，提交结果未知的任务先对账，不因 Electron 重启自动重发收费请求。被中断的本地时间线渲染重新排队，旧结果文件保持不可变。utility 另有 30 秒主进程心跳租约；正常退出和主进程仍存活时的 utility SIGKILL 已测试。操作系统同时强杀整个进程树可能绕过两个清理方，不能据此声称对所有系统崩溃或孤儿进程都有保证。
+服务崩溃时提供原生“重启本地服务/退出”选择。重启使用新端口/新令牌并重新载入同一数据目录；未保存界面状态可能丢失。渲染进程崩溃可单独重新载入，后台保持独立。已知生成任务继续查询，提交结果未知的任务先对账，不因 Electron 重启自动重发收费请求。被中断的本地时间线渲染重新排队，旧结果文件保持不可变。utility 另有 30 秒主进程心跳租约。历史无活动媒体的 utility 崩溃恢复与当前正常退出证据，不代表活动媒体异常退出的自动回收能力；旧的“崩溃后按 PID 杀媒体并自动恢复”验收已撤销。操作系统同时强杀整个进程树也可能绕过清理方；原生 macOS/Windows 与异常孤儿进程恢复仍需专项验收。
 
 macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开窗口，明确退出才关闭服务。此行为已写入源码，但仍需 macOS 实机验证。源代码尚未实现发布升级、签名、公证或系统密钥链凭据配置。
 
@@ -140,6 +142,8 @@ pnpm --filter @mioon/desktop package:dir:dev
 pnpm test:desktop
 MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm --filter @mioon/desktop smoke
 ```
+
+Q3 当前媒体环境/退出验收与原生限制见 [MEDIA-RUNTIME.md](MEDIA-RUNTIME.md)。以下 V4 记录属于历史基线，不能当作当前异常媒体清理能力；旧的活动渲染崩溃回收项在 smoke 报告中已改为明确 skippedChecks。
 
 单元测试覆盖 origin/导航/下载白名单、无 Node/IPC 窗口设置、cookie 属性、权限拒绝、私有 discovery、环境隔离、启动超时、异常退出、媒体子进程所有权和取消未保存退出。
 

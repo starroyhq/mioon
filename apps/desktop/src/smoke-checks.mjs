@@ -6,7 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export async function runSmoke({ app, getWindow, getSession, getReady, getBackend, restart, paths, report, output, attemptDirtyQuit }) {
-  const checks = [];
+  const checks = [], skippedChecks = [];
   const record = (name, details = {}) => checks.push({ name, ok: true, ...details });
   const evaluate = expression => getWindow().webContents.executeJavaScript(expression, true);
   const rpc = (operation, input = {}) => evaluate(`fetch('/api/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify({ operation, input })})}).then(async r=>({status:r.status,body:await r.json()}))`);
@@ -133,17 +133,11 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
       return false;
     }, 'utility-owned active FFmpeg child', 15000);
   }
-  const crashRender = await enqueue();
-  const ownedPids = await waitForLongMediaChild();
-  const crashed = new Promise(resolve => getBackend().once('exit', resolve));
-  process.kill(getReady().runtime.pid, 'SIGKILL');
-  await crashed;
-  for (const pid of ownedPids) await waitFor(() => {
-    try { process.kill(pid, 0); return false; } catch (error) { return error.code === 'ESRCH'; }
-  }, 'orphan media child cleanup', 10000);
-  await restart();
-  await waitExport(crashRender.id);
-  record('active-render-utility-crash-kills-owned-ffmpeg-and-recovers', { terminatedMediaChildren: ownedPids.length });
+  // Do not intentionally orphan a real FFmpeg process merely to exercise the
+  // retired numeric-PID cleanup assumption. Synthetic supervisor tests cover
+  // the failed/unconfirmed outcome; native ownership recovery remains a gate.
+  skippedChecks.push({ name: 'active-render-utility-crash-media-ownership-recovery',
+    reason: 'Native orphan ownership and cleanup are unverified. A stale reported PID is not safe authority to signal; automatic restart is blocked when media exit is unknown.' });
 
   const interrupted = await enqueue();
   await waitForLongMediaChild();
@@ -182,5 +176,5 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   const screenshot = path.join(path.dirname(output), 'electron-workbench.png');
   await writeFile(screenshot, (await getWindow().webContents.capturePage()).toPNG());
   await writeFile(output, JSON.stringify({ ok: true, appVersion: app.getVersion(), runtime: report.runtime,
-    ffmpeg: report.tools, checks, screenshot }, null, 2) + '\n');
+    ffmpeg: report.tools, checks, skippedChecks, screenshot }, null, 2) + '\n');
 }

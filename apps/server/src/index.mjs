@@ -13,6 +13,8 @@ import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 import {validateWorkspaceStorage} from '@mioon/business/db';
 import {readPrivateFile, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
+import {assertMediaTerminated, boundedShutdown, checkpoint} from '@mioon/business/operation-lifecycle';
+import {terminateMediaProcesses} from '@mioon/business/media-processes';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const validToken = value => {
@@ -70,14 +72,15 @@ export async function startServer({
     if (stored !== null) token = validToken(stored.trim());
   }
   const store = openStore(root);
-  let worker, server, agentSettings, chatRuntime, chatHttp;
+  const shutdown = new AbortController();
+  let worker, server, agentSettings, chatRuntime, chatHttp, services;
   try {
     if (token === undefined) {
       token = randomBytes(32).toString('hex');
       writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false});
     }
     const providers = createProviderRegistry({db: store.db, root});
-    const services = createServices(store, providers);
+    services = createServices(store, providers, {signal: shutdown.signal});
     const workspacePreferences = createWorkspacePreferences(store);
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
@@ -95,6 +98,7 @@ export async function startServer({
     };
     server = http.createServer(async (req, res) => {
       try {
+        checkpoint(shutdown.signal);
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Referrer-Policy', 'no-referrer');
         res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'");
@@ -103,6 +107,7 @@ export async function startServer({
         if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'mioon', version: '0.4.0', sqlite: store.db.prepare('select sqlite_version() v').get().v});
         if (url.pathname === '/api/login' && req.method === 'POST') {
           const input = await body(req, 4096);
+          checkpoint(shutdown.signal);
           if (!equal(input.token, token)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '访问令牌无效'}});
           res.setHeader('Set-Cookie', [`mioon_session=${token}; HttpOnly; SameSite=Strict; Path=/`, 'wb_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0']);
           return json(res, 200, {ok: true});
@@ -118,6 +123,7 @@ export async function startServer({
               let input;
               try { input = await body(req, MAX_AGENT_SETTINGS_BYTES); }
               catch (error) { return json(res, error.status === 413 ? 413 : 400, {ok: false, error: {code: 'AGENT_SETTINGS_VALIDATION', message: 'Agent 设置请求过大或 JSON 格式无效。', details: {}, retryable: false}}); }
+              checkpoint(shutdown.signal);
               return json(res, 200, {ok: true, data: sanitizeAgentSettingsResult(await agentSettings.put(input, context))});
             }
             res.setHeader('Allow', 'GET, PUT');
@@ -128,18 +134,24 @@ export async function startServer({
           }
         }
         if (await chatHttp.handle(req, res, url)) return;
+        checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {
           let projectId;
           try { projectId = decodeURIComponent(preferencesRoute[1]); }
           catch { return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '项目 ID 无效'}}); }
           if (req.method === 'GET') return json(res, 200, {ok: true, data: workspacePreferences.get(projectId)});
-          if (req.method === 'PUT') return json(res, 200, {ok: true, data: workspacePreferences.put(projectId, await body(req, MAX_WORKSPACE_PREFERENCES_BYTES))});
+          if (req.method === 'PUT') {
+            const input = await body(req, MAX_WORKSPACE_PREFERENCES_BYTES);
+            checkpoint(shutdown.signal);
+            return json(res, 200, {ok: true, data: workspacePreferences.put(projectId, input)});
+          }
           res.setHeader('Allow', 'GET, PUT');
           return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
         }
         if (url.pathname === '/api/rpc' && req.method === 'POST') {
           const input = await body(req);
+          checkpoint(shutdown.signal);
           if (typeof input.operation !== 'string') return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '缺少 operation'}});
           return json(res, 200, {ok: true, data: await services.call(input.operation, input.input || {})});
         }
@@ -186,26 +198,34 @@ export async function startServer({
       hosts.add(`${hostname}:${actualPort}`);
       origins.add(`http://${hostname}:${actualPort}`);
     }
-    worker = startWorker(store, services, providers);
+    worker = startWorker(store, services, providers, {signal: shutdown.signal});
     let closing;
     const close = () => closing ??= (async () => {
+      // Fence all async RPC/worker continuations before taking any child snapshot.
+      shutdown.abort();
       // Abort inference and close long-lived SSE BEFORE HTTP drain and SQLite.
       chatRuntime.close();
       chatHttp.close();
       const drain = new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       const forceDrain = setTimeout(() => server.closeAllConnections(), 3000);
       forceDrain.unref();
-      try { await worker.stop({interruptMedia:true}); await drain; }
+      try {
+        await boundedShutdown(Promise.all([
+          worker.stop(), services.drain(),
+          terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
+          !suppliedAgentSettings ? agentSettings?.close() : undefined,
+        ]), 'SERVER_STOP_TIMEOUT');
+      }
       finally { clearTimeout(forceDrain); }
-      if (!suppliedAgentSettings) await agentSettings?.close();
       store.close();
     })();
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root, close};
   } catch (error) {
+    shutdown.abort();
     chatRuntime?.close(); chatHttp?.close();
-    if (server?.listening) await new Promise(resolve => server.close(resolve));
-    if (worker) await worker.stop();
-    if (!suppliedAgentSettings) await agentSettings?.close();
+    const drain = server?.listening ? new Promise(resolve => server.close(resolve)) : Promise.resolve();
+    server?.closeAllConnections();
+    await boundedShutdown(Promise.all([drain, worker?.stop(), services?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }

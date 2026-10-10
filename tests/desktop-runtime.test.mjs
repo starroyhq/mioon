@@ -119,15 +119,20 @@ test('supervisor safely rejects a synchronous utility spawn failure', async () =
   await supervisor.stop();
 });
 
-test('utility crash cleanup terminates only registered active media PIDs before reporting exit', async () => {
+test('utility crash preserves unknown media ownership without killing a possibly reused PID', async () => {
   const child = fakeChild(), killed = [];
   const supervisor = new BackendSupervisor({ fork: () => child, modulePath: '/app/backend.cjs', environment: {}, killMedia: pid => killed.push(pid) });
   await supervisor.start({});
   for (const pid of [20001, 20002, -1, process.pid, child.pid]) child.emit('message', { type: 'media-process', event: 'started', pid });
   child.emit('message', { type: 'media-process', event: 'exited', pid: 20002 });
-  const result = new Promise(resolve => supervisor.once('exit', () => { assert.deepEqual(killed, [20001]); resolve(); }));
+  const result = new Promise(resolve => supervisor.once('exit', outcome => {
+    assert.deepEqual(killed, []); assert.equal(outcome.mediaExitConfirmed, false); resolve();
+  }));
   child.emit('exit', 9); await result;
-  assert.equal(supervisor.mediaPids.size, 0);
+  assert.equal(supervisor.mediaPids.size, 1);
+  assert.equal(supervisor.state, 'media-unconfirmed');
+  assert.throws(() => supervisor.start({}), { code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
+  await assert.rejects(supervisor.stop(), { code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
 });
 
 test('cancelled dirty-window quit keeps backend running and permits a later successful quit', async () => {

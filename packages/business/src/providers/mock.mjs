@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import {spawnMedia,mediaInterrupted,interruptedMediaError} from '../media-processes.mjs';
+import {throwIfMediaAborted} from '../media-processes.mjs';
+import {run} from '../media-runtime.mjs';
 import { mkdir, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -8,28 +9,29 @@ const SCENARIOS = new Set(['success', 'failure', 'delay', 'timeout', 'unknown', 
 const error = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });
 const stable = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 
-async function managedDestination(root, destination) {
+async function managedDestination(root, destination, signal) {
+  throwIfMediaAborted(signal);
   const base = await realpath(root);
+  throwIfMediaAborted(signal);
   const absolute = path.resolve(destination);
   const relative = path.relative(base, absolute);
   if (!relative || relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative)) throw error('UNSAFE_PATH', 'Output must be inside the managed data directory.');
   await mkdir(path.dirname(absolute), { recursive: true });
+  throwIfMediaAborted(signal);
   const parent = await realpath(path.dirname(absolute));
+  throwIfMediaAborted(signal);
   if (parent !== base && !parent.startsWith(`${base}${path.sep}`)) throw error('UNSAFE_PATH', 'Output directory is outside managed storage.');
   return absolute;
 }
 
-function runFfmpeg(args) {
-  return new Promise((resolve, reject) => {
-    const configured = process.env.MIOON_FFMPEG_PATH;
-    if (configured && !path.isAbsolute(configured)) return reject(error('MOCK_RENDER_FAILED', 'Configured renderer must be an absolute executable path.', { retryable: true }));
-    const child = spawnMedia(configured || 'ffmpeg', args, { shell: false, stdio: ['ignore', 'ignore', 'pipe'] }, {kind:'ffmpeg'});
-    // Never include command output or asset paths in outward-facing errors.
-    child.stderr.resume();
-    const timer = setTimeout(() => child.kill('SIGKILL'), 60_000);
-    child.once('error', () => { clearTimeout(timer); reject(error('MOCK_RENDER_FAILED', 'Could not start the simulated video renderer.', { retryable: true })); });
-    child.once('close', code => { clearTimeout(timer); mediaInterrupted(child) ? reject(interruptedMediaError()) : code === 0 ? resolve() : reject(error('MOCK_RENDER_FAILED', 'Simulated video rendering failed.', { retryable: true })); });
-  });
+async function runFfmpeg(args, signal) {
+  try { await run('ffmpeg', args, { timeout: 60_000, signal }); }
+  catch (cause) {
+    if (cause.code === 'MEDIA_CANCELLED') throw cause;
+    const message = cause.code === 'MEDIA_INVALID_CONFIGURATION' ? 'Configured renderer must be an absolute executable path.'
+      : cause.code === 'MEDIA_SPAWN_FAILED' ? 'Could not start the simulated video renderer.' : 'Simulated video rendering failed.';
+    throw error('MOCK_RENDER_FAILED', message, { retryable: true, ...(cause.terminationUnconfirmed ? { terminationUnconfirmed: true } : {}) });
+  }
 }
 
 /** A durable simulated provider ledger, intentionally independent of application jobs. */
@@ -80,6 +82,7 @@ export function createMockProvider({ db, root, now = Date.now }) {
       scenarios: [...SCENARIOS], supportsRemoteCancel: true, reconciliation: 'request-id',
     },
     async submit(snapshot, context = {}) {
+      throwIfMediaAborted(context.signal);
       validate(snapshot);
       const requestId = context.requestId;
       if (typeof requestId !== 'string' || !requestId || requestId.length > 256) throw error('INVALID_REQUEST_ID', 'A bounded request ID is required.');
@@ -121,21 +124,26 @@ export function createMockProvider({ db, root, now = Date.now }) {
       if (failure) throw failure;
       return { providerJobId: taskId };
     },
-    async poll(providerJobId) {
+    async poll(providerJobId, context = {}) {
+      throwIfMediaAborted(context.signal);
       get(providerJobId);
       db.prepare('UPDATE mock_provider_tasks SET poll_count = poll_count + 1 WHERE provider_job_id = ?').run(providerJobId);
       return statusOf(get(providerJobId));
     },
-    async reconcile(requestId) {
+    async reconcile(requestId, context = {}) {
+      throwIfMediaAborted(context.signal);
       const row = db.prepare('SELECT provider_job_id FROM mock_provider_tasks WHERE request_id = ?').get(requestId);
       return row ? { providerJobId: row.provider_job_id } : null;
     },
-    async download(providerJobId, destination) {
+    async download(providerJobId, destination, context = {}) {
+      const { signal } = context;
+      throwIfMediaAborted(signal);
       const row = get(providerJobId);
       if (statusOf(row).status !== 'succeeded') throw error('PROVIDER_NOT_READY', 'Simulated output is not available yet.', { retryable: true });
       db.prepare('UPDATE mock_provider_tasks SET download_attempts = download_attempts + 1 WHERE provider_job_id = ?').run(providerJobId);
       if (row.scenario === 'download_fail_once' && row.download_attempts === 0) throw error('DOWNLOAD_FAILED', 'Simulated first download failed. Retry download of the same provider task.', { retryable: true });
-      const output = await managedDestination(root, destination);
+      const output = await managedDestination(root, destination, signal);
+      throwIfMediaAborted(signal);
       const temporary = `${output}.${randomUUID()}.partial.mp4`;
       const snapshot = JSON.parse(row.snapshot_json);
       const hue = parseInt(row.snapshot_hash.slice(0, 4), 16) % 360;
@@ -145,12 +153,15 @@ export function createMockProvider({ db, root, now = Date.now }) {
           '-t', String(snapshot.duration), '-vf', `hue=h=${hue},drawbox=x=0:y=0:w=iw:h=74:color=black@0.85:t=fill,drawtext=text='SIMULATED MOCK':fontcolor=white:fontsize=26:x=(w-tw)/2:y=20`,
           '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '24', '-pix_fmt', 'yuv420p', '-threads', '1',
           '-metadata', 'comment=SIMULATED MOCK VIDEO - NOT AI GENERATED', '-movflags', '+faststart', temporary,
-        ]);
+        ], signal);
+        throwIfMediaAborted(signal);
         await rename(temporary, output);
+        throwIfMediaAborted(signal);
       } finally { await rm(temporary, { force: true }); }
       return { mimeType: 'video/mp4', width: 360, height: 640, duration: snapshot.duration, isMock: true };
     },
-    async cancel(providerJobId) {
+    async cancel(providerJobId, context = {}) {
+      throwIfMediaAborted(context.signal);
       const row = get(providerJobId);
       if (row.cancelled) return { cancelled: true, remoteCancelled: true, scope: 'remote' };
       // A completed provider output is kept; cancellation never deletes it.

@@ -1,15 +1,14 @@
 import path from 'node:path';
 import desktopIdentity from '../identity.cjs';
 import {providerEnvironmentKeys} from '@mioon/business';
+import { run as runMedia } from '@mioon/business/media-runtime';
+import { throwIfMediaAborted } from '@mioon/business/media-processes';
 import {validateWorkspaceStorage} from '@mioon/business/db';
 import { stat, access, realpath } from 'node:fs/promises';
 import { constants, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createPrivateTemporaryDirectory, ensurePrivateDirectory, validatePrivateDirectory, validateManagedDirectory,
   validateManagedFile, readPrivateFile, writePrivateFileAtomic, removePrivateFile } from '@mioon/contracts/private-storage';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-const exec = promisify(execFile);
 const IDENTITY_MAX_BYTES = 4096;
 const CONFIG_MAX_BYTES = 64 * 1024;
 const CONNECTION_MAX_BYTES = 16 * 1024;
@@ -158,20 +157,30 @@ export async function readToolConfig(configFile, env = process.env) {
   return { ffmpeg: env.MIOON_FFMPEG_PATH || stored.ffmpeg || '', ffprobe: env.MIOON_FFPROBE_PATH || stored.ffprobe || '' };
 }
 
-export async function validateTool(file, name) {
+export async function validateTool(file, name, { execute = runMedia, signal } = {}) {
+  throwIfMediaAborted(signal);
   if (typeof file !== 'string' || !path.isAbsolute(file)) throw new Error(`${name} 必须指定绝对路径`);
   const resolved = await realpath(file);
   if (!(await stat(resolved)).isFile()) throw new Error(`${name} 不是可执行文件`);
   await access(resolved, constants.X_OK);
-  const { stdout } = await exec(resolved, ['-version'], { timeout: 10000, maxBuffer: 1024 * 1024, windowsHide: true });
+  throwIfMediaAborted(signal);
+  // The shared runner supplies the least-privilege environment and bounded
+  // TERM/KILL/reap phases, including when a selected executable ignores TERM.
+  const stdout = await execute(resolved, ['-version'], { timeout: 10000, ...(signal ? { signal } : {}),
+    maxStdoutBytes: 1024 * 1024, maxStderrBytes: 1024 * 1024 });
+  throwIfMediaAborted(signal);
   if (!stdout.startsWith(`${name} version `)) throw new Error(`所选文件不是 ${name}`);
   return { path: resolved, version: stdout.split('\n')[0] };
 }
 
-export async function validateTools(config) {
-  const [ffmpeg, ffprobe] = await Promise.all([validateTool(config.ffmpeg, 'ffmpeg'), validateTool(config.ffprobe, 'ffprobe')]);
+export async function validateTools(config, { execute = runMedia, signal } = {}) {
+  const options = { execute, signal };
+  const [ffmpeg, ffprobe] = await Promise.all([validateTool(config.ffmpeg, 'ffmpeg', options), validateTool(config.ffprobe, 'ffprobe', options)]);
   // Export depends on these encoders; fail before accepting editing work if unavailable.
-  const { stdout } = await exec(ffmpeg.path, ['-hide_banner', '-encoders'], { timeout: 10000, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+  throwIfMediaAborted(signal);
+  const stdout = await execute(ffmpeg.path, ['-hide_banner', '-encoders'], { timeout: 10000, ...(signal ? { signal } : {}),
+    maxStdoutBytes: 4 * 1024 * 1024, maxStderrBytes: 1024 * 1024 });
+  throwIfMediaAborted(signal);
   if (!/\blibx264\b/.test(stdout) || !/\baac\b/.test(stdout)) throw new Error('FFmpeg 必须包含 libx264 和 AAC 编码器');
   return { ffmpeg: ffmpeg.path, ffprobe: ffprobe.path, versions: { ffmpeg: ffmpeg.version, ffprobe: ffprobe.version } };
 }

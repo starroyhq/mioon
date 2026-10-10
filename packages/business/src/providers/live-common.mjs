@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
+import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.mjs';
 
 export const providerError = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });
 const inside = (base, file) => file !== base && file.startsWith(`${base}${path.sep}`);
 const MAX_DOWNLOAD = 128 * 1024 * 1024;
 export const timeoutSignal = (context, milliseconds) => context?.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(milliseconds)]) : AbortSignal.timeout(milliseconds);
 
-async function boundedJson(response) {
+async function boundedJson(response, signal) {
   const limit = 1024 * 1024;
   if (Number(response.headers.get('content-length')) > limit) { await response.body?.cancel().catch(() => {}); throw new Error('oversize'); }
   if (!response.body) throw new Error('empty');
@@ -15,14 +16,20 @@ async function boundedJson(response) {
   let size = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      checkpoint(signal);
+      const { done, value } = await awaitProvider(() => reader.read(), signal);
+      checkpoint(signal);
       if (done) break;
       size += value.length;
       if (size > limit) throw new Error('oversize');
       chunks.push(Buffer.from(value));
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  } catch (cause) { await reader.cancel().catch(() => {}); throw cause; }
+  } catch (cause) {
+    const cancelled = reader.cancel().catch(() => {});
+    if (!signal?.aborted) await cancelled;
+    throw cause;
+  }
   finally { reader.releaseLock(); }
 }
 
@@ -44,6 +51,9 @@ export function liveConfiguration(env, keyName, prefix) {
 /** Never forward provider bodies, network errors, request data, or credentials. */
 export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name, isRetryableStatus = () => true }) {
   return async (endpoint, { method = 'GET', body, context = {} } = {}) => {
+    // This check is deliberately outside the fetch catch. No fetch was invoked,
+    // so only this explicit path can certify an unsubmitted POST on shutdown.
+    if (context.signal?.aborted) throw operationCancelled({beforeDispatch: method === 'POST'});
     ensureEnabled();
     let response;
     try {
@@ -62,7 +72,7 @@ export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name
       throw providerError(uncertain ? 'SUBMISSION_UNKNOWN' : `PROVIDER_HTTP_${response.status}`, uncertain ? `${name} returned an inconclusive submission response. Do not resubmit.` : `${name} request was rejected (HTTP ${response.status}).`, { uncertain, retryable: method !== 'POST' && isRetryableStatus(response.status), httpStatus: response.status });
     }
     try {
-      const data = await boundedJson(response);
+      const data = await boundedJson(response, context.signal);
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('shape');
       return data;
     } catch {
@@ -161,9 +171,11 @@ export function outputUrl(value, hosts) {
   return url;
 }
 
-async function managedDestination(root, destination) {
+async function managedDestination(root, destination, signal) {
+  checkpoint(signal);
   try {
     const base = await realpath(root), target = path.resolve(destination);
+    checkpoint(signal);
     if (!inside(base, target)) throw providerError('UNSAFE_OUTPUT_PATH', 'Output must stay inside managed storage.');
     const directory = path.dirname(target);
     // Check the nearest existing ancestor before recursive mkdir can follow an
@@ -171,16 +183,18 @@ async function managedDestination(root, destination) {
     let ancestor = directory;
     while (true) {
       let actual;
-      try { actual = await realpath(ancestor); }
+      try { actual = await realpath(ancestor); checkpoint(signal); }
       catch (cause) { if (cause.code !== 'ENOENT') throw cause; ancestor = path.dirname(ancestor); continue; }
       if (actual !== base && !inside(base, actual)) throw providerError('UNSAFE_OUTPUT_PATH', 'Output directory is outside managed storage.');
       break;
     }
-    await mkdir(directory, { recursive: true });
-    const parent = await realpath(directory);
+    checkpoint(signal);
+    await mkdir(directory, { recursive: true });checkpoint(signal);
+    const parent = await realpath(directory);checkpoint(signal);
     if (parent !== base && !inside(base, parent)) throw providerError('UNSAFE_OUTPUT_PATH', 'Output directory is outside managed storage.');
     return target;
   } catch (cause) {
+    checkpoint(signal);
     if (cause.code === 'UNSAFE_OUTPUT_PATH') throw cause;
     throw providerError('OUTPUT_UNAVAILABLE', 'The managed output directory could not be prepared.', { retryable: true });
   }
@@ -188,16 +202,21 @@ async function managedDestination(root, destination) {
 
 /** Caller chooses the exact authenticated API route, never a request-supplied URL. */
 export async function downloadMp4({ root, destination, url, fetchImpl, headers, context = {}, allowRedirect, invalidate }) {
-  const target = await managedDestination(root, destination);
+  const signal = context.signal;
+  checkpoint(signal);
+  const target = await managedDestination(root, destination, signal);
+  checkpoint(signal);
   const temporary = `${target}.${randomUUID()}.partial.mp4`;
   let response, handle, reader;
   try {
     let current = url;
     let currentHeaders = headers;
     for (let redirects = 0; ; redirects++) {
+      checkpoint(signal);
       response = await fetchImpl(current.href, { method: 'GET', ...(currentHeaders ? { headers: currentHeaders } : {}), redirect: allowRedirect ? 'manual' : 'error', signal: timeoutSignal(context, 60_000) });
+      checkpoint(signal);
       if (![301, 302, 303, 307, 308].includes(response.status)) break;
-      await response.body?.cancel().catch(() => {});
+      await response.body?.cancel().catch(() => {});checkpoint(signal);
       if (!allowRedirect || redirects >= 3) throw providerError('UNSAFE_OUTPUT_REDIRECT', 'Output redirect was not approved.');
       const next = allowRedirect(response.headers.get('location'), current);
       // Every redirect drops authentication, even an initial same-origin hop.
@@ -209,26 +228,31 @@ export async function downloadMp4({ root, destination, url, fetchImpl, headers, 
     const declaredSize = Number(response.headers.get('content-length'));
     if (declaredSize > MAX_DOWNLOAD) throw providerError('OUTPUT_TOO_LARGE', 'Output exceeds the managed download limit.');
     reader = response.body.getReader();
-    handle = await open(temporary, 'wx', 0o600);
+    checkpoint(signal);
+    handle = await open(temporary, 'wx', 0o600);checkpoint(signal);
     let total = 0, header = Buffer.alloc(0);
     while (true) {
-      const { done, value } = await reader.read();
+      checkpoint(signal);
+      const { done, value } = await awaitProvider(() => reader.read(), signal);
+      checkpoint(signal);
       if (done) break;
       total += value.length;
       if (total > MAX_DOWNLOAD) throw providerError('OUTPUT_TOO_LARGE', 'Output exceeds the managed download limit.');
       if (header.length < 12) header = Buffer.concat([header, Buffer.from(value).subarray(0, 12 - header.length)]);
-      await handle.writeFile(value);
+      await handle.writeFile(value);checkpoint(signal);
     }
     if (header.length < 12 || header.subarray(4, 8).toString() !== 'ftyp') throw providerError('INVALID_OUTPUT_MEDIA', 'Provider output is not an MP4 container.');
-    await handle.sync();
+    await handle.sync();checkpoint(signal);
     await handle.close();
     handle = undefined;
-    await rename(temporary, target);
+    checkpoint(signal);
+    await rename(temporary, target);checkpoint(signal);
     return { mimeType: 'video/mp4', sizeBytes: total, isMock: false };
   } catch (cause) {
     invalidate?.();
-    if (reader) await reader.cancel().catch(() => {});
-    else await response?.body?.cancel().catch(() => {});
+    const cancelled = reader ? reader.cancel().catch(() => {}) : response?.body?.cancel().catch(() => {});
+    if (!signal?.aborted) await cancelled;
+    checkpoint(signal);
     if (['DOWNLOAD_FAILED', 'OUTPUT_TOO_LARGE', 'INVALID_OUTPUT_MEDIA', 'UNSAFE_OUTPUT_REDIRECT', 'UNAPPROVED_OUTPUT_HOST', 'INVALID_OUTPUT_URL'].includes(cause.code)) throw cause;
     throw providerError('DOWNLOAD_FAILED', 'Output download failed; retry the existing task, not generation.', { retryable: true });
   } finally {

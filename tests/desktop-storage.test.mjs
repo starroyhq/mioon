@@ -251,7 +251,8 @@ test('quit preserves newly unsafe discovery, warns once without secrets and stil
   assert.deepEqual(warnings, ['DESKTOP_DISCOVERY_CLEANUP_SKIPPED: Discovery files were preserved because storage privacy checks failed.']);
   assert.doesNotMatch(warnings[0], /synthetic-never-log-token|mcp-token|user-data|127\.0\.0\.1/);
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /await backend\?\.stop\(\);\s*await removeConnectionOnShutdown\(paths\);\s*await activeSession\?\.clearStorageData\(\);\s*activeSession = null;\s*ready = null;/);
+  assert.match(main, /await backend\?\.stop\(\);\s*await cleanupStoppedBackend\(\);/);
+  assert.match(main, /async function cleanupStoppedBackend\(\)\s*\{\s*await removeConnectionOnShutdown\(paths\);\s*await activeSession\?\.clearStorageData\(\);\s*activeSession = null;\s*ready = null;/);
 });
 
 test('shutdown cleanup keeps non-privacy programming errors visible', async () => {

@@ -1,6 +1,7 @@
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {run,probe} from './media.mjs';
+import {throwIfMediaAborted} from './media-processes.mjs';
 
 const FPS=30,WIDTH=720,HEIGHT=1280,SAMPLES_PER_FRAME=1600;
 const seconds=frames=>(frames/FPS).toFixed(9);
@@ -37,13 +38,16 @@ function validateTimeline(timeline,assets){
 // clip edges so even a 100-clip / 10-minute composition only opens <=12 media
 // inputs at once. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
-export async function renderTimeline(snapshot,assets,destination){
+export async function renderTimeline(snapshot,assets,destination,{signal}={}){
+ throwIfMediaAborted(signal);
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
  const edges=[...new Set([0,timeline.durationFrames,...timeline.clips.flatMap(c=>[c.startFrame,c.startFrame+c.durationFrames])])].sort((a,b)=>a-b);
  const work=await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
  try{
+  throwIfMediaAborted(signal);
   const entries=[];
   for(let segment=0;segment<edges.length-1;segment++){
+   throwIfMediaAborted(signal);
    const begin=edges[segment],end=edges[segment+1],frames=end-begin,samples=frames*SAMPLES_PER_FRAME;
    const clips=timeline.clips.filter(c=>c.startFrame<=begin&&c.startFrame+c.durationFrames>=end).sort((a,b)=>tracks.get(a.trackId).orderIndex-tracks.get(b.trackId).orderIndex||a.id.localeCompare(b.id));
    const args=['-hide_banner','-loglevel','error','-n','-filter_complex_threads','1'];
@@ -76,12 +80,17 @@ export async function renderTimeline(snapshot,assets,destination){
    filters.push(`[${visual}]trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[outv]`);
    const segmentFile=path.join(work,`segment-${String(segment).padStart(3,'0')}.mov`);
    args.push('-filter_complex',filters.join(';'),'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000','-c:a','pcm_s16le','-ar','48000','-ac','2','-t',seconds(frames),segmentFile);
-   await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000)});
+   await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal});
+   throwIfMediaAborted(signal);
    entries.push(`file '${segmentFile.replaceAll("'","'\\''")}'\nduration ${seconds(frames)}`);
   }
+  throwIfMediaAborted(signal);
   const list=path.join(work,'segments.txt');await writeFile(list,entries.join('\n')+'\n');
-  await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy','-video_track_timescale','30000','-af',`apad,atrim=end_sample=${timeline.durationFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(timeline.durationFrames),'-movflags','+faststart',destination],{timeout:300000});
-  const result=await probe(destination),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
+  throwIfMediaAborted(signal);
+  await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy','-video_track_timescale','30000','-af',`apad,atrim=end_sample=${timeline.durationFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(timeline.durationFrames),'-movflags','+faststart',destination],{timeout:300000,signal});
+  throwIfMediaAborted(signal);
+  const result=await probe(destination,{signal}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
+  throwIfMediaAborted(signal);
   if(result.width!==WIDTH||result.height!==HEIGHT||v?.codec_name!=='h264'||v?.r_frame_rate!=='30/1'||v?.avg_frame_rate!=='30/1'||Number(v?.nb_frames)!==timeline.durationFrames||a?.codec_name!=='aac'||Number(a?.sample_rate)!==48000||a?.channels!==2||Math.abs(result.duration-timeline.durationFrames/FPS)>0.035)throw Error('Rendered timeline failed frame/duration/audio-format verification');
   return result;
  }finally{await rm(work,{recursive:true,force:true});}
