@@ -1,3 +1,4 @@
+import {CUSTOM_IMAGE_PROFILE_ID} from '../../../contracts/src/image-settings.mjs';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, imageAdapterInputSchema} from '../../../contracts/src/images.mjs';
 
 // Official documentation checked 2026-10-10; no account/model/live evidence.
@@ -10,6 +11,14 @@ export const IMAGE_PROFILES = Object.freeze([
   Object.freeze({providerId: 'mock', model: IMAGE_MODELS.mock, name: 'Mock image · synthetic test card', enabled: true, isMock: true, evidence: 'deterministic-mock', options: IMAGE_FIXED_OPTIONS}),
   Object.freeze({providerId: 'openai', model: IMAGE_MODELS.openai, name: 'OpenAI Images · live disabled', enabled: false, isMock: false, evidence: 'offline-tested-not-live', options: IMAGE_FIXED_OPTIONS}),
 ]);
+// An explicit conservative wire profile, not a claim of broad vendor support.
+// Unsupported fields fail closed; there is no negotiation or fallback request.
+export const CUSTOM_IMAGE_JSON_PROFILE = Object.freeze({
+  providerId: 'openai-compatible', profileId: CUSTOM_IMAGE_PROFILE_ID,
+  evidence: 'offline-tested-not-live', protocol: 'https:', port: 443, pathSuffix: '/images/generations',
+  request: Object.freeze({method: 'POST', contentType: 'application/json', moderation: 'auto', options: IMAGE_FIXED_OPTIONS}),
+  response: Object.freeze({format: 'b64_json', mimeType: 'image/png', count: 1}),
+});
 const messages = Object.freeze({
   IMAGE_LIVE_DISABLED: 'Live image generation is disabled.',
   IMAGE_INVALID_REQUEST: 'Image request does not match the fixed image profile.',
@@ -34,9 +43,14 @@ export function parseImageAdapterInput(snapshot, expectedProvider) {
   if (!parsed.success || parsed.data.providerId !== expectedProvider) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   return parsed.data;
 }
-export function createImageGenerationBody(snapshot) {
-  const input = parseImageAdapterInput(snapshot, 'openai');
+function generationBody(snapshot, providerId) {
+  const input = parseImageAdapterInput(snapshot, providerId);
   const body = JSON.stringify({model: input.model, prompt: input.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
   if (Buffer.byteLength(body) > IMAGE_NETWORK_LIMITS.maxRequestBytes) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   return body;
 }
+
+// Both explicit slots use this bounded single-PNG JSON profile. Provider/model
+// validation remains distinct, and no response-format negotiation is attempted.
+export function createImageGenerationBody(snapshot) { return generationBody(snapshot, 'openai'); }
+export function createCompatibleImageGenerationBody(snapshot) { return generationBody(snapshot, 'openai-compatible'); }

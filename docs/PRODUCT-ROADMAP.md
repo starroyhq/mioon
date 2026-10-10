@@ -69,12 +69,15 @@ weak shot while preserving deliberate timeline timing, and inspect the recipe fo
 The first narrow subject-library increment is implemented. Focused checks, final
 web/desktop builds and Linux native acceptance passed; the independent full-suite
 release gate passed as recorded in [SUBJECT-LIBRARY.md](SUBJECT-LIBRARY.md). Image
-generation has an accepted local Mock slice and now an implemented dedicated
-Images settings/reviewed-activation increment. Its affected gate, fresh builds and
-Linux native synthetic-network acceptance passed; the independent final full-suite
-gate is pending. Custom compatible image endpoints,
-motion-reference adapters and Blender integration remain planned. The current
-activation scope and its limits are in [Images activation](IMAGE-ACTIVATION.md).
+generation has an accepted local Mock slice and fixed-OpenAI activation checkpoint
+`4e66a96` (2026-10-10), including its affected/build/Linux synthetic-native checks
+and full suite (2758 total, 2756 passed, 0 failed, 2 skipped). The current
+[custom Images increment](IMAGE-COMPATIBLE.md) is implemented with its
+own passed focused/build/Linux synthetic-native and full-suite gate (2857 total,
+2855 passed, 0 failed, 2 skipped). Its one independent HTTPS/JSON/PNG slot does not establish
+all-vendor compatibility. Motion-reference adapters and Blender integration remain
+planned. [Images activation](IMAGE-ACTIVATION.md) preserves the earlier evidence;
+it does not establish this custom gate or real-provider acceptance.
 Existing managed assets, saved versions, explicit reference bindings and fixed
 timeline replacement are reusable foundations. The first usable Linux trial is
 already available independently of these stages; native macOS/Windows and live
@@ -129,7 +132,7 @@ providers remain unverified. Continued iteration does not block that limited tri
    active implementation below. See [Image generation](IMAGE-GENERATION.md) for
    the preserved initial evidence and unchanged local/unknown recovery.
 
-   **Current Images activation increment (2026-10-10):** dedicated fixed OpenAI
+   **Accepted Images activation checkpoint (2026-10-10, `4e66a96`):** dedicated fixed OpenAI
    settings and an independent credential, retained exact request reviews and
    explicit visible paid-button approval for at most one POST are implemented.
    The 461-test affected gate, fresh builds and Linux native synthetic-network
@@ -138,9 +141,24 @@ providers remain unverified. Continued iteration does not block that limited tri
    is not live-provider or macOS/Windows acceptance. Public API/CLI/MCP gains only
    review prepare/get/list, never approval, credential tools or paid Agent authority.
    Usage-based unknown cost is disclosed rather than represented as a currency
-   cap. Custom compatible endpoints remain follow-on; the credential route is
-   implemented. A live canary still needs its separate exact configuration/media/
-   fees approval. See [Images activation](IMAGE-ACTIVATION.md).
+   cap. A live canary still needs its separate exact configuration/media/fees
+   approval. See [Images activation](IMAGE-ACTIVATION.md).
+
+   **Current custom Images increment (2026-10-10, offline gate passed):** one separate
+   `openai-compatible` / `custom` connection with private settings/key/file,
+   canonical public-DNS HTTPS:443 base URL, configured ASCII model and fixed
+   single-`b64_json` PNG profile. It reuses the settings/codec/lifecycle and exact
+   one-POST UI-approval fence. Saving does not probe; official settings stay
+   untouched. Custom v2 reviews retain full immutable configuration/destination;
+   schema 18 rebuilds only the review table with raw historical values preserved.
+   No new Agent authority, public approval tool, URL download, local ComfyUI,
+   model negotiation or automatic fallback is added. No real key/live call/output
+   is verified. The affected gate passed 584/584 tests (0 failed/skipped), and
+   fresh web/desktop builds passed. Final Linux synthetic-network native acceptance
+   and the independent full suite passed (2857 total, 2855 passed, 0 failed,
+   2 skipped). See [custom Images](IMAGE-COMPATIBLE.md), including
+   the inherited synchronous Keychain/timeout limit; macOS remains unverified.
+   Broader plugin design remains separate from this bounded increment.
 
 3. **Source provenance independent of creation tool.** Track external-file import,
    extracted frame, previs render and generated-version provenance as typed,
@@ -320,12 +338,13 @@ generation/spending remain outside this increment.
 
 ## Original image-generation approval (2026-10-10, historical scope)
 
-The following records the original approved direction. The Mock workflow is now
-accepted, and fixed-preset Images settings/reviewed activation are implemented
-with affected/build/Linux native synthetic-network checks passed and the independent
-final full suite passed (2758 total, 2756 passed, 0 failed, 2 skipped). A custom
-editable base URL remains follow-on work. This history is not live-call approval;
-current scope is [Images activation](IMAGE-ACTIVATION.md).
+The following records the original approved direction. The accepted Mock workflow
+and fixed-OpenAI activation checkpoint `4e66a96` have dated evidence, including
+activation's affected/build/Linux synthetic-native checks and full suite (2758
+total, 2756 passed, 0 failed, 2 skipped). The separate bounded custom slot is now
+implemented with its own passed offline/Linux synthetic-native gate. This history is not live-call
+approval; current scope is [custom Images](IMAGE-COMPATIBLE.md), with shared
+approval/recovery rules in [Images activation](IMAGE-ACTIVATION.md).
 
 After the wired model-input-limit slice, prioritize an independent OpenAI Images
 API text-to-image workflow and editable preset. Generated images must enter the

@@ -65,7 +65,8 @@ function response(requestId, value, error) {
 
 // Main-only endpoint over the already-owned utility channel. Dispatch is fixed
 // to synchronous native OS status/encrypt/decrypt; no paths, URLs, other secret
-// namespaces, renderer IPC, settings engine or arbitrary methods are accepted.
+// namespaces beyond the two validated Images profiles, renderer IPC, settings
+// engine or arbitrary methods are accepted. The private wire shape is unchanged.
 export function createImageSecretBroker({imageSecretCodec, send, isActive = () => true}) {
   let closed = false;
   const pending = new Set(), completed = new Set();

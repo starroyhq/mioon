@@ -8,16 +8,16 @@ import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, isImageReviewResponse } 
 import { createHash } from 'node:crypto';
 import { canonicalImageInput } from '../packages/contracts/src/images.mjs';
 
-const { DEFAULT_IMAGE_CONFIGURATION, createImageSettingsClient, createImageSettingsSession, imageKeyIssue, imageSettingsCanSave, safeImageSettings } = logic;
+const { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, createImageSettingsClient, createImageSettingsSession, imageKeyIssue, imageSettingsCanSave, safeImageSettings } = logic;
 const snapshot = (patch = {}) => ({ revision: 0, configuration: structuredClone(DEFAULT_IMAGE_CONFIGURATION), secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch });
 const vault = { persistentAvailable: true, sessionScope: 'server', reasonCode: null };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); };
 const codeError = code => Object.assign(new Error('never-reflect-synthetic-secret'), { code });
-function fixture({ initial = snapshot(), read, write } = {}) {
+function fixture({ initial = snapshot(), read, write, slot = 'official' } = {}) {
   const calls = [], changes = [], snapshots = []; let current = initial;
   const client = { read: read || (async () => current), write: input => { calls.push(structuredClone(input)); if (write) return write(input); current = snapshot({ revision: input.expectedRevision + 1, configuration: input.configuration, storage: current.storage, secret: input.secret.action === 'replace' ? { configured: true, storage: input.secret.storage } : input.secret.action === 'remove' ? { configured: false, storage: 'none' } : current.secret }); return Promise.resolve(current); } };
-  const session = createImageSettingsSession({ client, onChange: state => changes.push(state), onSnapshot: value => snapshots.push(value) }); return { session, client, calls, changes, snapshots };
+  const session = createImageSettingsSession({ client, slot, onChange: state => changes.push(state), onSnapshot: value => snapshots.push(value) }); return { session, client, calls, changes, snapshots, slot };
 }
 
 test('image settings expose only a fixed redacted contract and reject echoed secrets or destination edits', () => {
@@ -68,7 +68,7 @@ function renderer(f) {
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
   const require = name => { if (name === 'react') return react; if (name === './image-settings.js') return logic; if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => ancestor }; if (name === './icons.jsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive; throw Error(name); };
   Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
-  const ui = { render() { index = 0; effects = []; tree = module.exports.default({ active, contextKey, client: f.client, onClose: () => { active = false; }, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, key(value) { const field = ui.find('image-settings-key'); field.props.ref.current.value = value; field.props.onChange({ target: { value } }); ui.render(); }, show(value) { active = value; ui.render(); }, collapse(value) { ancestor = !value; ui.render(); }, project(value) { contextKey = value; ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, get dirty() { return dirty; }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
+  const ui = { render() { index = 0; effects = []; tree = module.exports.default({ active, contextKey, client: f.client, slot: f.slot, onSelectSlot: () => { active = false; }, onClose: () => { active = false; }, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, key(value) { const field = ui.find(f.slot === 'custom' ? 'custom-image-settings-key' : 'image-settings-key'); field.props.ref.current.value = value; field.props.onChange({ target: { value } }); ui.render(); }, show(value) { active = value; ui.render(); }, collapse(value) { ancestor = !value; ui.render(); }, project(value) { contextKey = value; ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, get dirty() { return dirty; }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
 }
 
 test('actual password input clears before save dispatch and remains outside rendered/session state', async () => {
@@ -129,4 +129,54 @@ test('private review client binds exact receipt and posts once only to authentic
     await assert.rejects(createImageReviewClient({ fetchImpl: async () => ({ ok: true, json: async () => ({ ok: true, data: altered }) }) }).reject(review), undefined, field);
   }
   let attempts = 0; const held = deferred(); await assert.rejects(createImageReviewClient({ timeoutMs: 5, fetchImpl: () => { attempts++; return held.promise; } }).approve(review)); assert.equal(attempts, 1); held.resolve({ ok: true, json: async () => ({ ok: true, data: task }) }); await flush(); assert.equal(attempts, 1);
+});
+
+const customConfiguration = (patch = {}) => ({ ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image-model', ...patch });
+const customSnapshot = (patch = {}) => snapshot({ configuration: customConfiguration(), ...patch });
+
+test('fixed custom settings slot uses its own private route and rejects official, unknown and unnormalized receipts', async () => {
+  const calls = [], client = createImageSettingsClient({ slot: 'custom', fetchImpl: async (url, options) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ ok: true, data: customSnapshot() }) }; } });
+  await client.read(); await client.write({ expectedRevision: 0, configuration: customConfiguration(), secret: { action: 'keep' } });
+  assert.deepEqual(calls.map(call => [call.url, call.method, call.credentials, call.cache]), [['/api/images/custom-settings', 'GET', 'same-origin', 'no-store'], ['/api/images/custom-settings', 'PUT', 'same-origin', 'no-store']]);
+  assert.throws(() => createImageSettingsClient({ slot: 'typo' })); assert.throws(() => createImageSettingsSession({ slot: 'typo' }));
+  assert.throws(() => safeImageSettings(snapshot(), 'custom')); assert.throws(() => safeImageSettings(customSnapshot()));
+  assert.throws(() => safeImageSettings(customSnapshot({ configuration: customConfiguration({ baseUrl: 'https://IMAGES.example.com:443/v1/' }) }), 'custom'));
+  assert.throws(() => safeImageSettings(customSnapshot({ secret: { configured: false, storage: 'none', value: 'not-allowed' } }), 'custom'));
+});
+
+test('custom settings normalize before PUT and never carry an existing key to another address or model', async () => {
+  const f = fixture({ slot: 'custom', initial: customSnapshot({ revision: 2, secret: { configured: true, storage: 'session' } }) }); await f.session.load();
+  f.session.setConfigurationField('baseUrl', 'https://NEW.example.com:443/prefix/');
+  assert.equal(logic.imageSettingsDestination(f.session.getState().draft), 'https://new.example.com/prefix/images/generations');
+  assert.equal(await f.session.save(), false); assert.equal(f.calls.length, 0); assert.match(f.session.getState().message, /重新输入.*新密钥/);
+  assert.equal(await f.session.save('custom-synthetic-key'), true); assert.equal(f.calls[0].configuration.baseUrl, 'https://new.example.com/prefix'); assert.equal(f.calls[0].secret.action, 'replace');
+  f.session.setConfigurationField('model', 'replacement-model'); assert.equal(await f.session.save(), false); f.session.removeKey(); assert.equal(await f.session.save(), true); assert.equal(f.calls[1].secret.action, 'remove');
+  assert.doesNotMatch(JSON.stringify(f.changes) + JSON.stringify(f.snapshots), /custom-synthetic-key/); f.session.dispose();
+});
+
+test('custom malformed endpoints and partial empty configuration fail before save; official fields remain fixed', async () => {
+  for (const baseUrl of ['http://images.example.com/v1', 'https://images.example.com:444/v1', 'https://user:secret@images.example.com/v1', 'https://images.example.com/v1?key=secret', 'https://images.example.com/../v1', '']) {
+    const f = fixture({ slot: 'custom', initial: customSnapshot() }); await f.session.load(); f.session.setConfigurationField('baseUrl', baseUrl); assert.equal(await f.session.save(), false); assert.equal(f.calls.length, 0); f.session.dispose();
+  }
+  const f = fixture(); await f.session.load(); assert.equal(f.session.setConfigurationField('baseUrl', 'https://custom.example.com'), false); assert.equal(f.session.setConfigurationField('model', 'new-model'), false); f.session.dispose();
+});
+
+test('custom unknown save preserves complete nonsecret draft and requires explicit recovery with a freshly entered key', async () => {
+  let reads = 0;
+  const f = fixture({ slot: 'custom', read: async () => { reads++; return customSnapshot({ revision: reads, secret: { configured: true, storage: 'session' } }); }, write: () => Promise.reject(codeError('NETWORK')) });
+  await f.session.load(); f.session.setConfigurationField('baseUrl', 'https://other.example.com/edge'); f.session.setConfigurationField('model', 'other-model'); await f.session.save('custom-synthetic-key');
+  assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft.baseUrl, 'https://other.example.com/edge'); assert.equal(f.session.getState().draft.model, 'other-model');
+  assert.equal(await f.session.save(), false); f.session.acknowledge(); assert.equal(await f.session.save(), false); assert.equal(f.calls.length, 1); assert.doesNotMatch(JSON.stringify(f.changes), /custom-synthetic-key/); f.session.dispose();
+});
+
+test('actual custom settings reuse shared controls, expose resolved destination and clear DOM key on slot or navigation', async () => {
+  for (const transition of ['slot', 'hide', 'collapse', 'project']) {
+    const f = fixture({ slot: 'custom', initial: customSnapshot({ secret: { configured: true, storage: 'session' } }) }), ui = renderer(f); ui.render(); await flush(); ui.render();
+    ui.change('custom-image-settings-base-url', 'https://NEW.example.com:443/prefix/'); ui.change('custom-image-settings-model', 'new-model'); ui.key('custom-dom-only');
+    assert.equal(ui.find('custom-image-settings-base-url').type, 'Input'); assert.equal(ui.find('custom-image-settings-enable').type, 'Input'); assert.ok(ui.find('custom-image-settings-binding-warning'));
+    assert.deepEqual(ui.find('custom-image-settings-destination').props.children, ['https://new.example.com/prefix/images/generations']);
+    const oldSubmit = ui.form().props.onSubmit;
+    if (transition === 'slot') ui.click('custom-image-settings-slot-official'); if (transition === 'hide') ui.show(false); if (transition === 'collapse') ui.collapse(true); if (transition === 'project') ui.project('new-project');
+    assert.equal(ui.find('custom-image-settings-key').props.ref.current.value, ''); assert.equal(ui.find('custom-image-settings-base-url').props.value, 'https://NEW.example.com:443/prefix/'); assert.equal(ui.find('custom-image-settings-model').props.value, 'new-model'); oldSubmit({ preventDefault() {} }); assert.equal(f.calls.length, 0); ui.unmount(); f.session.dispose();
+  }
 });

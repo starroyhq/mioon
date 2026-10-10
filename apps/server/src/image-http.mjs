@@ -1,5 +1,5 @@
 import {IMAGE_SETTINGS_LIMITS} from '@mioon/contracts';
-import {sanitizeImageSettingsResult,sanitizeImageSettingsError} from '@mioon/business/images/settings';
+import {sanitizeImageSettingsResult,sanitizeCustomImageSettingsResult,sanitizeImageSettingsError} from '@mioon/business/images/settings';
 import {safeImageReviewError} from '@mioon/business/images/reviews';
 import {safeImageServiceError} from '@mioon/business/images';
 const json=(res,status,value)=>{if(res.destroyed||res.writableEnded)return;if(res.headersSent){res.destroy();return;}res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
@@ -14,20 +14,22 @@ async function body(req,res,max){
 /** Existing server Host/Origin/session authentication runs before this route.
  * These fixed user actions are intentionally absent from RPC/CLI/MCP/Agent
  * catalogs. They are not a cryptographic attestation of a physical human click. */
-export function createImageHttp({settings,approve,reject,signal}){
+export function createImageHttp({settings,customSettings,approve,reject,signal}){
  return async(req,res,url)=>{
   if(!/^\/api\/images(?:\/|$)/u.test(url.pathname))return false;
-  const settingsRoute=url.pathname==='/api/images/settings',approval=url.pathname==='/api/images/reviews/approve',rejection=url.pathname==='/api/images/reviews/reject';
+  const customSettingsRoute=url.pathname==='/api/images/custom-settings',settingsRoute=customSettingsRoute||url.pathname==='/api/images/settings',approval=url.pathname==='/api/images/reviews/approve',rejection=url.pathname==='/api/images/reviews/reject';
   try{
    if(Buffer.byteLength(req.url)>2048||url.search)throw invalid();
    if(!settingsRoute&&!approval&&!rejection){json(res,404,{ok:false,error:{code:'NOT_FOUND',message:'图像接口不存在',details:{},retryable:false}});return true;}
    const methods=settingsRoute?['GET','PUT']:['POST'];if(!methods.includes(req.method)){res.setHeader('Allow',methods.join(', '));json(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'图像接口请求方法无效',details:{},retryable:false}});return true;}
+   const selectedSettings=customSettingsRoute?customSettings:settings,sanitizeSettings=customSettingsRoute?sanitizeCustomImageSettingsResult:sanitizeImageSettingsResult;
+   if(settingsRoute&&!selectedSettings)throw Object.assign(Error(),{code:'IMAGE_SETTINGS_CLOSED'});
    let result;
-   if(req.method==='GET')result=sanitizeImageSettingsResult(await settings.get());
+   if(req.method==='GET')result=sanitizeSettings(await selectedSettings.get());
    else{
     const input=await body(req,res,settingsRoute?IMAGE_SETTINGS_LIMITS.updateBytes:1024);
     if(signal?.aborted)throw Object.assign(Error(),{code:'IMAGE_SERVICE_STOPPED',status:503});
-    result=settingsRoute?sanitizeImageSettingsResult(await settings.put(input)):approval?await approve(input):await reject(input);
+    result=settingsRoute?sanitizeSettings(await selectedSettings.put(input)):approval?await approve(input):await reject(input);
    }
    json(res,200,{ok:true,data:result});
   }catch(error){

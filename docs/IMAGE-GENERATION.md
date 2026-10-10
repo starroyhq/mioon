@@ -1,16 +1,21 @@
 # Image generation: shared workflow and original local slice
 
-## Current activation increment: 2026-10-10
+## Current custom increment: 2026-10-10
 
-The checkout now implements dedicated fixed-preset Images settings, an independent
-credential route, retained request reviews and explicit UI-approved one-POST
-OpenAI dispatch. The 461-test affected gate, fresh builds and Linux native
-synthetic-network acceptance passed; the independent final full suite passed
-(2758 total, 2756 passed, 0 failed, 2 skipped). This does not establish live-provider or macOS/Windows acceptance.
-See [Images activation](IMAGE-ACTIVATION.md) for the current settings, review,
-approval, security and schema-17 contracts. Mock remains available without a
-provider. New OpenAI requests through public `image.generate` still require the
-separate private UI approval flow; discovery is not permission to spend.
+The [custom Images slot](IMAGE-COMPATIBLE.md) is implemented with a
+separate credential, canonical public-DNS HTTPS destination and configured ASCII
+model using the existing fixed single-PNG profile. Its focused/build/Linux
+synthetic-native gates and independent full suite passed: 2857 total, 2855 passed,
+0 failed, 2 skipped. New official/custom requests through public `image.generate` require
+the separate explicit UI paid approval; discovery is not permission to spend.
+Mock remains a visibly labeled local test card without prompt-conditioned content.
+
+The prior fixed-OpenAI activation checkpoint `4e66a96` passed its 461-test affected
+gate, builds, Linux synthetic-network native acceptance and full suite (2758
+total, 2756 passed, 0 failed, 2 skipped). See [Images activation](IMAGE-ACTIVATION.md)
+for that historical record and shared approval/recovery rules. It does not
+establish this custom gate, live-provider or macOS/Windows acceptance. Custom v2
+reviews and the narrow schema-18 migration are documented in the new guide.
 
 ## Historical first-slice scope: 2026-10-10, baseline `82c70f3`
 
@@ -63,8 +68,8 @@ and one database owner. Runtime schemas in `packages/contracts/src/images.mjs` a
 | Operation | Input | Result / effect |
 | --- | --- | --- |
 | `image.profile.list` | `{}` | `{items,liveEnabled}`; local configuration discovery only, no provider verification |
-| `image.generate` | See example below | Original queued task receipt; new public requests schedule Mock only; OpenAI requires private reviewed approval |
-| `image.review.prepare` | `{input:<complete OpenAI image.generate input>,settingsRevision}` | Local immutable-intent review only; no approval or dispatch |
+| `image.generate` | See example below | Original queued task receipt; new public requests schedule Mock only; official/custom live requests require private reviewed approval |
+| `image.review.prepare` | `{input:<complete official/custom image.generate input>,settingsRevision}` | Local immutable-intent review only; no approval or dispatch |
 | `image.review.get` | `{projectId,reviewId}` | Existing owned review; read-only |
 | `image.review.list` | `{projectId,limit?,cursor?}` | Bounded review page; read-only |
 | `image.request.get` | `{projectId,requestId}` | `{projectId,requestId,operation,response}` or `null`; `response` is the original mutation receipt |
@@ -107,8 +112,12 @@ For example, replace the illustrative project UUID with the chosen project:
 
 The name is nonblank, 1–120 characters. The prompt is nonblank, at most 2000
 UTF-16 code units and 8000 UTF-8 bytes; control-character validation also
-applies. A provider must match its exact named model. No omitted options or
-unsupported options are silently substituted. Request IDs are 8–200
+applies. Mock and official OpenAI must match their exact named models; custom
+`openai-compatible` accepts a 1–120-character printable non-whitespace ASCII model
+that must match the reviewed custom settings. The request shape is unchanged;
+URLs, credentials, connection IDs and approval flags are not generation fields.
+No omitted options or unsupported options are silently substituted. See the
+[custom review example](IMAGE-COMPATIBLE.md#public-request-preparation-private-paid-approval). Request IDs are 8–200
 characters and required on the original three image mutations. Review preparation
 retains the same key inside its complete nested generation input; its immutable
 settings-bound review has no additional top-level key. See
@@ -175,6 +184,8 @@ also retain their exact original receipts.
 
 - Image tasks, groups, versions and requests are additive local SQLite data.
   Immutable request input and generation snapshots retain the complete prompt.
+  Snapshot v1 stays content-only; full custom configuration/destination provenance
+  comes from the validated retained task-linked review, never current settings.
   Authorized local task/receipt readers can see that prompt. This is not
   encrypted prompt storage, nor a promise that prompts are absent from local
   backups. Do not put credentials or unrelated private information in prompts.
@@ -204,8 +215,8 @@ also retain their exact original receipts.
 Current discovery effects include separately approved worker activity:
 `image.generate` declares database/file writes, external I/O, open-world access
 and paid generation, with no local subprocess. This does not make an unapproved
-OpenAI RPC executable. Review preparation writes only local database records;
-image/review reads are read-only. `cancelQueued` writes only local records;
+official/custom live RPC executable. Review preparation writes only local database
+records; image/review reads are read-only. `cancelQueued` writes only local records;
 `recoverResult` can write local managed output. Effects and MCP annotations
 remain advisory, not authority to act for a user.
 
@@ -222,8 +233,10 @@ shortcut is provided in this increment.
 ## Historical first-slice verification scope: 2026-10-10
 
 These checks describe the original Mock acceptance. Activation has its own
-[validation boundary](IMAGE-ACTIVATION.md#migration-and-validation-boundary);
-its final full suite passed with 2758 total, 2756 passed, 0 failed and 2 skipped.
+[validation boundary](IMAGE-ACTIVATION.md#migration-and-validation-boundary)
+at `4e66a96`: its final full suite passed with 2758 total, 2756 passed, 0 failed
+and 2 skipped. The current custom increment has its own separately verified gate
+in [custom Images](IMAGE-COMPATIBLE.md).
 
 `tests/image-generation-transports.test.mjs` exercises the normal local server,
 real HTTP, the actual CLI and the official MCP SDK stdio bridge. It covers

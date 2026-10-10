@@ -1,5 +1,5 @@
 import { ApiError, rpc, requestId as newRequestId } from './api.js';
-import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse } from '@mioon/contracts';
+import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination } from '@mioon/contracts';
 import { safeImageSettings } from './image-settings.js';
 import { createImageReviewClient, imageReviewIdentity as reviewIdentity } from './image-review.js';
 
@@ -12,6 +12,19 @@ const copy = value => structuredClone(value);
 const problem = code => Object.assign(new Error(code), { code });
 export const imageTaskLabel = state => ({ queued: '等待生成', dispatching: '正在发送', receiving: '正在接收图像', persisting: '正在保存结果', succeeded: '已保存', cancelled_before_dispatch: '发送前已取消', interrupted_before_dispatch: '发送前已中断', failed: '生成失败', outcome_unknown: '服务商结果未知', local_result_error: '本地结果保存失败' }[state] || '状态待确认');
 export const imageTaskMessage = state => ({ interrupted_before_dispatch: '应用重启前尚未发送，不会自动继续。可取消此任务，再明确创建新请求。', outcome_unknown: '无法确认服务商结果。可明确检查并恢复已落盘的本地结果；没有可核验结果时仍保持未知，绝不重新调用服务商。', local_result_error: '已有本地结果待恢复。恢复只处理同一份结果，不再次生成。', cancelled_before_dispatch: '已确认在发送前取消，没有启动生成。', failed: '此请求已结束。查看记录后，可明确创建新的生成请求。' }[state] || '');
+const customPreDispatchMessages = Object.freeze({
+  IMAGE_NETWORK_DENIED: '发送前网络检查未通过。请检查自定义地址是否指向允许访问的 HTTPS 公网服务，再准备新的请求。',
+  IMAGE_CONNECTION_FAILED: '发送前无法建立连接。请检查自定义地址和服务状态，再准备新的请求。',
+  IMAGE_TIMEOUT: '发送前连接检查超时。请检查自定义服务是否可用，再准备新的请求。',
+  IMAGE_DISPATCH_BLOCKED: '发送前安全检查未通过。请重新读取并核对自定义连接设置，再准备新的请求。',
+  IMAGE_SETTINGS_CONFLICT: '自定义连接在发送前已变化。请读取当前地址、模型与配置版本，再准备新的请求。',
+  IMAGE_SETTINGS_NOT_CONFIGURED: '自定义连接缺少完整设置或可用密钥。请检查连接设置并重新输入此连接的密钥，再准备新的请求。',
+  IMAGE_SETTINGS_DISABLED: '自定义连接已停用。请在图像设置中确认是否启用，再准备新的请求。',
+});
+export function imageTaskConnectionMessage(task) {
+  if (task?.providerId !== 'openai-compatible' || task.state !== 'failed' || task.dispatched !== false || !Object.hasOwn(customPreDispatchMessages, task.errorCode)) return '';
+  return `${customPreDispatchMessages[task.errorCode]}本次未发送生成 POST；任何新请求都需要重新明确批准，不会自动重试。`;
+}
 const rejectionMessage = code => ({ IMAGE_LIVE_DISABLED: '真实图像调用尚未启用，本次未被接受。', IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' }[code] || '请求未被接受，草稿保留。请重新读取并核对后再提交。');
 export function imageInputIssue(draft) {
   if (!draft.name.trim()) return '请填写图像名称。';
@@ -22,14 +35,39 @@ export function imageInputIssue(draft) {
   return '';
 }
 export function initialImageGenerationState() {
-  return { draft: { name: '', prompt: '' }, providerId: 'mock', settings: null, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
+  return { draft: { name: '', prompt: '' }, providerId: 'mock', settings: null, customSettings: null, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
 }
 export const imageDraftDirty = state => Boolean(state.draft.name || state.draft.prompt || state.target);
-export function imageCanGenerate(state) {
-  const group = state.target && state.groups.find(item => item.id === state.target.groupId);
-  return state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && (state.providerId !== 'openai' || state.settings?.configuration.enabled && state.settings.secret.configured && state.settings.revision > 0) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision));
+const paidProvider = providerId => ['openai', 'openai-compatible'].includes(providerId);
+export const imageSelectedSettings = (state, providerId = state.providerId) => providerId === 'openai-compatible' ? state.customSettings : providerId === 'openai' ? state.settings : null;
+export function imageReviewCanApprove(state, review) {
+  const settings = imageSelectedSettings(state, review?.input?.providerId);
+  return isImageReviewResponse(review) && review.state === 'pending' && settings?.revision === review.settingsRevision && settings.configuration.enabled && settings.secret.configured &&
+    (review.input.providerId !== 'openai-compatible' || canonicalImageInput(settings.configuration) === canonicalImageInput(review.configuration));
 }
-const fixedIntent = (projectId, value) => value?.version === 1 && value.operation && imageSchemas[value.operation]?.safeParse(value.input).success && value.input.projectId === projectId && ['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(value.operation) && (value.operation !== 'image.generate' || value.input.providerId !== 'openai' || Number.isSafeInteger(value.settingsRevision) && value.settingsRevision > 0 && typeof value.approvalAttempted === 'boolean' && (value.reviewId === null || typeof value.reviewId === 'string'));
+export function imageTaskReview(state, task) {
+  if (!isImageTaskResponse(task)) return null;
+  return state.reviews.find(review => isImageReviewResponse(review) && review.taskId === task.id && review.projectId === task.projectId && review.requestId === task.requestId && ['name', 'prompt', 'providerId', 'model', 'options'].every(field => canonicalImageInput(review.input[field]) === canonicalImageInput(task[field])) && (!review.input.groupId || review.input.groupId === task.groupId)) || null;
+}
+export function imagePaidAuthorization(state) {
+  const settings = imageSelectedSettings(state);
+  if (!settings || !paidProvider(state.providerId)) return null;
+  return { providerId: state.providerId, draft: copy(state.draft), target: copy(state.target), configuration: copy(settings.configuration), settingsRevision: settings.revision,
+    destination: state.providerId === 'openai-compatible' ? isCompleteCustomImageConfiguration(settings.configuration) ? getCustomImageDestination(settings.configuration.baseUrl) : null : `${settings.configuration.baseUrl}/images/generations` };
+}
+export function imageCanGenerate(state) {
+  const group = state.target && state.groups.find(item => item.id === state.target.groupId), settings = imageSelectedSettings(state);
+  return state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && (state.providerId === 'mock' || paidProvider(state.providerId) && settings?.configuration.enabled && settings.secret.configured && settings.revision > 0 && (state.providerId !== 'openai-compatible' || isCompleteCustomImageConfiguration(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision));
+}
+const pendingMatchesReview = (pending, review) => canonicalImageInput(pending.input) === canonicalImageInput(review.input) && pending.settingsRevision === review.settingsRevision &&
+  (pending.input.providerId !== 'openai-compatible' || pending.version === 2 && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination);
+const fixedIntent = (projectId, value) => {
+  if (!value || !imageSchemas[value.operation]?.safeParse(value.input).success || value.input.projectId !== projectId || !['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(value.operation)) return false;
+  if (value.operation !== 'image.generate' || value.input.providerId === 'mock') return value.version === 1;
+  if (!Number.isSafeInteger(value.settingsRevision) || value.settingsRevision < 1 || typeof value.approvalAttempted !== 'boolean' || !(value.reviewId === null || typeof value.reviewId === 'string')) return false;
+  if (value.input.providerId === 'openai') return value.version === 1;
+  return value.version === 2 && isCompleteCustomImageConfiguration(value.configuration) && value.configuration.enabled && value.configuration.model === value.input.model && canonicalImageInput(value.configuration.options) === canonicalImageInput(value.input.options) && value.destination === getCustomImageDestination(value.configuration.baseUrl);
+};
 const safeTask = (value, projectId) => {
   if (!isImageTaskResponse(value) || value.projectId !== projectId) throw problem('INVALID_RESPONSE');
   return copy(value);
@@ -53,9 +91,10 @@ async function notAccepted(error, operation, input) {
 }
 
 /** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
-export function createImageGenerationSession({ projectId, api = rpc, reviewClient = createImageReviewClient(), settings, settingsReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 } = {}) {
+export function createImageGenerationSession({ projectId, api = rpc, reviewClient = createImageReviewClient(), settings, settingsReader, customSettings, customSettingsReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 } = {}) {
   let state = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer = null, polls = 0, reading = false;
   if (settings) state.settings = safeImageSettings(settings);
+  if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom');
   const announced = new Set(), tracked = new Map(), calls = new Set();
   async function call(operation, input) {
     const controller = new AbortController(); calls.add(controller); let deadline;
@@ -125,12 +164,12 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (pending.reviewId) {
         const review = await call('image.review.get', { projectId, reviewId: pending.reviewId });
         if (!owned(epoch)) return;
-        if (!isImageReviewResponse(review) || review.projectId !== projectId || canonicalImageInput(review.input) !== canonicalImageInput(pending.input) || review.settingsRevision !== pending.settingsRevision) throw problem('INVALID_RESPONSE');
+        if (!isImageReviewResponse(review) || review.projectId !== projectId || !pendingMatchesReview(pending, review)) throw problem('INVALID_RESPONSE');
         mergeReview(review);
         if (review.state === 'rejected' && clearPending(pending)) { emit({ phase: 'ready', message: '原请求已被拒绝，没有重新生成。' }); return; }
         if (review.state === 'pending') { emit({ phase: 'unknown', message: '原始描述仍在等待审批。只有明确点击批准才会发送，不会自动继续。' }); return; }
       }
-      emit({ phase: 'unknown', message: pending.input.providerId === 'openai' && !pending.approvalAttempted ? '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。' }); return;
+      emit({ phase: 'unknown', message: paidProvider(pending.input.providerId) && !pending.approvalAttempted ? '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。' }); return;
     }
     const latest = safeTask(await call('image.task.get', { projectId, taskId: receipt.response.id }), projectId);
     if (!owned(epoch)) return;
@@ -148,6 +187,10 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (settingsReader) {
         try { const latest = safeImageSettings(await settingsReader()); if (!owned(epoch)) return false; emit({ settings: latest }); }
         catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，Mock 与已保存记录仍可使用。' }); }
+      }
+      if (customSettingsReader) {
+        try { const latest = safeImageSettings(await customSettingsReader(), 'custom'); if (!owned(epoch)) return false; emit({ customSettings: latest }); }
+        catch { if (!owned(epoch)) return false; emit({ customSettings: null }); }
       }
       const groupInput = { projectId, limit: IMAGE_LIMITS.pageSize, ...(state.groupCursor ? { cursor: state.groupCursor } : {}) };
       const groups = safePage('image.group.list', groupInput, await call('image.group.list', groupInput));
@@ -182,13 +225,13 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (!owned(epoch)) return false;
       const versions = selectedGroupId ? safePage('image.version.list', versionInput, await call('image.version.list', versionInput)) : { items: [], nextCursor: null };
       if (!owned(epoch)) return false;
-      if (state.settings) {
+      { // Retained review authority is readable even when current settings are unavailable.
         const input = { projectId, limit: IMAGE_LIMITS.pageSize, ...(state.reviewCursor ? { cursor: state.reviewCursor } : {}) };
         const page = await call('image.review.list', input);
         if (!owned(epoch)) return false;
         if (!isImageReviewListResponse(input, page)) throw problem('INVALID_RESPONSE');
         for (const review of page.items) mergeReview(review);
-        const pendingReview = state.pending && page.items.find(review => review.requestId === state.pending.input.requestId && canonicalImageInput(review.input) === canonicalImageInput(state.pending.input) && review.settingsRevision === state.pending.settingsRevision);
+        const pendingReview = state.pending && page.items.find(review => review.requestId === state.pending.input.requestId && pendingMatchesReview(state.pending, review));
         if (pendingReview && !state.pending.reviewId) updatePending(state.pending, { ...state.pending, reviewId: pendingReview.id });
         const pinned = state.reviews.find(item => item.id === state.pending?.reviewId);
         emit({ reviews: [...(pinned && !page.items.some(item => item.id === pinned.id) ? [pinned] : []), ...page.items.map(review => state.reviews.find(item => item.id === review.id))], nextReviewCursor: page.nextCursor });
@@ -243,9 +286,9 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     const next = previous?.revision > review.revision ? previous : copy(review);
     emit({ reviews: [next, ...state.reviews.filter(item => item.id !== next.id)].slice(0, IMAGE_LIMITS.maxPageSize) }); return next;
   }
-  function reviewUsable(review) { return isImageReviewResponse(review) && review.projectId === projectId && review.state === 'pending' && state.settings?.revision === review.settingsRevision && state.settings.configuration.enabled && state.settings.secret.configured; }
+  function reviewUsable(review) { return review?.projectId === projectId && imageReviewCanApprove(state, review); }
   async function approveSaved(review, pending) {
-    if (disposed || !visible || state.pending !== pending || !reviewUsable(review) || canonicalImageInput(review.input) !== canonicalImageInput(pending.input)) return false;
+    if (disposed || !visible || state.pending !== pending || !reviewUsable(review) || !pendingMatchesReview(pending, review)) return false;
     const next = { ...pending, reviewId: review.id, approvalAttempted: true };
     if (!updatePending(pending, next)) return false;
     emit({ phase: 'submitting', reviewActionId: review.id, message: '' });
@@ -260,18 +303,20 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     } finally { if (!disposed) { emit({ reviewActionId: null }); if (visible) await load(); } }
     return !state.pending;
   }
-  async function generatePaid() {
-    if (disposed || !visible || state.providerId !== 'openai' || !imageCanGenerate(state)) return false;
-    const input = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'openai', model: IMAGE_MODELS.openai, options: { ...IMAGE_FIXED_OPTIONS }, requestId: requestId(), ...(state.target || {}) };
+  async function generatePaid(authorization) {
+    if (disposed || !visible || !paidProvider(state.providerId) || !imageCanGenerate(state)) return false;
+    if (authorization !== undefined && canonicalImageInput(authorization) !== canonicalImageInput(imagePaidAuthorization(state))) { emit({ message: '描述或连接配置已变化。请核对当前完整地址、模型与配置版本后重新点击付费生成。' }); return false; }
+    const selected = imageSelectedSettings(state), custom = state.providerId === 'openai-compatible';
+    const input = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: state.providerId, model: selected.configuration.model, options: { ...IMAGE_FIXED_OPTIONS }, requestId: requestId(), ...(state.target || {}) };
     if (!imageSchemas['image.generate'].safeParse(input).success) return false;
-    const pending = { version: 1, operation: 'image.generate', input, settingsRevision: state.settings.revision, reviewId: null, approvalAttempted: false }, interaction = interactionEpoch;
+    const pending = { version: custom ? 2 : 1, operation: 'image.generate', input, settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, ...(custom ? { configuration: copy(selected.configuration), destination: getCustomImageDestination(selected.configuration.baseUrl) } : {}) }, interaction = interactionEpoch;
     try { savePending(pending); } catch { emit({ message: '无法保存原始付费请求，本次尚未发送。' }); return false; }
     stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '' });
     try {
       const prepareInput = { input: copy(input), settingsRevision: pending.settingsRevision };
       const review = await call('image.review.prepare', prepareInput);
       if (disposed || state.pending !== pending) return false;
-      if (!isImageReviewPreparationResponse(prepareInput, review) || review.state !== 'pending') throw problem('INVALID_RESPONSE');
+      if (!isImageReviewPreparationResponse(prepareInput, review) || !pendingMatchesReview(pending, review) || review.state !== 'pending') throw problem('INVALID_RESPONSE');
       mergeReview(review);
       const next = { ...pending, reviewId: review.id };
       if (!updatePending(pending, next)) return false;
@@ -300,14 +345,15 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
   }
   return {
     getState: () => copy(state), load, generatePaid,
-    setSettings(value) { if (disposed) return false; const settings = safeImageSettings(value); if (state.settings?.revision !== settings.revision) interactionEpoch++; emit({ settings }); return true; },
-    selectProvider(providerId) { if (disposed || !visible || state.pending || state.actionTaskId || state.reviewActionId || !['mock', 'openai'].includes(providerId)) return false; interactionEpoch++; emit({ providerId }); return true; },
+    setSettings(value) { if (disposed) return false; const settings = safeImageSettings(value); if (canonicalImageInput(state.settings) !== canonicalImageInput(settings)) interactionEpoch++; emit({ settings }); return true; },
+    setCustomSettings(value) { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom'); if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
+    selectProvider(providerId) { if (disposed || !visible || state.pending || state.actionTaskId || state.reviewActionId || !['mock', 'openai', 'openai-compatible'].includes(providerId)) return false; interactionEpoch++; emit({ providerId }); return true; },
     async approveReview(review) {
       if (disposed || !visible || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || !reviewUsable(review) || !state.reviews.some(item => item.id === review.id && canonicalImageInput(item) === canonicalImageInput(review))) return false;
-      if (state.pending && (state.pending.reviewId !== review.id || canonicalImageInput(state.pending.input) !== canonicalImageInput(review.input))) return false;
+      if (state.pending && (state.pending.reviewId !== review.id || !pendingMatchesReview(state.pending, review))) return false;
       let pending = state.pending;
       if (!pending) {
-        pending = { version: 1, operation: 'image.generate', input: copy(review.input), settingsRevision: review.settingsRevision, reviewId: review.id, approvalAttempted: false, preserveDraft: true };
+        pending = { version: review.input.providerId === 'openai-compatible' ? 2 : 1, operation: 'image.generate', input: copy(review.input), settingsRevision: review.settingsRevision, reviewId: review.id, approvalAttempted: false, preserveDraft: true, ...(review.input.providerId === 'openai-compatible' ? { configuration: copy(review.configuration), destination: review.destination } : {}) };
         try { savePending(pending); } catch { emit({ message: '无法保存原始审批请求，本次未发送。' }); return false; }
         emit({ pending });
       }
@@ -329,7 +375,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     },
     abandonUnapproved() {
       const pending = state.pending;
-      if (disposed || !visible || state.phase === 'submitting' || state.reviewActionId || !pending || pending.input.providerId !== 'openai' || pending.approvalAttempted || pending.reviewId) return false;
+      if (disposed || !visible || state.phase === 'submitting' || state.reviewActionId || !pending || !paidProvider(pending.input.providerId) || pending.approvalAttempted || pending.reviewId) return false;
       if (clearPending(pending)) { emit({ phase: 'ready', message: '已放弃本页尚未批准的请求。若准备记录随后出现，仍需明确批准或拒绝。' }); return true; } return false;
     },
     edit(field, value) { if (!disposed && visible && !state.pending && !state.actionTaskId && !state.reviewActionId && state.phase !== 'targeting' && ['name', 'prompt'].includes(field) && !(field === 'name' && state.target)) { emit({ draft: { ...state.draft, [field]: value }, targetRequest: null }); return true; } return false; },

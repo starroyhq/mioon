@@ -1,4 +1,4 @@
-import {IMAGE_NETWORK_LIMITS, createImageGenerationBody, imageAdapterError, parseImageAdapterInput} from './profiles.mjs';
+import {IMAGE_NETWORK_LIMITS, createImageGenerationBody, createCompatibleImageGenerationBody, imageAdapterError, parseImageAdapterInput} from './profiles.mjs';
 import {renderMockImagePng, validatePng} from './png.mjs';
 
 function abortIfNeeded(signal, dispatched = false) {
@@ -105,13 +105,12 @@ export function createMockImageAdapter() {
     },
   });
 }
-/** The adapter has no ambient credential/network discovery. Only the trusted
- * reviewed Images gateway supplies its fixed-origin transport. */
-export function createOpenAIImageAdapter({transport} = {}) {
+// Shared lifecycle and decoder for the two explicitly constructed live slots.
+function createJsonImageAdapter({transport}, createBody) {
   return Object.freeze({
     async generate(snapshot, {signal, beforeDispatch} = {}) {
       if (typeof transport !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');
-      const body = createImageGenerationBody(snapshot); abortIfNeeded(signal);
+      const body = createBody(snapshot); abortIfNeeded(signal);
       if (typeof beforeDispatch !== 'function') throw imageAdapterError('IMAGE_DISPATCH_BLOCKED');
       let fenced = false, received = false;
       try {
@@ -132,3 +131,8 @@ export function createOpenAIImageAdapter({transport} = {}) {
     },
   });
 }
+
+/** No ambient credential/network discovery. Only a trusted reviewed Images
+ * gateway supplies a transport pinned to that slot's reviewed destination. */
+export function createOpenAIImageAdapter(options = {}) { return createJsonImageAdapter(options, createImageGenerationBody); }
+export function createCompatibleImageAdapter(options = {}) { return createJsonImageAdapter(options, createCompatibleImageGenerationBody); }

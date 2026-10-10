@@ -5,6 +5,7 @@ import {canonicalImageInput as canonical, IMAGE_LIMITS, imageSchemas} from '../.
 import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, IMAGE_REVIEW_LIMITS, imageReviewSchemas,
   imageReviewApprovalSchema, imageReviewRejectionSchema, imageReviewIntentSchema, imageReviewResponseSchema} from '../../../contracts/src/image-reviews.mjs';
 import {createImageOwnershipReader} from '../image-ownership.mjs';
+import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination} from '../../../contracts/src/image-settings.mjs';
 import {ownsStoreLock} from '../db.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -49,7 +50,8 @@ function decodeReviewRow(row) {
   const dto = {id: row.id, projectId: row.projectId, requestId: row.requestId, input,
     inputHash: row.inputHash, settingsRevision: intent.settingsRevision, destination: intent.destination, policy: intent.policy,
     state: row.state, revision: row.revision, taskId: row.taskId, postAttempts: row.postAttempts, createdAt: row.createdAt, updatedAt: row.updatedAt,
-    approvedAt: row.approvedAt, rejectedAt: row.rejectedAt, dispatchedAt: row.dispatchedAt};
+    approvedAt: row.approvedAt, rejectedAt: row.rejectedAt, dispatchedAt: row.dispatchedAt,
+    ...(intent.schemaVersion === 2 ? {configuration: intent.configuration} : {})};
   if (!imageReviewResponseSchema.safeParse(dto).success) invalid();
   return {row, intent, dto};
 }
@@ -110,20 +112,30 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     let value; try {value = JSON.parse(row?.data);} catch {fail('IMAGE_REVIEW_NOT_FOUND', 404);}
     if (!value || value.id !== projectId) fail('IMAGE_REVIEW_NOT_FOUND', 404);
   }
-  function settings(settingsRevision) {
+  function settings(settingsRevision, generation, frozenIntent) {
     if (typeof getSettings !== 'function') fail('IMAGE_LIVE_DISABLED', 403);
-    const current = synchronous(getSettings);
-    if (!current || !Number.isSafeInteger(current.revision) || current.revision < 1 || current.destination !== IMAGE_REVIEW_DESTINATION) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
-    if (current.revision !== settingsRevision) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+    const current = synchronous(getSettings, generation.providerId);
+    if (!current || !Number.isSafeInteger(current.revision) || current.revision < 1 || current.revision !== settingsRevision) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     if (current.enabled !== true) fail('IMAGE_LIVE_DISABLED', 403);
-    if (assertSettings && synchronous(assertSettings, {revision: settingsRevision, destination: IMAGE_REVIEW_DESTINATION}) !== true) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
-    return current;
+    let expected = {revision: settingsRevision, destination: IMAGE_REVIEW_DESTINATION};
+    if (generation.providerId === 'openai-compatible') {
+      const parsed = customImageConfigurationSchema.safeParse(current.configuration);
+      if (!parsed.success || !parsed.data.enabled || !isCompleteCustomImageConfiguration(parsed.data) ||
+          parsed.data.model !== generation.model || canonical(parsed.data.options) !== canonical(generation.options)) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+      const configuration = parsed.data, destination = getCustomImageDestination(configuration.baseUrl);
+      if (current.destination !== destination || frozenIntent && (frozenIntent.schemaVersion !== 2 ||
+          frozenIntent.destination !== destination || canonical(frozenIntent.configuration) !== canonical(configuration))) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+      expected = {revision: settingsRevision, destination, configuration};
+    } else if (generation.providerId !== 'openai' || current.destination !== IMAGE_REVIEW_DESTINATION ||
+        frozenIntent && frozenIntent.schemaVersion !== 1) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+    if (assertSettings && synchronous(assertSettings, expected, generation.providerId) !== true) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+    return expected;
   }
   function boundTask(value, taskId = value.row.taskId) {
     if (!taskId) invalid();
     const task = createImageOwnershipReader(db, value.row.projectId, {fail: invalid}).task(taskId);
     if (task.row.projectId !== value.row.projectId || task.row.requestId !== value.row.requestId || task.row.inputHash !== value.row.inputHash ||
-        task.row.input !== value.row.canonicalInput || canonical(task.input) !== value.row.canonicalInput || task.input.providerId !== 'openai') invalid();
+        task.row.input !== value.row.canonicalInput || canonical(task.input) !== value.row.canonicalInput || task.input.providerId !== value.intent.input.providerId || task.input.providerId === 'mock') invalid();
     return task;
   }
   function decode(row, {verifyTask = true} = {}) {
@@ -143,7 +155,7 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
   function getForTask(projectId, taskId) {
     project(projectId);
     const task = createImageOwnershipReader(db, projectId, {fail: invalid}).task(taskId);
-    if (task.input.providerId !== 'openai') fail('IMAGE_REVIEW_NOT_FOUND', 404);
+    if (task.input.providerId === 'mock') fail('IMAGE_REVIEW_NOT_FOUND', 404);
     return validateImageTaskReview(db, projectId, taskId, task.input);
   }
   function capacity(projectId) {
@@ -167,10 +179,13 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
       }
       if (db.prepare('SELECT 1 FROM image_requests WHERE requestId=? LIMIT 1').get(generation.requestId)) fail('IMAGE_REVIEW_CONFLICT');
       if (generation.groupId) createImageOwnershipReader(db, generation.projectId, {fail: invalid}).group(generation.groupId);
-      settings(input.settingsRevision); capacity(generation.projectId);
+      const selected = settings(input.settingsRevision, generation); capacity(generation.projectId);
       const id = randomUUID(), timestamp = now();
-      const intent = {schemaVersion: 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
-        destination: IMAGE_REVIEW_DESTINATION, policy: IMAGE_REVIEW_POLICY}, canonicalIntent = canonical(intent);
+      const intent = {schemaVersion: generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
+        destination: selected.destination, policy: IMAGE_REVIEW_POLICY,
+        ...(generation.providerId === 'openai-compatible' ? {configuration: selected.configuration} : {})};
+      if (!imageReviewIntentSchema.safeParse(intent).success) invalid();
+      const canonicalIntent = canonical(intent);
       if (Buffer.byteLength(canonicalIntent) > IMAGE_REVIEW_LIMITS.intentBytes) fail('IMAGE_REVIEW_CAPACITY', 507);
       db.prepare(`INSERT INTO image_reviews(id,projectId,requestId,inputHash,canonicalInput,intentHash,canonicalIntent,state,revision,taskId,postAttempts,createdAt,updatedAt,approvedAt,rejectedAt,dispatchedAt)
         VALUES(?,?,?,?,?,?,?,'pending',1,NULL,0,?,?,NULL,NULL,NULL)`).run(id, generation.projectId, generation.requestId, digest(canonicalInput), canonicalInput, digest(canonicalIntent), canonicalIntent, timestamp, timestamp);
@@ -202,7 +217,7 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     const {approval, value} = matchingReview(input, rawApproval);
     if (value.row.revision !== approval.expectedRevision) fail('IMAGE_REVIEW_REVISION_CONFLICT');
     if (value.row.state !== 'pending' || value.row.taskId !== null || value.row.postAttempts !== 0) fail('IMAGE_REVIEW_STATE_CONFLICT');
-    settings(value.intent.settingsRevision);
+    settings(value.intent.settingsRevision, input, value.intent);
     const task = boundTask(value, taskId);
     if (task.row.state !== 'queued' || task.row.revision !== 1 || task.dto.dispatched) fail('IMAGE_REVIEW_STATE_CONFLICT');
     const timestamp = now();
@@ -219,7 +234,7 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     const value = decode(row);
     if (canonical(input) !== value.row.canonicalInput || value.row.taskId !== taskId) fail('IMAGE_REVIEW_CONFLICT');
     if (value.row.state !== 'approved' || value.row.postAttempts !== 0) fail('IMAGE_REVIEW_STATE_CONFLICT');
-    settings(value.intent.settingsRevision);
+    settings(value.intent.settingsRevision, input, value.intent);
     const task = boundTask(value, taskId);
     if (task.row.state !== 'queued' || task.dto.dispatched) fail('IMAGE_REVIEW_STATE_CONFLICT');
     const timestamp = now();

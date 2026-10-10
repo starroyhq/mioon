@@ -124,26 +124,32 @@ The shared catalog exposes `image_profile_list`, `image_generate`,
 `image_review_get` and `image_review_list`. Preserve the camel case. Use
 `mioon_schema` with the dotted name for the exact inputs and advisory effects.
 
-Mock produces deterministic local 1024×1024 PNG output. Dedicated fixed-preset
-OpenAI settings, retained reviews and explicit UI-approved dispatch are
-implemented. The 461-test affected gate, fresh builds and Linux native
-synthetic-network acceptance passed; the independent final full suite passed
-(2758 total, 2756 passed, 0 failed, 2 skipped). This is not live-provider or macOS/Windows acceptance. Image
-discovery is separate from video `mioon_capabilities`; enabled means local
-configuration is available, not verified output or spending permission.
+Mock produces deterministic local 1024×1024 PNG test cards without synthesizing
+the prompt. Fixed-OpenAI activation at `4e66a96` (2026-10-10) passed its
+affected/build/Linux synthetic-native checks and full suite (2758 total,
+2756 passed, 0 failed, 2 skipped). The current [custom Images increment](IMAGE-COMPATIBLE.md)
+passed its own focused/build/Linux synthetic-native gates and full suite
+(2857 total, 2855 passed, 0 failed, 2 skipped). These do not establish live-provider
+or macOS/Windows acceptance. Image discovery is
+separate from video `mioon_capabilities`; enabled means local configuration is
+available, not verified output, compatibility or spending permission.
 
 - `image_review_prepare` takes exactly
-  `{input:<complete OpenAI image.generate input>,settingsRevision}`. The positive
-  settings revision comes from the user's dedicated Images settings; the original
+  `{input:<complete official/custom image.generate input>,settingsRevision}`. The positive
+  settings revision comes from the selected official/custom Images slot; the original
   stable `requestId` is nested in `input`. Preparation only writes a retained
   immutable intent to local SQLite. It neither approves nor creates a task.
 - `image_review_get` takes `{projectId,reviewId}` and returns an existing owned
   review. `image_review_list` takes `{projectId,limit?,cursor?}` and returns
   `{projectId,items,nextCursor}`, default 20/max 50. Both are read-only. Pass
   returned cursors unchanged with the same project/limit; restart expires them.
-- The original generation schema is unchanged. No secret, approval flag, raw
-  request executor or arbitrary endpoint is a tool argument. New direct OpenAI
+- The generation request/receipt shapes stay unchanged, with additive provider
+  `openai-compatible` and the configured custom ASCII model. No secret, approval
+  flag, raw executor or endpoint is a tool argument. New direct official/custom
   `image_generate` is blocked; accepted exact replay only returns its receipt.
+- Custom review DTOs add the backend-retained full immutable `configuration`
+  and use its actual `destination`; official v1 DTOs remain unchanged. See the
+  [exact custom prepare example](IMAGE-COMPATIBLE.md#public-request-preparation-private-paid-approval).
 
 Settings and approve/reject routes are private authenticated application actions,
 not MCP/CLI/model tools. The user approves the exact visible project/prompt/model/

@@ -1,4 +1,5 @@
 import {isIP} from 'node:net';
+import {getCustomImageDestination} from '../../../contracts/src/image-settings.mjs';
 import {checkServerIdentity} from 'node:tls';
 import {isPublicAgentAddress, assertPinnedAgentSocket} from '../agent/network-policy.mjs';
 import {IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, imageAdapterError} from './profiles.mjs';
@@ -19,11 +20,11 @@ function raceAbort(promise, signal) {
     Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
-export async function resolveImageDestination({lookup, signal, maxDnsAnswers = IMAGE_NETWORK_LIMITS.maxDnsAnswers} = {}) {
+async function resolveDestination(endpoint, {lookup, signal, maxDnsAnswers = IMAGE_NETWORK_LIMITS.maxDnsAnswers} = {}) {
   if (typeof lookup !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');
   if (!Number.isInteger(maxDnsAnswers) || maxDnsAnswers < 1 || maxDnsAnswers > IMAGE_NETWORK_LIMITS.maxDnsAnswers) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
-  const url = new URL(IMAGE_GENERATION_ENDPOINT);
+  const url = new URL(endpoint);
   let answers;
   try {
     const query = lookup(url.hostname, {all: true, verbatim: true});
@@ -33,11 +34,20 @@ export async function resolveImageDestination({lookup, signal, maxDnsAnswers = I
   if (!Array.isArray(answers) || !answers.length || answers.length > maxDnsAnswers || answers.some(item => !item || ![4, 6].includes(item.family) || isIP(item.address) !== item.family || !isPublicAgentAddress(item.address))) throw imageAdapterError('IMAGE_NETWORK_DENIED');
   return {hostname: url.hostname, port: 443, secure: true, address: answers[0].address, family: answers[0].family, path: url.pathname};
 }
+function compatibleEndpoint(baseUrl) {
+  try { return getCustomImageDestination(baseUrl); }
+  catch { throw imageAdapterError('IMAGE_INVALID_REQUEST'); }
+}
+export function resolveImageDestination(options = {}) { return resolveDestination(IMAGE_GENERATION_ENDPOINT, options); }
+export async function resolveCompatibleImageDestination({baseUrl, ...options} = {}) {
+  return resolveDestination(compatibleEndpoint(baseUrl), options);
+}
 /** Dependencies are explicit: no ambient fetch, SDK or credential discovery.
  * The dedicated reviewed Images gateway supplies the platform DNS/HTTPS pair;
  * synthetic tests supply inert dependencies and a fake sentinel.
- * No retries, redirects, proxy/environment handling, pooled agents or URL input. */
-export function createImageJsonTransport({lookup, httpsRequest, apiKey, limits: overrides} = {}) {
+ * No retries, redirects, proxy/environment handling or pooled agents. Endpoint
+ * selection happens only in the explicit trusted factories below. */
+function createJsonTransport(endpoint, {lookup, httpsRequest, apiKey, limits: overrides} = {}) {
   if (typeof lookup !== 'function' || typeof httpsRequest !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');
   if (typeof apiKey !== 'string' || !/^[\x21-\x7e]{1,4096}$/.test(apiKey)) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   const limits = limitsFor(overrides);
@@ -63,7 +73,7 @@ export function createImageJsonTransport({lookup, httpsRequest, apiKey, limits: 
       request?.destroy(); response?.destroy();
     };
     try {
-      const destination = await resolveImageDestination({lookup, signal: controller.signal, maxDnsAnswers: limits.maxDnsAnswers});
+      const destination = await resolveDestination(endpoint, {lookup, signal: controller.signal, maxDnsAnswers: limits.maxDnsAnswers});
       if (failed) throw failed;
       response = await new Promise((resolve, reject) => {
         rejectPending = reject;
@@ -126,4 +136,10 @@ export function createImageJsonTransport({lookup, httpsRequest, apiKey, limits: 
       throw imageAdapterError(error?.code, {dispatched});
     } finally { close(); }
   };
+}
+
+// The official factory cannot be redirected by supplied URL/profile properties.
+export function createImageJsonTransport(options = {}) { return createJsonTransport(IMAGE_GENERATION_ENDPOINT, options); }
+export function createCompatibleImageJsonTransport({baseUrl, ...options} = {}) {
+  return createJsonTransport(compatibleEndpoint(baseUrl), options);
 }

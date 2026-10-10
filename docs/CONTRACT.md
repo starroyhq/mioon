@@ -9,16 +9,17 @@ The original ten image operations are defined in
 `image.review.prepare/get/list` in `image-reviews.mjs`. See
 [Image generation](IMAGE-GENERATION.md) for task/version DTOs and limits, and
 [Images activation](IMAGE-ACTIVATION.md) for exact reviews, settings and approval.
-The accepted first slice at baseline `82c70f3` enabled only Mock and hard-disabled
-OpenAI. As of the active 2026-10-10 increment, dedicated fixed-preset Images
-settings and explicit UI-reviewed one-POST dispatch are implemented. The 461-test
-affected gate, fresh builds and Linux native synthetic-network acceptance passed;
-the independent final full suite passed (2758 total, 2756 passed,
-0 failed, 2 skipped). This does not establish
-live-provider or macOS/Windows acceptance. Existing Agent/video keys never activate
-Images; new direct OpenAI RPC remains blocked without private review approval.
+The accepted first slice at baseline `82c70f3` enabled only Mock. Fixed-preset
+OpenAI activation at `4e66a96` (2026-10-10) passed its affected/build/Linux synthetic
+native checks and full suite (2758 total, 2756 passed, 0 failed, 2 skipped).
+The [custom Images increment](IMAGE-COMPATIBLE.md) is implemented; its
+final gate is pending. Earlier results do not establish this increment's gate,
+live-provider or macOS/Windows acceptance. The generation request/receipt shapes
+are retained with additive provider `openai-compatible` and configured ASCII model
+values. Existing Agent/video keys never activate Images; new direct official or
+custom RPC remains blocked without private review approval.
 
-Review preparation takes exactly `{input:<complete OpenAI generation request>,
+Review preparation takes exactly `{input:<complete official/custom generation request>,
 settingsRevision}` and writes a retained immutable intent locally, without
 approval, task creation or provider work. Get takes `{projectId,reviewId}`; list
 takes `{projectId,limit?,cursor?}` and returns `{projectId,items,nextCursor}`,
@@ -28,8 +29,14 @@ local authentication is not cryptographic human-presence proof or paid authority
 Approval binds the visible exact request and current configuration to at most
 one POST, at usage-based unknown cost rather than an enforced currency cap.
 
-Schema 17 adds only the review table/index/triggers; it does not rewrite existing
-rows, receipts or serialized bytes. The immutable review intent cap is 32 KiB,
+Schema 17 added only the review table/index/triggers. Schema 18 rebuilds only
+`image_reviews` for official v1/custom v2 intents, copying/checking raw rowids,
+all 16 columns, historical states and retained index/trigger SQL. Other tables,
+receipts and serialized history stay untouched. Custom backend-created intents
+and DTOs retain complete immutable configuration plus actual destination;
+official v1 intent/DTO shapes and bytes remain intact. Task snapshot v1 stays
+content-only: full custom execution provenance is the validated retained
+task-linked review, never current settings. The immutable review intent cap is 32 KiB,
 review-row cap 64 KiB, retained reviews 1000/project and 10,000/workspace, without
 cleanup. The nested generation input retains its original 24-KiB bound. Review
 requests and prompts remain plaintext local SQLite. `image.generate` effects now

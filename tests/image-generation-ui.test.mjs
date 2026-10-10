@@ -7,7 +7,7 @@ import { canonicalImageInput } from '../packages/contracts/src/images.mjs';
 import { ApiError } from '../apps/web/src/api.js';
 import * as imageLogic from '../apps/web/src/image-generation.js';
 import { IMAGE_LIMITS } from '../packages/contracts/src/images.mjs';
-import { DEFAULT_IMAGE_CONFIGURATION } from '../packages/contracts/src/image-settings.mjs';
+import { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION } from '../packages/contracts/src/image-settings.mjs';
 import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY } from '../packages/contracts/src/image-reviews.mjs';
 import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, createImageGenerationSession, imageCanGenerate, imageDraftDirty, imageInputIssue, imageTaskLabel } from '../apps/web/src/image-generation.js';
 
@@ -56,9 +56,9 @@ function fixture(options = {}) {
     throw error('UNSUPPORTED');
   };
   const reviewClient = { async approve(value) { privateCalls.push({ action: 'approve', review: structuredClone(value) }); if (options.approve) return options.approve(value, data, accept); const result = accept(value.input); data.reviews = data.reviews.map(item => item.id === value.id ? { ...item, state: 'approved', revision: 2, taskId: result.id, approvedAt: at } : item); return result; }, async reject(value) { privateCalls.push({ action: 'reject', review: structuredClone(value) }); if (options.reject) return options.reject(value, data); const result = { ...value, state: 'rejected', revision: 2, rejectedAt: at }; data.reviews = data.reviews.map(item => item.id === value.id ? result : item); return result; } };
-  const settingsClient = { read: async () => options.settings || settings({ configuration: { ...DEFAULT_IMAGE_CONFIGURATION } }) };
-  const session = createImageGenerationSession({ projectId, api, storage, reviewClient, settings: options.settings, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: next => changes.push(next), onGenerated: (...args) => notifications.push(args), setTimer: fn => { const key = ++sequence; timers.set(key, fn); return key; }, clearTimer: key => timers.delete(key), ...options.session });
-  return { session, api, reviewClient, settingsClient, privateCalls, calls, data, storage, changes, notifications, timers, keyCount: () => keys, async tick() { const [key, fn] = timers.entries().next().value || []; if (!fn) return false; timers.delete(key); fn(); await flush(); return true; } };
+  const settingsClient = { read: async () => options.settings || settings({ configuration: { ...DEFAULT_IMAGE_CONFIGURATION } }) }, customSettingsClient = { read: async () => options.customSettings || settings({ revision: 0, configuration: { ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION }, secret: { configured: false, storage: 'none' } }) };
+  const session = createImageGenerationSession({ projectId, api, storage, reviewClient, settings: options.settings, customSettings: options.customSettings, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: next => changes.push(next), onGenerated: (...args) => notifications.push(args), setTimer: fn => { const key = ++sequence; timers.set(key, fn); return key; }, clearTimer: key => timers.delete(key), ...options.session });
+  return { session, api, reviewClient, settingsClient, customSettingsClient, privateCalls, calls, data, storage, changes, notifications, timers, keyCount: () => keys, async tick() { const [key, fn] = timers.entries().next().value || []; if (!fn) return false; timers.delete(key); fn(); await flush(); return true; } };
 }
 async function ready(f) { await f.session.load(); f.session.edit('name', '测试图像'); f.session.edit('prompt', '清晨的山间小屋'); }
 const mutations = f => f.calls.filter(call => ['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(call.operation));
@@ -225,7 +225,7 @@ function renderer(f) {
     if (name === './image-generation.js') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
-    if (name === './image-settings.js') return { createImageSettingsClient: () => f.settingsClient };
+    if (name === './image-settings.js') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
     if (name === './icons.jsx') return { default: 'Icon' };
     if (name === './image-generation.css') return {};
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive;
@@ -233,12 +233,12 @@ function renderer(f) {
   };
   Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
   const harness = {
-    render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
+    render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
     form() { return nodes(tree).find(node => node.type === 'form'); },
     change(id, value) { harness.find(id).props.onChange({ target: { value } }); harness.render(); },
     click(id) { harness.find(id).props.onClick?.(); harness.render(); },
-    settings() { return nodes(tree).find(node => node.type === 'ImageSettings'); },
+    settings(slot = 'official') { return nodes(tree).find(node => node.type === 'ImageSettings' && node.props.slot === slot); },
     show(value) { visible = value; harness.render(); },
     get dirty() { return dirty; },
     unmount() { for (const slot of slots) slot.cleanup?.(); },
@@ -327,4 +327,98 @@ test('valid-shaped altered rejection acknowledgement cannot release an uncertain
   const f = fixture({ settings: settings(), approve: () => { throw error(); }, reject: value => review({ ...value.input, prompt: 'Changed' }, { id: value.id, state: 'rejected', revision: 2, rejectedAt: at }) });
   await ready(f); f.session.selectProvider('openai'); await f.session.generatePaid(); const pending = f.session.getState().pending;
   assert.equal(await f.session.rejectReview(f.session.getState().reviews[0]), false); assert.deepEqual(f.session.getState().pending, pending); assert.equal(f.storage.data.size, 1); assert.equal(f.session.getState().reviews[0].state, 'pending'); f.session.dispose();
+});
+
+const customConfig = (patch = {}) => ({ ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/tenant/v1', model: 'vendor-image-exact', ...patch });
+const customSettings = (patch = {}) => settings({ configuration: customConfig(), ...patch });
+const customReview = (input = paidInput({ providerId: 'openai-compatible', model: 'vendor-image-exact' }), patch = {}) => review(input, { configuration: customConfig(), destination: 'https://images.example.com/tenant/v1/images/generations', ...patch });
+function customFixture(options = {}) {
+  return fixture({ ...options, customSettings: options.customSettings || customSettings(), api: async (operation, input, data) => {
+    if (options.api) { const result = await options.api(operation, input, data); if (result !== undefined) return result; }
+    if (operation === 'image.review.prepare') { const result = customReview(input.input, { settingsRevision: input.settingsRevision }); data.reviews.unshift(result); return result; }
+  } });
+}
+
+test('custom paid click binds full immutable configuration and resolved destination with no endpoint in typed input', async () => {
+  const f = customFixture({ api: (operation, input) => { if (operation === 'image.review.prepare') { const saved = JSON.parse([...f.storage.data.values()][0]); assert.equal(saved.version, 2); assert.deepEqual(saved.configuration, customConfig()); assert.equal(saved.destination, customReview().destination); assert.equal(saved.approvalAttempted, false); assert.deepEqual(Object.keys(input).sort(), ['input', 'settingsRevision']); assert.equal(input.input.baseUrl, undefined); assert.equal(input.input.configuration, undefined); } } });
+  await ready(f); f.session.selectProvider('openai-compatible'); f.session.edit('prompt', '  原始自定义描述\n保留。  '); assert.equal(imageCanGenerate(f.session.getState()), true); assert.equal(await f.session.generate(), false); assert.equal(await f.session.generatePaid(), true);
+  assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.input.model, 'vendor-image-exact'); assert.equal(f.privateCalls[0].review.input.prompt, '  原始自定义描述\n保留。  '); assert.deepEqual(f.privateCalls[0].review.configuration, customConfig()); assert.equal(mutations(f).length, 0); assert.equal(f.storage.data.size, 0); f.session.dispose();
+});
+
+test('custom paid preparation refuses valid-shaped destination/configuration substitution and never normalizes receipts', async () => {
+  for (const baseUrl of ['https://different.example.com/v1', 'https://IMAGES.example.com:443/tenant/v1/']) {
+    const f = customFixture({ api: (operation, input) => operation === 'image.review.prepare' ? customReview(input.input, { configuration: customConfig({ baseUrl }), destination: `${baseUrl}/images/generations` }) : undefined });
+    await ready(f); f.session.selectProvider('openai-compatible'); await f.session.generatePaid(); assert.equal(f.privateCalls.length, 0); assert.ok(f.session.getState().pending); assert.equal(f.session.getState().pending.configuration.baseUrl, customConfig().baseUrl); f.session.dispose();
+  }
+});
+
+test('custom preparation hide, slot switch and changed configuration never auto-approve on return', async () => {
+  for (const transition of ['hide', 'settings']) {
+    const held = deferred(); let original;
+    const f = customFixture({ api: (operation, input, data) => { if (operation === 'image.review.prepare') { original = customReview(input.input); data.reviews = [original]; return held.promise; } } });
+    await ready(f); f.session.selectProvider('openai-compatible'); const sending = f.session.generatePaid(); await flush();
+    if (transition === 'hide') { f.session.setVisible(false); f.session.setVisible(true); } else f.session.setCustomSettings(customSettings({ revision: 2, configuration: customConfig({ baseUrl: 'https://new.example.com/v1' }) }));
+    held.resolve(original); await sending; assert.equal(f.privateCalls.length, 0); assert.equal(f.session.getState().pending.approvalAttempted, false); await f.session.load(); assert.equal(f.privateCalls.length, 0);
+    if (transition === 'settings') assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), false);
+    else { assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), true); assert.equal(f.privateCalls.length, 1); }
+    f.session.dispose();
+  }
+});
+
+test('custom unknown approval survives restart as exact v2 intent and is not reapproved by reads', async () => {
+  const f = customFixture({ approve: () => { throw error(); } }); await ready(f); f.session.selectProvider('openai-compatible'); await f.session.generatePaid(); const pending = f.session.getState().pending, original = f.data.reviews[0]; assert.equal(pending.version, 2); assert.equal(pending.approvalAttempted, true); f.session.dispose();
+  const g = customFixture({ storage: f.storage, reviews: [original] }); await g.session.load(); g.session.setVisible(false); g.session.setVisible(true); await flush(); await g.session.load(); assert.deepEqual(g.session.getState().pending, pending); assert.equal(g.privateCalls.length, 0); assert.equal(g.calls.some(call => call.operation === 'image.review.prepare'), false); assert.equal(await g.session.generatePaid(), false); g.session.dispose();
+  const invalidStorage = memoryStorage(); invalidStorage.setItem(`mioon.image-intent.v1:${projectId}`, JSON.stringify({ ...pending, version: 1 })); const h = customFixture({ storage: invalidStorage }); await h.session.load(); assert.equal(h.session.getState().storageBlocked, true); assert.equal(h.privateCalls.length, 0); h.session.dispose();
+});
+
+test('custom lost approval ACK resolves only the retained request without a second paid dispatch', async () => {
+  const f = customFixture({ approve: (value, data, accept) => { accept(value.input); throw error(); } }); await ready(f); f.session.selectProvider('openai-compatible'); await f.session.generatePaid(); assert.equal(f.session.getState().pending, null); assert.equal(f.privateCalls.length, 1); assert.equal(f.session.getState().tasks[0].providerId, 'openai-compatible'); await f.session.load(); assert.equal(f.privateCalls.length, 1); assert.equal(mutations(f).length, 0); f.session.dispose();
+});
+
+test('historical custom review authority survives advanced task states and current settings outages', async () => {
+  const input = paidInput({ providerId: 'openai-compatible', model: 'vendor-image-exact', requestId }), original = customReview(input, { state: 'dispatched', revision: 3, taskId, approvedAt: at, dispatchedAt: at, postAttempts: 1 });
+  for (const state of ['dispatching', 'succeeded', 'failed', 'outcome_unknown', 'local_result_error']) {
+    const current = task({ ...input, state, dispatched: true, revision: 4, ...(state === 'succeeded' ? { versionId } : {}), ...(state === 'failed' ? { errorCode: 'IMAGE_PROVIDER_ERROR' } : {}) });
+    const loaded = { ...imageLogic.initialImageGenerationState(), customSettings: customSettings({ configuration: customConfig({ baseUrl: 'https://current.example.com/v1' }) }), reviews: [original] };
+    assert.equal(imageLogic.imageTaskReview(loaded, current)?.destination, original.destination, state); assert.equal(imageLogic.imageTaskReview({ ...loaded, reviews: [] }, current), null); assert.equal(imageLogic.imageTaskReview(loaded, { ...current, prompt: 'changed' }), null);
+  }
+  const f = customFixture({ reviews: [original], session: { settingsReader: async () => { throw error(); }, customSettingsReader: async () => { throw error(); } } }); await f.session.load(); assert.equal(f.session.getState().customSettings, null); assert.equal(f.session.getState().reviews[0].destination, original.destination); assert.ok(f.calls.some(call => call.operation === 'image.review.list')); f.session.dispose();
+});
+
+test('actual custom paid button is explicit, settings slots stay mounted and history never invents a recipient', async () => {
+  const f = customFixture(), ui = renderer(f); ui.render(); await flush(); ui.render(); ui.change('image-generation-name', 'Custom visible'); ui.change('image-generation-prompt', 'Exact custom prompt'); ui.click('image-provider-custom');
+  assert.equal(ui.find('image-generate').props.type, 'button'); assert.equal(ui.find('image-generate').props.disabled, false); assert.ok(JSON.stringify(ui.find('image-custom-profile')).includes(customReview().destination));
+  ui.form().props.onSubmit({ preventDefault() {} }); ui.find('image-generation-prompt').props.onKeyDown({ ctrlKey: true, key: 'Enter', preventDefault() {} }); await flush(); assert.equal(f.privateCalls.length, 0);
+  const oldPaid = ui.find('image-generate').props.onClick; ui.click('image-settings-open'); assert.equal(ui.settings('custom').props.active, true); assert.equal(ui.settings('official').props.active, false); assert.notEqual(ui.settings('official').props.client, ui.settings('custom').props.client);
+  ui.settings('custom').props.onSelectSlot('official'); ui.render(); assert.equal(ui.settings('official').props.active, true); assert.equal(ui.settings('custom').props.active, false); oldPaid(); assert.equal(f.privateCalls.length, 0);
+  ui.settings('official').props.onClose(); ui.render(); await flush(); ui.render(); oldPaid(); assert.equal(f.privateCalls.length, 0); ui.click('image-generate'); await flush(); ui.render(); assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.destination, customReview().destination); ui.unmount(); f.session.dispose();
+});
+
+test('a paid button authorization snapshot cannot authorize later draft or same-revision custom destination changes', async () => {
+  for (const change of ['prompt', 'configuration']) {
+    const f = customFixture(); await ready(f); f.session.selectProvider('openai-compatible'); const shown = imageLogic.imagePaidAuthorization(f.session.getState());
+    if (change === 'prompt') f.session.edit('prompt', 'new prompt'); else f.session.setCustomSettings(customSettings({ configuration: customConfig({ baseUrl: 'https://later.example.com/v1' }) }));
+    assert.equal(await f.session.generatePaid(shown), false); assert.equal(f.calls.some(call => call.operation === 'image.review.prepare'), false); assert.equal(f.privateCalls.length, 0); assert.equal(f.storage.data.size, 0); f.session.dispose();
+  }
+});
+
+
+test('only allowlisted custom failures proven before dispatch show safe actionable connection explanations', () => {
+  const codes = ['IMAGE_NETWORK_DENIED', 'IMAGE_CONNECTION_FAILED', 'IMAGE_TIMEOUT', 'IMAGE_DISPATCH_BLOCKED', 'IMAGE_SETTINGS_CONFLICT', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_SETTINGS_DISABLED'];
+  for (const errorCode of codes) {
+    const beforePost = task({ providerId: 'openai-compatible', model: 'vendor-image-exact', state: 'failed', dispatched: false, revision: 2, errorCode });
+    const text = imageLogic.imageTaskConnectionMessage(beforePost);
+    assert.match(text, /本次未发送生成 POST/); assert.match(text, /重新明确批准/); assert.match(text, /不会自动重试/); assert.doesNotMatch(text, /https?:|IMAGE_|密钥值|免费|不收费/);
+    for (const patch of [{ providerId: 'openai', model: IMAGE_MODELS.openai }, { dispatched: true }, { state: 'outcome_unknown', dispatched: true }, { state: 'queued' }, { errorCode: 'RAW_PROVIDER_SECRET' }]) assert.equal(imageLogic.imageTaskConnectionMessage({ ...beforePost, ...patch }), '');
+  }
+  assert.match(imageLogic.imageTaskMessage('outcome_unknown'), /无法确认服务商结果/); assert.doesNotMatch(imageLogic.imageTaskMessage('outcome_unknown'), /未发送|免费|不收费/);
+});
+
+test('actual custom failed task shows fixed pre-dispatch guidance without reflecting raw provider text', async () => {
+  for (const errorCode of ['IMAGE_NETWORK_DENIED', 'IMAGE_SETTINGS_CONFLICT', 'RAW_PROVIDER_SECRET']) {
+    const f = customFixture({ tasks: [task({ providerId: 'openai-compatible', model: 'vendor-image-exact', state: 'failed', revision: 2, errorCode })] }), ui = renderer(f); ui.render(); await flush(); ui.render();
+    const notice = ui.find('image-task-connection-notice');
+    if (errorCode === 'RAW_PROVIDER_SECRET') assert.equal(notice, undefined); else assert.match(JSON.stringify(notice), /本次未发送生成 POST/);
+    assert.doesNotMatch(JSON.stringify(ui.find('image-task')), /RAW_PROVIDER_SECRET|IMAGE_NETWORK_DENIED|IMAGE_SETTINGS_CONFLICT/); ui.unmount(); f.session.dispose();
+  }
 });

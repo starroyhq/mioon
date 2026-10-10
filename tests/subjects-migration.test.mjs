@@ -111,17 +111,17 @@ function temporaryRoot(t) {
 function rawDatabase(root) {const db=new DatabaseSync(path.join(root,'workbench.sqlite'));db.exec('PRAGMA foreign_keys=ON');return db;}
 function openForTest(t,root) {const store=openStore(root);t.after(()=>store.close());return store;}
 
-// Temporary 15/16/17 markers gate later migrations while the unchanged
+// Temporary 15/16/17/18 markers gate later migrations while the unchanged
 // v1–14 IF NOT EXISTS bootstraps populate all other legacy tables. It is removed
 // before any fixture data or snapshot is made. The edit table comes solely from
 // the frozen SQL above; no v15 table is ever downgraded to manufacture a fixture.
 export function createSchema14Store(root) {
  let db=rawDatabase(root);
  db.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY); CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);');
- db.exec(LEGACY_EDIT_TASK_SCHEMA);db.prepare('INSERT INTO schema_version VALUES(?)').run(15);db.prepare('INSERT INTO schema_version VALUES(?)').run(16);db.prepare('INSERT INTO schema_version VALUES(?)').run(17);db.close();
+ db.exec(LEGACY_EDIT_TASK_SCHEMA);db.prepare('INSERT INTO schema_version VALUES(?)').run(15);db.prepare('INSERT INTO schema_version VALUES(?)').run(16);db.prepare('INSERT INTO schema_version VALUES(?)').run(17);db.prepare('INSERT INTO schema_version VALUES(?)').run(18);db.close();
  const store=openStore(root);
  assert.deepEqual(SUBJECT_TABLES.filter(name=>store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),[]);
- store.db.exec('DELETE FROM schema_version WHERE version IN (15,16,17)');
+ store.db.exec('DELETE FROM schema_version WHERE version IN (15,16,17,18)');
  assert.equal(store.db.prepare('SELECT max(version) n FROM schema_version').get().n,14);
  return store;
 }
@@ -217,7 +217,7 @@ function assertLegacyPreserved(db,before) {
 function assertNewSchema(db) {
  assert.deepEqual(SUBJECT_TABLES.filter(name=>db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),SUBJECT_TABLES);
  assert.equal(db.prepare('SELECT count(*) n FROM schema_version WHERE version=15').get().n,1);
- assert.equal(db.prepare('SELECT max(version) n FROM schema_version').get().n,17);
+ assert.equal(db.prepare('SELECT max(version) n FROM schema_version').get().n,18);
  for(const table of LATER_IMAGE_TABLES)assert.deepEqual(rows(db,table),[],'later image migration never manufactures image records');
  assert.equal(db.prepare("SELECT count(*) n FROM sqlite_master WHERE name='edit_tasks_subjects'").get().n,0);
  assert.deepEqual(db.prepare('PRAGMA table_info(edit_tasks)').all().map(row=>row.name),COLUMNS);

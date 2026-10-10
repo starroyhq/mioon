@@ -5,9 +5,9 @@ import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createChatHttp} from './chat-http.mjs';
 import {createEditTasksHttp} from './edit-tasks-http.mjs';
 import {createImageHttp} from './image-http.mjs';
-import {createImageSettings} from '@mioon/business/images/settings';
-import {createImageSettingsFile} from '@mioon/business/images/settings-file';
-import {createLiveImageGateway} from '@mioon/business/images/gateway';
+import {createImageSettings,createCustomImageSettings} from '@mioon/business/images/settings';
+import {createImageSettingsFile,createCustomImageSettingsFile} from '@mioon/business/images/settings-file';
+import {createLiveImageGateway,createCompatibleImageGateway} from '@mioon/business/images/gateway';
 import {createFileResponses} from './file-response.mjs';
 import {callObservedRpc} from './rpc-observation.mjs';
 import path from 'node:path';
@@ -82,7 +82,7 @@ export async function startServer({
   }
   const store = openStore(root);
   const shutdown = new AbortController();
-  let worker, server, agentSettings, imageSettings, chatRuntime, chatHttp, services, editTasks;
+  let worker, server, agentSettings, imageSettings, customImageSettings, chatRuntime, chatHttp, services, editTasks;
   const files = createFileResponses({signal: shutdown.signal});
   try {
     if (token === undefined) {
@@ -92,8 +92,10 @@ export async function startServer({
     const providers = createProviderRegistry({db: store.db, root});
     imageSettings = await createImageSettings({persistence:createImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
-    services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork})}});
-    const imageHttp=createImageHttp({settings:imageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
+    customImageSettings = await createCustomImageSettings({persistence:createCustomImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
+      ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
+    services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork})}});
+    const imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
     editTasks = createEditTasks({store, services, ...(taskFault ? {fault: taskFault} : {})});
     // openStore already owns the exclusive workspace lock. Startup only
     // reconciles durable evidence and never dispatches a prepared edit.
@@ -226,7 +228,7 @@ export async function startServer({
         await boundedShutdown(Promise.all([
           worker.stop(), services.drain(), editTasks.drain(), files.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
-          !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(),
+          !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(),
         ]), 'SERVER_STOP_TIMEOUT');
       }
       finally { clearTimeout(forceDrain); }
@@ -238,7 +240,7 @@ export async function startServer({
     chatRuntime?.close(); chatHttp?.close();
     const drain = server?.listening ? new Promise(resolve => server.close(resolve)) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close()]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }

@@ -164,19 +164,24 @@ mioon image review list --input '{"projectId":"PROJECT_UUID","limit":20}'
 ```
 
 Replace placeholders with actual IDs. The direct `image generate` example is
-for local deterministic Mock PNG generation. New OpenAI requests cannot be
-approved through the CLI. Dedicated Images settings and explicit UI approval
-are now implemented. The 461-test affected gate, fresh builds and Linux native
-synthetic-network acceptance passed; the independent final full suite passed
-(2758 total, 2756 passed, 0 failed, 2 skipped). This is not live-provider or macOS/Windows acceptance evidence. No real
-provider call is authorized for this acceptance increment.
+for local deterministic Mock PNG test cards. New official/custom live requests
+cannot be approved through the CLI. Fixed-OpenAI activation at `4e66a96`
+(2026-10-10) passed its affected/build/Linux synthetic-native checks and full
+suite (2758 total, 2756 passed, 0 failed, 2 skipped). The current
+[custom Images increment](IMAGE-COMPATIBLE.md) is implemented with its
+own passed focused/build/Linux synthetic-native gates and full suite
+(2857 total, 2855 passed, 0 failed, 2 skipped). These do not establish live-provider
+or macOS/Windows acceptance. No real provider call is authorized by these checks.
 
-A review file contains exactly `{input:<complete OpenAI image.generate input>,
+A review file contains exactly `{input:<complete official/custom image.generate input>,
 settingsRevision:<current positive settings revision>}`. Obtain that revision
-from the dedicated Images settings UI; do not guess it. The complete nested
-`input` retains the existing stable `requestId`, prompt/project, pinned model,
-fixed options and optional group/revision pair. There is no top-level request
-key, approval flag, key input or destination override. Prepare only retains this
+from the selected slot in Images settings; do not guess it or use the other
+slot's revision. The complete nested `input` retains the existing field shape,
+stable `requestId`, prompt/project, selected model, fixed options and optional
+group/revision pair. Custom input uses `providerId:"openai-compatible"` and that
+slot's configured model; see the
+[exact example](IMAGE-COMPATIBLE.md#public-request-preparation-private-paid-approval).
+There is no top-level request key, approval flag, key input or destination override. Prepare only retains this
 immutable intent locally. Get/list read retained reviews; none dispatches or
 charges. Only the user's explicit application paid/review button may continue
 this workflow. There is no CLI approval/rejection or Images credential command,
@@ -192,7 +197,9 @@ Exact prepare repeats retain the same identity/current state; changed content
 or settings revision under its key conflicts.
 
 See [Image generation](IMAGE-GENERATION.md) and
-[Images activation](IMAGE-ACTIVATION.md) for exact inputs, review DTOs and limits.
+[Images activation](IMAGE-ACTIVATION.md) for shared inputs/limits. Custom review
+DTOs additionally retain full immutable configuration and actual destination;
+official v1 DTOs and original task/receipt shapes remain intact.
 Image discovery is `image profile list`, separate from video `capabilities`.
 Enabled means local configuration is present, not live verification or permission
 to spend. The `image.generate` effects conservatively include separately approved

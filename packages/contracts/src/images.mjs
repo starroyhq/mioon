@@ -1,8 +1,9 @@
 import {z} from 'zod';
+import {customImageModelSchema} from './image-compatible.mjs';
 
 // Fixed image profiles; a provider label or local enable flag is never approval
 // to send. Live acceptance additionally requires an immutable user review.
-export const IMAGE_PROVIDER_IDS=Object.freeze(['mock','openai']);
+export const IMAGE_PROVIDER_IDS=Object.freeze(['mock','openai','openai-compatible']);
 export const IMAGE_MODELS=Object.freeze({mock:'mock-image-v1',openai:'gpt-image-2.5-flare-2026-09-08'});
 export const IMAGE_FIXED_OPTIONS=Object.freeze({size:'1024x1024',quality:'low',outputFormat:'png',background:'opaque',n:1});
 export const IMAGE_STATES=Object.freeze(['queued','interrupted_before_dispatch','dispatching','receiving','persisting','succeeded','cancelled_before_dispatch','failed','outcome_unknown','local_result_error']);
@@ -14,10 +15,10 @@ export const canonicalImageInput=value=>JSON.stringify(value,(_,v)=>v&&typeof v=
 const id=z.string().uuid(),revision=z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),timestamp=z.string().min(1).max(40).refine(v=>Number.isFinite(Date.parse(v)),'Invalid timestamp');
 const key=z.string().min(8).max(200),hash=z.string().regex(/^[a-f0-9]{64}$/),name=z.string().min(1).max(120).refine(v=>Boolean(v.trim()),'Name must not be blank');
 const encoder=new TextEncoder(),prompt=z.string().min(1).max(IMAGE_LIMITS.promptCharacters).refine(v=>Boolean(v.trim())&&!/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(v)&&encoder.encode(v).length<=IMAGE_LIMITS.promptBytes,'Prompt must not be blank or oversized');
-const providerId=z.enum(IMAGE_PROVIDER_IDS),model=z.enum(Object.values(IMAGE_MODELS));
+const providerId=z.enum(IMAGE_PROVIDER_IDS),model=customImageModelSchema;
 export const imageOptionsSchema=z.object({size:z.literal('1024x1024'),quality:z.literal('low'),outputFormat:z.literal('png'),background:z.literal('opaque'),n:z.literal(1)}).strict();
 const generation={providerId,model,prompt,options:imageOptionsSchema};
-const providerMatches=v=>IMAGE_MODELS[v.providerId]===v.model;
+const providerMatches=v=>v.providerId==='openai-compatible'||IMAGE_MODELS[v.providerId]===v.model;
 export const imageAdapterInputSchema=z.object(generation).strict().refine(providerMatches,'Model does not belong to provider');
 const generate=z.object({projectId:id,name,...generation,requestId:key,groupId:id.optional(),expectedRevision:revision.optional()}).strict()
  .refine(v=>(v.groupId===undefined)===(v.expectedRevision===undefined),'groupId and expectedRevision must be provided together').refine(providerMatches,'Model does not belong to provider');
@@ -47,7 +48,7 @@ export const imageVersionResponseSchema=z.object({id,projectId:id,groupId:id,tas
  .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock'),'Mock identity mismatch');
 export const imageProfileResponseSchema=z.object({providerId,model,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.boolean(),evidence:z.enum(['deterministic-mock','offline-tested-not-live']),options:imageOptionsSchema}).strict()
  .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock')&&(!v.isMock||v.enabled)&&v.evidence===(v.isMock?'deterministic-mock':'offline-tested-not-live'),'Invalid image profile evidence');
-export const imageProfilesResponseSchema=z.object({items:z.array(imageProfileResponseSchema).max(2),liveEnabled:z.boolean()}).strict().refine(v=>new Set(v.items.map(i=>i.providerId)).size===v.items.length&&v.liveEnabled===v.items.some(i=>i.providerId==='openai'&&i.enabled));
+export const imageProfilesResponseSchema=z.object({items:z.array(imageProfileResponseSchema).max(3),liveEnabled:z.boolean()}).strict().refine(v=>new Set(v.items.map(i=>i.providerId)).size===v.items.length&&v.liveEnabled===v.items.some(i=>i.providerId!=='mock'&&i.enabled));
 export const imageRequestResponseSchema=z.object({projectId:id,requestId:key,operation:z.enum(IMAGE_MUTATION_OPERATIONS),response:imageTaskResponseSchema}).strict()
  .refine(v=>v.response.projectId===v.projectId&&(v.operation!=='image.generate'||v.response.requestId===v.requestId))
  .refine(v=>v.operation==='image.generate'?v.response.state==='queued'&&v.response.revision===1&&!v.response.dispatched

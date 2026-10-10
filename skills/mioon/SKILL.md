@@ -36,22 +36,27 @@ For an executable no-cost import → shot → generate → select → timeline �
 Inspect `image profile list`, `schema image.generate` and
 `schema image.review.prepare` before using the
 [image workflow](../../docs/IMAGE-GENERATION.md). Mock remains deterministic,
-visibly labeled local 1024×1024 PNG output. Dedicated independent Images settings,
-retained review preparation and explicit UI-approved one-POST OpenAI dispatch are
-implemented. The 461-test affected gate, fresh builds and Linux native
-synthetic-network acceptance passed; the independent final full suite passed
-(2758 total, 2756 passed, 0 failed, 2 skipped). This is not live-provider or macOS/Windows acceptance, and no real provider
-call is authorized for this acceptance increment. Existing Agent/video
-credentials do not activate Images. Do not substitute Mock for a requested real
-provider, or treat a configured/enabled profile as verified output or approval.
+visibly labeled local 1024×1024 PNG test cards, not prompt-conditioned imagery.
+Fixed-OpenAI activation at `4e66a96` (2026-10-10) passed its affected/build/Linux
+synthetic-native checks and full suite (2758 total, 2756 passed, 0 failed,
+2 skipped). The [custom Images increment](../../docs/IMAGE-COMPATIBLE.md) is
+implemented with its own passed focused/build/Linux synthetic-native gates and
+full suite (2857 total, 2855 passed, 0 failed, 2 skipped). These do not prove
+live-provider or macOS/Windows acceptance. No real provider call is
+authorized by these checks. Existing Agent/video credentials do not activate
+Images. Do not substitute Mock for a requested real provider, or treat a configured/enabled profile as verified output or approval.
 
 For Mock, use the complete strict `image generate` input and stable key. For a
-user-requested OpenAI intent, external clients can only prepare/read its review:
+user-requested official/custom live intent, external clients can only prepare/read
+its review:
 
 - `image review prepare` / `image_review_prepare` takes exactly
-  `{input:<complete OpenAI image.generate input>,settingsRevision}`. Use the
-  current positive settings revision from the dedicated Images UI and retain the
-  required original `requestId` inside `input`; no extra top-level key exists.
+  `{input:<complete official/custom image.generate input>,settingsRevision}`. Use the
+  current positive settings revision from the selected official/custom Images
+  slot and retain the original `requestId` inside `input`; no extra top-level key
+  exists. Custom input uses `providerId:"openai-compatible"` and the exact
+  configured ASCII model with unchanged fixed options. Never add an endpoint,
+  connection ID, key or approval override to public generation/review input.
   Preparation stores the exact prompt/project/model/options/settings-bound intent
   locally without task creation, approval, provider calls or charges.
 - `image review get` / `image_review_get` takes `{projectId,reviewId}`.
@@ -68,8 +73,12 @@ for each exact original prompt, project, model/options and destination, authoriz
 at most one POST at usage-based unknown cost. There is no per-image budget wizard;
 one attempt is not a currency cap. Settings save alone grants no generation
 approval. A real canary still needs one separate exact configuration/prompt/media/
-fees approval; synthetic acceptance does not provide it. Custom compatible
-endpoints remain follow-on; the independent credential route is implemented.
+fees approval; synthetic acceptance does not provide it. Custom settings are a
+separate key/file/namespace slot using public-DNS HTTPS:443 and the fixed single
+`b64_json` PNG profile. Saving does not probe, negotiate a model or prove vendor
+compatibility. No URL-result download, local ComfyUI or automatic fallback is
+supported. Changing a keyed base URL/model requires explicit removal or fresh
+key input; the official slot stays untouched.
 Never request keys in a prompt, CLI argument or tool input. Web secrets last only
 for the backend lifetime; Electron secure persistence is explicitly selected and
 uses a main-only narrow OS codec, with no renderer/preload decryption.
@@ -77,8 +86,11 @@ uses a main-only narrow OS codec, with no renderer/preload decryption.
 Preparation repeats return the original review identity and retained current
 state, not new work; changed request/project/settings revision under the same key
 conflicts. Public review DTOs and strict limits are documented in
-[Images activation](../../docs/IMAGE-ACTIVATION.md). Complete reviews/prompts are
-plain local SQLite, visible to authenticated readers: intent 32 KiB, row 64 KiB,
+[Images activation](../../docs/IMAGE-ACTIVATION.md). Custom review DTOs additionally
+retain full immutable configuration and actual destination. Task snapshot v1 is
+content-only; full custom execution provenance comes from its validated retained
+task-linked review, never current settings. Official v1 receipts remain intact.
+Complete reviews/prompts are plain local SQLite, visible to authenticated readers: intent 32 KiB, row 64 KiB,
 1000 retained reviews/project and 10,000/workspace, without cleanup. The original
 generation input limit remains 24 KiB. Do not insert secrets into prompts.
 

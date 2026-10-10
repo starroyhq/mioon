@@ -1,5 +1,7 @@
 import {z} from 'zod';
 import {IMAGE_MODELS, IMAGE_FIXED_OPTIONS, imageOptionsSchema} from './images.mjs';
+import {customImageBaseUrlSchema, customImageModelSchema} from './image-compatible.mjs';
+export {customImageBaseUrlSchema, customImageModelSchema, normalizeCustomImageBaseUrl, getCustomImageDestination, CUSTOM_IMAGE_ENDPOINT_LIMIT} from './image-compatible.mjs';
 
 // Browser-safe, fixed OpenAI Images configuration. These schemas belong only to
 // the dedicated settings HTTP route; never register a secret-bearing RPC tool.
@@ -26,3 +28,25 @@ export const imageSettingsResultSchema = z.object({revision, configuration: imag
   secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
     .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state'), storage: storageSchema}).strict();
 export const isImageSettingsResult = value => imageSettingsResultSchema.safeParse(value).success;
+
+// A separate explicit slot. The official settings, namespace and key binding
+// above remain unchanged; selecting this slot never adopts an official key.
+export const CUSTOM_IMAGE_SETTINGS_NAMESPACE = 'mioon.images.openai-compatible.v1';
+export const CUSTOM_IMAGE_PROFILE_ID = 'openai-images-json-png-v1';
+export const CUSTOM_IMAGE_CONNECTION_ID = 'custom';
+export const CUSTOM_IMAGE_SETTINGS_FILENAME = 'custom-settings.json';
+export const DEFAULT_CUSTOM_IMAGE_CONFIGURATION = Object.freeze({enabled: false, providerId: 'openai-compatible',
+  connectionId: CUSTOM_IMAGE_CONNECTION_ID, profileId: CUSTOM_IMAGE_PROFILE_ID, baseUrl: '', model: '', options: IMAGE_FIXED_OPTIONS});
+export const customImageConfigurationSchema = z.object({enabled: z.boolean(), providerId: z.literal('openai-compatible'),
+  connectionId: z.literal(CUSTOM_IMAGE_CONNECTION_ID), profileId: z.literal(CUSTOM_IMAGE_PROFILE_ID),
+  baseUrl: z.union([z.literal(''), customImageBaseUrlSchema]), model: z.union([z.literal(''), customImageModelSchema]),
+  options: imageOptionsSchema}).strict().refine(value =>
+    value.baseUrl === '' || value.model === '' ? !value.enabled && value.baseUrl === '' && value.model === '' : true,
+  'Custom configuration must be complete, or an empty disabled slot');
+export const isCompleteCustomImageConfiguration = value => customImageConfigurationSchema.safeParse(value).success && value.baseUrl !== '' && value.model !== '';
+export const customImageSettingsUpdateSchema = z.object({expectedRevision: revision, configuration: customImageConfigurationSchema, secret}).strict();
+export const customImageSettingsResultSchema = z.object({revision, configuration: customImageConfigurationSchema,
+  secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
+    .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state'), storage: storageSchema}).strict()
+  .refine(value => !value.secret.configured || isCompleteCustomImageConfiguration(value.configuration), 'Incomplete custom slot cannot own a credential');
+export const isCustomImageSettingsResult = value => customImageSettingsResultSchema.safeParse(value).success;

@@ -7,15 +7,15 @@ The production registry now publishes and enforces [exact model input limits](GE
 ## Separate image profiles
 
 Images remain independent of the video registry. `image.profile.list` returns
-local Mock `mock-image-v1` and the fixed OpenAI
-`gpt-image-2.5-flare-2026-09-08` preset: 1024×1024, low quality, opaque PNG,
-one result. Mock creates deterministic visibly labeled local bytes and is not
-prompt-conditioned. At the accepted first-slice checkpoint `82c70f3` on
+local Mock `mock-image-v1`, the fixed OpenAI `gpt-image-2.5-flare-2026-09-08`
+preset, and the custom `openai-compatible` profile when its base URL/model are
+complete. All use fixed 1024×1024, low quality, opaque PNG, one result. Mock creates
+deterministic visibly labeled local bytes and is not prompt-conditioned. At the accepted first-slice checkpoint `82c70f3` on
 2026-10-10, OpenAI was hard-disabled and had only injected offline fixtures;
 that dated evidence is preserved in [Image generation](IMAGE-GENERATION.md).
 
-The active 2026-10-10 increment implements dedicated Images settings/credentials,
-retained exact request reviews and explicit UI-approved one-POST dispatch to
+The accepted 2026-10-10 checkpoint `4e66a96` implemented dedicated OpenAI Images
+settings/credentials, retained exact request reviews and explicit UI-approved one-POST dispatch to
 `https://api.openai.com/v1/images/generations`. The preset model/options are
 unchanged. The 461-test affected gate, fresh builds and Linux native
 synthetic-network acceptance passed; the independent final full suite passed
@@ -29,13 +29,22 @@ explicit OS-encrypted persistence through a narrow Images-only main-process
 codec, without renderer/preload decryption or plaintext fallback. Agent/video
 keys and environment flags cannot enable Images. Saving settings grants no
 request approval. Each visible paid-generation/review button confirms the exact
-project, prompt, fixed model/options and destination for at most one POST at
+project, prompt, selected model/fixed options and destination for at most one POST at
 unknown usage-based cost; the bound is not a currency cap. Settings/approve/reject
 are private authenticated UI routes, not CLI/MCP/model tools. Public review
 prepare/get/list cannot approve or dispatch.
 
-Custom compatible endpoints remain follow-on work; the independent credential
-route is now implemented. Official model and Images request docs were rechecked
+The current [custom Images increment](IMAGE-COMPATIBLE.md) is implemented,
+with focused/build/Linux synthetic-native and independent full-suite acceptance
+(2857 total, 2855 passed, 0 failed, 2 skipped). Its independent `custom` slot uses profile
+`openai-images-json-png-v1`, private `/api/images/custom-settings`, a canonical
+public-DNS HTTPS:443 base URL and a configured ASCII model (1–120 characters).
+It reuses the exact fixed body, including `moderation:"auto"`, and strict single
+`b64_json` PNG decoder. There is no response URL download, model negotiation,
+fallback, local ComfyUI or all-vendor compatibility claim. Saving does not probe.
+Base URL/model changes with a key require explicit removal or new key input;
+the official preset/key are unaffected. Earlier activation tests are not this
+custom gate. Official model and Images request docs were rechecked
 2026-10-10: [model and pinned snapshot](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare),
 [Images generation fields](https://developers.openai.com/api/reference/resources/images/methods/generate).
 This source review does not establish account eligibility, actual charges or live
@@ -43,7 +52,8 @@ output. A live canary still requires one separate exact configuration/prompt/med
 fees approval. Image reads, review preparation/replay and startup do not submit;
 explicit result recovery only publishes existing task-bound local staged bytes.
 See [Images activation](IMAGE-ACTIVATION.md) for the dispatch fence, secret boundary,
-review contracts, additive schema 17 and current validation record.
+official review contracts and historical schema-17 evidence; [custom Images](IMAGE-COMPATIBLE.md)
+describes custom v2 provenance, the narrow schema-18 migration and exact acceptance.
 
 ## Shared behavior
 

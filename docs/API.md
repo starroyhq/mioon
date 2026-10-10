@@ -25,19 +25,23 @@ operations below. Image schemas and bounded DTOs are authoritative in
 `packages/contracts/src/images.mjs` and `image-reviews.mjs`.
 [Image generation](IMAGE-GENERATION.md) includes the exact generation request.
 
-Mock produces deterministic local 1024×1024 PNG output. Dedicated fixed OpenAI
-Images settings and explicit UI-reviewed dispatch are implemented. The 461-test
-affected gate, fresh builds and Linux native synthetic-network acceptance passed;
-the independent final full suite passed (2758 total, 2756 passed,
-0 failed, 2 skipped). No real-provider or macOS/Windows
-acceptance is established by this increment. The fixed destination
-is `https://api.openai.com/v1/images/generations`; the pinned model/options are
-unchanged. Agent/video credentials cannot activate Images. Discovery reports
-local configured availability, retaining `offline-tested-not-live` evidence.
+Mock produces a deterministic local 1024×1024 PNG test card, not prompt-conditioned
+imagery. The fixed OpenAI activation checkpoint `4e66a96` (2026-10-10) passed its
+461-test affected gate, builds, Linux synthetic-network native acceptance and
+full suite (2758 total, 2756 passed, 0 failed, 2 skipped). The current
+[custom Images increment](IMAGE-COMPATIBLE.md) is implemented with its
+own passed focused/build/Linux synthetic-native gates and independent full suite
+(2857 total, 2855 passed, 0 failed, 2 skipped). Neither checkpoint establishes real-provider or macOS/Windows
+acceptance. Official OpenAI retains its fixed destination/model/options. The
+custom slot adds `providerId:"openai-compatible"` and its configured model to
+the same generation request shape; endpoint/credential/approval overrides are
+not public inputs. Agent/video credentials cannot activate Images. Discovery
+reports local availability with `offline-tested-not-live` evidence, not live
+compatibility or permission to spend.
 
 | Review RPC | Strict input | Result / effect |
 | --- | --- | --- |
-| `image.review.prepare` | `{input:<complete OpenAI image.generate input>,settingsRevision}` | Retained exact request/configuration review; local database write only |
+| `image.review.prepare` | `{input:<complete official/custom image.generate input>,settingsRevision}` | Retained exact request/configuration review; local database write only |
 | `image.review.get` | `{projectId,reviewId}` | Existing owned review; read-only |
 | `image.review.list` | `{projectId,limit?,cursor?}` | `{projectId,items,nextCursor}`; read-only |
 
@@ -49,8 +53,8 @@ settings revision under its key conflicts. Review fields, state transitions,
 plain-local-SQLite storage and limits are specified in
 [Images activation](IMAGE-ACTIVATION.md#shared-public-review-operations).
 
-New direct OpenAI `image.generate` calls remain blocked without private review
-approval. `image.generate` effect metadata nevertheless includes possible
+New direct official/custom `image.generate` calls remain blocked without private
+review approval. `image.generate` effect metadata nevertheless includes possible
 separately approved worker activity: external I/O, paid generation, open-world
 access and database/file writes, without local subprocesses. Review preparation
 writes only local records; reads never dispatch. A local RPC POST used for reads
@@ -75,8 +79,17 @@ and redacted secret metadata. It is not an RPC/CLI/MCP/model-tool setting. Web
 credentials are session-only for the backend lifetime; Electron persistent
 storage uses a narrow main-process OS codec, never renderer/preload decryption
 or plaintext fallback. Saving settings neither generates nor approves a request.
-The exact secret-write/read contract is in
+The exact official secret-write/read contract is in
 [Images activation](IMAGE-ACTIVATION.md#private-authenticated-http-settings-contract).
+The separate authenticated `GET`/`PUT /api/images/custom-settings` uses the same
+strict `{expectedRevision,configuration,secret}` update and redacted result
+shape. Its configuration adds `connectionId:"custom"`, uses provider
+`openai-compatible`, profile `openai-images-json-png-v1`, a canonical public-DNS
+HTTPS base URL and a bounded ASCII model. See [custom settings](IMAGE-COMPATIBLE.md#exact-private-settings-contract)
+for exact fields and constraints. Saving validates syntax without probing.
+Changing a keyed base URL/model requires explicit removal or a newly entered key;
+the official slot stays untouched. Custom review DTOs additionally retain full
+immutable `configuration` and actual `destination`; official v1 DTOs stay intact.
 
 Authenticated `POST /api/images/reviews/approve` and `/reject` each take exactly
 `{projectId,reviewId,expectedRevision}`. Approval returns the original queued
@@ -92,7 +105,8 @@ the same final boundary as the durable review/task dispatch fence and network
 `end()`. No automatic retry follows unknown outcomes or restart; result recovery
 only validates and publishes an existing task-bound local receipt and staged PNG.
 See [Images activation](IMAGE-ACTIVATION.md) for the authority, persistence,
-network and current validation boundary.
+network boundary, and [custom Images](IMAGE-COMPATIBLE.md) for schema 18 and the
+current validation results and remaining live/native-platform limits.
 
 ## File and event transports
 

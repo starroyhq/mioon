@@ -1,9 +1,21 @@
 # Images activation: settings and reviewed dispatch
 
-## Current increment: 2026-10-10
+## Current custom increment: 2026-10-10
+
+The separate [custom Images slot](IMAGE-COMPATIBLE.md) is implemented. Its focused
+affected gate passed 584/584 tests (0 failed/skipped), and fresh web/desktop builds
+passed. Final Linux synthetic-network native acceptance and the independent full
+suite passed (2857 total, 2855 passed, 0 failed, 2 skipped).
+It reuses this settings/review/one-POST lifecycle with an independent credential,
+canonical public-DNS HTTPS destination, configured ASCII model and strict fixed
+JSON/PNG profile. Schema 18 and custom v2
+review provenance are documented there; the prior checkpoint below is not
+acceptance of the custom change. No real key/call/model output is verified.
+
+## Accepted official activation checkpoint: 2026-10-10, `4e66a96`
 
 Dedicated Images settings, retained review preparation, the authenticated UI
-approval flow and a one-POST OpenAI gateway are implemented in this checkout.
+approval flow and a one-POST OpenAI gateway were implemented at this checkpoint.
 The 461-test affected gate, fresh web/desktop builds and Linux native acceptance
 with an isolated synthetic-network backend passed. The first independent full
 suite found one shared-control reuse omission (2756 total, 2753 passed, one failed,
@@ -20,7 +32,7 @@ do not establish acceptance of this schema-17 activation increment.
 
 ## Fixed scope and everyday use
 
-Images has its own settings page and credential. The only live preset is:
+Images has its own settings page and credentials. The official live preset remains:
 
 - Provider `openai`, profile `openai-images-v1`
 - Base URL `https://api.openai.com/v1`
@@ -60,27 +72,37 @@ provider and grants no standing generation approval. A real live canary still
 requires a separate approval covering its exact configuration, prompt/media
 scope and fees. It is not part of synthetic acceptance.
 
-Custom compatible endpoints remain follow-on work. The dedicated credential
-route is now implemented; custom hosts, reference uploads, edits/masks, batches,
+Custom hosts and configured models now belong to the separate bounded
+[custom increment](IMAGE-COMPATIBLE.md), with independent settings/key storage
+and no broad vendor-compatibility claim. Reference uploads, edits/masks, batches,
 seeds, variable sizes, model fallback and automatic image-to-video remain outside
-this increment. Agent/video settings and credentials cannot enable Images.
+both increments. Agent/video settings and credentials cannot enable Images.
 
 ## Dedicated settings and secret boundary
 
 The settings engine is the backend/desktop utility's owner of the Images
-configuration, revision and session credential. It does not reuse an Agent or
-video key, discover an environment key, or accept an arbitrary endpoint.
+configuration, revision and session credential for each explicit slot. It does
+not reuse an Agent/video key or discover an environment key. The official slot
+remains fixed; only the custom slot accepts its strictly validated base URL.
 
 - Web mode supports only explicit session storage. Here a session is one backend
   process lifetime, not one browser tab or login: browser reload does not clear
   the key, but backend shutdown/restart does. The nonsecret settings survive.
 - Electron main supplies a narrow OS codec over the owned utility channel. Only
-  fixed `status`, `encrypt` and `decrypt` messages for the Images namespace and
-  exact preset binding are accepted. Main does not own a second Images settings
-  engine. The renderer/preload has no decryption API or arbitrary secret proxy.
+  fixed `status`, `encrypt` and `decrypt` messages for the two explicit Images
+  namespaces and exact slot bindings are accepted. Main does not own another
+  Images settings engine. The renderer/preload has no decryption API or arbitrary secret proxy.
 - Persistent storage requires the user's explicit choice and available secure
   OS storage. Unavailable storage and Linux `basic_text` fail closed; there is
   no plaintext-file fallback. Session-only storage must be selected explicitly.
+- Inherited desktop limitation: `safeStorage` runs synchronously in main while
+  the utility codec has a default two-second timeout. A slow/denied startup
+  decrypt latches storage unavailable; ordinary GET does not clear it. Explicit
+  restart after OS unlock/permission, or explicit key replacement/removal, is
+  required. A main-process block beyond the 30-second heartbeat lease can shut
+  down the utility. No automatic key fallback or POST follows. Four independent
+  fake-broker checks passed; macOS Keychain/native behavior is still unverified.
+  See [the exact limit](IMAGE-COMPATIBLE.md#inherited-desktop-keychain-limitation).
 - The dedicated private settings envelope contains nonsecret configuration and,
   only for persistent storage, OS-encrypted credential bytes. It uses the existing
   ownership, symlink, bounded-file and atomic-publication protections. Plaintext
@@ -130,12 +152,12 @@ Schemas: `packages/contracts/src/image-settings.mjs`. Implementation:
 Exactly three review operations join the existing shared business/API/CLI/MCP
 catalog. Strict schemas reject extra fields, including approval flags, secrets,
 URLs and execution instructions. The complete nested generation input retains
-its original strict schema and required stable `requestId`; there is no second,
-top-level request ID.
+its strict field shape and required stable `requestId`, with additive custom
+provider/model values; there is no second, top-level request ID.
 
 | Operation | Exact input | Result and effect |
 | --- | --- | --- |
-| `image.review.prepare` | `{input:<complete OpenAI image.generate input>,settingsRevision:<positive safe integer>}` | Retains a pending review of that exact request/configuration; local database write only, no approval, task, provider call or charge |
+| `image.review.prepare` | `{input:<complete official/custom image.generate input>,settingsRevision:<positive safe integer>}` | Retains a pending review of that exact request/configuration; local database write only, no approval, task, provider call or charge |
 | `image.review.get` | `{projectId,reviewId}` | Existing owned review DTO; read-only, missing/foreign reviews fail closed |
 | `image.review.list` | `{projectId,limit?,cursor?}` | `{projectId,items,nextCursor}`; bounded, read-only project page |
 
@@ -146,13 +168,18 @@ request, project or settings revision under its key conflicts. A request key
 already used by the image mutation journal cannot prepare a new review.
 Preparation and reading do not approve or queue generation.
 
-The review DTO has exactly:
+The official v1 review DTO has exactly:
 
 ```text
 {id, projectId, requestId, input, inputHash, settingsRevision, destination,
  policy, state, revision, taskId, postAttempts, createdAt, updatedAt,
  approvedAt, rejectedAt, dispatchedAt}
 ```
+
+Custom review DTOs add exactly `configuration`, retaining the full immutable
+custom configuration with its actual `destination`; public DTOs do not add a
+`schemaVersion` field. Backend custom intents are v2 while official intents stay
+v1. See [custom provenance](IMAGE-COMPATIBLE.md#historical-provenance-and-schema-18).
 
 `input` is the complete original generation request; `inputHash` is its canonical
 SHA-256. `policy` is exactly
@@ -181,8 +208,8 @@ potentially present in backups. There is no review cleanup/compaction route.
 idempotent, non-destructive and have no write/external/subprocess/paid effects.
 `image.generate` now conservatively declares possible external I/O, open-world
 and paid generation, plus local database/file writes, to cover separately
-approved worker activity. Direct new OpenAI `image.generate` remains blocked
-without the private review approval; old accepted exact replay never reschedules.
+approved worker activity. Direct new official/custom `image.generate` remains
+blocked without the private review approval; old accepted exact replay never reschedules.
 No effect annotation grants permission to act.
 
 Schemas: `packages/contracts/src/image-reviews.mjs`; authoritative effect map:
@@ -210,8 +237,10 @@ network `end()`, with no intervening await. A changed or in-flight save blocks
 that old request before transmission. DNS/TLS setup precedes this final fence;
 the credential and prompt do not.
 
-The gateway permits the fixed HTTPS destination only. DNS answers must be public,
-the TLS peer must match the pinned address/hostname, and the transport does not
+The official gateway permits only its fixed HTTPS destination; the custom gateway
+permits only the exact reviewed canonical destination from its own slot. All DNS
+answers must be public, the TLS peer must match the pinned address/hostname, and
+the transport does not
 follow redirects, proxy/environment settings or retries. At most one POST
 attempt is recorded per approved review, even if connection loss or shutdown
 leaves the outcome unknown. Prompt rewriting and model/provider fallback are
@@ -234,6 +263,12 @@ semantics are unchanged. Unknown work without a valid local result stays blocked
 
 ## Migration and validation boundary
 
+The following schema-17 and acceptance record is the historical `4e66a96`
+checkpoint. The current custom increment's schema 18 rebuilds only
+`image_reviews`, preserving/checking raw rowids and all 16 columns plus retained
+index/trigger SQL. Its separate final gate passed; see
+[custom migration](IMAGE-COMPATIBLE.md#historical-provenance-and-schema-18).
+
 Schema 17 adds only `image_reviews`, its page index and identity/state/task-binding/
 retention triggers, in one migration transaction. It does not rebuild old tables,
 rewrite old serialized bytes, renumber sequences, manufacture reviews for old
@@ -248,7 +283,7 @@ strict contract/effect parity, review ownership/replay/capacity/immutability,
 additive migration and rollback, synthetic DNS/TLS/one-POST/settings-race gates,
 and visible UI approval/interruption/recovery.
 
-### Linux native acceptance: 2026-10-10
+### Historical Linux native acceptance: 2026-10-10, `4e66a96`
 
 The unmodified built main/backend/web production-code path passed its default-disabled,
 unconfigured smoke with exit 0 and zero image rows. Both native fixtures used the
