@@ -102,7 +102,7 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry\)/);
   assert.match(app, /mutation && replay \? null : result/);
   assert.match(app, /entry\.input, '原请求已恢复并确认', \{ replay: true \}/);
-  assert.match(app, /mutation \? mutationNotApplied\(e, stored\) : e\.definitive/);
+  assert.match(app, /mutation \|\| operation === 'timeline\.clip\.replaceSource' \? mutationNotApplied\(e, stored\) : e\.definitive/);
   assert.match(app, /isBusy\('canvas:mutation', projectId\)/);
   assert.doesNotMatch(app, /await rpc\('(shot\.create|shot\.update|shot\.reorder|node\.create|node\.update|version\.select)'/);
   const structure = app.slice(app.indexOf('async function addStructure()'), app.indexOf('async function addNode('));

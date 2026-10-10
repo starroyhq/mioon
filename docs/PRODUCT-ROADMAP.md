@@ -152,6 +152,17 @@ post-mix analysis, loudness checks or the broader audio roadmap.
 
 The bounded delivery increment implements shared read-only timeline export
 preflight and an inline right-workspace report. Local browser/native and real
-export checks passed; independent release review is pending. It reuses export
+export checks and the independent release gate passed in `168c22d`. It reuses export
 rules and source verification without project-format expansion or full upfront
 decoding. Scope and acceptance are tracked in [EXPORT-PREFLIGHT.md](EXPORT-PREFLIGHT.md).
+
+
+## Fixed-source version workflow checkpoint (2026-10-10)
+
+The next bounded version-workflow increment is explicit timeline clip source
+replacement with preserved timing, layout and audio fades. It uses the existing
+revision/replay/history service, with inline source review in Right Properties.
+Implementation and local focused/browser/native/media checks are complete; the
+independent release gate remains pending. [CLIP-SOURCE-REPLACEMENT.md](CLIP-SOURCE-REPLACEMENT.md)
+tracks scope, acceptance and retained limitations. Visual A/B comparison, automatic propagation and
+generation/spending remain outside this increment.

@@ -170,6 +170,7 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | `timeline.track.update` | `trackId`, nonempty `patch:{name?,hidden?,muted?}` |
 | `timeline.clip.add` | `trackId,assetId,startFrame,durationFrames`, optional `name,sourceInFrame,rect,gain,fadeInFrames,fadeOutFrames` |
 | `timeline.clip.update` | `clipId`, nonempty `patch:{trackId?,name?,startFrame?,durationFrames?,sourceInFrame?,rect?,gain?,fadeInFrames?,fadeOutFrames?}` |
+| `timeline.clip.replaceSource` | required `clipId,assetId`; optional `versionId` (exact generated version) |
 | `timeline.clip.remove` | `clipId` |
 | `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
@@ -219,6 +220,72 @@ Agent permissions are unchanged. See [audio fades](TIMELINE.md#audio-fades).
 with byte-signature/decoded-stream validation and the existing 30MiB limit.
 `node.create` also supports `type:'audio'` with a matching audio asset.
 The original `export.create` selected-shot sequence behavior is unchanged.
+
+### Explicit clip source replacement
+
+`timeline.clip.replaceSource` accepts exactly
+`{projectId,expectedRevision,requestId,clipId,assetId,versionId?}`. Project, clip,
+asset and any supplied version are UUIDs; `expectedRevision` is the positive
+current timeline revision. The stable `requestId` is **required** (8–200
+characters); `versionId` alone is optional. The normal `timeline.clip.update`
+patch still rejects `assetId`, `versionId` and other source/provenance fields.
+
+This is an explicit, undoable edit of one existing clip. It preserves the clip
+ID, name, track, start, duration, source in-point, rectangle, gain, optional fade
+values and their exact presence/absence. Neighbors, gaps, track state and total
+duration remain unchanged. It never adopts saved source marks, rescales,
+retimes, changes audio settings or shortens a clip to fit. Only video→video,
+audio→audio and image→image are allowed, including across supported containers
+within that category. Image↔video remains incompatible even on a video track.
+The new source must cover the unchanged source in-point plus duration and
+support any retained positive audio fades.
+
+Without `versionId`, only the fixed `assetId` is stored, even for a generated
+asset. Old `versionId`, `shotId` and `jobId` links are cleared rather than
+carried to another source. With an explicit `versionId`, the backend validates
+the exact owned version/asset/shot/job lineage and asset hash, then pins that
+version and its canonical `shotId`; no current shot selection is inferred or
+changed. Later `version.select` calls never move this fixed clip.
+
+Success returns the complete timeline, advances its revision once and records
+one undoable history entry. Undo/redo restores the exact source and clip state.
+Replacing with the already-current asset rejects with `SOURCE_UNCHANGED` (409),
+even if a version is supplied; it adds no history or saved request. Incompatible
+categories use `INVALID_CLIP_TYPE` (400), a too-short source uses `SOURCE_BOUNDS`
+(400), and retained unsupported fades use `FADE_AUDIO_UNSUPPORTED` (400).
+Missing/foreign/unsafe source or version lineage uses
+`TIMELINE_SOURCE_UNAVAILABLE` (404). All rejection paths preserve timeline,
+history, redo branch and request receipts.
+
+A verified fresh-key business rejection may additionally return
+`error.details:{...,mutationOutcome:'not_applied',requestId}`. This proof is
+bound to that exact key and confirms that this attempt committed no mutation.
+Only a checked fresh request with a rolled-back, pre-write revision/no-op/type/
+bounds/fade rejection receives it. Missing proof, a different proof key,
+ownership/receipt failures, authentication errors and idempotency conflicts do
+not establish the outcome of an earlier uncertain attempt. Keep the original
+request for explicit recovery instead of clearing it from a later 4xx alone.
+
+The operation shares the existing timeline request-key namespace with timeline
+edits, undo/redo and renders, across projects on the same backend; this is not a
+new workspace-global key namespace covering unrelated operation families.
+Changed operation/project/input reuse returns `IDEMPOTENCY_CONFLICT` before
+revision checking. Exact replay retains the original complete response after
+newer edits or restart, including original timestamps and provenance. After an
+uncertain result, replay the full original input/key, preserving the optional
+version's presence or absence and the original revision, then refresh before a
+new edit. A new key with a stale revision returns `REVISION_CONFLICT`.
+A malformed or mismatched success acknowledgement returns client-side
+`BACKEND_PROTOCOL_ERROR` with `submissionMayHaveSucceeded:true`. The first-party
+clients validate this operation's bounded full-timeline identity, target source
+and optional provenance before clearing recovery state; retain and replay the
+original request rather than assuming it failed or inventing another key.
+
+Effects are limited to local timeline/history/replay database writes. No source
+bytes, media files, probes, decoding, rendering, provider calls or paid
+generation are involved. External HTTP/CLI/MCP discovery does not expand the
+built-in Agent catalog, inspection DTOs, media context or approval scope.
+Offline transport acceptance: `node --test tests/timeline-replacement-transports.test.mjs`.
 
 ## V4 discovery and capability validation
 

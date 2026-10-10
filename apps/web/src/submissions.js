@@ -11,7 +11,7 @@ export function readPending(projectId, key) {
   const raw = sessionStorage.getItem(storageKey(projectId, key));
   if (!raw) return null;
   const entry = JSON.parse(raw);
-  if (!entry.input?.requestId || !(isMutationOperation(entry.operation) || ['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(entry.operation) || /^timeline\.(track\.(add|update)|clip\.(add|update|remove|split)|seed|render|undo|redo)$/.test(entry.operation)) || entry.projectId !== projectId || entry.key !== key) throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
+  if (!entry.input?.requestId || !(isMutationOperation(entry.operation) || ['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(entry.operation) || /^timeline\.(track\.(add|update)|clip\.(add|update|remove|split|replaceSource)|seed|render|undo|redo)$/.test(entry.operation)) || entry.projectId !== projectId || entry.key !== key) throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
   return entry;
 }
 export function writePending(entry) {

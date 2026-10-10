@@ -31,6 +31,37 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 
 For an executable no-cost import → shot → generate → select → timeline → export workflow, read [mock-workflow.md](references/mock-workflow.md). Mock produces visibly labeled synthetic motion, not prompt-faithful AI output. All shipped provider contracts have offline tests; live provider output is unverified unless separately established in the user's session.
 
+## Explicit clip source replacement
+
+For an authorized replacement of one existing clip, discover
+`timeline clip replaceSource` / MCP `timeline_clip_replaceSource` (preserve the
+capital S). Read its current timeline revision and identify the exact project,
+clip and replacement asset. Submit required `projectId`, `expectedRevision`,
+`requestId`, `clipId` and `assetId`; only `versionId` is optional. Supply that
+version only to pin an explicitly chosen matching generated version and its
+canonical shot. Asset-only input never invents version provenance and clears
+old source links. Later shot selection does not move the fixed clip.
+
+Only video→video, audio→audio and image→image replacements are supported. Keep
+clip identity, name, track, start, duration, source in-point, rectangle, gain and
+optional fades exactly; reject short or incompatible media rather than retime,
+clamp, resize, adopt saved source marks or alter audio. The backend enforces
+these bounds. Current-asset replacement is a no-op rejection with no history;
+a successful edit is one undoable replacement. Legacy clip update does not
+accept source changes.
+
+Retain the complete original input and mandatory stable key, including optional
+version presence/absence, after a lost result or restart. A malformed/mismatched
+success acknowledgement is still uncertain; retain the original request/key.
+A later 4xx alone cannot settle an earlier uncertain attempt: require a matching
+`mutationOutcome:"not_applied"` / `requestId` proof before discarding recovery.
+Replay exactly, then refresh before a later new edit. Keys share the existing timeline edit/history/
+render namespace on the backend; do not describe them as workspace-global for
+all operation families. Replacement only writes timeline/history/replay data,
+with no media processing, rendering, provider calls or paid generation. This
+external operation grants no additional built-in Agent tools or approval scope.
+See [the contract](../../docs/API.md#explicit-clip-source-replacement).
+
 ## Clip audio fades
 
 For an authorized timeline edit, use the existing `timeline clip add/update`

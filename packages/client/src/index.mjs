@@ -1,7 +1,7 @@
 import {setTimeout as pause} from 'node:timers/promises';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse} from '@mioon/contracts';
+import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineReplacementResponse} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
@@ -112,6 +112,8 @@ export function createClient(clientOptions = {}) {
     const result = (await request('/api/rpc', {body, ...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : {}), ...options})).data;
     if (LOCAL_MUTATION_OPERATIONS.includes(operation) && !isLocalMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (operation === 'timeline.clip.replaceSource' && !isTimelineReplacementResponse(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid source replacement acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
     return result;

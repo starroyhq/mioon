@@ -103,7 +103,7 @@ All RPC operation names replace dots with underscores. For example:
 - `version_list`, `version_select`
 - `timeline_get`, `timeline_inspect`, `timeline_history_get`, `timeline_undo`, `timeline_redo`
 - `timeline_track_add`, `timeline_track_update`
-- `timeline_clip_add`, `timeline_clip_update`, `timeline_clip_remove`, `timeline_clip_split`
+- `timeline_clip_add`, `timeline_clip_update`, `timeline_clip_remove`, `timeline_clip_split`, `timeline_clip_replaceSource`
 - `timeline_seed`, `timeline_render`
 - `export_create`, `export_get`
 
@@ -202,6 +202,49 @@ Timeline operations share a namespace and return the original response on exact 
 A generation in `submission_unknown` may already be accepted and billable. Inspect/reconcile that existing job rather than submitting with another ID. `job_retry` is an explicit new attempt for a failed job and needs a new stable request ID. `job_cancel` stops backend local waiting only; it does not guarantee remote cancellation or a refund. MCP request cancellation and disconnect never call `job_cancel` or a provider cancellation API.
 
 No blocking MCP watch helper is exposed. Agent clients should poll `job_get`/`export_get` with a reasonable interval and explicit deadline, or use the CLI's bounded watch. A timeout/disconnect stops observation; it does not imply a remote task stopped or justify a fresh paid submit.
+
+### Explicit fixed-source replacement
+
+`timeline_clip_replaceSource` maps to `timeline.clip.replaceSource`; case is
+significant. Discover with
+`mioon_schema({"operation":"timeline.clip.replaceSource"})`. The strict input is
+`{projectId,expectedRevision,requestId,clipId,assetId,versionId?}`. All IDs except
+the stable key are UUIDs; revision is a positive integer. Project, revision,
+clip, replacement asset and a caller-retained `requestId` (8–200 characters) are
+required; only the exact generated `versionId` is optional. Unknown fields and
+source changes via legacy `timeline_clip_update` patches reject.
+
+The source category must stay video, audio or image. All editable clip fields
+and optional fade presence remain exact; bounds/audio incompatibility rejects
+without clamping or moving neighbors. Success advances one revision and records
+one undoable edit. Current-asset replacement rejects with `SOURCE_UNCHANGED`
+without history. Explicit version input validates and pins the matching version
+and canonical shot; asset-only input clears old lineage without inferring new
+links. Later shot selection never replaces the clip.
+
+The actual SDK annotations are `readOnlyHint:false`, `idempotentHint:true`,
+`destructiveHint:true`, `openWorldHint:false`. Effects include database writes
+for timeline/history/exact replay and possible redo-branch removal, with no
+managed-file writes, source-byte reads, subprocesses, external I/O or paid generation.
+These hints do not authorize the edit. No built-in Agent catalog, inspection
+DTOs, media context or approval scope expands.
+
+Keep the original operation and complete arguments/key through uncertain
+responses, newer revisions and process restart. Exact replay returns the saved
+original response, not current state. Malformed/mismatched success data produces
+`BACKEND_PROTOCOL_ERROR` with `submissionMayHaveSucceeded:true`; keep the exact
+request for recovery. A later ownership/receipt/auth/idempotency 4xx does not
+settle an earlier uncertain attempt. Only exact matching
+`mutationOutcome:"not_applied"` / `requestId` proof on a checked fresh-key
+business rejection establishes no commit. Changing arguments, version omission,
+operation or project under a used timeline key conflicts. Keys share the
+existing backend-wide timeline edit/undo/redo/render namespace, not a new
+workspace-global namespace for all operation families. Refresh before a new
+intent with a new key. Full errors and preservation rules:
+[Explicit clip source replacement](API.md#explicit-clip-source-replacement).
+
+Offline official SDK/CLI/HTTP acceptance:
+`node --test tests/timeline-replacement-transports.test.mjs`.
 
 ### Clip audio fades
 

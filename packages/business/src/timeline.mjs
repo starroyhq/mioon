@@ -3,6 +3,7 @@ import {AppError,sourceFrameCount,getTimelineFadeIssue} from '@mioon/contracts';
 import {freezeTimelineSnapshot,validateSavedTimeline,TIMELINE_LIMITS} from './timeline-inputs.mjs';
 export {TIMELINE_LIMITS} from './timeline-inputs.mjs';
 import {readTimelinePreflightSnapshot} from './timeline-sources.mjs';
+import {createTimelineReplacementBoundary,REPLACEMENT_RESPONSE_BYTES} from './timeline-replacement.mjs';
 
 const defaultRect=()=>({x:0,y:0,width:720,height:1280});
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -42,12 +43,16 @@ export function createTimelineServices(store,{required,check,hash,now}){
   return result;
  }
  const validate=timeline=>validateSavedTimeline(timeline,{track,asset});
- function replay(operation,input){
+ function replay(operation,input,readResponse){
   const requestHash=hash({operation,input});
-  const previous=db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?').get(input.requestId);
+  const hashColumn=readResponse?`CASE WHEN typeof(requestHash)='text' AND length(CAST(requestHash AS BLOB))=64 THEN requestHash END AS requestHash`:'requestHash';
+  const responseColumn=readResponse?`CASE WHEN typeof(response)='text' AND length(CAST(response AS BLOB)) BETWEEN 1 AND ${REPLACEMENT_RESPONSE_BYTES} THEN response END AS response`:'response';
+  const previous=db.prepare(`SELECT ${hashColumn},${responseColumn} FROM timeline_requests WHERE requestId=?`).get(input.requestId);
+  if(readResponse&&previous&&(typeof previous.requestHash!=='string'||!/^[a-f0-9]{64}$/.test(previous.requestHash)))
+   throw new AppError('INVALID_TIMELINE_SNAPSHOT','已保存的替换请求无效',409);
   if(previous&&previous.requestHash!==requestHash)
    throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
-  return {requestHash,response:previous?JSON.parse(previous.response):null};
+  return {requestHash,response:previous?(readResponse?readResponse(previous.response):JSON.parse(previous.response)):null,receiptAbsent:!previous};
  }
  function saveResponse(input,requestHash,response){
   // Do not reconstruct a response from the current aggregate on retries. An
@@ -103,21 +108,30 @@ export function createTimelineServices(store,{required,check,hash,now}){
    return saveResponse(input,previous.requestHash,timeline);
   });
  }
- function mutate(operation,input,apply){
-  return tx(()=>{
-   const previous=replay(operation,input);
+ function mutate(operation,input,apply,boundary){
+  let receiptAbsent=false,writesStarted=false;
+  try{return tx(()=>{
+   const previous=replay(operation,input,boundary?.replay);
    if(previous.response)return previous.response;
-   const timeline=ensure(input.projectId);
+   receiptAbsent=previous.receiptAbsent;
+   const timeline=boundary?boundary.read():ensure(input.projectId);
    check(timeline,input.expectedRevision);
+   if(boundary&&timeline.revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
    const before=snapshot(timeline);
    apply(timeline);
-   validate(timeline);
+   if(boundary)boundary.validate(timeline);else validate(timeline);
    timeline.revision++;
    timeline.updatedAt=now();
+   writesStarted=true;
    put('timelines',timeline);
    recordEdit(operation,timeline,before);
-   return saveResponse(input,previous.requestHash,timeline);
-  });
+   const response=saveResponse(input,previous.requestHash,timeline);
+   boundary?.verify(response,previous.requestHash);
+   return response;
+  });}catch(error){
+   boundary?.rejected(error,{receiptAbsent,writesStarted});
+   throw error;
+  }
  }
  const handlers={
   'timeline.get':input=>ensure(input.projectId),
@@ -142,6 +156,10 @@ export function createTimelineServices(store,{required,check,hash,now}){
   'timeline.clip.update':input=>mutate('timeline.clip.update',input,timeline=>{
    Object.assign(clip(timeline,input.clipId),input.patch);
   }),
+  'timeline.clip.replaceSource':input=>{
+   const boundary=createTimelineReplacementBoundary(db,input);
+   return mutate('timeline.clip.replaceSource',input,boundary.apply,boundary);
+  },
   'timeline.clip.remove':input=>mutate('timeline.clip.remove',input,timeline=>{
    clip(timeline,input.clipId);
    timeline.clips=timeline.clips.filter(item=>item.id!==input.clipId);

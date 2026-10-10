@@ -207,10 +207,12 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
         }
       return asset;
     }
-    function timelineDto() {
+    function ownedTimeline() {
       const row = db.prepare(`SELECT ${columns('timelines')} FROM timelines WHERE projectId=? LIMIT 1`).get(projectId);
-      if (!row) return null;
-      const timeline = materialize('timelines', row);
+      return row ? materialize('timelines', row) : null;
+    }
+    function timelineDto(timeline = ownedTimeline()) {
+      if (!timeline) return null;
       if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > INSPECTION_LIMITS.clips) unavailable();
       const trackIds = new Set(), clipIds = new Set();
       const tracks = timeline.tracks.map(track => {
@@ -234,7 +236,8 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
     const project = get('projects', projectId);
     return {project: () => ({id: project.id, name: string(project.name, 150, 1), description: string(project.description, 2000), revision: number(project.revision, 1, Number.MAX_SAFE_INTEGER, true),
       counts: Object.fromEntries(countTables.map(table => [table, number(db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE projectId=?`).get(projectId).count, 0, Number.MAX_SAFE_INTEGER, true)]))}),
-      assets: args => page('assets', 'asset.inspect', args), shots: args => page('shots', 'shot.inspect', args), timeline: timelineDto, ownedAsset: assetId=>validateAsset(get('assets',id(assetId))),clipSource};
+      assets: args => page('assets', 'asset.inspect', args), shots: args => page('shots', 'shot.inspect', args), timeline: timelineDto, ownedAsset: assetId=>validateAsset(get('assets',id(assetId))),clipSource,
+      ownedTimeline:()=>{const timeline=ownedTimeline();if(timeline)timelineDto(timeline);return timeline;},validateTimeline:timelineDto,version:validateVersion};
   }
 
 
@@ -242,7 +245,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
 // unscoped raw reader; all paths retain the same bounded project-owner gates.
 export function createOwnedMediaGraphReader(db,projectId){
  const read=inspectionReader(db,projectId);
- return {asset:read.ownedAsset,clipSource:read.clipSource};
+ return {asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
 }
 
 export function createInspectionServices(store) {

@@ -170,6 +170,46 @@ Revisions above are illustrative for a fresh, otherwise unmodified project. Read
 
 For simple shot-order export use `export create` with `projectId` and a stable `requestId`; use `export watch` and `export download` on the returned export ID. `timeline render` freezes the independent multitrack timeline. The returned media URL is a relative authenticated local resource, not a public sharing URL.
 
+### Replace one fixed clip source
+
+Discover `mioon schema timeline.clip.replaceSource`, then read the current
+`timeline get` state and confirm the intended replacement asset. The exact CLI
+command preserves the operation's camel-cased final word:
+
+```sh
+mioon timeline clip replaceSource --input '{"projectId":"PROJECT_UUID","clipId":"CLIP_UUID","assetId":"REPLACEMENT_ASSET_UUID","expectedRevision":7,"requestId":"replace-clip-0001"}'
+```
+
+Substitute actual UUIDs and the current timeline revision. `projectId`,
+`expectedRevision`, `requestId`, `clipId` and `assetId` are required.
+`versionId` is optional: supply the exact matching generated version only when
+intending to pin that version and its shot. An asset-only request does not infer
+version provenance; existing source links are cleared. Later shot version
+selection cannot change the fixed clip. `timeline clip update` still rejects
+source fields in its patch.
+
+Only video→video, audio→audio or image→image is supported. The clip's ID, name,
+track, timing, source in-point, rectangle, gain and optional fades remain exact.
+A short/incompatible replacement or one without required fade audio rejects;
+nothing is automatically clamped or moved. Choosing the current asset is a
+`SOURCE_UNCHANGED` conflict with no history entry. A successful replacement is
+one undoable edit and returns the entire revised timeline.
+
+Use a mandatory stable key (8–200 characters), either in JSON or via
+`--request-id`; the CLI never invents one. Retain the exact request, including
+version presence/absence, after a lost result. Replay the same input/key after
+restart to recover the original response; changed reuse conflicts and a new
+key with an old revision is stale. Malformed or mismatched success data remains
+an uncertain `BACKEND_PROTOCOL_ERROR`; preserve the original request/key.
+For rejected recovery, only matching `mutationOutcome:"not_applied"` and
+`requestId` prove no mutation. Ownership/receipt errors or a later 4xx without
+that proof do not settle a previous uncertain request.
+Keys use the existing backend-wide timeline
+namespace shared by edits/history/renders, not a new workspace-global namespace
+for all operations. This edit performs only local timeline/history/replay
+writes, with no media processing or provider calls. Full errors and semantics:
+[Explicit clip source replacement](API.md#explicit-clip-source-replacement).
+
 ### Clip audio fades
 
 Use existing `timeline clip add` or `timeline clip update` commands; inspect

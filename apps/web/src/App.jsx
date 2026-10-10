@@ -11,6 +11,7 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isTimelineReplacementResponse } from '@mioon/contracts';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import Icon from './icons.jsx';
 import Inspector from './Inspector.jsx';
@@ -24,6 +25,7 @@ import TimelineExportPreflight from './TimelineExportPreflight.jsx';
 import { useExportPreflight } from './use-export-preflight.js';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';
 import TimelineInspector from './TimelineInspector.jsx';
+import { clipReplacementAcknowledged, clipReplacementErrorMessage, clipReplacementReviewIssue } from './clip-source-replacement.js';
 import Preview from './Preview.jsx';
 import SourceRangeInspector from './SourceRangeInspector.jsx';
 import { useSourceRange } from './use-source-range.js';
@@ -324,7 +326,7 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [auth, data.project?.id, refresh]);
-  async function run(key, operation, input, message, { returnAfterNavigation = false, replay = false } = {}) {
+  async function run(key, operation, input, message, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError } = {}) {
     const captured = context(), projectId = captured.projectId;
     const mutation = isMutationOperation(operation);
     if (isBusy(key, projectId) || (mutation && isBusy('canvas:mutation', projectId))) return null;
@@ -352,6 +354,8 @@ export default function App() {
       const result = await rpc(operation, input);
       invalidateHistory();
       if (mutation) validateMutationResponse(stored, result);
+      if (operation === 'timeline.clip.replaceSource' && !isTimelineReplacementResponse(result, input)) throw Object.assign(new Error('未收到与原请求一致的来源替换确认。'), { code: 'BACKEND_PROTOCOL_ERROR' });
+      validateResponse?.(result);
       if (replay && operation === 'asset.range.set' && currentProject.current === projectId) {
         const assetId = stored.input.assetId;
         setSourceRangeRefresh(value => ({ ...value, [`${projectId}:${assetId}`]: (value[`${projectId}:${assetId}`] || 0) + 1 }));
@@ -364,12 +368,13 @@ export default function App() {
       if (message) notify(message); return mutation && replay ? null : result;
     } catch (e) {
       if (dispatched) invalidateHistory();
-      const rejected = mutation ? mutationNotApplied(e, stored) : e.definitive;
+      const rejected = mutation || operation === 'timeline.clip.replaceSource' ? mutationNotApplied(e, stored) : e.definitive;
+      onFailure?.(e, { dispatched, rejected });
       if (durable && stored && rejected) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
       if (currentProject.current === projectId) {
         if (e.code === 'UNAUTHORIZED') setAuth(false);
         if (durable && stored && dispatched && !rejected) { notify('提交结果尚未确认。原请求已保留，请在任务面板恢复同一请求；不会自动重试或生成新的提交编号。', 'error'); if (isCurrent(captured)) setShowJobs(true); }
-        else if (isCurrent(captured)) notify(readableError(e), 'error');
+        else if (isCurrent(captured)) notify(operation === 'timeline.clip.replaceSource' ? clipReplacementErrorMessage(e) : errorMessage(e), 'error');
         if (e.code === 'MUTATION_PENDING' && isCurrent(captured)) setShowJobs(true);
         await refresh(projectId);
       }
@@ -536,6 +541,28 @@ export default function App() {
   const timeline = data.timeline;
   const timelinePending = pending.some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render');
   const timelineBusy = Boolean(busy['timeline:mutation'] || timelinePending);
+  function clipReplacementContext() {
+    const state = dataRef.current, editing = viewRef.current.editing;
+    return { scope: `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`, projectId: state.project?.id === currentProject.current ? currentProject.current : null,
+      timeline: state.timeline, clipId: editing.selectedClipId, assets: state.assets, versions: state.versions, shots: state.shots,
+      dirty: dirtyRef.current, busy: isBusy('timeline:mutation'), pending: pendingForProject(currentProject.current).some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render'),
+      connected: online && auth === true && !loading, visible: viewRef.current.activeMode === 'editing' && !editing.quickAssetId };
+  }
+  async function replaceTimelineClipSource(review) {
+    // UI candidate metadata cannot authorize a mutation. Recheck the exact
+    // reviewed owner, revision, content and draft against live App refs.
+    const issue = clipReplacementReviewIssue(review, clipReplacementContext());
+    if (issue) return { status: 'rejected', error: { code: 'REVISION_CONFLICT' } };
+    let failure, acknowledged;
+    const result = await mutateTimeline('timeline.clip.replaceSource', review.input, review.expectedRevision, {
+      returnAfterNavigation: true, onFailure: (error, details) => { failure = { error, ...details }; }, errorMessage: clipReplacementErrorMessage,
+      validateResponse: value => { if (!clipReplacementAcknowledged(review, value)) throw Object.assign(new Error('替换确认与本次核对不一致。'), { code: 'BACKEND_PROTOCOL_ERROR' }); acknowledged = value; },
+    });
+    // A failed refresh cannot erase an already validated mutation receipt.
+    if (result || acknowledged) return { status: 'applied', timeline: result || acknowledged };
+    const unresolved = pendingForProject(review.projectId).some(entry => entry.key === 'timeline:mutation');
+    return { status: unresolved || (failure?.dispatched && !failure.rejected) ? 'unknown' : 'rejected', error: failure?.error };
+  }
   function exportCheckContext() {
     return { scope: `${currentProject.current}:${projectEpoch.current}`, projectId: dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current.timeline?.id, revision: dataRef.current.timeline?.revision, connected: online && auth === true && !loading };
@@ -762,7 +789,7 @@ export default function App() {
     <PanelBoundary name="inspector" visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
     <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label="属性、Agent 与交付检查" />}><header className="inspector-region-heading"><Tabs value={rightDockTab} onValueChange={value => { if (['properties', 'agent', 'delivery'].includes(value)) setRightDockTab(value); }} className="right-dock-tabs"><TabsList aria-label="右侧工作区" className="segmented"><TabsTrigger id="right-dock-properties-tab" value="properties" data-testid="right-dock-tab-properties" aria-controls="right-dock-properties">属性</TabsTrigger><TabsTrigger id="right-dock-agent-tab" value="agent" data-testid="right-dock-tab-agent" aria-controls="right-dock-agent"><Icon name="sparkle" size={12} />Agent</TabsTrigger><TabsTrigger id="right-dock-delivery-tab" value="delivery" data-testid="right-dock-tab-delivery" aria-controls="right-dock-delivery">交付检查</TabsTrigger></TabsList></Tabs><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起右侧面板" title="收起右侧面板" data-testid="toggle-inspector" />}><Icon name="minus" size={16} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy="right-dock-properties-tab" visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]">{workspaceMode === 'canvas' ? <div className="inspector-container">
     <Inspector key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={(id, nextTab) => inspect(id, nextTab, null, { reveal: true })} onAddVersion={assetId => addTimelineAsset(assetId)} />
-    </div> : quickAssetId && sourceAsset ? <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange} /> : chosenClip ? <TimelineInspector key={`${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`} onReturnToSource={clipSource ? () => returnToSource(chosenClip.assetId) : undefined} sourceDescription={clipSource?.version ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>片段属性</span></header><div className="inspector-empty"><h3>选择时间线片段</h3><p>在这里调整起止帧、源入点、画面位置和音量。</p></div></aside>}</AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentWorkspace projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} /></AgentDockPane><AgentDockPane id="right-dock-delivery" labelledBy="right-dock-delivery-tab" visible={rightDockTab === 'delivery'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineExportPreflight state={exportPreflight.state} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export'])} pendingExport={pendingTimelineExport} dirty={inspectorDirty} onCheck={checkTimelineExport} onExport={binding => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} /></AgentDockPane></CollapsibleContent></Collapsible>
+    </div> : quickAssetId && sourceAsset ? <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange} /> : chosenClip ? <TimelineInspector key={`${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`} onReturnToSource={clipSource ? () => returnToSource(chosenClip.assetId) : undefined} sourceDescription={clipSource?.version && chosenClip.versionId === clipSource.version.id ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} replacementContext={clipReplacementContext()} onReplaceSource={replaceTimelineClipSource} onOpenRequests={() => setShowJobs(true)} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>片段属性</span></header><div className="inspector-empty"><h3>选择时间线片段</h3><p>在这里调整起止帧、源入点、画面位置和音量。</p></div></aside>}</AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentWorkspace projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} /></AgentDockPane><AgentDockPane id="right-dock-delivery" labelledBy="right-dock-delivery-tab" visible={rightDockTab === 'delivery'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineExportPreflight state={exportPreflight.state} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export'])} pendingExport={pendingTimelineExport} dirty={inspectorDirty} onCheck={checkTimelineExport} onExport={binding => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} /></AgentDockPane></CollapsibleContent></Collapsible>
     {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>
     {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={panelVisible('timeline')} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline key={data.project.id} viewState={view.editing} onViewStateChange={patch => { if (data.project?.id === currentProject.current && viewRef.current.activeMode === 'editing') updateView('editing', patch); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} splitState={splitState} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={selectedClipId} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={() => setPanelOpen('timeline', false)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{timelineCollapsed && <PanelRecall name="timeline" label="时间线" icon="layers" onClick={() => setPanelOpen('timeline', true)} />}</>}
     </div>
