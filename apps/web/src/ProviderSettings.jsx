@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/c
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import Icon from './icons.jsx';
+import GenerationInputSummary from './GenerationInputSummary.jsx';
 import { inputModeLabel, providerModels, providerStatus, providerStatusLabel } from './generation-settings.js';
 
 const uniqueConfiguration = values => [...new Set((values || []).filter(value => typeof value === 'string' && value.trim()).map(value => value.trim()))];
@@ -31,9 +32,10 @@ export default function ProviderSettings({ providers, provider, model, capabilit
       <span>{capabilities.aspectRatios?.join(' / ')}</span>
       {capabilities.resolutions?.length > 0 && <span>{capabilities.resolutions.join(' / ')}</span>}
     </div>}
+    <GenerationInputSummary provider={provider} model={model} />
     <div className={`provider-setup ${status !== 'available' ? 'unavailable' : ''}`} data-testid="provider-status" data-status={status}>
       <div className="provider-setup-heading"><Icon name={provider?.mock ? 'info' : status === 'available' ? 'check' : 'lock'} size={14} /><Badge className={`small-badge ${status === 'available' ? 'accent' : 'warn'}`}>{providerStatusLabel(provider)}</Badge><span>{provider?.mock ? '本地生成 MP4' : '服务器配置'}</span></div>
-      <p data-testid="provider-readiness-summary">{provider?.mock ? '本地模拟用于验证流程，不调用付费 AI 服务。' : status === 'available' ? '已就绪。真实生成可能计费，提交前请确认发送内容。' : status === 'disabled' ? '真实调用未启用，请由服务器管理员启用并重启。' : missing.length ? `还需配置 ${missing.length} 项，完成后重启服务。` : '配置未完成，请由服务器管理员检查后重启。'}</p>
+      <p data-testid="provider-readiness-summary">{provider?.mock ? '本地模拟用于验证流程，不调用付费 AI 服务。输出为测试图案，不会呈现参考图片或提示词描述的内容。' : status === 'available' ? '已就绪。真实生成可能计费，提交前请确认发送内容。' : status === 'disabled' ? '真实调用未启用，请由服务器管理员启用并重启。' : missing.length ? `还需配置 ${missing.length} 项，完成后重启服务。` : '配置未完成，请由服务器管理员检查后重启。'}</p>
       {!provider?.mock && <>
         {missing.length > 0 && <div className="provider-missing" data-testid="provider-missing" aria-label="待配置的环境变量">{missing.map(name => <span className="config-name" key={name}>{name}</span>)}</div>}
         <p className="provider-security">API 密钥仅在服务器配置；勿填入提示词或浏览器。</p>

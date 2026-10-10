@@ -55,6 +55,9 @@ export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name
     // so only this explicit path can certify an unsubmitted POST on shutdown.
     if (context.signal?.aborted) throw operationCancelled({beforeDispatch: method === 'POST'});
     ensureEnabled();
+    // Private worker fence: metadata/lifecycle may change while preparing an
+    // image. Keep this synchronous and outside the ambiguous fetch catch.
+    if(method==='POST'){context.beforeSubmit?.();if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});}
     let response;
     try {
       response = await fetchImpl(`${api}${endpoint}`, {

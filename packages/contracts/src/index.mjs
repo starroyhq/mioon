@@ -1,4 +1,8 @@
 import {z} from 'zod';
+import {getCapabilityProfile,getGenerationProfileRegion,INPUT_PROFILE_VERSION} from './generation-input-profiles.mjs';
+import {getGenerationProfileIssue} from './generation-input-validation.mjs';
+export {INPUT_PROFILE_VERSION,PROFILE_VERSION,GENERATION_INPUT_ROLES,INPUT_ROLES,GENERATION_INPUT_PROFILES,CAPABILITY_PROFILES,getCapabilityProfile,getGenerationProfileRegion} from './generation-input-profiles.mjs';
+export {validateGenerationInput,buildAdapterPlan,encodedImageDataUriBytes,evaluateCapabilityLifecycle,getGenerationProfileIssue} from './generation-input-validation.mjs';
 import {subjectSchemas} from './subjects.mjs';
 export {SUBJECT_KINDS,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,subjectSchemas,subjectResponseSchema,subjectVersionResponseSchema,subjectBindingResponseSchema,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from './subjects.mjs';
 import {inspectionSchemas} from './inspection.mjs';
@@ -129,28 +133,52 @@ export function publicValue(v){if(Array.isArray(v))return v.map(publicValue);if(
 // Pure provider capability checks shared by HTTP/CLI/MCP validation and the renderer.
 // Reference bytes and paid authorization remain backend-only checks.
 export function findModelCapabilities(capabilities, model) {
- const id=model||(typeof capabilities?.models?.[0]==='string'?capabilities.models[0]:capabilities?.models?.[0]?.id);
- return capabilities?.modelCapabilities?.find(item=>item.id===id)||
-  (capabilities?.models?.some(item=>(typeof item==='string'?item:item.id)===id)?{...capabilities,id,referenceImages:{min:capabilities.inputModes?.includes('text')?0:1,max:capabilities.maxReferenceImages??1}}:null);
+ const models=Array.isArray(capabilities?.models)?capabilities.models:[];
+ const id=model||(typeof models[0]==='string'?models[0]:models[0]?.id);
+ if(Object.hasOwn(capabilities||{},'inputProfiles')){
+  const region=getGenerationProfileRegion(capabilities?.id,capabilities),profile=getCapabilityProfile(capabilities?.id,id,region);
+  if(!profile||capabilities.providerRegion!==region||capabilities.inputProfileVersion!==INPUT_PROFILE_VERSION||!Array.isArray(capabilities.inputProfiles)||!capabilities.inputProfiles.some(item=>item?.profileId===profile.profileId&&item?.profileVersion===INPUT_PROFILE_VERSION&&item?.providerId===capabilities.id&&item?.model===id&&Array.isArray(item?.regions)&&item.regions.includes(region)))return null;
+  const image=profile.inputs.roles.first_frame;
+  const advertised=(Array.isArray(capabilities.modelCapabilities)?capabilities.modelCapabilities:[]).find(item=>item?.id===id);
+  return {...advertised,id,name:advertised?.name||id,
+   inputModes:profile.inputModes,aspectRatios:profile.aspectRatios,durations:profile.durationsSeconds,
+   referenceImages:{min:profile.inputs.minReferences,max:profile.inputs.maxReferences,mimeTypes:image.mimeTypes,...(image.dimensions?{minDimension:image.dimensions.min,maxDimension:image.dimensions.max,matchAspectRatio:image.dimensions.matchAspectRatio}:{})},
+   promptRequired:profile.prompt.required,maxPromptLength:profile.prompt.maxCodeUnits,parameters:Object.keys(profile.parameters),...(profile.parameters.seed?{seed:profile.parameters.seed}:{})};
+ }
+ // Legacy/custom capability fixtures retain their exact model lookup contract.
+ // Production discovery uses the explicit profile branch above, never this union.
+ return (Array.isArray(capabilities?.modelCapabilities)?capabilities.modelCapabilities:[]).find(item=>item?.id===id)||
+  (models.some(item=>(typeof item==='string'?item:item?.id)===id)?{...capabilities,id,referenceImages:{min:capabilities.inputModes?.includes('text')?0:1,max:capabilities.maxReferenceImages??1}}:null);
 }
 export function getGenerationIssue(snapshot, capabilities) {
- const model=findModelCapabilities(capabilities,snapshot.model);
  const issue=(code,message)=>({code,message});
+ const dataRecord=value=>value&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value))&&!Object.getOwnPropertySymbols(value).length&&Object.values(Object.getOwnPropertyDescriptors(value)).every(d=>!d.get&&!d.set&&d.enumerable);
+ const denseArray=value=>{if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>8)return false;const descriptors=Object.getOwnPropertyDescriptors(value);return Reflect.ownKeys(descriptors).length===value.length+1&&Reflect.ownKeys(descriptors).every(key=>key==='length'||typeof key==='string'&&/^(0|[1-9]\d*)$/.test(key)&&Number(key)<value.length&&!descriptors[key].get&&!descriptors[key].set&&descriptors[key].enumerable);};
+ if(!dataRecord(snapshot))return issue('INVALID_INPUT','生成输入必须为对象');
+ // Keep the same legacy first-error pass as authoritative service validation.
+ // Profile-only restrictions must not change established error precedence.
+ const {inputProfiles:ignoredProfiles,...legacyCapabilities}=capabilities||{};
+ const model=findModelCapabilities(legacyCapabilities,snapshot.model);
  if(!model)return issue('UNSUPPORTED_MODEL','此供应商不支持所选模型');
  if(!model.aspectRatios?.includes(snapshot.aspectRatio)||!model.durations?.includes(snapshot.duration))return issue('UNSUPPORTED_PARAMETERS','此模型不支持所选画幅或时长');
- const refs=snapshot.referenceAssets||[],count=snapshot.referenceAssetIds?.length??refs.length;
+ const refs=snapshot.referenceAssets??[];
+ if(!denseArray(refs)||snapshot.referenceAssetIds!==undefined&&!denseArray(snapshot.referenceAssetIds))return issue('UNSUPPORTED_INPUT','参考素材必须为完整且有界的数组');
+ const count=snapshot.referenceAssetIds?.length??refs.length;
  const mode=count?'image':'text';
  if(!model.inputModes?.includes(mode))return issue('UNSUPPORTED_INPUT',mode==='text'?'此模型需要一张首帧参考图':'此模型不支持参考图输入');
  const constraints=model.referenceImages||{min:mode==='text'?0:1,max:1};
  if(count<constraints.min||count>constraints.max)return issue('UNSUPPORTED_INPUT',`此模型支持 ${constraints.min}–${constraints.max} 张参考图片`);
- if(refs.some(asset=>!asset.mimeType?.startsWith('image/')))return issue('UNSUPPORTED_INPUT','首帧参考素材必须为图片');
+ if(refs.some(asset=>!dataRecord(asset)))return issue('UNSUPPORTED_INPUT','参考素材必须为普通数据对象');
+ if(refs.some(asset=>!asset||typeof asset.mimeType!=='string'||!asset.mimeType.startsWith('image/')))return issue('UNSUPPORTED_INPUT','首帧参考素材必须为图片');
  if(constraints.mimeTypes&&refs.some(asset=>!constraints.mimeTypes.includes(asset.mimeType)))return issue('UNSUPPORTED_INPUT','此模型不支持所选参考图片格式');
  if(constraints.minDimension&&refs.some(asset=>asset.width<constraints.minDimension||asset.height<constraints.minDimension))return issue('UNSUPPORTED_INPUT',`参考图宽高均须至少 ${constraints.minDimension} 像素`);
  if(constraints.maxDimension&&refs.some(asset=>asset.width>constraints.maxDimension||asset.height>constraints.maxDimension))return issue('UNSUPPORTED_INPUT',`参考图宽高均须不超过 ${constraints.maxDimension} 像素`);
  if(constraints.matchAspectRatio&&refs.length){const [w,h]=snapshot.aspectRatio.split(':').map(Number);if(refs.some(asset=>asset.width*h!==asset.height*w))return issue('UNSUPPORTED_INPUT','此模型首帧参考图须与所选画幅比例一致');}
- if(model.promptRequired&&(!snapshot.prompt?.trim()||snapshot.prompt.length>(model.maxPromptLength||5000)))return issue('INVALID_PROMPT',`请填写 1–${model.maxPromptLength||5000} 字符的画面描述`);
- const parameters=snapshot.parameters||{};
+ if(model.promptRequired&&(typeof snapshot.prompt!=='string'||!snapshot.prompt.trim()||snapshot.prompt.length>(model.maxPromptLength||5000)))return issue('INVALID_PROMPT',`请填写 1–${model.maxPromptLength||5000} 字符的画面描述`);
+ const parameters=snapshot.parameters??{};
+ if(!dataRecord(parameters))return issue('UNSUPPORTED_PARAMETER','此模型不支持所选高级参数');
  if(model.parameters&&Object.keys(parameters).some(key=>!model.parameters.includes(key)))return issue('UNSUPPORTED_PARAMETER','此模型不支持所选高级参数');
  if(parameters.seed!==undefined&&model.seed&&(!Number.isInteger(parameters.seed)||parameters.seed<model.seed.min||parameters.seed>model.seed.max))return issue('INVALID_SEED',`随机种子须为 ${model.seed.min}–${model.seed.max} 之间的整数`);
+ if(Object.hasOwn(capabilities||{},'inputProfiles')){const rich=getGenerationProfileIssue({...snapshot,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);}
  return null;
 }

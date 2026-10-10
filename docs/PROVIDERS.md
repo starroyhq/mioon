@@ -2,6 +2,8 @@
 
 Implementation and official documentation checked 2026-10-09. No live generation, external reference upload, account mutation, paid call, or remote cancellation has been performed for any real provider. Live verification remains **pending separate authorization**. Passing injected-HTTP tests does not establish account eligibility, real provider availability, output quality, price, or end-to-end generation.
 
+The production registry now publishes and enforces [exact model input limits](GENERATION-INPUT-LIMITS.md), including the dated Veo lifecycle policy. These implemented app profiles do not enable broader vendor reference modes.
+
 ## Shared behavior
 
 Factories are `createMockProvider({ db, root })`, `createRunwayProvider({ root })`, `createArkProvider({ root })`, `createVeoProvider({ root })`, `createMinimaxProvider({ root })`, and `createViduProvider({ root })`. All implement the adapter interface in `CONTRACT.md`, including synchronous `validate(snapshot)` with no network and no dependency on resolved local paths. Submission independently validates actual managed reference bytes. `root` is the managed application data root, not a user-selected upload path. Adapters return **fractional progress from 0 to 1**; the job/UI layer converts it to a percentage.

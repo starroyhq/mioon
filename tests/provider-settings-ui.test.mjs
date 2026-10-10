@@ -25,7 +25,7 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
     import { build } from 'esbuild';
     const { outputFiles } = await build({
       stdin: { contents: ${JSON.stringify(fixture)}, loader: 'jsx', resolveDir: ${JSON.stringify(resolve(root, 'apps/web/src'))} },
-      bundle: true, format: 'esm', platform: 'browser', write: false,
+      bundle: true, format: 'esm', platform: 'browser', write: false, loader: { '.css': 'empty' },
       define: { 'process.env.NODE_ENV': '\"production\"' }, logLevel: 'silent',
     });
     const { markup } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
@@ -50,5 +50,7 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
   assert.match(markup.disabled, /真实调用未启用/);
   assert.match(markup.available, /真实生成可能计费/);
   assert.match(markup.mock, /不调用付费 AI 服务/);
+  assert.match(markup.mock, /输出为测试图案，不会呈现参考图片或提示词描述的内容/);
+  assert.match(markup.mock, /data-testid="generation-input-summary"/);
   assert.doesNotMatch(markup.mock, /查看配置说明|EXAMPLE_API_KEY/);
 });

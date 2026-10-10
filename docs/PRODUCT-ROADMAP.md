@@ -270,3 +270,16 @@ Implementation and local focused/browser/native/media checks are complete; the
 independent release gate remains pending. [CLIP-SOURCE-REPLACEMENT.md](CLIP-SOURCE-REPLACEMENT.md)
 tracks scope, acceptance and retained limitations. Visual A/B comparison, automatic propagation and
 generation/spending remain outside this increment.
+
+
+## Approved next image-generation slice (2026-10-10, not implemented)
+
+After the wired model-input-limit slice, prioritize an independent OpenAI Images
+API text-to-image workflow and editable preset. Generated images must enter the
+existing managed asset/version storage, with explicit actions to use the chosen
+image on the timeline, as a first frame, or in a subject version. Preserve
+originals and reuse durable task/recovery, source provenance and budget approval.
+A custom base URL is not proof of Images API compatibility. Image editing, masks
+and broader reference combinations follow separately; Blender is optional and
+this work does not block the verified Linux trial. No live call or credential
+configuration is authorized by this roadmap entry.

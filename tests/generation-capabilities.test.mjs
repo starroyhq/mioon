@@ -44,7 +44,7 @@ test('unsupported duration, reference mode and parameters fail before any job ex
 
 test('Seedance first-frame ratio validation is shared and snapshots retain immutable dimensions',async t=>{
  const f=await fixture(t,env);
- const asset={id:randomUUID(),projectId:f.project.id,mimeType:'image/png',sha256:'a'.repeat(64),relativePath:'media/synthetic.png',width:360,height:640};
+ const asset={id:randomUUID(),projectId:f.project.id,mimeType:'image/png',sha256:'a'.repeat(64),relativePath:'media/synthetic.png',sizeBytes:1024,width:360,height:640};
  f.store.put('assets',asset);
  let shot=await f.shot({duration:4,referenceAssetIds:[asset.id],aspectRatio:'16:9'});
  await assert.rejects(f.submit(shot),{code:'UNSUPPORTED_INPUT'});

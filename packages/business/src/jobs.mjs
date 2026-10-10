@@ -6,6 +6,7 @@ import {fileInfo,probe,safePath,stitch,run} from './media.mjs';
 import {renderTimeline} from './timeline-media.mjs';
 import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph} from './timeline-sources.mjs';
 import {now} from './services.mjs';
+import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './generation-inputs.mjs';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mjs';
 
 export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
@@ -59,7 +60,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(table==='exports')tx(apply);else apply();
  };
  const safeError=(e,code='PROVIDER_ERROR')=>({code:e.code||code,message:e.uncertain?'供应商可能已受理。正在对账，不会自动重新提交。':String(e.message||'任务操作失败').replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true});
- for(const j of list('jobs'))if(j.status==='submitting')services.saveJob(j,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
+ for(const j of list('jobs'))if(j.status==='submitting')services.saveGenerationGuarded(j,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
  for(const e of workerExports())if(e.status==='running')tx(()=>{
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...current,status:'queued',updatedAt:now()});
  });
@@ -69,11 +70,13 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   let j=get('jobs',original.id);
   if(!j)return;
   const provider=providers.get(j.providerId),context={requestId:j.requestId,jobId:j.id,providerRegion:j.snapshot.capabilities?.region,signal};
-  let acceptedProviderId=null;
+  let acceptedProviderId=null,guardJob=j;
   const submissionCount=j.submissionCount;
   if(j.nextPollAt&&Date.now()<j.nextPollAt)return;
   try {
    if(j.status==='queued') {
+    services.validateGenerationDispatch(j);
+    const preparedSnapshot=JSON.stringify(j.snapshot);
     // Prepare references before recording an attempt. A shutdown here has not
     // called an adapter and must leave the original queued snapshot untouched.
     const referenceAssets=[];
@@ -85,9 +88,24 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
      referenceAssets.push({...ref,path:file});
     }
     checkpoint(signal);
-    j=get('jobs',j.id);
-    if(j.status!=='queued')return;
-    j=services.saveJob(j,{status:'submitting',phase:'provider_submit',submissionCount:submissionCount+1});
+    const current=get('jobs',j.id);
+    if(!current||current.status!=='queued')return;
+    j=current;
+    if(JSON.stringify(j.snapshot)!==preparedSnapshot)throw Object.assign(Error('准备素材期间冻结快照已改变'),{code:'INVALID_REFERENCE_MANIFEST'});
+    services.validateGenerationDispatch(j);
+    const claimed=services.saveGenerationGuarded(guardJob,{status:'submitting',phase:'provider_submit',submissionCount:submissionCount+1});
+    if(!claimed)return;
+    j=claimed;guardJob=claimed;
+    const claim=j;
+    // Shared HTTP adapters invoke this synchronous fence after image preparation
+    // and immediately before POST. No callback is used for poll/download/reconcile.
+    context.beforeSubmit=()=>{
+     try{
+      const latest=get('jobs',claim.id);
+      if(!latest||latest.status!=='submitting'||latest.revision!==claim.revision||JSON.stringify(latest.snapshot)!==preparedSnapshot)throw Object.assign(Error('提交前任务状态已更改'),{code:'GENERATION_STATE_CHANGED'});
+      services.validateGenerationDispatch(claim);
+     }catch(error){throw markGenerationPreflightFailure(error);}
+    };
     const accepted=await awaitProvider(()=>provider.submit({...j.snapshot,referenceAssets},context),signal,{submit:true});
     acceptedProviderId=accepted.providerJobId;
     // Receipt persistence is the sole intentional write permitted after abort.
@@ -144,11 +162,18 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    }
   } catch(error) {
    if(error.terminationUnconfirmed)failShutdown(error);
-   const latest=get('jobs',j.id);
-   if(latest.status==='cancelled')return;
+   const latest=get('jobs',guardJob.id);
+   if(latest?.status==='cancelled')return;
    if(j.status==='submitting') {
+    if(isGenerationPreflightFailure(error)&&!acceptedProviderId){
+     // This fence ran before fetch, so no attempt was dispatched. Do not
+     // overwrite a concurrent cancellation or requeue a rejected paid action.
+     services.saveGenerationGuarded(guardJob,{status:'failed',phase:'input_preflight_failed',submissionCount,error:safeError(error),nextPollAt:0});
+     return;
+    }
+    if(!latest)return;
     if(error.beforeDispatch===true&&!acceptedProviderId) {
-     services.saveJob(latest,{status:'queued',phase:'waiting',submissionCount,error:null,nextPollAt:0});
+     services.saveGenerationGuarded(guardJob,{status:'queued',phase:'waiting',submissionCount,error:null,nextPollAt:0});
      if(error.terminationUnconfirmed)persistMediaPause('jobs',j.id);
      return;
     }
@@ -161,7 +186,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
     if(error.terminationUnconfirmed)persistMediaPause('jobs',j.id);
     return;
    } else if(['running','downloading','submission_unknown'].includes(j.status))services.saveJob(latest,{error:safeError(error,j.status==='downloading'?'DOWNLOAD_FAILED':'POLL_ERROR'),nextPollAt:Date.now()+1000});
-   else services.saveJob(latest,{status:'failed',error:safeError(error)});
+   else services.saveGenerationGuarded(guardJob,{status:'failed',error:safeError(error)});
   }
  }
 

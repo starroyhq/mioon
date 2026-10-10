@@ -14,6 +14,8 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these same schemas through tools/list.
 
+`provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. Existing submit/retry schemas and historical replay are unchanged. See [model input limits](GENERATION-INPUT-LIMITS.md).
+
 ## File and event transports
 
 Authenticated `GET /media/:assetId` and `HEAD /media/:assetId` retain single-byte

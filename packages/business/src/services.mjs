@@ -2,7 +2,8 @@ import {randomUUID,createHash} from 'node:crypto';
 import {writeFile,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {parse,AppError,publicValue,getGenerationIssue} from '@mioon/contracts';
-import {normalizedCapabilities,generationLimit,providerSettings} from './provider-registry.mjs';
+import {normalizedCapabilities,generationLimit,providerSettings,usesInputProfiles} from './provider-registry.mjs';
+import {prepareGenerationInputs,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim} from './generation-inputs.mjs';
 import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createTimelinePreflightServices} from './timeline-preflight.mjs';
@@ -17,7 +18,7 @@ import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mj
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
-export function createServices(store,providers,{env=process.env,signal:ownerSignal}={}){
+export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now}={}){
  const active=new Set();let shutdownFailure;
  const {db,root,get,list,put,tx}=store;
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
@@ -26,11 +27,14 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const idem=(scope,key,h,id)=>db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run(scope,key,h,id);
  const event=(job,event)=>db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id,JSON.stringify(event),now());
  const saveJob=(job,patch)=>{const current=required('jobs',job.id);if((current.revision||0)!==(job.revision||0))return current;const result={...current,...patch,revision:(current.revision||0)+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;};
- const capabilitiesFor=provider=>normalizedCapabilities(provider,env,list('jobs').filter(j=>j.providerId===provider.id).length);
- const validateProvider=(source,providerId,requestedModel,parameters)=>{
+ const profilePolicy=usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
+ const capabilitiesFor=(provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,env,list('jobs').filter(j=>j.providerId===provider.id).length,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
+ const validateProvider=(source,providerId,requestedModel,parameters,projectId,frozen=false)=>{
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const c=capabilitiesFor(p),first=c.models[0],model=requestedModel||(typeof first==='string'?first:first.id);
-  const assets=source.referenceAssetIds.map(id=>required('assets',id));
+  const profiled=profilePolicy||usesInputProfiles(p);
+  if(profiled)assertGenerationReferenceIds(source.referenceAssetIds);
+  const assets=source.referenceAssetIds.map(id=>profiled?readGenerationAsset(db,id,projectId):required('assets',id));
   // Config checks never reveal credentials. Raw adapter enabled remains distinct from
   // the exhausted/missing local generation limit exposed in the capability status.
   if(!p.capabilities.enabled||!p.capabilities.configured)throw new AppError('PROVIDER_DISABLED','真实供应商尚未安全配置并授权；当前可使用模拟供应商',403,{providerId,status:c.status,configuration:c.configuration});
@@ -40,15 +44,18 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   }
   if(source.capabilities?.region&&c.region!==source.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
   const snapshot={...source,model,referenceAssets:assets,parameters};
-  const issue=getGenerationIssue(snapshot,c);if(issue)throw new AppError(issue.code,issue.message,400,{providerId,model});
+  const {inputProfiles:ignoredProfiles,...legacyCapabilities}=c;
+  const issue=getGenerationIssue(snapshot,legacyCapabilities);if(issue)throw new AppError(issue.code,issue.message,400,{providerId,model});
   if(p.validate){try{p.validate(snapshot);}catch(error){throw new AppError(error.code||'UNSUPPORTED_PARAMETERS',error.message||'此供应商不支持所选参数',400,{providerId,model});}}
-  return {p,model,assets,capabilities:c};
+  const prepared=profiled?prepareGenerationInputs({source:{...source,parameters},projectId,providerId,model,capabilities:c,readAsset:id=>readGenerationAsset(db,id,projectId),asOf:c.profileEvaluationDate,frozen}):null;
+  return {p,model,assets:prepared?.assets||assets,capabilities:c,inputFields:prepared?.fields};
  };
  const createJob=(input,retrySnapshot=null,retryOfJobId=null)=>tx(()=>{
   const requestHash=hash(input), prior=dedupe('generation',input.requestId,requestHash,'jobs');if(prior)return prior;
   const shot=required('shots',input.shotId);if(!retrySnapshot)check(shot,input.expectedRevision);
-  const source=retrySnapshot||shot;const referenceConnections=retrySnapshot?.referenceConnections||(!retrySnapshot?references.snapshot(shot):[]);const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};const {model,assets,capabilities}=validateProvider(source,input.providerId,input.model,parameters);
-  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...shot.referenceAssetIds],referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities};
+  if(profilePolicy||usesInputProfiles(providers.get(input.providerId)))assertGenerationShotOwnership(db,shot);
+  const source=retrySnapshot||shot;const referenceConnections=retrySnapshot?.referenceConnections||(!retrySnapshot?references.snapshot(shot):[]);const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};const {model,assets,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,parameters,shot.projectId,Boolean(retrySnapshot));
+  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...shot.referenceAssetIds],referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{})};
   const job={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});return job;
  });
  const timeline=createTimelineServices(store,{required,check,hash,now});
@@ -105,11 +112,11 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  'asset.list':i=>{required('projects',i.projectId);return list('assets',i.projectId);},
  'edge.create':i=>{required('projects',i.projectId);for(const id of [i.source,i.target]){const n=get('shots',id)||get('nodes',id);if(!n||n.projectId!==i.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(i.source===i.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',i.projectId).find(e=>e.kind!=='reference'&&e.source===i.source&&e.target===i.target);return existing||put('edges',{id:randomUUID(),...i,kind:'decorative'});},
  'edge.delete':i=>{const edge=required('edges',i.edgeId);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(i.edgeId);return {deleted:true};},
- 'provider.list':()=>[...providers.values()].map(capabilitiesFor),
+ 'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
  'generation.submit':i=>createJob(i),
  'job.get':i=>required('jobs',i.jobId),
  'job.list':i=>{required('projects',i.projectId);return list('jobs',i.projectId);},
- 'job.retry':i=>{const old=required('jobs',i.jobId);const newInput={shotId:old.shotId,expectedRevision:old.snapshot.shotRevision,requestId:i.requestId,providerId:old.providerId,model:old.model,parameters:old.snapshot.parameters,retryOfJobId:old.id};const prior=dedupe('generation',i.requestId,hash(newInput),'jobs');if(prior)return prior;if(old.status!=='failed')throw new AppError('UNSAFE_RETRY','只有明确失败的任务可重新提交；未知提交结果须先对账',409);const activeChild=list('jobs',old.projectId).find(child=>child.retryOfJobId===old.id&&['queued','submitting','running','downloading','submission_unknown'].includes(child.status));if(activeChild)throw new AppError('RETRY_ALREADY_ACTIVE','该失败任务已有重试正在处理，请查询已有任务',409,{jobId:activeChild.id});if(i.requestId===old.requestId)throw new AppError('NEW_REQUEST_REQUIRED','重试必须使用新的请求 ID',409);return createJob(newInput,old.snapshot,old.id);},
+ 'job.retry':i=>{const old=required('jobs',i.jobId);const newInput={shotId:old.shotId,expectedRevision:old.snapshot.shotRevision,requestId:i.requestId,providerId:old.providerId,model:old.model,parameters:old.snapshot.parameters,retryOfJobId:old.id};const prior=dedupe('generation',i.requestId,hash(newInput),'jobs');if(prior)return prior;if(old.status!=='failed')throw new AppError('UNSAFE_RETRY','只有明确失败的任务可重新提交；未知提交结果须先对账',409);const activeChild=list('jobs',old.projectId).find(child=>child.retryOfJobId===old.id&&['queued','submitting','running','downloading','submission_unknown'].includes(child.status));if(activeChild)throw new AppError('RETRY_ALREADY_ACTIVE','该失败任务已有重试正在处理，请查询已有任务',409,{jobId:activeChild.id});if(i.requestId===old.requestId)throw new AppError('NEW_REQUEST_REQUIRED','重试必须使用新的请求 ID',409);if(profilePolicy||usesInputProfiles(providers.get(old.providerId)))assertGenerationJobOwnership(db,old);return createJob(newInput,old.snapshot,old.id);},
  'job.cancel':i=>{const j=required('jobs',i.jobId);if(['succeeded','failed','cancelled'].includes(j.status))return j;return saveJob(j,{status:'cancelled',phase:'local_wait_stopped',cancelScope:'local_only',error:{code:'LOCAL_WAIT_STOPPED',message:'已停止本地等待；供应商任务未确认取消，可能仍会完成或计费',retryable:true}});},
  'job.reconcile':async (i,{signal=ownerSignal}={})=>{checkpoint(signal);const j=required('jobs',i.jobId),context={jobId:j.id,requestId:j.requestId,providerRegion:j.snapshot.capabilities?.region,signal};if(['succeeded','failed','queued','submitting'].includes(j.status)){if(i.providerJobId)throw new AppError('INVALID_RECONCILIATION_STATE','当前任务状态不允许绑定供应商任务',409);return j;}if(i.providerJobId&&j.providerJobId&&i.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);if(i.providerJobId){const owner=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===i.providerJobId);if(owner)throw new AppError('TASK_ID_CONFLICT','供应商任务已属于另一个本地任务，不能替换其参数快照',409);if(j.providerId==='mock'){const own=await awaitProvider(()=>providers.get('mock').reconcile(j.requestId,context),signal);checkpoint(signal);if(!own||own.providerJobId!==i.providerJobId)throw new AppError('TASK_ID_CONFLICT','模拟任务 ID 与此提交请求不匹配',409);}}const p=providers.get(j.providerId);if(j.snapshot.capabilities?.region&&p.capabilities.region!==j.snapshot.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);const found=i.providerJobId?{providerJobId:i.providerJobId}:j.providerJobId?{providerJobId:j.providerJobId}:await awaitProvider(()=>p.reconcile(j.requestId,context),signal);checkpoint(signal);if(!found)return saveJob(j,{status:'submission_unknown',phase:'reconciliation_required',error:{code:'SUBMISSION_UNKNOWN',message:'无法确认是否已被受理；不会自动重新提交。请在供应商后台核实已有任务 ID',retryable:true}});await awaitProvider(()=>p.poll(found.providerJobId,context),signal);checkpoint(signal);const competing=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===found.providerJobId);if(competing)throw new AppError('TASK_ID_CONFLICT','供应商任务已由另一个本地任务占用',409);return saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null});},
  'version.list':i=>{const s=required('shots',i.shotId);return list('versions',s.projectId).filter(v=>v.shotId===s.id).sort((a,b)=>a.number-b.number);},
@@ -143,5 +150,29 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   if(typeof projectId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(projectId))throw new AppError('VALIDATION_ERROR','项目范围无效');
   return publicValue(await localMutations.updateShotInProject(projectId,parse('shot.update',input)));
  }
- return {call,drain,updateShotInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection};
+ // Only queued/new provider dispatch uses lifecycle validation. Paid task
+ // polling, download and reconciliation deliberately never call this boundary.
+ function validateGenerationDispatch(job){
+  const provider=providers.get(job.providerId);
+  if(!profilePolicy&&!usesInputProfiles(provider))return null;
+  currentGenerationClaim(db,job);
+  if(!provider||provider.id!==job.providerId)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
+  const capabilities=capabilitiesFor(provider);
+  if(job.snapshot.providerId!==job.providerId||job.snapshot.model!==job.model)throw new AppError('INVALID_REFERENCE_MANIFEST','任务身份与冻结快照不一致');
+  return prepareGenerationInputs({source:job.snapshot,projectId:job.projectId,providerId:job.providerId,model:job.model,capabilities,readAsset:id=>readGenerationAsset(db,id,job.projectId),asOf:capabilities.profileEvaluationDate,frozen:true});
+ }
+ // Limit this ownership fence to unaccepted claims and restart classification.
+ // Policy rejection must not authorize writing a foreign or replaced record.
+ let invalidGenerationReported=false;
+ function saveGenerationGuarded(job,patch){
+  if(!profilePolicy&&!usesInputProfiles(providers.get(job.providerId)))return saveJob(job,patch);
+  return tx(()=>{
+   let current;try{current=currentGenerationClaim(db,job);}catch{
+    if(!invalidGenerationReported){invalidGenerationReported=true;console.error('Skipped invalid local generation record.');}
+    return null;
+   }
+   return saveJob(current,patch);
+  });
+ }
+ return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection};
 }

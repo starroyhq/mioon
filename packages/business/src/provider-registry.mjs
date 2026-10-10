@@ -1,3 +1,4 @@
+import {INPUT_PROFILE_VERSION,getCapabilityProfile,getGenerationProfileRegion,evaluateCapabilityLifecycle} from '@mioon/contracts';
 import {createMockProvider} from './providers/mock.mjs';
 import {createRunwayProvider} from './providers/runway.mjs';
 import {createArkProvider} from './providers/ark.mjs';
@@ -21,7 +22,26 @@ export function generationLimit(providerId,env=process.env){
  const value=/^[1-9]\d*$/.test(raw)?Number(raw):0;
  return Number.isSafeInteger(value)?value:0;
 }
-export function normalizedCapabilities(provider,env=process.env,used=0){
+// Only the production registry opts into the reviewed profile policy. Trusted
+// embedded adapters keep the legacy extension contract; request DTOs cannot
+// opt a production registry out, including after a provider handle is replaced.
+const profileRegistries=new WeakSet(),profileProviders=new WeakSet();
+export function usesInputProfiles(value){
+ if(profileRegistries.has(value)||profileProviders.has(value))return true;
+ // Native Map brand checking never probes an unknown object's properties,
+ // descriptors, prototype or Proxy traps. Copies can retain known handles.
+ let providers;try{providers=Map.prototype.values.call(value);}catch{return false;}
+ for(const provider of providers)if(profileProviders.has(provider))return true;
+ return false;
+}
+// Trusted server composition only: a known source handle grants its wrapper
+// the same policy. Serialized capabilities and guessed IDs cannot grant it.
+export function registerInputProfileWrapper(wrapper,source){
+ if(!profileProviders.has(source)||wrapper===null||!['object','function'].includes(typeof wrapper))throw new TypeError('A registered provider source and wrapper object are required.');
+ profileProviders.add(wrapper);return wrapper;
+}
+export const profileDate=()=>new Date().toISOString().slice(0,10);
+export function normalizedCapabilities(provider,env=process.env,used=0,{asOf=profileDate(),requireInputProfiles=usesInputProfiles(provider)}={}){
  const c=provider.capabilities,settings=providerSettings[provider.id],inputModes=c.inputModes||['image'];
  const modelCapabilities=c.modelCapabilities||c.models.map(model=>({
   id:typeof model==='string'?model:model.id,name:typeof model==='string'?model:model.name,
@@ -34,7 +54,15 @@ export function normalizedCapabilities(provider,env=process.env,used=0){
  const missing=settings?[...(c.configuration?.missing||(!configured?[settings.credential]:[])),...(!limit?[`${settings.prefix}_MAX_GENERATIONS`]:[])]:[];
  const enabled=Boolean(c.enabled)&&(!settings||Boolean(limit)&&used<limit);
  const status=!configured?'not_configured':enabled?'available':'disabled';
- return {...c,id:provider.id,inputModes,modelCapabilities,configured,enabled,status,liveVerified:c.mock?false:Boolean(c.liveVerified),
+ const providerRegion=getGenerationProfileRegion(provider.id,c);
+ const inputProfiles=requireInputProfiles?c.models.map(model=>getCapabilityProfile(provider.id,typeof model==='string'?model:model.id,providerRegion)).filter(Boolean):[];
+ const profiles=requireInputProfiles?{inputProfileVersion:INPUT_PROFILE_VERSION,profileEvaluationDate:asOf,providerRegion,
+  inputProfiles,inputProfileEvaluations:inputProfiles.map(profile=>({profileId:profile.profileId,...evaluateCapabilityLifecycle(profile,{asOf})}))}:{};
+ // Discovery must not imply enforcement for an unregistered embedded adapter.
+ // Reserve these fields for this boundary's canonical, registered evaluation.
+ const publicCapabilities={...c};
+ for(const key of ['inputProfiles','inputProfileVersion','providerRegion','profileEvaluationDate','inputProfileEvaluations'])delete publicCapabilities[key];
+ return {...publicCapabilities,...profiles,id:provider.id,inputModes,modelCapabilities,configured,enabled,status,liveVerified:c.mock?false:Boolean(c.liveVerified),
   configuration:{...(c.configuration||{}),missing:[...new Set([...(c.configuration?.missing||[]),...missing])],requirements:settings?[
    'MIOON_ENABLE_LIVE_PROVIDER=1：在后端明确启用真实调用',
    `${settings.prefix}_MAX_GENERATIONS：当前数据目录的授权生成次数上限`,
@@ -45,5 +73,6 @@ export function normalizedCapabilities(provider,env=process.env,used=0){
   ]:[]},...(settings?{budget:{maxGenerations:limit,usedGenerations:used,remainingGenerations:Math.max(0,limit-used),scope:'local-data-directory'}}:{})};
 }
 export function createProviderRegistry({db,root,env=process.env}){
- return new Map([createMockProvider({db,root}),createRunwayProvider({root,env}),createArkProvider({root,env}),createVeoProvider({root,env}),createMinimaxProvider({root,env}),createViduProvider({root,env})].map(provider=>[provider.id,provider]));
+ const registry=new Map([createMockProvider({db,root}),createRunwayProvider({root,env}),createArkProvider({root,env}),createVeoProvider({root,env}),createMinimaxProvider({root,env}),createViduProvider({root,env})].map(provider=>{profileProviders.add(provider);return [provider.id,provider];}));
+ profileRegistries.add(registry);return registry;
 }
