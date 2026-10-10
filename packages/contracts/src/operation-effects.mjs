@@ -21,6 +21,16 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  'image.profile.list': define({...read,notes:'Reads fixed local image profiles. Mock is enabled; OpenAI is explicitly disabled and never probed.'}),
+  'image.generate': define({...localAdd,idempotent:true,fileWrite:true,notes:'Durably accepts one exact image intent, then creates a bounded local Mock PNG and immutable managed image version. Production OpenAI rejects before acceptance; no external I/O, credentials or paid work. Future live activation must revise this effect. Historical request replay never reschedules work.'}),
+  'image.request.get': define({...read,notes:'Reads the original project-scoped image acceptance receipt without dispatch, retry, recovery or status mutation.'}),
+  'image.task.get': define({...read,notes:'Reads an existing owned image task; never calls an adapter or resumes it.'}),
+  'image.task.list': define({...read,notes:'Reads a bounded project/group-scoped image task page without resuming work.'}),
+  'image.group.get': define({...read,notes:'Reads one existing project-scoped image group and validates its current links without changes.'}),
+  'image.group.list': define({...read,notes:'Reads a bounded page of existing project-owned image groups; does not create groups.'}),
+  'image.version.list': define({...read,notes:'Reads a bounded page of immutable image versions with typed managed-asset ownership. No media bytes, paths or provider requests.'}),
+  'image.task.cancelQueued': define({...replayEdit,notes:'Explicitly cancels only a durably undispatched queued/interrupted image task. Exact image-request replay is retained. Does not cancel a provider request or promise refunds.'}),
+  'image.task.recoverResult': define({...localAdd,idempotent:true,fileWrite:true,notes:'Explicitly validates and publishes only an existing task-bound local PNG result receipt. Never invokes an image adapter or sends another provider request.'}),
   'subject.create': define({...localAdd,idempotent:true,notes:'Creates a project-scoped subject and frozen managed-image reference version with required exact replay. Reads only existing asset metadata and lineage; no media reads, provider calls, shot or timeline changes.'}),
   'subject.version.add': define({...localAdd,idempotent:true,notes:'Adds one immutable managed-image version and advances the subject head. Existing shot bindings retain their chosen version; review flags are derived without fan-out writes. Same-head asset rejects without writes.'}),
   'subject.binding.set': define({...replayEdit,notes:'Explicitly attaches, changes, acknowledges or unlinks a subject/style binding under independent binding and subject revisions. Unlink retains a tombstone. Pins selected versions and never edits shot first-frame references, generation snapshots or timelines.'}),

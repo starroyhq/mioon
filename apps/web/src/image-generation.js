@@ -1,0 +1,242 @@
+import { ApiError, rpc, requestId as newRequestId } from './api.js';
+import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse } from '@mioon/contracts';
+
+export { IMAGE_FIXED_OPTIONS, IMAGE_MODELS };
+const PREFIX = 'mioon.image-intent.v1:';
+const ACTIVE = new Set(['queued', 'dispatching', 'receiving', 'persisting']);
+const CANCELABLE = new Set(['queued', 'interrupted_before_dispatch']);
+const REJECTION_CODES = new Set(['IMAGE_LIVE_DISABLED', 'IMAGE_CAPACITY', 'IMAGE_QUEUE_FULL', 'IMAGE_GROUP_BUSY', 'IMAGE_REVISION_CONFLICT', 'IMAGE_STATE_CONFLICT', 'IMAGE_RESULT_INVALID']);
+const copy = value => structuredClone(value);
+const problem = code => Object.assign(new Error(code), { code });
+export const imageTaskLabel = state => ({ queued: '等待生成', dispatching: '正在发送', receiving: '正在接收图像', persisting: '正在保存结果', succeeded: '已保存', cancelled_before_dispatch: '发送前已取消', interrupted_before_dispatch: '发送前已中断', failed: '生成失败', outcome_unknown: '服务商结果未知', local_result_error: '本地结果保存失败' }[state] || '状态待确认');
+export const imageTaskMessage = state => ({ interrupted_before_dispatch: '应用重启前尚未发送，不会自动继续。可取消此任务，再明确创建新请求。', outcome_unknown: '无法确认服务商结果。可明确检查并恢复已落盘的本地结果；没有可核验结果时仍保持未知，绝不重新调用服务商。', local_result_error: '已有本地结果待恢复。恢复只处理同一份结果，不再次生成。', cancelled_before_dispatch: '已确认在发送前取消，没有启动生成。', failed: '此请求已结束。查看记录后，可明确创建新的生成请求。' }[state] || '');
+const rejectionMessage = code => ({ IMAGE_LIVE_DISABLED: '真实图像调用尚未启用，本次未被接受。', IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' }[code] || '请求未被接受，草稿保留。请重新读取并核对后再提交。');
+export function imageInputIssue(draft) {
+  if (!draft.name.trim()) return '请填写图像名称。';
+  if (draft.name.length > 120) return '名称最多 120 个字符。';
+  if (!draft.prompt.trim()) return '请填写图像描述。';
+  if (draft.prompt.length > IMAGE_LIMITS.promptCharacters || new TextEncoder().encode(draft.prompt).length > IMAGE_LIMITS.promptBytes) return `描述最多 ${IMAGE_LIMITS.promptCharacters} 个字符。`;
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(draft.prompt)) return '描述中含有不支持的控制字符。';
+  return '';
+}
+export function initialImageGenerationState() {
+  return { draft: { name: '', prompt: '' }, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
+}
+export const imageDraftDirty = state => Boolean(state.draft.name || state.draft.prompt || state.target);
+export function imageCanGenerate(state) {
+  const group = state.target && state.groups.find(item => item.id === state.target.groupId);
+  return state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision));
+}
+const fixedIntent = (projectId, value) => value?.version === 1 && value.operation && imageSchemas[value.operation]?.safeParse(value.input).success && value.input.projectId === projectId && ['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(value.operation);
+const safeTask = (value, projectId) => {
+  if (!isImageTaskResponse(value) || value.projectId !== projectId) throw problem('INVALID_RESPONSE');
+  return copy(value);
+};
+const safePage = (operation, input, value) => {
+  if (!isImageListResponse(operation, input, value)) throw problem('INVALID_RESPONSE');
+  return copy(value);
+};
+const taskIdentity = task => canonicalImageInput(Object.fromEntries(['id', 'projectId', 'groupId', 'requestId', 'name', 'prompt', 'providerId', 'model', 'options', 'createdAt'].map(key => [key, task[key]])));
+function newestTask(previous, next) {
+  if (previous && (taskIdentity(previous) !== taskIdentity(next) || (previous.revision === next.revision && canonicalImageInput(previous) !== canonicalImageInput(next)))) throw problem('INVALID_RESPONSE');
+  return previous?.revision > next.revision ? previous : next;
+}
+async function notAccepted(error, operation, input) {
+  const proof = error?.details?.imageOutcome;
+  if (!(error instanceof ApiError) || !REJECTION_CODES.has(error.code) || proof?.status !== 'not_accepted' || proof.projectId !== input.projectId || proof.operation !== operation || proof.requestId !== input.requestId || !/^[a-f0-9]{64}$/.test(proof.inputHash || '')) return false;
+  try {
+    const hash = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalImageInput(input)));
+    return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('') === proof.inputHash;
+  } catch { return false; }
+}
+
+/** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
+export function createImageGenerationSession({ projectId, api = rpc, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 } = {}) {
+  let state = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, timer = null, polls = 0, reading = false;
+  const announced = new Set(), tracked = new Map(), calls = new Set();
+  async function call(operation, input) {
+    const controller = new AbortController(); calls.add(controller); let deadline;
+    const expired = new Promise((_, reject) => { deadline = setTimeout(() => { controller.abort(); reject(problem('NETWORK')); }, timeoutMs); });
+    try { return await Promise.race([Promise.resolve().then(() => api(operation, input, { signal: controller.signal })), expired]); }
+    finally { clearTimeout(deadline); calls.delete(controller); }
+  }
+  const store = () => storage === undefined ? globalThis.sessionStorage : storage;
+  const emit = patch => { if (disposed) return; state = { ...state, ...patch }; onChange(copy(state)); };
+  const stopTimer = () => { if (timer !== null) clearTimer(timer); timer = null; };
+  const owned = epoch => !disposed && readEpoch === epoch;
+  function savePending(value) {
+    const target = store(); if (!target) throw problem('LOCAL_STORAGE_UNAVAILABLE');
+    if (target.getItem(`${PREFIX}${projectId}`)) throw problem('LOCAL_STORAGE_CHANGED');
+    const serialized = JSON.stringify(value); target.setItem(`${PREFIX}${projectId}`, serialized);
+    if (target.getItem(`${PREFIX}${projectId}`) !== serialized) throw problem('LOCAL_STORAGE_UNAVAILABLE');
+  }
+  function clearPending(pending) {
+    // Late acknowledgements from an old project lifetime never remove a newer intent.
+    if (disposed || state.pending !== pending) return false;
+    try {
+      const target = store(), saved = JSON.parse(target?.getItem(`${PREFIX}${projectId}`) || 'null');
+      if (saved && canonicalImageInput(saved) !== canonicalImageInput(pending)) throw problem('LOCAL_STORAGE_CHANGED');
+      target?.removeItem(`${PREFIX}${projectId}`);
+      if (target?.getItem(`${PREFIX}${projectId}`)) throw problem('LOCAL_STORAGE_UNAVAILABLE');
+    } catch { emit({ storageBlocked: true, phase: 'unknown', message: '原请求已确认，但无法更新本地请求记录。请重新打开面板后核对。' }); return false; }
+    emit({ pending: null }); return true;
+  }
+  try {
+    const serialized = store()?.getItem(`${PREFIX}${projectId}`);
+    if (serialized) {
+      const pending = JSON.parse(serialized); if (!fixedIntent(projectId, pending)) throw problem('LOCAL_STORAGE_INVALID');
+      state.pending = pending; state.phase = 'unknown';
+      if (pending.operation === 'image.generate') state.draft = { name: pending.input.name, prompt: pending.input.prompt };
+    }
+  } catch { state.storageBlocked = true; state.message = '无法读取本地请求记录。为避免重复生成，暂不能提交。'; }
+  function mergeTask(task) {
+    const previous = state.tasks.find(item => item.id === task.id);
+    task = newestTask(previous, task);
+    emit({ tasks: [task, ...state.tasks.filter(item => item.id !== task.id)].slice(0, IMAGE_LIMITS.maxPageSize) });
+    if (ACTIVE.has(task.state)) tracked.set(task.id, task); else tracked.delete(task.id);
+    if (task.state === 'succeeded' && !announced.has(task.id)) { announced.add(task.id); onGenerated(projectId, copy(task)); }
+    return task;
+  }
+  function schedule() {
+    stopTimer();
+    if (disposed || !visible || reading || state.actionTaskId || state.phase === 'submitting' || !(state.pending || state.tasks.some(task => ACTIVE.has(task.state)))) return;
+    if (polls >= pollLimit) { emit({ pollPaused: true }); return; }
+    timer = setTimer(() => { timer = null; polls++; void load({ automatic: true }); }, pollMs);
+  }
+  async function resolvePending(epoch) {
+    const pending = state.pending; if (!pending) return;
+    const receipt = await call('image.request.get', { projectId, requestId: pending.input.requestId });
+    if (!owned(epoch)) return;
+    if (!isImageRequestResponse(receipt) || (receipt && (receipt.projectId !== projectId || receipt.requestId !== pending.input.requestId || receipt.operation !== pending.operation || !isImageMutationResponse(pending.operation, pending.input, receipt.response)))) throw problem('INVALID_RESPONSE');
+    if (!receipt) { emit({ phase: 'unknown', message: '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。' }); return; }
+    const latest = safeTask(await call('image.task.get', { projectId, taskId: receipt.response.id }), projectId);
+    if (!owned(epoch)) return;
+    if (taskIdentity(latest) !== taskIdentity(receipt.response) || latest.revision < receipt.response.revision) throw problem('INVALID_RESPONSE');
+    mergeTask(latest);
+    if (clearPending(pending)) emit({ phase: 'ready', ...(pending.operation === 'image.generate' ? { draft: { name: '', prompt: '' }, target: null, selectedGroupId: latest.groupId, versionCursor: null, versionTrail: [] } : {}), message: '已找到原请求，没有重新生成。' });
+  }
+  async function load({ automatic = false } = {}) {
+    if (disposed || !visible || reading || state.actionTaskId || state.phase === 'submitting' || state.phase === 'targeting') return false;
+    if (!automatic) { polls = 0; emit({ pollPaused: false }); }
+    stopTimer(); const epoch = ++readEpoch; reading = epoch;
+    if (!state.loaded) emit({ phase: state.pending ? 'unknown' : 'loading' });
+    try {
+      await resolvePending(epoch); if (!owned(epoch)) return false;
+      const groupInput = { projectId, limit: IMAGE_LIMITS.pageSize, ...(state.groupCursor ? { cursor: state.groupCursor } : {}) };
+      const groups = safePage('image.group.list', groupInput, await call('image.group.list', groupInput));
+      if (!owned(epoch)) return false;
+      const selectedGroupId = state.selectedGroupId || groups.items[0]?.id || null;
+      // An accepted group can be outside this page. Resolve it by identity rather
+      // than switching to an unrelated first row and dropping its running task.
+      for (const groupId of [state.target?.groupId].filter(id => id && id !== selectedGroupId)) if (!groups.items.some(group => group.id === groupId)) {
+        const group = await call('image.group.get', { projectId, groupId });
+        if (!isImageGroupResponse(group) || group.projectId !== projectId || group.id !== groupId) throw problem('INVALID_RESPONSE');
+        groups.items.push(copy(group));
+      }
+      if (!owned(epoch)) return false;
+      const changed = selectedGroupId !== state.selectedGroupId;
+      const taskInput = { projectId, limit: IMAGE_LIMITS.pageSize, ...(selectedGroupId ? { groupId: selectedGroupId } : {}) };
+      const versionInput = { projectId, groupId: selectedGroupId, limit: IMAGE_LIMITS.pageSize, ...(!changed && state.versionCursor ? { cursor: state.versionCursor } : {}) };
+      const tasks = safePage('image.task.list', taskInput, await call('image.task.list', taskInput));
+      if (!owned(epoch)) return false;
+      // Observe completion before reading its committed group/version data. A
+      // parallel older empty version page must not stop polling after success.
+      if (selectedGroupId) {
+        const currentGroup = await call('image.group.get', { projectId, groupId: selectedGroupId });
+        if (!isImageGroupResponse(currentGroup) || currentGroup.projectId !== projectId || currentGroup.id !== selectedGroupId) throw problem('INVALID_RESPONSE');
+        const index = groups.items.findIndex(item => item.id === selectedGroupId);
+        if (index < 0) groups.items.push(copy(currentGroup)); else groups.items[index] = copy(currentGroup);
+        if (currentGroup.activeTaskId && !tasks.items.some(task => task.id === currentGroup.activeTaskId)) {
+          const task = safeTask(await call('image.task.get', { projectId, taskId: currentGroup.activeTaskId }), projectId);
+          if (task.id !== currentGroup.activeTaskId || task.groupId !== selectedGroupId) throw problem('INVALID_RESPONSE');
+          tasks.items.push(task);
+        }
+      }
+      if (!owned(epoch)) return false;
+      const versions = selectedGroupId ? safePage('image.version.list', versionInput, await call('image.version.list', versionInput)) : { items: [], nextCursor: null };
+      if (!owned(epoch)) return false;
+      for (const taskId of tracked.keys()) if (!tasks.items.some(task => task.id === taskId)) {
+        const task = safeTask(await call('image.task.get', { projectId, taskId }), projectId);
+        if (task.id !== taskId) throw problem('INVALID_RESPONSE');
+        tasks.items.push(task);
+      }
+      if (!owned(epoch)) return false;
+      const monotonicTasks = tasks.items.map(task => newestTask(state.tasks.find(item => item.id === task.id), task));
+      for (const version of versions.items) { const old = state.versions.find(item => item.id === version.id); if (old && canonicalImageInput(old) !== canonicalImageInput(version)) throw problem('INVALID_RESPONSE'); }
+      emit({ groups: groups.items, nextGroupCursor: groups.nextCursor, selectedGroupId, tasks: monotonicTasks, versions: versions.items, nextVersionCursor: versions.nextCursor, ...(changed ? { versionCursor: null, versionTrail: [] } : {}), loaded: true, phase: state.pending ? 'unknown' : 'ready' });
+      for (const task of monotonicTasks) {
+        if (ACTIVE.has(task.state)) tracked.set(task.id, task); else tracked.delete(task.id);
+        if (task.state === 'succeeded' && !announced.has(task.id)) { announced.add(task.id); onGenerated(projectId, copy(task)); }
+      }
+      return true;
+    } catch {
+      if (owned(epoch)) emit({ phase: state.pending ? 'unknown' : 'read_error', message: state.pending ? '原请求的结果仍待确认。只会重新读取本地记录，不会自动重发。' : '暂时无法读取图像记录。草稿保留，可重新读取。' });
+      return false;
+    } finally { if (reading === epoch) reading = false; if (owned(epoch)) schedule(); }
+  }
+  async function dispatch(operation, input) {
+    if (disposed || !visible || state.pending || state.storageBlocked || state.actionTaskId) return false;
+    const pending = { version: 1, operation, input: copy(input) };
+    try { savePending(pending); } catch { emit({ message: '无法保存本地请求凭据，本次尚未发送。请恢复页面存储后再试。' }); return false; }
+    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', actionTaskId: input.taskId || null });
+    try {
+      const result = await call(operation, copy(input));
+      if (disposed || state.pending !== pending) return false;
+      if (!isImageMutationResponse(operation, input, result)) throw problem('INVALID_RESPONSE');
+      mergeTask(safeTask(result, projectId));
+      if (clearPending(pending)) emit({ phase: 'ready', ...(operation === 'image.generate' ? { draft: { name: '', prompt: '' }, target: null, selectedGroupId: result.groupId, groupCursor: null, groupTrail: [], versionCursor: null, versionTrail: [] } : {}), message: operation === 'image.generate' ? '请求已保存。Mock 仅生成确定性测试图案。' : '操作已确认。' });
+    } catch (error) {
+      if (disposed || state.pending !== pending) return false;
+      // Only an operation-bound, authoritative rejection may release the intent.
+      const rejected = await notAccepted(error, operation, input);
+      if (disposed || state.pending !== pending) return false;
+      if (rejected && clearPending(pending)) emit({ phase: 'ready', message: rejectionMessage(error.code) });
+      else emit({ phase: 'unknown', message: '尚未确认原请求是否已接受。正在核对本地记录，不会重新生成。' });
+    } finally {
+      if (!disposed) { emit({ actionTaskId: null }); if (visible) await load(); }
+    }
+    return !state.pending;
+  }
+  async function chooseTarget(groupId) {
+    if (disposed || !visible || state.pending || state.actionTaskId || reading || state.phase === 'targeting') return false;
+    const group = groupId ? state.groups.find(item => item.id === groupId) : null;
+    if (groupId && (!group || group.activeTaskId)) return false;
+    if (!groupId) { emit({ target: null, targetRequest: null, draft: { name: '', prompt: '' }, message: '' }); return true; }
+    const epoch = ++selectionEpoch; emit({ phase: 'targeting', targetRequest: null }); stopTimer();
+    try {
+      const input = { projectId, groupId, limit: 1 };
+      const page = safePage('image.version.list', input, await call('image.version.list', input));
+      let task = null;
+      if (page.items[0]) task = safeTask(await call('image.task.get', { projectId, taskId: page.items[0].taskId }), projectId);
+      if (disposed || selectionEpoch !== epoch || !visible) return false;
+      if (task && task.groupId !== groupId) throw problem('INVALID_RESPONSE');
+      emit({ draft: { name: group.name, prompt: task?.prompt || '' }, target: { groupId, expectedRevision: group.revision }, selectedGroupId: groupId, versionCursor: null, versionTrail: [], message: '已载入历史描述。修改后点击生成，才会创建此组的新版本。' });
+      return true;
+    } catch { if (!disposed && selectionEpoch === epoch) emit({ message: '无法读取此组的原始描述，未改变草稿。' }); return false; }
+    finally { if (!disposed && selectionEpoch === epoch) { emit({ phase: state.pending ? 'unknown' : 'ready' }); schedule(); } }
+  }
+  return {
+    getState: () => copy(state), load,
+    edit(field, value) { if (!disposed && visible && !state.pending && !state.actionTaskId && state.phase !== 'targeting' && ['name', 'prompt'].includes(field) && !(field === 'name' && state.target)) { emit({ draft: { ...state.draft, [field]: value }, targetRequest: null }); return true; } return false; },
+    async generate() {
+      if (!visible || !imageCanGenerate(state)) return false;
+      const input = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, requestId: requestId(), ...(state.target || {}) };
+      if (!imageSchemas['image.generate'].safeParse(input).success) return false;
+      return dispatch('image.generate', input);
+    },
+    async act(action, task) {
+      if (!visible || !task || !state.tasks.some(item => item.id === task.id && item.revision === task.revision) || state.pending || state.actionTaskId) return false;
+      task = state.tasks.find(item => item.id === task.id);
+      if (action === 'cancelQueued' ? !CANCELABLE.has(task.state) || task.dispatched : action !== 'recoverResult' || !['local_result_error', 'outcome_unknown'].includes(task.state)) return false;
+      return dispatch(`image.task.${action}`, { projectId, taskId: task.id, expectedRevision: task.revision, requestId: requestId() });
+    },
+    requestTarget(groupId = null) { if (!visible || state.pending || state.actionTaskId) return false; if (imageDraftDirty(state)) { emit({ targetRequest: { groupId } }); return false; } return chooseTarget(groupId); },
+    confirmTarget() { if (!state.targetRequest) return false; return chooseTarget(state.targetRequest.groupId); },
+    keepDraft() { emit({ targetRequest: null }); },
+    async selectGroup(groupId) { if (!visible || reading || !state.groups.some(group => group.id === groupId)) return false; emit({ selectedGroupId: groupId, versionCursor: null, versionTrail: [] }); return load(); },
+    async pageGroups(older) { if (!visible || reading || (older ? !state.nextGroupCursor : !state.groupTrail.length)) return false; const trail = [...state.groupTrail], cursor = older ? state.nextGroupCursor : trail.pop(); if (older) trail.push(state.groupCursor); emit({ groupCursor: cursor, groupTrail: trail, selectedGroupId: null, versionCursor: null, versionTrail: [] }); return load(); },
+    async pageVersions(older) { if (!visible || reading || (older ? !state.nextVersionCursor : !state.versionTrail.length)) return false; const trail = [...state.versionTrail], cursor = older ? state.nextVersionCursor : trail.pop(); if (older) trail.push(state.versionCursor); emit({ versionCursor: cursor, versionTrail: trail }); return load(); },
+    setVisible(value) { if (disposed) return; const changed = visible !== Boolean(value); visible = Boolean(value); if (!visible) { stopTimer(); selectionEpoch++; if (state.phase === 'targeting') emit({ phase: 'ready' }); } else if (changed) { polls = 0; void load(); } },
+    dispose() { disposed = true; readEpoch++; selectionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
+  };
+}

@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import {createMutationReplay} from './mutation-replay.mjs';
+import {validateImageConsumption} from './image-consumption.mjs';
 
 // Local canvas mutations share the existing revision/reference guards. Relation
 // reads also verify relational columns against JSON before a conflict can expose
@@ -22,6 +23,7 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
   if(!value||typeof value!=='object'||Array.isArray(value)||value.id!==row.id)invalid();
   if(table!=='projects'&&(typeof value.projectId!=='string'||value.projectId!==row.projectId))invalid();
   if(table==='versions'&&value.jobId!==row.jobId)invalid();
+  if(table==='assets')validateImageConsumption(db,value,projectId??value.projectId);
   return value;
  }
  function project(projectId) {return owned('projects',projectId);}

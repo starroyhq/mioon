@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {imageSourceSchema} from './images.mjs';
 
 export const SUBJECT_KINDS=Object.freeze(['character','product','location','look']);
 export const SUBJECT_MUTATION_OPERATIONS=Object.freeze(['subject.create','subject.version.add','subject.binding.set']);
@@ -14,7 +15,7 @@ export const subjectSchemas=Object.freeze({
  'subject.binding.list':z.object({...page,shotId:id.optional(),subjectId:id.optional()}).strict().refine(value=>Boolean(value.shotId)!==Boolean(value.subjectId),'Exactly one shotId or subjectId filter is required'),
 });
 const timestamp=z.string().min(1).max(40);
-export const subjectVersionResponseSchema=z.object({id,projectId:id,subjectId:id,number:revision,assetId:id,sha256:z.string().regex(/^[a-f0-9]{64}$/),mimeType:z.enum(['image/png','image/jpeg','image/webp']),width:z.number().int().min(1).max(100000),height:z.number().int().min(1).max(100000),provenance:z.object({kind:z.enum(['user-import','generated','synthetic-mock','export']),versionId:id.nullable(),shotId:id.nullable(),jobId:id.nullable()}).strict().refine(v=>[v.versionId,v.shotId,v.jobId].every(x=>x===null)||[v.versionId,v.shotId,v.jobId].every(x=>x!==null)),createdAt:timestamp}).strict();
+export const subjectVersionResponseSchema=z.object({id,projectId:id,subjectId:id,number:revision,assetId:id,sha256:z.string().regex(/^[a-f0-9]{64}$/),mimeType:z.enum(['image/png','image/jpeg','image/webp']),width:z.number().int().min(1).max(100000),height:z.number().int().min(1).max(100000),provenance:z.object({kind:z.enum(['user-import','generated','synthetic-mock','export']),versionId:id.nullable(),shotId:id.nullable(),jobId:id.nullable(),imageSource:imageSourceSchema.optional()}).strict().refine(v=>v.imageSource!==undefined?['generated','synthetic-mock'].includes(v.kind)&&[v.versionId,v.shotId,v.jobId].every(x=>x===null):[v.versionId,v.shotId,v.jobId].every(x=>x===null)||[v.versionId,v.shotId,v.jobId].every(x=>x!==null)),createdAt:timestamp}).strict();
 export const subjectResponseSchema=z.object({id,projectId:id,kind:z.enum(SUBJECT_KINDS),name:z.string().min(1).max(120),revision,headVersionId:id,headVersion:subjectVersionResponseSchema,createdAt:timestamp,updatedAt:timestamp}).strict().refine(v=>v.headVersion.id===v.headVersionId&&v.headVersion.subjectId===v.id&&v.headVersion.projectId===v.projectId&&v.headVersion.number===v.revision);
 export const subjectBindingResponseSchema=z.object({id,projectId:id,shotId:id,subjectId:id,role:z.enum(['subject','style']),revision,subjectVersionId:id.nullable(),reviewedHeadVersionId:id,headVersionId:id,subjectRevision:revision,needsReview:z.boolean(),createdAt:timestamp,updatedAt:timestamp}).strict().refine(v=>v.needsReview===(v.subjectVersionId!==null&&v.reviewedHeadVersionId!==v.headVersionId));
 export const isSubjectVersionResponse=value=>subjectVersionResponseSchema.safeParse(value).success;

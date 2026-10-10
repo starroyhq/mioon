@@ -69,7 +69,9 @@ weak shot while preserving deliberate timeline timing, and inspect the recipe fo
 The first narrow subject-library increment is implemented. Focused checks, final
 web/desktop builds and Linux native acceptance passed; the independent full-suite
 release gate passed as recorded in [SUBJECT-LIBRARY.md](SUBJECT-LIBRARY.md). Image
-generation, motion-reference adapters and Blender integration remain planned.
+generation now has a first local Mock slice described below; secure live-image
+configuration/activation, motion-reference adapters and Blender integration
+remain planned.
 Existing managed assets, saved versions, explicit reference bindings and fixed
 timeline replacement are reusable foundations. The first usable Linux trial is
 already available independently of these stages; native macOS/Windows and live
@@ -111,6 +113,17 @@ providers remain unverified. Continued iteration does not block that limited tri
    combinations consistently in UI/API/CLI/MCP, retain exact approved assets and
    request identity across interruption, and never submit stage two automatically
    merely because stage one completed. Mock verification is not live certification.
+
+   **First image slice:** a separate image composer, shared project-scoped
+   image task/group/version/request operations, exact-request recovery and real
+   deterministic Mock 1024×1024 PNG assets. The named standard OpenAI image
+   preset has an offline-tested adapter and stays hard-disabled in the product.
+   No image key setting, custom endpoint, live activation, model-tool authority
+   or automatic second-stage video submission is added. Existing library assets
+   are reused through explicit timeline/reference/subject edits. Secure image
+   provider configuration and separately approved live activation are the
+   immediate follow-on, not dropped scope. See [Image generation](IMAGE-GENERATION.md)
+   for limits, truthful local/unknown recovery and current verification scope.
 
 3. **Source provenance independent of creation tool.** Track external-file import,
    extracted frame, previs render and generated-version provenance as typed,

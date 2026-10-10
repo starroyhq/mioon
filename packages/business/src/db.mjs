@@ -5,6 +5,7 @@ import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {bootstrapEditTaskSchema,migrateSubjectEditTasks} from './edit-task-schema.mjs';
 import {migrateSubjectSchema} from './subject-schema.mjs';
+import {migrateImageSchema} from './image-schema.mjs';
 
 // Backend-only proof of the actual acquired workspace lock. Neither caller
 // options nor copied store properties can manufacture ownership. A replaced,
@@ -28,6 +29,7 @@ export function validateWorkspaceStorage(root){
  root=path.resolve(root);
  if(!validatePrivateDirectory(root,{allowMissing:true}))return;
  validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true});
+ validateManagedDirectory(path.join(root,'image-staging'),{root,allowMissing:true,private:true});
  for(const name of ['workbench.sqlite','workbench.sqlite-wal','workbench.sqlite-shm','workbench.sqlite-journal']){
   validateManagedFile(path.join(root,name),{root,allowMissing:true});
  }
@@ -373,6 +375,11 @@ export function openStore(root,{lock=true}={}){
    migrateSubjectEditTasks(db);
    db.exec('INSERT INTO schema_version VALUES(15);COMMIT;');
   }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+ }
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=16').get()){
+  db.exec('BEGIN IMMEDIATE');
+  try{migrateImageSchema(db);db.exec('INSERT INTO schema_version VALUES(16);COMMIT;');}
+  catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};

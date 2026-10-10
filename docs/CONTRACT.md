@@ -2,6 +2,30 @@
 
 All application mutations and reads go through `services.call(operation, input)`, used by authenticated HTTP `POST /api/rpc` and official SDK MCP stdio and CLI shared client. UI calls same HTTP API. JSON response `{ok:true,data}` or `{ok:false,error:{code,message,details}}`; conflict HTTP 409, validation 400, not found 404. Dates ISO UTC. IDs opaque UUID. Revisions integers starting at 1. All updates require expectedRevision. SQLite transactions, WAL, foreign keys and busy timeout. Project `revision` protects project-wide shot ordering; each shot/node has its own revision. Position never defines sequence.
 
+## Image task/version contract
+
+The additive image contract is defined in `packages/contracts/src/images.mjs`;
+see [Image generation](IMAGE-GENERATION.md) for all ten strict operations,
+DTOs, exact options/limits and interruption states. Only local deterministic
+Mock PNG generation is enabled. The standard OpenAI image preset is
+hard-disabled, irrespective of existing Agent/video configuration.
+
+`image.generate` returns an immutable original queued-task receipt, while
+`image.task.get` reads the current task. `image.request.get` reads the saved
+receipt by project and stable request ID. Generate/cancelQueued/recoverResult
+share an image-only exact-request journal; no global cross-journal deduplication
+is claimed. `groupId` and positive `expectedRevision` must be supplied together
+for a new version, or both omitted for a new group. All three mutations require
+request IDs of 8–200 characters. Result versions and their managed assets are
+immutable; creating one never edits a timeline, subject, reference or video job.
+
+Profiles/read/list/request lookup cannot infer or publish media. Startup
+interrupts undispatched queued work and marks dispatched work without durable
+output as unknown. Queued cancellation requires a false dispatch fence;
+explicit result recovery is restricted to already-staged local bytes. Public
+image DTOs omit bytes/base64, paths and credentials, but include the saved
+prompt for authorized local readers. Prompt text is retained in local SQLite.
+
 ## Operations and input
 - project.create `{name,description?}` → project
 - project.list `{}` → project[]

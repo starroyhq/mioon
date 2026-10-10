@@ -41,7 +41,8 @@ export function createSubjectRecoveryBoundary(db,input){
   const sources=db.prepare(`SELECT ${columns('id')} FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(id);
   if(sources.length>1)invalid();
   let source=null;if(sources.length){try{source=graph.version(sources[0].id,undefined,id);}catch{invalid();}}
-  return {assetId:value.id,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:{kind:value.provenance,versionId:source?.id??null,shotId:source?.shotId??null,jobId:source?.jobId??null}};
+  let imageSource;try{imageSource=graph.imageSource(id);}catch{invalid();}
+  return {assetId:value.id,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:{kind:value.provenance,versionId:source?.id??null,shotId:source?.shotId??null,jobId:source?.jobId??null,...(imageSource?{imageSource}:{})}};
  }
  function subjectRow(id){
   if(subjects.has(id))return subjects.get(id);

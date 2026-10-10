@@ -146,6 +146,33 @@ Replace placeholders and revisions with the current `project get` results. The s
 
 Attach/detach both need a caller-owned request ID. After an uncertain response, replay the exact original operation and input, including its original revisions. The response is the original saved result, not a fresh project read, even after the connection was removed or the backend restarted. Refresh before another edit. MCP exposes the identical `reference_attach` and `reference_detach` schemas and behavior. Attaching neither generates nor uploads media; per-model support and live authorization are checked when submitting generation.
 
+## Local image generation
+
+Image commands use the same backend and schema catalog:
+
+```sh
+mioon image profile list
+mioon schema image.generate
+mioon image generate --input-file ./image-request.json
+mioon image request get --input '{"projectId":"PROJECT_UUID","requestId":"image-opening-0001"}'
+mioon image task get --input '{"projectId":"PROJECT_UUID","taskId":"TASK_UUID"}'
+mioon image version list --input '{"projectId":"PROJECT_UUID","groupId":"GROUP_UUID"}'
+```
+
+Replace placeholders with actual IDs. See [Image generation](IMAGE-GENERATION.md)
+for the exact request JSON, bounded fields and restart states. Only local,
+deterministic Mock PNG output is enabled; the OpenAI preset is hard-disabled.
+Image provider discovery is `image profile list`, separate from the existing
+video `capabilities` command. There is no image-specific `watch` shortcut.
+Poll the existing task explicitly; timeout or Ctrl+C does not cancel it.
+
+Retain the complete request/key; lookup never generates and exact replay
+returns the original queued receipt rather than current task state. Explicit
+`image task cancelQueued` only cancels undispatched/interrupted work.
+`image task recoverResult` only republishes eligible staged local bytes;
+neither is a provider retry. Preserve these camel-case command words. Prompt
+text is retained in local SQLite and can be returned to authorized local clients.
+
 ## Safe mock workflow
 
 The following commands show the contract. Replace UUID placeholders with IDs returned by previous commands. Preserve each complete intended mutation request in a JSON file before submitting it.

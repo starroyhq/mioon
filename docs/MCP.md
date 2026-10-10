@@ -115,6 +115,30 @@ Three additional read-only discovery tools are available:
 
 Provider IDs currently include `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`. Discover each configured provider's actual model options before use; adding an adapter does not authorize live generation or mean a credential is configured.
 
+### Image tools
+
+The shared catalog also exposes `image_profile_list`, `image_generate`,
+`image_request_get`, `image_task_get`, `image_task_list`, `image_group_get`, `image_group_list`,
+`image_version_list`, `image_task_cancelQueued` and `image_task_recoverResult`.
+Preserve the capital letters in the last two names. Use `mioon_schema` with
+the dotted operation name for exact inputs/effects and
+[Image generation](IMAGE-GENERATION.md) for receipt/state semantics.
+
+Only local deterministic Mock 1024×1024 PNG generation is enabled. The named
+OpenAI profile has offline fixture evidence and is hard-disabled. Image
+discovery is separate from the existing video `mioon_capabilities` response;
+no image credentials or activation settings are MCP tools. A successful
+generate result is the original queued receipt; use `image_task_get` for the
+current result. `image_request_get` is a read-only restart/lost-ACK lookup.
+Never invent a replacement key for an uncertain request. Cancellation is
+undispatched-only; result recovery is local staged-byte publication only.
+
+The image journal is a separate request namespace and all reads are
+project-scoped. Full prompt text is local journal/task data visible to
+authorized clients; raw/base64 result bytes, credentials and filesystem
+paths are not image DTO fields. These external tools add no built-in Agent
+model tools or autonomous generation authority.
+
 ### Bounded, non-creating inspection
 
 Use the four inspection tools for safe project-scoped metadata. These exact

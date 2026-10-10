@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {imageSchemas} from './images.mjs';
+export * from './images.mjs';
 import {getCapabilityProfile,getGenerationProfileRegion,INPUT_PROFILE_VERSION} from './generation-input-profiles.mjs';
 import {getGenerationProfileIssue} from './generation-input-validation.mjs';
 export {INPUT_PROFILE_VERSION,PROFILE_VERSION,GENERATION_INPUT_ROLES,INPUT_ROLES,GENERATION_INPUT_PROFILES,CAPABILITY_PROFILES,getCapabilityProfile,getGenerationProfileRegion} from './generation-input-profiles.mjs';
@@ -37,6 +39,7 @@ const clipFields={trackId:id,name:z.string().min(1).max(200),startFrame:frame,du
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
+...imageSchemas,
 ...inspectionSchemas,
 ...subjectSchemas,
 ...sourceRangeSchemas,
@@ -88,6 +91,16 @@ assertOperationEffectCoverage(schemas);
 export const descriptions={
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
+ 'image.profile.list':'读取固定图像预设：Mock 本地测试可用，OpenAI 标准预设未启用；不探测网络或读取凭据',
+ 'image.generate':'持久化精确图像请求并生成一张本地 Mock PNG；OpenAI 当前拒绝调用，成功后创建不可变托管图像版本，不自动编辑镜头或时间线',
+ 'image.request.get':'只读查找原图像请求的不可变受理回执；返回历史状态，不重试、不启动工作，当前状态另查 task.get',
+ 'image.task.get':'只读查询本项目图像任务与可恢复状态，不恢复或重新生成',
+ 'image.task.list':'分页只读列出项目或图像组任务，最新记录在前，不启动任务',
+ 'image.group.get':'只读查询已有图像组当前版本及待处理任务，不创建分组',
+ 'image.group.list':'分页只读列出项目图像组，最新创建记录在前',
+ 'image.version.list':'分页只读列出图像组的不可变结果，版本号降序；仅返回安全托管素材元数据',
+ 'image.task.cancelQueued':'用稳定请求 ID 和任务版本明确取消尚未分派的排队或中断任务，不代表供应商退款',
+ 'image.task.recoverResult':'用稳定请求 ID 明确核验并保存已存在的本地结果；缺失结果保持待确认，绝不重新调用图像供应商',
  'subject.create':'创建项目内版本化主体，仅固定已有托管图片及来源，不生成媒体；必须使用稳定请求 ID',
  'subject.version.add':'添加主体的不可变参考版本；已有绑定固定旧选择并提示复核，不自动更新镜头或生成',
  'subject.binding.set':'按独立绑定版本和主体版本明确固定、复核或解除主体/风格引用；不会修改首帧或时间线',

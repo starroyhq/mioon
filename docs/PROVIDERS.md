@@ -4,6 +4,24 @@ Implementation and official documentation checked 2026-10-09. No live generation
 
 The production registry now publishes and enforces [exact model input limits](GENERATION-INPUT-LIMITS.md), including the dated Veo lifecycle policy. These implemented app profiles do not enable broader vendor reference modes.
 
+## Separate image profiles
+
+The first [image-generation slice](IMAGE-GENERATION.md) is separate from this
+video registry. `image.profile.list` returns local Mock `mock-image-v1` and a
+hard-disabled OpenAI `gpt-image-2.5-flare-2026-09-08` preset. Both are fixed to
+1024×1024, low-quality, opaque PNG, one result. Mock makes deterministic,
+visibly labeled local bytes and is not prompt-conditioned. OpenAI has injected
+offline adapter/transport fixtures only; it has no production transport or
+credential resolver and rejects live use before work. No environment flag,
+Agent key or video-provider setting enables it.
+
+Secure image-provider configuration and explicitly approved live activation
+remain the immediate follow-on. Existing video/Agent secrets are unchanged;
+no image credential settings, custom endpoint or paid activation are included
+here. Current metadata and passing synthetic fixtures are not live model,
+account, cost or output certification. Image read/list/startup paths do not
+submit upstream generation, and explicit local result recovery never resubmits.
+
 ## Shared behavior
 
 Factories are `createMockProvider({ db, root })`, `createRunwayProvider({ root })`, `createArkProvider({ root })`, `createVeoProvider({ root })`, `createMinimaxProvider({ root })`, and `createViduProvider({ root })`. All implement the adapter interface in `CONTRACT.md`, including synchronous `validate(snapshot)` with no network and no dependency on resolved local paths. Submission independently validates actual managed reference bytes. `root` is the managed application data root, not a user-selected upload path. Adapters return **fractional progress from 0 to 1**; the job/UI layer converts it to a percentage.

@@ -31,6 +31,33 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 
 For an executable no-cost import → shot → generate → select → timeline → export workflow, read [mock-workflow.md](references/mock-workflow.md). Mock produces visibly labeled synthetic motion, not prompt-faithful AI output. All shipped provider contracts have offline tests; live provider output is unverified unless separately established in the user's session.
 
+## Local image generation
+
+Inspect `image profile list` and `schema image.generate` before using the
+[image workflow](../../docs/IMAGE-GENERATION.md). Only deterministic, visibly
+labeled Mock 1024×1024 PNG generation is enabled. The named OpenAI preset is
+hard-disabled; existing Agent/video credentials and provider-count settings
+cannot activate it. Secure image settings and approved live activation remain
+future work. Do not substitute Mock for a user-requested real provider.
+
+Use a stable key and the complete strict request for `image generate`.
+It returns the original queued task receipt. Read `image task get` for current
+state and `image version list` for the resulting immutable version/asset.
+After lost acknowledgement or restart, use `image request get` in the same
+project, or replay the exact original request/key. The image journal has its
+own namespace; do not assume global deduplication against other operations.
+
+Read/profile/list/request lookup never generates. Restarted queued work stays
+`interrupted_before_dispatch`; dispatched work without durable result stays
+`outcome_unknown`. `image task cancelQueued` is explicit and undispatched-only;
+`image task recoverResult` only republishes eligible staged local bytes and
+never submits another generation. Preserve the camel case. New group versions
+require both `groupId` and current `expectedRevision`. A completed image is a
+managed asset, not an instruction to attach a reference, change a subject,
+replace a timeline source or generate video. Perform those edits separately
+only when authorized. Full prompts are retained in local SQLite and visible
+to authorized local task/receipt readers; never insert secrets into prompts.
+
 ## Explicit clip source replacement
 
 For an authorized replacement of one existing clip, discover

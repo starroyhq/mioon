@@ -273,7 +273,7 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version>=12;');
  const old=snapshot(f,['schema_version']);f.restart();
  assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests']),old);assert.deepEqual(schema(),fresh);
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,15);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,16);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
 });
 

@@ -16,6 +16,28 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are 
 
 `provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. Existing submit/retry schemas and historical replay are unchanged. See [model input limits](GENERATION-INPUT-LIMITS.md).
 
+## Local image generation
+
+The same RPC adds `image.profile.list`, `image.generate`, `image.request.get`,
+`image.task.get/list`, `image.group.get/list`, `image.version.list`,
+`image.task.cancelQueued` and `image.task.recoverResult`. Image schemas and
+bounded DTOs are in `packages/contracts/src/images.mjs` and
+[Image generation](IMAGE-GENERATION.md), including the exact generation example.
+
+Only deterministic Mock 1024×1024 PNG generation is enabled. The named OpenAI
+preset is hard-disabled before task creation or upstream work; existing Agent
+or video credentials cannot activate it. Discovery, task reads and request
+lookup never dispatch. A local RPC POST used for reads is not a provider POST.
+
+All image mutations require an exact stable request ID. `image.generate`
+returns its original queued task receipt; query `image.task.get` for current
+state. After lost acknowledgement use `image.request.get` in the same project
+or replay the exact original input. New group versions need both `groupId`
+and `expectedRevision`; generated assets never automatically alter a timeline,
+subject or first-frame reference. The image request namespace is separate from
+the older mutation journals. Read/list pages default to 20 records (maximum
+50); public image DTOs omit raw/base64 bytes, secrets and filesystem paths.
+
 ## File and event transports
 
 Authenticated `GET /media/:assetId` and `HEAD /media/:assetId` retain single-byte

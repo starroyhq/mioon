@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
+import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = '0.4.0';
@@ -127,6 +128,14 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid reference acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (SUBJECT_MUTATION_OPERATIONS.includes(operation) && !isSubjectMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (IMAGE_MUTATION_OPERATIONS.includes(operation) && !isImageMutationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid image acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    const imageReadValid=operation==='image.profile.list'?isImageProfilesResponse(result)
+      :operation==='image.task.get'?isImageTaskResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.taskId
+      :operation==='image.group.get'?isImageGroupResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.groupId
+      :operation==='image.request.get'?isImageRequestResponse(result)&&(result===null||result.projectId===parsed.projectId&&result.requestId===parsed.requestId)
+      :['image.task.list','image.group.list','image.version.list'].includes(operation)?isImageListResponse(operation,parsed,result):true;
+    if(!imageReadValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid image record.');
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
     return result;

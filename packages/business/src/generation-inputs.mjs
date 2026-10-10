@@ -1,4 +1,5 @@
 import {AppError,INPUT_PROFILE_VERSION,getCapabilityProfile,getGenerationProfileRegion,buildAdapterPlan} from '@mioon/contracts';
+import {validateImageConsumption} from './image-consumption.mjs';
 
 const fail=(code,message,details={})=>{throw new AppError(code,message,400,details);};
 const manifestError=()=>fail('INVALID_REFERENCE_MANIFEST','参考图完整清单与冻结快照不一致；不会删除或替换输入');
@@ -16,7 +17,7 @@ export function readGenerationAsset(db,id,projectId){
  if(row.projectId!==projectId)fail('INVALID_REFERENCE_OWNERSHIP','参考素材必须属于当前项目',{assetId:id});
  let asset;try{asset=JSON.parse(row.data);}catch{}
  if(!asset||asset.id!==row.id||asset.projectId!==row.projectId)fail('INVALID_REFERENCE_METADATA','参考素材元数据不可用',{assetId:id});
- return asset;
+ return validateImageConsumption(db,asset,projectId);
 }
 function ownedRecord(db,table,id){
  const row=db.prepare(`SELECT id,projectId,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB))<=262144 THEN data END AS data FROM ${table} WHERE id=?`).get(id);

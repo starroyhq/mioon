@@ -14,11 +14,13 @@ import {createSourceRangeServices} from './source-ranges.mjs';
 import {createSubjectServices} from './subjects.mjs';
 import {createAssetDispositionServices} from './asset-dispositions.mjs';
 import {createWaveformServices} from './waveforms.mjs';
+import {createImageServices} from './images.mjs';
+import {validateImageConsumption} from './image-consumption.mjs';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mjs';
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
-export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now}={}){
+export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions}={}){
  const active=new Set();let shutdownFailure;
  const {db,root,get,list,put,tx}=store;
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
@@ -34,7 +36,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   const c=capabilitiesFor(p),first=c.models[0],model=requestedModel||(typeof first==='string'?first:first.id);
   const profiled=profilePolicy||usesInputProfiles(p);
   if(profiled)assertGenerationReferenceIds(source.referenceAssetIds);
-  const assets=source.referenceAssetIds.map(id=>profiled?readGenerationAsset(db,id,projectId):required('assets',id));
+  const assets=source.referenceAssetIds.map(id=>profiled?readGenerationAsset(db,id,projectId):validateImageConsumption(db,required('assets',id),projectId));
   // Config checks never reveal credentials. Raw adapter enabled remains distinct from
   // the exhausted/missing local generation limit exposed in the capability status.
   if(!p.capabilities.enabled||!p.capabilities.configured)throw new AppError('PROVIDER_DISABLED','真实供应商尚未安全配置并授权；当前可使用模拟供应商',403,{providerId,status:c.status,configuration:c.configuration});
@@ -67,7 +69,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const assetDispositions=createAssetDispositionServices(store,{canonical});
  const subjects=createSubjectServices(store,{canonical,now});
  const waveforms=createWaveformServices(store,{signal:ownerSignal});
+ const images=createImageServices(store,{...imageOptions,signal:ownerSignal});
  const handlers={
+ ...images.handlers,
  ...preflight.handlers,
  ...waveforms.handlers,
  ...sourceRanges.handlers,
@@ -139,9 +143,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const drain=async()=>{
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),...active]),'SERVICE_STOP_TIMEOUT');
+  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),images.drain(),...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
-  for(const result of results.slice(0,2))if(result.status==='rejected')throw result.reason;
+  for(const result of results.slice(0,3))if(result.status==='rejected')throw result.reason;
  };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.

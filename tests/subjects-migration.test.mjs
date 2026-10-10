@@ -70,6 +70,7 @@ const LEGACY_OPERATIONS = Object.freeze([
  'timeline.undo','timeline.redo','reference.attach','reference.detach',
 ]);
 const SUBJECT_TABLES = ['subjects','subject_versions','subject_bindings','subject_requests'];
+const LATER_IMAGE_TABLES = ['image_groups','image_tasks','image_versions','image_requests'];
 const COLUMNS = ['position','id','projectId','operation','input','requestId','digest','lane','origin','status',
  'revision','acknowledged','claim','claimInstance','receiptDigest','errorCode','createdAt','updatedAt','bytes'];
 const WHEN = '2026-09-08T07:06:05.004Z';
@@ -78,7 +79,7 @@ const rows = (db,table) => db.prepare(`SELECT * FROM ${quote(table)} ORDER BY ro
 const schema = db => db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all();
 const editObjects = db => schema(db).filter(row => row.tbl_name==='edit_tasks' && row.type!=='table');
 const sequence = db => db.prepare("SELECT * FROM sqlite_sequence WHERE name='edit_tasks'").all();
-const allRecords = db => Object.fromEntries(schema(db).filter(row=>row.type==='table' && row.name!=='schema_version' && !SUBJECT_TABLES.includes(row.name)).map(row=>[row.name,rows(db,row.name)]));
+const allRecords = db => Object.fromEntries(schema(db).filter(row=>row.type==='table' && row.name!=='schema_version' && !SUBJECT_TABLES.includes(row.name) && !LATER_IMAGE_TABLES.includes(row.name)).map(row=>[row.name,rows(db,row.name)]));
 export const snapshotSchema14 = db => ({records:allRecords(db),schema:schema(db),editTasks:rows(db,'edit_tasks'),
  inputBytes:db.prepare('SELECT position,hex(CAST(input AS BLOB)) AS raw FROM edit_tasks ORDER BY position').all(),
  editObjects:editObjects(db),sequence:sequence(db),versions:rows(db,'schema_version')});
@@ -110,17 +111,17 @@ function temporaryRoot(t) {
 function rawDatabase(root) {const db=new DatabaseSync(path.join(root,'workbench.sqlite'));db.exec('PRAGMA foreign_keys=ON');return db;}
 function openForTest(t,root) {const store=openStore(root);t.after(()=>store.close());return store;}
 
-// The temporary 15 marker only gates the new migration while the unchanged
+// Temporary 15/16 markers gate later migrations while the unchanged
 // v1–14 IF NOT EXISTS bootstraps populate all other legacy tables. It is removed
 // before any fixture data or snapshot is made. The edit table comes solely from
 // the frozen SQL above; no v15 table is ever downgraded to manufacture a fixture.
 export function createSchema14Store(root) {
  let db=rawDatabase(root);
  db.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY); CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);');
- db.exec(LEGACY_EDIT_TASK_SCHEMA);db.prepare('INSERT INTO schema_version VALUES(?)').run(15);db.close();
+ db.exec(LEGACY_EDIT_TASK_SCHEMA);db.prepare('INSERT INTO schema_version VALUES(?)').run(15);db.prepare('INSERT INTO schema_version VALUES(?)').run(16);db.close();
  const store=openStore(root);
  assert.deepEqual(SUBJECT_TABLES.filter(name=>store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),[]);
- store.db.exec('DELETE FROM schema_version WHERE version=15');
+ store.db.exec('DELETE FROM schema_version WHERE version IN (15,16)');
  assert.equal(store.db.prepare('SELECT max(version) n FROM schema_version').get().n,14);
  return store;
 }
@@ -216,7 +217,8 @@ function assertLegacyPreserved(db,before) {
 function assertNewSchema(db) {
  assert.deepEqual(SUBJECT_TABLES.filter(name=>db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),SUBJECT_TABLES);
  assert.equal(db.prepare('SELECT count(*) n FROM schema_version WHERE version=15').get().n,1);
- assert.equal(db.prepare('SELECT max(version) n FROM schema_version').get().n,15);
+ assert.equal(db.prepare('SELECT max(version) n FROM schema_version').get().n,16);
+ for(const table of LATER_IMAGE_TABLES)assert.deepEqual(rows(db,table),[],'later image migration never manufactures image records');
  assert.equal(db.prepare("SELECT count(*) n FROM sqlite_master WHERE name='edit_tasks_subjects'").get().n,0);
  assert.deepEqual(db.prepare('PRAGMA table_info(edit_tasks)').all().map(row=>row.name),COLUMNS);
 }
