@@ -1,9 +1,6 @@
-import {constants} from 'node:fs';
-import {open} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
-import path from 'node:path';
 import {AppError,WAVEFORM_ALGORITHM,WAVEFORM_BINS_PER_SECOND,sourceFrameCount} from '@mioon/contracts';
-import {validateManagedFile} from '@mioon/contracts/private-storage';
+import {validateManagedSource,verifiedManagedHash,sameManagedFile as sameFile} from './managed-media.mjs';
 import {run} from './media-runtime.mjs';
 import {parseProbeOutput,withProbePermit} from './media-probe.mjs';
 import {decodeWaveform} from './waveform-decoder.mjs';
@@ -39,7 +36,6 @@ const missing=()=>{throw new AppError('NOT_FOUND','找不到记录',404);};
 const mediaTypes=new Set(['video/mp4','video/webm','audio/wav','audio/mpeg','audio/mp4']);
 const sourceMetadata=asset=>({mimeType:asset.mimeType,hasAudio:asset.hasAudio??null,sizeBytes:asset.sizeBytes??null});
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-const sameFile=(a,b)=>a&&b&&['dev','ino','size','mtimeMs','ctimeMs'].every(key=>a[key]===b[key]);
 const digest=peaks=>{
  const bytes=Buffer.allocUnsafe(peaks.length*2);
  for(let i=0;i<peaks.length;i++)bytes.writeUInt16LE(peaks[i],i*2);
@@ -172,39 +168,18 @@ export function createWaveformServices(store,{signal:ownerSignal,decode=decodeWa
   });
  }catch(error){owners.delete(db);throw error;}
 
+ function sourceFailure(error,signal){
+  checkSignal(signal);
+  if(error.code==='MANAGED_SOURCE_LIMIT')throw fault('WAVEFORM_SOURCE_TOO_LARGE','unsupported');
+  throw fault(error.code==='MANAGED_SOURCE_CHANGED'?'WAVEFORM_SOURCE_CHANGED':'WAVEFORM_SOURCE_INVALID');
+ }
  function validatedSource(asset){
-  const relative=asset.relativePath;
-  if(typeof relative!=='string'||relative.length>4096||relative.includes('\0')||relative.includes('\\')||path.isAbsolute(relative)||
-   relative.split('/').some(part=>!part||part==='.'||part==='..')||!relative.startsWith('media/'))throw fault('WAVEFORM_SOURCE_INVALID');
-  const file=path.resolve(root,relative),media=path.join(root,'media');
-  if(!file.startsWith(media+path.sep))throw fault('WAVEFORM_SOURCE_INVALID');
-  let info;try{info=validateManagedFile(file,{root});}catch{throw fault('WAVEFORM_SOURCE_INVALID');}
-  if(info.size>WAVEFORM_CACHE_LIMITS.sourceBytes)throw fault('WAVEFORM_SOURCE_TOO_LARGE','unsupported');
-  return {file,info};
+  try{return validateManagedSource(root,asset,{maxBytes:WAVEFORM_CACHE_LIMITS.sourceBytes});}
+  catch(error){sourceFailure(error);}
  }
  async function verifiedHash(asset,signal,expected){
-  checkSignal(signal);
-  const source=validatedSource(asset);
-  if(expected&&!sameFile(source.info,expected))throw fault('WAVEFORM_SOURCE_CHANGED');
-  let file;
-  try{
-   // Never hash through a followed final symlink. Compare descriptor and path
-   // identities before/after a bounded, incremental read of the exact bytes.
-   file=await open(source.file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
-   const first=await file.stat();checkSignal(signal);
-   if(!first.isFile()||!sameFile(source.info,first))throw fault('WAVEFORM_SOURCE_CHANGED');
-   const hash=createHash('sha256'),buffer=Buffer.allocUnsafe(64*1024);let bytes=0;
-   for(;;){
-    checkSignal(signal);const read=await file.read(buffer,0,buffer.length,null);checkSignal(signal);
-    if(!read.bytesRead)break;
-    bytes+=read.bytesRead;if(bytes>WAVEFORM_CACHE_LIMITS.sourceBytes||bytes>first.size)throw fault('WAVEFORM_SOURCE_CHANGED');
-    hash.update(buffer.subarray(0,read.bytesRead));
-   }
-   const after=await file.stat();checkSignal(signal);const current=validatedSource(asset);
-   if(bytes!==first.size||!sameFile(first,after)||!sameFile(first,current.info)||hash.digest('hex')!==asset.sha256)throw fault('WAVEFORM_SOURCE_CHANGED');
-   return {file:source.file,info:after};
-  }catch(error){if(error.waveformCode)throw error;checkSignal(signal);throw fault('WAVEFORM_SOURCE_INVALID');}
-  finally{await file?.close();}
+  try{return await verifiedManagedHash(root,asset,{signal,expected,maxBytes:WAVEFORM_CACHE_LIMITS.sourceBytes});}
+  catch(error){sourceFailure(error,signal);}
  }
  function currentSource(entry){
   requireOwner();

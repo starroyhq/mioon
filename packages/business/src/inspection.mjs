@@ -66,30 +66,13 @@ function excerpt(value) {
   return {prompt: bytes.subarray(0, end).toString('utf8'), promptTruncated: true};
 }
 
-export function createInspectionServices(store) {
-  const {db} = store, contexts = new WeakMap(), cursorSecret = randomBytes(32);
-  const sign = text => createHmac('sha256', cursorSecret).update(text).digest('base64url');
-  const encodeCursor = (projectId, operation, limit, after) => {
-    const body = Buffer.from(JSON.stringify([1, projectId, operation, limit, after])).toString('base64url');
-    return `${body}.${sign(body)}`;
-  };
-  function decodeCursor(cursor, projectId, operation, limit) {
-    if (cursor === undefined) return '';
-    if (typeof cursor !== 'string' || cursor.length > 512 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(cursor)) badCursor();
-    const [body, signature] = cursor.split('.'), expected = sign(body);
-    if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) badCursor();
-    let decoded;
-    try { decoded = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { badCursor(); }
-    if (!Array.isArray(decoded) || decoded.length !== 5 || decoded[0] !== 1 || decoded[1] !== projectId || decoded[2] !== operation || decoded[3] !== limit || !entityId.safeParse(decoded[4]).success) badCursor();
-    return decoded[4];
-  }
-
-  function reader(projectId) {
+function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
     const cache = new Map(), validatedVersions = new Set(), validatedAssets = new Set(), assetVersions = new Map();
     let readBytes = 0, readRecords = 0;
     // CASE guards are evaluated by SQLite before data crosses into JavaScript.
     // Oversized/malformed rows are errors, never silently skipped from a page.
-    const columns = table => `id${table === 'projects' ? '' : ',projectId'}${table === 'versions' ? ',jobId' : ''},
+    const identity=column=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
+    const columns = table => `${identity('id')}${table === 'projects' ? '' : ','+identity('projectId')}${table === 'versions' ? ','+identity('jobId') : ''},
       CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${rowLimits[table]} THEN CASE WHEN json_valid(data) THEN data ELSE NULL END ELSE NULL END AS data`;
     function materialize(table, row) {
       if (!row || typeof row.data !== 'string') unavailable();
@@ -182,7 +165,7 @@ export function createInspectionServices(store) {
       // Never trust provenance to hide a reverse relation. Imported assets may
       // have no version; generated assets require exactly one. Foreign and
       // duplicate owners are rejected, including mismatched SQL/JSON scope.
-      const rows = db.prepare(`SELECT id FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(asset.id);
+      const rows = db.prepare(`SELECT ${identity('id')} FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(asset.id);
       if (rows.length > 1 || (rows.length === 0 && ['generated', 'synthetic-mock'].includes(asset.provenance))) unavailable();
       if (rows.length) assetVersions.set(asset.id, validateVersion(rows[0].id, undefined, asset.id));
       return asset;
@@ -209,18 +192,7 @@ export function createInspectionServices(store) {
       const items = rows.slice(0, limit).map(row => (table === 'assets' ? assetDto : shotDto)(materialize(table, row)));
       return {items, nextCursor: rows.length > limit ? encodeCursor(projectId, operation, limit, items.at(-1).id) : null};
     }
-    function timelineDto() {
-      const row = db.prepare(`SELECT ${columns('timelines')} FROM timelines WHERE projectId=? LIMIT 1`).get(projectId);
-      if (!row) return null;
-      const timeline = materialize('timelines', row);
-      if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > INSPECTION_LIMITS.clips) unavailable();
-      const trackIds = new Set(), clipIds = new Set();
-      const tracks = timeline.tracks.map(track => {
-        object(track); const trackId = id(track.id); if (trackIds.has(trackId)) unavailable(); trackIds.add(trackId);
-        return {id: trackId, name: string(track.name, 150, 1), kind: enumValue(track.kind, ['video', 'audio']), orderIndex: number(track.orderIndex, 0, 11, true), hidden: boolean(track.hidden), muted: boolean(track.muted)};
-      });
-      const clips = timeline.clips.map(clip => {
-        object(clip); const clipId = id(clip.id); if (clipIds.has(clipId) || !trackIds.has(clip.trackId)) unavailable(); clipIds.add(clipId);
+    function clipSource(clip){
         const asset = validateAsset(get('assets', id(clip.assetId)));
         // Older/future saved clip metadata may carry these additional relation
         // IDs. Validate them if present, but do not expose them in this DTO.
@@ -233,6 +205,21 @@ export function createInspectionServices(store) {
           const job = get('jobs', id(clip.jobId)), version = validateVersion(id(job.versionId), job.shotId, asset.id);
           if (version.jobId !== job.id || (Object.hasOwn(clip, 'shotId') && clip.shotId !== job.shotId) || (Object.hasOwn(clip, 'versionId') && clip.versionId !== version.id)) unavailable();
         }
+      return asset;
+    }
+    function timelineDto() {
+      const row = db.prepare(`SELECT ${columns('timelines')} FROM timelines WHERE projectId=? LIMIT 1`).get(projectId);
+      if (!row) return null;
+      const timeline = materialize('timelines', row);
+      if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > INSPECTION_LIMITS.clips) unavailable();
+      const trackIds = new Set(), clipIds = new Set();
+      const tracks = timeline.tracks.map(track => {
+        object(track); const trackId = id(track.id); if (trackIds.has(trackId)) unavailable(); trackIds.add(trackId);
+        return {id: trackId, name: string(track.name, 150, 1), kind: enumValue(track.kind, ['video', 'audio']), orderIndex: number(track.orderIndex, 0, 11, true), hidden: boolean(track.hidden), muted: boolean(track.muted)};
+      });
+      const clips = timeline.clips.map(clip => {
+        object(clip); const clipId = id(clip.id); if (clipIds.has(clipId) || !trackIds.has(clip.trackId)) unavailable(); clipIds.add(clipId);
+        const asset = clipSource(clip);
         object(clip.rect);
         const rect = {x: number(clip.rect.x, 0, 718, true), y: number(clip.rect.y, 0, 1278, true), width: number(clip.rect.width, 2, 720, true), height: number(clip.rect.height, 2, 1280, true)};
         if (Object.values(rect).some(value => value % 2 !== 0) || rect.x + rect.width > 720 || rect.y + rect.height > 1280) unavailable();
@@ -247,8 +234,36 @@ export function createInspectionServices(store) {
     const project = get('projects', projectId);
     return {project: () => ({id: project.id, name: string(project.name, 150, 1), description: string(project.description, 2000), revision: number(project.revision, 1, Number.MAX_SAFE_INTEGER, true),
       counts: Object.fromEntries(countTables.map(table => [table, number(db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE projectId=?`).get(projectId).count, 0, Number.MAX_SAFE_INTEGER, true)]))}),
-      assets: args => page('assets', 'asset.inspect', args), shots: args => page('shots', 'shot.inspect', args), timeline: timelineDto};
+      assets: args => page('assets', 'asset.inspect', args), shots: args => page('shots', 'shot.inspect', args), timeline: timelineDto, ownedAsset: assetId=>validateAsset(get('assets',id(assetId))),clipSource};
   }
+
+
+// Backend-only validated graph reuse. This is not an RPC, tool capability or
+// unscoped raw reader; all paths retain the same bounded project-owner gates.
+export function createOwnedMediaGraphReader(db,projectId){
+ const read=inspectionReader(db,projectId);
+ return {asset:read.ownedAsset,clipSource:read.clipSource};
+}
+
+export function createInspectionServices(store) {
+  const {db} = store, contexts = new WeakMap(), cursorSecret = randomBytes(32);
+  const sign = text => createHmac('sha256', cursorSecret).update(text).digest('base64url');
+  const encodeCursor = (projectId, operation, limit, after) => {
+    const body = Buffer.from(JSON.stringify([1, projectId, operation, limit, after])).toString('base64url');
+    return `${body}.${sign(body)}`;
+  };
+  function decodeCursor(cursor, projectId, operation, limit) {
+    if (cursor === undefined) return '';
+    if (typeof cursor !== 'string' || cursor.length > 512 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(cursor)) badCursor();
+    const [body, signature] = cursor.split('.'), expected = sign(body);
+    if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) badCursor();
+    let decoded;
+    try { decoded = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { badCursor(); }
+    if (!Array.isArray(decoded) || decoded.length !== 5 || decoded[0] !== 1 || decoded[1] !== projectId || decoded[2] !== operation || decoded[3] !== limit || !entityId.safeParse(decoded[4]).success) badCursor();
+    return decoded[4];
+  }
+
+  const reader=projectId=>inspectionReader(db,projectId,{encodeCursor,decodeCursor});
 
   // Only trusted backend code receives this factory. It selects scope after
   // authenticating its caller; possessing a project ID is not authentication.

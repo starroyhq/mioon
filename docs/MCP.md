@@ -309,3 +309,68 @@ silent tails. No built-in Agent allowlist or inspection DTO expands.
 Full limits and response: [Source waveforms](API.md#opt-in-source-waveforms).
 
 Offline transport acceptance: `node --test tests/waveforms-transports.test.mjs`.
+
+### Local timeline export preflight
+
+`timeline_export_preflight` exposes the shared strict
+`timeline.export.preflight` contract: `{projectId,expectedRevision}` with a
+project UUID and positive integer existing-timeline revision. Discover its
+schema with `mioon_schema({"operation":"timeline.export.preflight"})`.
+It rejects unknown fields, including credentials, paths, commands and request
+keys. It returns the strict bounded report documented in
+[Local timeline export preflight](API.md#local-timeline-export-preflight).
+
+The actual SDK annotations are `readOnlyHint:true`, `idempotentHint:true`,
+`destructiveHint:false`, `openWorldHint:false`. Its explicit effects additionally
+state `localProcess:true`: bounded local ffprobe metadata work is permitted.
+There are no SQLite/cache/file writes, timeline initialization, export creation,
+full decode, provider calls or paid generation. These hints are advisory and do
+not authorize work. Read idempotency does not promise identical report bytes:
+subsequent calls can observe source or timeline changes.
+
+Checks cover existing 720×1280/30fps output, streamed managed-source hashes and
+bounded metadata, with limits of 100 assets, 512MiB/source, 1GiB total bytes,
+30 seconds and 128 issues. Inspect `status` even when `isError` is false:
+`ready` found no known blocker at the check time; `blocked` requires attention;
+`stale` requires a fresh view/check; `incomplete` means a cap or timeout left
+checks unfinished. Incomplete is not an export failure or ban; an explicitly
+informed user may still choose to try export. No report guarantees future file
+availability or successful full decoding. `checks.fullDecode` is always false.
+Checks stop at the first blocking/incomplete condition; report `checkedAssets`
+as completed coverage rather than treating the issue list as exhaustive.
+The bridge's shared HTTP client defaults to 35 seconds for this operation only,
+allowing grace after the backend's 30-second budget and best-effort cleanup.
+Other operations keep their 30-second default; explicit client/request deadlines
+win. Event-loop/filesystem delays are not hard real-time guarantees. A host may
+also impose its own earlier MCP deadline. No timeout triggers an automatic POST
+retry. Malformed or mismatched reports become `BACKEND_PROTOCOL_ERROR`, without
+an uncertain-mutation claim.
+Preflight's aggregate ownership-metadata safety budget is 4MiB/1024 records,
+independent of source bytes. Exhaustion returns `incomplete`/
+`PREFLIGHT_SNAPSHOT_BUDGET` with a null digest until ownership is verified.
+The render worker validates distinct clip/source lineages independently before
+file I/O, with that same safety bound per lineage and no whole-composition
+metadata ceiling. Many independent valid sources can render despite incomplete
+aggregate preflight. The per-lineage bound is an additional rendering security
+limit; the preflight-only aggregate/source-byte/time budgets do not apply there.
+
+For a separate authorized `timeline_render`, the optional lowercase SHA-256
+`preflightSnapshotHash` pins the report's `snapshotHash` alongside its
+project/revision. A new render verifies the supplied digest. Omission has no
+default and preserves legacy request/response bytes. Exact replay is resolved
+before freshness checks: retain the complete original render arguments/key,
+including digest presence, after a lost response. Do not silently replace a
+digest or retry the same intent with a new key. The preflight tool itself never
+renders; observe accepted renders through `export_get`. External discovery does
+not expand built-in Agent tools, context, inspection DTOs or approval scope.
+
+With an `incomplete` report lacking a digest, a separate explicit user decision
+may authorize a one-use attempt to export the freshly read current saved
+project/revision without `preflightSnapshotHash`. Clearly label it unchecked
+and use a fresh render key. Never fabricate a checked binding, automatically
+fall back, or use known blockers/error issues or stale reports to justify it.
+Worker validation still applies. An uncertain render remains its own exact
+request and must retain its original digest or omission on replay.
+
+Offline official SDK/CLI/HTTP acceptance:
+`node --test tests/timeline-preflight-transports.test.mjs`.

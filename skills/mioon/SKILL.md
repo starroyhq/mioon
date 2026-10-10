@@ -102,3 +102,49 @@ and 512MiB, first mono/stereo audio stream, 100Hz peaks from 48kHz decoding.
 No paths, source hashes, commands or credential arguments are supported. External
 CLI/MCP access does not grant the built-in Agent new waveform tools or media
 context. See [Source waveforms](../../docs/API.md#opt-in-source-waveforms).
+
+## Local timeline export preflight
+
+For an export-readiness check, discover `timeline export preflight` (MCP
+`timeline_export_preflight`) and call it with exactly the chosen project UUID
+and positive `expectedRevision` from the existing timeline. It never creates a
+missing timeline. This read hashes bounded managed source bytes and runs local
+ffprobe metadata checks; it does not fully decode, write database/cache/files,
+create an export, contact providers or spend generation credit. Supported
+output is 720×1280 at 30fps. Limits are 100 assets, 512MiB/source, 1GiB total
+hashed bytes, 30 seconds and 128 safe issues. Do not pass filenames, paths,
+commands, credentials or a request key.
+
+Read the report's `status`, `issues`, `checks` and optional summary. `ready`
+means no known blocker at `checkedAt`, not guaranteed future source availability
+or successful full decoding. `blocked` needs attention; `stale` needs a fresh
+view/check. `incomplete` means caps/timeouts prevented complete verification,
+not that an export failed or that export is forbidden. Explain the limitation;
+a user may explicitly choose to try export. Never describe a known blocker as
+ready. This operation is read-only despite bounded local subprocess use, and
+repeated reports need not be identical.
+Checks can stop at the first blocking/incomplete condition. Describe completed
+coverage using `checkedAssets`; do not claim the issue list is exhaustive.
+Preflight ownership verification has an aggregate 4MiB/1024-record metadata
+safety budget. `PREFLIGHT_SNAPSHOT_BUDGET` is incomplete with a null digest until
+verification succeeds. Rendering checks each distinct clip/source lineage
+independently before file I/O, with the same safety bound per lineage and no
+whole-composition metadata ceiling. Many independent valid sources can render
+despite an incomplete aggregate preflight. The per-lineage security bound also
+applies to rendering; preflight-only aggregate/file/time caps do not.
+
+A separate authorized `timeline render` may pin the report using its non-null
+`snapshotHash` as optional `preflightSnapshotHash`, with the same project and
+expected revision. Do not manufacture/replace a digest or infer export consent
+from checking. Retain the complete render input and mandatory stable key.
+If an incomplete report has no digest, obtain a separate explicit decision for
+a one-use, clearly labeled unchecked export of the current saved timeline.
+Refresh the intended project/revision, use a fresh key, and omit the digest.
+Never fabricate checked approval or silently fall back. Known blockers/error
+issues or stale reports need attention first. The worker still verifies the
+sources. This new intent does not replace an uncertain render's exact request.
+Exact replay returns the original response before new freshness checks. Digest
+omission preserves legacy input/response shape; keep that omission on replay.
+Preview behavior is unchanged. Observe the accepted export before claiming a
+file exists. These external tools add no built-in Agent tools or media context.
+See [the report contract](../../docs/API.md#local-timeline-export-preflight).

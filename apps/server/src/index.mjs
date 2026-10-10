@@ -3,6 +3,7 @@ import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createChatHttp} from './chat-http.mjs';
 import {createFileResponses} from './file-response.mjs';
+import {callObservedRpc} from './rpc-observation.mjs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
@@ -153,7 +154,9 @@ export async function startServer({
           const input = await body(req);
           checkpoint(shutdown.signal);
           if (typeof input.operation !== 'string') return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '缺少 operation'}});
-          return json(res, 200, {ok: true, data: await services.call(input.operation, input.input || {})});
+          const data = await callObservedRpc(req, res, services, input.operation, input.input || {});
+          if (res.destroyed || res.writableEnded) return;
+          return json(res, 200, {ok: true, data});
         }
         if (url.pathname.startsWith('/media/') && ['GET', 'HEAD'].includes(req.method)) {
           const asset = store.get('assets', url.pathname.slice(7));

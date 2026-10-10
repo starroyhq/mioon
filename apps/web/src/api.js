@@ -1,8 +1,8 @@
 export class ApiError extends Error {
   constructor(message, code, details, definitive = false) { super(message); this.code = code; this.details = details; this.definitive = definitive; }
 }
-export async function rpc(operation, input = {}) {
-  const response = await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }) });
+export async function rpc(operation, input = {}, { signal } = {}) {
+  const response = await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }), ...(signal ? { signal } : {}) });
   let body;
   try { body = await response.json(); } catch { throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'NETWORK'); }
   if (!body || typeof body !== 'object' || typeof body.ok !== 'boolean' ||

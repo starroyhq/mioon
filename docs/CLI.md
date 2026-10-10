@@ -327,3 +327,67 @@ subprocesses and writes derived SQLite only; no external service or paid
 provider is involved. Source, queue and cache limits and full response fields:
 [Source waveforms](API.md#opt-in-source-waveforms). Built-in Agent tools and
 context remain unchanged.
+
+### Local timeline export preflight
+
+Discover and explicitly check the intended existing revision before a separate
+export decision:
+
+```sh
+mioon schema timeline.export.preflight
+mioon timeline export preflight --input '{"projectId":"11111111-1111-4111-8111-111111111111","expectedRevision":4}'
+# Equivalent generic dispatch:
+mioon rpc timeline.export.preflight --input '{"projectId":"11111111-1111-4111-8111-111111111111","expectedRevision":4}'
+```
+
+Both forms accept only a project UUID and positive integer timeline revision;
+no paths, credentials, commands, request key or export options are accepted.
+The command streams managed source hashes and runs bounded local ffprobe
+metadata checks. It never creates a timeline, export or cache, writes SQLite
+or output files, fully decodes media, or contacts providers. Output remains
+720×1280 at 30fps. Limits are 100 assets, 512MiB/source, 1GiB total hashed bytes,
+30 seconds and 128 issues. The ordinary success envelope can contain any of
+`ready`, `blocked`, `incomplete` or `stale`; check `data.status`, not just the
+process exit code. `checks.fullDecode` is always false.
+Checks may stop at the first blocking/incomplete condition; `checkedAssets`
+reports completed coverage, and `issues` is not an exhaustive source audit.
+This command's shared client has a 35-second default HTTP deadline for the
+backend's 30-second analysis budget plus best-effort child cleanup; other
+commands retain their existing 30-second default. These are not hard real-time
+filesystem/event-loop guarantees. Ctrl+C stops observation; no automatic POST
+retry or export follows. The shared client rejects malformed reports.
+Preflight ownership metadata has an aggregate 4MiB/1024-record safety bound; budget
+exhaustion reports `incomplete`/`PREFLIGHT_SNAPSHOT_BUDGET` with no digest until
+ownership is verified. Before file I/O, rendering verifies each distinct
+clip/source lineage independently with the same per-lineage safety bound,
+without a whole-composition metadata ceiling. Many independent valid sources
+can therefore render despite incomplete aggregate preflight. This per-lineage
+security bound also constrains rendering; preflight file/time caps do not.
+
+`ready` means no known blocker at the check time, not guaranteed future media
+availability. Fix known blockers, refresh stale state, and disclose incomplete
+checks. A cap/timeout is `incomplete`, not a failed export or automatic export
+ban; the user can explicitly choose to try. Preflight alone never queues work.
+See the [strict report contract](API.md#local-timeline-export-preflight).
+
+For an authorized export, pass a non-null report `snapshotHash` unchanged as
+`preflightSnapshotHash` with the report's project/revision and a fresh retained
+render request key. For example, replace the placeholders with actual values:
+
+```sh
+mioon timeline render --input '{"projectId":"PROJECT_UUID","expectedRevision":4,"requestId":"approved-export-0001","purpose":"export","preflightSnapshotHash":"REPORT_SHA256"}'
+```
+
+The digest is optional, exactly 64 lowercase hexadecimal characters, and has no
+default. Legacy omission preserves the old input and response. New renders
+validate a supplied digest; exact replay returns its original response first.
+For an `incomplete` report without a digest, obtain a separate explicit decision
+to try the current saved timeline without completed preflight. Refresh its
+project/revision, use a fresh render key, and omit `preflightSnapshotHash`.
+Label the one-use attempt as unchecked; never invent a digest or silently
+fall back from a checked export. Known blockers/error issues or stale reports
+require attention first. The worker still verifies ownership and media.
+After uncertainty, replay the whole exact render request with its original
+revision, digest (or original omission), and key. Never generate a new key just
+because observation failed. Watch/download the existing export as usual.
+This external command adds no built-in Agent tool or media context.

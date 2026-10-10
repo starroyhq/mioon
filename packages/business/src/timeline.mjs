@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import {AppError,sourceFrameCount,getTimelineFadeIssue} from '@mioon/contracts';
+import {freezeTimelineSnapshot,validateSavedTimeline,TIMELINE_LIMITS} from './timeline-inputs.mjs';
+export {TIMELINE_LIMITS} from './timeline-inputs.mjs';
+import {readTimelinePreflightSnapshot} from './timeline-sources.mjs';
 
-export const TIMELINE_LIMITS=Object.freeze({fps:30,width:720,height:1280,tracks:12,clips:100,durationFrames:18000});
 const defaultRect=()=>({x:0,y:0,width:720,height:1280});
-const visualTypes=new Set(['image/png','image/jpeg','image/webp','video/mp4','video/webm']);
-const audioTypes=new Set(['audio/mpeg','audio/wav','audio/mp4']);
 const clone=value=>JSON.parse(JSON.stringify(value));
 
 // The timeline is its own aggregate: revision checks and idempotent responses
@@ -41,41 +41,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
   if(result.projectId!==projectId)throw new AppError('CROSS_PROJECT_REFERENCE','素材不属于此项目');
   return result;
  }
- function validate(timeline){
-  if(timeline.tracks.length>TIMELINE_LIMITS.tracks||timeline.clips.length>TIMELINE_LIMITS.clips)
-   throw new AppError('TIMELINE_LIMIT','时间线最多支持12条轨道和100个片段',400,TIMELINE_LIMITS);
-  let duration=0;
-  for(const item of timeline.clips){
-   const lane=track(timeline,item.trackId),source=asset(timeline.projectId,item.assetId);
-   if(!(lane.kind==='audio'?audioTypes:visualTypes).has(source.mimeType))
-    throw new AppError('INVALID_CLIP_TYPE','视频轨道只接收图片/视频，音频轨道只接收音频',400,{clipId:item.id,trackId:lane.id,assetId:source.id});
-   const fadeIssue=getTimelineFadeIssue(item,source);
-   if(fadeIssue)throw new AppError(fadeIssue.code,fadeIssue.message,400,fadeIssue.details);
-   const end=item.startFrame+item.durationFrames;
-   if(end>TIMELINE_LIMITS.durationFrames)
-    throw new AppError('TIMELINE_LIMIT','时间线总时长不能超过18000帧（10分钟）',400,{maxDurationFrames:TIMELINE_LIMITS.durationFrames});
-   if(source.mimeType.startsWith('image/')){
-    if(item.sourceInFrame!==0)throw new AppError('SOURCE_BOUNDS','图片的素材入点必须为0',400,{clipId:item.id});
-   }else{
-    // A fractional final frame cannot supply a complete output frame. The tiny
-    // tolerance only absorbs the binary representation of exact 30fps times.
-    const sourceFrames=sourceFrameCount(source.duration)??0;
-    if(sourceFrames<1||item.sourceInFrame+item.durationFrames>sourceFrames)
-     throw new AppError('SOURCE_BOUNDS','素材入点和片段时长超出素材范围',400,{clipId:item.id,assetId:source.id,availableFrames:sourceFrames});
-   }
-   duration=Math.max(duration,end);
-  }
-  for(const lane of timeline.tracks){
-   const clips=timeline.clips.filter(item=>item.trackId===lane.id).sort((a,b)=>a.startFrame-b.startFrame);
-   for(let index=1;index<clips.length;index++){
-    const previous=clips[index-1],current=clips[index];
-    if(current.startFrame<previous.startFrame+previous.durationFrames)
-     throw new AppError('CLIP_OVERLAP','同一轨道的片段不能重叠，可以首尾相接',409,{trackId:lane.id,clipIds:[previous.id,current.id]});
-   }
-  }
-  timeline.durationFrames=duration;
-  return timeline;
- }
+ const validate=timeline=>validateSavedTimeline(timeline,{track,asset});
  function replay(operation,input){
   const requestHash=hash({operation,input});
   const previous=db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?').get(input.requestId);
@@ -224,12 +190,17 @@ export function createTimelineServices(store,{required,check,hash,now}){
    check(timeline,input.expectedRevision);
    validate(timeline);
    if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
-   const assets=[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
-    const source=asset(input.projectId,id);
-    return {id:source.id,sha256:source.sha256,mimeType:source.mimeType,duration:source.duration,width:source.width,height:source.height,hasAudio:typeof source.hasAudio==='boolean'?source.hasAudio:null,relativePath:source.relativePath};
-   });
+   const assets=new Map([...new Set(timeline.clips.map(item=>item.assetId))].map(id=>[id,asset(input.projectId,id)]));
+   const frozen=freezeTimelineSnapshot(timeline,assets);
+   if(input.preflightSnapshotHash!==undefined){
+    let current;
+    try{current=readTimelinePreflightSnapshot(store,input.projectId).snapshot;}
+    catch{throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);}
+    if(!current||hash(current)!==input.preflightSnapshotHash||hash(frozen)!==input.preflightSnapshotHash)
+     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
+   }
    const createdAt=now();
-   const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:timeline.revision,snapshot:clone({timeline,assets}),status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
+   const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
    put('exports',result);
    return saveResponse(input,previous.requestHash,result);
   })

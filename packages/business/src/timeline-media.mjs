@@ -1,42 +1,12 @@
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {run,probe} from './media.mjs';
-import {sourceFrameCount,getTimelineFadeIssue} from '@mioon/contracts';
+import {validateTimeline} from './timeline-inputs.mjs';
 import {throwIfMediaAborted} from './media-processes.mjs';
 import {timelineAudioFadeFilters} from './timeline-audio.mjs';
 
 const FPS=30,WIDTH=720,HEIGHT=1280,SAMPLES_PER_FRAME=1600;
 const seconds=frames=>(frames/FPS).toFixed(9);
-const integer=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
-function invalid(message){throw Object.assign(Error(message),{code:'INVALID_TIMELINE_SNAPSHOT'});}
-
-// Defense in depth for recovered, persisted jobs. The service performs the same
-// public validation, but the renderer must never interpret arbitrary effects.
-function validateTimeline(timeline,assets){
- if(!timeline||timeline.fps!==FPS||timeline.width!==WIDTH||timeline.height!==HEIGHT)invalid('Timeline output must be 720×1280 at 30 fps');
- if(!Array.isArray(timeline.tracks)||timeline.tracks.length>12||!Array.isArray(timeline.clips)||!timeline.clips.length||timeline.clips.length>100)invalid('Timeline requires 1–100 clips and at most 12 tracks');
- const tracks=new Map();
- for(const t of timeline.tracks){if(!t.id||tracks.has(t.id)||!['video','audio'].includes(t.kind)||!Number.isInteger(t.orderIndex)||typeof t.hidden!=='boolean'||typeof t.muted!=='boolean'||(t.kind==='audio'&&t.hidden))invalid('Invalid timeline track');tracks.set(t.id,t);}
- let duration=0;const ids=new Set();
- for(const c of timeline.clips){
-  const t=tracks.get(c.trackId),a=assets.get(c.assetId),r=c.rect;
-  if(!c.id||ids.has(c.id)||!t||!a)invalid('Missing, duplicate, or unresolvable timeline clip');ids.add(c.id);
-  if(!integer(c.startFrame,0,18000)||!integer(c.durationFrames,1,18000)||!integer(c.sourceInFrame,0,Number.MAX_SAFE_INTEGER-18000)||c.startFrame+c.durationFrames>18000)invalid('Invalid frame range');
-  if(!r||!integer(r.x,0,WIDTH)||!integer(r.y,0,HEIGHT)||!integer(r.width,2,WIDTH)||!integer(r.height,2,HEIGHT)||[r.x,r.y,r.width,r.height].some(v=>v%2)||r.x+r.width>WIDTH||r.y+r.height>HEIGHT)invalid('Invalid clip rectangle');
-  if(!Number.isFinite(c.gain)||c.gain<0||c.gain>2)invalid('Invalid clip gain');
-  const fadeIssue=getTimelineFadeIssue(c,a);if(fadeIssue)invalid(fadeIssue.message);
-  const isImage=a.mimeType?.startsWith('image/'),isVideo=a.mimeType?.startsWith('video/'),isAudio=['audio/wav','audio/mpeg','audio/mp4'].includes(a.mimeType);
-  if(t.kind==='video'?(!isImage&&!isVideo):!isAudio)invalid('Asset is not supported on this track');
-  if(t.kind==='video'&&!a.hasVideo||t.kind==='audio'&&!a.hasAudio)invalid('Asset has no required media stream');
-  if(isImage?c.sourceInFrame!==0:(c.sourceInFrame+c.durationFrames>(sourceFrameCount(a.duration)??0)))invalid('Clip exceeds source duration');
-  for(const effect of ['transition','transitions','effects','speed','rate','opacity','blendMode'])if(c[effect]!==undefined)invalid(`Unsupported timeline effect: ${effect}`);
-  duration=Math.max(duration,c.startFrame+c.durationFrames);
- }
- for(const t of tracks.values()){const clips=timeline.clips.filter(c=>c.trackId===t.id).sort((a,b)=>a.startFrame-b.startFrame);for(let i=1;i<clips.length;i++)if(clips[i].startFrame<clips[i-1].startFrame+clips[i-1].durationFrames)invalid('Clips overlap on one track');}
- if(timeline.durationFrames!==duration)invalid('Timeline duration does not match clips');
- return tracks;
-}
-
 // Render both preview and export through this exact implementation. Segment at
 // clip edges so even a 100-clip / 10-minute composition only opens <=12 media
 // inputs at once. PCM intermediate audio avoids encoder delay at segment edges;

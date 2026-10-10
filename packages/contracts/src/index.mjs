@@ -3,6 +3,7 @@ import {inspectionSchemas} from './inspection.mjs';
 import {sourceRangeSchemas} from './source-range.mjs';
 import {assetDispositionSchemas} from './asset-disposition.mjs';
 import {waveformSchemas} from './waveforms.mjs';
+import {exportPreflightSchemas} from './export-preflight.mjs';
 import {assertOperationEffectCoverage} from './operation-effects.mjs';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.mjs';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.mjs';
@@ -12,6 +13,7 @@ export {SOURCE_RANGE_FPS, sourceFrameCount, isSourceRangeResponse, sourceRangeSc
 export {ASSET_DISPOSITIONS, ASSET_DISPOSITION_BATCH_LIMIT, assetDispositionSchemas, isAssetDispositionResponse, isAssetDispositionListResponse} from './asset-disposition.mjs';
 export {WAVEFORM_ALGORITHM, WAVEFORM_FPS, WAVEFORM_SAMPLE_RATE, WAVEFORM_BINS_PER_SECOND, WAVEFORM_MAX_DURATION, WAVEFORM_MAX_SOURCE_FRAMES, WAVEFORM_MAX_POINTS, WAVEFORM_DEFAULT_POINTS, WAVEFORM_STATUSES, waveformSchemas, waveformResponseSchema, isWaveformResponse} from './waveforms.mjs';
 export {TIMELINE_FADE_MAX_FRAMES, getTimelineFadeIssue} from './timeline-fades.mjs';
+export {exportPreflightSchemas, exportPreflightResponseSchema, isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from './export-preflight.mjs';
 const id=z.string().uuid(), key=z.string().min(8).max(200), position=z.object({x:z.number().finite(),y:z.number().finite()}).strict();
 const mutationRequestId=key.optional().describe('Optional stable replay key (8–200 characters). Reuse the exact operation and caller-supplied input to recover the original response, even after later revisions. Changed reuse conflicts; without a key legacy mutation semantics apply.');
 const params=z.object({scenario:z.enum(['success','failure','delay','timeout','unknown','reject','download_fail_once','rejected_before_accept','accepted_then_response_lost','poll_timeout_then_recover','terminal_failure']).optional(),delayMs:z.number().int().min(0).max(120000).optional(),seed:z.number().int().optional()}).strict();
@@ -29,6 +31,7 @@ export const schemas={
 ...sourceRangeSchemas,
 ...assetDispositionSchemas,
 ...waveformSchemas,
+...exportPreflightSchemas,
 'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional()}).strict(),
 'project.list':z.object({}).strict(),
 'project.get':z.object({projectId:id}).strict(),
@@ -65,7 +68,7 @@ export const schemas={
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
 'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),
 'timeline.seed':z.object(timelineMutation).strict(),
-'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export'])}).strict()
+'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict()
 };
 // A new operation must receive an audited effect descriptor before discovery
 // or dispatch can initialize; never infer safety from an operation-name suffix.
@@ -73,6 +76,7 @@ assertOperationEffectCoverage(schemas);
 export const descriptions={
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
+ 'timeline.export.preflight':'只读检查既有时间线的本地导出条件；按版本流式核验素材哈希并运行有界ffprobe元数据检查，不完整解码、不创建时间线、缓存或导出，不调用供应商；返回ready、blocked、incomplete或stale，检查结果不保证未来文件可用',
  'asset.waveform.request':'显式请求本地源音频波形缓存；重复请求复用排队、运行或就绪结果，失败或中断须显式retry；运行有界本地解码并写入可淘汰缓存，不调用生成供应商、不编辑素材或时间线',
  'asset.waveform.get':'只读查询指定项目素材的源音频波形；30fps源范围使用排他出点，最多返回2048个归一化峰值；不启动解码、不探测媒体、不修复或写入缓存；不表示时间线混音结果',
  'asset.disposition.list':'只读查询指定项目中1–100个不重复素材的共享标记，按请求顺序返回；未保存时为 neutral 和 revision 0；缺失或跨项目时整批失败，不创建记录',

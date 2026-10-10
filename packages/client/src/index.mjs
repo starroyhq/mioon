@@ -1,7 +1,7 @@
 import {setTimeout as pause} from 'node:timers/promises';
 import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse} from '@mioon/contracts';
+import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
@@ -70,7 +70,11 @@ function uncertainRequestDetails(body) {
   return body ? {operation: body.operation, ...(body.input?.requestId ? {requestId: body.input.requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})} : {};
 }
 
-export function createClient({env = process.env, fetchImpl = fetch, requestTimeoutMs = 30_000} = {}) {
+export function createClient(clientOptions = {}) {
+  const {env = process.env, fetchImpl = fetch, requestTimeoutMs = 30_000} = clientOptions;
+  // Only the new bounded read needs transport grace after its 30s analysis
+  // budget. Every old default and explicit caller timeout remains unchanged.
+  const preflightTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : 35_000;
   async function request(resource, {body, signal, timeoutMs = requestTimeoutMs} = {}) {
     checkSignal(signal);
     if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new ClientError('VALIDATION_ERROR', 'Request timeout must be positive.');
@@ -105,9 +109,11 @@ export function createClient({env = process.env, fetchImpl = fetch, requestTimeo
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     const parsed = parse(operation, input);
     const body = {operation, input: parsed};
-    const result = (await request('/api/rpc', {body, ...options})).data;
+    const result = (await request('/api/rpc', {body, ...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : {}), ...options})).data;
     if (LOCAL_MUTATION_OPERATIONS.includes(operation) && !isLocalMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
     return result;
   }
   async function capabilities(options) { return rpc('provider.list', {}, options); }

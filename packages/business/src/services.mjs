@@ -5,6 +5,7 @@ import {parse,AppError,publicValue,getGenerationIssue} from '@mioon/contracts';
 import {normalizedCapabilities,generationLimit,providerSettings} from './provider-registry.mjs';
 import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
+import {createTimelinePreflightServices} from './timeline-preflight.mjs';
 import {createReferenceServices} from './references.mjs';
 import {createInspectionServices} from './inspection.mjs';
 import {createLocalMutationServices} from './local-mutations.mjs';
@@ -50,6 +51,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   const job={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});return job;
  });
  const timeline=createTimelineServices(store,{required,check,hash,now});
+ const preflight=createTimelinePreflightServices(store,{signal:ownerSignal});
  const references=createReferenceServices(store,{required,check,hash,now});
  const inspection=createInspectionServices(store);
  const localMutations=createLocalMutationServices(store,{check,canonical,now,references});
@@ -57,6 +59,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const assetDispositions=createAssetDispositionServices(store,{canonical});
  const waveforms=createWaveformServices(store,{signal:ownerSignal});
  const handlers={
+ ...preflight.handlers,
  ...waveforms.handlers,
  ...sourceRanges.handlers,
  ...assetDispositions.handlers,
@@ -126,9 +129,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const drain=async()=>{
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),...active]),'SERVICE_STOP_TIMEOUT');
+  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
-  if(results[0].status==='rejected')throw results[0].reason;
+  for(const result of results.slice(0,2))if(result.status==='rejected')throw result.reason;
  };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.

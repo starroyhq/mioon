@@ -146,6 +146,12 @@ roles, loudness checks and project-format expansion remain open.
 
 The bounded audio/performance waveform increment is implemented with opt-in
 local raw-source visualization and bounded, disposable derived cache work. Local
-verification passed; independent release review is pending. Limits and acceptance
+verification and the independent release gate passed in `fd49dac`. Limits and acceptance
 are tracked in [WAVEFORMS.md](WAVEFORMS.md). This does not complete proxies,
 post-mix analysis, loudness checks or the broader audio roadmap.
+
+The bounded delivery increment implements shared read-only timeline export
+preflight and an inline right-workspace report. Local browser/native and real
+export checks passed; independent release review is pending. It reuses export
+rules and source verification without project-format expansion or full upfront
+decoding. Scope and acceptance are tracked in [EXPORT-PREFLIGHT.md](EXPORT-PREFLIGHT.md).

@@ -58,6 +58,7 @@ export const operationEffects = Object.freeze({
   'export.get': define({...read,notes:'Reads the export record only; does not render or read media bytes.'}),
   'timeline.get': define({...localAdd,idempotent:true,notes:'Legacy read creates default empty tracks when no timeline exists. Repeated reads do not add another timeline.'}),
   'timeline.history.get': define({...read,notes:'Reads existing history metadata without initializing a timeline.'}),
+  'timeline.export.preflight': define({...read,localProcess:true,notes:'Reads an existing timeline and bounded managed source bytes, stream-hashes files and invokes local ffprobe metadata checks. Never initializes a timeline, writes database/cache/files, renders, fully decodes, or contacts providers. Repeated reads can observe source changes; idempotent is the conventional read-only hint, not a promise of identical or future-valid results. An incomplete check is not an export ban.'}),
   'timeline.undo': define({...replayEdit,notes:'Restores a prior editable timeline state and advances revision/history cursor; preserves assets, generation and exports. Exact replay is durable.'}),
   'timeline.redo': define({...replayEdit,notes:'Restores a saved editable timeline state and advances revision/history cursor; exact replay is durable.'}),
   'timeline.track.add': define({...replayEdit,notes:'Adds a track and records an edit; a new branch can discard redo history. Exact replay is durable.'}),

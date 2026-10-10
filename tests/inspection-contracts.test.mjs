@@ -68,7 +68,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
     assert.throws(() => operationEffect(operation), /not defined/);
   assert.throws(() => effectAnnotations(undefined), /Explicit operation effects/);
   assert.throws(() => effectAnnotations({readOnly:true}), /Explicit operation effects/);
-  const readOnly = new Set([...inspections, 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get']);
+  const readOnly = new Set([...inspections, 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'timeline.export.preflight']);
   for (const [operation, effect] of Object.entries(operationEffects)) {
     assert.equal(Object.isFrozen(effect), true);
     assert.equal(effect.notes.length > 20, true);
@@ -85,8 +85,9 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
     assert.equal(annotations.openWorldHint, effect.openWorld);
     if (effect.readOnly) {
       assert.equal(effect.idempotent, true);
-      for (const field of ['databaseWrite', 'fileWrite', 'externalIO', 'localProcess', 'paidGeneration', 'destructive', 'openWorld'])
+      for (const field of ['databaseWrite', 'fileWrite', 'externalIO', 'paidGeneration', 'destructive', 'openWorld'])
         assert.equal(effect[field], false, `${operation}: ${field}`);
+      assert.equal(effect.localProcess, operation === 'timeline.export.preflight', `${operation}: localProcess`);
     }
   }
   assert.equal(Object.isFrozen(operationEffects), true);

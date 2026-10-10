@@ -173,7 +173,7 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | `timeline.clip.remove` | `clipId` |
 | `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
-| `timeline.render` | `purpose:'preview'|'export'` |
+| `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256) |
 
 Mutations return the whole timeline and increment its revision once. Rendering
 returns a queued `exports` record with `mode:'timeline'`, a frozen snapshot and
@@ -382,3 +382,111 @@ admission/retry may replace or evict terminal derived-cache entries; source and
 business records are unchanged. These advisory effects do not authorize an
 action. External HTTP/CLI/MCP discovery does not add waveform tools or media
 context to the built-in Agent allowlist.
+
+## Local timeline export preflight
+
+`timeline.export.preflight` accepts exactly `{projectId,expectedRevision}`:
+`projectId` is a UUID and `expectedRevision` is a positive integer for the
+existing timeline. It is a read operation, separate from export submission.
+It does not initialize a missing timeline, write SQLite/cache/files, create an
+export, fully decode media, call providers, or incur generation charges. It
+reads managed source bytes, hashes them incrementally, and runs bounded local
+`ffprobe` metadata checks. The supported output is 720×1280 at 30fps.
+
+```json
+{"operation":"timeline.export.preflight","input":{"projectId":"11111111-1111-4111-8111-111111111111","expectedRevision":4}}
+```
+
+The strict public response contains only:
+
+- `projectId`, the requested `expectedRevision`, ISO `checkedAt`
+- `timelineId` (UUID or null), `timelineRevision` (positive integer or null)
+- `snapshotHash` (lowercase 64-character SHA-256 or null)
+- `status`: `ready`, `blocked`, `incomplete`, or `stale`
+- `summary` (null or the bounded counts below)
+- `checks:{totalAssets,checkedAssets,bytesHashed,fullDecode:false}`
+- `issues`: at most 128 `{code,severity,message,assetId?,clipId?}` entries;
+  codes are 1–64 uppercase letters/digits/underscores beginning with a letter,
+  severity is `error` or `warning`, and messages are at most 240 characters.
+  Optional asset/clip IDs are UUIDs. No source filenames, paths, URLs, raw probe
+  diagnostics, commands, credentials, or media bytes are included.
+
+A non-null summary is
+`{fps:30,width:720,height:1280,durationFrames,trackCount,clipCount,assetCount,visualClipCount,audibleClipCount,mutedTrackCount,hiddenVideoTrackCount}`.
+Duration is 0–18000 frames, track counts are 0–12, and clip/asset counts are
+0–100. Counts of visual/audible clips reflect track visibility/mute and source
+capabilities; they do not claim perceptual picture/sound quality. The check is
+bounded to 100 assets, 512MiB per source, 1GiB total hashed bytes, 30 seconds,
+and 128 reported issues. `checkedAssets` never exceeds `totalAssets` (both
+0–100); `bytesHashed` is 0–1GiB. These bounds do not raise timeline limits.
+Checks stop at the first blocking or incomplete condition; the issue list is
+not an exhaustive audit of every source. Use `checkedAssets` to see completed
+coverage. A strict `ready` report has a non-null timeline identity, revision,
+digest and summary, matches the requested revision, has checked every summarized
+asset, and contains no error issue. Visual/audible counts cannot exceed clips.
+Preflight ownership-graph reads have an aggregate safety budget of 4MiB of
+saved metadata and 1024 records. Exhaustion reports `incomplete` with
+`PREFLIGHT_SNAPSHOT_BUDGET`; the digest stays null until ownership verification
+succeeds. This is a security metadata bound, separate from source-byte limits.
+The render worker instead validates each distinct clip/source lineage
+independently before file I/O, retaining a 4MiB/1024-record safety bound for each
+lineage. It has no aggregate whole-composition metadata ceiling: many valid
+independent sources can render even when preflight exhausts its aggregate
+budget. The per-lineage bound is an additional security limit that also applies
+to rendering; only the aggregate preflight and preflight source-byte/time
+budgets are preparation limits.
+
+Interpret the status explicitly:
+
+- `ready`: no known blocker was found by the checks completed at `checkedAt`.
+  It is not a full decode or a guarantee that the sources will remain available.
+- `blocked`: a known export blocker needs attention. A bounded check must not
+  disguise a discovered blocker as a successful result.
+- `incomplete`: a cap or timeout prevented a complete check. This does not mean
+  export failed, and is not an export ban. A user may explicitly choose to try
+  export with the limitations understood.
+- `stale`: the expected revision no longer matches the current timeline or the
+  checked snapshot changed. Refresh and check the intended current state.
+
+A missing timeline is reported without creating one, with null timeline
+identity/revision; an unknown project still returns `NOT_FOUND`. Reports are
+point-in-time observations, not stored receipts. Repeated reads can differ.
+`effects` truthfully advertises `readOnly:true`, `localProcess:true`, no database
+or file writes, no external I/O, and no paid generation. MCP's conventional
+`idempotentHint:true` for this read does not promise identical report bytes.
+
+The shared Node client (CLI/MCP) gives only this operation a default 35-second
+HTTP deadline, allowing grace after the backend's 30-second analysis budget and
+best-effort child cleanup. Existing operations keep their 30-second default.
+An explicitly configured client/request timeout wins, including an explicit
+30 seconds. Node event-loop scheduling and filesystem work are not hard
+real-time guarantees. Timeout/disconnect never causes an automatic POST retry.
+The client rejects malformed or wrong-project/revision reports with
+`BACKEND_PROTOCOL_ERROR`; it does not describe this read as an uncertain mutation.
+
+For a separate, explicitly intended `timeline.render`, callers may supply the
+report's non-null `snapshotHash` as `preflightSnapshotHash`, retaining its
+`projectId` and `expectedRevision`. The backend verifies that digest against
+current frozen content before admitting a new render. Never construct a digest
+or silently replace a stale one. The field is optional with no default: omitted
+legacy requests retain their exact input shape and response. Retain the complete
+render request, including any digest and stable `requestId`, after uncertainty.
+Exact render replay is resolved first and returns the original saved response,
+even after later edits or source changes. Changing the digest under the same
+key is changed reuse and conflicts. Preflight alone never submits an export;
+observe an accepted render with `export.get`.
+
+If an `incomplete` report has no digest, a user can separately choose a clearly
+labeled, one-use attempt to export the current saved timeline without completed
+preflight. Refresh and bind the intended project/current revision, use a fresh
+render request key, and omit `preflightSnapshotHash`; never synthesize a checked
+binding or label this attempt as checked/ready. The UI exposes this as a
+separate explicit action, not an automatic fallback. Known blockers, error
+issues and stale reports do not authorize that action. Actual worker ownership
+and media validation still apply. This is a new user-approved intent, never a
+way to modify an uncertain render request: exact replay must retain its
+original digest or omission.
+
+This additive external HTTP/CLI/MCP capability does not expand built-in Agent
+model tools, inspection DTOs, media context, or approval scope. Offline transport
+acceptance: `node --test tests/timeline-preflight-transports.test.mjs`.
