@@ -12,6 +12,8 @@ pnpm run doctor
 pnpm build
 ```
 
+已安装依赖时，也可直接运行无 shell 包装的 `node scripts/tooling.mjs doctor`、`node scripts/tooling.mjs build` 和 `node scripts/tooling.mjs test`（默认 66 项可移植检查，不等于完整回归）。完整 Linux 回归使用 `node scripts/tooling.mjs test --suite=full --concurrency=1`。检查通过不代表 macOS/Windows 原生发布就绪；退出码、平台阻塞项和运行范围见 [本地构建与可移植检查](docs/PORTABLE-TOOLING.md)。
+
 启动 Electron 桌面开发版：
 
 ```sh

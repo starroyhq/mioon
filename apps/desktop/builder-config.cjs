@@ -1,24 +1,24 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { identityForChannel } = require('./identity.cjs');
+const { readBuildMetadata, validateStagedMetadata } = require('./build-metadata.cjs');
 module.exports = function builderConfig(channel) {
   const identity = identityForChannel(channel);
+  const { appVersion, electronVersion } = readBuildMetadata();
   return {
     appId: identity.appId,
     productName: identity.productName,
     executableName: identity.executableName,
-    electronVersion: '44.7.0',
+    electronVersion,
     directories: { app: 'build', output: `../../release/desktop/${channel}` },
     files: ['main.cjs', 'backend.cjs', 'package.json', 'web/**/*', 'licenses/**/*', '!node_modules/**/*'],
     asar: true,
     npmRebuild: false,
     publish: null,
-    // Reject stale opposite-channel staging rather than shipping mismatched identities.
+    // Reject stale versions and identities before any packaging work.
     beforePack: async context => {
       const metadata = JSON.parse(await fs.readFile(path.join(context.packager.info.appDir, 'package.json'), 'utf8'));
-      if (metadata.mioonDesktop?.channel !== identity.channel || metadata.mioonDesktop?.appId !== identity.appId) {
-        throw new Error(`Desktop staging identity mismatch; rebuild with --channel=${channel}`);
-      }
+      validateStagedMetadata(metadata, { appVersion, identity });
     },
     electronFuses: {
       runAsNode: false,

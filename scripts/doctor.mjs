@@ -1,2 +1,4 @@
-import {DatabaseSync} from 'node:sqlite';import {spawnSync} from 'node:child_process';
-const sqlite=new DatabaseSync(':memory:');const result={node:process.version,sqlite:sqlite.prepare('select sqlite_version() version').get().version};sqlite.close();for(const name of ['ffmpeg','ffprobe']){const r=spawnSync(name,['-version'],{encoding:'utf8'});if(r.status!==0)throw Error(name+' is required');result[name]=r.stdout.split('\n')[0];}if(Number(process.versions.node.split('.')[0])<24)throw Error('Node >=24 required');console.log(JSON.stringify(result,null,2));
+// Legacy command name retained; the local tooling doctor reads no workspace,
+// credential or user configuration and never installs or repairs prerequisites.
+import {main} from './tooling.mjs';
+process.exitCode = await main(['doctor', ...process.argv.slice(2)]);

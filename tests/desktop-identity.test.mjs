@@ -59,11 +59,13 @@ test('both package configs retain security and separate identities, names and ou
 
 test('packaging refuses missing or opposite-channel staging, including packaged development', async () => {
   const root = await temp();
+  const { appVersion } = require('../apps/desktop/build-metadata.cjs').readBuildMetadata();
   try {
     for (const identity of [production, development]) {
       const config = require(identity.channel === 'production' ? '../apps/desktop/electron-builder.cjs' : '../apps/desktop/electron-builder.dev.cjs');
       const context = { packager: { info: { appDir: root } } };
-      await writeFile(path.join(root, 'package.json'), JSON.stringify({ mioonDesktop: identity }));
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
+        main: 'main.cjs', private: true, desktopName: `${identity.appId}.desktop`, dependencies: {}, mioonDesktop: identity }));
       await config.beforePack(context);
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ mioonDesktop: identity === production ? development : production }));
       await assert.rejects(config.beforePack(context), /identity mismatch/);

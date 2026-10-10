@@ -4,8 +4,10 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import desktopIdentity from '../identity.cjs';
+import desktopBuildMetadata from '../build-metadata.cjs';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
 const desktop = path.join(root, 'apps/desktop');
 const output = path.join(desktop, 'build');
 const web = path.join(root, 'apps/web/dist');
@@ -20,8 +22,7 @@ for (const name of ['main', 'backend']) {
     sourcemap: false, legalComments: 'eof', logLevel: 'info' });
 }
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
-const pkg = JSON.parse(await readFile(path.join(desktop, 'package.json'), 'utf8'));
-await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: pkg.version,
+await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
   private: true, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
 await mkdir(path.join(output, 'licenses'), { recursive: true });
 const seen = new Set(), notices = ['# Third-party notices', '', 'Electron and Chromium notices are included beside the packaged executable.', ''];

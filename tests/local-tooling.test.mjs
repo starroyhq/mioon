@@ -1,0 +1,183 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
+import {mkdtemp, realpath, mkdir, writeFile, readFile, rm} from 'node:fs/promises';
+import path from 'node:path';
+import {tmpdir} from 'node:os';
+import {fileURLToPath} from 'node:url';
+import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, preflight, discoverTests,
+  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand} from '../scripts/lib/local-tooling.mjs';
+
+const root = fileURLToPath(new URL('../', import.meta.url));
+async function fixture(t) {
+  // Canonicalize only this newly owned synthetic fixture, not a user data path.
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon tooling 中 '));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const json = async (name, value) => {await mkdir(path.dirname(path.join(directory, name)), {recursive: true}); await writeFile(path.join(directory, name), JSON.stringify(value));};
+  await json('package.json', {version: '0.4.1', devDependencies: {esbuild: '0.27.7', electron: '44.7.0'}});
+  await json('apps/desktop/package.json', {version: '0.4.1'});
+  await json('apps/web/package.json', {devDependencies: {vite: '7.3.1'}});
+  for (const [name, version, entry] of [['vite', '7.3.1', 'bin/vite.js'], ['esbuild', '0.27.7', 'lib/main.js'], ['electron', '44.7.0', 'index.js']]) {
+    await json(`node_modules/${name}/package.json`, {name, version, ...(name === 'vite' ? {bin: {vite: entry}} : {})});
+    await mkdir(path.dirname(path.join(directory, 'node_modules', name, entry)), {recursive: true});
+    await writeFile(path.join(directory, 'node_modules', name, entry), '// Synthetic entrypoint; not executed.');
+  }
+  await mkdir(path.join(directory, 'tests'));
+  for (const name of [...PORTABLE_TEST_FILES, 'z-native.test.mjs', 'a-full.test.mjs', 'not-a-test.mjs']) await writeFile(path.join(directory, 'tests', name), '');
+  return {directory, json};
+}
+
+test('tooling options are explicit and bounded; no shell or arbitrary command arguments', () => {
+  assert.equal(parseArguments(['test']).suite, 'portable');
+  assert.equal(parseArguments(['test']).concurrency, 1);
+  assert.deepEqual(parseArguments(['test', '--suite=full', '--concurrency=2', '--file=a.test.mjs']).files, ['a.test.mjs']);
+  assert.equal(parseArguments(['doctor', '--channel=production', '--native-ready']).nativeReady, true);
+  for (const args of [[], ['exec'], ['build', '--file=a.test.mjs'], ['test', '--concurrency=0'], ['test', '--concurrency=5'], ['test', '--file=../bad.test.mjs'], ['test', '--file=a.test.mjs;echo x'], ['test', '--file=a.test.mjs', '--file=a.test.mjs'], ['doctor', '--native-ready=yes'], ['test', '--suite=all'], ['build', '--channel=production', '--channel=development']]) assert.throws(() => parseArguments(args));
+});
+test('native readiness never conflates prerequisite success with OS release verification', () => {
+  for (const platform of ['linux', 'darwin', 'win32', 'freebsd']) assert.equal(nativeReadiness(platform, 'arm64').ready, false);
+  assert.equal(nativeReadiness('win32').blocker, 'WINDOWS_ACL_UNIMPLEMENTED');
+  assert.equal(nativeReadiness('darwin').status, 'unverified');
+  assert.equal(nativeReadiness('linux').blocker, 'EXACT_ARTIFACT_NATIVE_QA_REQUIRED');
+});
+test('child environment excludes secrets/proxies/loader injection and supports Windows aliases', () => {
+  const source = {Path: 'C:\\tools 中', SYSTEMROOT: 'C:\\Windows', USERPROFILE: 'C:\\Users\\A', TEMP: 'C:\\tmp',
+    API_KEY: 'SYNTHETIC_SECRET', UnfamiliarCredential: 'SYNTHETIC_SECRET', HTTPS_PROXY: 'SYNTHETIC_PROXY', NODE_OPTIONS: '--require=unsafe', NODE_PATH: 'outside',
+    MIOON_FFMPEG_PATH: 'C:\\tools 中\\ffmpeg.exe', MIOON_FFPROBE_PATH: 'C:\\tools 中\\ffprobe.exe'};
+  const env = toolingEnvironment(source, {platform: 'win32', mediaPaths: true});
+  assert.equal(env.PATH, source.Path); assert.equal(env.SystemRoot, source.SYSTEMROOT); assert.equal(env.USERPROFILE, source.USERPROFILE);
+  assert.equal(env.MIOON_ENABLE_LIVE_PROVIDER, '0');
+  assert.equal(env.MIOON_FFMPEG_PATH, source.MIOON_FFMPEG_PATH);
+  assert.doesNotMatch(JSON.stringify(env), /SYNTHETIC|unsafe|outside/);
+  assert.equal(toolingEnvironment(source, {platform: 'win32'}).MIOON_FFMPEG_PATH, undefined);
+});
+test('installed packages verify exact metadata and fixed regular entrypoints in local node_modules', async t => {
+  const {directory} = await fixture(t); const entries = await installedPackages(directory);
+  assert.equal(entries.vite.version, '7.3.1'); assert.equal(entries.vite.entry, path.join(directory, 'node_modules/vite/bin/vite.js'));
+});
+test('installed dependency version mismatch and unexpected Vite entrypoint fail before execution', async t => {
+  const {directory, json} = await fixture(t);
+  await json('node_modules/vite/package.json', {name: 'vite', version: '9.0.0', bin: {vite: 'bin/vite.js'}});
+  await assert.rejects(installedPackages(directory), {code: 'LOCAL_DEPENDENCY_INVALID'});
+  await json('node_modules/vite/package.json', {name: 'vite', version: '7.3.1', bin: {vite: '../../outside.js'}});
+  await assert.rejects(installedPackages(directory), {code: 'LOCAL_DEPENDENCY_INVALID'});
+});
+test('missing dependency and declaration ranges fail actionably without install fallback', async t => {
+  const {directory, json} = await fixture(t);
+  await json('apps/web/package.json', {devDependencies: {vite: '^7.3.1'}});
+  await assert.rejects(installedPackages(directory), {code: 'LOCAL_DEPENDENCY_INVALID'});
+  await rm(path.join(directory, 'node_modules'), {recursive: true});
+  await assert.rejects(installedPackages(directory), {code: 'LOCAL_DEPENDENCY_MISSING'});
+});
+test('preflight checks SQLite only in memory and separates native and build readiness', async t => {
+  const {directory} = await fixture(t); const calls = [];
+  const result = await preflight(directory, {platform: 'win32', media: true, probe: async (...args) => {calls.push(args); return `${args[0]} version 7.1.5 Copyright`;}});
+  assert.equal(result.report.buildReady, true); assert.equal(result.report.prerequisitesReady, true);
+  assert.equal(result.report.nativeReadiness.status, 'blocked'); assert.equal(calls.length, 2);
+  for (const [name, args, options] of calls) {assert.ok(['ffmpeg', 'ffprobe'].includes(name)); assert.deepEqual(args, ['-version']); assert.equal(options.timeout, 10000); assert.equal(options.maxStdoutBytes, 65536);}
+});
+test('media probe failure is sanitized and cannot become a build or native success claim', async t => {
+  const {directory} = await fixture(t);
+  const result = await preflight(directory, {media: true, probe: async () => {throw Error('SYNTHETIC_SECRET path');}});
+  assert.equal(result.report.buildReady, true); assert.equal(result.report.prerequisitesReady, false);
+  assert.doesNotMatch(JSON.stringify(result.report), /SYNTHETIC_SECRET/);
+});
+test('old Node and mismatched application versions fail preflight', async t => {
+  const {directory, json} = await fixture(t);
+  await json('apps/desktop/package.json', {version: '0.3.0'});
+  const result = await preflight(directory, {nodeVersion: '22.1.0'});
+  assert.equal(result.report.buildReady, false);
+  assert.equal(result.report.checks.find(row => row.name === 'node').status, 'failed');
+  assert.equal(result.report.checks.find(row => row.name === 'buildIdentity').status, 'failed');
+});
+test('portable manifest is explicit, sorted, present and not broadened by filename guesses', async t => {
+  const {directory} = await fixture(t);
+  assert.deepEqual(await discoverTests(directory, {platform: 'win32'}), [...PORTABLE_TEST_FILES].sort().map(name => `tests/${name}`));
+  await assert.rejects(discoverTests(directory, {files: ['z-native.test.mjs']}), {code: 'TEST_SELECTION_INVALID'});
+  assert.equal((await discoverTests(directory, {suite: 'full', platform: 'linux'})).at(-1), 'tests/z-native.test.mjs');
+  await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'darwin'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+});
+test('missing portable test fails rather than silently skipping it', async t => {
+  const {directory} = await fixture(t); await rm(path.join(directory, 'tests', PORTABLE_TEST_FILES[0]));
+  await assert.rejects(discoverTests(directory), {code: 'TEST_SELECTION_INVALID'});
+});
+test('build and test plans retain spaces, Unicode and Windows executable path as exact argv', () => {
+  const executable = 'C:\\Program Files\\Node 中\\node.exe';
+  const commands = buildCommands('/repo 中 space', {vite: {entry: 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js'}}, 'production', executable);
+  assert.equal(commands[0].command, executable); assert.equal(commands[0].args[1], 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js');
+  assert.equal(commands[1].args.at(-1), '--channel=production');
+  const testPlan = testCommand('/repo', ['tests/z.test.mjs', 'tests/a.test.mjs'], 2, executable);
+  assert.deepEqual(testPlan.args, ['--test', '--test-concurrency=2', 'tests/z.test.mjs', 'tests/a.test.mjs']);
+  assert.throws(() => testCommand('/repo', [], 10));
+});
+test('launcher forwards owned-child signals, latches interruption and removes handlers after close', async () => {
+  const signals = new EventEmitter(), child = new EventEmitter(), kills = []; child.kill = signal => kills.push(signal);
+  let spec;
+  const pending = executeCommand({command: '/node', args: ['entry.js'], cwd: '/repo'}, {env: {PATH: '/tools'}, signalSource: signals,
+    spawnChild: (...args) => {spec = args; return child;}});
+  signals.emit('SIGINT'); child.emit('close', 0, null);
+  assert.deepEqual(await pending, {code: 130, signal: 'SIGINT'}); assert.deepEqual(kills, ['SIGINT']);
+  assert.equal(signals.listenerCount('SIGINT'), 0); assert.equal(signals.listenerCount('SIGTERM'), 0);
+  assert.equal(spec[2].shell, false); assert.equal(spec[2].windowsHide, true); assert.equal(spec[2].stdio, 'inherit');
+});
+test('launcher preserves nonzero child exit and safely rejects spawn failure', async () => {
+  const signals = new EventEmitter(), child = new EventEmitter();
+  const pending = executeCommand({command: '/node', args: [], cwd: '/'}, {signalSource: signals, spawnChild: () => child});
+  child.emit('close', 7, null); assert.deepEqual(await pending, {code: 7, signal: null});
+  await assert.rejects(executeCommand({}, {spawnChild: () => {throw Error('SYNTHETIC_SECRET');}}), error => error.code === 'TOOL_START_FAILED' && !error.message.includes('SYNTHETIC_SECRET'));
+});
+test('real shell-free Node child handles a spaced Unicode script path and nonzero exit', async t => {
+  const {directory} = await fixture(t); const script = path.join(directory, 'child 空格.mjs');
+  await writeFile(script, "if (process.argv[2] !== 'one argument ; & 中') process.exit(9); process.exit(3);\n");
+  const result = await executeCommand({command: process.execPath, args: [script, 'one argument ; & 中'], cwd: directory});
+  assert.deepEqual(result, {code: 3, signal: null});
+});
+test('tooling preserves compatibility protocol values and does not invoke packaging or network setup', async () => {
+  const source = await readFile(path.join(root, 'scripts/tooling.mjs'), 'utf8');
+  assert.doesNotMatch(source, /electron-builder|npm install|pnpm install|https?:\/\/|access-token|desktop-config|chmod|chown/);
+  assert.equal(JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).scripts['test:local'], 'node scripts/tooling.mjs test');
+});
+
+test('dependency containment is segment-aware for POSIX and Windows drive/case rules', () => {
+  assert.equal(isContainedPath('/repo/node_modules', '/repo/node_modules/.pnpm/vite/package.json', path.posix), true);
+  assert.equal(isContainedPath('/repo/node_modules', '/repo/node_modules-escape/entry.js', path.posix), false);
+  assert.equal(isContainedPath('C:\\Repo\\node_modules', 'c:\\repo\\node_modules\\vite\\bin\\vite.js', path.win32), true);
+  assert.equal(isContainedPath('C:\\Repo\\node_modules', 'D:\\Repo\\node_modules\\entry.js', path.win32), false);
+  assert.equal(isContainedPath('C:\\Repo\\node_modules', 'C:\\Repo\\elsewhere\\entry.js', path.win32), false);
+});
+
+test('real child receives only the explicit environment and live calls remain disabled', async t => {
+  const {directory} = await fixture(t); const script = path.join(directory, 'environment.mjs');
+  await writeFile(script, "if (process.env.SYNTHETIC_UNFAMILIAR_SECRET || process.env.HTTPS_PROXY || process.env.NODE_OPTIONS || process.env.MIOON_ENABLE_LIVE_PROVIDER !== '0') process.exit(9);\n");
+  const result = await executeCommand({command: process.execPath, args: [script], cwd: directory}, {env: toolingEnvironment({SYNTHETIC_UNFAMILIAR_SECRET: 'sentinel', HTTPS_PROXY: 'sentinel', NODE_OPTIONS: '--bad'})});
+  assert.equal(result.code, 0);
+});
+
+test('launcher preserves spontaneous signal termination and cleans up asynchronous spawn failures', async () => {
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    const source = new EventEmitter(), child = new EventEmitter(); const kills = []; child.kill = value => kills.push(value);
+    const pending = executeCommand({command: '/node', args: [], cwd: '/'}, {signalSource: source, spawnChild: () => child});
+    if (signal === 'SIGTERM') source.emit(signal);
+    child.emit('close', null, signal);
+    assert.deepEqual(await pending, {code: signal === 'SIGTERM' ? 143 : 130, signal});
+    assert.deepEqual(kills, signal === 'SIGTERM' ? ['SIGTERM'] : []);
+    assert.equal(source.listenerCount('SIGTERM'), 0);
+  }
+  const source = new EventEmitter(), child = new EventEmitter();
+  const pending = executeCommand({command: '/missing', args: [], cwd: '/'}, {signalSource: source, spawnChild: () => child});
+  child.emit('error', Error('synthetic spawn error'));
+  await assert.rejects(pending, {code: 'TOOL_START_FAILED'});
+  assert.equal(source.listenerCount('SIGINT'), 0); assert.equal(source.listenerCount('SIGTERM'), 0);
+  child.emit('close', -2, null);
+});
+test('dependency pins share strict SemVer validation with application build metadata', async t => {
+  const {directory, json} = await fixture(t);
+  for (const version of ['07.3.1', '7.3.1-rc..1', '^7.3.1']) {
+    await json('apps/web/package.json', {devDependencies: {vite: version}});
+    await assert.rejects(installedPackages(directory), {code: 'LOCAL_DEPENDENCY_INVALID'});
+  }
+  await json('apps/web/package.json', {devDependencies: {vite: '7.3.1+fixture'}});
+  await json('node_modules/vite/package.json', {name: 'vite', version: '7.3.1+fixture', bin: {vite: 'bin/vite.js'}});
+  assert.equal((await installedPackages(directory)).vite.version, '7.3.1+fixture');
+});
