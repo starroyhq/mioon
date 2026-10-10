@@ -1,5 +1,6 @@
 import {isTimelineRecord, isTimelineReplacementResponse} from './timeline-replacement.mjs';
 import {sourceFrameCount} from './source-range.mjs';
+import {SUBJECT_MUTATION_OPERATIONS} from './subjects.mjs';
 import {REFERENCE_MUTATION_OPERATIONS} from './reference-acknowledgement.mjs';
 
 export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
@@ -133,8 +134,13 @@ const proofCodes = new Set([
   'TIMELINE_NOT_EMPTY', 'MISSING_SELECTION', 'NOTHING_TO_UNDO', 'NOTHING_TO_REDO', 'EMPTY_TIMELINE', 'PREFLIGHT_STALE', 'TIMELINE_REVISION_LIMIT',
 ]);
 const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT']);
+const subjectProofCodes = new Set(['REVISION_CONFLICT', 'SUBJECT_NO_CHANGE', 'SUBJECT_REVISION_LIMIT', 'SUBJECT_BINDING_LIMIT', 'SUBJECT_ROLE_MISMATCH']);
 export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
   const details = error?.details;
+  if (SUBJECT_MUTATION_OPERATIONS.includes(operation)) return Boolean(object(input) && uuid(input.projectId) && text(input.requestId, 8, 200) && object(details) &&
+    (integer(error.status, 400, 499) && ![401, 403].includes(error.status) || error.status === undefined && error.definitive === true) &&
+    subjectProofCodes.has(error.code) && ['mutationOutcome', 'operation', 'projectId', 'requestId'].every(key => Object.hasOwn(details, key)) &&
+    details.mutationOutcome === 'not_applied' && details.operation === operation && details.projectId === input.projectId && details.requestId === input.requestId);
   // Reference rejections must be owner-checked by their own transaction and
   // explicitly bind every identity field. Legacy timeline proofs retain their
   // existing optional operation/project fields and original code allowlist.

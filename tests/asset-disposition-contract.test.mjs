@@ -58,7 +58,7 @@ test('list acknowledgements require exact ordered membership and never confirm o
 });
 
 test('discovery exposes bounded noncreating reads and required-key metadata-only writes, retaining six optional-key semantics',()=>{
- assert.ok(LOCAL_MUTATION_OPERATIONS.includes('asset.disposition.set'));assert.equal(LOCAL_MUTATION_OPERATIONS.length,8);
+ assert.ok(LOCAL_MUTATION_OPERATIONS.includes('asset.disposition.set'));assert.equal(LOCAL_MUTATION_OPERATIONS.length,11);
  const list=operationEffects['asset.disposition.list'],set=operationEffects['asset.disposition.set'];
  assert.equal(list.readOnly,true);assert.equal(list.databaseWrite,false);assert.equal(list.idempotent,true);
  assert.equal(set.readOnly,false);assert.equal(set.databaseWrite,true);assert.equal(set.idempotent,true);

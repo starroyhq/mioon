@@ -311,7 +311,7 @@ hints grant no authorization. Original optional-key tools still advertise
 
 Exact set replay returns the historical result after checking current ownership
 and before current CAS, including after restart or a later neutral reset.
-Changed key reuse conflicts across all eight local mutations. Existing timeline,
+Changed key reuse conflicts across all eleven local mutations. Existing timeline,
 reference and generation key scopes remain separate. Neutral reset retains its
 revision; rejection never edits existing clips or asset bytes. Legacy inspection
 DTOs and built-in Agent model tools/context do not gain disposition fields or
@@ -443,7 +443,67 @@ authority, generation call or namespace are introduced. See
 
 [Durable UI task recovery](TASK-RECOVERY.md) is a dedicated authenticated UI
 coordinator for ten non-rendering timeline edits and two reference operations.
+The implemented subject extension adds only `subject.create`, `subject.version.add`
+and `subject.binding.set` in a dedicated subject lane, for fifteen total.
 It does not register a generic execute/recover MCP tool or expand built-in Agent
 authority. Existing MCP tools still use the same shared business handlers and
 strict historical acknowledgements; retain exact arguments and request IDs.
 UI cold-start discovery does not automatically persist every external-agent intent.
+
+### Local subject planning tools
+
+The narrow subject increment is implemented. Focused checks, final web/desktop
+builds and Linux native acceptance passed; the independent full-suite release gate
+passed. Discover its strict schemas with `mioon_schema({"operation":"subject.binding.set"})`.
+The external catalog adds these shared tools:
+
+- `subject_create({projectId,kind,name,assetId,requestId})`
+- `subject_version_add({projectId,subjectId,expectedRevision,assetId,requestId})`
+- `subject_binding_set({projectId,shotId,subjectId,role,subjectVersionId,expectedRevision,expectedSubjectRevision,requestId})`
+- `subject_list({projectId,limit?,cursor?})`
+- `subject_version_list({projectId,subjectId,limit?,cursor?})`
+- `subject_binding_list({projectId,shotId?,subjectId?,limit?,cursor?})`, exactly one filter
+
+All IDs are project-owned UUIDs except stable `requestId` (8–200 characters).
+`kind` is `character|product|location|look`; name is nonblank and at most 120
+characters. Versions select one existing managed PNG/JPEG/WebP image, with no
+import/copy operation. All writes require a retained key. Version-add checks the
+subject revision. Binding-set checks independent binding revision (0 only for a
+never-created identity) plus `expectedSubjectRevision`; `look` uses `style`,
+other kinds use `subject`. Maximum eight active bindings per shot.
+
+A required `subjectVersionId` UUID pins that exact version; `null` clears and
+retains a tombstone. An explicit set acknowledges the current head through
+`reviewedHeadVersionId`, including when keeping an older selected version.
+Later heads derive `needsReview` without changing the selection or shot. Lists
+return `{projectId,items,nextCursor}`, include binding tombstones, default to 20
+items and cap at 50. Pass returned cursors unchanged with the same filter/limit;
+cursors cap at 768 characters and expire after backend restart. Pages are not
+a frozen multi-call snapshot. DTO fields and backend-derived local provenance
+are documented in [subject contracts](SUBJECT-LIBRARY.md#response-dtos-and-provenance).
+Structured source fields omit paths, URLs, provider task IDs and media bytes.
+A user-authored subject name remains untrusted text and may contain such strings.
+Version hashes come from existing asset records, without rehashing or probing media.
+
+Read tools advertise `readOnlyHint:true`, `idempotentHint:true`,
+`destructiveHint:false`, `openWorldHint:false`. Create/version-add advertise
+`readOnlyHint:false`, `idempotentHint:true`, `destructiveHint:false`,
+`openWorldHint:false`; binding-set differs with `destructiveHint:true` because it
+can change or clear a selection. Writes affect local metadata/receipts only;
+none of these tools read source bytes, write files, run subprocesses, contact
+providers or generate paid media. Annotations never grant authority.
+
+Subject writes share the existing local mutation namespace, extended from eight
+to eleven operations through `subject_requests`; timeline/reference/generation/
+export namespaces are separate. Recover uncertain results with the original
+operation/full input/key, never a new key or automatic POST retry. Exact replay
+is historical and ownership-checked. Malformed success or generic 4xx stays
+unknown without matching operation/project/request rollback proof.
+
+UI durable preparation adds only these three writes under `subject:mutation`,
+bringing its explicit allowlist to fifteen. External calls do not automatically
+create UI tasks, and no generic task-execution MCP tool is added. This external
+catalog does not expand built-in Agent tools/context. Subject/style bindings are
+local planning only: actual `first_frame` still uses `reference_attach`;
+last-frame/motion and identity-lock guarantees are unsupported. No Blender or
+live-generation step is needed. See [scope and current release gate](SUBJECT-LIBRARY.md).

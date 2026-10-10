@@ -10,6 +10,7 @@ import {ToolAnnotationsSchema} from '@modelcontextprotocol/sdk/types.js';
 import {schemas, inspectionArgumentSchemas, inspectionSchemas, operationEffects,
   operationEffect, assertOperationEffectCoverage, effectAnnotations, parse} from '@mioon/contracts';
 import {operationDefinition, discoverSchema, discoveryEffects, jsonSchema} from '@mioon/client';
+import {readToolRequestFields, chatToolAccumulator, responseToolSnapshot} from '../packages/business/src/agent/tool-wire.mjs';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const inspections = ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect'];
@@ -68,7 +69,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
     assert.throws(() => operationEffect(operation), /not defined/);
   assert.throws(() => effectAnnotations(undefined), /Explicit operation effects/);
   assert.throws(() => effectAnnotations({readOnly:true}), /Explicit operation effects/);
-  const readOnly = new Set([...inspections, 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'timeline.export.preflight']);
+  const readOnly = new Set([...inspections, 'subject.list', 'subject.version.list', 'subject.binding.list', 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'timeline.export.preflight']);
   for (const [operation, effect] of Object.entries(operationEffects)) {
     assert.equal(Object.isFrozen(effect), true);
     assert.equal(effect.notes.length > 20, true);
@@ -160,4 +161,23 @@ test('offline CLI schema and official MCP list/schema expose identical inspectio
     assert.deepEqual(tools.find(tool => tool.name === `mioon_${name}`).annotations, effectAnnotations(discoveryEffects[name]));
   assert.equal((await call('mioon_doctor')).error.code, 'CONNECTION_CONFIG_ERROR');
   assert.equal((await call('mioon_capabilities')).error.code, 'CONNECTION_CONFIG_ERROR');
+});
+
+// Public service effects describe I/O, not built-in model authority.
+test('shared subject operations cannot enter either protocol built-in Agent catalog or parser', () => {
+  const readNames = ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect'];
+  const operations = Object.keys(schemas).filter(name => name.startsWith('subject.'));
+  assert.equal(operations.length, 6);
+  for (const scope of [undefined, 'selected_shot_edit']) {
+    const request = {phase:'request', ...(scope ? {scope} : {})};
+    for (const protocol of ['chat_completions', 'responses']) {
+      const fields = readToolRequestFields({presetId:'openai', protocol}, request);
+      assert.deepEqual(fields.tools.map(tool => protocol === 'responses' ? tool.name : tool.function.name),
+        scope ? ['mioon_propose_shot_update'] : readNames);
+    }
+    for (const operation of operations) for (const name of [operation, `mioon_${operation.replaceAll('.', '_')}`]) {
+      assert.throws(() => chatToolAccumulator(request).add([{index:0, id:'call-subject', type:'function', function:{name, arguments:'{}'}}]), {code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
+      assert.throws(() => responseToolSnapshot({id:'item-subject', call_id:'call-subject', type:'function_call', name, arguments:'{}', status:'completed'}, 'completed', request), {code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
+    }
+  }
 });

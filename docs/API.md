@@ -374,8 +374,8 @@ accepts `neutral`, `favorite` or `rejected` and returns the strict single-item
 shape above. `expectedRevision` is the disposition's independent revision,
 starting at `0`; every new accepted set advances it by one. Resetting to neutral
 retains the row and revision. The 8–200-character request key is required and
-shares collision protection with `asset.range.set` and the original six local
-mutations. Exact historical replay precedes current revision checks, after
+shares collision protection with `asset.range.set`, the original six local
+mutations and the three subject writes: eleven local operations in total. Exact historical replay precedes current revision checks, after
 current ownership validation; changed reuse conflicts.
 
 Only disposition metadata and its receipt are written. Asset bytes and existing
@@ -577,11 +577,14 @@ therefore never automatically clears an unknown render receipt. Reference errors
 reference recovery now also validates operation-bound acknowledgements and retained ownership; see [REFERENCE-RECOVERY.md](REFERENCE-RECOVERY.md). See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md) for scope and session-storage limits.
 
-### Durable UI edit tasks (twelve-operation slice)
+### Durable UI edit tasks (fifteen-operation subject extension)
 
-The authenticated `/api/tasks` route family coordinates only the ten timeline
-metadata edits (all timeline mutations except `timeline.render`) and
-`reference.attach` / `reference.detach`. It is a UI recovery control plane, not
+The authenticated `/api/tasks` route family has an explicit fifteen-operation
+allowlist: ten timeline metadata edits (all timeline mutations except
+`timeline.render`), `reference.attach` / `reference.detach`, and the three subject
+writes listed below. The subject extension is implemented; focused checks, builds
+and Linux native acceptance passed, with the independent full release gate passed.
+See [its current gate](SUBJECT-LIBRARY.md). It is a UI recovery control plane, not
 an additional generic RPC, MCP tool or Agent capability. The underlying shared
 business handlers, request schemas and exact response journals remain unchanged.
 See [TASK-RECOVERY.md](TASK-RECOVERY.md) for implementation/acceptance status.
@@ -616,8 +619,82 @@ Capacity refusal occurs before business dispatch and is distinct from disk full.
 No silent eviction is implemented; this is not a bound on SQLite/WAL disk size.
 GET/list cannot initialize timelines, execute recovery or clear pending state.
 
-The eight local canvas/asset edits, rendering and generation retain their existing
-UI recovery/storage paths. External callers still use their existing operation
-and original key directly; this route family does not upgrade their request
+The original eight local canvas/asset edits, rendering and generation retain their
+existing UI recovery/storage paths. Only the three new subject writes join durable
+admission, in the separate `subject:mutation` lane. External callers still use
+their existing operation and original key directly; this route family does not upgrade their request
 persistence automatically. No task input contains credentials or media bytes;
 local task parameters are ordinary SQLite data, not vault-encrypted.
+
+## Local versioned subject library
+
+Status: implemented; focused checks, final web/desktop builds and Linux native
+acceptance passed. The independent full-suite release gate passed.
+These strict shared contracts are specified in
+[SUBJECT-LIBRARY.md](SUBJECT-LIBRARY.md) and
+`packages/contracts/src/subjects.mjs`. They add local planning metadata only.
+
+| Operation | Strict RPC input |
+| --- | --- |
+| `subject.create` | `{projectId,kind,name,assetId,requestId}` |
+| `subject.version.add` | `{projectId,subjectId,expectedRevision,assetId,requestId}` |
+| `subject.binding.set` | `{projectId,shotId,subjectId,role,subjectVersionId,expectedRevision,expectedSubjectRevision,requestId}` |
+| `subject.list` | `{projectId,limit?,cursor?}` |
+| `subject.version.list` | `{projectId,subjectId,limit?,cursor?}` |
+| `subject.binding.list` | `{projectId,shotId?,subjectId?,limit?,cursor?}` with exactly one filter |
+
+Record IDs are UUIDs. `kind` is `character|product|location|look`; name is
+nonblank, 1–120 characters. Every version fixes one existing owned managed
+PNG/JPEG/WebP asset, without imports, byte copies or caller-supplied provenance.
+All three writes require an 8–200-character stable `requestId`. Version-add
+checks the positive subject revision; same-head asset rejects without a write.
+Binding-set checks its independent revision (0 only if never created) plus the
+positive current `expectedSubjectRevision`. `role` is `style` for `look`,
+`subject` for other kinds. At most eight active bindings are allowed per shot.
+
+`subjectVersionId` is required and nullable: a UUID pins that exact owned subject
+version, and `null` clears while retaining a revisioned tombstone. Every fresh
+set saves the current head as `reviewedHeadVersionId`. `needsReview` is derived
+from active selection plus a changed head, not selected-version inequality.
+Explicitly adopting latest or keeping the old selected version while acknowledging
+the latest head both clear that review flag; no choice propagates automatically.
+
+Create/version-add return a subject with
+`id,projectId,kind,name,revision,headVersionId,headVersion,createdAt,updatedAt`.
+The frozen `headVersion` (also a version-list item) contains
+`id,projectId,subjectId,number,assetId,sha256,mimeType,width,height,provenance,createdAt`.
+Backend-derived `provenance` has `kind` and nullable local
+`versionId,shotId,jobId`, never provider task IDs, paths or URLs. The frozen
+`sha256` comes from the existing asset record; subject operations do not read,
+rehash or probe media bytes.
+Binding-set/list return
+`id,projectId,shotId,subjectId,role,revision,subjectVersionId,reviewedHeadVersionId,headVersionId,subjectRevision,needsReview,createdAt,updatedAt`.
+Lists return `{projectId,items,nextCursor}`; page size defaults to 20, maximum 50,
+cursor maximum 768 characters. Binding-list includes cleared rows. Cursors bind
+operation/project/filter/limit and expire after backend restart. Pages are not
+a cross-request frozen snapshot. All lists are non-creating metadata reads.
+
+Subject receipts atomically join the existing eight-operation local mutation key
+namespace as operations nine through eleven; timeline/reference/generation/export
+namespaces remain separate. Exact replay returns the original validated response
+before new revision checks, after current ownership checks. Keep full input/key
+after uncertain or malformed replies and refresh current state after replay.
+Only matching operation/project/request `not_applied` rollback proof resolves a
+fresh rejected intent; no generic 4xx or automatic retry does. Subject input and
+receipt caps are 8 KiB and 16 KiB respectively.
+
+The three writes also enter the UI's explicit durable allowlist under
+`subject:mutation`, with prepare-before-dispatch and restart discovery but no
+automatic execution. Task limits remain 8 KiB input, 16 KiB reserved per row,
+4,096 identities and 64 MiB logical total; capacity refuses before dispatch and
+no unresolved identity is silently evicted. Schema 15 adds subject tables and
+transactionally rebuilds `edit_tasks` while preserving old bytes/sequence/guards;
+eight independent schema-preservation cases, focused checks, final builds and
+Linux native acceptance passed. The independent full release gate passed.
+Local SQLite metadata is not
+vault-encrypted and must contain no secrets.
+
+No shot revision, first-frame reference, timeline, frozen generation snapshot,
+provider input, built-in Agent catalog/context or paid generation changes.
+`reference.attach` remains the separate actual `first_frame` path; last-frame
+and motion support are future work. See [subject scope and recovery](SUBJECT-LIBRARY.md).

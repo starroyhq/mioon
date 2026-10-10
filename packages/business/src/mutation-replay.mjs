@@ -1,7 +1,7 @@
-import {AppError,publicValue,LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
+import {AppError,publicValue,LOCAL_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {isAsyncFunction,isPromise} from 'node:util/types';
 
-const definite=new Set(['NOT_FOUND','REVISION_CONFLICT','INVALID_ORDER','ASSET_REQUIRED','INVALID_NODE_ASSET','REFERENCE_CONNECTED','SOURCE_BOUNDS','SOURCE_RANGE_UNSUPPORTED','RANGE_REVISION_LIMIT','DISPOSITION_REVISION_LIMIT']);
+const definite=new Set(['NOT_FOUND','REVISION_CONFLICT','INVALID_ORDER','ASSET_REQUIRED','INVALID_NODE_ASSET','REFERENCE_CONNECTED','SOURCE_BOUNDS','SOURCE_RANGE_UNSUPPORTED','RANGE_REVISION_LIMIT','DISPOSITION_REVISION_LIMIT','SUBJECT_NO_CHANGE','SUBJECT_REVISION_LIMIT','SUBJECT_BINDING_LIMIT','SUBJECT_ROLE_MISMATCH']);
 function synchronous(callback,...args) {
  const result=callback(...args);
  if(result&&typeof result.then==='function'){
@@ -22,35 +22,51 @@ export function createMutationReplay(store,{canonical}) {
   if([resolve,validate,apply,replay,verify].some(callback=>callback&&isAsyncFunction(callback)))
    throw new TypeError('Mutation transactions require synchronous callbacks');
   const {requestId,...fields}=input;
-  const receiptTable=operation==='asset.disposition.set'?'asset_disposition_requests':operation==='asset.range.set'?'asset_range_requests':'mutation_requests';
+  const subjectMutation=SUBJECT_MUTATION_OPERATIONS.includes(operation);
+  const receiptTable=subjectMutation?'subject_requests':operation==='asset.disposition.set'?'asset_disposition_requests':operation==='asset.range.set'?'asset_range_requests':'mutation_requests';
   if(operation==='asset.range.set'&&requestId===undefined)throw new AppError('VALIDATION_ERROR','素材范围保存需要稳定请求 ID');
   if(operation==='asset.disposition.set'&&requestId===undefined)throw new AppError('VALIDATION_ERROR','素材标记保存需要稳定请求 ID');
+  if(subjectMutation&&requestId===undefined)throw new AppError('VALIDATION_ERROR','主体变更需要稳定请求 ID');
   const canonicalInput=requestId===undefined?null:canonical(fields);
   let absent=false;
   try {
    return tx(()=>{
+    // Subject replay must pass ownership gates before any retained receipt is used.
+    const subjectContext=subjectMutation?synchronous(resolve):null;
+    const receiptIdentity=subjectMutation?`CASE WHEN length(CAST(operation AS BLOB)) BETWEEN 1 AND 80 THEN operation END AS operation,CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId`:'operation,projectId';
+    const legacyReceiptColumns=subjectMutation?`
+     CASE WHEN length(CAST(operation AS BLOB)) BETWEEN 1 AND 80 THEN operation END AS operation,
+     CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,
+     CASE WHEN length(CAST(canonicalInput AS BLOB)) BETWEEN 1 AND 8192 THEN canonicalInput END AS canonicalInput,
+     CASE WHEN length(CAST(response AS BLOB)) BETWEEN 1 AND 16384 THEN response END AS response`:'operation,projectId,canonicalInput,response';
     const receipts=requestId===undefined?[]:db.prepare(`
-     SELECT 'mutation_requests' AS receiptTable,operation,projectId,canonicalInput,response FROM mutation_requests WHERE requestId=?
+     SELECT 'mutation_requests' AS receiptTable,${legacyReceiptColumns} FROM mutation_requests WHERE requestId=?
      UNION ALL
-     SELECT 'asset_range_requests' AS receiptTable,operation,projectId,canonicalInput,response FROM asset_range_requests WHERE requestId=?
+     SELECT 'asset_range_requests' AS receiptTable,${legacyReceiptColumns} FROM asset_range_requests WHERE requestId=?
      UNION ALL
-     SELECT 'asset_disposition_requests' AS receiptTable,operation,projectId,
+     SELECT 'asset_disposition_requests' AS receiptTable,${receiptIdentity},
       CASE WHEN length(CAST(canonicalInput AS BLOB)) BETWEEN 1 AND 4096 THEN canonicalInput END AS canonicalInput,
       CASE WHEN length(CAST(response AS BLOB)) BETWEEN 1 AND 4096 THEN response END AS response
       FROM asset_disposition_requests WHERE requestId=?
-    `).all(requestId,requestId,requestId);
+     UNION ALL
+     SELECT 'subject_requests' AS receiptTable,${receiptIdentity},
+      CASE WHEN length(CAST(canonicalInput AS BLOB)) BETWEEN 1 AND 8192 THEN canonicalInput END AS canonicalInput,
+      CASE WHEN length(CAST(response AS BLOB)) BETWEEN 1 AND 16384 THEN response END AS response
+      FROM subject_requests WHERE requestId=?
+    `).all(requestId,requestId,requestId,requestId);
     absent=requestId!==undefined&&receipts.length===0;
     // Duplicate presence and a receipt in the wrong companion fail closed even
     // if a damaged database presents otherwise identical operation/input bytes.
     if(receipts.length>1)conflict(requestId);
     const prior=receipts[0];
     if(prior&&(prior.receiptTable!==receiptTable||prior.operation!==operation||prior.canonicalInput!==canonicalInput))conflict(requestId);
-    const context=synchronous(resolve);
+    const context=subjectContext||synchronous(resolve);
     if(prior&&prior.projectId!==context.projectId)conflict(requestId);
     if(validate)synchronous(validate,context);
     if(prior){
      let response;
      try{response=JSON.parse(prior.response);}catch(error){
+      if(subjectMutation)throw new AppError('INVALID_SUBJECT_RECORD','主体或关联状态不一致，请先检查项目',409);
       if(operation==='asset.disposition.set')throw new AppError('INVALID_ASSET_DISPOSITION_RECORD','素材标记或关联状态不一致，请先检查项目',409);
       throw error;
      }
@@ -76,8 +92,8 @@ export function createMutationReplay(store,{canonical}) {
    // An asset metadata scope denial is deliberately indistinguishable from absence. Keep
    // client recovery state on that error; preserve the original six semantics.
    if(absent&&!db.isTransaction&&error instanceof AppError&&definite.has(error.code)&&
-      !(['asset.range.set','asset.disposition.set'].includes(operation)&&error.code==='NOT_FOUND'))
-    error.details={...error.details,mutationOutcome:'not_applied',requestId};
+      !((['asset.range.set','asset.disposition.set'].includes(operation)||subjectMutation)&&error.code==='NOT_FOUND'))
+    error.details={...error.details,mutationOutcome:'not_applied',requestId,...(subjectMutation?{operation,projectId:input.projectId}:{})};
    throw error;
   }
  };

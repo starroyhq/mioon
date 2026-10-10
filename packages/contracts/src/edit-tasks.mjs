@@ -1,11 +1,13 @@
 import {TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse} from './timeline-acknowledgement.mjs';
 import {REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse} from './reference-acknowledgement.mjs';
+import {SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse} from './subjects.mjs';
 import {schemas} from './index.mjs';
 
 // Local UI coordination only. These are not RPC/model-tool operations.
 export const DURABLE_EDIT_OPERATIONS = Object.freeze([
   ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render'),
   ...REFERENCE_MUTATION_OPERATIONS,
+  ...SUBJECT_MUTATION_OPERATIONS,
 ]);
 export const EDIT_TASK_LIMITS = Object.freeze({inputBytes: 8192, rowBytes: 16384,
   rows: 4096, bytes: 64 * 1024 * 1024, pageSize: 20, maxPageSize: 50});
@@ -16,8 +18,17 @@ const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const timestamp = value => typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value));
 const encoder = new TextEncoder();
-export const editTaskLane = operation => DURABLE_EDIT_OPERATIONS.includes(operation)
-  ? operation.startsWith('timeline.') ? 'timeline:mutation' : 'reference:mutation' : null;
+const laneByOperation = Object.freeze(Object.fromEntries([
+  ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render').map(operation => [operation, 'timeline:mutation']),
+  ...REFERENCE_MUTATION_OPERATIONS.map(operation => [operation, 'reference:mutation']),
+  ...SUBJECT_MUTATION_OPERATIONS.map(operation => [operation, 'subject:mutation']),
+]));
+export const editTaskLane = operation => Object.hasOwn(laneByOperation, operation) ? laneByOperation[operation] : null;
+const responseValidators = Object.freeze({
+  'timeline:mutation': isTimelineMutationResponse,
+  'reference:mutation': isReferenceMutationResponse,
+  'subject:mutation': isSubjectMutationResponse,
+});
 export function isEditTask(value) {
   try {
     return exact(value, ['id', 'projectId', 'operation', 'input', 'requestId', 'digest', 'lane', 'status', 'revision', 'createdAt', 'updatedAt', 'acknowledged', 'origin'], ['errorCode']) &&
@@ -34,8 +45,7 @@ export function isEditTask(value) {
 export function isEditTaskEnvelope(value) {
   return exact(value, ['task', 'instanceId'], ['result']) && uuid(value.instanceId) && isEditTask(value.task) &&
     (!Object.hasOwn(value, 'result') || value.task.status === 'applied' &&
-      (value.task.lane === 'timeline:mutation' ? isTimelineMutationResponse(value.task.operation, value.task.input, value.result)
-        : isReferenceMutationResponse(value.task.operation, value.task.input, value.result)));
+      responseValidators[value.task.lane]?.(value.task.operation, value.task.input, value.result));
 }
 export function isEditTaskListEnvelope(value) {
   return exact(value, ['items', 'nextCursor', 'instanceId']) && uuid(value.instanceId) && Array.isArray(value.items) &&

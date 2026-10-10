@@ -103,7 +103,8 @@ Set `neutral`, `favorite` or `rejected` using the independent disposition revisi
 and a required caller-retained request key. Neutral reset keeps the revision;
 rejection does not delete media or remove existing clips. Replay an uncertain
 set with exactly the same key/input, then list to learn latest state. These keys
-share collision checks with source-range set and the six local canvas mutations.
+share collision checks with source-range set, the original six local canvas
+mutations and the three subject writes: eleven local operations in total.
 Browser pending receipts are session-only; external callers must retain recovery
 identity for as long as needed. Inspection DTOs and built-in Agent permissions
 are unchanged. See [operations.md](references/operations.md).
@@ -206,10 +207,62 @@ See [reference recovery](../../docs/REFERENCE-RECOVERY.md).
 ### Durable UI task scope
 
 The workbench can coordinate persisted recovery for ten timeline edits excluding
-`timeline.render`, plus `reference.attach` and `reference.detach`; consult
+`timeline.render`, plus `reference.attach` and `reference.detach`. The implemented
+subject extension adds exactly `subject.create`, `subject.version.add` and
+`subject.binding.set`, for fifteen operations under three explicit lanes; consult
 [scope and acceptance](../../docs/TASK-RECOVERY.md). This adds no generic Agent/MCP
 execution authority. External tools still require their exact original arguments
 and key. Do not infer that all edits, renders or paid submissions receive this
 new UI cold-start recovery. A prepared task is an intent awaiting confirmation,
 not proof that no other interface used its key. Reading or importing a task never
 executes it; only an explicit user recovery can continue its stored operation.
+
+## Local versioned subject planning
+
+The narrow subject increment is implemented. Focused checks, final web/desktop
+builds and Linux native acceptance passed; the independent full-suite release gate
+passed. Check [its current gate](../../docs/SUBJECT-LIBRARY.md) and live
+`schema` discovery.
+For an authorized local planning edit, use `subject create`, `subject version add`
+and `subject binding set` (MCP names replace spaces with underscores). Read with
+`subject list`, `subject version list` and `subject binding list`. Every call
+requires the chosen `projectId`; the last read requires exactly one `shotId` or
+`subjectId`. Lists default to 20, maximum 50, return `{projectId,items,nextCursor}`
+and include cleared binding tombstones. Pass only the returned cursor unchanged
+with the same scope/filter/limit; restart invalidates cursors, and pages do not
+form a frozen snapshot.
+
+Create takes `kind`, nonblank `name` up to 120 characters, an existing managed
+PNG/JPEG/WebP `assetId` and required `requestId`. Kinds are `character`, `product`,
+`location`, `look`. Version-add takes `subjectId`, current `expectedRevision`,
+`assetId` and required key. It freezes one existing image's metadata and local
+provenance, including the recorded asset hash without rehashing or probing media.
+It does not import/copy bytes. Names/kinds cannot be edited, versions
+cannot be deleted, and no caller-supplied provenance is accepted.
+
+Binding-set requires `shotId,subjectId,role,subjectVersionId,expectedRevision,
+expectedSubjectRevision,requestId`. Use `style` only for `look`, `subject` for
+other kinds. At most eight active bindings per shot. Binding revision is
+independent of shot revision; 0 means the exact binding identity never existed.
+`expectedSubjectRevision` must be the current subject revision. A selected version
+UUID pins it; explicit `null` unlinks while retaining its revisioned tombstone.
+A new head derives `needsReview` without replacing the old selection. Follow the
+user's explicit choice: adopt latest, select a historical version, or keep the old
+one and acknowledge the latest head; ask if that choice has not been provided. Explicit set saves `reviewedHeadVersionId` at
+the current head; no hidden propagation is allowed.
+
+Retain the complete original request and stable 8–200-character key after an
+unknown outcome. Subject writes share the eleven-operation local mutation
+namespace; timeline/reference/generation/export remain separate. Replay exact
+inputs, validate the historical acknowledgement, then refresh. Generic 4xx,
+malformed success and ownership failures do not settle prior uncertainty without
+matching operation/project/request rollback proof. Never automatically retry or
+invent a replacement key. UI preparation adds these three writes to its explicit
+fifteen-operation durable allowlist in `subject:mutation`; external calls are not
+automatically persisted as UI tasks. Capacity failure precedes dispatch, with no
+silent eviction. Metadata is plain local SQLite, not vault-encrypted; no secrets.
+
+These bindings are planning-only. They never become provider inputs, change shot
+first frames, promise identity locking or authorize generation. Continue using
+`reference attach` for an actual `first_frame`; last-frame/motion support is
+future work. No built-in Agent catalog/context expansion or Blender dependency.

@@ -31,8 +31,8 @@ async function fixture(t,options={}) {
  };return f;
 }
 
-test('FIRST12 is exact and prepare is durable/noncreating, duplicate identity is retained',async t=>{
- const f=await fixture(t);assert.equal(DURABLE_EDIT_OPERATIONS.length,12);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.render'),false);
+test('legacy FIRST12 prefix remains in the fifteen-operation scope; prepare is durable/noncreating and preserves duplicate identity',async t=>{
+ const f=await fixture(t);assert.equal(DURABLE_EDIT_OPERATIONS.length,15);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.render'),false);
  f.store.db.prepare('DELETE FROM timelines WHERE projectId=?').run(f.project.id);
  const input={projectId:f.project.id,expectedRevision:1,requestId:randomUUID(),kind:'audio'},before=f.snapshot();
  const saved=f.prepare('timeline.track.add',input);assert.equal(saved.task.status,'prepared');assert.equal(f.snapshot(),before);assert.equal(f.calls,0);
@@ -177,7 +177,7 @@ test('all FIRST12 operations use the same retained service receipts',async t=>{
  const attached=await f.execute(attach);assert.equal(attached.task.status,'applied');f.ack(attached.task);seen.add('reference.attach');
  const detach=f.prepare('reference.detach',{projectId:f.project.id,edgeId:attached.result.edge.id,expectedShotRevision:attached.result.shot.revision,requestId:randomUUID()});
  const detached=await f.execute(detach);assert.equal(detached.task.status,'applied');f.ack(detached.task);seen.add('reference.detach');
- assert.deepEqual(seen,new Set(DURABLE_EDIT_OPERATIONS));assert.equal(f.calls,12);
+ assert.deepEqual(seen,new Set(DURABLE_EDIT_OPERATIONS.slice(0,12)));assert.equal(f.calls,12);
  for(const {saved,result} of receipts)assert.deepEqual(f.tasks.reconcile(f.request(saved.task)).result,result.result);
  assert.equal(f.store.db.prepare('SELECT count(*) n FROM timeline_requests').get().n,10);
  assert.equal(f.store.db.prepare('SELECT count(*) n FROM reference_requests').get().n,2);

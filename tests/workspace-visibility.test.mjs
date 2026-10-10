@@ -62,6 +62,7 @@ function createHarness(file, exportName = 'default') {
     './reference-connections.js': { referenceForShot: () => null },
     './generation-settings.js': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String },
     './ProviderSettings.jsx': { default: 'ProviderSettings', __esModule: true },
+    './ShotSubjectBindings.jsx': { default: 'ShotSubjectBindings', __esModule: true },
     './WorkspaceControls.jsx': { WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip' },
     './ReferenceConnections.jsx': { ReferenceSourcePanel: 'ReferenceSourcePanel', BoundReference: 'BoundReference' },
   };

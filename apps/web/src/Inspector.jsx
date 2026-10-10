@@ -15,6 +15,7 @@ import { activeJob, assetUrl, statusText, jobStatusText, outputReviewRequired, o
 import { Media } from './Nodes.jsx';
 import { dragAsset } from './Timeline.jsx';
 import ProviderSettings from './ProviderSettings.jsx';
+import ShotSubjectBindings from './ShotSubjectBindings.jsx';
 import { ReferenceSourcePanel, BoundReference } from './ReferenceConnections.jsx';
 import { referenceForShot } from './reference-connections.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
@@ -22,7 +23,7 @@ import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 
 const editable = (s) => ({ title: s.title, prompt: s.prompt || '', referenceAssetIds: s.referenceAssetIds || [], duration: s.duration || 2, aspectRatio: s.aspectRatio || '9:16', parameters: s.parameters || {} });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-export default function Inspector({ shot, node, project, assets, versions, jobs, providers, tab, setTab, busy, onSave, onNodeSave, onGenerate, onSelectVersion, onCompare, onOpenJobs, onDirtyChange, onAddVersion, generationOptions = {}, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect, highlightedVersionId }) {
+export default function Inspector({ subjects, subjectBlocked, shot, node, project, assets, versions, jobs, providers, tab, setTab, busy, onSave, onNodeSave, onGenerate, onSelectVersion, onCompare, onOpenJobs, onDirtyChange, onAddVersion, generationOptions = {}, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect, highlightedVersionId }) {
   const confirm = useConfirmation();
   const initial = shot ? editable(shot) : { label: node?.label || '', text: node?.text || '' };
   const [draft, setDraft] = useState(initial);
@@ -143,6 +144,7 @@ export default function Inspector({ shot, node, project, assets, versions, jobs,
       <div className="section-eyebrow">SHOT {String(shot.orderIndex + 1).padStart(2, '0')}<Badge className={`small-badge ${dirty ? 'warn' : 'neutral'}`}>{dirty ? '未保存' : '已同步'}</Badge></div>
       <Label className="field-label" htmlFor="shot-title">镜头名称</Label><Input id="shot-title" data-testid="shot-title" value={draft.title} onChange={e => edit('title', e.target.value)} maxLength={150} />
       <Label className="field-label" htmlFor="shot-prompt"><span>画面描述</span><span className="optional">PROMPT</span></Label><Textarea id="shot-prompt" data-testid="shot-prompt" className="prompt-input" rows={6} maxLength={5000} value={draft.prompt} onChange={e => edit('prompt', e.target.value)} placeholder="描述主体、动作、环境与镜头运动。例如：镜头缓慢推近，晨光穿过薄雾…" /><p className="input-hint">描述越具体，越接近你心中的画面。{capabilities?.maxPromptLength && <span> {draft.prompt.length} / {capabilities.maxPromptLength} 字符</span>}</p>
+      {subjects && <ShotSubjectBindings shot={shot} subjects={subjects} assets={assets} blocked={subjectBlocked} onShowTasks={onOpenJobs} />}
       <ProviderSettings providers={providers} provider={provider} model={model} capabilities={capabilities} onChange={updateGeneration} />
       <Label className="field-label" htmlFor="generation-input-mode">生成方式</Label>
       <WorkbenchSelect id="generation-input-mode" data-testid="input-mode-select" disabled={referenceLocked} value={inputMode} onChange={e => changeInputMode(e.target.value)}>{inputModes.map(mode => <option key={mode} value={mode}>{inputModeLabel(mode)}{capabilities?.inputModes?.includes(mode) ? '' : ' · 不支持'}</option>)}</WorkbenchSelect>

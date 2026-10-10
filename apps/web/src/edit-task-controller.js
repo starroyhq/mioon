@@ -1,9 +1,9 @@
-import { EDIT_TASK_LIMITS } from '@mioon/contracts';
+import { EDIT_TASK_LIMITS, editTaskLane } from '@mioon/contracts';
 import { createEditTaskClient, isDurableEditOperation, taskInputKey, taskProtocolError, validateTaskEnvelope, validateTaskList } from './edit-task-client.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const terminal = task => ['applied', 'not_applied'].includes(task.status);
-const laneFor = operation => operation.startsWith('timeline.') ? 'timeline:mutation' : 'reference:mutation';
+const laneFor = editTaskLane;
 const immutableFields = ['id', 'projectId', 'operation', 'requestId', 'digest', 'lane', 'origin', 'createdAt'];
 function frozen(value) {
   const copy = structuredClone(value);
@@ -11,7 +11,7 @@ function frozen(value) {
   return freeze(copy);
 }
 
-// No renderer storage is the authority for these twelve operations. Loading is
+// No renderer storage is the authority for these fifteen operations. Loading is
 // read-only, and the project remains fenced until every bounded page is known.
 export function createEditTaskController({ client = createEditTaskClient(), onChange = () => {} } = {}) {
   const projects = new Map();

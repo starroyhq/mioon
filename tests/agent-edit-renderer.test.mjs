@@ -241,10 +241,18 @@ test('actual composer previews saved title/prompt, requires distinct edit mode a
 test('App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const handler = app.match(/onApplied=\{projectId => \{([^}]+)\}\}/)?.[1]; assert.ok(handler); assert.match(handler, /currentProject.current === projectId/); assert.match(handler, /refresh\(projectId\)/);
-  assert.doesNotMatch(handler, /setShotDirty|setClipDirty|setInspectorEpoch|saveShot|setSelected|rpc/);
+  assert.doesNotMatch(handler, /setShotDirty|setClipDirty|setSourceDirty|setSubjectDirty|setInspectorEpoch|saveShot|setSelected|rpc/);
   const calls = [], apply = Function('currentProject', 'refresh', `return projectId => { ${handler} };`)({ current: projectId }, id => calls.push(id));
   apply(id(90)); assert.equal(calls.length, 0); apply(projectId); assert.deepEqual(calls, [projectId]);
-  assert.match(app, /<Inspector key=\{`\$\{data.project\?\.id\}:\$\{selectedId \|\| 'empty'\}:\$\{inspectorEpoch\}`\}/);
+  // Prop order is irrelevant; evaluate the actual key to preserve remount fences.
+  const keyExpression = app.match(/<Inspector\b[^>]*?\bkey=\{(`[^`]+`)\}/)?.[1];
+  assert.equal(keyExpression, "`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`");
+  const keyFor = Function('data', 'selectedId', 'inspectorEpoch', `return ${keyExpression};`);
+  const key = keyFor({project:{id:projectId}, shots:[]}, shotId, 3);
+  assert.equal(keyFor({project:{id:projectId}, shots:[{id:shotId, revision:5}], subjects:[{revision:9}]}, shotId, 3), key);
+  assert.notEqual(keyFor({project:{id:id(90)}}, shotId, 3), key);
+  assert.notEqual(keyFor({project:{id:projectId}}, id(91), 3), key);
+  assert.notEqual(keyFor({project:{id:projectId}}, shotId, 4), key);
   const inspector = readFileSync(new URL('../apps/web/src/Inspector.jsx', import.meta.url), 'utf8'); assert.match(inspector, /if \(!dirty\) \{ setDraft\(latest\)/); assert.match(inspector, /else if \(record.revision !== baseRevision\) setConflict\(true\)/);
 });
 

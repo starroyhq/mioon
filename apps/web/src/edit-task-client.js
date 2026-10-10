@@ -1,5 +1,5 @@
 import { ApiError } from './api.js';
-import { DURABLE_EDIT_OPERATIONS, isEditTaskEnvelope, isEditTaskListEnvelope, isTimelineMutationResponse, isReferenceMutationResponse } from '@mioon/contracts';
+import { DURABLE_EDIT_OPERATIONS, isEditTaskEnvelope, isEditTaskListEnvelope } from '@mioon/contracts';
 
 export const isDurableEditOperation = operation => DURABLE_EDIT_OPERATIONS.includes(operation);
 export const taskInputKey = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
@@ -14,12 +14,7 @@ export function validateTaskEnvelope(value, expected = {}) {
   for (const [field, actual] of Object.entries({ projectId: task.projectId, taskId: task.id, operation: task.operation, digest: task.digest, origin: task.origin }))
     if (expected[field] !== undefined && expected[field] !== actual) throw taskProtocolError();
   if (expected.input && taskInputKey(expected.input) !== taskInputKey(task.input)) throw taskProtocolError();
-  if (Object.hasOwn(value, 'result')) {
-    const valid = task.status === 'applied' && (task.operation.startsWith('timeline.')
-      ? isTimelineMutationResponse(task.operation, task.input, value.result)
-      : isReferenceMutationResponse(task.operation, task.input, value.result));
-    if (!valid) throw taskProtocolError();
-  }
+  // Shared envelope validation explicitly selects the operation family's ACK.
   return value;
 }
 export function validateTaskList(value, projectId) {

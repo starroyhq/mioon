@@ -21,6 +21,12 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  'subject.create': define({...localAdd,idempotent:true,notes:'Creates a project-scoped subject and frozen managed-image reference version with required exact replay. Reads only existing asset metadata and lineage; no media reads, provider calls, shot or timeline changes.'}),
+  'subject.version.add': define({...localAdd,idempotent:true,notes:'Adds one immutable managed-image version and advances the subject head. Existing shot bindings retain their chosen version; review flags are derived without fan-out writes. Same-head asset rejects without writes.'}),
+  'subject.binding.set': define({...replayEdit,notes:'Explicitly attaches, changes, acknowledges or unlinks a subject/style binding under independent binding and subject revisions. Unlink retains a tombstone. Pins selected versions and never edits shot first-frame references, generation snapshots or timelines.'}),
+  'subject.list': define({...read,notes:'Reads a bounded project-scoped subject page with frozen current-version metadata; does not create rows or read media.'}),
+  'subject.version.list': define({...read,notes:'Reads a bounded project/subject-scoped immutable version page, including older selections; no media paths or URLs.'}),
+  'subject.binding.list': define({...read,notes:'Reads a bounded page scoped by exactly one shot or subject; retains unlink tombstones and derives review flags without updates.'}),
   'project.inspect': define({...read,notes:'Reads bounded, allowlisted project metadata; never initializes a timeline.'}),
   'asset.inspect': define({...read,notes:'Reads a bounded project-scoped metadata page; never reads or probes media files.'}),
   'shot.inspect': define({...read,notes:'Reads a bounded project-scoped metadata page with bounded prompt excerpts and truncation indication; omits media.'}),

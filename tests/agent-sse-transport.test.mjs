@@ -270,10 +270,22 @@ test('real asynchronous response error and reader disconnect detach without busi
 });
 
 test('real paused socket stall deadline destroys transport even without another model event', {timeout: 10000}, async t => {
+  // Socket acceptance and kernel saturation have no 50ms wall-clock guarantee.
+  // Freeze timer progression until a real paused receiver causes lasting
+  // write(false). Network I/O, writableLength, drain and close remain real.
+  t.mock.timers.enable({apis: ['setTimeout', 'setInterval']});
   const f = await fixture(t, {stallTimeoutMs: 50, heartbeatMs: 5}), {res} = await f.paused(); await saturate(f, res);
+  assert.equal(res.writableNeedDrain, true, 'actual socket backpressure is a required precondition');
+  assert.equal(res.destroyed, false); assert.equal(res.closed, false);
+  assert.ok(res.writableLength > 0); assert.ok(res.maxPending <= CHAT_SSE_LIMITS.maxBufferedBytes);
   const written = res.sentFrames.length;
-  await until(() => res.closed, 'bounded stalled write cleanup');
-  assert.equal(res.sentFrames.length, written, 'heartbeats cannot extend the blocked backlog');
+  t.mock.timers.tick(49);
+  assert.equal(res.destroyed, false, 'stall deadline must not fire early');
+  assert.equal(res.sentFrames.length, written, 'heartbeats cannot enlarge or refresh the blocked backlog');
+  t.mock.timers.tick(1);
+  assert.equal(res.destroyed, true, 'the 50ms transport deadline destroys without another model event');
+  await until(() => res.closed, 'actual destroyed socket close and listener cleanup');
+  assert.equal(res.sentFrames.length, written, 'no writes after deadline');
   assert.equal(f.runtime.subscribers.size, 0); assert.equal(f.runtime.inferenceCalls, 1); assert.equal(f.runtime.stopCalls, 0); clean(res);
 });
 

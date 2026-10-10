@@ -66,12 +66,14 @@ weak shot while preserving deliberate timeline timing, and inspect the recipe fo
 
 #### Decoupled subject, keyframe and motion workflow (approved 2026-10-10)
 
-This is planned scope, not an implemented subject library, image-generation flow,
-motion-reference adapter or Blender integration. Existing managed assets, saved
-versions, explicit reference bindings and fixed timeline replacement are reusable
-foundations. These stages do not block the first usable trial build; continued
-iteration is allowed after that milestone, and the user should be notified when
-a runnable, honestly limited trial is available.
+The first narrow subject-library increment is implemented. Focused checks, final
+web/desktop builds and Linux native acceptance passed; the independent full-suite
+release gate passed as recorded in [SUBJECT-LIBRARY.md](SUBJECT-LIBRARY.md). Image
+generation, motion-reference adapters and Blender integration remain planned.
+Existing managed assets, saved versions, explicit reference bindings and fixed
+timeline replacement are reusable foundations. The first usable Linux trial is
+already available independently of these stages; native macOS/Windows and live
+providers remain unverified. Continued iteration does not block that limited trial.
 
 1. **Versioned subject library and typed bindings.** Add project-scoped, versioned
    character/product/location/look entities backed by selected managed assets.
@@ -81,6 +83,21 @@ a runnable, honestly limited trial is available.
    clip, frozen job snapshot or generated result. Acceptance: bind one subject to
    multiple shots, change its reference version, review affected bindings, and
    reproduce the exact older selection after restart without hidden propagation.
+
+   **Current narrow stage:** three project-scoped local writes (`subject.create`,
+   `subject.version.add`, `subject.binding.set`) and three bounded reads, using one
+   existing managed PNG/JPEG/WebP image per immutable version. Only `subject` and
+   `style` planning bindings are added, with independent revisions, explicit
+   adopt-latest/keep-old review and retained unlink tombstones. Existing
+   `reference.attach` remains the separate actual `first_frame` input. Last-frame,
+   motion and provider input integration are future stages; there is no automatic
+   regeneration, identity-lock claim, name editing, delete or new media import.
+   Required stable keys extend the local eight-operation namespace to eleven;
+   durable UI preparation adds these three writes to the explicit fifteen-operation
+   allowlist. Eight independent schema-preservation cases, focused checks, final
+   web/desktop builds and Linux native restart acceptance passed; the independent
+   full release gate passed. This does not expand built-in Agent tools/
+   context or depend on Blender, paid calls or live-provider approval.
 
 2. **Capability-checked inputs and reviewed keyframe-to-video stages.** Subject
    references and first/last images can be uploaded, extracted from managed video,
@@ -125,6 +142,30 @@ capabilities may constrain input combinations; the product modules remain
 independent. Reference reuse aims for continuity and does not guarantee absolute
 identity locking or cloud-model reproducibility. This roadmap approval grants no
 live generation, media upload, credential entry or spending authorization.
+
+#### Reference editing, compositing and replacement (approved 2026-10-10)
+
+Extend the reviewed keyframe/version workflow above in this order:
+
+1. Keyframe edits and product/object/background replacement or removal.
+2. Mask-based compositing and tracking, with an explicit deterministic-composite
+   path distinguished from AI redraw.
+3. Person replacement, retaining source provenance and real-person consent records.
+4. Precise-identity face swapping as a separate later stage, with its own review
+   and acceptance requirements.
+
+Reuse the right dock: preview and explicit confirmation → generation (or local
+composite rendering) → comparison → new immutable version. Preserve originals;
+reuse exact-request recovery and approved, bounded media inputs. Provider work
+requires explicit model/media scope and total budget approval. AI redraw carries
+no exact identity or pixel-preservation promise. The current official Aleph 2.0
+video/keyframe input contract exposes no hard spatial-mask input; do not present
+it as deterministic masked compositing. Recheck capabilities before integration.
+See [Runway's official API types](https://github.com/runwayml/sdk-python/blob/main/src/runwayml/types/video_to_video_create_params.py#L43-L181)
+(checked 2026-10-10).
+
+This is approved future scope, not implemented by the current subject-library
+increment. It has no Blender dependency and does not block the first usable trial.
 
 ### 4. Finish and deliver several versions safely
 

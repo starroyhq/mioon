@@ -15,7 +15,7 @@ const inputs={
 };
 
 test('exactly six existing local schemas accept an optional stable replay key without filling defaults',()=>{
- assert.deepEqual(LOCAL_MUTATION_OPERATIONS,[...Object.keys(inputs),'asset.range.set','asset.disposition.set']);assert.ok(Object.isFrozen(LOCAL_MUTATION_OPERATIONS));
+ assert.deepEqual(LOCAL_MUTATION_OPERATIONS,[...Object.keys(inputs),'asset.range.set','asset.disposition.set','subject.create','subject.version.add','subject.binding.set']);assert.ok(Object.isFrozen(LOCAL_MUTATION_OPERATIONS));
  for(const [operation,input] of Object.entries(inputs)){
   assert.deepEqual(parse(operation,input),input);
   for(const requestId of ['a'.repeat(8),randomUUID(),'b'.repeat(200)])

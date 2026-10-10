@@ -328,7 +328,7 @@ item's independent revision and `neutral`, `favorite` or `rejected`. A stable
 CLI neither creates it nor retries automatically. Retain the complete request
 and repeat it exactly after an uncertain result, even after restart or newer
 edits. A historical response is not latest state; list before a new intent.
-Neutral reset advances and retains the revision. Keys collide across all eight
+Neutral reset advances and retains the revision. Keys collide across all eleven
 shared local mutations, while timeline/reference/generation journals remain
 separate. Existing asset DTOs, original files and in-use clips do not change.
 Built-in Agent context/tools are unchanged. Browser UI pending receipts are
@@ -455,8 +455,71 @@ namespace are unchanged. See [reference recovery](REFERENCE-RECOVERY.md).
 ### UI task discovery boundary
 
 The new [durable UI task slice](TASK-RECOVERY.md) covers ten non-rendering timeline
-edits and two reference operations. It adds no CLI task-execution command and
+edits and two reference operations. The implemented subject extension adds exactly
+`subject.create`, `subject.version.add` and `subject.binding.set`, for fifteen
+operations in total. It adds no CLI task-execution command and
 does not change existing command inputs, original receipts or journal key scopes.
 CLI callers must continue retaining their complete original request and key.
 Native UI restart discovery does not imply durable storage of arbitrary external
 client requests, generation submissions or timeline render intentions.
+
+### Local versioned subject library
+
+This narrow increment is implemented. Focused checks, final web/desktop builds
+and Linux native acceptance passed; the independent full-suite release gate
+passed. Discover current shared schemas before using it. The commands map directly to
+`subject.create`, `subject.version.add`, `subject.binding.set`, `subject.list`,
+`subject.version.list` and `subject.binding.list`:
+
+```sh
+mioon schema subject.create
+mioon schema subject.binding.set
+mioon subject list --input '{"projectId":"PROJECT_UUID","limit":20}'
+mioon subject create --input '{"projectId":"PROJECT_UUID","kind":"product","name":"Hero product","assetId":"IMAGE_ASSET_UUID","requestId":"subject-create-0001"}'
+mioon subject version list --input '{"projectId":"PROJECT_UUID","subjectId":"SUBJECT_UUID","limit":20}'
+mioon subject version add --input '{"projectId":"PROJECT_UUID","subjectId":"SUBJECT_UUID","expectedRevision":1,"assetId":"NEW_IMAGE_ASSET_UUID","requestId":"subject-version-0001"}'
+mioon subject binding list --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID","limit":20}'
+mioon subject binding list --input '{"projectId":"PROJECT_UUID","subjectId":"SUBJECT_UUID","limit":20}'
+mioon subject binding set --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID","subjectId":"SUBJECT_UUID","role":"subject","subjectVersionId":"CHOSEN_SUBJECT_VERSION_UUID","expectedRevision":0,"expectedSubjectRevision":2,"requestId":"subject-binding-0001"}'
+```
+
+These are templates, not a blind replay script. Replace IDs, revisions and keys
+with the intended project's current state. `kind` is `character`, `product`,
+`location` or `look`; name is nonblank and 1–120 characters. Use an existing owned
+managed PNG/JPEG/WebP asset: these commands neither import nor copy bytes.
+Create returns a subject with immutable version 1; version-add returns its new
+head and revision. The head's current asset is rejected as `SUBJECT_NO_CHANGE`.
+
+Bindings use `style` for `look`, `subject` for other kinds, and at most eight
+active rows per shot. `expectedRevision` is the binding's independent revision,
+not the shot's; 0 is valid only before that binding identity exists.
+`expectedSubjectRevision` always checks the current subject head. To adopt latest,
+set `subjectVersionId` to its current head. To keep an older selection while
+acknowledging latest, explicitly set the same older version with both current
+revisions and a new key. Both save the current `reviewedHeadVersionId` and clear
+`needsReview`; later head changes can flag active rows again. To unlink, explicitly
+set `subjectVersionId:null`. A clear retains a revisioned tombstone; use that
+revision for later reattachment. No choice changes provider inputs or existing clips.
+
+All lists return `{projectId,items,nextCursor}`. Default page size 20, maximum 50;
+binding-list requires exactly one shot or subject filter and includes cleared
+rows. Reuse only the returned cursor (maximum 768 characters), same scope/filter/
+limit; restart invalidates cursors. Cross-page results are not a frozen snapshot.
+Frozen version metadata takes its hash from the existing asset record without
+rehashing or probing media. Provenance exposes only backend-validated local IDs
+and metadata, not paths, URLs or provider task IDs. DTOs: [subject library](SUBJECT-LIBRARY.md).
+
+Every write requires a caller-retained 8–200-character key. The subject companion
+joins the existing eight local mutation operations as operations nine through
+eleven; timeline/reference/generation/export keys keep their separate scopes.
+After uncertainty, preserve the exact operation/input/key, including both original
+revisions, and explicitly replay it. An old success is historical; refresh before
+a new intent. Malformed success and generic 4xx remain unknown without matching
+operation/project/request rollback proof. The CLI never invents keys or retries.
+
+The three writes are also the only additions to the UI durable allowlist, now
+fifteen, under `subject:mutation`. Direct CLI requests do not automatically become
+UI tasks. Local metadata is ordinary SQLite, not vault-encrypted: keep secrets out
+of names and inputs. This is local planning without provider calls, paid work,
+Blender or built-in Agent catalog/context changes. Actual `first_frame` continues
+through `reference attach`; last-frame/motion support is future work.

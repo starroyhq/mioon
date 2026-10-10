@@ -6,14 +6,19 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/c
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { WorkbenchTooltip } from './WorkspaceControls.jsx';
 import Icon from './icons.jsx';
+import SubjectLibrary from './SubjectLibrary.jsx';
+import { WorkspaceVisibilityProvider } from './workspace-visibility.jsx';
 import { Media } from './Nodes.jsx';
 import { assetKind, dragAsset } from './Timeline.jsx';
 import AssetDispositionControls, { useDispositionInteraction } from './AssetDispositionControls.jsx';
 import { dispositionCounts, dispositionFilters, filterLibraryAssets } from './asset-disposition-state.js';
 
 const filters = [['all', '全部'], ['image', '图片'], ['video', '视频'], ['audio', '音频']];
-export default function AssetLibrary({ assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set(), onShowTasks }) {
+export default function AssetLibrary({ assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set(), onShowTasks, subjects, subjectBlocked, onInspectShot }) {
   const editing = mode === 'editing';
+  const [libraryTab, setLibraryTab] = useState({ scope: null, value: 'assets' });
+  const libraryScope = project?.id;
+  const libraryView = libraryTab.scope === libraryScope ? libraryTab.value : 'assets';
   const state = dispositions?.state, controller = dispositions?.controller;
   const [localFilter, setLocalFilter] = useState({ scope: null, value: 'all' });
   const dispositionFilter = localFilter.scope === state?.scope ? localFilter.value : 'all';
@@ -30,6 +35,8 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label="01 素材库" />} data-testid="asset-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); } }}>
     <div className="asset-panel-heading"><h2>素材库</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起素材库" title="收起素材库" data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>
     <CollapsibleContent keepMounted className="asset-panel-content">
+      {subjects && <div className="library-view-tabs" role="tablist" aria-label="素材与主体"><Button variant="ghost" size="sm" role="tab" id="library-assets-tab" aria-controls="library-assets-pane" aria-selected={libraryView === 'assets'} data-testid="library-assets-tab" onClick={() => interaction.admit(() => setLibraryTab({ scope: libraryScope, value: 'assets' }))}>素材</Button><Button variant="ghost" size="sm" role="tab" id="library-subjects-tab" aria-controls="library-subjects-pane" aria-selected={libraryView === 'subjects'} data-testid="library-subjects-tab" onClick={() => interaction.admit(() => setLibraryTab({ scope: libraryScope, value: 'subjects' }))}>主体</Button></div>}
+      <WorkspaceVisibilityProvider visible={libraryView === 'assets'}><div className="library-view-pane" id="library-assets-pane" role="tabpanel" aria-labelledby="library-assets-tab" hidden={libraryView !== 'assets'} inert={libraryView !== 'assets'}>
       <Button variant="outline" className="button import-button full" data-testid="import-button" disabled={busy.import} onClick={onImport}>{busy.import ? <span className="spinner" /> : <Icon name="upload" size={15} />}{busy.import ? '正在导入…' : '导入图片 / 视频 / 音频'}</Button>
       <p className="asset-drag-help">{editing ? '点击查看源素材 · 拖到时间线编排' : '点击快速预览 · 拖到画板构思'}</p>
       <div className="asset-search"><Input aria-label="搜索素材" placeholder="搜索素材…" value={search} onChange={e => onSearch(e.target.value)} /><span>⌕</span></div>
@@ -61,6 +68,8 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
         </TabsContent></ScrollArea>
       </Tabs>
       <div className="asset-bottom"><Icon name="lock" size={12} /><span>导入仅保存在本地</span></div>
+      </div></WorkspaceVisibilityProvider>
+      {subjects && <WorkspaceVisibilityProvider visible={libraryView === 'subjects'}><div className="library-view-pane" id="library-subjects-pane" role="tabpanel" aria-labelledby="library-subjects-tab" hidden={libraryView !== 'subjects'} inert={libraryView !== 'subjects'}><SubjectLibrary subjects={subjects} assets={assets} shots={shots} blocked={subjectBlocked} onShowTasks={onShowTasks} onInspectShot={onInspectShot} /></div></WorkspaceVisibilityProvider>}
     </CollapsibleContent>
   </Collapsible>;
 }

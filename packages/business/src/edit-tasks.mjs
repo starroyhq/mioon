@@ -6,6 +6,8 @@ import {ownsStoreLock} from './db.mjs';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {readTimelineReceipt, createTimelineRecoveryBoundary} from './timeline-recovery.mjs';
 import {readReferenceReceipt, createReferenceRecoveryBoundary} from './reference-recovery.mjs';
+import {readSubjectReceipt} from './subject-recovery.mjs';
+import {createSubjectRecoveryBoundary} from './subjects.mjs';
 
 const errors = Object.freeze({
  EDIT_TASK_VALIDATION: [400, '编辑任务参数无效。'], EDIT_TASK_LIMIT: [413, '编辑意图超过 8 KiB 限制。'],
@@ -99,11 +101,26 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  const byId = (projectId,taskId) => decode(db.prepare(`${select} WHERE id=? AND projectId=?`).get(taskId,projectId),projectId);
  function receipt(value) {
   const {row,task} = value, {operation,input} = task;
-  const saved = row.lane==='timeline:mutation' ? readTimelineReceipt(db,input,operation) : readReferenceReceipt(db,input);
+  // The new subject family checks current input ownership before consulting
+  // its retained receipt. Never route an unknown family through reference.
+  const subject = row.lane==='subject:mutation' ? createSubjectRecoveryBoundary(db,input) : null;
+  if (subject) subject.context(operation);
+  let saved;
+  switch (row.lane) {
+   case 'timeline:mutation': saved=readTimelineReceipt(db,input,operation); break;
+   case 'reference:mutation': saved=readReferenceReceipt(db,input); break;
+   case 'subject:mutation': saved=readSubjectReceipt(db,input,operation); break;
+   default: corrupt();
+  }
   if (!saved) return null;
   if (saved.requestHash!==hash({operation,input})) fail('EDIT_TASK_CONFLICT');
-  const response = row.lane==='timeline:mutation' ? createTimelineRecoveryBoundary(db,input).replay(operation,saved.response)
-    : createReferenceRecoveryBoundary(db,input).replay(operation,saved.response);
+  let response;
+  switch (row.lane) {
+   case 'timeline:mutation': response=createTimelineRecoveryBoundary(db,input).replay(operation,saved.response); break;
+   case 'reference:mutation': response=createReferenceRecoveryBoundary(db,input).replay(operation,saved.response); break;
+   case 'subject:mutation': response=subject.replay(operation,saved.response); break;
+   default: corrupt();
+  }
   if (row.receiptDigest!==null && row.receiptDigest!==hash(response)) corrupt();
   return publicValue(response);
  }
@@ -113,11 +130,13 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    const boundary=createTimelineRecoveryBoundary(db,input); boundary.read();
    if(input.assetId)boundary.inputAsset(input.assetId);
    if(input.versionId)boundary.version(input.versionId,undefined,input.assetId);
-  } else {
+  } else if (row.lane==='reference:mutation') {
    const boundary=createReferenceRecoveryBoundary(db,input); boundary.project();
    if (task.operation==='reference.attach') { boundary.node(input.sourceNodeId); boundary.shot(input.targetShotId); }
    else boundary.edge(input.edgeId,{optional:true});
-  }
+  } else if (row.lane==='subject:mutation') {
+   createSubjectRecoveryBoundary(db,input).context(task.operation);
+  } else corrupt();
  }
  function envelope(value, includeResult = false) {
   // Historical replay, rather than current target equality, validates retained
@@ -141,6 +160,26 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   return byId(row.projectId,row.id);
  }
  function applied(value,result) { return update(value,'applied',{receiptDigest:hash(result)}); }
+ function dispatch(operation,input) {
+  switch(operation) {
+   case 'timeline.track.add': return services.call('timeline.track.add',input);
+   case 'timeline.track.update': return services.call('timeline.track.update',input);
+   case 'timeline.clip.add': return services.call('timeline.clip.add',input);
+   case 'timeline.clip.update': return services.call('timeline.clip.update',input);
+   case 'timeline.clip.replaceSource': return services.call('timeline.clip.replaceSource',input);
+   case 'timeline.clip.remove': return services.call('timeline.clip.remove',input);
+   case 'timeline.clip.split': return services.call('timeline.clip.split',input);
+   case 'timeline.seed': return services.call('timeline.seed',input);
+   case 'timeline.undo': return services.call('timeline.undo',input);
+   case 'timeline.redo': return services.call('timeline.redo',input);
+   case 'reference.attach': return services.call('reference.attach',input);
+   case 'reference.detach': return services.call('reference.detach',input);
+   case 'subject.create': return services.call('subject.create',input);
+   case 'subject.version.add': return services.call('subject.version.add',input);
+   case 'subject.binding.set': return services.call('subject.binding.set',input);
+   default: invalid();
+  }
+ }
  const methods = {
   prepare(input) { return guarded(()=>{
    open();owner();const args=fields(input,['projectId','operation','input','origin']);
@@ -201,7 +240,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
     try {
      inject('afterClaim');inject('beforeDispatch');owner();
      let dispatchError;
-     try { await services.call(claimed.task.operation,structuredClone(claimed.task.input)); }
+     try { await dispatch(claimed.task.operation,structuredClone(claimed.task.input)); }
      catch(error){dispatchError=error;}
      inject('afterBusinessCommit');
      const finished=store.tx(()=>{

@@ -55,7 +55,7 @@ test('discovery describes required-key metadata-only save and noncreating read a
  assert.match(schema.properties.requestId.description,/Required stable replay key/);assert.match(set.notes,/Requires a stable requestId/);
  assert.ok(descriptions['asset.range.get']);assert.ok(descriptions['asset.range.set']);
  // Existing optional-key operation effects and keyless schemas remain intact.
- for(const operation of LOCAL_MUTATION_OPERATIONS.filter(value=>!['asset.range.set','asset.disposition.set'].includes(value))){
+ for(const operation of ['shot.create','shot.update','shot.reorder','node.create','node.update','version.select']){
   assert.equal(operationEffects[operation].idempotent,false);assert.ok(!jsonSchema(schemas[operation]).required.includes('requestId'));
  }
 });

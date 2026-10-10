@@ -1,10 +1,11 @@
+import {SUBJECT_MUTATION_OPERATIONS,isSubjectMutationResponse} from './subjects.mjs';
 import {isSourceRangeResponse} from './source-range.mjs';
 import {isAssetDispositionResponse} from './asset-disposition.mjs';
 
 // The original six operations support optional keys and retain keyless behavior.
-// The two additive asset metadata operations always require a durable replay key.
+// Additive asset metadata and subject operations require a durable replay key.
 export const LOCAL_MUTATION_OPERATIONS = Object.freeze([
-  'shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', 'asset.range.set', 'asset.disposition.set',
+  'shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', 'asset.range.set', 'asset.disposition.set', ...SUBJECT_MUTATION_OPERATIONS,
 ]);
 
 // Minimum acknowledgement identity, shared by first-party clients. This does not
@@ -13,6 +14,7 @@ export const LOCAL_MUTATION_OPERATIONS = Object.freeze([
 export function isLocalMutationResponse(operation, input, result, {projectId} = {}) {
   if (!LOCAL_MUTATION_OPERATIONS.includes(operation) || !result || typeof result !== 'object' || Array.isArray(result) ||
       typeof result.id !== 'string' || !result.id || !Number.isSafeInteger(result.revision) || result.revision < 1) return false;
+  if (SUBJECT_MUTATION_OPERATIONS.includes(operation)) return isSubjectMutationResponse(operation,input,result) && (!projectId || result.projectId===projectId);
   if (operation === 'asset.disposition.set') return isAssetDispositionResponse(result) &&
     result.assetId === input.assetId && result.projectId === input.projectId && (!projectId || result.projectId === projectId) &&
     Number.isSafeInteger(input.expectedRevision) && input.expectedRevision >= 0 && result.revision === input.expectedRevision + 1 &&

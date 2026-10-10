@@ -1,19 +1,26 @@
 # Durable local edit recovery
 
 Updated: 2026-10-10 UTC. Baseline: `837002f`.
-Status: implemented and review-ready. Focused checks, fresh builds and Linux
-native recreation acceptance and the parent independent full-suite release gate
-have passed. This is not platform certification.
+Status: the original twelve-operation slice passed its independent release gate.
+The fifteen-operation subject extension passed focused checks, fresh builds and
+Linux native recreation acceptance; its independent full-suite gate passed.
+This is not platform certification.
 
 ## Scope
 
-The first durable UI recovery slice covers twelve operations:
+The original released slice covers twelve operations:
 
 - `timeline.track.add`, `timeline.track.update`
 - `timeline.clip.add`, `timeline.clip.update`, `timeline.clip.replaceSource`,
   `timeline.clip.remove`, `timeline.clip.split`
 - `timeline.seed`, `timeline.undo`, `timeline.redo`
 - `reference.attach`, `reference.detach`
+
+The subject-library extension adds three explicit operations and a separate
+`subject:mutation` editing lane: `subject.create`, `subject.version.add`, and
+`subject.binding.set`. Its implementation and acceptance status is tracked in
+[Subject library](SUBJECT-LIBRARY.md). The coordinator now admits fifteen fixed
+operations; this does not grant model tools or generic service dispatch.
 
 The eight local canvas/asset metadata mutations and `timeline.render` retain their
 existing session-based UI recovery paths. Generation, retries, exports, imports,
@@ -26,8 +33,10 @@ particular, no new built-in Agent or MCP execution tool is introduced.
 A dedicated backend ledger retains the selected project, operation, exact caller
 input and original request ID before dispatch. These fields and their digest are
 immutable. A task ID identifies the recovery envelope; it does not create a new
-workspace-global mutation-key namespace. The existing timeline/reference journals
-remain authoritative for original successful response bytes and atomic changes.
+workspace-global mutation-key namespace. The existing timeline/reference journals and the subject companion in the
+eleven-operation local-mutation key namespace remain authoritative for original
+successful response bytes and atomic changes. These are separate namespaces,
+not workspace-global deduplication.
 
 Prepare commits before acknowledging or attempting the business mutation. An
 admission/persistence failure blocks dispatch. Repeated prepare with the same
@@ -45,6 +54,19 @@ Receipt-only lookup validates the exact request hash and the existing historical
 ownership boundary. It never invokes a mutator to discover whether it happened.
 Historical reference attach no-ops, absent/rebound detached edges, and removed or
 changed timeline clips keep their existing valid replay semantics.
+
+### Schema 15 extension
+
+The subject extension creates new metadata tables and transactionally rebuilds
+only `edit_tasks` to extend its fixed CHECK lists. The rebuild copies all nineteen
+columns without parsing or reserializing input JSON, preserves exact sequence
+positions and the SQLite high-water mark (including absence), and recreates the
+existing indexes and immutability/state-transition triggers. The version marker
+is written last in that same transaction. Failure rolls back the new tables and
+rebuild together; startup does not execute an intent. No existing task limit is
+raised and no old receipt is rewritten. Older app versions are not certified to
+open a workspace after this migration; use a separately retained pre-upgrade copy
+when testing an older checkout.
 
 ## State and recovery
 
@@ -93,7 +115,7 @@ and session-only recovery. Loading/error states cannot masquerade as an empty
 pending list. Opening Tasks, switching project/tab or collapsing the workspace
 must preserve the existing draft/navigation fences.
 
-A surviving session receipt in the twelve-operation allowlist can be explicitly
+A surviving session receipt in the explicit durable-operation allowlist can be explicitly
 adopted under its original complete input and key. Adoption starts conservatively
 and performs no dispatch. The session record is removed only after a valid durable
 adoption acknowledgement. An already lost legacy session cannot be reconstructed
@@ -141,3 +163,25 @@ Existing Python browser harnesses still need a separate trial-E2E refresh for
 Task Center labels and the new transport path. They were not run or claimed green
 in this increment. macOS/Windows native readiness and live providers are not
 established by Linux synthetic acceptance.
+
+## Subject extension verification
+
+On baseline `1b08cf2`, the schema-15 preservation verifier passed eight independent
+cases. Focused domain/contracts/migration checks passed 132/132; recovery checks
+86/86 and real HTTP/CLI/official-MCP transport checks 16/16; App compatibility
+checks 112/112 and final UI checks 169/169. These overlapping selections are not
+a full-suite result. Fresh web/desktop builds used byte-identical staged web assets.
+
+Two ordinary Linux native app lifetimes verified subject creation, immutable
+version addition, exact pinned associations, and explicit keep-old/use-new review.
+A fixture-only transaction abort retained an unknown version-add task. After
+the original app exited, its recreation rediscovered the same input/key with
+all audited database rows and media hashes unchanged until explicit recovery.
+Recovery produced one new version and one receipt, then acknowledged that same
+task. Existing subject pins, historical versions, jobs, original timeline,
+exports and media were unchanged. Evidence is in ignored
+`evidence/subject-library`; the parent independent full-suite gate passed.
+
+Final subject-extension gate:2,418 total /2,416 pass /0 fail /2 skips, exit0,
+476659.942547ms. See the preserved failure/correction history and final evidence
+in [Subject library](SUBJECT-LIBRARY.md).

@@ -32,8 +32,8 @@ const safeMissing=error=>error.code==='NOT_FOUND'&&error.status===404&&error.mes
 const noDisclosure=error=>!Object.hasOwn(error.details??{},'current')&&!/Private disposition asset|Foreign private project|media\/fixture|retained secret/.test(JSON.stringify(error.details));
 const conflict=error=>error.code==='IDEMPOTENCY_CONFLICT'&&error.status===409&&!error.details.mutationOutcome&&noDisclosure(error);
 function replaceAsset(f,asset,patch={},owner=asset.projectId){f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(owner,JSON.stringify({...asset,...patch}),asset.id);}
-const receiptTables=['mutation_requests','asset_range_requests','asset_disposition_requests'];
-const operationTable=op=>op==='asset.disposition.set'?'asset_disposition_requests':op==='asset.range.set'?'asset_range_requests':'mutation_requests';
+const receiptTables=['mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests'];
+const operationTable=op=>op.startsWith('subject.')?'subject_requests':op==='asset.disposition.set'?'asset_disposition_requests':op==='asset.range.set'?'asset_range_requests':'mutation_requests';
 
 test('ordered bounded reads confirm absent neutral revision zero without writes, rows or lazy timeline creation',async t=>{
  const f=await fixture(t),assets=Array.from({length:100},(_,i)=>f.asset(['image/png','video/mp4','audio/wav'][i%3])).reverse();
@@ -181,7 +181,19 @@ test('safe revision limit and stale writes fail without mutation; independent ra
  assert.deepEqual(snapshot(f),before);
 });
 
+async function subjectCollisionFixture(f){
+ if(f.subjectInputs)return;
+ const image=()=>{const asset=f.asset('image/png');return f.store.put('assets',{...asset,width:640,height:480,provenance:'user-import'});};
+ const asset=image(),next=image(),create={projectId:f.project.id,kind:'character',name:'Namespace subject',assetId:asset.id};
+ const subject=await f.call('subject.create',{...create,requestId:randomUUID()}),shot=await f.call('shot.create',{projectId:f.project.id,title:'Subject target'});
+ f.subjectInputs={
+  'subject.create':create,
+  'subject.version.add':{projectId:f.project.id,subjectId:subject.id,expectedRevision:1,assetId:next.id},
+  'subject.binding.set':{projectId:f.project.id,shotId:shot.id,subjectId:subject.id,role:'subject',subjectVersionId:subject.headVersionId,expectedRevision:0,expectedSubjectRevision:1},
+ };
+}
 function collisionInput(f,op,key){
+ if(op.startsWith('subject.'))return {...f.subjectInputs[op],requestId:key};
  const projectId=f.project.id,assetId=randomUUID(),shotId=randomUUID(),nodeId=randomUUID(),expectedRevision=1,requestId=key;
  return {
   'shot.create':{projectId,title:'Collision',requestId},'shot.update':{shotId,expectedRevision,patch:{prompt:'Changed'},requestId},
@@ -193,22 +205,23 @@ function collisionInput(f,op,key){
 }
 async function acceptedInput(f,op){
  const input=collisionInput(f,op,randomUUID());
+ if(op.startsWith('subject.'))return input;
  if(op.startsWith('asset.'))return {...input,assetId:f.asset().id};
  if(op.endsWith('create'))return input;
  if(op==='node.update'){const node=await f.call('node.create',{projectId:f.project.id,type:'text',position:{x:0,y:0}});return {...input,nodeId:node.id};}
  const shot=await f.call('shot.create',{projectId:f.project.id,title:'Existing shot'});
- if(op==='shot.reorder')return {...input,expectedRevision:f.store.get('projects',f.project.id).revision,shotIds:[shot.id]};
+ if(op==='shot.reorder')return {...input,expectedRevision:f.store.get('projects',f.project.id).revision,shotIds:f.store.list('shots',f.project.id).map(item=>item.id)};
  if(op==='version.select'){
   const asset=f.asset(),jobId=randomUUID(),versionId=randomUUID();f.store.put('jobs',{id:jobId,projectId:f.project.id,shotId:shot.id,versionId});
   f.store.put('versions',{id:versionId,projectId:f.project.id,jobId,shotId:shot.id,assetId:asset.id});return {...input,shotId:shot.id,versionId};
  }
  return {...input,shotId:shot.id};
 }
-for(const winner of LOCAL_MUTATION_OPERATIONS)test(`${winner}: all seven other mutation writers reject its key globally before target lookup`,async t=>{
- const f=await fixture(t),input=await acceptedInput(f,winner),result=await f.call(winner,input),before=snapshot(f);
+for(const winner of LOCAL_MUTATION_OPERATIONS)test(`${winner}: all ten other mutation writers reject its key globally after any required ownership checks`,async t=>{
+ const f=await fixture(t);await subjectCollisionFixture(f);const prior=receiptTables.reduce((sum,table)=>sum+count(f,table),0),input=await acceptedInput(f,winner),result=await f.call(winner,input),before=snapshot(f);
  for(const loser of LOCAL_MUTATION_OPERATIONS.filter(op=>op!==winner))await assert.rejects(f.call(loser,collisionInput(f,loser,input.requestId)),conflict);
  assert.deepEqual(snapshot(f),before);assert.deepEqual(await f.call(winner,input),result);
- assert.equal(receiptTables.reduce((sum,table)=>sum+count(f,table),0),1);
+ assert.equal(receiptTables.reduce((sum,table)=>sum+count(f,table),0),prior+1);
 });
 
 test('immutable companion receipts cannot be updated, deleted or replaced; SQL collision triggers guard every table direction',async t=>{
@@ -219,10 +232,10 @@ test('immutable companion receipts cannot be updated, deleted or replaced; SQL c
  assert.throws(()=>f.store.db.prepare('INSERT OR REPLACE INTO asset_disposition_requests VALUES(?,?,?,?,?)').run(row.requestId,row.operation,row.projectId,row.canonicalInput,'{}'),/immutable/);
  assert.throws(()=>f.store.db.prepare('UPDATE asset_dispositions SET projectId=? WHERE assetId=?').run(f.other.id,asset.id),/immutable/);
  assert.deepEqual(snapshot(f),before);
- for(const [source,operation] of [['mutation_requests','shot.create'],['asset_range_requests','asset.range.set'],['asset_disposition_requests','asset.disposition.set']]){
-  const requestId=randomUUID();f.store.db.prepare(`INSERT INTO ${source} VALUES(?,?,?,?,?)`).run(requestId,operation,f.project.id,'{}','{}');
+ for(const [source,operation] of [['mutation_requests','shot.create'],['asset_range_requests','asset.range.set'],['asset_disposition_requests','asset.disposition.set'],['subject_requests','subject.create']]){
+  const requestId=randomUUID();f.store.db.prepare(`INSERT INTO ${source} VALUES(?,?,?,?,?)`).run(requestId,operation,f.project.id,JSON.stringify({projectId:f.project.id}),JSON.stringify({projectId:f.project.id}));
   for(const target of receiptTables.filter(table=>table!==source)){
-   const targetOperation=target==='mutation_requests'?'shot.create':target==='asset_range_requests'?'asset.range.set':'asset.disposition.set';
+   const targetOperation=target==='mutation_requests'?'shot.create':target==='asset_range_requests'?'asset.range.set':target==='subject_requests'?'subject.create':'asset.disposition.set';
    assert.throws(()=>f.store.db.prepare(`INSERT INTO ${target} VALUES(?,?,?,?,?)`).run(requestId,targetOperation,f.project.id,'{}','{}'),/already retained/);
   }
  }
@@ -230,7 +243,7 @@ test('immutable companion receipts cannot be updated, deleted or replaced; SQL c
 });
 
 test('duplicate presence and corrupted wrong-table placement fail closed for all writers and cannot release a receipt',async t=>{
- const f=await fixture(t),asset=f.asset(),input=f.input(asset);await f.call('asset.disposition.set',input);
+ const f=await fixture(t);await subjectCollisionFixture(f);const asset=f.asset(),input=f.input(asset);await f.call('asset.disposition.set',input);
  const row=f.store.db.prepare('SELECT * FROM asset_disposition_requests WHERE requestId=?').get(input.requestId);
  for(const trigger of ['reject_mutation_cross_range_request','reject_asset_range_cross_request','reject_mutation_cross_disposition_request','reject_asset_range_cross_disposition_request','reject_asset_disposition_cross_request'])f.store.db.exec(`DROP TRIGGER ${trigger}`);
  f.store.db.exec('PRAGMA ignore_check_constraints=ON');
@@ -257,10 +270,10 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',randomUUID(),'old-hash',randomUUID());
  const schema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
  const fresh=schema();
- f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version=12;');
+ f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version>=12;');
  const old=snapshot(f,['schema_version']);f.restart();
  assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests']),old);assert.deepEqual(schema(),fresh);
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,14);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,15);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
 });
 

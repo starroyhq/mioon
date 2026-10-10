@@ -377,11 +377,11 @@ function projectNavigation({ draft = true, dirty = false, confirmation = true } 
   const calls = [], currentProject = { current: projectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty };
   const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current });
   const guardEnv = { context, dirtyRef, confirm: async message => { calls.push(['confirm', message]); return confirmation; }, isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current,
-    setShotDirty: value => calls.push(['shotDirty', value]), setClipDirty: value => calls.push(['clipDirty', value]), setSourceDirty: value => calls.push(['sourceDirty', value]), setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
+    setShotDirty: value => calls.push(['shotDirty', value]), setClipDirty: value => calls.push(['clipDirty', value]), setSourceDirty: value => calls.push(['sourceDirty', value]), setSubjectDirty: value => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: scope => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
   const guardNavigation = Function(...Object.keys(guardEnv), `return (${guardSource});`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
   const env = { tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, guardNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: {} }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, refresh: async () => ({ shots: [], nodes: [] }), updateView: () => {}, URL,
-    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setInspectorEpoch', 'setShowJobs', 'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
+    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setInspectorEpoch', 'setShowJobs', 'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
   const selectProject = Function(...Object.keys(env), `return (${projectSource});`)(...Object.values(env));
   return { selectProject, guardNavigation, calls, currentProject, navigationEpoch, env };
 }
@@ -406,8 +406,9 @@ test('actual App dirty-panel guard retains source drafts on Cancel and clears di
   assert.equal(cancelled.calls.length, 1); assert.equal(cancelled.calls[0][0], 'confirm');
   const confirmed = projectNavigation({ draft: false, dirty: true });
   assert.equal(await confirmed.guardNavigation(), true);
-  assert.deepEqual(confirmed.calls.filter(call => ['shotDirty', 'clipDirty', 'sourceDirty'].includes(call[0])),
-    [['shotDirty', false], ['clipDirty', false], ['sourceDirty', false]]);
+  assert.deepEqual(confirmed.calls.filter(call => ['shotDirty', 'clipDirty', 'sourceDirty', 'subjectDirty'].includes(call[0])),
+    [['shotDirty', false], ['clipDirty', false], ['sourceDirty', false], ['subjectDirty', false]]);
+  assert.deepEqual(confirmed.calls.filter(call => call[0] === 'discardSubjects'), [['discardSubjects', 'fixture-subject-scope']]);
   assert.equal(confirmed.calls.filter(call => call[0] === 'inspectorEpoch').length, 1);
 });
 

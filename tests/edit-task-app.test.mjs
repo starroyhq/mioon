@@ -45,14 +45,14 @@ async function harness(t, hooks = {}) {
     isBusy: (key, owner = currentProject.current) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
     requestCounter: { current: 0 }, setData: next => { dataRef.current = typeof next === 'function' ? next(dataRef.current) : next; },
     notify: (message, type) => state.notices.push({ message, type }), readableError: error => error.message,
-    setPending: value => { state.pending = value; }, setShowJobs: value => { state.jobs = value; }, setAuth: value => { state.auth = value; },
+    setPending: value => { state.pending = value; }, setShowJobs: value => { state.jobs = value; }, setAuth: value => { state.auth = value; }, setSubjectRefresh: update => { state.subjectRefresh = update(state.subjectRefresh || {}); },
     refresh: async owner => { state.refreshes.push(owner); }, runSession: async (...args) => { state.calls.push(['session', args]); return null; },
   };
   const functions = Function(...Object.keys(scope), `${source}; return { run, runDurable, recoverTask, adoptLegacyTask };`)(...Object.values(scope));
   return { ...functions, controller, state, currentProject, busy, dataRef, storageValues, client, setTask: value => { task = value; } };
 }
 
-test('actual App routes only new twelve writes into Task prepare/execute while excluded and legacy paths remain session based', async t => {
+test('actual App routes only the fifteen explicit writes into Task prepare/execute while excluded and legacy paths remain session based', async t => {
   const h = await harness(t);
   const saved = await h.run('timeline:mutation', operation, input);
   assert.deepEqual(saved, timeline()); assert.equal(h.storageValues.size, 0);
@@ -60,7 +60,7 @@ test('actual App routes only new twelve writes into Task prepare/execute while e
   assert.deepEqual(h.controller.getState(projectId).items, []);
   for (const op of ['shot.update', 'asset.range.set', 'asset.disposition.set', 'timeline.render', 'generation.submit', 'job.retry', 'export.create']) await h.run('other', op, {});
   for (const op of DURABLE_EDIT_OPERATIONS) await h.run('legacy', op, input, undefined, { replay: true });
-  assert.equal(h.state.calls.filter(call => call[0] === 'session').length, 19);
+  assert.equal(h.state.calls.filter(call => call[0] === 'session').length, 7 + DURABLE_EDIT_OPERATIONS.length);
   assert.equal(h.busy.size, 0);
   assert.doesNotMatch(actual('  async function runDurable(', '  async function recoverTask('), /await rpc\(|prepareSubmission\(|sessionStorage/);
 });
@@ -109,6 +109,16 @@ test('actual App preparation finishing after navigation is durable but does not 
   const saving = h.run('timeline:mutation', operation, input); await flush(); h.state.epoch++; hold.resolve(); await saving;
   assert.deepEqual(h.state.calls.map(call => call[0]), ['list', 'prepare']);
   assert.equal(h.controller.getState(projectId).items[0].status, 'prepared');
+});
+
+test('actual App respects a replaced subject draft fence after durable prepare without dispatching it', async t => {
+  const hold = deferred(); let currentDraft = true;
+  const h = await harness(t, { prepare: async (_args, task) => { await hold.promise; return { task, instanceId }; } });
+  const saving = h.run('timeline:mutation', operation, input, undefined, { canExecute: () => currentDraft });
+  await flush(); currentDraft = false; hold.resolve(); await saving;
+  assert.deepEqual(h.state.calls.map(call => call[0]), ['list', 'prepare']);
+  assert.equal(h.controller.getState(projectId).items[0].status, 'prepared');
+  assert.equal(h.controller.getState(projectId).items[0].requestId, input.requestId);
 });
 
 test('actual App recovery finishing lookup after project change leaves unknown untouched and does not execute', async t => {
