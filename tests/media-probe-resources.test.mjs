@@ -35,6 +35,36 @@ test('metadata accepts portrait/landscape 4K and 8K plus audio/image inputs with
   assert.equal(cover.hasVideo, false);
 });
 
+test('stream selection skips unidentified codecs without adding a codec allowlist', () => {
+  for (const codec_name of [undefined, null, '', 'unknown']) {
+    const result = parse(document([
+      video(200, 200, { index: 0, disposition: { attached_pic: 1 } }),
+      video(640, 360, { index: 1, codec_name }),
+      audio({ index: 2, codec_name }),
+      video(320, 180, { index: 3, codec_name: 'arbitrary-decoder' }),
+      audio({ index: 4 }),
+    ]));
+    assert.equal(result.videoStreamIndex, 3);
+    assert.equal(result.audioStreamIndex, 4);
+    assert.equal(result.width, 320);
+    assert.equal(result.codec, 'arbitrary-decoder');
+    assert.throws(() => parse(document([video(640, 360, { codec_name }), audio({ codec_name })])), { code: 'MEDIA_NO_STREAM' });
+  }
+});
+
+test('unidentified optional audio is absent and duration fallback remains bounded metadata only', () => {
+  const result = parse(document([video(), audio({ codec_name: undefined })]));
+  assert.equal(result.hasAudio, false);
+  assert.equal(result.audioStreamIndex, undefined);
+  for (const unavailable of [undefined, null, '', 'N/A', 0, '0']) {
+    const fallback = parse({ streams: [video(320, 180, { duration: '1' }), audio({ duration: '2' })], format: { duration: unavailable } });
+    assert.equal(fallback.duration, 1);
+    assert.equal(parse({ streams: [audio({ duration: '2' })], format: { duration: unavailable } }).duration, 2);
+    assert.equal(parse({ streams: [video(320, 180, { duration: unavailable })] }).duration, 0);
+  }
+  assert.equal(parse({ streams: [video(320, 180, { duration: '1' }), audio({ duration: '2' })], format: { duration: '3' } }).duration, 3);
+});
+
 test('corrupt, excessive, nonfinite and negative metadata fails safely', () => {
   for (const output of ['{not-json synthetic-private', 'null', '[]', '{}']) assert.throws(() => parseProbeOutput(output), error => error.code === 'MEDIA_INVALID_METADATA' && !error.message.includes('synthetic-private'));
   const invalid = [

@@ -16,7 +16,15 @@ export async function stitch(files,destination,{signal}={}){
  throwIfMediaAborted(signal);
  const args=['-hide_banner','-loglevel','error','-y'];for(const f of files)args.push('-i',f);
  const results=await Promise.allSettled(files.map(file=>probe(file,{signal})));const metadata=settledMediaValues(results,signal),chains=[];
- files.forEach((_,i)=>{const duration=metadata[i].duration;if(!(duration>0))throw Error('Export input has no duration');chains.push(`[${i}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,setpts=PTS-STARTPTS,format=yuv420p[v${i}]`);const hasAudio=metadata[i].probe.streams.some(s=>s.codec_type==='audio');chains.push(hasAudio?`[${i}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${duration},asetpts=PTS-STARTPTS[a${i}]`:`anullsrc=r=48000:cl=stereo,atrim=duration=${duration},asetpts=PTS-STARTPTS[a${i}]`);});
+ files.forEach((_,i)=>{
+  const {duration,hasVideo,hasAudio,videoStreamIndex,audioStreamIndex}=metadata[i];
+  if(!(duration>0))throw Error('Export input has no duration');
+  if(!hasVideo)throw Error('Export input has no video stream');
+  // Reuse the probed streams: a preceding cover or unidentified codec must not
+  // override the playable source selected by the shared metadata parser.
+  chains.push(`[${i}:${videoStreamIndex??'v:0'}]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,setpts=PTS-STARTPTS,format=yuv420p[v${i}]`);
+  chains.push(hasAudio?`[${i}:${audioStreamIndex??'a:0'}]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${duration},asetpts=PTS-STARTPTS[a${i}]`:`anullsrc=r=48000:cl=stereo,atrim=duration=${duration},asetpts=PTS-STARTPTS[a${i}]`);
+ });
  chains.push(files.map((_,i)=>`[v${i}][a${i}]`).join('')+`concat=n=${files.length}:v=1:a=1[outv][outa]`);
  args.push('-filter_complex',chains.join(';'),'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart',destination);await run('ffmpeg',args,{timeout:300000,signal});throwIfMediaAborted(signal);await probe(destination,{signal});throwIfMediaAborted(signal);
 }

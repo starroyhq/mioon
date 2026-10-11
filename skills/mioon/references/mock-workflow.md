@@ -14,6 +14,8 @@ The script needs Python 3 standard library, Node 24+, and the application's inst
 
 The new work directory contains `requests.json`, the synthetic image (unless one was supplied), and `mock-result.mp4`. Each original request is written before dispatch. If a command fails, the script stops and retains its state; the same directory cannot be blindly rerun. Inspect the existing IDs and use the documented recovery rules.
 
+Shot creation, node creation and version selection include stable request IDs in that log. To recover a lost response for a keyed edit, use its saved operation and complete `input` unchanged, including the request ID and any original revision. The script does not automatically retry or resume. Project creation and asset import remain keyless; inspect existing projects/assets before deciding whether another attempt is needed.
+
 To inspect a result in the UI, select the returned project ID in the running application. CLI, MCP and renderer see the same stored project. The result is a real decodable MP4 with a permanent SIMULATED MOCK label; it is not an AI depiction of the prompt.
 
 For a user's existing project, do not run this new-project demonstration unasked. Use the individual schema-driven CLI/MCP operations to make only their requested changes.

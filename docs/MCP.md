@@ -174,6 +174,11 @@ Annotations are advisory, never permission to spend.
 A successful generate result is the original queued receipt; read
 `image_task_get` for the current result and `image_request_get` after lost ACK or
 restart. Never automatically reapprove, resubmit or replace the uncertain key.
+An uncertain `image_review_prepare` response retains its nested `input.requestId`
+and exact-input replay guidance, including for in-flight timeout or interruption.
+Repeat only the original preparation input and settings revision; preparation
+does not approve or dispatch. A failed `image_request_get` carries no write-outcome
+claim or mutation-replay guidance and does not establish the earlier write's result.
 Cancellation is undispatched-only; result recovery only publishes existing
 task-bound local staged bytes and never contacts the provider. Changed settings
 and pending saves block stale authority at the final synchronous dispatch fence.

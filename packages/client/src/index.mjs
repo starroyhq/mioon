@@ -80,8 +80,16 @@ export function validateDiscovery(name, input) {
 }
 function interrupted() { return new ClientError('INTERRUPTED', 'Stopped waiting locally. No remote job was cancelled.'); }
 function checkSignal(signal) { if (signal?.aborted) throw interrupted(); }
+const keyedMutationOperations = new Set([
+  ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS,
+  'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare',
+]);
 function uncertainRequestDetails(body) {
-  return body ? {operation: body.operation, ...(body.input?.requestId ? {requestId: body.input.requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})} : {};
+  if (!body) return {};
+  // Receipt reads also carry requestId. Only a known keyed write can have an
+  // uncertain submission; review preparation keeps its key in the exact intent.
+  const requestId = body.operation === 'image.review.prepare' ? body.input?.input?.requestId : body.input?.requestId;
+  return {operation: body.operation, ...(keyedMutationOperations.has(body.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
 }
 function comfyObservationNotAccepted(error,status,input) {
   const statuses={COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
@@ -161,7 +169,7 @@ export function createClient(clientOptions = {}) {
     if(operation==='image.task.remote.get'&&(!isComfyRemoteResponse(result)||result.projectId!==parsed.projectId||result.taskId!==parsed.taskId))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI remote record.');
     const reviewValid=operation==='image.review.prepare'?isImageReviewPreparationResponse(parsed,result):operation==='image.review.get'?isImageReviewResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.reviewId:operation==='image.review.list'?isImageReviewListResponse(parsed,result):true;
-    if(!reviewValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid image review response',{details:{submissionMayHaveSucceeded:operation==='image.review.prepare',operation,...(parsed.input?.requestId?{requestId:parsed.input.requestId}:{})}});
+    if(!reviewValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid image review response',{details:operation==='image.review.prepare'?uncertainRequestDetails(body):{submissionMayHaveSucceeded:false,operation}});
     const imageReadValid=operation==='image.profile.list'?isImageProfilesResponse(result,parsed)
       :operation==='image.task.get'?isImageTaskResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.taskId
       :operation==='image.group.get'?isImageGroupResponse(result)&&result.projectId===parsed.projectId&&result.id===parsed.groupId

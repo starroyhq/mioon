@@ -131,8 +131,8 @@ requestId. At most18000 timeline frames are supported including the append
 position. Marks do not rewrite existing clips, versions or original media.
 Recover lost responses with identical keys/input; never replace the identity
 just because the connection closed. The range-set key shares collision checks
-with disposition set and the six local canvas mutations; timeline/reference/
-generation key scopes stay separate.
+with disposition set, the six local canvas mutations and the three subject
+mutations; timeline/reference/generation key scopes stay separate.
 Built-in conversational Agent read/proposal tools do not yet see or edit ranges.
 
 ## Asset review dispositions
@@ -157,7 +157,7 @@ Retain the complete original operation/input until the result is known. Exact
 replay validates current ownership and returns its historical response before
 checking current revisions, including after backend restart. It may describe an
 older favorite/rejected state; list before a new intent. Changed scope, fields
-or operation under that key conflicts across all eight shared local mutations.
+or operation under that key conflicts across all eleven shared local mutations.
 The separate timeline/reference/generation/export key scopes stay unchanged.
 A missing/foreign response does not prove an unknown earlier attempt failed.
 

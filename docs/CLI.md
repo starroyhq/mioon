@@ -202,6 +202,13 @@ SQLite: the intent limit is 32 KiB, row limit 64 KiB, retention 1000/project and
 Exact prepare repeats retain the same identity/current state; changed content
 or settings revision under its key conflicts.
 
+If a prepare request loses its response, times out, is interrupted in flight or
+receives an invalid response, the client preserves the nested `input.requestId`
+in its uncertainty details. Replay the complete original prepare input, including
+`settingsRevision`; this does not approve or dispatch generation. A failed
+`image request get` is only a failed receipt read: it carries no submission-outcome
+claim or mutation-replay instruction and proves nothing about the earlier write.
+
 See [Image generation](IMAGE-GENERATION.md) and
 [Images activation](IMAGE-ACTIVATION.md) for shared inputs/limits. Custom review
 DTOs additionally retain full immutable configuration and actual destination;

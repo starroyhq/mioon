@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {mkdtemp, realpath, mkdir, writeFile, readFile, rm} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import {mkdtemp, realpath, mkdir, writeFile, readFile, rm, symlink} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
@@ -9,6 +10,47 @@ import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, 
   PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand} from '../scripts/lib/local-tooling.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+function runToolingNode(args) {
+  const result = spawnSync(process.execPath, args, {cwd: root, env: toolingEnvironment(),
+    encoding: 'utf8', timeout: 5000, shell: false, windowsHide: true});
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
+  return result;
+}
+
+test('tooling CLI entry handles canonical and aliased script paths identically', async t => {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon tooling entry 中 '));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const alias = path.join(directory, 'scripts alias 中');
+  await symlink(path.join(root, 'scripts'), alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const canonical = await realpath(path.join(root, 'scripts/tooling.mjs'));
+  const entries = [canonical, path.join(alias, 'tooling.mjs')];
+  // Windows uses the directory junction above; file symlinks can require privileges.
+  if (process.platform !== 'win32') {
+    const scriptAlias = path.join(directory, 'tooling alias 中.mjs');
+    await symlink(canonical, scriptAlias);
+    entries.push(scriptAlias);
+  }
+  for (const entry of entries) {
+    // Invalid usage must reach the CLI parser without executing any preflight.
+    const result = runToolingNode([entry, '__audit_invalid_command__']);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(JSON.parse(result.stderr).code, 'TOOLING_USAGE');
+  }
+});
+
+test('tooling module import does not run the CLI for unrelated or missing entry paths', () => {
+  const moduleUrl = new URL('../scripts/tooling.mjs', import.meta.url).href;
+  for (const entry of [undefined, path.join(root, 'package.json'), path.join(root, 'scripts/tooling.mjs', 'missing')]) {
+    const source = `process.argv[1] = ${JSON.stringify(entry)}; await import(${JSON.stringify(moduleUrl)}); process.stdout.write('imported\\n');`;
+    const result = runToolingNode(['--input-type=module', '-e', source]);
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, 'imported\n');
+    assert.equal(result.stderr, '');
+  }
+});
+
 async function fixture(t) {
   // Canonicalize only this newly owned synthetic fixture, not a user data path.
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon tooling 中 '));

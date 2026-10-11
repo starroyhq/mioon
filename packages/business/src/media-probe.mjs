@@ -6,6 +6,10 @@ import { interruptedMediaError, throwIfMediaAborted } from './media-processes.mj
 export const MEDIA_PROBE_LIMITS = Object.freeze({ streams: 256, dimension: 16384, pixels: 64 * 1024 * 1024, concurrent: 4 });
 const invalid = () => Object.assign(new Error('Local media metadata is invalid or exceeds resource limits.'), { code: 'MEDIA_INVALID_METADATA' });
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+// FFprobe can report a stream type and dimensions for an unknown codec. Such
+// streams cannot be selected for decoding; keep looking for an identified one.
+// This is not a decoder allowlist or a guarantee that the entire stream decodes.
+const identifiedCodec = stream => typeof stream.codec_name === 'string' && stream.codec_name.length > 0 && stream.codec_name !== 'unknown';
 
 function duration(value) {
   // FFprobe omits unavailable durations and some demuxers report N/A.
@@ -26,8 +30,8 @@ export function parseProbeOutput(output) {
     duration(stream.duration);
   }
   const formatDuration = duration(p.format?.duration);
-  const v = p.streams.find(stream => stream.codec_type === 'video' && !stream.disposition?.attached_pic && stream.width && stream.height);
-  const a = p.streams.find(stream => stream.codec_type === 'audio');
+  const v = p.streams.find(stream => stream.codec_type === 'video' && identifiedCodec(stream) && !stream.disposition?.attached_pic && stream.width && stream.height);
+  const a = p.streams.find(stream => stream.codec_type === 'audio' && identifiedCodec(stream));
   if (!v && !a) throw Object.assign(new Error('No decodable image/video/audio stream'), { code: 'MEDIA_NO_STREAM' });
   return { width: v?.width || 0, height: v?.height || 0, duration: formatDuration || duration(v?.duration) || duration(a?.duration),
     hasVideo: Boolean(v), hasAudio: Boolean(a), videoStreamIndex: v?.index, audioStreamIndex: a?.index, codec: v?.codec_name || a?.codec_name, probe: p };
