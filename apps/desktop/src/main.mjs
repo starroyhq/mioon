@@ -28,6 +28,7 @@ catch (error) { startupStorageError = error; }
 let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let startupOperation;
+let windowContext;
 const cancelledStartupErrors = new WeakSet();
 let quitFailureNotice;
 let smokeDiscardDecision;
@@ -106,7 +107,10 @@ async function start() {
     startup.checkpoint();
     await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
     startup.checkpoint();
-    await openWindow();
+    // A backend handshake alone is not permission to open a window. Publish its
+    // context only after this start owns a prepared session and discovery file.
+    const context = windowContext = { startup, ready: started, session: activeSession };
+    await openWindow(context);
     startup.checkpoint();
     return { identity, runtime: ready.runtime, tools: tools.versions };
   } catch (error) {
@@ -117,39 +121,61 @@ async function start() {
   }
 }
 
-async function openWindow() {
-  if (!ready || quitting) return;
-  win = new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
+function ownsWindowContext(context) {
+  return Boolean(context && context === windowContext && context.startup === startupOperation &&
+    !context.startup.signal.aborted && context.ready === ready && context.session === activeSession && !quitting);
+}
+
+function ownsWindow(window, context) {
+  return Boolean(window && win === window && !window.isDestroyed() && ownsWindowContext(context));
+}
+
+async function loadOwnedWindow(window, context) {
+  try { await window.loadURL(`${context.ready.url}/`); }
+  catch (error) {
+    // A destroyed/superseded window can reject its outstanding navigation. This
+    // exemption belongs only to that navigation, never startup or stop cleanup.
+    if (ownsWindow(window, context)) throw error;
+  }
+}
+
+async function openWindow(context = windowContext) {
+  if (!ownsWindowContext(context) || (win && !win.isDestroyed())) return;
+  const window = new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
     minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
-    autoHideMenuBar: process.platform !== 'darwin', webPreferences: secureWebPreferences(activeSession) });
-  installWindowPolicy(win, ready.url);
-  const closingWindow = win;
-  installPreferencesCloseDrain(closingWindow, {
+    autoHideMenuBar: process.platform !== 'darwin', webPreferences: secureWebPreferences(context.session) });
+  win = window;
+  installWindowPolicy(window, context.ready.url);
+  installPreferencesCloseDrain(window, {
     // The fixed function can only perform the renderer's normal same-origin HTTP.
     // It receives no native capabilities, paths, token, or arguments from main.
-    flush: () => isAllowedNavigation(closingWindow.webContents.getURL(), ready.url)
-      ? closingWindow.webContents.executeJavaScript("typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : true")
+    flush: () => ownsWindow(window, context) && isAllowedNavigation(window.webContents.getURL(), context.ready.url)
+      ? window.webContents.executeJavaScript("typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : true")
       : true,
-    confirmClose: () => smokeOutput || dialog.showMessageBoxSync(closingWindow, { type: 'warning', title: '视图位置尚未保存',
+    confirmClose: () => !ownsWindow(window, context) || smokeOutput || dialog.showMessageBoxSync(window, { type: 'warning', title: '视图位置尚未保存',
       message: '当前视图位置尚未保存，仍要退出？',
       detail: '可以继续编辑并重试连接。直接退出可能丢失最近的工作区、选择或缩放位置；这不会改变已保存的项目和媒体。',
       buttons: ['仍然退出', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0,
-    onCancel: () => quitCoordinator.cancel()
+    onCancel: () => { if (ownsWindow(window, context)) quitCoordinator.cancel(); }
   });
-  installUnsavedGuard(win, {
-    confirmDiscard: () => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBoxSync(win, { type: 'question', title: '尚有未保存的修改',
+  installUnsavedGuard(window, {
+    confirmDiscard: () => !ownsWindow(window, context) || (smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBoxSync(window, { type: 'question', title: '尚有未保存的修改',
       message: '放弃未保存的修改？', detail: '选择继续编辑会保持当前窗口和本地服务运行。',
-      buttons: ['放弃修改', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0,
-    onCancel: () => quitCoordinator.cancel()
+      buttons: ['放弃修改', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0),
+    onCancel: () => { if (ownsWindow(window, context)) quitCoordinator.cancel(); }
   });
-  win.on('closed', () => { win = null; });
-  win.once('ready-to-show', () => { if (win && !win.isDestroyed()) win.show(); });
-  win.webContents.on('render-process-gone', () => { if (!quitting && !smokeOutput) void rendererFailed(); });
-  win.webContents.on('unresponsive', () => { if (!quitting && !smokeOutput) void rendererFailed(); });
-  await win.loadURL(`${ready.url}/`);
+  window.on('closed', () => { if (win === window) win = null; });
+  window.once('ready-to-show', () => { if (ownsWindow(window, context)) window.show(); });
+  const onRendererFailure = () => {
+    if (ownsWindow(window, context) && !smokeOutput) void rendererFailed(window, context).catch(fatal);
+  };
+  window.webContents.on('render-process-gone', onRendererFailure);
+  window.webContents.on('unresponsive', onRendererFailure);
+  await loadOwnedWindow(window, context);
 }
 
 async function stop() {
+  windowContext = null;
   await startupOperation?.abort();
   await backend?.stop();
   await cleanupStoppedBackend();
@@ -165,6 +191,7 @@ async function cleanupStoppedBackend() {
 async function restart() {
   if (restarting || quitting) return;
   restarting = true;
+  windowContext = null;
   try {
     if (win && !win.isDestroyed()) win.destroy();
     await stop();
@@ -184,17 +211,24 @@ async function backendFailed() {
   else app.quit();
 }
 
-let showingRendererError = false;
-async function rendererFailed() {
-  if (showingRendererError) return;
-  showingRendererError = true;
+let rendererErrorOwner = null;
+async function rendererFailed(window, context) {
+  if (!ownsWindow(window, context) || (rendererErrorOwner?.window === window && rendererErrorOwner.context === context)) return;
+  const owner = rendererErrorOwner = { window, context };
   try {
     const { response } = await dialog.showMessageBox({ type: 'warning', title: '界面需要重新载入',
       message: '工作区界面没有响应。后台任务仍由本地服务管理。',
       buttons: ['重新载入界面', '退出'], defaultId: 0, cancelId: 1 });
-    if (response === 0 && win && !win.isDestroyed()) await win.loadURL(`${ready.url}/`);
+    if (!ownsWindow(window, context)) return;
+    if (response === 0) await loadOwnedWindow(window, context);
     else app.quit();
-  } finally { showingRendererError = false; }
+  } catch (error) {
+    if (ownsWindow(window, context)) throw error;
+  } finally {
+    // A pending old-window dialog must neither block a replacement's recovery
+    // prompt nor release that replacement's duplicate-event guard when it ends.
+    if (rendererErrorOwner === owner) rendererErrorOwner = null;
+  }
 }
 
 async function fatal(error) {
@@ -214,7 +248,9 @@ function installMenu() {
   const template = [];
   if (process.platform === 'darwin') template.push({ role: 'appMenu' });
   template.push({ label: '应用', submenu: [
-    { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => { if (ready && win) void win.loadURL(`${ready.url}/`); } },
+    { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => {
+      if (ownsWindow(win, windowContext)) void loadOwnedWindow(win, windowContext).catch(fatal);
+    } },
     { label: '重启本地服务', click: async () => {
       const { response } = await dialog.showMessageBox({ type: 'question', message: '重启本地服务？',
         detail: '已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
@@ -229,6 +265,7 @@ function installMenu() {
 const quitCoordinator = new QuitCoordinator({ getWindow: () => win,
   stop: async () => {
     quitting = true;
+    windowContext = null;
     const onUnconfirmed = () => smokeOutput ? undefined : dialog.showMessageBox({ type: 'error', title: '正在等待本地进程退出',
       message: '本地进程尚未确认退出，应用将继续等待。',
       detail: '当前不会重启服务或继续发送终止信号。确认本地进程退出后，应用会完成清理并退出。',
@@ -264,8 +301,13 @@ async function quitFailed(error) {
 if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStorageError);
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
-  app.on('activate', () => { if (!win && ready && !quitting) void openWindow().catch(fatal); });
+  app.on('second-instance', () => {
+    const window = win;
+    if (ownsWindow(window, windowContext)) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); }
+  });
+  app.on('activate', () => {
+    if (!restarting && !quitting && quitCoordinator.state === 'idle' && ownsWindowContext(windowContext)) void openWindow().catch(fatal);
+  });
   app.on('window-all-closed', () => { if (!restarting && process.platform !== 'darwin') app.quit(); });
   app.on('before-quit', event => {
     if (quitCoordinator.state === 'finished') return;

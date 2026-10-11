@@ -18,7 +18,9 @@ Electron 主进程
 
 打包后的桌面应用不调用系统 `node`，不使用 `child_process.fork`，也不会悄悄回退到 PATH 中的 Node。此前 Linux Electron 44.7.0 的实际二进制探测结果为 Node 24.21.0、SQLite 3.53.4；其他平台必须记录其实际运行结果。最终运行验证还须覆盖 utilityProcess，而不能仅凭版本或 Node 模式探测声称通过。
 
-`apps/desktop/scripts/build.mjs` 用 esbuild 将共享服务及其运行依赖打入 `backend.cjs`，将桌面壳打入 `main.cjs`，复制 `apps/web/dist`。暂存目录与最终 ASAR 均排除 workspace 软链接、`node_modules`、原素材、项目数据库或访问令牌。生产依赖许可证和 checked-in shadcn/ui 的 MIT 许可证一同装入 `licenses/`；Electron/Chromium 许可证由 Electron 分发包提供。现有 Linux 专用 `inspect-package.mjs` 会逐项检查最终 ASAR 及实际二进制 fuse 字节，防止打包工具从父目录额外收集依赖。
+`apps/desktop/scripts/build.mjs` 用 esbuild 将共享服务及其运行依赖打入 `backend.cjs`，将桌面壳打入 `main.cjs`，复制 `apps/web/dist`。暂存目录与最终 ASAR 均排除 workspace 软链接、`node_modules`、原素材、项目数据库或访问令牌。生产依赖许可证和 checked-in shadcn/ui 的 MIT 许可证一同装入 ASAR 的 `licenses/`。Electron/Chromium 原始通知来自各目标 Electron 分发包：Linux 保持可执行文件旁的 `LICENSE.electron.txt` 和 `LICENSES.chromium.html`；macOS 的 `afterExtract` 钩子在 builder 删除分发包根目录通知之前，将两份原始字节保存到 `.app/Contents/Resources/licenses/`，`afterPack` 再分别核对大小与 SHA-256。这些额外资源不扩大 ASAR 白名单，也不使用构建主机的 Electron 通知替代目标运行时。现有 Linux 专用 `inspect-package.mjs` 仍按原有路径检查最终 ASAR 及实际二进制 fuse 字节。
+
+macOS 通知保护钩子要求目标 framework/config 版本和尚未改写的 `Electron.app/Contents/Info.plist` 版本与根清单 Electron 固定版本一致；正常解包会在钩子前移除根目录 `version`，所以不依赖该文件。输入与输出拒绝符号链接、非普通文件、空文件和超限文件；Electron 通知上限 256 KiB、Chromium 通知上限 32 MiB、原始 plist 上限 1 MiB。版本证据是解包上下文和原始 bundle 元数据，不构成运行时签名认证。2026-10-11 留存的旧 arm64 development/production `.app` 验收仍缺少两份通知，development DMG 也没有重新生成或重新挂载检查；此处源码修复与云端契约测试不能替代新的 Mac 验收。
 
 ## 从源码启动
 
@@ -182,3 +184,19 @@ CLI 与 MCP 都可使用同一 `MIOON_CONNECTION_FILE`，每次请求重新读�
 上文 V3 的 19 项/6 项及 `0.3.0` Linux 归档是历史证据，不含新适配器。本轮 V4 的 fresh development-runtime smoke 与实际源码验收以 ACCEPTANCE-V4.md 为准。旧包保持原样，未声称其已更新；没有重建/发布安装包或做 macOS 实机验证。
 
 V4.1 的渠道、隔离、迁移和本轮验证记录见 [ACCEPTANCE-V4.1.md](ACCEPTANCE-V4.1.md)；历史 V3/V4 证据不等于本轮重跑。
+
+## 2026-10-11 桌面收口：运行时通知、窗口归属和抽帧详情
+
+本片基线为 `cb864f68af1d0e20663404151afd2c09d5051c3c`。改动只涉及构建时运行时通知保留、桌面窗口生命周期，以及抽帧结果卡的审计详情展示；没有修改项目/任务 schema、业务服务、供应商或媒体原始字节。
+
+- macOS 通知从 builder 正在处理的目标发行包读取，先验证锁定 Electron44.7.0、目标上下文和原始 Info.plist，再分别有界读取 `LICENSE`（≤256KiB）、`LICENSES.chromium.html`（≤32MiB）；plist≤1MiB。拒绝缺失、空文件、非普通文件、符号链接/硬链接、超限、既有目标和版本不符。保存到目标 `.app/Contents/Resources/licenses/` 后，清理/重命名完成还要逐文件比较原大小与 SHA-256。不会从构建主机静默替代另一个目标的通知，也不会放宽既有 ASAR 检查上限。这是通知文件保留检查，不是完整法律合规审计。
+- 桌面窗口上下文只在当前服务、认证 cookie 和连接发现均就绪后发布；停止/重启先撤销旧上下文。activate、ready-to-show、closed、导航结果和 renderer 错误对话框均绑定确切窗口/上下文；旧窗口的迟到回调不能显示、关闭、清空或压住新窗口的恢复提示。已有启动取消标记与真实清理错误路径保留。macOS 特有 activate 时序由当前真实 main/supervisor 函数的合成边界测试覆盖，尚未在 Mac 上重验。
+- 抽帧结果卡默认显示可读名称、时间点、尺寸、状态和来源；完整源/结果 UUID、SHA、任务/请求标识及配置放在原有“源文件与请求记录”展开区。原控制、草稿守卫和请求身份不变；展开状态只是当前原生 details 元素的临时界面状态。
+
+当前验收：锁安装复用393个缓存包，官方 registry 元数据468项供应链检查通过；没有更改 lockfile 或放宽策略。受影响检查341/341通过（0失败/跳过）；fresh development Web/desktop 构建通过。实际 Linux 图形会话使用未修改的最终 bundle，验证默认折叠、展开七项审计值、空格键折叠、正常服务重启后唯一替代窗口和新的服务 PID/origin、正常退出code0。业务表与原媒体 SHA 在重启/退出前后保持；连接发现文件和令牌正常清理。没有把 Linux 普通重启当作 Mac activate 竞态原生认证。
+
+本轮真实 Linux x64 开发渠道解包构建成功，原 Electron `LICENSE`→`LICENSE.electron.txt` 为1096bytes、SHA `5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d`；Chromium 通知为20,115,518bytes、SHA `3375e2a9bd7bc631738fde10be6548a76efe8cf5e4b8826b8140ba8b0c4d6353`，都与锁定原发行包字节相同，源 Electron 二进制未改动。该解包产物没有另做启动/安装测试；实际原生启动针对上面的源码 development bundle。
+
+历史 Mac arm64 双渠道 `.app` 检查曾确证两份通知丢失；本片在 Linux 合成 Mac 目标布局上验证修复钩子、x64/arm64 与双渠道边界，未重新构建或运行 Mac 包。Mac 会话按用户要求保持停止；签名、公证、传统安装升级和 Windows ACL 门槛仍未由这片验收解决。
+
+保留的前置失败：旧隔离工作树初测22项通过、两个窗口测试文件因尚无 workspace 依赖而未加载；第一次默认缓存安装遇不存在的用户 home，指定既有 store 的离线安装因缺 registry 元数据被供应链门槛拒绝。之后才使用官方 registry 完成同一 frozen lock 安装与上面的完整检查。前片白/蓝绘制异常在本轮未重现，但未查明原因，不能据此宣布修复。最终父级独立全量实际 exit0：3558项，3556通过、0失败、2跳过，576875.394504ms；此结果单独记录，不以 focused 检查替代全量门槛。

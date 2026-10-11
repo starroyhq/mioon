@@ -25,7 +25,9 @@ await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
 await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
   private: true, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
 await mkdir(path.join(output, 'licenses'), { recursive: true });
-const seen = new Set(), notices = ['# Third-party notices', '', 'Electron and Chromium notices are included beside the packaged executable.', ''];
+const seen = new Set(), notices = ['# Third-party notices', '',
+  'Packaged Electron and Chromium notices: LICENSE.electron.txt and LICENSES.chromium.html.',
+  'On macOS they are in the application bundle at Contents/Resources/licenses; on Linux they are beside the executable.', ''];
 async function collectLicenses(packageFile) {
   const metadata = JSON.parse(await readFile(packageFile, 'utf8'));
   const key = `${metadata.name}@${metadata.version}`;

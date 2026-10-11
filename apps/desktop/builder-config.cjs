@@ -5,6 +5,7 @@ const { readBuildMetadata, validateStagedMetadata } = require('./build-metadata.
 module.exports = function builderConfig(channel) {
   const identity = identityForChannel(channel);
   const { appVersion, electronVersion } = readBuildMetadata();
+  const runtimeNotices = new Map();
   return {
     appId: identity.appId,
     productName: identity.productName,
@@ -19,6 +20,19 @@ module.exports = function builderConfig(channel) {
     beforePack: async context => {
       const metadata = JSON.parse(await fs.readFile(path.join(context.packager.info.appDir, 'package.json'), 'utf8'));
       validateStagedMetadata(metadata, { appVersion, identity });
+    },
+    // Preserve this target's notices before createMacApp removes runtime-root
+    // copies. Keep them outside ASAR and verify both after the bundle rename.
+    afterExtract: async context => {
+      const { preserveMacRuntimeNotices } = require('./runtime-notices.cjs');
+      runtimeNotices.delete(context.appOutDir);
+      const manifest = await preserveMacRuntimeNotices(context, electronVersion);
+      if (manifest) runtimeNotices.set(context.appOutDir, manifest);
+    },
+    afterPack: async context => {
+      const { inspectMacRuntimeNotices } = require('./runtime-notices.cjs');
+      await inspectMacRuntimeNotices(context, electronVersion, runtimeNotices.get(context.appOutDir));
+      runtimeNotices.delete(context.appOutDir);
     },
     electronFuses: {
       runAsNode: false,

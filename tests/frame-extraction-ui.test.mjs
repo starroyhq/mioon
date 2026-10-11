@@ -131,6 +131,32 @@ function panelHarness(controller) {
   return { render() { cursor = 0; effects = []; layouts = []; tree = module.exports.default({ controller }); flush(layouts); return tree; }, handlers: () => nodes(tree).filter(node => node.props?.onClick).map(node => node.props.onClick), hide() { visible = false; }, unmount() { slots.forEach(slot => slot.cleanup?.()); }, nodes: () => nodes(tree) };
 }
 
+test('actual Properties result card keeps its readable summary visible and exact audit identities in a closed native disclosure', async () => {
+  const resultName = 'Source clip - 00.01.867.png', completed = succeeded();
+  const h = setup(() => page([completed]));
+  h.configure({ assets: [{ id: resultId, projectId: project, sha256: outputHash, name: resultName, mimeType: 'image/png', provenance: 'extracted-frame' }] });
+  await h.controller.refreshTasks(); const panel = panelHarness(h.controller); panel.render();
+  const card = panel.nodes().find(node => node.props?.['data-testid'] === 'frame-extraction-task');
+  const disclosure = nodes(card).find(node => node.type === 'details');
+  const summary = disclosure.props.children[0];
+  const text = value => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text(value.props?.children) : value == null || typeof value === 'boolean' ? '' : String(value);
+  assert.equal(summary.type, 'summary'); assert.equal(text(summary), '源文件与请求记录');
+  assert.equal(Boolean(disclosure.props.open), false, 'audit details are collapsed by default');
+  const collapsedText = text(card.props.children.filter(node => node !== disclosure)) + text(summary);
+  for (const expected of [resultName, '时间点 56', '1.867 秒', '1024 × 576', frame.frameTaskLabel('succeeded'), '在素材库查看 PNG']) assert.ok(collapsedText.includes(expected), expected);
+  const auditFields = [
+    ['源素材 ', sourceId], ['源 SHA-256 ', hash], ['任务 ', taskId], ['请求 ', completed.requestId], ['提取配置 ', completed.profileId],
+    ['素材 ', resultId], ['SHA-256 ', outputHash],
+  ];
+  const disclosedFields = nodes(disclosure).filter(node => node.type === 'span').map(text);
+  for (const [label, value] of auditFields) {
+    assert.equal(collapsedText.includes(value), false, `${label}is hidden until the disclosure is expanded`);
+    assert.ok(disclosedFields.includes(label + value), `${label}retains its complete, untruncated value`);
+  }
+  assert.ok(nodes(card).find(node => node.props?.['data-testid'] === 'frame-result-reveal').props.onClick);
+  panel.unmount();
+});
+
 test('actual Properties component shows bounded provenance/result, and stale hidden/unmounted handlers cannot act', async () => {
   const actions = [], h = setup(operation => operation === 'frame.task.list' ? page([succeeded()]) : succeeded()); await h.controller.refreshTasks();
   const controller = new Proxy(h.controller, { get(target, key) { return ['refreshTasks', 'revealResult', 'loadMoreTasks'].includes(key) ? (...args) => actions.push([key, ...args]) : target[key]; } });
