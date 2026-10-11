@@ -101,6 +101,7 @@ const textSites = {
   "tests/media-runtime-bounds.test.mjs": 1,
   "tests/mutation-wire.test.mjs": 3,
   "tests/private-storage-transports.test.mjs": 2,
+  "tests/project-specifications-transports.test.mjs": 2,
   "tests/reference-recovery-transports.test.mjs": 1,
   "tests/reference-transports.test.mjs": 4,
   "tests/source-range-transports.test.mjs": 2,

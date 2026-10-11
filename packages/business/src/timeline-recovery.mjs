@@ -1,3 +1,4 @@
+import {readTimelineFormatProvenance} from './timeline-format-receipts.mjs';
 import {AppError,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
@@ -13,14 +14,14 @@ const bounded=(column,bytes)=>`CASE WHEN typeof(${column})='text' AND length(CAS
 const identity=column=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
 const definiteRejections=new Set(['REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
  'INVALID_FADE','FADE_AUDIO_UNSUPPORTED','AUDIO_HIDDEN_UNSUPPORTED','TIMELINE_LIMIT','CLIP_OVERLAP','SPLIT_BOUNDS','SPLIT_FADE_BOUNDS',
- 'TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE']);
+ 'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE']);
 
 // A proof is attached only outside the transaction after its rollback. A fresh
 // receipt absence is necessary, but cannot make a post-write or scope failure
 // definite. The caller marks *every* write, including legacy initialization.
-export function rejectTimelineMutation(db,input,error,{receiptAbsent,writesStarted,transactionEntered,callbackFailed}){
+export function rejectTimelineMutation(db,input,error,{receiptAbsent,writesStarted,transactionEntered,callbackFailed,operation}){
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
-  error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId};
+  error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId,...(operation==='timeline.format.set'?{operation,projectId:input.projectId}:{})};
 }
 
 export function readTimelineReceipt(db,input,operation){
@@ -141,6 +142,7 @@ export function createTimelineRecoveryBoundary(db,input){
   return timeline;
  }
  function replay(operation,text){
+  if(operation==='timeline.format.set')readTimelineFormatProvenance(db,input,readTimelineReceipt(db,input,operation)?.requestHash);
   let response;try{response=JSON.parse(text);}catch{invalidTimeline();}
   if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
   const current=read({sourceSemantics:operation!=='timeline.render'});
@@ -153,6 +155,7 @@ export function createTimelineRecoveryBoundary(db,input){
   return response;
  }
  function verify(operation,response,requestHash){
+  if(operation==='timeline.format.set')readTimelineFormatProvenance(db,input,requestHash);
   if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
   const current=read();if(!current)unavailable();
   responseSources(operation,response);

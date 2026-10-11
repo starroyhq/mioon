@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as audio from '../apps/web/src/clip-audio-state.js';
+import * as timelineFormat from '../apps/web/src/timeline-format-state.js';
 
 const asset = (patch = {}) => ({ id: 'asset-a', projectId: 'project-a', name: 'Source', mimeType: 'video/mp4', hasAudio: true, duration: 10, ...patch });
 const clip = (patch = {}) => ({ id: 'clip-a', assetId: 'asset-a', name: 'Clip', trackId: 'video', startFrame: 0, durationFrames: 120, sourceInFrame: 0, rect: { x: 0, y: 0, width: 720, height: 1280 }, gain: 1, ...patch });
-const timeline = (current = clip(), revision = 7, projectId = 'project-a') => ({ id: `timeline-${projectId}`, projectId, revision, clips: [current], tracks: [{ id: 'video', kind: 'video', name: 'Video' }, { id: 'audio', kind: 'audio', name: 'Audio' }] });
+const timeline = (current = clip(), revision = 7, projectId = 'project-a') => ({ id: `timeline-${projectId}`, projectId, revision, fps: 30, width: 720, height: 1280, clips: [current], tracks: [{ id: 'video', kind: 'video', name: 'Video' }, { id: 'audio', kind: 'audio', name: 'Audio' }] });
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const text = tree => Array.isArray(tree) ? tree.map(text).join('') : tree && typeof tree === 'object' ? text(tree.props?.children) : tree == null || typeof tree === 'boolean' ? '' : String(tree);
@@ -36,6 +37,7 @@ function inspectorHarness(patch = {}) {
     Function('require', 'module', 'exports', code)(id => {
       if (id === 'react') return react;
       if (id === './clip-audio-state.js') return audio;
+      if (id === './timeline-format-state.js') return timelineFormat;
       if (id === './ClipAudioControls.jsx') return load('ClipAudioControls.jsx');
       if (id === './Timeline.jsx') return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
       if (id === '@mioon/contracts') return { sourceFrameCount: duration => Math.floor(duration * 30) };

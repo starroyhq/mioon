@@ -11,7 +11,7 @@ const schema=db=>db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master OR
 const rows=(db,table)=>db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function capture(db){const objects=schema(db),tables=objects.filter(r=>r.type==='table').map(r=>r.name);return {objects,tables,rows:Object.fromEntries(tables.map(t=>[t,rows(db,t)])),hashes:Object.fromEntries(tables.map(t=>[t,rows(db,t).map(digest)]))};}
-function assertOld(db,before){assert.deepEqual(schema(db).filter(r=>before.objects.some(old=>old.name===r.name)),before.objects);for(const table of before.tables){const actual=rows(db,table),expected=before.rows[table];assert.deepEqual(table==='schema_version'?actual.filter(v=>v.version<=15):actual,expected,table);assert.deepEqual((table==='schema_version'?actual.filter(v=>v.version<=15):actual).map(digest),before.hashes[table],`${table} raw-row hashes`);}}
+function assertOld(db,before,{formatMigration=false}={}){const retained=schema(db).filter(r=>before.objects.some(old=>old.name===r.name)).map(row=>{if(!formatMigration||row.type!=='table'||row.name!=='edit_tasks')return row;assert.equal(row.sql.split(",'timeline.format.set'").length,2,'only the explicitly added operation is removed for the historical schema comparison');return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql:row.sql.replace(",'timeline.format.set'",'')});});assert.deepEqual(retained,before.objects);for(const table of before.tables){const actual=rows(db,table),expected=before.rows[table];assert.deepEqual(table==='schema_version'?actual.filter(v=>v.version<=15):actual,expected,table);assert.deepEqual((table==='schema_version'?actual.filter(v=>v.version<=15):actual).map(digest),before.hashes[table],`${table} raw-row hashes`);}}
 function seed(db){
  const projectId=randomUUID(),assetId=randomUUID(),jobId=randomUUID(),shotId=randomUUID(),versionId=randomUUID(),timelineId=randomUUID();
  insert(db,'projects',{id:projectId,data:`{ "id": "${projectId}", "name":"旧项目 🌱", "revision":1 }`});
@@ -53,9 +53,9 @@ test('new image identities resist updates, delete and INSERT OR REPLACE and disp
  const frozen=rows(db,'image_requests');assert.equal(JSON.parse(frozen[0].response).state,'queued');assert.equal(JSON.parse(frozen[0].response).revision,1);
 });
 
-test('normal startup migrates an independent schema15 file without rebuilding edit_tasks',t=>{
+test('normal startup preserves schema15 rows through later migrations and the explicit format allowlist rebuild',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-image-migration-'));let db=legacyDatabase(path.join(root,'workbench.sqlite')),store;
- try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) v FROM schema_version').get().v,20);assertOld(store.db,before);const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
+ try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) v FROM schema_version').get().v,21);assertOld(store.db,before,{formatMigration:true});const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 
 test('interruption and unknown results keep fences and permit only explicit local-result recovery',t=>{

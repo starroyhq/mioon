@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {timelineFormatSchemas} from './timeline-format.mjs';
+export * from './timeline-format.mjs';
 import {frameSchemas} from './frame-extraction.mjs';
 export * from './frame-extraction.mjs';
 import {imageSchemas} from './images.mjs';
@@ -40,12 +42,15 @@ const shotFields={title:z.string().min(1).max(150),prompt:z.string().max(5000),r
 const frame=z.number().int().min(0).max(18000), durationFrames=z.number().int().min(1).max(18000);
 const sourceFrame=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-18000);
 const even=(minimum,maximum)=>z.number().int().min(minimum).max(maximum).multipleOf(2);
-const rect=z.object({x:even(0,718),y:even(0,1278),width:even(2,720),height:even(2,1280)}).strict().refine(r=>r.x+r.width<=720&&r.y+r.height<=1280,{message:'Rectangle must stay inside the 720×1280 output'});
+// Syntax admits the maximum supported envelope. The aggregate and ACK validate
+// against their own exact preset pair, including historical acknowledgements.
+const rect=z.object({x:even(0,1278),y:even(0,1278),width:even(2,1280),height:even(2,1280)}).strict().refine(r=>r.x+r.width<=1280&&r.y+r.height<=1280,{message:'Rectangle exceeds the supported output envelope'});
 const timelineMutation={projectId:id,expectedRevision:z.number().int().positive(),requestId:key};
 const clipFields={trackId:id,name:z.string().min(1).max(200),startFrame:frame,durationFrames,sourceInFrame:sourceFrame,rect,gain:z.number().finite().min(0).max(2),
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
+...timelineFormatSchemas,
 ...frameSchemas,
 ...imageSchemas,
 ...imageReviewSchemas,
@@ -146,6 +151,8 @@ Object.assign(descriptions,{
  'reference.detach':'按镜头版本原子断开首帧参考连线并清除其专属参考选择；保留原素材、节点及历史任务快照，使用稳定requestId',
  'asset.import':'导入授权的本地图片、视频或音频字节（base64，最大30MiB）',
  'node.create':'创建文本、图片、视频或音频画布节点',
+ 'timeline.format.get':'只读查询当前时间线输出规格、版本与初始设置资格；不创建时间线',
+ 'timeline.format.set':'仅为初始空白时间线显式设置竖屏、横屏或方屏720规格，固定30fps；项目与时间线双版本校验，精确请求重放，不进入撤销历史',
  'timeline.get':'读取持久化30fps多轨时间线；旧项目首次读取时仅创建空轨道',
  'timeline.history.get':'只读查询时间线编辑历史与撤销/重做位置；不创建时间线，不包含媒体或生成任务',
  'timeline.undo':'按时间线版本撤销一次轨道或片段编辑；保留稳定ID并递增版本，不撤销生成、花费或导出',

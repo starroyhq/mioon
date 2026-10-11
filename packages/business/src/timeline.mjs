@@ -1,12 +1,21 @@
 import {randomUUID} from 'node:crypto';
-import {AppError,sourceFrameCount,isTimelineMutationResponse} from '@mioon/contracts';
+import {AppError,sourceFrameCount,isTimelineMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '@mioon/contracts';
+import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assertTimelineFormatEligible} from './timeline-format.mjs';
+import {canonicalFormatValue} from './timeline-format-receipts.mjs';
 import {freezeTimelineSnapshot} from './timeline-inputs.mjs';
 export {TIMELINE_LIMITS} from './timeline-inputs.mjs';
 import {readTimelinePreflightSnapshot} from './timeline-sources.mjs';
 import {createTimelineReplacementBoundary} from './timeline-replacement.mjs';
 import {createTimelineRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.mjs';
 
-const defaultRect=()=>({x:0,y:0,width:720,height:1280});
+const defaultRect=timeline=>({x:0,y:0,width:timeline.width,height:timeline.height});
+// The shared wire schema admits every preset's envelope. Submitted rectangles
+// still receive the legacy input-validation error against this saved pair;
+// persisted corruption continues through the separate aggregate boundary.
+function validateSubmittedRect(timeline,rect,path){
+ if(rect.x+rect.width>timeline.width||rect.y+rect.height>timeline.height)
+  throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:[{path,message:`Rectangle must stay inside the ${timeline.width}×${timeline.height} output`}]});
+}
 const clone=value=>JSON.parse(JSON.stringify(value));
 
 // The timeline is its own aggregate: revision checks and idempotent responses
@@ -21,12 +30,15 @@ export function createTimelineServices(store,{required,check,hash,now}){
   required('projects',projectId);
   const existing=find(projectId);
   if(existing)return existing;
+  return put('timelines',newTimeline(projectId));
+ }
+ function newTimeline(projectId,preset=timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET)){
   const createdAt=now();
-  return put('timelines',{
-   id:randomUUID(),projectId,revision:1,fps:30,width:720,height:1280,
+  return {
+   id:randomUUID(),projectId,revision:1,fps:preset.fps,width:preset.width,height:preset.height,
    tracks:[['video','Video 1'],['video','Video 2'],['audio','Audio 1']].map(([kind,name],orderIndex)=>({id:randomUUID(),name,kind,orderIndex,hidden:false,muted:false})),
    clips:[],durationFrames:0,createdAt,updatedAt:createdAt
-  });
+  };
  }
  function track(timeline,id){
   const result=timeline.tracks.find(item=>item.id===id);
@@ -39,7 +51,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
   return result;
  }
  function transaction(operation,input,apply,boundary=createTimelineRecoveryBoundary(db,input)){
-  const state={receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
+  const state={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
    state.transactionEntered=true;
@@ -70,6 +82,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
   // old successful request must return precisely its original response.
   if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
   db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run(input.requestId,requestHash,JSON.stringify(response));
+  if(operation==='timeline.format.set')db.prepare('INSERT INTO timeline_format_requests(requestId,projectId,input) VALUES(?,?,?)').run(input.requestId,input.projectId,canonicalFormatValue(input));
   boundary.verify(operation,response,requestHash);
   return response;
  }
@@ -119,7 +132,11 @@ export function createTimelineServices(store,{required,check,hash,now}){
  }
  function mutate(operation,input,apply,specialBoundary){
   return transaction(operation,input,({boundary,requestHash,write})=>{
-   const timeline=specialBoundary?boundary.read():currentOrEnsure(input,boundary,write);
+   const submittedRect=operation==='timeline.clip.add'?input.rect:operation==='timeline.clip.update'?input.patch.rect:undefined;
+   // Check explicit input before legacy ensure() can write an absent timeline.
+   const current=submittedRect===undefined?undefined:boundary.read({legacyMissingProject:true});
+   if(submittedRect!==undefined)validateSubmittedRect(current??timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET),submittedRect,operation==='timeline.clip.add'?['rect']:['patch','rect']);
+   const timeline=specialBoundary?boundary.read():current??currentOrEnsure(input,boundary,write);
    editable(timeline,input);
    const before=snapshot(timeline);
    apply(timeline,boundary);
@@ -132,6 +149,22 @@ export function createTimelineServices(store,{required,check,hash,now}){
   },specialBoundary);
  }
  const handlers={
+  'timeline.format.get':input=>getTimelineFormat(db,input),
+  'timeline.format.set':input=>transaction('timeline.format.set',input,({boundary,requestHash,write})=>{
+   const context=readTimelineFormatOwner(db,input);
+   check(context.project,input.expectedProjectRevision);
+   const revision=context.timeline?.revision??0;
+   if(revision!==input.expectedRevision)throw new AppError('REVISION_CONFLICT','时间线已有新版本，请重新读取后再修改',409,{expectedRevision:input.expectedRevision,currentRevision:revision});
+   if(revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
+   assertTimelineFormatEligible(readTimelineFormatState(db,input,{admission:true,context}));
+   const preset=timelineOutputPreset(input.presetId);
+   if(context.timeline&&timelineOutputPreset(context.timeline)?.id===preset.id)throw new AppError('TIMELINE_FORMAT_UNCHANGED','时间线已使用此输出规格',409);
+   const timeline=context.timeline??newTimeline(input.projectId,preset);
+   if(context.timeline){timeline.fps=preset.fps;timeline.width=preset.width;timeline.height=preset.height;timeline.revision++;timeline.updatedAt=now();}
+   boundary.validate(timeline);
+   write();put('timelines',timeline);
+   return saveResponse('timeline.format.set',input,requestHash,timeline,boundary);
+  }),
   'timeline.get':input=>ensure(input.projectId),
   'timeline.history.get':input=>history(input.projectId),
   'timeline.undo':input=>travel('timeline.undo',input,-1),
@@ -148,7 +181,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
   }),
   'timeline.clip.add':input=>mutate('timeline.clip.add',input,(timeline,boundary)=>{
    const source=boundary.inputAsset(input.assetId);
-   timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(),gain:input.gain??1,
+   timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(timeline),gain:input.gain??1,
     ...Object.fromEntries(['fadeInFrames','fadeOutFrames'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
   'timeline.clip.update':input=>mutate('timeline.clip.update',input,timeline=>{
@@ -195,7 +228,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
     if(source.sha256!==version.sha256)throw new AppError('ASSET_HASH_MISMATCH','镜头版本与素材哈希不一致',409);
     const durationFrames=sourceFrameCount(source.duration);
     if(!Number.isSafeInteger(durationFrames)||durationFrames<1)throw new AppError('SOURCE_BOUNDS','所选版本没有有效时长');
-    timeline.clips.push({id:randomUUID(),trackId:lane.id,assetId:source.id,name:shot.title,startFrame,durationFrames,sourceInFrame:0,rect:defaultRect(),gain:1});
+    timeline.clips.push({id:randomUUID(),trackId:lane.id,assetId:source.id,name:shot.title,startFrame,durationFrames,sourceInFrame:0,rect:defaultRect(timeline),gain:1});
     startFrame+=durationFrames;
    }
   }),

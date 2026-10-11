@@ -1,11 +1,11 @@
 // Fixed backend-owned schema definitions. No operation or table name comes from RPC input.
 // The historical v14 bootstrap remains byte-equivalent for existing operation rows.
-const tableDefinition = (subjects = false, staging = false) => {
- const table = staging ? 'edit_tasks_subjects' : 'edit_tasks';
+const tableDefinition = (subjects = false, staging = false, format = false) => {
+ const table = format ? 'edit_tasks_formats' : staging ? 'edit_tasks_subjects' : 'edit_tasks';
  return ` CREATE TABLE IF NOT EXISTS ${table}(
  position INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE CHECK(length(CAST(id AS BLOB))=36),
  projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),
- operation TEXT NOT NULL CHECK(operation IN ('timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach'${subjects ? ",'subject.create','subject.version.add','subject.binding.set'" : ''})),
+ operation TEXT NOT NULL CHECK(operation IN ('timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach'${format ? ",'timeline.format.set'" : ''}${subjects ? ",'subject.create','subject.version.add','subject.binding.set'" : ''})),
  input TEXT NOT NULL CHECK(json_valid(input) AND json_type(input)='object' AND length(CAST(input AS BLOB)) BETWEEN 1 AND 8192),
  requestId TEXT NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),
  digest TEXT NOT NULL CHECK(length(CAST(digest AS BLOB))=64),
@@ -79,4 +79,23 @@ export function migrateSubjectEditTasks(db) {
  // mark exactly, including absence for an empty never-used historical table.
  db.prepare("DELETE FROM sqlite_sequence WHERE name='edit_tasks'").run();
  if (sequence) db.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('edit_tasks',?)").run(sequence.seq);
+}
+
+// Schema21 changes only the operation CHECK whitelist. Preserve raw task bytes,
+// state, claims, indexes/triggers and the exact AUTOINCREMENT high-water mark.
+export function migrateTimelineFormatEditTasks(db) {
+ if(!db.isTransaction)throw new Error('Timeline format task migration requires a transaction');
+ if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='edit_tasks_formats'").get())
+  throw new Error('Timeline format task migration staging table already exists');
+ const sequence=db.prepare("SELECT rowid AS rowid,seq FROM sqlite_sequence WHERE name='edit_tasks'").get();
+ const maximum=db.prepare('SELECT MAX(position) AS value FROM edit_tasks').get().value;
+ if(sequence&&(!Number.isSafeInteger(sequence.seq)||sequence.seq<0||(maximum!==null&&sequence.seq<maximum))||!sequence&&maximum!==null)
+  throw new Error('Edit task sequence is inconsistent');
+ db.exec(tableDefinition(true,true,true));
+ const columns='position,id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,claim,claimInstance,receiptDigest,errorCode,createdAt,updatedAt,bytes';
+ db.exec(`INSERT INTO edit_tasks_formats(${columns}) SELECT ${columns} FROM edit_tasks;
+ DROP TABLE edit_tasks;
+ ALTER TABLE edit_tasks_formats RENAME TO edit_tasks;${protections}`);
+ db.prepare("DELETE FROM sqlite_sequence WHERE name='edit_tasks'").run();
+ if(sequence)db.prepare("INSERT INTO sqlite_sequence(rowid,name,seq) VALUES(?,'edit_tasks',?)").run(sequence.rowid,sequence.seq);
 }

@@ -1,3 +1,4 @@
+import {timelineFormatSchemas,timelineOutputPreset} from './timeline-format.mjs';
 import {isTimelineRecord, isTimelineReplacementResponse} from './timeline-replacement.mjs';
 import {sourceFrameCount} from './source-range.mjs';
 import {SUBJECT_MUTATION_OPERATIONS} from './subjects.mjs';
@@ -6,7 +7,7 @@ import {REFERENCE_MUTATION_OPERATIONS} from './reference-acknowledgement.mjs';
 export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
   'timeline.clip.replaceSource', 'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed',
-  'timeline.undo', 'timeline.redo', 'timeline.render',
+  'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
 ]);
 export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -32,6 +33,9 @@ const patchInput = (patch, allowed) => object(patch) && Object.keys(patch).lengt
 // aggregate. Ownership, exact history transitions and immutable receipt hashes
 // are additionally checked by the backend. No validator edits the supplied data.
 export function isTimelineMutationResponse(operation, input, value) {
+  if(operation==='timeline.format.set') return timelineFormatSchemas[operation].safeParse(input).success &&
+    isTimelineRecord(value,{projectId:input.projectId}) && value.revision===input.expectedRevision+1 &&
+    timelineOutputPreset(value)?.id===input.presetId && value.clips.length===0 && value.durationFrames===0;
   if (!TIMELINE_MUTATION_OPERATIONS.includes(operation) || !baseInput(input)) return false;
   if (operation === 'timeline.render') return operationInput(input, ['purpose'], ['preflightSnapshotHash']) && isTimelineRenderRecord(value, input);
   if (input.expectedRevision === Number.MAX_SAFE_INTEGER || !isTimelineRecord(value, {projectId: input.projectId}) || value.revision !== input.expectedRevision + 1) return false;
@@ -55,7 +59,7 @@ export function isTimelineMutationResponse(operation, input, value) {
       if (!operationInput(input, ['assetId', 'trackId', 'startFrame', 'durationFrames'], clipFields.filter(key => !['trackId', 'startFrame', 'durationFrames'].includes(key))) || !uuid(input.assetId) || !uuid(input.trackId) || !integer(input.startFrame, 0, 18000) || !integer(input.durationFrames, 1, 18000)) return false;
       return value.clips.some(clip => clip.assetId === input.assetId && hasFields(clip, input, clipFields) &&
         clip.sourceInFrame === (input.sourceInFrame ?? 0) && clip.gain === (input.gain ?? 1) &&
-        same(clip.rect, input.rect ?? {x: 0, y: 0, width: 720, height: 1280}) &&
+        same(clip.rect, input.rect ?? {x: 0, y: 0, width: value.width, height: value.height}) &&
         provenance.every(key => !Object.hasOwn(clip, key)) &&
         ['fadeInFrames', 'fadeOutFrames'].every(key => (input[key] !== undefined) === Object.hasOwn(clip, key)));
     }
@@ -137,6 +141,10 @@ const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED',
 const subjectProofCodes = new Set(['REVISION_CONFLICT', 'SUBJECT_NO_CHANGE', 'SUBJECT_REVISION_LIMIT', 'SUBJECT_BINDING_LIMIT', 'SUBJECT_ROLE_MISMATCH']);
 export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
   const details = error?.details;
+  if(operation==='timeline.format.set') return Boolean(timelineFormatSchemas[operation].safeParse(input).success && object(details) &&
+    (integer(error.status,400,499)&&![401,403].includes(error.status)||error.status===undefined&&error.definitive===true) &&
+    ['REVISION_CONFLICT','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_UNCHANGED','TIMELINE_REVISION_LIMIT'].includes(error.code) &&
+    details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===input.projectId&&details.requestId===input.requestId);
   if (SUBJECT_MUTATION_OPERATIONS.includes(operation)) return Boolean(object(input) && uuid(input.projectId) && text(input.requestId, 8, 200) && object(details) &&
     (integer(error.status, 400, 499) && ![401, 403].includes(error.status) || error.status === undefined && error.definitive === true) &&
     subjectProofCodes.has(error.code) && ['mutationOutcome', 'operation', 'projectId', 'requestId'].every(key => Object.hasOwn(details, key)) &&

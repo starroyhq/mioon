@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof, timelineOutputPreset } from '@mioon/contracts';
 import * as submissions from '../apps/web/src/submissions.js';
 import * as mutations from '../apps/web/src/mutation-submissions.js';
 import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
@@ -13,7 +13,7 @@ const refreshSource = source.slice(source.indexOf('const refresh = useCallback('
 const id = n => `82000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProjectId = id(2), trackId = id(3), clipId = id(4), assetId = id(5);
 const operations = ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove',
-  'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render'];
+  'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set'];
 const clone = value => structuredClone(value);
 function storage(t) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage'), values = new Map();
@@ -32,6 +32,7 @@ function inputFor(operation, patch = {}) {
     'timeline.clip.update': { clipId, patch: { gain: 0.5, rect: { x: 100, y: 200, width: 300, height: 400 } } },
     'timeline.clip.remove': { clipId }, 'timeline.clip.split': { clipId, atFrame: 50 },
     'timeline.clip.replaceSource': { clipId, assetId: id(9) }, 'timeline.render': { purpose: 'preview' },
+    'timeline.format.set': { expectedProjectRevision: 3, presetId: 'landscape_720' },
   };
   return { projectId, expectedRevision: 7, requestId: `original-${operation}`, ...fields[operation], ...patch };
 }
@@ -48,6 +49,10 @@ function timeline(revision = 8, owner = projectId) {
 }
 function acknowledged(operation, input) {
   const value = timeline(input.expectedRevision + 1, input.projectId);
+  if (operation === 'timeline.format.set') {
+    const { fps, width, height } = timelineOutputPreset(input.presetId);
+    Object.assign(value, { fps, width, height, clips: [], durationFrames: 0 });
+  }
   if (operation === 'timeline.track.add') value.tracks.push({ id: id(7), name: input.name, kind: input.kind, orderIndex: 1, hidden: false, muted: false });
   if (operation === 'timeline.track.update') Object.assign(value.tracks[0], input.patch);
   if (operation === 'timeline.clip.add') {
@@ -99,7 +104,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
 const keyFor = operation => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
 
-test('actual App legacy session runner guards exactly the eleven timeline writes and accepts their complete matching acknowledgements', async t => {
+test('actual App legacy session runner guards exactly the twelve timeline writes and accepts their complete matching acknowledgements', async t => {
   storage(t); assert.deepEqual(new Set(TIMELINE_MUTATION_OPERATIONS), new Set(operations));
   const h = harness(acknowledged);
   for (const operation of operations) {
@@ -111,6 +116,24 @@ test('actual App legacy session runner guards exactly the eleven timeline writes
   assert.equal(h.state.calls.length, operations.length); assert.equal(h.busy.size, 0);
   assert.match(runSource, /const timeline = TIMELINE_MUTATION_OPERATIONS\.includes\(operation\)/);
   assert.doesNotMatch(runSource, /operation\.startsWith\('timeline\.'\)/);
+});
+
+test('format recovery preserves expected project revision and absent-timeline revision zero in the original session intent', async t => {
+  storage(t);
+  const operation = 'timeline.format.set', exact = inputFor(operation, { expectedRevision: 0, presetId: 'square_720' });
+  const expected = acknowledged(operation, exact); let lost = true;
+  assert.equal(isTimelineMutationResponse(operation, exact, expected), true); assert.equal(expected.revision, 1);
+  assert.deepEqual([expected.width, expected.height, expected.fps, expected.durationFrames, expected.clips.length], [720, 720, 30, 0, 0]);
+  const h = harness((op, input) => { if (lost) throw Error('Lost format response'); return acknowledged(op, input); });
+  await h.run('timeline:mutation', operation, exact);
+  const original = submissions.readPending(projectId, 'timeline:mutation');
+  assert.deepEqual(original.input, exact);
+  lost = false;
+  await h.run('timeline:mutation', operation, { ...exact, expectedProjectRevision: 99, presetId: 'landscape_720', requestId: 'changed-format-intent' });
+  assert.equal(h.state.calls.length, 1); assert.deepEqual(submissions.readPending(projectId, 'timeline:mutation'), original);
+  assert.deepEqual(await h.run(original.key, operation, original.input, undefined, { replay: true }), expected);
+  assert.equal(submissions.readPending(projectId, 'timeline:mutation'), null);
+  assert.deepEqual(h.state.calls, [{ operation, input: exact }, { operation, input: exact }]);
 });
 
 test('every timeline write retains the exact original receipt after loss, 404/409 and corrupt ACK until explicit valid replay', async t => {
@@ -148,10 +171,14 @@ test('timeline rollback requires matching request-bound proof and rejects forbid
     let failure = Error('Response lost');
     const h = harness(() => { throw failure; }); await h.run(key, operation, input);
     const original = submissions.readPending(projectId, key);
-    const proof = { mutationOutcome: 'not_applied', requestId: input.requestId };
+    const proof = { mutationOutcome: 'not_applied', requestId: input.requestId, ...(operation === 'timeline.format.set' ? { operation, projectId: input.projectId } : {}) };
     for (const invalid of [error('REVISION_CONFLICT', { ...proof, requestId: 'wrong-request' }), error('REVISION_CONFLICT', proof, false),
       error('REVISION_CONFLICT', { ...proof, mutationOutcome: 'applied' }), error('UNAUTHORIZED', proof), error('IDEMPOTENCY_CONFLICT', proof),
-      error('BACKEND_PROTOCOL_ERROR', proof)]) {
+      error('BACKEND_PROTOCOL_ERROR', proof), ...(operation === 'timeline.format.set' ? [
+        error('REVISION_CONFLICT', { ...proof, operation: 'timeline.clip.update' }),
+        error('REVISION_CONFLICT', { ...proof, projectId: otherProjectId }),
+        error('REVISION_CONFLICT', { mutationOutcome: 'not_applied', requestId: input.requestId }),
+      ] : [])]) {
       failure = invalid; await h.run(key, operation, input, undefined, { replay: true });
       assert.deepEqual(submissions.readPending(projectId, key), original, `${operation}: ${failure.code}`);
     }

@@ -11,7 +11,7 @@ import {createServices} from '../packages/business/src/services.mjs';
 import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
 
 const at='2026-10-10T00:00:00.000Z',clone=value=>JSON.parse(JSON.stringify(value));
-const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_history','timeline_history_cursors','timeline_requests'];
+const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_history','timeline_history_cursors','timeline_requests','timeline_format_requests'];
 async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-timeline-recovery-'));
  let store=openStore(root),services=createServices(store,new Map());
@@ -43,6 +43,9 @@ async function allReceipts(f){
   const input=params(f,timeline,fields),response=await f.call(operation,input);
   receipts.push({operation,input,response:clone(response)});if(operation!=='timeline.render')timeline=response;return response;
  }
+ // Record a real format mutation while the timeline is still pristine; later
+ // receipts exercise its historical replay after content and history exist.
+ await call('timeline.format.set',{expectedProjectRevision:f.store.get('projects',f.projectId).revision,presetId:'landscape_720'});
  await call('timeline.seed');
  await call('timeline.track.add',{kind:'audio',name:'Extra audio'});
  await call('timeline.track.update',{trackId:timeline.tracks[0].id,patch:{name:'Renamed track'}});
@@ -86,7 +89,7 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all eleven retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all twelve retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of [...timeline.clips])timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=result.receipts.find(x=>x.operation==='timeline.render').response;
@@ -100,7 +103,7 @@ test('all eleven retained responses remain exact after removal, branching, rende
  assert.deepEqual(f.capture(),before);
 });
 
-test('all eleven fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all twelve fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},{code:'REVISION_CONFLICT',proof:true});
  const clip=timeline.clips[0];
@@ -134,11 +137,17 @@ test('lost acknowledgements retain proof absence after project, timeline and his
   if(corruption==='timeline JSON owner')f.store.db.prepare("UPDATE timelines SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,timeline.id);
   if(corruption==='historical source SQL owner')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherId,generated.asset.id);
   if(corruption==='indirect generation owner')f.store.db.prepare("UPDATE jobs SET data=json_set(data,'$.projectId',?,'$.secret','FOREIGN_SECRET') WHERE id=?").run(f.otherId,generated.job.id);
-  for(const {operation,input} of receipts)await rejected(f,operation,input,{code:['TIMELINE_SOURCE_UNAVAILABLE','INVALID_TIMELINE_SNAPSHOT']});
+  for(const {operation,input,response} of receipts){
+   if(operation==='timeline.format.set'&&['historical source SQL owner','indirect generation owner'].includes(corruption)){
+    // The pristine format ACK contains no historical asset references. Current
+    // project/timeline ownership remains valid after clips have been removed.
+    const before=f.capture();assert.deepEqual(await f.call(operation,input),response);assert.deepEqual(f.capture(),before);
+   }else await rejected(f,operation,input,{code:['TIMELINE_SOURCE_UNAVAILABLE','INVALID_TIMELINE_SNAPSHOT']});
+  }
  });
 });
 
-test('all eleven malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all twelve malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of ['hash','JSON','owner','semantics'])await t.test(corruption,async t=>{
   const f=await fixture(t),{receipts}=await allReceipts(f);f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
   for(const {operation,input,response} of receipts){
@@ -146,7 +155,8 @@ test('all eleven malformed, foreign and semantically corrupt durable receipts fa
    if(corruption==='owner')changed.projectId=f.otherId;
    if(corruption==='semantics'){
     const timeline=operation==='timeline.render'?changed.snapshot.timeline:changed;
-    timeline.clips[0].sourceInFrame=10000;
+    if(operation==='timeline.format.set')timeline.width=720; // Valid square pair, wrong accepted preset.
+    else timeline.clips[0].sourceInFrame=10000;
    }
    if(corruption==='hash')f.store.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('g'.repeat(64),input.requestId);
    else f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(corruption==='JSON'?'FOREIGN_SECRET invalid JSON':JSON.stringify(changed),input.requestId);
@@ -157,7 +167,7 @@ test('all eleven malformed, foreign and semantically corrupt durable receipts fa
 
 async function prepared(f,operation){
  const generated=await f.generated();let timeline=await f.call('timeline.get',{projectId:f.projectId});
- if(operation!=='timeline.seed')timeline=await f.call('timeline.seed',params(f,timeline));
+ if(!['timeline.seed','timeline.format.set'].includes(operation))timeline=await f.call('timeline.seed',params(f,timeline));
  if(operation==='timeline.redo')timeline=await f.call('timeline.undo',params(f,timeline));
  const clip=timeline.clips[0];
  const fields={
@@ -165,7 +175,8 @@ async function prepared(f,operation){
   'timeline.clip.add':{assetId:generated.asset.id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:30},
   'timeline.clip.update':{clipId:clip?.id,patch:{gain:.3}},'timeline.clip.remove':{clipId:clip?.id},
   'timeline.clip.split':{clipId:clip?.id,atFrame:30},'timeline.clip.replaceSource':{clipId:clip?.id,assetId:f.asset().id},
-  'timeline.render':{purpose:'preview'}
+  'timeline.render':{purpose:'preview'},
+  'timeline.format.set':{expectedProjectRevision:f.store.get('projects',f.projectId).revision,presetId:'landscape_720'}
  };
  return {timeline,input:params(f,timeline,fields[operation]??{})};
 }

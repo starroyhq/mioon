@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {withTimelineFormatTaskDispatch} from './timeline-format-task-context.mjs';
 import {isProxy} from 'node:util/types';
 import {AppError, schemas, publicValue, DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, editTaskLane, isEditTask, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {hash} from './services.mjs';
@@ -160,8 +161,9 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   return byId(row.projectId,row.id);
  }
  function applied(value,result) { return update(value,'applied',{receiptDigest:hash(result)}); }
- function dispatch(operation,input) {
+ function dispatch(operation,input,value) {
   switch(operation) {
+   case 'timeline.format.set': return withTimelineFormatTaskDispatch(db,value.row,()=>services.call('timeline.format.set',input));
    case 'timeline.track.add': return services.call('timeline.track.add',input);
    case 'timeline.track.update': return services.call('timeline.track.update',input);
    case 'timeline.clip.add': return services.call('timeline.clip.add',input);
@@ -240,7 +242,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
     try {
      inject('afterClaim');inject('beforeDispatch');owner();
      let dispatchError;
-     try { await dispatch(claimed.task.operation,structuredClone(claimed.task.input)); }
+     try { await dispatch(claimed.task.operation,structuredClone(claimed.task.input),claimed); }
      catch(error){dispatchError=error;}
      inject('afterBusinessCommit');
      const finished=store.tx(()=>{

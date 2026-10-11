@@ -1,6 +1,6 @@
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
-import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas} from '@mioon/contracts';
+import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {createImageOwnershipReader} from './image-ownership.mjs';
 import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownership.mjs';
@@ -246,6 +246,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
     function timelineDto(timeline = ownedTimeline()) {
       if (!timeline) return null;
       if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > INSPECTION_LIMITS.clips) unavailable();
+      if(!timelineOutputPreset(timeline)) unavailable();
       const trackIds = new Set(), clipIds = new Set();
       const tracks = timeline.tracks.map(track => {
         object(track); const trackId = id(track.id); if (trackIds.has(trackId)) unavailable(); trackIds.add(trackId);
@@ -255,14 +256,14 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
         object(clip); const clipId = id(clip.id); if (clipIds.has(clipId) || !trackIds.has(clip.trackId)) unavailable(); clipIds.add(clipId);
         const asset = clipSource(clip);
         object(clip.rect);
-        const rect = {x: number(clip.rect.x, 0, 718, true), y: number(clip.rect.y, 0, 1278, true), width: number(clip.rect.width, 2, 720, true), height: number(clip.rect.height, 2, 1280, true)};
-        if (Object.values(rect).some(value => value % 2 !== 0) || rect.x + rect.width > 720 || rect.y + rect.height > 1280) unavailable();
+        const rect = {x: number(clip.rect.x, 0, timeline.width-2, true), y: number(clip.rect.y, 0, timeline.height-2, true), width: number(clip.rect.width, 2, timeline.width, true), height: number(clip.rect.height, 2, timeline.height, true)};
+        if (Object.values(rect).some(value => value % 2 !== 0) || rect.x + rect.width > timeline.width || rect.y + rect.height > timeline.height) unavailable();
         const startFrame = number(clip.startFrame, 0, 18000, true), durationFrames = number(clip.durationFrames, 1, 18000, true);
         if (startFrame + durationFrames > 18000) unavailable();
         return {id: clipId, trackId: id(clip.trackId), assetId: asset.id, name: string(clip.name, 200, 1), startFrame, durationFrames,
           sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000, true), rect, gain: number(clip.gain, 0, 2)};
       });
-      return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: enumValue(timeline.width, [720]), height: enumValue(timeline.height, [1280]),
+      return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: timeline.width, height: timeline.height,
         durationFrames: number(timeline.durationFrames, 0, 18000, true), tracks, clips};
     }
     const project = get('projects', projectId);

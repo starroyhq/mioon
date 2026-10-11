@@ -1,12 +1,15 @@
-import {AppError,sourceFrameCount,getTimelineFadeIssue} from '@mioon/contracts';
-const FPS=30,WIDTH=720,HEIGHT=1280;
+import {AppError,sourceFrameCount,getTimelineFadeIssue,timelineOutputPreset} from '@mioon/contracts';
+
 const integer=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
 function invalid(message){throw Object.assign(Error(message),{code:'INVALID_TIMELINE_SNAPSHOT'});}
 
 // Defense in depth for recovered, persisted jobs. The service performs the same
 // public validation, but the renderer must never interpret arbitrary effects.
 export function validateTimeline(timeline,assets,{structureOnly=false}={}){
- if(!timeline||timeline.fps!==FPS||timeline.width!==WIDTH||timeline.height!==HEIGHT)invalid('Timeline output must be 720×1280 at 30 fps');
+ // Preserve the legacy rejection wording for malformed legacy inputs. The
+ // accepted output set is still the closed shared preset list above.
+ if(!timelineOutputPreset(timeline))invalid('Timeline output must be 720×1280 at 30 fps');
+ const WIDTH=timeline.width,HEIGHT=timeline.height;
  if(!Array.isArray(timeline.tracks)||timeline.tracks.length>12||!Array.isArray(timeline.clips)||!timeline.clips.length||timeline.clips.length>100)invalid('Timeline requires 1–100 clips and at most 12 tracks');
  const tracks=new Map();
  for(const t of timeline.tracks){if(!t||!t.id||tracks.has(t.id)||!['video','audio'].includes(t.kind)||!Number.isInteger(t.orderIndex)||typeof t.hidden!=='boolean'||typeof t.muted!=='boolean'||(t.kind==='audio'&&t.hidden))invalid('Invalid timeline track');tracks.set(t.id,t);}

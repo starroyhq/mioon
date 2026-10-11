@@ -281,7 +281,7 @@ and positive `expectedRevision` from the existing timeline. It never creates a
 missing timeline. This read hashes bounded managed source bytes and runs local
 ffprobe metadata checks; it does not fully decode, write database/cache/files,
 create an export, contact providers or spend generation credit. Supported
-output is 720×1280 at 30fps. Limits are 100 assets, 512MiB/source, 1GiB total
+output uses one of the three closed 30fps timeline presets. Limits are 100 assets, 512MiB/source, 1GiB total
 hashed bytes, 30 seconds and 128 safe issues. Do not pass filenames, paths,
 commands, credentials or a request key.
 
@@ -347,7 +347,7 @@ See [reference recovery](../../docs/REFERENCE-RECOVERY.md).
 The workbench can coordinate persisted recovery for ten timeline edits excluding
 `timeline.render`, plus `reference.attach` and `reference.detach`. The implemented
 subject extension adds exactly `subject.create`, `subject.version.add` and
-`subject.binding.set`, for fifteen operations under three explicit lanes; consult
+`subject.binding.set`, for fifteen operations under three explicit lanes. `timeline.format.set` is now the sixteenth fixed operation; consult
 [scope and acceptance](../../docs/TASK-RECOVERY.md). This adds no generic Agent/MCP
 execution authority. External tools still require their exact original arguments
 and key. Do not infer that all edits, renders or paid submissions receive this
@@ -396,7 +396,7 @@ inputs, validate the historical acknowledgement, then refresh. Generic 4xx,
 malformed success and ownership failures do not settle prior uncertainty without
 matching operation/project/request rollback proof. Never automatically retry or
 invent a replacement key. UI preparation adds these three writes to its explicit
-fifteen-operation durable allowlist in `subject:mutation`; external calls are not
+durable allowlist in `subject:mutation` (fifteen at that stage, sixteen with the later format operation); external calls are not
 automatically persisted as UI tasks. Capacity failure precedes dispatch, with no
 silent eviction. Metadata is plain local SQLite, not vault-encrypted; no secrets.
 
@@ -428,3 +428,10 @@ and cannot re-decode. Startup/opening never resumes extraction. Accepted task
 metadata/journals are plaintext local SQLite, not encrypted prepared intents.
 Public CLI/MCP access does not expand the built-in Agent tool/catalog or generic
 durable-edit recovery allowlist.
+
+
+### Timeline output format
+
+Before editing, discover `timeline.format.get` and read `{projectId}`. Its revision fences and eligibility are authoritative at the time of reading, then rechecked on write. Explicit `timeline.format.set` accepts `{projectId,expectedProjectRevision,expectedRevision,requestId,presetId}`; preserve the original input/key for recovery. Presets are only `portrait_720` (720×1280), `landscape_720` (1280×720), `square_720` (720×720), all 30 fps. A zero timeline revision means absence. Do not invent arbitrary dimensions/fps.
+
+Only pristine empty timelines qualify; previous undo/redo history, receipts, timeline exports or unresolved edits can still block an empty-looking timeline. Never erase those records or silently reinterpret old clips to change format. Same-preset fresh requests reject; exact prior success replays. The operation is the sixteenth explicitly durable local UI edit, in the timeline lane, not a built-in model tool. The UI task list does not automatically acquire direct CLI/MCP calls. Timeline output is separate from provider/source aspect and from legacy 9:16 storyboard export. Full contract: docs/TIMELINE-OUTPUT-FORMATS.md.

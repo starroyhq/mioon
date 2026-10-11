@@ -16,7 +16,7 @@ export default function TimelineExportPreflight({ state, projectName, canCheck, 
   return <aside className="export-preflight" data-testid="export-preflight" data-phase={phase} aria-label="时间线交付检查">
     <header className="export-preflight-heading"><div><h2>交付检查</h2><p title={projectName}>{projectName || '请先选择项目'}</p></div><Icon name="info" size={15} /></header>
     <div className="export-preflight-body">
-      <details className="export-preflight-scope" data-testid="preflight-scope-details"><summary>仅检查已保存的时间线快照</summary><p>镜头、片段和源范围的未保存修改均不包含在检查或本次导出中。检查不会保存或放弃草稿。</p></details>
+      <details className="export-preflight-scope" data-testid="preflight-scope-details"><summary>仅检查已保存的时间线快照</summary><p>镜头、片段和源范围，以及输出规格的未保存修改均不包含在检查或本次导出中。检查不会保存或放弃草稿。</p></details>
       {dirty && <p className="export-preflight-draft" data-testid="preflight-unsaved">有未保存修改，本次不包含；保存后请重新检查。</p>}
       <div className={`export-preflight-status is-${phase}`} role="status" aria-live="polite"><span>{phase === 'checking' && <span className="spinner" />}{phaseLabels[phase]}</span>{report && <small>{oldReport ? '上次检查' : '检查快照'} · rev {report.timelineRevision ?? '未知'}</small>}</div>
       {state?.error && <p className="notice error" role="alert">{state.error}</p>}
@@ -27,8 +27,8 @@ export default function TimelineExportPreflight({ state, projectName, canCheck, 
         {report.issues.length > 0 && <><h3 className="sr-only">需要注意</h3><ul className="export-preflight-issues" data-testid="preflight-issues">{report.issues.map((issue, index) => <li key={`${issue.code}:${issue.assetId || issue.clipId || index}`} className={`is-${issue.severity}`}><span>{issue.severity === 'error' ? '阻止导出' : '提醒'}</span><p>{preflightIssueMessage(issue)}</p><small>{issue.code}{issue.assetId && ` · 素材 ${issue.assetId.slice(0, 8)}`}{issue.clipId && ` · 片段 ${issue.clipId.slice(0, 8)}`}</small></li>)}</ul></>}
         <p className="export-preflight-checked"><time dateTime={report.checkedAt}>{new Date(report.checkedAt).toLocaleString('zh-CN')}</time></p>
         {summary && <><h3>输出与编排</h3><dl className="export-preflight-summary">
-          <div><dt>输出规格</dt><dd>720 × 1280 · 30 fps</dd></div>
-          <div><dt>总时长</dt><dd>{(summary.durationFrames / 30).toFixed(2)} 秒 · {summary.durationFrames} 帧</dd></div>
+          <div><dt>输出规格</dt><dd>{summary.width} × {summary.height} · {summary.fps} fps</dd></div>
+          <div><dt>总时长</dt><dd>{(summary.durationFrames / summary.fps).toFixed(2)} 秒 · {summary.durationFrames} 帧</dd></div>
           <div><dt>轨道 / 片段 / 素材</dt><dd>{summary.trackCount} / {summary.clipCount} / {summary.assetCount}</dd></div>
           <div><dt>画面 / 声音启用片段</dt><dd>{summary.visualClipCount} / {summary.audibleClipCount}</dd></div>
           <div><dt>静音 / 隐藏画面轨</dt><dd>{summary.mutedTrackCount} / {summary.hiddenVideoTrackCount}</dd></div>

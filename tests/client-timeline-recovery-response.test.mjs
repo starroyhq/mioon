@@ -11,12 +11,14 @@ const success = value => response({ok: true, data: value});
 const rect = () => ({x: 0, y: 0, width: 720, height: 1280});
 function fixture(operation, {empty = false, fades = {}} = {}) {
   const input = {projectId: randomUUID(), expectedRevision: 7, requestId: randomUUID()};
+  if(operation==='timeline.format.set')empty=true;
   const trackId = randomUUID(), clipId = randomUUID(), assetId = randomUUID();
   const value = {id: randomUUID(), projectId: input.projectId, revision: 8, fps: 30, width: 720, height: 1280,
     tracks: [{id: trackId, name: 'Video 1', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
     clips: empty ? [] : [{id: clipId, trackId, assetId, name: 'Fixed source', startFrame: 0, durationFrames: 90, sourceInFrame: 0, rect: rect(), gain: 1, ...fades}],
     durationFrames: empty ? 0 : 90, createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:01.000Z'};
   switch (operation) {
+    case 'timeline.format.set': Object.assign(input,{expectedProjectRevision:3,presetId:'landscape_720'});value.width=1280;value.height=720;break;
     case 'timeline.track.add': input.kind = 'video'; break;
     case 'timeline.track.update': Object.assign(input, {trackId, patch: {name: 'Renamed', muted: true}}); Object.assign(value.tracks[0], input.patch); break;
     case 'timeline.clip.add': Object.assign(input, {assetId, trackId, startFrame: 0, durationFrames: 90, ...fades}); break;
@@ -45,17 +47,17 @@ const frozen = value => {
   return value;
 };
 
-test('the strict timeline acknowledgement allowlist covers exactly the eleven replay-keyed operations', () => {
+test('the strict timeline acknowledgement allowlist covers exactly the twelve replay-keyed operations', () => {
   assert.deepEqual([...TIMELINE_MUTATION_OPERATIONS].sort(), [
     'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.replaceSource',
-    'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render',
+    'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
   ].sort());
   assert.ok(Object.isFrozen(TIMELINE_MUTATION_OPERATIONS));
   const {input, value} = fixture('timeline.undo');
-  for (const operation of ['timeline.get', 'timeline.history.get', 'timeline.export.preflight', 'export.create', 'reference.attach']) assert.equal(isTimelineMutationResponse(operation, input, value), false);
+  for (const operation of ['timeline.get', 'timeline.format.get', 'timeline.history.get', 'timeline.export.preflight', 'export.create', 'reference.attach']) assert.equal(isTimelineMutationResponse(operation, input, value), false);
 });
 
-test('all eleven complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
+test('all twelve complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation), before = clone(value), seen = [];
     frozen(input); frozen(value);
@@ -82,8 +84,16 @@ test('timeline acknowledgements reject malformed input identity without interpre
   for (const key of ['trackId', 'assetId', 'startFrame', 'durationFrames']) assert.equal(isTimelineMutationResponse('timeline.clip.add', {...input, [key]: undefined}, value), false);
 });
 
+test('format acknowledgements alone accept explicit timeline absence and bind the selected preset',()=>{
+  const {input,value}=fixture('timeline.format.set');input.expectedRevision=0;value.revision=1;
+  assert.equal(isTimelineMutationResponse('timeline.format.set',input,value),true);
+  for(const change of [{expectedProjectRevision:0},{presetId:'portrait_720'},{presetId:'custom'}, {expectedRevision:-1}])
+    assert.equal(isTimelineMutationResponse('timeline.format.set',{...input,...change},value),false);
+  assert.equal(isTimelineMutationResponse('timeline.format.set',input,{...value,clips:[{}]}),false);
+});
+
 test('empty timelines are valid for track edits, removals, undo and redo, while replacement, seed and render require content', () => {
-  for (const operation of ['timeline.track.add', 'timeline.track.update', 'timeline.clip.remove', 'timeline.undo', 'timeline.redo']) {
+  for (const operation of ['timeline.track.add', 'timeline.track.update', 'timeline.clip.remove', 'timeline.undo', 'timeline.redo', 'timeline.format.set']) {
     const {input, value} = fixture(operation, {empty: true});
     assert.equal(isTimelineRecord(value, {projectId: input.projectId}), true);
     assert.equal(isTimelineMutationResponse(operation, input, value), true, operation);
@@ -103,11 +113,17 @@ test('timeline shape rejects malformed complete records across every mutation an
       edit(v => delete v.id), edit(v => v.id = 'bad'), edit(v => v.projectId = randomUUID()), edit(v => v.revision++),
       edit(v => v.fps = 24), edit(v => v.durationFrames++), edit(v => v.updatedAt = 'invalid'),
       edit(v => v.tracks = []), edit(v => v.tracks.push(clone(v.tracks[0]))),
-      edit(v => v.clips.push(clone(v.clips[0]))), edit(v => v.clips[0].trackId = randomUUID()),
-      edit(v => v.clips[0].rect.x = 1), edit(v => v.clips[0].gain = '1'),
-      edit(v => v.clips[0].fadeInFrames = 18000), edit(v => v.clips[0].jobId = 'wrong'),
       edit(v => v.extra = true), edit(v => v.tracks[0].name = 'x'.repeat(151)),
-      edit(v => v.clips = Array(101).fill(v.clips[0]))];
+      ...(operation==='timeline.format.set' ? [
+        edit(v => v.width=720), // Supported square dimensions still mismatch this request.
+        edit(v => v.clips=null), edit(v => v.clips=[{}]),
+        edit(v => {v.clips=[{id:randomUUID(),trackId:v.tracks[0].id,assetId:randomUUID(),name:'Unexpected content',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:v.width,height:v.height},gain:1}];v.durationFrames=30;}),
+      ] : [
+        edit(v => v.clips.push(clone(v.clips[0]))), edit(v => v.clips[0].trackId = randomUUID()),
+        edit(v => v.clips[0].rect.x = 1), edit(v => v.clips[0].gain = '1'),
+        edit(v => v.clips[0].fadeInFrames = 18000), edit(v => v.clips[0].jobId = 'wrong'),
+        edit(v => v.clips = Array(101).fill(v.clips[0])),
+      ])];
     for (const invalid of bad) {
       assert.equal(isTimelineMutationResponse(operation, input, invalid), false, operation);
       let calls = 0;
@@ -124,6 +140,7 @@ test('timeline shape rejects malformed complete records across every mutation an
 
 test('each mutation binds the caller-verifiable track, clip or source intent', () => {
   const changes = [
+    ['timeline.format.set', v => v.width=720],
     ['timeline.track.add', v => v.tracks[0].name = 'Unrelated name'],
     ['timeline.track.add', v => v.tracks[0].muted = true],
     ['timeline.track.update', v => v.tracks[0].id = randomUUID()],

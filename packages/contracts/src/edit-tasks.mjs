@@ -5,9 +5,10 @@ import {schemas} from './index.mjs';
 
 // Local UI coordination only. These are not RPC/model-tool operations.
 export const DURABLE_EDIT_OPERATIONS = Object.freeze([
-  ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render'),
+  ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render' && operation !== 'timeline.format.set'),
   ...REFERENCE_MUTATION_OPERATIONS,
   ...SUBJECT_MUTATION_OPERATIONS,
+  'timeline.format.set',
 ]);
 export const EDIT_TASK_LIMITS = Object.freeze({inputBytes: 8192, rowBytes: 16384,
   rows: 4096, bytes: 64 * 1024 * 1024, pageSize: 20, maxPageSize: 50});

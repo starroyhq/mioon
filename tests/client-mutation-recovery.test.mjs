@@ -119,7 +119,16 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   const rejection = { code: 'REVISION_CONFLICT', definitive: true, details: {} };
   for (const operation of ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', ...TIMELINE_MUTATION_OPERATIONS]) {
     assert.equal(check(operation, rejection), false, `${operation} does not trust a bare 4xx`);
-    assert.equal(check(operation, { ...rejection, details: { mutationOutcome: 'not_applied', requestId: stored.input.requestId } }), true,
+    if (operation === 'timeline.format.set') {
+      const formatStored = { input: { ...stored.input, expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } };
+      const proof = { mutationOutcome: 'not_applied', operation, projectId: owner, requestId: stored.input.requestId };
+      assert.equal(check(operation, { ...rejection, details: proof }, formatStored), true);
+      for (const key of ['operation', 'projectId', 'requestId']) {
+        const incomplete = { ...proof }; delete incomplete[key];
+        assert.equal(check(operation, { ...rejection, details: incomplete }, formatStored), false, `${key} is mandatory for the new format operation`);
+      }
+      assert.equal(check(operation, { ...rejection, details: proof }), false, 'A malformed saved format intent cannot release a key');
+    } else assert.equal(check(operation, { ...rejection, details: { mutationOutcome: 'not_applied', requestId: stored.input.requestId } }), true,
       `${operation} retains its existing request-bound proof contract`);
   }
   for (const operation of REFERENCE_MUTATION_OPERATIONS) {

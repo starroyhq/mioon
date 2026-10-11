@@ -419,7 +419,7 @@ Altered reuse conflicts before revision checking. For timeline rendering,
 replaying the create call returns the original queued record even after the
 job succeeds; use `export.get` to observe completion.
 
-Times are integer frames at 30fps. Output is 720×1280; maximum 12 tracks,
+Times are integer frames at 30fps. Output defaults to 720×1280; pristine timelines can explicitly select 1280×720 or 720×720 (see [format rules](TIMELINE-OUTPUT-FORMATS.md)); maximum 12 tracks,
 100 clips, 18000 output frames. Reject same-track overlap, source overruns,
 wrong track media types, cross-project references and invalid rectangles.
 Unknown input fields (including nested patches and rectangles) reject. See
@@ -689,7 +689,7 @@ existing timeline. It is a read operation, separate from export submission.
 It does not initialize a missing timeline, write SQLite/cache/files, create an
 export, fully decode media, call providers, or incur generation charges. It
 reads managed source bytes, hashes them incrementally, and runs bounded local
-`ffprobe` metadata checks. The supported output is 720×1280 at 30fps.
+`ffprobe` metadata checks. Supported timeline output is one of the three [closed 30fps preset pairs](TIMELINE-OUTPUT-FORMATS.md).
 
 ```json
 {"operation":"timeline.export.preflight","input":{"projectId":"11111111-1111-4111-8111-111111111111","expectedRevision":4}}
@@ -807,12 +807,12 @@ therefore never automatically clears an unknown render receipt. Reference errors
 reference recovery now also validates operation-bound acknowledgements and retained ownership; see [REFERENCE-RECOVERY.md](REFERENCE-RECOVERY.md). See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md) for scope and session-storage limits.
 
-### Durable UI edit tasks (fifteen-operation subject extension)
+### Durable UI edit tasks (sixteen explicit operations)
 
-The authenticated `/api/tasks` route family has an explicit fifteen-operation
-allowlist: ten timeline metadata edits (all timeline mutations except
+The authenticated `/api/tasks` route family has an explicit sixteen-operation
+allowlist: eleven timeline metadata edits (all timeline mutations except
 `timeline.render`), `reference.attach` / `reference.detach`, and the three subject
-writes listed below. The subject extension is implemented; focused checks, builds
+writes listed below. The sixteenth entry is `timeline.format.set`, with its own pristine-state and dual-revision gates. The subject extension is implemented; focused checks, builds
 and Linux native acceptance passed, with the independent full release gate passed.
 See [its current gate](SUBJECT-LIBRARY.md). It is a UI recovery control plane, not
 an additional generic RPC, MCP tool or Agent capability. The underlying shared
@@ -928,3 +928,12 @@ No shot revision, first-frame reference, timeline, frozen generation snapshot,
 provider input, built-in Agent catalog/context or paid generation changes.
 `reference.attach` remains the separate actual `first_frame` path; last-frame
 and motion support are future work. See [subject scope and recovery](SUBJECT-LIBRARY.md).
+
+
+## Timeline output presets (schema 21)
+
+`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and one of `portrait_720`, `landscape_720`, `square_720`. Output is respectively 720×1280, 1280×720 or 720×720, always 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
+
+This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
+
+Use the returned revisions, keep the exact input/key after ambiguity, and recover explicitly. Do not issue a new request merely because an acknowledgement was lost. Read/get/list and restart never apply a prepared intent. See [full scope, recovery and acceptance](TIMELINE-OUTPUT-FORMATS.md).

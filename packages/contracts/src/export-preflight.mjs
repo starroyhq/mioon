@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {timelineOutputPreset} from './timeline-format.mjs';
 
 // Local source verification is bounded and never claims full media decoding.
 export const EXPORT_PREFLIGHT_LIMITS = Object.freeze({
@@ -31,8 +32,8 @@ export const exportPreflightResponseSchema = z.object({
   status: z.enum(['ready', 'blocked', 'incomplete', 'stale']),
   summary: z.object({
     fps: z.literal(30),
-    width: z.literal(720),
-    height: z.literal(1280),
+    width: z.union([z.literal(720),z.literal(1280)]),
+    height: z.union([z.literal(720),z.literal(1280)]),
     durationFrames: count(18000),
     trackCount: count(12),
     clipCount: count(100),
@@ -41,7 +42,7 @@ export const exportPreflightResponseSchema = z.object({
     audibleClipCount: count(100),
     mutedTrackCount: count(12),
     hiddenVideoTrackCount: count(12),
-  }).strict().nullable(),
+  }).strict().refine(value=>timelineOutputPreset(value)!==null,{message:'Summary dimensions must match a supported timeline-output preset.'}).nullable(),
   checks: z.object({
     totalAssets: count(EXPORT_PREFLIGHT_LIMITS.assets),
     checkedAssets: count(EXPORT_PREFLIGHT_LIMITS.assets),

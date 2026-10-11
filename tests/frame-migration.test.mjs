@@ -26,8 +26,8 @@ function capture(db){
  for(const {name} of objects.filter(value=>value.type==='table'))rows[name]=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`).all();
  return {objects,rows,hashes:Object.fromEntries(Object.entries(rows).map(([name,values])=>[name,values.map(hash)]))};
 }
-function assertPreserved(db,before){
- const after=capture(db);assert.deepEqual(after.objects.filter(value=>before.objects.some(old=>old.name===value.name)),before.objects);
+function assertPreserved(db,before,{formatMigration=false}={}){
+ const after=capture(db);const retained=after.objects.filter(value=>before.objects.some(old=>old.name===value.name)).map(row=>{if(!formatMigration||row.type!=='table'||row.name!=='edit_tasks')return row;assert.equal(row.sql.split(",'timeline.format.set'").length,2,'schema21 adds precisely one operation; all other historical SQL remains exact');return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql:row.sql.replace(",'timeline.format.set'",'')});});assert.deepEqual(retained,before.objects);
  for(const [name,rows] of Object.entries(before.rows)){
   const values=name==='schema_version'?after.rows[name].filter(value=>value.version<=19):after.rows[name];
   assert.deepEqual(values,rows,name);assert.deepEqual(values.map(hash),before.hashes[name],`${name} raw row hashes`);
@@ -211,11 +211,11 @@ test('real fresh and independently frozen schema19 workspace startup produce ide
  const before=capture(legacy);legacy.close();
  const fresh=openStore(roots[0]),upgraded=openStore(roots[1]);
  try{
-  assertPreserved(upgraded.db,before);
+  assertPreserved(upgraded.db,before,{formatMigration:true});
   const frameObjects=db=>capture(db).objects.filter(value=>value.tbl_name.startsWith('frame_')||['reject_legacy_frame_asset_owner','reject_image_frame_asset_owner'].includes(value.name));
   assert.deepEqual(frameObjects(upgraded.db),frameObjects(fresh.db));
   for(const store of [fresh,upgraded]){
-   assert.equal(store.db.prepare('SELECT max(version) AS v FROM schema_version').get().v,20);
+   assert.equal(store.db.prepare('SELECT max(version) AS v FROM schema_version').get().v,21);
    assert.equal(store.db.prepare('SELECT count(*) AS n FROM frame_tasks').get().n,0);
    assert.equal(store.db.prepare('SELECT count(*) AS n FROM frame_requests').get().n,0);
    assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(),[]);

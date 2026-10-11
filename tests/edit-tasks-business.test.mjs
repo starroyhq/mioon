@@ -31,8 +31,8 @@ async function fixture(t,options={}) {
  };return f;
 }
 
-test('legacy FIRST12 prefix remains in the fifteen-operation scope; prepare is durable/noncreating and preserves duplicate identity',async t=>{
- const f=await fixture(t);assert.equal(DURABLE_EDIT_OPERATIONS.length,15);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.render'),false);
+test('legacy FIRST12 prefix remains in the sixteen-operation scope; prepare is durable/noncreating and preserves duplicate identity',async t=>{
+ const f=await fixture(t);assert.equal(DURABLE_EDIT_OPERATIONS.length,16);assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.render'),false);
  f.store.db.prepare('DELETE FROM timelines WHERE projectId=?').run(f.project.id);
  const input={projectId:f.project.id,expectedRevision:1,requestId:randomUUID(),kind:'audio'},before=f.snapshot();
  const saved=f.prepare('timeline.track.add',input);assert.equal(saved.task.status,'prepared');assert.equal(f.snapshot(),before);assert.equal(f.calls,0);

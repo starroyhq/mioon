@@ -8,9 +8,10 @@ const code=expected=>error=>error.code===expected&&!JSON.stringify(error).includ
 
 test('only three subject writes add a third durable lane; preparation and reads never mutate the domain',async t=>{
  const f=await subjectFixture(t),input=f.createInput(),before=f.snapshot();
- assert.equal(DURABLE_EDIT_OPERATIONS.length,15);
- assert.deepEqual(DURABLE_EDIT_OPERATIONS.slice(12),['subject.create','subject.version.add','subject.binding.set']);
- for(const operation of DURABLE_EDIT_OPERATIONS.slice(12))assert.equal(editTaskLane(operation),'subject:mutation');
+ assert.equal(DURABLE_EDIT_OPERATIONS.length,16);
+ assert.equal(DURABLE_EDIT_OPERATIONS[15],'timeline.format.set');assert.equal(editTaskLane('timeline.format.set'),'timeline:mutation');
+ assert.deepEqual(DURABLE_EDIT_OPERATIONS.slice(12,15),['subject.create','subject.version.add','subject.binding.set']);
+ for(const operation of DURABLE_EDIT_OPERATIONS.slice(12,15))assert.equal(editTaskLane(operation),'subject:mutation');
  for(const operation of ['subject.list','subject.version.list','subject.binding.list','subject.delete','timeline.render','shot.update','__proto__'])assert.equal(editTaskLane(operation),null);
  assert.deepEqual(EDIT_TASK_LIMITS,{inputBytes:8192,rowBytes:16384,rows:4096,bytes:64*1024*1024,pageSize:20,maxPageSize:50});
  const saved=f.prepare('subject.create',input);assert.equal(saved.task.status,'prepared');assert.ok(isEditTaskEnvelope(saved));

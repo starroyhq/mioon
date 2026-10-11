@@ -508,7 +508,7 @@ no paths, credentials, commands, request key or export options are accepted.
 The command streams managed source hashes and runs bounded local ffprobe
 metadata checks. It never creates a timeline, export or cache, writes SQLite
 or output files, fully decodes media, or contacts providers. Output remains
-720×1280 at 30fps. Limits are 100 assets, 512MiB/source, 1GiB total hashed bytes,
+one of the three [30fps timeline output presets](TIMELINE-OUTPUT-FORMATS.md). Limits are 100 assets, 512MiB/source, 1GiB total hashed bytes,
 30 seconds and 128 issues. The ordinary success envelope can contain any of
 `ready`, `blocked`, `incomplete` or `stale`; check `data.status`, not just the
 process exit code. `checks.fullDecode` is always false.
@@ -579,8 +579,7 @@ namespace are unchanged. See [reference recovery](REFERENCE-RECOVERY.md).
 
 The new [durable UI task slice](TASK-RECOVERY.md) covers ten non-rendering timeline
 edits and two reference operations. The implemented subject extension adds exactly
-`subject.create`, `subject.version.add` and `subject.binding.set`, for fifteen
-operations in total. It adds no CLI task-execution command and
+`subject.create`, `subject.version.add` and `subject.binding.set`, for fifteen operations. `timeline.format.set` is now the sixteenth explicit operation, in the timeline lane. It adds no CLI task-execution command and
 does not change existing command inputs, original receipts or journal key scopes.
 CLI callers must continue retaining their complete original request and key.
 Native UI restart discovery does not imply durable storage of arbitrary external
@@ -641,7 +640,7 @@ a new intent. Malformed success and generic 4xx remain unknown without matching
 operation/project/request rollback proof. The CLI never invents keys or retries.
 
 The three writes are also the only additions to the UI durable allowlist, now
-fifteen, under `subject:mutation`. Direct CLI requests do not automatically become
+fifteen at that stage, under `subject:mutation`; the later format operation makes sixteen in total. Direct CLI requests do not automatically become
 UI tasks. Local metadata is ordinary SQLite, not vault-encrypted: keep secrets out
 of names and inputs. This is local planning without provider calls, paid work,
 Blender or built-in Agent catalog/context changes. Actual `first_frame` continues
@@ -696,3 +695,12 @@ The request journal is plaintext local SQLite, not encrypted durable CLI intent
 storage; retain any not-yet-accepted request outside the short-lived CLI process.
 The local limits and supported video profile are in the API contract. No paid
 provider call, Blender dependency or built-in Agent catalog expansion is added.
+
+
+## Timeline output presets (schema 21)
+
+`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and one of `portrait_720`, `landscape_720`, `square_720`. Output is respectively 720×1280, 1280×720 or 720×720, always 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
+
+This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
+
+Use the returned revisions, keep the exact input/key after ambiguity, and recover explicitly. Do not issue a new request merely because an acknowledgement was lost. Read/get/list and restart never apply a prepared intent. See [full scope, recovery and acceptance](TIMELINE-OUTPUT-FORMATS.md).

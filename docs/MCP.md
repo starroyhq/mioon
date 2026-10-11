@@ -485,7 +485,7 @@ full decode, provider calls or paid generation. These hints are advisory and do
 not authorize work. Read idempotency does not promise identical report bytes:
 subsequent calls can observe source or timeline changes.
 
-Checks cover existing 720×1280/30fps output, streamed managed-source hashes and
+Checks cover the three closed [30fps timeline output presets](TIMELINE-OUTPUT-FORMATS.md), streamed managed-source hashes and
 bounded metadata, with limits of 100 assets, 512MiB/source, 1GiB total bytes,
 30 seconds and 128 issues. Inspect `status` even when `isError` is false:
 `ready` found no known blocker at the check time; `blocked` requires attention;
@@ -558,7 +558,7 @@ authority, generation call or namespace are introduced. See
 [Durable UI task recovery](TASK-RECOVERY.md) is a dedicated authenticated UI
 coordinator for ten non-rendering timeline edits and two reference operations.
 The implemented subject extension adds only `subject.create`, `subject.version.add`
-and `subject.binding.set` in a dedicated subject lane, for fifteen total.
+and `subject.binding.set` in a dedicated subject lane, for fifteen at that stage. `timeline.format.set` adds the sixteenth fixed operation.
 It does not register a generic execute/recover MCP tool or expand built-in Agent
 authority. Existing MCP tools still use the same shared business handlers and
 strict historical acknowledgements; retain exact arguments and request IDs.
@@ -615,7 +615,7 @@ is historical and ownership-checked. Malformed success or generic 4xx stays
 unknown without matching operation/project/request rollback proof.
 
 UI durable preparation adds only these three writes under `subject:mutation`,
-bringing its explicit allowlist to fifteen. External calls do not automatically
+bringing its explicit allowlist to fifteen at that stage; the later format operation makes sixteen in total. External calls do not automatically
 create UI tasks, and no generic task-execution MCP tool is added. This external
 catalog does not expand built-in Agent tools/context. Subject/style bindings are
 local planning only: actual `first_frame` still uses `reference_attach`;
@@ -667,3 +667,12 @@ lookup cannot. Startup, schema discovery, task reads and historical replay never
 resume work. Request/task metadata is stored in plaintext local SQLite; PNG and
 manifest files are ordinary private local files, not vault-encrypted. This is
 backend-durable accepted work, not durable preparation of an unsent MCP request.
+
+
+## Timeline output presets (schema 21)
+
+`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and one of `portrait_720`, `landscape_720`, `square_720`. Output is respectively 720×1280, 1280×720 or 720×720, always 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
+
+This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
+
+Use the returned revisions, keep the exact input/key after ambiguity, and recover explicitly. Do not issue a new request merely because an acknowledgement was lost. Read/get/list and restart never apply a prepared intent. See [full scope, recovery and acceptance](TIMELINE-OUTPUT-FORMATS.md).

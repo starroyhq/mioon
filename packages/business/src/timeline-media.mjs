@@ -5,7 +5,7 @@ import {validateTimeline} from './timeline-inputs.mjs';
 import {throwIfMediaAborted} from './media-processes.mjs';
 import {timelineAudioFadeFilters} from './timeline-audio.mjs';
 
-const FPS=30,WIDTH=720,HEIGHT=1280,SAMPLES_PER_FRAME=1600;
+const FPS=30,SAMPLES_PER_FRAME=1600;
 const seconds=frames=>(frames/FPS).toFixed(9);
 // Render both preview and export through this exact implementation. Segment at
 // clip edges so even a 100-clip / 10-minute composition only opens <=12 media
@@ -14,6 +14,9 @@ const seconds=frames=>(frames/FPS).toFixed(9);
 export async function renderTimeline(snapshot,assets,destination,{signal}={}){
  throwIfMediaAborted(signal);
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
+ // The validated frozen snapshot owns output geometry. Keep the editing and
+ // audio timebase fixed while portrait, landscape and square share this path.
+ const {width,height}=timeline;
  const edges=[...new Set([0,timeline.durationFrames,...timeline.clips.flatMap(c=>[c.startFrame,c.startFrame+c.durationFrames])])].sort((a,b)=>a-b);
  const work=await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
  try{
@@ -35,7 +38,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal}={}){
     args.push('-t',seconds(frames+1),'-i',asset.path);
     inputs.push({clip,asset,visual,audio,input});
    }
-   const filters=[`color=c=black:s=${WIDTH}x${HEIGHT}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[base]`,`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[silence]`];
+   const filters=[`color=c=black:s=${width}x${height}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[base]`,`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[silence]`];
    let visual='base';const sounds=['silence'];
    for(const {clip,asset,input,visual:show,audio} of inputs){
     if(show){
@@ -64,7 +67,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal}={}){
   throwIfMediaAborted(signal);
   const result=await probe(destination,{signal}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
   throwIfMediaAborted(signal);
-  if(result.width!==WIDTH||result.height!==HEIGHT||v?.codec_name!=='h264'||v?.r_frame_rate!=='30/1'||v?.avg_frame_rate!=='30/1'||Number(v?.nb_frames)!==timeline.durationFrames||a?.codec_name!=='aac'||Number(a?.sample_rate)!==48000||a?.channels!==2||Math.abs(result.duration-timeline.durationFrames/FPS)>0.035)throw Error('Rendered timeline failed frame/duration/audio-format verification');
+  if(result.width!==width||result.height!==height||v?.codec_name!=='h264'||v?.r_frame_rate!=='30/1'||v?.avg_frame_rate!=='30/1'||Number(v?.nb_frames)!==timeline.durationFrames||a?.codec_name!=='aac'||Number(a?.sample_rate)!==48000||a?.channels!==2||Math.abs(result.duration-timeline.durationFrames/FPS)>0.035)throw Error('Rendered timeline failed frame/duration/audio-format verification');
   return result;
  }finally{await rm(work,{recursive:true,force:true});}
 }
