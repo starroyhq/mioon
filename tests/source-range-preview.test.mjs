@@ -9,7 +9,7 @@ const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 function harness() {
   const slots = [], elements = new Map(); let cursor = 0, effects = [], layouts = [], tree;
-  const h = { visible: true };
+  const h = { visible: true, readyState: 1, duration: 1200 };
   const effect = (queue, fn, deps) => { const i = cursor++, prior = slots[i]; if (prior && deps.every((v, j) => Object.is(v, prior.deps[j]))) return; slots[i] = { deps, cleanup: prior?.cleanup, fn }; queue.push(i); };
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useEffect: (fn, deps) => effect(effects, fn, deps), useLayoutEffect: (fn, deps) => effect(layouts, fn, deps) };
   react.default = react;
@@ -21,7 +21,7 @@ function harness() {
     cursor = 0; effects = []; layouts = []; tree = module.exports.default(props);
     for (const node of nodes(tree)) if (node.props?.ref) {
       const key = node.props.key;
-      if (!elements.has(key)) elements.set(key, { src: node.props.src, _currentTime: 0, get currentTime() { return this._currentTime; }, set currentTime(value) { this._currentTime = h.quantizeTime ? h.quantizeTime(value) : value; }, duration: 1200, paused: true, seeking: false, isConnected: true, loads: 0, seeks: 0,
+      if (!elements.has(key)) elements.set(key, { src: node.props.src, _currentTime: 0, get currentTime() { return this._currentTime; }, set currentTime(value) { this.seeks++; this._currentTime = h.quantizeTime ? h.quantizeTime(value) : value; }, readyState: h.readyState, duration: h.duration, paused: true, seeking: false, isConnected: true, loads: 0, seeks: 0,
         getAttribute(name) { return name === 'src' ? this.src : null; }, setAttribute(name, value) { if (name === 'src') this.src = value; }, removeAttribute(name) { if (name === 'src') this.src = null; }, pause() { this.paused = true; }, load() { this.loads++; this.currentTime = 0; } });
       node.props.ref.current = elements.get(key);
     }
@@ -181,3 +181,154 @@ test('source replacement cannot reuse an old quantized seek intent or accept its
   const before = positions.length; old.props.onSeeked({ currentTarget: oldElement }); old.props.onPause({ currentTarget: oldElement });
   assert.equal(positions.length, before);
 });
+
+// Run the real JSX component with controlled media readiness/event ordering.
+// This is an actual-component regression, not a browser/native media claim.
+for (const kind of ['video', 'audio']) {
+  test(`${kind}: an unacknowledged explicit source seek survives rerender before metadata`, () => {
+    const h = harness(), positions = [], p = props({ asset: { ...props().asset, duration: 10, mimeType: `${kind}/${kind === 'audio' ? 'wav' : 'mp4'}` }, onSourcePosition: frame => positions.push(frame) });
+    h.readyState = 0; h.duration = NaN;
+    h.render(p); const element = h.media().props.ref.current;
+    const requested = { ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 150 } };
+    h.render(requested); h.render({ ...requested });
+    element.readyState = 1; element.duration = 10;
+    h.media().props.onLoadedMetadata({ currentTarget: element });
+    assert.equal(element.currentTime, 5, 'metadata must retain frame 150 rather than restoring stale sourcePosition 0');
+    h.media().props.onSeeked({ currentTarget: element });
+    assert.equal(positions.at(-1), 150);
+  });
+}
+
+for (const kind of ['video', 'audio']) {
+  const sourceProps = patch => props({ asset: { ...props().asset, duration: 10, mimeType: `${kind}/${kind === 'audio' ? 'wav' : 'mp4'}` }, ...patch });
+  test(`${kind}: metadata-unready playback callbacks cannot acknowledge or publish an explicit seek`, () => {
+    const h = harness(), positions = [], p = sourceProps({ onSourcePosition: frame => positions.push(frame) });
+    h.readyState = 0; h.duration = NaN;
+    h.render(p); const element = h.media().props.ref.current;
+    const requested = { ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 150 } };
+    h.render(requested);
+    assert.equal(element.seeks, 0, 'defer currentTime assignment until metadata is available');
+    element.paused = false;
+    for (const name of ['onPlay', 'onPlaying', 'onTimeUpdate', 'onPause', 'onSeeked']) h.media().props[name]({ currentTarget: element });
+    assert.deepEqual(positions, []);
+    h.render({ ...requested });
+    element.readyState = 1; element.duration = 10; element.paused = true;
+    h.media().props.onLoadedMetadata({ currentTarget: element });
+    assert.equal(element.currentTime, 5);
+    h.media().props.onSeeked({ currentTarget: element });
+    assert.deepEqual(positions, [150]);
+  });
+
+  test(`${kind}: newest token wins through an older metadata callback and pending rerenders`, () => {
+    const h = harness(), positions = [], p = sourceProps({ onSourcePosition: frame => positions.push(frame) });
+    h.readyState = 0; h.duration = NaN;
+    h.render({ ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 150 } });
+    const old = h.media(), element = old.props.ref.current;
+    const latest = { ...p, sourceSeek: { scope: p.sourceScope, id: 2, frame: 180 } };
+    h.render(latest); h.render({ ...latest });
+    element.readyState = 1; element.duration = 10;
+    old.props.onLoadedMetadata({ currentTarget: element });
+    assert.equal(element.currentTime, 6, 'a queued callback must read the latest seek token');
+    element.seeking = true;
+    h.render({ ...latest });
+    const writes = element.seeks;
+    old.props.onSeeked({ currentTarget: element });
+    h.media().props.onPause({ currentTarget: element });
+    assert.deepEqual(positions, [], 'unfinished native seek is not an acknowledgement');
+    assert.equal(element.seeks, writes, 'same token does not assign currentTime again');
+    // Native events have no historical-time payload. The retained callback
+    // reads the newest currentTime once the current native seek has finished.
+    element.seeking = false; old.props.onSeeked({ currentTarget: element });
+    assert.deepEqual(positions, [180]);
+    h.render({ ...latest, sourcePosition: 180 });
+    element.currentTime = 7; element.paused = false;
+    h.media().props.onPlay({ currentTarget: element }); h.media().props.onTimeUpdate({ currentTarget: element });
+    assert.equal(positions.at(-1), 210);
+    h.render({ ...latest, sourcePosition: 210 }); assert.equal(element.currentTime, 7);
+    h.render({ ...latest, sourcePosition: 210, sourceSeek: { ...latest.sourceSeek, id: 3 } });
+    assert.equal(element.currentTime, 6, 'a new token intentionally repeats the earlier target');
+  });
+
+  test(`${kind}: a seek finishing while hidden is acknowledged only on visible reopening`, () => {
+    const h = harness(), positions = [], p = sourceProps({ onSourcePosition: frame => positions.push(frame) });
+    h.render(p); positions.length = 0;
+    const requested = { ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 150 } };
+    h.render(requested); const node = h.media(), element = node.props.ref.current;
+    element.seeking = true; h.visible = false; h.render(requested);
+    element.seeking = false;
+    for (const name of ['onLoadedMetadata', 'onSeeked', 'onPause']) node.props[name]({ currentTarget: element });
+    assert.deepEqual(positions, []); assert.equal(element.currentTime, 5); assert.equal(element.paused, true);
+    const writes = element.seeks;
+    h.visible = true; h.render(requested);
+    assert.deepEqual(positions, [150]); assert.equal(element.seeks, writes, 'reopening acknowledges the finished seek without replay');
+    h.render({ ...requested, sourcePosition: 150 });
+    element.currentTime = 6; element.paused = false; h.media().props.onPlay({ currentTarget: element }); h.media().props.onTimeUpdate({ currentTarget: element });
+    h.render({ ...requested, sourcePosition: 180 });
+    h.render({ ...requested, sourcePosition: 180, kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render', timelineRevision: 1, status: 'succeeded', url: '/render' } });
+    h.render({ ...requested, sourcePosition: 180 });
+    assert.equal(h.media().props.ref.current.currentTime, 6, 'returning after acknowledgement restores actual position, not old frame 150');
+    assert.equal(h.media().props.ref.current.paused, true);
+  });
+
+  test(`${kind}: an unacknowledged seek survives preview-tab replacement and old callbacks stay inert`, () => {
+    const h = harness(), positions = [], p = sourceProps({ onSourcePosition: (frame, scope) => positions.push([frame, scope]) });
+    const requested = { ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 150 } };
+    h.render(requested); const old = h.media(), oldElement = old.props.ref.current;
+    oldElement.seeking = true;
+    h.render({ ...requested, kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render', timelineRevision: 1, status: 'succeeded', url: '/render' } });
+    oldElement.seeking = false;
+    for (const name of ['onLoadedMetadata', 'onSeeked', 'onPause']) old.props[name]({ currentTarget: oldElement });
+    assert.deepEqual(positions, []);
+    h.render(requested); const element = h.media().props.ref.current;
+    assert.equal(element.currentTime, 5, 'an unacknowledged token is still pending after media replacement');
+    h.media().props.onSeeked({ currentTarget: element });
+    assert.deepEqual(positions, [[150, p.sourceScope]]);
+    const next = { ...p, sourceScope: 'project-b:1:source-b:2', asset: { ...p.asset, id: 'source-b', url: '/media/b' }, sourceSeek: requested.sourceSeek };
+    h.render(next); const newElement = h.media().props.ref.current; positions.length = 0;
+    oldElement.currentTime = 5;
+    for (const name of ['onLoadedMetadata', 'onSeeked', 'onPause']) old.props[name]({ currentTarget: oldElement });
+    assert.deepEqual(positions, []); assert.equal(newElement.currentTime, 0);
+    h.render({ ...next, sourceSeek: { scope: next.sourceScope, id: 1, frame: 60 } });
+    h.media().props.onSeeked({ currentTarget: newElement });
+    assert.deepEqual(positions, [[60, next.sourceScope]], 'same id in a new scope is independent');
+  });
+
+  test(`${kind}: stable native scrubbing can supersede an unacknowledged explicit seek`, () => {
+    const h = harness(), positions = [], p = sourceProps({ onSourcePosition: frame => positions.push(frame) });
+    const requested = { ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 150 } };
+    h.render(requested); const element = h.media().props.ref.current;
+    element.seeking = true; element.currentTime = 8;
+    h.media().props.onSeeked({ currentTarget: element }); assert.deepEqual(positions, []);
+    element.seeking = false; h.media().props.onSeeked({ currentTarget: element });
+    assert.deepEqual(positions, [240]);
+    h.render({ ...requested, sourcePosition: 240 });
+    element.currentTime = 7; h.media().props.onSeeked({ currentTarget: element });
+    assert.equal(positions.at(-1), 210, 'native scrub remains authoritative after token acknowledgement');
+    h.render({ ...requested, sourcePosition: 210 });
+    h.render({ ...requested, sourcePosition: 210, kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render', timelineRevision: 1, status: 'succeeded', url: '/render' } });
+    h.render({ ...requested, sourcePosition: 210 });
+    assert.equal(h.media().props.ref.current.currentTime, 7, 'old explicit target cannot undo later native scrubs');
+  });
+}
+
+for (const kind of ['video', 'audio']) {
+  test(`${kind}: pending metadata seek retains integer intent through quantized playback and pause`, () => {
+    for (const round of [Math.floor, Math.round]) {
+      const h = harness(), positions = [], p = props({ asset: { ...props().asset, duration: 10, mimeType: `${kind}/${kind === 'audio' ? 'wav' : 'mp4'}` }, sourcePosition: 55, onSourcePosition: frame => positions.push(frame) });
+      h.readyState = 0; h.duration = NaN; h.quantizeTime = seconds => round(seconds * 1e6) / 1e6;
+      const requested = { ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 56 } };
+      h.render(requested); h.render({ ...requested });
+      const element = h.media().props.ref.current; element.readyState = 1; element.duration = 10;
+      h.media().props.onLoadedMetadata({ currentTarget: element });
+      element.seeking = true; element.paused = false;
+      h.media().props.onPlaying({ currentTarget: element }); h.media().props.onTimeUpdate({ currentTarget: element });
+      assert.deepEqual(positions, []);
+      element.seeking = false; h.media().props.onSeeked({ currentTarget: element });
+      assert.equal(positions.at(-1), 56);
+      h.render({ ...requested, sourcePosition: 56 });
+      element.paused = true; h.media().props.onPause({ currentTarget: element }); assert.equal(positions.at(-1), 56);
+      element.currentTime = 2; element.paused = false;
+      h.media().props.onPlay({ currentTarget: element }); h.media().props.onTimeUpdate({ currentTarget: element }); assert.equal(positions.at(-1), 60);
+    }
+  });
+}

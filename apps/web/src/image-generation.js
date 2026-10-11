@@ -38,7 +38,7 @@ export function imageInputIssue(draft) {
   return '';
 }
 export function initialImageGenerationState() {
-  return { draft: { name: '', prompt: '' }, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
+  return { draft: { name: '', prompt: '' }, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
 }
 export const imageDraftDirty = state => Boolean(state.draft.name || state.draft.prompt || state.target);
 const paidProvider = providerId => ['openai', 'openai-compatible'].includes(providerId);
@@ -111,7 +111,18 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     finally { clearTimeout(deadline); calls.delete(controller); }
   }
   const store = () => storage === undefined ? globalThis.sessionStorage : storage;
-  const emit = patch => { if (disposed) return; state = { ...state, ...patch }; onChange(copy(state)); };
+  const emit = patch => {
+    if (disposed) return;
+    const groupChanged = Object.hasOwn(patch, 'selectedGroupId') && patch.selectedGroupId !== state.selectedGroupId;
+    const pageChanged = Object.hasOwn(patch, 'versionCursor') && patch.versionCursor !== state.versionCursor;
+    const groupPageChanged = Object.hasOwn(patch, 'groupCursor') && patch.groupCursor !== state.groupCursor;
+    // Saved previews and their cursor belong to one exact group/page. Every
+    // selection route (including recovered receipts) crosses this same boundary.
+    // Same-page refreshes keep their known results, drafts and recoverable tasks.
+    state = { ...state, ...(groupPageChanged ? { nextGroupCursor: null } : {}), ...(groupChanged ? { versionCursor: null, versionTrail: [] } : {}),
+      ...(groupChanged || pageChanged ? { versions: [], nextVersionCursor: null, historyPhase: 'loading' } : {}), ...patch };
+    onChange(copy(state));
+  };
   const observations = createComfyObservationSession({ projectId, call, storage, requestId, onChange: emit });
   state = { ...state, ...observations.snapshot() };
   const stopTimer = () => { if (timer !== null) clearTimer(timer); timer = null; };
@@ -191,7 +202,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     if (disposed || !visible || reading || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || state.phase === 'targeting') return false;
     if (!automatic) { polls = 0; emit({ pollPaused: false }); }
     stopTimer(); const epoch = ++readEpoch; reading = epoch; let pendingRemoteTask = null;
-    if (!state.loaded) emit({ phase: state.pending ? 'unknown' : 'loading' });
+    emit({ historyPhase: 'loading', ...(!state.loaded ? { phase: state.pending ? 'unknown' : 'loading' } : {}) });
     try {
       await resolvePending(epoch); if (!owned(epoch)) return false;
       if (state.remotePending) {
@@ -273,14 +284,14 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       }
       const monotonicTasks = tasks.items.map(task => newestTask(state.tasks.find(item => item.id === task.id), task));
       for (const version of versions.items) { const old = state.versions.find(item => item.id === version.id); if (old && canonicalImageInput(old) !== canonicalImageInput(version)) throw problem('INVALID_RESPONSE'); }
-      emit({ groups: groups.items, nextGroupCursor: groups.nextCursor, selectedGroupId, tasks: monotonicTasks, versions: versions.items, nextVersionCursor: versions.nextCursor, ...(changed ? { versionCursor: null, versionTrail: [] } : {}), loaded: true, phase: state.pending ? 'unknown' : 'ready' });
+      emit({ groups: groups.items, nextGroupCursor: groups.nextCursor, selectedGroupId, tasks: monotonicTasks, versions: versions.items, nextVersionCursor: versions.nextCursor, ...(changed ? { versionCursor: null, versionTrail: [] } : {}), loaded: true, historyPhase: 'ready', phase: state.pending ? 'unknown' : 'ready' });
       for (const task of monotonicTasks) {
         if (ACTIVE.has(task.state)) tracked.set(task.id, task); else tracked.delete(task.id);
         if (task.state === 'succeeded' && !announced.has(task.id)) { announced.add(task.id); onGenerated(projectId, copy(task)); }
       }
       return true;
     } catch {
-      if (owned(epoch)) emit({ phase: state.pending ? 'unknown' : 'read_error', message: state.pending ? '原请求的结果仍待确认。只会重新读取本地记录，不会自动重发。' : '暂时无法读取图像记录。草稿保留，可重新读取。' });
+      if (owned(epoch)) emit({ historyPhase: 'read_error', phase: state.pending ? 'unknown' : 'read_error', message: state.pending ? '原请求的结果仍待确认。只会重新读取本地记录，不会自动重发。' : '暂时无法读取图像记录。草稿保留，可重新读取。' });
       return false;
     } finally { if (reading === epoch) reading = false; if (owned(epoch)) schedule(); }
   }
@@ -377,7 +388,8 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     const group = groupId ? state.groups.find(item => item.id === groupId) : null;
     if (groupId && (!group || group.activeTaskId)) return false;
     if (!groupId) { emit({ target: null, targetRequest: null, draft: { name: '', prompt: '' }, message: '' }); return true; }
-    const epoch = ++selectionEpoch; emit({ phase: 'targeting', targetRequest: null }); stopTimer();
+    const epoch = ++selectionEpoch; let reloadHistory = false;
+    emit({ phase: 'targeting', targetRequest: null }); stopTimer();
     try {
       const input = { projectId, groupId, limit: 1 };
       const page = safePage('image.version.list', input, await call('image.version.list', input));
@@ -385,10 +397,11 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (page.items[0]) task = safeTask(await call('image.task.get', { projectId, taskId: page.items[0].taskId }), projectId);
       if (disposed || selectionEpoch !== epoch || !visible) return false;
       if (task && task.groupId !== groupId) throw problem('INVALID_RESPONSE');
+      reloadHistory = state.selectedGroupId !== groupId || state.versionCursor !== null;
       emit({ draft: { name: group.name, prompt: task?.prompt || '' }, target: { groupId, expectedRevision: group.revision }, selectedGroupId: groupId, versionCursor: null, versionTrail: [], message: '已载入历史描述。修改后点击生成，才会创建此组的新版本。' });
       return true;
     } catch { if (!disposed && selectionEpoch === epoch) emit({ message: '无法读取此组的原始描述，未改变草稿。' }); return false; }
-    finally { if (!disposed && selectionEpoch === epoch) { emit({ phase: state.pending ? 'unknown' : 'ready' }); schedule(); } }
+    finally { if (!disposed && selectionEpoch === epoch) { emit({ phase: state.pending ? 'unknown' : 'ready' }); if (reloadHistory && visible) await load(); else schedule(); } }
   }
   return {
     getState: () => copy(state), load, generatePaid, prepareComfy,

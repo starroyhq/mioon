@@ -22,13 +22,14 @@ export default function Preview({ visible = true, kind, onKind, asset, clip, tim
   const activeMedia = useRef(null);
   const appliedSourceSeek = useRef(null);
   const sourceRequest = sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek : null;
-  const newSourceRequest = sourceRequest && (appliedSourceSeek.current?.scope !== sourceScope || appliedSourceSeek.current?.id !== sourceRequest.id);
-  const sourceSeconds = rendered ? playhead / SOURCE_RANGE_FPS : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, playhead - clip.startFrame))) / SOURCE_RANGE_FPS : (newSourceRequest ? sourceRequest.frame : sourcePosition) / SOURCE_RANGE_FPS;
+  const currentSource = useRef(null);
+  currentSource.current = { scope: sourceScope, position: sourcePosition, request: sourceRequest };
+  const sourceSeconds = rendered ? playhead / SOURCE_RANGE_FPS : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, playhead - clip.startFrame))) / SOURCE_RANGE_FPS : null;
   const seekRequest = !rendered && !clip ? `${sourceScope || ''}:${sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek.id : 'initial'}` : sourceSeconds;
   useLayoutEffect(() => {
     const element = media.current;
     if (!element) return;
-    const binding = { element, key: mediaKey, url, programmaticSeek: null, sourceSeekIntent: null, lastSeekRequest: null };
+    const binding = { element, key: mediaKey, url, programmaticSeek: null, sourceSeekIntent: null, pendingSourceSeek: null, lastSeekRequest: null };
     activeMedia.current = binding;
     // Restore src when development Strict Mode replays the cleanup/setup pair.
     if (element.getAttribute('src') !== url) element.setAttribute('src', url);
@@ -46,18 +47,31 @@ export default function Preview({ visible = true, kind, onKind, asset, clip, tim
     return Boolean(visibleRef.current && element && element.isConnected && element === media.current && active?.element === element && active.key === mediaKey && active.url === url && element.getAttribute('src') === url);
   }
   function seekMedia(element, loadedMetadata = false) {
-    if (!isCurrentMedia(element) || !Number.isFinite(sourceSeconds)) return;
+    if (!isCurrentMedia(element)) return;
+    const standaloneSource = !rendered && !clip;
+    if (standaloneSource && element.readyState < 1) return;
+    const source = currentSource.current, request = source.request;
+    const newSourceRequest = request && (appliedSourceSeek.current?.scope !== source.scope || appliedSourceSeek.current?.id !== request.id);
+    const sourceFrame = newSourceRequest ? request.frame : source.position;
+    const targetSeconds = standaloneSource ? sourceFrame / SOURCE_RANGE_FPS : sourceSeconds;
+    if (!Number.isFinite(targetSeconds)) return;
     const binding = activeMedia.current;
+    const currentSeekRequest = standaloneSource ? `${source.scope || ''}:${request?.id ?? 'initial'}` : seekRequest;
     // Reopening alone preserves native playback position. A changed playhead or
     // source while hidden still applies its deferred seek when shown again.
-    if (!loadedMetadata && binding.lastSeekRequest === seekRequest) return;
-    binding.lastSeekRequest = seekRequest;
-    if (!rendered && !clip) {
-      binding.sourceSeekIntent = newSourceRequest ? sourceRequest.frame : sourcePosition;
-      if (sourceRequest) appliedSourceSeek.current = { scope: sourceScope, id: sourceRequest.id };
+    if (!loadedMetadata && binding.lastSeekRequest === currentSeekRequest) {
+      if (standaloneSource && binding.pendingSourceSeek) publishSourcePosition(element);
+      return;
     }
-    const max = Number.isFinite(element.duration) ? Math.max(0, element.duration - (!rendered && !clip ? 0 : .001)) : sourceSeconds;
-    const seconds = Math.max(0, Math.min(sourceSeconds, max));
+    binding.lastSeekRequest = currentSeekRequest;
+    if (standaloneSource) {
+      binding.sourceSeekIntent = sourceFrame;
+      // A currentTime assignment is not confirmation: metadata or seeked may
+      // still be pending across rerenders, tab changes, or a hidden player.
+      binding.pendingSourceSeek = newSourceRequest ? { scope: source.scope, id: request.id } : null;
+    }
+    const max = Number.isFinite(element.duration) ? Math.max(0, element.duration - (!rendered && !clip ? 0 : .001)) : targetSeconds;
+    const seconds = Math.max(0, Math.min(targetSeconds, max));
     if (Math.abs(element.currentTime - seconds) > (!rendered && !clip ? 1e-7 : .02)) {
       activeMedia.current.programmaticSeek = seconds;
       element.currentTime = seconds;
@@ -81,10 +95,16 @@ export default function Preview({ visible = true, kind, onKind, asset, clip, tim
     updateTime(event, true);
   }
   function publishSourcePosition(element) {
-    if (!isCurrentMedia(element) || element.seeking) return;
+    if (!isCurrentMedia(element) || element.seeking || element.readyState < 1) return;
     const binding = activeMedia.current;
+    // A stable native position acknowledges the applied intent, including a
+    // later native scrub that deliberately supersedes its target.
+    if (binding.pendingSourceSeek) {
+      appliedSourceSeek.current = binding.pendingSourceSeek;
+      binding.pendingSourceSeek = null;
+    }
     if (!sourceSeekMatchesTime(element.currentTime, binding.sourceSeekIntent)) binding.sourceSeekIntent = null;
-    onSourcePosition?.(sourcePositionFrame(element.currentTime, sourceFrameCount(asset?.duration), binding.sourceSeekIntent), sourceScope);
+    onSourcePosition?.(sourcePositionFrame(element.currentTime, sourceFrameCount(asset?.duration), binding.sourceSeekIntent), currentSource.current.scope);
   }
   function pauseMedia(event) {
     // Native pause may land between periodic timeupdate events. Mark controls

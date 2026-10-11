@@ -209,7 +209,7 @@ const componentSource = readFileSync(new URL('../apps/web/src/ImageGeneration.js
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children: children.length === 1 ? children[0] : children } });
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (left, right) => Boolean(left && right && left.length === right.length && left.every((value, index) => Object.is(value, right[index])));
-function renderer(f) {
+function renderer(f, options = {}) {
   const slots = []; let index = 0, effects = [], visible = true, tree, currentProject = projectId, dirty = false;
   const react = {
     createElement: element,
@@ -236,7 +236,7 @@ function renderer(f) {
   };
   Function('module', 'exports', 'require', transformSync(componentSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
   const harness = {
-    render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
+    render(owner = currentProject) { currentProject = owner; index = 0; effects = []; tree = module.exports.default({ projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: value => { dirty = value; }, onRevealAsset: options.onRevealAsset }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
     form() { return nodes(tree).find(node => node.type === 'form'); },
     change(id, value) { harness.find(id).props.onChange({ target: { value } }); harness.render(); },
@@ -423,5 +423,211 @@ test('actual custom failed task shows fixed pre-dispatch guidance without reflec
     const notice = ui.find('image-task-connection-notice');
     if (errorCode === 'RAW_PROVIDER_SECRET') assert.equal(notice, undefined); else assert.match(JSON.stringify(notice), /本次未发送生成 POST/);
     assert.doesNotMatch(JSON.stringify(ui.find('image-task')), /RAW_PROVIDER_SECRET|IMAGE_NETWORK_DENIED|IMAGE_SETTINGS_CONFLICT/); ui.unmount(); f.session.dispose();
+  }
+});
+
+function historyFixture(options = {}) {
+  const otherGroupId = id(90), otherVersionId = id(91), otherTaskId = id(92), otherAssetId = id(93), unknownTaskId = id(94);
+  const f = fixture({
+    groups: [group({ name: 'Group A', headVersionId: versionId, activeTaskId: unknownTaskId }), group({ id: otherGroupId, name: 'Group B', headVersionId: otherVersionId, activeTaskId: null })],
+    tasks: [task({ id: unknownTaskId, requestId: id(95), state: 'outcome_unknown', dispatched: true }), task({ state: 'succeeded', dispatched: true, revision: 4, versionId }), task({ id: otherTaskId, requestId: id(96), groupId: otherGroupId, name: 'Group B', state: 'succeeded', dispatched: true, revision: 4, versionId: otherVersionId })],
+    versions: [version(), version({ id: otherVersionId, groupId: otherGroupId, taskId: otherTaskId, assetId: otherAssetId })],
+    ...options,
+  });
+  return { ...f, otherGroupId, otherVersionId, otherTaskId, otherAssetId, unknownTaskId };
+}
+
+test('history selection clears wrong-group versions and cursors during delayed failure, then retries without losing draft or recovery', async () => {
+  const held = deferred(); let fail = true;
+  const f = historyFixture({ api: (operation, input, data) => {
+    if (operation === 'image.task.list' && input.groupId === id(90) && fail) return held.promise;
+    if (operation === 'image.version.list' && input.groupId === groupId) return page(data.versions.filter(item => item.groupId === groupId), 'older-A-versions');
+  } });
+  let selecting;
+  try {
+    await ready(f); const draft = f.session.getState().draft;
+    assert.equal(f.session.getState().nextVersionCursor, 'older-A-versions');
+    selecting = f.session.selectGroup(f.otherGroupId); await flush();
+    let state = f.session.getState();
+    assert.equal(state.selectedGroupId, f.otherGroupId);
+    assert.deepEqual(state.versions, [], 'Group A images must disappear as soon as B is selected');
+    assert.equal(state.nextVersionCursor, null); assert.equal(state.versionCursor, null); assert.deepEqual(state.versionTrail, []);
+    assert.equal(state.historyPhase, 'loading'); assert.deepEqual(state.draft, draft);
+    assert.ok(state.tasks.some(item => item.id === f.unknownTaskId), 'Retain A’s recoverable task record');
+    held.reject(error()); assert.equal(await selecting, false);
+    state = f.session.getState(); assert.equal(state.historyPhase, 'read_error'); assert.deepEqual(state.versions, []); assert.deepEqual(state.draft, draft);
+    fail = false; assert.equal(await f.session.load(), true);
+    state = f.session.getState(); assert.equal(state.historyPhase, 'ready'); assert.equal(state.versions[0].id, f.otherVersionId); assert.deepEqual(state.draft, draft);
+    await f.session.selectGroup(groupId);
+    assert.equal(f.session.getState().versions[0].id, versionId); assert.ok(f.session.getState().tasks.some(item => item.id === f.unknownTaskId));
+    assert.equal(mutations(f).length, 0); assert.equal(f.privateCalls.length, 0);
+  } finally { held.resolve(page([])); await selecting; f.session.dispose(); }
+});
+
+test('history selection preserves the current group’s versions, page and draft through failed refresh', async () => {
+  const held = deferred(); let hold = false;
+  const f = historyFixture({ api: (operation, input, data) => {
+    if (operation === 'image.group.list' && hold) return held.promise;
+    if (operation === 'image.version.list' && input.groupId === groupId) return page(data.versions.filter(item => item.groupId === groupId), 'older-A-versions');
+  } });
+  let reading;
+  try {
+    await ready(f); const previous = f.session.getState(); hold = true; reading = f.session.load(); await flush();
+    let state = f.session.getState(); assert.deepEqual(state.versions, previous.versions); assert.equal(state.nextVersionCursor, previous.nextVersionCursor); assert.deepEqual(state.draft, previous.draft);
+    held.reject(error()); await reading; state = f.session.getState();
+    assert.deepEqual(state.versions, previous.versions); assert.equal(state.selectedGroupId, groupId); assert.equal(state.nextVersionCursor, previous.nextVersionCursor); assert.deepEqual(state.draft, previous.draft);
+    assert.equal(mutations(f).length, 0);
+  } finally { held.resolve(page([])); await reading; f.session.dispose(); }
+});
+
+test('history selection version pagination clears the prior page on failure and can return to the retained page identity', async () => {
+  const held = deferred();
+  const f = historyFixture({ api: (operation, input, data) => {
+    if (operation !== 'image.version.list' || input.groupId !== groupId) return;
+    if (input.cursor) return held.promise;
+    return page(data.versions.filter(item => item.groupId === groupId), 'older-A-versions');
+  } });
+  let paging;
+  try {
+    await f.session.load(); paging = f.session.pageVersions(true); await flush();
+    let state = f.session.getState(); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null); assert.equal(state.versionCursor, 'older-A-versions'); assert.deepEqual(state.versionTrail, [null]);
+    held.reject(error()); await paging; assert.equal(await f.session.pageVersions(true), false);
+    assert.equal(await f.session.pageVersions(false), true); state = f.session.getState(); assert.equal(state.versions[0].id, versionId); assert.equal(state.versionCursor, null); assert.deepEqual(state.versionTrail, []);
+    assert.equal(mutations(f).length, 0);
+  } finally { held.resolve(page([])); await paging; f.session.dispose(); }
+});
+
+test('history selection group pagination removes old versions before its new group page is readable', async () => {
+  const held = deferred(); let rejectPage = true;
+  const f = historyFixture({ api: (operation, input, data) => {
+    if (operation !== 'image.group.list') return;
+    if (input.cursor) return rejectPage ? held.promise : page([data.groups[1]]);
+    return page([data.groups[0]], 'older-groups');
+  } });
+  let paging;
+  try {
+    await f.session.load(); paging = f.session.pageGroups(true); await flush();
+    let state = f.session.getState(); assert.equal(state.selectedGroupId, null); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null);
+    held.reject(error()); await paging; assert.deepEqual(f.session.getState().versions, []);
+    rejectPage = false; await f.session.load(); state = f.session.getState(); assert.equal(state.selectedGroupId, f.otherGroupId); assert.equal(state.versions[0].id, f.otherVersionId);
+    assert.equal(mutations(f).length, 0);
+  } finally { held.resolve(page([])); await paging; f.session.dispose(); }
+});
+
+test('history selection after explicit target confirmation reloads its own versions without replacing a newer draft', async () => {
+  const f = historyFixture();
+  try {
+    f.data.groups[0].activeTaskId = null;
+    await ready(f); await f.session.requestTarget(groupId);
+    await f.session.selectGroup(f.otherGroupId); assert.equal(f.session.getState().versions[0].id, f.otherVersionId);
+    await f.session.confirmTarget(); const state = f.session.getState();
+    assert.equal(state.selectedGroupId, groupId); assert.equal(state.versions[0]?.id, versionId); assert.equal(state.historyPhase, 'ready');
+    assert.deepEqual(state.target, { groupId, expectedRevision: 1 }); assert.equal(state.draft.prompt, '清晨的山间小屋'); assert.equal(mutations(f).length, 0);
+  } finally { f.session.dispose(); }
+});
+
+test('actual history selection never labels or reveals A’s saved asset as B during a failed read', async () => {
+  const held = deferred(); let fail = true; const reveals = [];
+  const f = historyFixture({ api: (operation, input) => operation === 'image.task.list' && input.groupId === id(90) && fail ? held.promise : undefined });
+  const ui = renderer(f, { onRevealAsset: (...args) => reveals.push(args) });
+  try {
+    ui.render(); await flush(); ui.render(); assert.equal(ui.find('image-version-preview').props.src, `/media/${assetId}`);
+    const oldReveal = ui.find('image-reveal-asset').props.onClick;
+    ui.change('image-generation-prompt', 'Keep my current description');
+    ui.change('image-history-group', f.otherGroupId); await flush(); ui.render();
+    assert.equal(ui.find('image-history-group').props.value, f.otherGroupId);
+    assert.equal(ui.find('image-version-preview'), undefined); assert.equal(ui.find('image-reveal-asset'), undefined);
+    oldReveal(); assert.deepEqual(reveals, [], 'Captured A callbacks cannot reveal its asset under selected B');
+    assert.match(JSON.stringify(ui.find('image-history-status')), /正在读取/);
+    held.reject(error()); await flush(); ui.render();
+    assert.equal(ui.find('image-version-preview'), undefined); assert.equal(ui.find('image-reveal-asset'), undefined); assert.match(JSON.stringify(ui.find('image-history-status')), /暂时无法读取/);
+    fail = false; ui.click('image-refresh'); await flush(); ui.render();
+    assert.equal(ui.find('image-version-preview').props.src, `/media/${f.otherAssetId}`); assert.match(ui.find('image-version-preview').props.alt, /Group B/);
+    oldReveal(); assert.deepEqual(reveals, []);
+    ui.click('image-reveal-asset'); assert.deepEqual(reveals, [[f.otherAssetId, projectId]]);
+    assert.equal(ui.find('image-generation-prompt').props.value, 'Keep my current description'); assert.equal(mutations(f).length, 0);
+  } finally { held.resolve(page([])); await flush(); ui.unmount(); f.session.dispose(); }
+});
+
+test('history selection from accepted or recovered generation clears another group’s versions even when follow-up reads fail', async () => {
+  for (const lostAcknowledgement of [false, true]) {
+    let accepted = false;
+    const f = historyFixture({ api: (operation, input, data) => {
+      if (operation === 'image.generate') {
+        const result = task({ ...input, id: id(98), groupId: id(90) });
+        data.tasks.unshift(result); data.receipts.set(input.requestId, { projectId, requestId: input.requestId, operation, response: result }); accepted = true;
+        if (lostAcknowledgement) throw error();
+        return result;
+      }
+      if (operation === 'image.group.list' && accepted) throw error();
+    } });
+    try {
+      await ready(f); assert.equal(f.session.getState().versions[0].id, versionId);
+      assert.equal(await f.session.generate(), true);
+      const state = f.session.getState(); assert.equal(state.pending, null); assert.equal(state.selectedGroupId, f.otherGroupId); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null);
+      assert.equal(state.historyPhase, 'read_error'); assert.ok(state.tasks.some(item => item.id === id(98))); assert.equal(mutations(f).length, 1);
+      assert.equal(f.calls.some(call => call.operation === 'image.request.get'), lostAcknowledgement);
+    } finally { f.session.dispose(); }
+  }
+});
+
+test('history selection from saved paid approval clears the old group while keeping the unrelated composer draft', async () => {
+  const original = review(paidInput({ groupId: id(90), expectedRevision: 1 }));
+  const f = historyFixture({ settings: settings(), reviews: [original], api: (operation, _input, data) => {
+    if (operation === 'image.group.list' && data.tasks.some(item => item.providerId === 'openai')) throw error();
+  } });
+  try {
+    await ready(f); const draft = f.session.getState().draft;
+    assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), true);
+    const state = f.session.getState(); assert.equal(state.selectedGroupId, f.otherGroupId); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null); assert.deepEqual(state.draft, draft);
+    assert.equal(state.historyPhase, 'read_error'); assert.equal(f.privateCalls.length, 1); assert.equal(mutations(f).length, 0);
+  } finally { f.session.dispose(); }
+});
+
+test('history selection same-group accepted generation or approval clears an older version page until the first page is confirmed', async () => {
+  for (const paid of [false, true]) {
+    const first = version({ number: 2 }), older = version({ id: id(101), taskId: id(102), number: 1 }), original = review(paidInput({ groupId, expectedRevision: 1 }));
+    let failRead = true;
+    const f = historyFixture({ settings: settings(), reviews: paid ? [original] : [], api: (operation, input, data) => {
+      if (operation === 'image.group.list' && failRead && data.tasks.some(item => item.state === 'queued')) throw error();
+      if (operation === 'image.version.list' && input.groupId === groupId) return input.cursor ? page([older]) : page([first], 'older-A-versions');
+    } });
+    try {
+      f.data.groups[0].activeTaskId = null;
+      await ready(f);
+      if (!paid) { await f.session.requestTarget(groupId); await f.session.confirmTarget(); }
+      await f.session.pageVersions(true);
+      let state = f.session.getState(); assert.equal(state.selectedGroupId, groupId); assert.equal(state.versionCursor, 'older-A-versions'); assert.equal(state.versions[0].id, older.id);
+      assert.equal(paid ? await f.session.approveReview(state.reviews[0]) : await f.session.generate(), true);
+      state = f.session.getState(); assert.equal(state.selectedGroupId, groupId); assert.equal(state.versionCursor, null); assert.deepEqual(state.versionTrail, []); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null); assert.equal(state.historyPhase, 'read_error');
+      failRead = false; await f.session.load(); state = f.session.getState(); assert.equal(state.versions[0].id, first.id); assert.equal(state.versionCursor, null); assert.equal(state.historyPhase, 'ready');
+      assert.equal(mutations(f).length, paid ? 0 : 1); assert.equal(f.privateCalls.length, paid ? 1 : 0);
+    } finally { f.session.dispose(); }
+  }
+});
+
+test('history selection accepted generation or approval invalidates an older group cursor before a failed first-page refresh', async () => {
+  for (const paid of [false, true]) {
+    const original = review(paidInput({ groupId: id(90), expectedRevision: 1 })); let failRead = true;
+    const f = historyFixture({ settings: settings(), reviews: paid ? [original] : [], api: (operation, input, data) => {
+      if (operation !== 'image.group.list') return;
+      if (failRead && data.tasks.some(item => item.state === 'queued')) throw error();
+      if (!input.cursor) return page([data.groups[0]], 'group-page-two');
+      if (input.cursor === 'group-page-two') return page([data.groups[1]], 'group-page-three');
+      return page([]);
+    } });
+    try {
+      await ready(f); const draft = f.session.getState().draft;
+      await f.session.pageGroups(true); let state = f.session.getState();
+      assert.equal(state.groupCursor, 'group-page-two'); assert.equal(state.nextGroupCursor, 'group-page-three');
+      assert.equal(paid ? await f.session.approveReview(state.reviews[0]) : await f.session.generate(), true);
+      state = f.session.getState(); assert.equal(state.groupCursor, null); assert.deepEqual(state.groupTrail, []);
+      assert.equal(state.nextGroupCursor, null, 'A cursor from the former page cannot be used under first-page identity');
+      assert.equal(state.historyPhase, 'read_error'); assert.equal(state.pending, null); assert.equal(f.data.receipts.size, 1);
+      if (paid) assert.deepEqual(state.draft, draft);
+      assert.equal(await f.session.pageGroups(true), false); assert.equal(f.calls.some(call => call.input.cursor === 'group-page-three'), false);
+      failRead = false; await f.session.load(); state = f.session.getState(); assert.equal(state.groupCursor, null); assert.equal(state.nextGroupCursor, 'group-page-two'); assert.equal(f.data.receipts.size, 1);
+      assert.equal(mutations(f).length, paid ? 0 : 1); assert.equal(f.privateCalls.length, paid ? 1 : 0);
+    } finally { f.session.dispose(); }
   }
 });
