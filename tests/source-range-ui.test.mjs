@@ -139,7 +139,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('async function previewSource('), app.indexOf('async function addSavedSourceRange('));
   const updates = [], calls = []; let accept = false;
-  const scope = { viewRef: { current: { activeMode: 'editing', editing: { quickAssetId: null } } }, setPreviewAsset: () => {}, context: () => ({ projectId: 'project-a' }), guardNavigation: async () => { calls.push('guard'); return accept; }, isCurrent: () => true, dataRef: { current: { assets: [asset()] } }, navigationEpoch: { current: 0 }, updateView: (...args) => updates.push(args) };
+  const scope = { subtitlesRef: { current: { controller: { hasUnsaved: () => false } } }, setPropertiesPage: () => {}, viewRef: { current: { activeMode: 'editing', editing: { quickAssetId: null } } }, setPreviewAsset: () => {}, context: () => ({ projectId: 'project-a' }), guardNavigation: async () => { calls.push('guard'); return accept; }, isCurrent: () => true, dataRef: { current: { assets: [asset()] } }, navigationEpoch: { current: 0 }, updateView: (...args) => updates.push(args) };
   const preview = Function(...Object.keys(scope), `${source};return previewSource`)(...Object.values(scope));
   await preview(asset()); assert.equal(calls.length, 1); assert.deepEqual(updates, []);
   accept = true; await preview(asset()); assert.deepEqual(updates, [['editing', { quickAssetId: 'asset-a', selectedClipId: null, previewKind: 'source' }]]);

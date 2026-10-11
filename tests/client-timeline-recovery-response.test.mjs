@@ -19,6 +19,9 @@ function fixture(operation, {empty = false, fades = {}} = {}) {
     durationFrames: empty ? 0 : 90, createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:01.000Z'};
   switch (operation) {
     case 'timeline.format.set': Object.assign(input,{expectedProjectRevision:3,presetId:'landscape_720'});value.width=1280;value.height=720;break;
+    case 'timeline.subtitle.add': Object.assign(input,{text:'字幕 added',startFrame:0,durationFrames:30});value.subtitles={profileId:'bottom_cjk_v1',cues:[{id:randomUUID(),text:input.text,startFrame:0,durationFrames:30}]};break;
+    case 'timeline.subtitle.update': Object.assign(input,{cueId:randomUUID(),patch:{text:'字幕 changed'}});value.subtitles={profileId:'bottom_cjk_v1',cues:[{id:input.cueId,text:input.patch.text,startFrame:0,durationFrames:30}]};break;
+    case 'timeline.subtitle.remove': input.cueId=randomUUID();value.subtitles={profileId:'bottom_cjk_v1',cues:[]};break;
     case 'timeline.track.add': input.kind = 'video'; break;
     case 'timeline.track.update': Object.assign(input, {trackId, patch: {name: 'Renamed', muted: true}}); Object.assign(value.tracks[0], input.patch); break;
     case 'timeline.clip.add': Object.assign(input, {assetId, trackId, startFrame: 0, durationFrames: 90, ...fades}); break;
@@ -47,17 +50,18 @@ const frozen = value => {
   return value;
 };
 
-test('the strict timeline acknowledgement allowlist covers exactly the twelve replay-keyed operations', () => {
+test('the strict timeline acknowledgement allowlist covers exactly the fifteen replay-keyed operations', () => {
   assert.deepEqual([...TIMELINE_MUTATION_OPERATIONS].sort(), [
     'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.replaceSource',
     'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
+    'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove',
   ].sort());
   assert.ok(Object.isFrozen(TIMELINE_MUTATION_OPERATIONS));
   const {input, value} = fixture('timeline.undo');
   for (const operation of ['timeline.get', 'timeline.format.get', 'timeline.history.get', 'timeline.export.preflight', 'export.create', 'reference.attach']) assert.equal(isTimelineMutationResponse(operation, input, value), false);
 });
 
-test('all twelve complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
+test('all fifteen complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation), before = clone(value), seen = [];
     frozen(input); frozen(value);
@@ -141,6 +145,11 @@ test('timeline shape rejects malformed complete records across every mutation an
 test('each mutation binds the caller-verifiable track, clip or source intent', () => {
   const changes = [
     ['timeline.format.set', v => v.width=720],
+    ['timeline.subtitle.add', v => v.subtitles.cues[0].text='Wrong'],
+    ['timeline.subtitle.add', v => v.subtitles.cues[0].startFrame=1],
+    ['timeline.subtitle.update', v => v.subtitles.cues[0].id=randomUUID()],
+    ['timeline.subtitle.update', v => v.subtitles.cues[0].text='Wrong'],
+    ['timeline.subtitle.remove', (v,i) => v.subtitles.cues.push({id:i.cueId,text:'Retained',startFrame:0,durationFrames:30})],
     ['timeline.track.add', v => v.tracks[0].name = 'Unrelated name'],
     ['timeline.track.add', v => v.tracks[0].muted = true],
     ['timeline.track.update', v => v.tracks[0].id = randomUUID()],
@@ -272,9 +281,9 @@ test('shared client accepts exact backend no-application proof and preserves unr
 });
 
 
-test('maximum escaped legacy names remain valid above 128 KiB while replacement retains its original bound', async () => {
+test('maximum escaped legacy names and subtitle cues fit the unified bounded acknowledgement', async () => {
   assert.equal(TIMELINE_RESPONSE_BYTES, 256 * 1024);
-  assert.equal(TIMELINE_REPLACEMENT_RESPONSE_BYTES, 128 * 1024);
+  assert.equal(TIMELINE_REPLACEMENT_RESPONSE_BYTES, TIMELINE_RESPONSE_BYTES);
   const {input, value} = fixture('timeline.undo');
   value.tracks = Array.from({length: 12}, (_, index) => ({id: randomUUID(), name: '\u0001'.repeat(150), kind: 'video', orderIndex: index, hidden: false, muted: false}));
   value.clips = Array.from({length: 100}, (_, index) => ({id: randomUUID(), trackId: value.tracks[index % 12].id, assetId: randomUUID(),
@@ -282,18 +291,19 @@ test('maximum escaped legacy names remain valid above 128 KiB while replacement 
     rect: {x: 100, y: 200, width: 400, height: 600}, gain: 1.2345678901234567, fadeInFrames: 1, fadeOutFrames: 2,
     versionId: randomUUID(), shotId: randomUUID(), jobId: randomUUID()}));
   value.durationFrames = 300;
+  value.subtitles = {profileId:'bottom_cjk_v1',cues:Array.from({length:100},(_,index)=>({id:randomUUID(),text:'字'.repeat(20)+'\n'+'幕'.repeat(20),startFrame:index*3,durationFrames:3}))};
   const target = value.clips[0];
   for (const key of ['versionId', 'shotId', 'jobId']) delete target[key];
   const bytes = new TextEncoder().encode(JSON.stringify(value)).byteLength;
-  assert.ok(bytes > TIMELINE_REPLACEMENT_RESPONSE_BYTES, `Escaped fixture exceeds the old cap: ${bytes}`);
+  assert.ok(bytes > 128 * 1024, `Escaped fixture exceeds the old cap: ${bytes}`);
   assert.ok(bytes < TIMELINE_RESPONSE_BYTES, `Complete schema-bounded shape fits the generic cap: ${bytes}`);
   const before = clone(value); frozen(value);
   assert.equal(isTimelineRecord(value, {projectId: input.projectId}), true);
   assert.equal(isTimelineMutationResponse('timeline.undo', input, value), true);
   assert.equal(isTimelineMutationResponse('timeline.redo', input, value), true);
   const replacement = {...input, clipId: target.id, assetId: target.assetId};
-  assert.equal(isTimelineReplacementResponse(value, replacement), false);
-  assert.equal(isTimelineMutationResponse('timeline.clip.replaceSource', replacement, value), false);
+  assert.equal(isTimelineReplacementResponse(value, replacement), true);
+  assert.equal(isTimelineMutationResponse('timeline.clip.replaceSource', replacement, value), true);
   let calls = 0;
   const client = createClient({env, fetchImpl: async () => {calls++; return success(value);}});
   assert.deepEqual(await client.rpc('timeline.undo', input), before);

@@ -579,7 +579,7 @@ namespace are unchanged. See [reference recovery](REFERENCE-RECOVERY.md).
 
 The new [durable UI task slice](TASK-RECOVERY.md) covers ten non-rendering timeline
 edits and two reference operations. The implemented subject extension adds exactly
-`subject.create`, `subject.version.add` and `subject.binding.set`, for fifteen operations. `timeline.format.set` is now the sixteenth explicit operation, in the timeline lane. It adds no CLI task-execution command and
+`subject.create`, `subject.version.add` and `subject.binding.set`, for fifteen operations. `timeline.format.set` is now the sixteenth explicit operation, in the timeline lane. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations bring the total to nineteen, sharing `timeline:mutation`. It adds no CLI task-execution command and
 does not change existing command inputs, original receipts or journal key scopes.
 CLI callers must continue retaining their complete original request and key.
 Native UI restart discovery does not imply durable storage of arbitrary external
@@ -640,7 +640,7 @@ a new intent. Malformed success and generic 4xx remain unknown without matching
 operation/project/request rollback proof. The CLI never invents keys or retries.
 
 The three writes are also the only additions to the UI durable allowlist, now
-fifteen at that stage, under `subject:mutation`; the later format operation makes sixteen in total. Direct CLI requests do not automatically become
+fifteen at that stage, under `subject:mutation`; the later format operation makes sixteen, and three subtitle writes now make nineteen in total. Direct CLI requests do not automatically become
 UI tasks. Local metadata is ordinary SQLite, not vault-encrypted: keep secrets out
 of names and inputs. This is local planning without provider calls, paid work,
 Blender or built-in Agent catalog/context changes. Actual `first_frame` continues
@@ -704,3 +704,34 @@ provider call, Blender dependency or built-in Agent catalog expansion is added.
 This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
 
 Use the returned revisions, keep the exact input/key after ambiguity, and recover explicitly. Do not issue a new request merely because an acknowledgement was lost. Read/get/list and restart never apply a prepared intent. See [full scope, recovery and acceptance](TIMELINE-OUTPUT-FORMATS.md).
+
+## Manual timeline subtitles
+
+Three shared, strict writes use the existing timeline journal and CAS:
+- `timeline.subtitle.add`: `{projectId,expectedRevision,requestId,text,startFrame,durationFrames}`.
+- `timeline.subtitle.update`: `{projectId,expectedRevision,requestId,cueId,patch}`; the nonempty patch contains only text/startFrame/durationFrames.
+- `timeline.subtitle.remove`: `{projectId,expectedRevision,requestId,cueId}`.
+
+CLI discovery/commands are `timeline subtitle add|update|remove`; MCP names are
+`timeline_subtitle_add`, `timeline_subtitle_update`, `timeline_subtitle_remove`.
+Use live schema discovery, retain exact input/key on unknown outcomes, and never
+automatically retry under a new key. Each successful write returns the complete
+saved timeline. IDs and the fixed `bottom_cjk_v1` profile are backend-owned.
+Full subtitle state is available through `timeline.get` or `project.get`;
+`timeline.inspect` deliberately omits subtitle cues from its bounded DTO. No new
+built-in Agent tool or automatic project-context category is added.
+
+Intervals use integer 30 fps frames with exclusive ends, within existing media
+duration. Cues cannot overlap (adjacency is legal); maximum100 cues,1–2 lines,
+20 Unicode scalars per line,161 UTF-8 bytes. Only printable ASCII, the pinned
+font's supported Han U+4E00–9FEF and an explicit Chinese punctuation set are
+accepted. Unsupported characters identify line/column and code point. Literal
+text is preserved; there is no ASR, SRT import, automatic wrapping or style menu.
+
+The fixed font/profile burns into timeline rendered preview/export, not dry
+source playback or the legacy storyboard export. Saving media edits that strand
+existing cues fails atomically; shorten/remove cues explicitly first. History and
+recovery preserve optional field absence and original receipt bytes. Frozen
+exports retain their accepted subtitle text/font hash. Preflight can verify the
+font resource but does not measure glyph ink; actual render performs bounded
+measurement and can reject overflow. See [scope and acceptance](MANUAL-SUBTITLES.md).

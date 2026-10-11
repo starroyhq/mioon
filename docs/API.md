@@ -702,7 +702,9 @@ The strict public response contains only:
 - `snapshotHash` (lowercase 64-character SHA-256 or null)
 - `status`: `ready`, `blocked`, `incomplete`, or `stale`
 - `summary` (null or the bounded counts below)
-- `checks:{totalAssets,checkedAssets,bytesHashed,fullDecode:false}`
+- `checks:{totalAssets,checkedAssets,bytesHashed,fullDecode:false,subtitles?}`;
+  only nonempty captions can add `subtitles:{profileId:"bottom_cjk_v1",fontVerified,inkMeasured:false}`.
+  `bytesHashed` counts managed-media bytes, excluding the separately fixed font read.
 - `issues`: at most 128 `{code,severity,message,assetId?,clipId?}` entries;
   codes are 1–64 uppercase letters/digits/underscores beginning with a letter,
   severity is `error` or `warning`, and messages are at most 240 characters.
@@ -710,7 +712,7 @@ The strict public response contains only:
   diagnostics, commands, credentials, or media bytes are included.
 
 A non-null summary is
-`{fps:30,width:720,height:1280,durationFrames,trackCount,clipCount,assetCount,visualClipCount,audibleClipCount,mutedTrackCount,hiddenVideoTrackCount}`.
+`{fps:30,width,height,durationFrames,trackCount,clipCount,assetCount,visualClipCount,audibleClipCount,mutedTrackCount,hiddenVideoTrackCount}`, with width/height bound to one supported timeline preset pair.
 Duration is 0–18000 frames, track counts are 0–12, and clip/asset counts are
 0–100. Counts of visual/audible clips reflect track visibility/mute and source
 capabilities; they do not claim perceptual picture/sound quality. The check is
@@ -807,12 +809,12 @@ therefore never automatically clears an unknown render receipt. Reference errors
 reference recovery now also validates operation-bound acknowledgements and retained ownership; see [REFERENCE-RECOVERY.md](REFERENCE-RECOVERY.md). See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md) for scope and session-storage limits.
 
-### Durable UI edit tasks (sixteen explicit operations)
+### Durable UI edit tasks (nineteen explicit operations)
 
-The authenticated `/api/tasks` route family has an explicit sixteen-operation
-allowlist: eleven timeline metadata edits (all timeline mutations except
+The authenticated `/api/tasks` route family has an explicit nineteen-operation
+allowlist: fourteen timeline metadata edits (all timeline mutations except
 `timeline.render`), `reference.attach` / `reference.detach`, and the three subject
-writes listed below. The sixteenth entry is `timeline.format.set`, with its own pristine-state and dual-revision gates. The subject extension is implemented; focused checks, builds
+writes listed below. The sixteenth entry is `timeline.format.set`, with its own pristine-state and dual-revision gates; three `timeline.subtitle.*` writes append to the same timeline lane. The subject extension is implemented; focused checks, builds
 and Linux native acceptance passed, with the independent full release gate passed.
 See [its current gate](SUBJECT-LIBRARY.md). It is a UI recovery control plane, not
 an additional generic RPC, MCP tool or Agent capability. The underlying shared
@@ -850,8 +852,7 @@ No silent eviction is implemented; this is not a bound on SQLite/WAL disk size.
 GET/list cannot initialize timelines, execute recovery or clear pending state.
 
 The original eight local canvas/asset edits, rendering and generation retain their
-existing UI recovery/storage paths. Only the three new subject writes join durable
-admission, in the separate `subject:mutation` lane. External callers still use
+existing UI recovery/storage paths. The subject writes use the separate `subject:mutation` lane; format and subtitle edits use `timeline:mutation`. External callers still use
 their existing operation and original key directly; this route family does not upgrade their request
 persistence automatically. No task input contains credentials or media bytes;
 local task parameters are ordinary SQLite data, not vault-encrypted.
@@ -937,3 +938,34 @@ and motion support are future work. See [subject scope and recovery](SUBJECT-LIB
 This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
 
 Use the returned revisions, keep the exact input/key after ambiguity, and recover explicitly. Do not issue a new request merely because an acknowledgement was lost. Read/get/list and restart never apply a prepared intent. See [full scope, recovery and acceptance](TIMELINE-OUTPUT-FORMATS.md).
+
+## Manual timeline subtitles
+
+Three shared, strict writes use the existing timeline journal and CAS:
+- `timeline.subtitle.add`: `{projectId,expectedRevision,requestId,text,startFrame,durationFrames}`.
+- `timeline.subtitle.update`: `{projectId,expectedRevision,requestId,cueId,patch}`; the nonempty patch contains only text/startFrame/durationFrames.
+- `timeline.subtitle.remove`: `{projectId,expectedRevision,requestId,cueId}`.
+
+CLI discovery/commands are `timeline subtitle add|update|remove`; MCP names are
+`timeline_subtitle_add`, `timeline_subtitle_update`, `timeline_subtitle_remove`.
+Use live schema discovery, retain exact input/key on unknown outcomes, and never
+automatically retry under a new key. Each successful write returns the complete
+saved timeline. IDs and the fixed `bottom_cjk_v1` profile are backend-owned.
+Full subtitle state is available through `timeline.get` or `project.get`;
+`timeline.inspect` deliberately omits subtitle cues from its bounded DTO. No new
+built-in Agent tool or automatic project-context category is added.
+
+Intervals use integer 30 fps frames with exclusive ends, within existing media
+duration. Cues cannot overlap (adjacency is legal); maximum100 cues,1–2 lines,
+20 Unicode scalars per line,161 UTF-8 bytes. Only printable ASCII, the pinned
+font's supported Han U+4E00–9FEF and an explicit Chinese punctuation set are
+accepted. Unsupported characters identify line/column and code point. Literal
+text is preserved; there is no ASR, SRT import, automatic wrapping or style menu.
+
+The fixed font/profile burns into timeline rendered preview/export, not dry
+source playback or the legacy storyboard export. Saving media edits that strand
+existing cues fails atomically; shorten/remove cues explicitly first. History and
+recovery preserve optional field absence and original receipt bytes. Frozen
+exports retain their accepted subtitle text/font hash. Preflight can verify the
+font resource but does not measure glyph ink; actual render performs bounded
+measurement and can reject overflow. See [scope and acceptance](MANUAL-SUBTITLES.md).

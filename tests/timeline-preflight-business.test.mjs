@@ -70,7 +70,7 @@ test('deep ownership and SQL JSON bounds prevent foreign reference and path leak
   update(data);const result=await f.call();assert.equal(result.status,'blocked');assert.equal(result.issues[0].code,'TIMELINE_SOURCE_UNAVAILABLE');assert.ok(!JSON.stringify(result).includes(f.other.id));assert.ok(!JSON.stringify(result).includes('SECRET'));
  }
  update(JSON.stringify(asset));f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,asset.id);assert.equal((await f.call()).status,'blocked');assert.equal(probes,0);
- f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run(JSON.stringify({...f.timeline,padding:'x'.repeat(131072)}),f.timeline.id);assert.equal((await f.call()).issues[0].code,'INVALID_TIMELINE_SNAPSHOT');
+ f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run(JSON.stringify({...f.timeline,padding:'x'.repeat(256 * 1024)}),f.timeline.id);assert.equal((await f.call()).issues[0].code,'INVALID_TIMELINE_SNAPSHOT');
 });
 
 test('symlinks are refused without repairing files or permissions',async t=>{

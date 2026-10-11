@@ -66,13 +66,14 @@ function taskPort({beforeDispatch, outcome = 'applied'} = {}) {
   };
   return port;
 }
-function appHarness(port, {revision = 7, refreshedRevision = 9} = {}) {
+function appHarness(port, {revision = 7, refreshedRevision = 9, subtitleDirty = false} = {}) {
   const currentProject = {current:projectId}, busy = new Set();
   const dataRef = {current:{project:{id:projectId}, timeline:timeline(revision), timelineHistory:history(revision)}};
-  const state = {epoch:0, ids:0, notices:[], refreshes:[], jobs:false};
+  const state = {epoch:0, ids:0, notices:[], refreshes:[], jobs:false, recoveredFormats:[], recoveredSubtitles:[]};
   const scope = {
+    timelineFormatRef:{current:{controller:{recovered:task=>state.recoveredFormats.push(copy(task))}}}, subtitlesRef:{current:{controller:{recovered:task=>state.recoveredSubtitles.push(copy(task))}}},
     currentProject, dataRef, tasksRef:{current:port}, requestCounter:{current:0}, timelineHistoryState,
-    workspaceMode:'editing', timelinePending:false, clipDirty:false, online:true, auth:true, loading:false,
+    workspaceMode:'editing', timelinePending:false, clipDirty:false, subtitleDirty, online:true, auth:true, loading:false,
     // Deliberately a task-boundary double, not a substituted contracts validator.
     isDurableEditOperation: operation => ['timeline.undo', 'timeline.redo'].includes(operation),
     pendingForProject: () => [], isMutationOperation: () => false,
@@ -94,6 +95,12 @@ function appHarness(port, {revision = 7, refreshedRevision = 9} = {}) {
   const functions = Function(...Object.keys(scope), `${actual}\nreturn {changeTimelineHistory, recoverTask};`)(...Object.values(scope));
   return {...functions, state, dataRef, busy, currentProject, requestCounter:scope.requestCounter};
 }
+
+test('App unsaved subtitle blocks both history directions before minting or dispatching an intent', async () => {
+  const port = taskPort(), h = appHarness(port, {subtitleDirty:true});
+  assert.equal(await h.changeTimelineHistory('undo'), null); assert.equal(await h.changeTimelineHistory('redo'), null);
+  assert.equal(h.state.ids, 0); assert.deepEqual(port.calls, []); assert.equal(h.busy.size, 0);
+});
 
 for (const direction of ['undo', 'redo']) {
   test(`App ${direction}: held prepare and repeated shortcut/click create one exact intent`, async () => {
@@ -146,6 +153,8 @@ for (const direction of ['undo', 'redo']) {
     await reopened.recoverTask(original);
     assert.deepEqual(port.calls.map(([kind]) => kind), ['submit', 'dispatch', 'recover', 'acknowledge']);
     assert.deepEqual(port.calls[2][1].input, original.input);
+    assert.deepEqual(reopened.state.recoveredSubtitles[0].input, original.input); assert.equal(reopened.state.recoveredSubtitles[0].requestId, original.requestId);
+    assert.equal(reopened.state.recoveredFormats[0].requestId, original.requestId);
     assert.equal(reopened.dataRef.current.timeline.revision, 21, 'Historical r8 cannot replace refreshed r21');
   });
 

@@ -68,16 +68,16 @@ test('Mac instructions use the real serialized Web-desktop build and existing st
 });
 
 test('durable scope, capacity and staging identity are tied to shared contracts', () => {
-  assert.equal(DURABLE_EDIT_OPERATIONS.length, 16);
+  assert.equal(DURABLE_EDIT_OPERATIONS.length, 19);
   assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.render'), false);
-  for (const operation of ['subject.create', 'subject.version.add', 'subject.binding.set', 'timeline.format.set']) {
+  for (const operation of ['subject.create', 'subject.version.add', 'subject.binding.set', 'timeline.format.set', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove']) {
     assert.ok(DURABLE_EDIT_OPERATIONS.includes(operation));
     assert.ok(guide.includes(operation));
     assert.ok(desktopDoc.includes(operation));
   }
-  assert.match(guide, /16 类本地编辑请求/);
-  assert.match(checklist, /十六类持久本地编辑/);
-  assert.match(desktopDoc, /16 类固定操作/);
+  assert.match(guide, /19 类本地编辑请求/);
+  assert.match(checklist, /十九类持久本地编辑/);
+  assert.match(desktopDoc, /19 类固定操作/);
   assert.ok(guide.includes(EDIT_TASK_LIMITS.rows.toLocaleString('en-US')));
   assert.match(desktopDoc, /`mioonDesktop`/);
   assert.doesNotMatch(desktopDoc, /workbenchDesktop/);

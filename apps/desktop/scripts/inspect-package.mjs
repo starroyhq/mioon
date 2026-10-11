@@ -7,6 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import desktopIdentity from '../identity.cjs';
+import subtitleResources from '../subtitle-resources.cjs';
+import {verifySubtitleResourceTarball} from '../subtitle-package.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const require = createRequire(import.meta.url);
@@ -50,6 +52,9 @@ await exec('gzip', ['-t', tarball]);
 const { stdout: archivedAsar } = await exec('tar', ['-xOzf', tarball, `${artifactBase}/resources/app.asar`], { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 });
 assert.deepEqual(archivedAsar, await readFile(archive), 'Delivered tarball ASAR must match the native-tested app');
 const tarBytes = await readFile(tarball);
+const subtitleResourceManifest=historicalV3?null:await subtitleResources.verifySubtitleResources(path.join(directory,'resources/subtitles'));
+const archivedSubtitleResources=historicalV3?null:await verifySubtitleResourceTarball(tarball,artifactBase);
+if(!historicalV3)assert.deepEqual(archivedSubtitleResources,subtitleResourceManifest,'Delivered subtitle font and notices must exactly match the verified external bundle');
 const binarySha256 = sha256(await readFile(binary));
 const archivedBinarySha256 = await new Promise((resolve, reject) => {
   const child = spawn('tar', ['-xOzf', tarball, `${artifactBase}/${path.basename(binary)}`], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -67,6 +72,7 @@ const report = { ok: true, historicalV3, identity, platform: 'linux-x64', asarEn
   asarSha256: sha256(await readFile(archive)), binarySha256,
   tarballSha256: sha256(tarBytes), tarballBytes: tarBytes.length, gzipVerified: true, archivedAsarMatchesNativePackage: true,
   archivedBinaryMatchesNativePackage: true,
+  ...(!historicalV3?{subtitleResourcesExternalToAsar:true,archivedSubtitleResourcesMatchNativePackage:true,subtitleResourceManifest}:{}),
   rendererFiles: files.filter(file => file.startsWith('/web/assets/')), files };
 const output = path.join(root, historicalV3 ? 'evidence/mioon-desktop/historical-v3-inspection.json' : `evidence/mioon-desktop/${identity.channel}/package-inspection.json`);
 await mkdir(path.dirname(output), { recursive: true });

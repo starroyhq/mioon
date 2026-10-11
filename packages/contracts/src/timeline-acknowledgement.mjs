@@ -1,3 +1,4 @@
+import {TIMELINE_SUBTITLE_OPERATIONS,timelineSubtitleSchemas,isTimelineSubtitleSnapshotProfile} from './timeline-subtitles.mjs';
 import {timelineFormatSchemas,timelineOutputPreset} from './timeline-format.mjs';
 import {isTimelineRecord, isTimelineReplacementResponse} from './timeline-replacement.mjs';
 import {sourceFrameCount} from './source-range.mjs';
@@ -8,6 +9,7 @@ export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
   'timeline.clip.replaceSource', 'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed',
   'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
+  ...TIMELINE_SUBTITLE_OPERATIONS,
 ]);
 export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -41,6 +43,12 @@ export function isTimelineMutationResponse(operation, input, value) {
   if (input.expectedRevision === Number.MAX_SAFE_INTEGER || !isTimelineRecord(value, {projectId: input.projectId}) || value.revision !== input.expectedRevision + 1) return false;
   const target = value.clips.find(clip => clip.id === input.clipId);
   switch (operation) {
+    case 'timeline.subtitle.add':
+      return timelineSubtitleSchemas[operation].safeParse(input).success && Boolean(value.subtitles?.cues.some(cue => hasFields(cue,input,['text','startFrame','durationFrames'])));
+    case 'timeline.subtitle.update':
+      return timelineSubtitleSchemas[operation].safeParse(input).success && Boolean(value.subtitles?.cues.some(cue => cue.id===input.cueId && hasFields(cue,input.patch,Object.keys(input.patch))));
+    case 'timeline.subtitle.remove':
+      return timelineSubtitleSchemas[operation].safeParse(input).success && Boolean(value.subtitles) && !value.subtitles.cues.some(cue => cue.id===input.cueId);
     case 'timeline.clip.replaceSource':
       return operationInput(input, ['clipId', 'assetId'], ['versionId']) && isTimelineReplacementResponse(value, input);
     case 'timeline.track.add': {
@@ -98,7 +106,7 @@ export function isTimelineRenderRecord(value, input) {
       value.mode !== 'timeline' || value.purpose !== input.purpose || value.timelineRevision !== input.expectedRevision ||
       (input.exportId !== undefined && value.id !== input.exportId) ||
       !['queued', 'running', 'succeeded', 'failed'].includes(value.status) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
-      !fields(value.snapshot, ['timeline', 'assets']) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
+      !fields(value.snapshot, ['timeline', 'assets'], ['subtitleProfile']) || !isTimelineSubtitleSnapshotProfile(value.snapshot) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
       value.snapshot.timeline.revision !== input.expectedRevision || !value.snapshot.timeline.clips.length ||
       (input.timelineId !== undefined && value.snapshot.timeline.id !== input.timelineId) ||
       !Array.isArray(value.snapshot.assets) || value.snapshot.assets.length < 1 || value.snapshot.assets.length > 100 ||
@@ -134,7 +142,7 @@ export function isTimelineRenderRecord(value, input) {
 // A generic 4xx, authentication error or replay/ownership failure is ambiguous.
 const proofCodes = new Set([
   'REVISION_CONFLICT', 'SOURCE_UNCHANGED', 'INVALID_CLIP_TYPE', 'SOURCE_BOUNDS', 'INVALID_FADE', 'FADE_AUDIO_UNSUPPORTED',
-  'AUDIO_HIDDEN_UNSUPPORTED', 'TIMELINE_LIMIT', 'CLIP_OVERLAP', 'SPLIT_BOUNDS', 'SPLIT_FADE_BOUNDS',
+  'SUBTITLE_LIMIT', 'SUBTITLE_BOUNDS', 'SUBTITLE_OVERLAP', 'SUBTITLE_NOT_FOUND', 'AUDIO_HIDDEN_UNSUPPORTED', 'TIMELINE_LIMIT', 'CLIP_OVERLAP', 'SPLIT_BOUNDS', 'SPLIT_FADE_BOUNDS',
   'TIMELINE_NOT_EMPTY', 'MISSING_SELECTION', 'NOTHING_TO_UNDO', 'NOTHING_TO_REDO', 'EMPTY_TIMELINE', 'PREFLIGHT_STALE', 'TIMELINE_REVISION_LIMIT',
 ]);
 const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT']);
@@ -144,6 +152,10 @@ export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
   if(operation==='timeline.format.set') return Boolean(timelineFormatSchemas[operation].safeParse(input).success && object(details) &&
     (integer(error.status,400,499)&&![401,403].includes(error.status)||error.status===undefined&&error.definitive===true) &&
     ['REVISION_CONFLICT','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_UNCHANGED','TIMELINE_REVISION_LIMIT'].includes(error.code) &&
+    details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===input.projectId&&details.requestId===input.requestId);
+  if (TIMELINE_SUBTITLE_OPERATIONS.includes(operation)) return Boolean(timelineSubtitleSchemas[operation].safeParse(input).success && object(details) &&
+    (integer(error.status,400,499)&&![401,403].includes(error.status)||error.status===undefined&&error.definitive===true) &&
+    ['REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SUBTITLE_LIMIT','SUBTITLE_BOUNDS','SUBTITLE_OVERLAP','SUBTITLE_NOT_FOUND'].includes(error.code) &&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===input.projectId&&details.requestId===input.requestId);
   if (SUBJECT_MUTATION_OPERATIONS.includes(operation)) return Boolean(object(input) && uuid(input.projectId) && text(input.requestId, 8, 200) && object(details) &&
     (integer(error.status, 400, 499) && ![401, 403].includes(error.status) || error.status === undefined && error.definitive === true) &&

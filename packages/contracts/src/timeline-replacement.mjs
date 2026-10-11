@@ -1,3 +1,4 @@
+import {isTimelineSubtitles} from './timeline-subtitles.mjs';
 import {timelineOutputPreset} from './timeline-format.mjs';
 // Saved timeline acknowledgements are complete records, never patches. These
 // guards do not normalize records or claim a historical response is current.
@@ -11,16 +12,17 @@ const timestamp = value => text(value, 64) && Number.isFinite(Date.parse(value))
 const provenance = ['versionId', 'shotId', 'jobId'];
 // The complete legacy shape may exceed 128 KiB when valid names need JSON
 // escaping. 256 KiB bounds 100 clips (<2 KiB each), 12 tracks (<2 KiB each),
-// and aggregate metadata. Explicit source replacement retains its original cap.
+// 100 manual subtitle cues, and aggregate metadata. Source replacement shares
+// the same aggregate budget; model inspection keeps its separate result cap.
 export const TIMELINE_RESPONSE_BYTES = 256 * 1024;
-export const TIMELINE_REPLACEMENT_RESPONSE_BYTES = 128 * 1024;
+export const TIMELINE_REPLACEMENT_RESPONSE_BYTES = TIMELINE_RESPONSE_BYTES;
 const encoder = new TextEncoder();
 const timelineFields = ['id', 'projectId', 'revision', 'fps', 'width', 'height', 'tracks', 'clips', 'durationFrames', 'createdAt', 'updatedAt'];
 const trackFields = ['id', 'name', 'kind', 'orderIndex', 'hidden', 'muted'];
 const clipFields = ['id', 'trackId', 'assetId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain'];
 
 export function isTimelineRecord(value, {projectId} = {}) {
-  if (!fields(value, timelineFields) || !uuid(value.id) || !uuid(value.projectId) ||
+  if (!fields(value, timelineFields, ['subtitles']) || !uuid(value.id) || !uuid(value.projectId) ||
       (projectId !== undefined && value.projectId !== projectId) || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER) ||
       !timelineOutputPreset(value) ||
       !integer(value.durationFrames, 0, 18000) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
@@ -54,7 +56,7 @@ export function isTimelineRecord(value, {projectId} = {}) {
     clips.sort((a, b) => a.startFrame - b.startFrame);
     for (let i = 1; i < clips.length; i++) if (clips[i].startFrame < clips[i - 1].startFrame + clips[i - 1].durationFrames) return false;
   }
-  if (duration !== value.durationFrames) return false;
+  if (duration !== value.durationFrames || Object.hasOwn(value, 'subtitles') && !isTimelineSubtitles(value.subtitles, duration)) return false;
   // Structural caps bound serialization before checking the retained row cap.
   return encoder.encode(JSON.stringify(value)).byteLength <= TIMELINE_RESPONSE_BYTES;
 }

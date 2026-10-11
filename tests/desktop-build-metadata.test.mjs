@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import desktopBuildMetadata from '../apps/desktop/build-metadata.cjs';
@@ -26,7 +26,7 @@ async function fixture(t, root = rootPackage(), desktop = desktopPackage()) {
 
 async function builderFixture(t) {
   const directory = await fixture(t);
-  for (const name of ['builder-config.cjs', 'build-metadata.cjs', 'identity.cjs']) {
+  for (const name of ['builder-config.cjs', 'subtitle-resources.cjs', 'build-metadata.cjs', 'identity.cjs']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
   }
   return { directory, builderConfig: require(path.join(directory, 'apps/desktop/builder-config.cjs')) };
@@ -166,6 +166,7 @@ test('beforePack rejects stale same-channel versions and names for both channels
   const { directory, builderConfig } = await builderFixture(t);
   const stage = path.join(directory, 'apps/desktop/build');
   await mkdir(stage);
+  await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(stage,'subtitles'),{recursive:true});
   const stageFile = path.join(stage, 'package.json'), context = { packager: { info: { appDir: stage } } };
   for (const channel of ['production', 'development']) {
     const identity = identityForChannel(channel), config = builderConfig(channel);

@@ -1,3 +1,4 @@
+import {createSubtitleMutations} from './timeline-subtitles.mjs';
 import {randomUUID} from 'node:crypto';
 import {AppError,sourceFrameCount,isTimelineMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '@mioon/contracts';
 import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assertTimelineFormatEligible} from './timeline-format.mjs';
@@ -88,7 +89,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
  }
  // History owns only editable timeline state. Revisions, IDs/timestamps of the
  // aggregate, media, selected versions, jobs and exports are never restored.
- const snapshot=timeline=>clone({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames});
+ const snapshot=timeline=>clone({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames,...(Object.hasOwn(timeline,'subtitles')?{subtitles:timeline.subtitles}:{})});
  const cursor=projectId=>db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(projectId)?.position??0;
  const setCursor=(projectId,position)=>db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,?) ON CONFLICT(projectId) DO UPDATE SET position=excluded.position').run(projectId,position);
  function history(projectId){
@@ -149,6 +150,7 @@ export function createTimelineServices(store,{required,check,hash,now}){
   },specialBoundary);
  }
  const handlers={
+  ...createSubtitleMutations(mutate),
   'timeline.format.get':input=>getTimelineFormat(db,input),
   'timeline.format.set':input=>transaction('timeline.format.set',input,({boundary,requestHash,write})=>{
    const context=readTimelineFormatOwner(db,input);

@@ -241,7 +241,7 @@ test('actual composer previews saved title/prompt, requires distinct edit mode a
 test('App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const handler = app.match(/onApplied=\{projectId => \{([^}]+)\}\}/)?.[1]; assert.ok(handler); assert.match(handler, /currentProject.current === projectId/); assert.match(handler, /refresh\(projectId\)/);
-  assert.doesNotMatch(handler, /setShotDirty|setClipDirty|setSourceDirty|setSubjectDirty|setInspectorEpoch|saveShot|setSelected|rpc/);
+  assert.doesNotMatch(handler, /setShotDirty|setClipDirty|setSourceDirty|setSubjectDirty|setSubtitleDirty|setInspectorEpoch|saveShot|setSelected|rpc/);
   const calls = [], apply = Function('currentProject', 'refresh', `return projectId => { ${handler} };`)({ current: projectId }, id => calls.push(id));
   apply(id(90)); assert.equal(calls.length, 0); apply(projectId); assert.deepEqual(calls, [projectId]);
   // Prop order is irrelevant; evaluate the actual key to preserve remount fences.

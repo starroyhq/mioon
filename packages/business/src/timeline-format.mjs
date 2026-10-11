@@ -1,5 +1,5 @@
 import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isTimelineRenderRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
-import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline} from './timeline-recovery.mjs';
+import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline,restoreTimelineEditableSnapshot} from './timeline-recovery.mjs';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-format-schema.mjs';
 import {canonicalFormatValue,formatRequestHash,readTimelineFormatProvenance} from './timeline-format-receipts.mjs';
 import {executingTimelineFormatTask} from './timeline-format-task-context.mjs';
@@ -42,7 +42,7 @@ export function readTimelineFormatState(db,input,{admission=false,context=readTi
   if(!timeline||!uuid(entry.id)||entry.projectId!==input.projectId||entry.position!==index+1||!TIMELINE_MUTATION_OPERATIONS.includes(entry.operation)||['timeline.render','timeline.format.set','timeline.undo','timeline.redo'].includes(entry.operation)||typeof entry.createdAt!=='string'||entry.createdAt.length>64||!Number.isFinite(Date.parse(entry.createdAt)))invalidTimeline();
   for(const field of ['beforeSnapshot','afterSnapshot']){
    const saved=parse(entry[field]);
-   if(Object.keys(saved).length!==3||!['tracks','clips','durationFrames'].every(key=>Object.hasOwn(saved,key))||!isTimelineRecord({...timeline,...saved},{projectId:input.projectId}))invalidTimeline();
+   if(!isTimelineRecord(restoreTimelineEditableSnapshot(timeline,saved),{projectId:input.projectId}))invalidTimeline();
   }
  }
  if(history.length||cursor)reasons.push('HISTORY_PRESENT');

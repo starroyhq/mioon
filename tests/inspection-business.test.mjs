@@ -165,7 +165,7 @@ test('hostile saved text remains data; UTF-8 prompt excerpts are bounded without
 test('oversized or corrupt rows are guarded in SQL before JSON.parse and never silently omitted', async t => {
   for (const [table, operation, data] of [
     ['assets', 'asset.inspect', '{bad json'], ['assets', 'asset.inspect', JSON.stringify({padding: 'x'.repeat(20000)})],
-    ['shots', 'shot.inspect', JSON.stringify({padding: 'x'.repeat(40000)})], ['timelines', 'timeline.inspect', JSON.stringify({padding: 'x'.repeat(140000)})],
+    ['shots', 'shot.inspect', JSON.stringify({padding: 'x'.repeat(40000)})], ['timelines', 'timeline.inspect', JSON.stringify({padding: 'x'.repeat(256 * 1024)})],
   ]) await t.test(`${table}: ${data.length}`, async t => {
     const f = await fixture(t), recordId = randomUUID();
     f.store.db.prepare(`INSERT INTO ${table}(id,projectId,data) VALUES(?,?,?)`).run(recordId, f.project.id, data);

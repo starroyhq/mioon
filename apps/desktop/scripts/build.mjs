@@ -22,6 +22,12 @@ for (const name of ['main', 'backend']) {
     sourcemap: false, legalComments: 'eof', logLevel: 'info' });
 }
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
+const subtitleSource=path.join(root,'packages/business/resources/subtitles');
+const {verifySubtitleResources,SUBTITLE_RESOURCE_FILES}=createRequire(import.meta.url)('../subtitle-resources.cjs');
+await verifySubtitleResources(subtitleSource);
+await mkdir(path.join(output,'subtitles'));
+for(const file of SUBTITLE_RESOURCE_FILES)await cp(path.join(subtitleSource,file),path.join(output,'subtitles',file));
+await verifySubtitleResources(path.join(output,'subtitles'));
 await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
   private: true, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
 await mkdir(path.join(output, 'licenses'), { recursive: true });
@@ -57,6 +63,7 @@ async function collectLicenses(packageFile) {
 await collectLicenses(path.join(root, 'apps/web/package.json'));
 await collectLicenses(path.join(root, 'apps/server/package.json'));
 await cp(path.join(root, 'packages/ui/src/LICENSE.shadcn.md'), path.join(output, 'licenses/shadcn-ui-LICENSE.md'));
+notices.push('- Noto Sans CJK SC 2.004, extracted face: SIL OFL 1.1 (external subtitles/OFL-1.1.txt, SOURCE-COPYRIGHT.txt and README.md).');
 notices.push('- shadcn/ui checked-in components: MIT (shadcn-ui-LICENSE.md)');
 await writeFile(path.join(output, 'licenses/THIRD-PARTY-NOTICES.md'), notices.join('\n') + '\n');
 console.log(`Desktop identity: ${identity.appId} (${identity.channel})`);

@@ -6,6 +6,9 @@ const operationLabels = {
   'timeline.clip.replaceSource': '替换片段来源',
   'timeline.clip.remove': '移除片段',
   'timeline.clip.split': '分割片段',
+  'timeline.subtitle.add': '新增字幕',
+  'timeline.subtitle.update': '修改字幕',
+  'timeline.subtitle.remove': '移除字幕',
   'timeline.seed': '从分镜建立时间线',
 };
 
@@ -22,7 +25,7 @@ export function timelineHistoryState({ projectId, timeline, history, busy = fals
     && (history.canRedo ? history.redoEntry?.id : history.redoEntry === null));
   const blockedReason = pending ? '上一条时间线操作待确认，请先到任务面板恢复请求'
     : busy ? '正在同步时间线，请稍候'
-    : dirty ? '请先保存或放弃片段的未保存修改'
+    : dirty ? '请先保存或放弃时间线的未保存修改'
     : !online ? '连接中断，等待重新同步时间线'
     : !synced ? '正在同步时间线历史'
     : '';

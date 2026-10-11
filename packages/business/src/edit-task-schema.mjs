@@ -1,3 +1,4 @@
+export {migrateTimelineSubtitleEditTasks} from './timeline-subtitle-schema.mjs';
 // Fixed backend-owned schema definitions. No operation or table name comes from RPC input.
 // The historical v14 bootstrap remains byte-equivalent for existing operation rows.
 const tableDefinition = (subjects = false, staging = false, format = false) => {

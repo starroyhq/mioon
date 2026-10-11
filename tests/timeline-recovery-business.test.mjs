@@ -54,6 +54,10 @@ async function allReceipts(f){
  await call('timeline.clip.update',{clipId,patch:{startFrame:100,durationFrames:20,gain:.6}});
  await call('timeline.clip.split',{clipId,atFrame:110});
  await call('timeline.clip.replaceSource',{clipId,assetId:replacement.id});
+ await call('timeline.subtitle.add',{text:'初始字幕',startFrame:0,durationFrames:30});
+ const cueId=timeline.subtitles.cues[0].id;
+ await call('timeline.subtitle.update',{cueId,patch:{text:'更新字幕'}});
+ await call('timeline.subtitle.remove',{cueId});
  await call('timeline.render',{purpose:'preview'});
  await call('timeline.clip.remove',{clipId});
  await call('timeline.undo');
@@ -89,7 +93,7 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all twelve retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all fifteen retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of [...timeline.clips])timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=result.receipts.find(x=>x.operation==='timeline.render').response;
@@ -103,7 +107,7 @@ test('all twelve retained responses remain exact after removal, branching, rende
  assert.deepEqual(f.capture(),before);
 });
 
-test('all twelve fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all fifteen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},{code:'REVISION_CONFLICT',proof:true});
  const clip=timeline.clips[0];
@@ -147,7 +151,7 @@ test('lost acknowledgements retain proof absence after project, timeline and his
  });
 });
 
-test('all twelve malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all fifteen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of ['hash','JSON','owner','semantics'])await t.test(corruption,async t=>{
   const f=await fixture(t),{receipts}=await allReceipts(f);f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
   for(const {operation,input,response} of receipts){
@@ -169,6 +173,7 @@ async function prepared(f,operation){
  const generated=await f.generated();let timeline=await f.call('timeline.get',{projectId:f.projectId});
  if(!['timeline.seed','timeline.format.set'].includes(operation))timeline=await f.call('timeline.seed',params(f,timeline));
  if(operation==='timeline.redo')timeline=await f.call('timeline.undo',params(f,timeline));
+ if(['timeline.subtitle.update','timeline.subtitle.remove'].includes(operation))timeline=await f.call('timeline.subtitle.add',params(f,timeline,{text:'待修改字幕',startFrame:0,durationFrames:30}));
  const clip=timeline.clips[0];
  const fields={
   'timeline.track.add':{kind:'video'},'timeline.track.update':{trackId:timeline.tracks[0].id,patch:{name:'Changed'}},
@@ -176,6 +181,9 @@ async function prepared(f,operation){
   'timeline.clip.update':{clipId:clip?.id,patch:{gain:.3}},'timeline.clip.remove':{clipId:clip?.id},
   'timeline.clip.split':{clipId:clip?.id,atFrame:30},'timeline.clip.replaceSource':{clipId:clip?.id,assetId:f.asset().id},
   'timeline.render':{purpose:'preview'},
+  'timeline.subtitle.add':{text:'新增字幕',startFrame:0,durationFrames:30},
+  'timeline.subtitle.update':{cueId:timeline.subtitles?.cues[0].id,patch:{text:'已修改字幕'}},
+  'timeline.subtitle.remove':{cueId:timeline.subtitles?.cues[0].id},
   'timeline.format.set':{expectedProjectRevision:f.store.get('projects',f.projectId).revision,presetId:'landscape_720'}
  };
  return {timeline,input:params(f,timeline,fields[operation]??{})};

@@ -24,7 +24,7 @@ export default function TimelineExportPreflight({ state, projectName, canCheck, 
       {phase === 'stale' && <p className="notice warning">项目、时间线或连接状态已变化。此报告不能用于导出，请重新检查。</p>}
       {oldReport && <p className="export-preflight-note">下方保留上次报告供参考，不能作为当前导出依据。</p>}
       {report && <div className={oldReport ? 'export-preflight-report is-old' : 'export-preflight-report'} data-testid="preflight-report">
-        {report.issues.length > 0 && <><h3 className="sr-only">需要注意</h3><ul className="export-preflight-issues" data-testid="preflight-issues">{report.issues.map((issue, index) => <li key={`${issue.code}:${issue.assetId || issue.clipId || index}`} className={`is-${issue.severity}`}><span>{issue.severity === 'error' ? '阻止导出' : '提醒'}</span><p>{preflightIssueMessage(issue)}</p><small>{issue.code}{issue.assetId && ` · 素材 ${issue.assetId.slice(0, 8)}`}{issue.clipId && ` · 片段 ${issue.clipId.slice(0, 8)}`}</small></li>)}</ul></>}
+        {report.issues.length > 0 && <><h3 className="sr-only">需要注意</h3><ul className="export-preflight-issues" data-testid="preflight-issues">{report.issues.map((issue, index) => <li key={`${issue.code}:${issue.assetId || issue.clipId || index}`} className={`is-${issue.severity}`}><span>{issue.severity === 'error' ? '阻止导出' : '提醒'}</span><p>{issue.code==='SUBTITLE_RESOURCE_UNAVAILABLE'?'内置字幕字体缺失或校验不符，无法安全渲染字幕。请恢复完整的应用资源后重试。':preflightIssueMessage(issue)}</p><small>{issue.code}{issue.assetId && ` · 素材 ${issue.assetId.slice(0, 8)}`}{issue.clipId && ` · 片段 ${issue.clipId.slice(0, 8)}`}</small></li>)}</ul></>}
         <p className="export-preflight-checked"><time dateTime={report.checkedAt}>{new Date(report.checkedAt).toLocaleString('zh-CN')}</time></p>
         {summary && <><h3>输出与编排</h3><dl className="export-preflight-summary">
           <div><dt>输出规格</dt><dd>{summary.width} × {summary.height} · {summary.fps} fps</dd></div>
@@ -33,6 +33,7 @@ export default function TimelineExportPreflight({ state, projectName, canCheck, 
           <div><dt>画面 / 声音启用片段</dt><dd>{summary.visualClipCount} / {summary.audibleClipCount}</dd></div>
           <div><dt>静音 / 隐藏画面轨</dt><dd>{summary.mutedTrackCount} / {summary.hiddenVideoTrackCount}</dd></div>
         </dl></>}
+        {report.checks.subtitles&&<p className="export-preflight-note" data-testid="preflight-subtitle-scope">字幕：{report.checks.subtitles.fontVerified?'已校验固定字体与配置':'固定字体尚未通过校验'}。本次不测量实际文字宽高；渲染时逐条测量，超出安全区域会拒绝导出，不缩小、换行或截断文字。</p>}
         <h3>素材检查范围</h3><p className="export-preflight-note">已检查 {report.checks.checkedAssets} / {report.checks.totalAssets} 个素材 · 已校验 {bytesLabel(report.checks.bytesHashed)}</p>
         <p className="export-preflight-note">有限额的文件状态、流式 SHA-256 与媒体探测检查。未进行完整解码，也不能保证检查后文件不再变化。</p>
 

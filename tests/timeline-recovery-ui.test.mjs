@@ -13,7 +13,7 @@ const refreshSource = source.slice(source.indexOf('const refresh = useCallback('
 const id = n => `82000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProjectId = id(2), trackId = id(3), clipId = id(4), assetId = id(5);
 const operations = ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove',
-  'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set'];
+  'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove'];
 const clone = value => structuredClone(value);
 function storage(t) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage'), values = new Map();
@@ -33,6 +33,9 @@ function inputFor(operation, patch = {}) {
     'timeline.clip.remove': { clipId }, 'timeline.clip.split': { clipId, atFrame: 50 },
     'timeline.clip.replaceSource': { clipId, assetId: id(9) }, 'timeline.render': { purpose: 'preview' },
     'timeline.format.set': { expectedProjectRevision: 3, presetId: 'landscape_720' },
+    'timeline.subtitle.add': { text: '字幕', startFrame: 0, durationFrames: 30 },
+    'timeline.subtitle.update': { cueId: id(20), patch: { text: '更新字幕' } },
+    'timeline.subtitle.remove': { cueId: id(20) },
   };
   return { projectId, expectedRevision: 7, requestId: `original-${operation}`, ...fields[operation], ...patch };
 }
@@ -67,6 +70,7 @@ function acknowledged(operation, input) {
     const right = { ...clone(value.clips[0]), id: id(8), startFrame: input.atFrame, durationFrames: 40, sourceInFrame: 51 };
     value.clips[0].durationFrames = 40; value.clips.push(right);
   }
+  if (operation.startsWith('timeline.subtitle.')) value.subtitles = { profileId: 'bottom_cjk_v1', cues: operation === 'timeline.subtitle.remove' ? [] : [{ id: input.cueId ?? id(20), text: input.patch?.text ?? input.text, startFrame: 0, durationFrames: 30 }] };
   if (operation !== 'timeline.render') return value;
   value.revision = input.expectedRevision;
   return { id: id(10), projectId: input.projectId, requestId: input.requestId, mode: 'timeline', purpose: input.purpose,
@@ -104,7 +108,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
 const keyFor = operation => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
 
-test('actual App legacy session runner guards exactly the twelve timeline writes and accepts their complete matching acknowledgements', async t => {
+test('actual App legacy session runner guards exactly the fifteen timeline writes and accepts their complete matching acknowledgements', async t => {
   storage(t); assert.deepEqual(new Set(TIMELINE_MUTATION_OPERATIONS), new Set(operations));
   const h = harness(acknowledged);
   for (const operation of operations) {
@@ -171,10 +175,10 @@ test('timeline rollback requires matching request-bound proof and rejects forbid
     let failure = Error('Response lost');
     const h = harness(() => { throw failure; }); await h.run(key, operation, input);
     const original = submissions.readPending(projectId, key);
-    const proof = { mutationOutcome: 'not_applied', requestId: input.requestId, ...(operation === 'timeline.format.set' ? { operation, projectId: input.projectId } : {}) };
+    const proof = { mutationOutcome: 'not_applied', requestId: input.requestId, ...((operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.')) ? { operation, projectId: input.projectId } : {}) };
     for (const invalid of [error('REVISION_CONFLICT', { ...proof, requestId: 'wrong-request' }), error('REVISION_CONFLICT', proof, false),
       error('REVISION_CONFLICT', { ...proof, mutationOutcome: 'applied' }), error('UNAUTHORIZED', proof), error('IDEMPOTENCY_CONFLICT', proof),
-      error('BACKEND_PROTOCOL_ERROR', proof), ...(operation === 'timeline.format.set' ? [
+      error('BACKEND_PROTOCOL_ERROR', proof), ...((operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.')) ? [
         error('REVISION_CONFLICT', { ...proof, operation: 'timeline.clip.update' }),
         error('REVISION_CONFLICT', { ...proof, projectId: otherProjectId }),
         error('REVISION_CONFLICT', { mutationOutcome: 'not_applied', requestId: input.requestId }),

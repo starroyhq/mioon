@@ -21,6 +21,9 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  'timeline.subtitle.add': define({...replayEdit,notes:'Adds one bounded manual subtitle under timeline CAS with a backend-generated ID and fixed local font profile. Saves the complete timeline, undo history and exact immutable acknowledgement in one transaction. No media read, process, network or generation.'}),
+  'timeline.subtitle.update': define({...replayEdit,notes:'Updates only text or timing of an existing owned manual subtitle under timeline CAS and exact request replay. Preserves source media, frozen exports and other subtitles. No automatic transcription or media work.'}),
+  'timeline.subtitle.remove': define({...replayEdit,notes:'Removes one owned manual subtitle under timeline CAS while retaining exact replay and undo history. Does not delete media, retained tasks or receipts; no external I/O.'}),
   'frame.extract': define({...render,notes:'Durably accepts one project/source-hash/30fps-mark-bound local PNG extraction before bounded FFmpeg work. Required stable requestId replays the immutable original acknowledgement without scheduling again. No provider or network access; originals are preserved.'}),
   'frame.request.get': define({...read,notes:'Reads the exact retained project-scoped frame acknowledgement. Never decodes, repairs or resumes a task.'}),
   'frame.task.get': define({...read,notes:'Reads an existing owned local frame task and safe result metadata. No file reads or work scheduling.'}),

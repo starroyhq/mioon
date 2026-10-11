@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink, link, truncate, realpath, lstat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink, link, truncate, realpath, lstat, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -40,6 +40,7 @@ async function packageRename(item) {
   // Only model builder's cleanup/rename. This does not build or launch an app.
   for (const file of NOTICE_FILES) await rm(path.join(item.root, file.source));
   await rename(item.extracted, item.packaged);
+  await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(item.packaged,'Contents/Resources/subtitles'),{recursive:true});
   return path.join(item.packaged, 'Contents/Resources/licenses');
 }
 
@@ -194,12 +195,14 @@ test('post-package inspector requires provenance from the same target extraction
   await assert.rejects(config.afterPack(second.context), /differs from extracted target/);
 });
 
-test('non-Mac packaging remains a no-op and the security envelope is unchanged', async () => {
+test('non-Mac runtime notices remain a no-op; external fonts verify with unchanged security envelope', async t => {
   for (const channel of ['production', 'development']) {
     const config = builderConfig(channel);
     for (const platform of ['linux', 'win32']) {
-      // No filesystem path or host runtime is needed for non-Mac targets.
-      const context = { electronPlatformName: platform, appOutDir: '/nonexistent/synthetic-only' };
+      // No host runtime is needed: only fixed external font fixtures.
+      const root=await mkdtemp(path.join(tmpdir(),'mioon-package-font-'));t.after(()=>rm(root,{recursive:true,force:true}));
+      await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(root,'resources/subtitles'),{recursive:true});
+      const context = { electronPlatformName: platform, appOutDir: root };
       await config.afterExtract(context);
       await config.afterPack(context);
     }

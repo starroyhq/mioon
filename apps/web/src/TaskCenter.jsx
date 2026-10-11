@@ -11,12 +11,14 @@ import { isMutationOperation } from './mutation-submissions.js';
 import { isDurableEditOperation } from './edit-task-client.js';
 import { activeJob, jobStatusText, outputReviewRequired, outputReviewMessage } from './api.js';
 
+const subtitleLabels = { 'timeline.subtitle.add': '新增字幕', 'timeline.subtitle.update': '修改字幕', 'timeline.subtitle.remove': '移除字幕' };
+
 function DurableTask({ task, uncertain, busy, onRecover, onAcknowledge }) {
   const status = uncertain && !['applied', 'not_applied'].includes(task.status) ? 'unknown' : task.status;
   const label = { prepared: '请求已准备', dispatching: '正在核对执行结果', unknown: '结果待确认', applied: '已应用，待确认关闭', not_applied: '已确认未应用' }[status];
   return <div className={`job-card ${status}`} data-testid={`durable-task-${task.id}`} data-task-state={status}>
     <div className="job-title"><Icon name="info" size={17} /><strong>{label}</strong></div>
-    <div className="job-snapshot"><span>{task.operation === 'timeline.format.set' ? '时间线输出规格 · timeline.format.set' : task.operation}</span><span>{new Date(task.createdAt).toLocaleTimeString('zh-CN')}</span></div>
+    <div className="job-snapshot"><span>{task.operation === 'timeline.format.set' ? '时间线输出规格 · timeline.format.set' : subtitleLabels[task.operation] ? `${subtitleLabels[task.operation]} · ${task.operation}` : task.operation}</span><span>{new Date(task.createdAt).toLocaleTimeString('zh-CN')}</span></div>
     <p className="helper muted">请求编号：{task.requestId}</p>
     {task.origin === 'legacy_session' && <p className="helper muted">此请求由旧会话明确转存，保留原始完整参数。</p>}
     <p className="helper muted">恢复前先核对服务器中的同一任务；需要执行时使用保存的参数，不使用当前草稿。</p>

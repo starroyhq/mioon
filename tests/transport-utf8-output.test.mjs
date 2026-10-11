@@ -107,6 +107,7 @@ const textSites = {
   "tests/source-range-transports.test.mjs": 2,
   "tests/source-ranges.test.mjs": 1,
   "tests/subject-recovery-transports.test.mjs": 2,
+  "tests/subtitles-transports.test.mjs": 2,
   "tests/timeline-fades-transports.test.mjs": 5,
   "tests/timeline-history-transports.test.mjs": 4,
   "tests/timeline-mcp.test.mjs": 3,

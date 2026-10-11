@@ -1,6 +1,6 @@
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
-import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset} from '@mioon/contracts';
+import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {createImageOwnershipReader} from './image-ownership.mjs';
 import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownership.mjs';
@@ -247,6 +247,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
       if (!timeline) return null;
       if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > INSPECTION_LIMITS.clips) unavailable();
       if(!timelineOutputPreset(timeline)) unavailable();
+      if(Object.hasOwn(timeline,'subtitles')&&getTimelineSubtitleIssue(timeline.subtitles,timeline.durationFrames))unavailable();
       const trackIds = new Set(), clipIds = new Set();
       const tracks = timeline.tracks.map(track => {
         object(track); const trackId = id(track.id); if (trackIds.has(trackId)) unavailable(); trackIds.add(trackId);

@@ -55,9 +55,10 @@ No schema migration or retained-receipt rewrite is required. Validators are
 read-only and preserve omitted legacy fields instead of inserting defaults.
 Generic aggregate, history and response JSON is bounded at 256 KiB: the existing
 100-clip/12-track schema remains within this budget even with maximum-length
-JSON-escaped control-character names. Explicit replacement responses retain their
-prior 128 KiB limit; a later larger current timeline does not invalidate an older
-small replacement receipt. Render records are bounded at 4 MiB. The smaller
+JSON-escaped control-character names. The later manual-subtitle slice unifies
+replacement responses and timeline rows at the same 256 KiB bound; all 100
+maximum-text cues still fit with the maximum escaped legacy shape. Original
+receipt bytes are not rewritten. Render records are bounded at 4 MiB. The smaller
 inspection/preflight read budget is separate and cannot invalidate generic replay.
 
 ## Reference boundary and persistence limits

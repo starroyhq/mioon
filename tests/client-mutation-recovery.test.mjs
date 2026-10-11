@@ -119,15 +119,16 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   const rejection = { code: 'REVISION_CONFLICT', definitive: true, details: {} };
   for (const operation of ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', ...TIMELINE_MUTATION_OPERATIONS]) {
     assert.equal(check(operation, rejection), false, `${operation} does not trust a bare 4xx`);
-    if (operation === 'timeline.format.set') {
-      const formatStored = { input: { ...stored.input, expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } };
+    if (operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.')) {
+      const fields = operation === 'timeline.format.set' ? { expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } : operation === 'timeline.subtitle.add' ? { expectedRevision: 1, text: '字幕', startFrame: 0, durationFrames: 30 } : { expectedRevision: 1, cueId: other, ...(operation === 'timeline.subtitle.update' ? { patch: { text: '字幕' } } : {}) };
+      const formatStored = { input: { ...stored.input, ...fields } };
       const proof = { mutationOutcome: 'not_applied', operation, projectId: owner, requestId: stored.input.requestId };
       assert.equal(check(operation, { ...rejection, details: proof }, formatStored), true);
       for (const key of ['operation', 'projectId', 'requestId']) {
         const incomplete = { ...proof }; delete incomplete[key];
-        assert.equal(check(operation, { ...rejection, details: incomplete }, formatStored), false, `${key} is mandatory for the new format operation`);
+        assert.equal(check(operation, { ...rejection, details: incomplete }, formatStored), false, `${key} is mandatory for the new operation`);
       }
-      assert.equal(check(operation, { ...rejection, details: proof }), false, 'A malformed saved format intent cannot release a key');
+      assert.equal(check(operation, { ...rejection, details: proof }), false, 'A malformed saved intent cannot release a key');
     } else assert.equal(check(operation, { ...rejection, details: { mutationOutcome: 'not_applied', requestId: stored.input.requestId } }), true,
       `${operation} retains its existing request-bound proof contract`);
   }

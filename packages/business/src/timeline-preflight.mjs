@@ -4,8 +4,10 @@ import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInpu
 import {validateTimeline,validateSavedTimeline} from './timeline-inputs.mjs';
 import {terminateMediaProcesses} from './media-processes.mjs';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.mjs';
+import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
 
 const messages=Object.freeze({
+ SUBTITLE_RESOURCE_UNAVAILABLE:'The bundled subtitle font is missing or does not match this rendering profile.',
  TIMELINE_MISSING:'This project has no saved timeline. Add clips and save the timeline before exporting.',
  EMPTY_TIMELINE:'The saved timeline has no clips to export.',
  INVALID_TIMELINE_SNAPSHOT:'The saved timeline contains invalid or unsupported settings.',
@@ -32,6 +34,7 @@ function summary(snapshot,verified){
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
 }
 function classify(error){
+ if(error.code==='SUBTITLE_RESOURCE_UNAVAILABLE')return ['blocked','SUBTITLE_RESOURCE_UNAVAILABLE'];
  if(error.code==='INSPECTION_BUDGET_EXCEEDED')return ['incomplete','PREFLIGHT_SNAPSHOT_BUDGET'];
  if(error.code==='MANAGED_SOURCE_LIMIT'||error.code==='PREFLIGHT_BUDGET')return ['incomplete','PREFLIGHT_BUDGET'];
  if(['MEDIA_TIMEOUT','MEDIA_OUTPUT_LIMIT','MEDIA_SPAWN_FAILED','MEDIA_INVALID_CONFIGURATION','MEDIA_CANCELLED','MEDIA_PROCESS_FAILED'].includes(error.code))return ['incomplete','PREFLIGHT_INCOMPLETE'];
@@ -66,6 +69,7 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   // Early structural check shares the renderer validator. Actual stream flags
   // and durations below replace these saved values and are validated again.
   try{
+   if(validateSubtitleSnapshotProfile(initial.snapshot))report.checks.subtitles={profileId:initial.snapshot.subtitleProfile.profileId,fontVerified:false,inkMeasured:false};
    const savedAssets=new Map(initial.snapshot.assets.map(a=>[a.id,a]));
    validateTimeline(initial.timeline,savedAssets,{structureOnly:true});
    validateSavedTimeline(JSON.parse(JSON.stringify(initial.timeline)),{track:(timeline,id)=>timeline.tracks.find(t=>t.id===id),asset:(_projectId,id)=>savedAssets.get(id)});
@@ -78,8 +82,11 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   const entry={controller,task:null};active.add(entry);let timedOut=false;
   const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:0};
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},remaining);
-  const preparation=prepareTimelineInputs(initial.snapshot,{root:store.root,projectId:input.projectId,readAsset:id=>readOwnedTimelineAsset(store.db,input.projectId,id),
+  const preparation=(async()=>{
+   if(report.checks.subtitles){await verifySubtitleFontResource({signal});checkpoint(signal);report.checks.subtitles.fontVerified=true;}
+   return prepareTimelineInputs(initial.snapshot,{root:store.root,projectId:input.projectId,readAsset:id=>readOwnedTimelineAsset(store.db,input.projectId,id),
    signal,budget,probe,onChecked:()=>{report.checks.checkedAssets++;}});
+  })();
   // A caller can observe its deadline, but the exact underlying preparation
   // remains owned until it settles. No new check is admitted, nor successful
   // drain/SQLite close reported, while a non-cooperative read is outstanding.

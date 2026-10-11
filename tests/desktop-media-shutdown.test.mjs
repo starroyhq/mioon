@@ -528,11 +528,12 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
   const sandbox = { process: { parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: code => exits.push(code) },
     DatabaseSync: function () {}, startServer: options => { enterStart(options); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
+    initializeSubtitleResources: directory => { assert.equal(directory,'/synthetic/trusted/subtitles'); },
     onMediaProcess: () => {}, createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({close: imageClose, refreshStorage: imageRefresh}),
     setInterval: () => 1, clearInterval: () => {}, setImmediate };
   vm.runInNewContext(source, sandbox, { filename: 'backend-lifecycle-fixture.mjs' });
-  return { messages, exits, port, started, start: () => port.emit('message', { data: { type: 'start' } }),
+  return { messages, exits, port, started, start: () => port.emit('message', { data: { type: 'start',subtitleResourcesDir:'/synthetic/trusted/subtitles' } }),
     stop: () => port.emit('message', { data: { type: 'stop' } }) };
 }
 

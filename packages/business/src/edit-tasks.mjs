@@ -164,6 +164,9 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  function dispatch(operation,input,value) {
   switch(operation) {
    case 'timeline.format.set': return withTimelineFormatTaskDispatch(db,value.row,()=>services.call('timeline.format.set',input));
+   case 'timeline.subtitle.add': return services.call('timeline.subtitle.add',input);
+   case 'timeline.subtitle.update': return services.call('timeline.subtitle.update',input);
+   case 'timeline.subtitle.remove': return services.call('timeline.subtitle.remove',input);
    case 'timeline.track.add': return services.call('timeline.track.add',input);
    case 'timeline.track.update': return services.call('timeline.track.update',input);
    case 'timeline.clip.add': return services.call('timeline.clip.add',input);

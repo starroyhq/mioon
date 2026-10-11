@@ -1,3 +1,4 @@
+import {TIMELINE_SUBTITLE_OPERATIONS} from './timeline-subtitles.mjs';
 import {TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse} from './timeline-acknowledgement.mjs';
 import {REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse} from './reference-acknowledgement.mjs';
 import {SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse} from './subjects.mjs';
@@ -5,10 +6,11 @@ import {schemas} from './index.mjs';
 
 // Local UI coordination only. These are not RPC/model-tool operations.
 export const DURABLE_EDIT_OPERATIONS = Object.freeze([
-  ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render' && operation !== 'timeline.format.set'),
+  ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render' && operation !== 'timeline.format.set' && !TIMELINE_SUBTITLE_OPERATIONS.includes(operation)),
   ...REFERENCE_MUTATION_OPERATIONS,
   ...SUBJECT_MUTATION_OPERATIONS,
   'timeline.format.set',
+  ...TIMELINE_SUBTITLE_OPERATIONS,
 ]);
 export const EDIT_TASK_LIMITS = Object.freeze({inputBytes: 8192, rowBytes: 16384,
   rows: 4096, bytes: 64 * 1024 * 1024, pageSize: 20, maxPageSize: 50});

@@ -558,7 +558,7 @@ authority, generation call or namespace are introduced. See
 [Durable UI task recovery](TASK-RECOVERY.md) is a dedicated authenticated UI
 coordinator for ten non-rendering timeline edits and two reference operations.
 The implemented subject extension adds only `subject.create`, `subject.version.add`
-and `subject.binding.set` in a dedicated subject lane, for fifteen at that stage. `timeline.format.set` adds the sixteenth fixed operation.
+and `subject.binding.set` in a dedicated subject lane, for fifteen at that stage. `timeline.format.set` adds the sixteenth fixed operation. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations bring the total to nineteen, sharing `timeline:mutation`.
 It does not register a generic execute/recover MCP tool or expand built-in Agent
 authority. Existing MCP tools still use the same shared business handlers and
 strict historical acknowledgements; retain exact arguments and request IDs.
@@ -615,7 +615,7 @@ is historical and ownership-checked. Malformed success or generic 4xx stays
 unknown without matching operation/project/request rollback proof.
 
 UI durable preparation adds only these three writes under `subject:mutation`,
-bringing its explicit allowlist to fifteen at that stage; the later format operation makes sixteen in total. External calls do not automatically
+bringing its explicit allowlist to fifteen at that stage; the later format operation makes sixteen, and three subtitle writes now make nineteen in total. External calls do not automatically
 create UI tasks, and no generic task-execution MCP tool is added. This external
 catalog does not expand built-in Agent tools/context. Subject/style bindings are
 local planning only: actual `first_frame` still uses `reference_attach`;
@@ -676,3 +676,34 @@ backend-durable accepted work, not durable preparation of an unsent MCP request.
 This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
 
 Use the returned revisions, keep the exact input/key after ambiguity, and recover explicitly. Do not issue a new request merely because an acknowledgement was lost. Read/get/list and restart never apply a prepared intent. See [full scope, recovery and acceptance](TIMELINE-OUTPUT-FORMATS.md).
+
+## Manual timeline subtitles
+
+Three shared, strict writes use the existing timeline journal and CAS:
+- `timeline.subtitle.add`: `{projectId,expectedRevision,requestId,text,startFrame,durationFrames}`.
+- `timeline.subtitle.update`: `{projectId,expectedRevision,requestId,cueId,patch}`; the nonempty patch contains only text/startFrame/durationFrames.
+- `timeline.subtitle.remove`: `{projectId,expectedRevision,requestId,cueId}`.
+
+CLI discovery/commands are `timeline subtitle add|update|remove`; MCP names are
+`timeline_subtitle_add`, `timeline_subtitle_update`, `timeline_subtitle_remove`.
+Use live schema discovery, retain exact input/key on unknown outcomes, and never
+automatically retry under a new key. Each successful write returns the complete
+saved timeline. IDs and the fixed `bottom_cjk_v1` profile are backend-owned.
+Full subtitle state is available through `timeline.get` or `project.get`;
+`timeline.inspect` deliberately omits subtitle cues from its bounded DTO. No new
+built-in Agent tool or automatic project-context category is added.
+
+Intervals use integer 30 fps frames with exclusive ends, within existing media
+duration. Cues cannot overlap (adjacency is legal); maximum100 cues,1–2 lines,
+20 Unicode scalars per line,161 UTF-8 bytes. Only printable ASCII, the pinned
+font's supported Han U+4E00–9FEF and an explicit Chinese punctuation set are
+accepted. Unsupported characters identify line/column and code point. Literal
+text is preserved; there is no ASR, SRT import, automatic wrapping or style menu.
+
+The fixed font/profile burns into timeline rendered preview/export, not dry
+source playback or the legacy storyboard export. Saving media edits that strand
+existing cues fails atomically; shorten/remove cues explicitly first. History and
+recovery preserve optional field absence and original receipt bytes. Frozen
+exports retain their accepted subtitle text/font hash. Preflight can verify the
+font resource but does not measure glyph ink; actual render performs bounded
+measurement and can reject overflow. See [scope and acceptance](MANUAL-SUBTITLES.md).

@@ -3,7 +3,7 @@ import {isAsyncFunction,isPromise} from 'node:util/types';
 import path from 'node:path';
 import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
-import {bootstrapEditTaskSchema,migrateSubjectEditTasks,migrateTimelineFormatEditTasks} from './edit-task-schema.mjs';
+import {bootstrapEditTaskSchema,migrateSubjectEditTasks,migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from './edit-task-schema.mjs';
 import {migrateSubjectSchema} from './subject-schema.mjs';
 import {migrateImageSchema} from './image-schema.mjs';
 import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImageReviewSchema} from './images/review-schema.mjs';
@@ -412,6 +412,11 @@ export function openStore(root,{lock=true}={}){
  if(!db.prepare('SELECT 1 FROM schema_version WHERE version=21').get()){
   db.exec('BEGIN IMMEDIATE');
   try{migrateTimelineFormatSchema(db);migrateTimelineFormatEditTasks(db);db.exec('INSERT INTO schema_version VALUES(21);COMMIT;');}
+  catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+ }
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=22').get()){
+  db.exec('BEGIN IMMEDIATE');
+  try{migrateTimelineSubtitleEditTasks(db);db.exec('INSERT INTO schema_version VALUES(22);COMMIT;');}
   catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);

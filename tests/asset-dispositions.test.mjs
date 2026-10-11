@@ -275,13 +275,13 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  // installed; deleting their markers would manufacture a review downgrade.
  // Reapplying subject schema rebuilds the edit-task CHECK. Remove the later
  // empty format extension and its marker together, so startup can truthfully
- // compose schema21 again rather than leave a newer marker on an older table.
+ // compose schema21 and schema22 again rather than leave a newer marker on an older table.
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_format_requests').get().n,0);
- f.store.db.exec('DROP TABLE timeline_format_requests; DROP INDEX timeline_requests_project; DELETE FROM schema_version WHERE version=21;');
+ f.store.db.exec('DROP TABLE timeline_format_requests; DROP INDEX timeline_requests_project; DELETE FROM schema_version WHERE version IN (21,22);');
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
  const old=snapshot(f,['schema_version']);f.restart();
  assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests','timeline_format_requests']),old);assert.deepEqual(schema(),fresh);
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,21);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,22);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
 });
 

@@ -1,4 +1,4 @@
-import {AppError} from '@mioon/contracts';
+import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 import {validateManagedSource,verifiedManagedHash,sameManagedFile} from './managed-media.mjs';
@@ -54,6 +54,7 @@ export function readTimelinePreflightSnapshot(store,projectId){
    !Number.isSafeInteger(timeline.revision)||timeline.revision<1||!Array.isArray(timeline.clips)||timeline.clips.length>100||
    !Array.isArray(timeline.tracks)||timeline.tracks.length>12||timeline.clips.some(c=>!object(c)||!uuid(c.id)||!uuid(c.assetId)||!uuid(c.trackId))||
    timeline.tracks.some(t=>!object(t)||!uuid(t.id)))throw invalid();
+  if(Object.hasOwn(timeline,'subtitles')&&getTimelineSubtitleIssue(timeline.subtitles,timeline.durationFrames))throw invalid();
   let assets;
   try{assets=readTimelineSourceGraph(db,projectId,timeline);}
   catch(error){if(error.code==='INSPECTION_BUDGET_EXCEEDED')throw error;throw fault('TIMELINE_SOURCE_UNAVAILABLE','A referenced source is unavailable in this project');}
@@ -78,7 +79,7 @@ export async function probeTimelineSource(file,{signal,timeout,beforeSpawn}={}){
 export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks}={}){
  throwIfMediaAborted(signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
- if(snapshot.timeline.projectId!==projectId)throw invalid();
+ if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot))throw invalid();
  if(snapshot.assets.length>100||snapshot.assets.some(a=>!object(a)||!uuid(a.id)||typeof a.mimeType!=='string'||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256))||new Set(snapshot.assets.map(a=>a.id)).size!==snapshot.assets.length)throw invalid();
  validateTimeline(snapshot.timeline,new Map(snapshot.assets.map(a=>[a.id,a])),{structureOnly:true});
  const referenced=new Set(snapshot.timeline.clips.map(clip=>clip.assetId));

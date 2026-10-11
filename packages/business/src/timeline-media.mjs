@@ -4,6 +4,8 @@ import {run,probe} from './media.mjs';
 import {validateTimeline} from './timeline-inputs.mjs';
 import {throwIfMediaAborted} from './media-processes.mjs';
 import {timelineAudioFadeFilters} from './timeline-audio.mjs';
+import {prepareTimelineSubtitles,timelineSubtitleFilters} from './subtitle-media.mjs';
+import {validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
 
 const FPS=30,SAMPLES_PER_FRAME=1600;
 const seconds=frames=>(frames/FPS).toFixed(9);
@@ -14,6 +16,7 @@ const seconds=frames=>(frames/FPS).toFixed(9);
 export async function renderTimeline(snapshot,assets,destination,{signal}={}){
  throwIfMediaAborted(signal);
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
+ validateSubtitleSnapshotProfile(snapshot);
  // The validated frozen snapshot owns output geometry. Keep the editing and
  // audio timebase fixed while portrait, landscape and square share this path.
  const {width,height}=timeline;
@@ -21,6 +24,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal}={}){
  const work=await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
  try{
   throwIfMediaAborted(signal);
+  const subtitles=await prepareTimelineSubtitles(snapshot,work,{signal});
   const entries=[];
   for(let segment=0;segment<edges.length-1;segment++){
    throwIfMediaAborted(signal);
@@ -53,9 +57,12 @@ export async function renderTimeline(snapshot,assets,destination,{signal}={}){
     }
    }
    filters.push(`${sounds.map(s=>`[${s}]`).join('')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},asetpts=N/SR/TB[outa]`);
+   const captioned=timelineSubtitleFilters(subtitles,begin,end,visual);filters.push(...captioned.filters);visual=captioned.visual;
    filters.push(`[${visual}]trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[outv]`);
    const segmentFile=path.join(work,`segment-${String(segment).padStart(3,'0')}.mov`);
-   args.push('-filter_complex',filters.join(';'),'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000','-c:a','pcm_s16le','-ar','48000','-ac','2','-t',seconds(frames),segmentFile);
+   const filterArgs=['-filter_complex',filters.join(';')];
+   if(subtitles){const script=path.join(work,`segment-${segment}.filter`);await writeFile(script,filters.join(';'),{flag:'wx',mode:0o600});filterArgs.splice(0,2,'-filter_complex_script',script);}
+   args.push(...filterArgs,'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000','-c:a','pcm_s16le','-ar','48000','-ac','2','-t',seconds(frames),segmentFile);
    await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal});
    throwIfMediaAborted(signal);
    entries.push(`file '${segmentFile.replaceAll("'","'\\''")}'\nduration ${seconds(frames)}`);

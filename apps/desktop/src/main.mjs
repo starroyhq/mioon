@@ -98,7 +98,8 @@ async function start() {
       modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }) });
     backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
-    const started = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'), token });
+    const started = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'),
+      subtitleResourcesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'subtitles'),token });
     startup.checkpoint();
     ready = started;
     activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });

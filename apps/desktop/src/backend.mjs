@@ -1,6 +1,7 @@
 import { startServer } from '@mioon/server';
 import { DatabaseSync } from 'node:sqlite';
 import { onMediaProcess } from '@mioon/business/media-processes';
+import { initializeSubtitleResources } from '@mioon/business/subtitle-resources';
 import { createAgentSettingsClient } from './secret-broker.mjs';
 import { createImageSecretClient } from './image-secret-broker.mjs';
 
@@ -43,6 +44,7 @@ process.parentPort.on('message', ({ data }) => {
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
+      initializeSubtitleResources(data.subtitleResourcesDir);
       server = await startServer({ dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec });
       if (!closing) process.parentPort.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });

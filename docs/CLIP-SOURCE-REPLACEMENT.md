@@ -51,7 +51,8 @@ Foreign, missing or corrupt relations fail safely; a replay cannot disclose a
 foreign historical source. Existing operations retain their prior wire behavior.
 New safety checks reuse the private inspection graph reader and its limits rather
 than trusting caller asset/version metadata. The existing reader caps a timeline
-row/receipt at 128 KiB and a validated source graph at 4 MiB / 1024 records;
+row/receipt at 256 KiB (unified by the later manual-subtitle slice; originally
+128 KiB) and a validated source graph at 4 MiB / 1024 records;
 oversized or malformed records fail without a partial edit. Both new-operation
 backend and client acknowledgement checks accept the supported saved timeline
 shape rather than normalizing arbitrary unknown stored fields. This is not

@@ -347,7 +347,7 @@ See [reference recovery](../../docs/REFERENCE-RECOVERY.md).
 The workbench can coordinate persisted recovery for ten timeline edits excluding
 `timeline.render`, plus `reference.attach` and `reference.detach`. The implemented
 subject extension adds exactly `subject.create`, `subject.version.add` and
-`subject.binding.set`, for fifteen operations under three explicit lanes. `timeline.format.set` is now the sixteenth fixed operation; consult
+`subject.binding.set`, for fifteen operations under three explicit lanes. `timeline.format.set` is now the sixteenth fixed operation; three explicit `timeline.subtitle.*` writes append to the same lane, for nineteen total; consult
 [scope and acceptance](../../docs/TASK-RECOVERY.md). This adds no generic Agent/MCP
 execution authority. External tools still require their exact original arguments
 and key. Do not infer that all edits, renders or paid submissions receive this
@@ -396,7 +396,7 @@ inputs, validate the historical acknowledgement, then refresh. Generic 4xx,
 malformed success and ownership failures do not settle prior uncertainty without
 matching operation/project/request rollback proof. Never automatically retry or
 invent a replacement key. UI preparation adds these three writes to its explicit
-durable allowlist in `subject:mutation` (fifteen at that stage, sixteen with the later format operation); external calls are not
+durable allowlist in `subject:mutation` (fifteen at that stage, nineteen with the later format/subtitle operations); external calls are not
 automatically persisted as UI tasks. Capacity failure precedes dispatch, with no
 silent eviction. Metadata is plain local SQLite, not vault-encrypted; no secrets.
 
@@ -435,3 +435,34 @@ durable-edit recovery allowlist.
 Before editing, discover `timeline.format.get` and read `{projectId}`. Its revision fences and eligibility are authoritative at the time of reading, then rechecked on write. Explicit `timeline.format.set` accepts `{projectId,expectedProjectRevision,expectedRevision,requestId,presetId}`; preserve the original input/key for recovery. Presets are only `portrait_720` (720×1280), `landscape_720` (1280×720), `square_720` (720×720), all 30 fps. A zero timeline revision means absence. Do not invent arbitrary dimensions/fps.
 
 Only pristine empty timelines qualify; previous undo/redo history, receipts, timeline exports or unresolved edits can still block an empty-looking timeline. Never erase those records or silently reinterpret old clips to change format. Same-preset fresh requests reject; exact prior success replays. The operation is the sixteenth explicitly durable local UI edit, in the timeline lane, not a built-in model tool. The UI task list does not automatically acquire direct CLI/MCP calls. Timeline output is separate from provider/source aspect and from legacy 9:16 storyboard export. Full contract: docs/TIMELINE-OUTPUT-FORMATS.md.
+
+## Manual timeline subtitles
+
+Three shared, strict writes use the existing timeline journal and CAS:
+- `timeline.subtitle.add`: `{projectId,expectedRevision,requestId,text,startFrame,durationFrames}`.
+- `timeline.subtitle.update`: `{projectId,expectedRevision,requestId,cueId,patch}`; the nonempty patch contains only text/startFrame/durationFrames.
+- `timeline.subtitle.remove`: `{projectId,expectedRevision,requestId,cueId}`.
+
+CLI discovery/commands are `timeline subtitle add|update|remove`; MCP names are
+`timeline_subtitle_add`, `timeline_subtitle_update`, `timeline_subtitle_remove`.
+Use live schema discovery, retain exact input/key on unknown outcomes, and never
+automatically retry under a new key. Each successful write returns the complete
+saved timeline. IDs and the fixed `bottom_cjk_v1` profile are backend-owned.
+Full subtitle state is available through `timeline.get` or `project.get`;
+`timeline.inspect` deliberately omits subtitle cues from its bounded DTO. No new
+built-in Agent tool or automatic project-context category is added.
+
+Intervals use integer 30 fps frames with exclusive ends, within existing media
+duration. Cues cannot overlap (adjacency is legal); maximum100 cues,1–2 lines,
+20 Unicode scalars per line,161 UTF-8 bytes. Only printable ASCII, the pinned
+font's supported Han U+4E00–9FEF and an explicit Chinese punctuation set are
+accepted. Unsupported characters identify line/column and code point. Literal
+text is preserved; there is no ASR, SRT import, automatic wrapping or style menu.
+
+The fixed font/profile burns into timeline rendered preview/export, not dry
+source playback or the legacy storyboard export. Saving media edits that strand
+existing cues fails atomically; shorten/remove cues explicitly first. History and
+recovery preserve optional field absence and original receipt bytes. Frozen
+exports retain their accepted subtitle text/font hash. Preflight can verify the
+font resource but does not measure glyph ink; actual render performs bounded
+measurement and can reject overflow. See [scope and acceptance](../../docs/MANUAL-SUBTITLES.md).

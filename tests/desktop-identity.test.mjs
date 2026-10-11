@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -59,6 +59,7 @@ test('both package configs retain security and separate identities, names and ou
 
 test('packaging refuses missing or opposite-channel staging, including packaged development', async () => {
   const root = await temp();
+  await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(root,'subtitles'),{recursive:true});
   const { appVersion } = require('../apps/desktop/build-metadata.cjs').readBuildMetadata();
   try {
     for (const identity of [production, development]) {

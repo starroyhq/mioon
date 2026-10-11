@@ -38,8 +38,8 @@ function fixture(overrides = {}) {
 }
 const ready = async value => { const controller = createEditTaskController({ client: value.client }); await controller.load(projectId); return controller; };
 
-test('the durable allowlist adds three subject writes to ten timeline metadata writes plus attach/detach', () => {
-  assert.equal(DURABLE_EDIT_OPERATIONS.length, 16);
+test('the durable allowlist includes three subtitle writes and preserves excluded operations', () => {
+  assert.equal(DURABLE_EDIT_OPERATIONS.length, 19);
   for (const op of ['timeline.render', 'generation.submit', 'job.retry', 'export.create', 'shot.update', 'asset.range.set', 'asset.disposition.set']) assert.equal(isDurableEditOperation(op), false);
   assert.equal(isEditTaskEnvelope(envelope(makeTask({ status: 'applied' }), { result: result() })), true);
 });

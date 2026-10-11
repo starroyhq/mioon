@@ -1,4 +1,4 @@
-import {AppError,sourceFrameCount,getTimelineFadeIssue,timelineOutputPreset} from '@mioon/contracts';
+import {AppError,sourceFrameCount,getTimelineFadeIssue,timelineOutputPreset,getTimelineSubtitleIssue,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 
 const integer=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
 function invalid(message){throw Object.assign(Error(message),{code:'INVALID_TIMELINE_SNAPSHOT'});}
@@ -31,6 +31,7 @@ export function validateTimeline(timeline,assets,{structureOnly=false}={}){
  }
  for(const t of tracks.values()){const clips=timeline.clips.filter(c=>c.trackId===t.id).sort((a,b)=>a.startFrame-b.startFrame);for(let i=1;i<clips.length;i++)if(clips[i].startFrame<clips[i-1].startFrame+clips[i-1].durationFrames)invalid('Clips overlap on one track');}
  if(timeline.durationFrames!==duration)invalid('Timeline duration does not match clips');
+ if(Object.hasOwn(timeline,'subtitles')){const issue=getTimelineSubtitleIssue(timeline.subtitles,duration);if(issue)invalid(issue.message);}
  return tracks;
 }
 
@@ -38,7 +39,7 @@ export function validateTimeline(timeline,assets,{structureOnly=false}={}){
 // Keep this projection and source order identical for both new exports and
 // preflight digests. Omitted legacy fields stay omitted in frozen responses.
 export function freezeTimelineSnapshot(timeline,assets){
- return JSON.parse(JSON.stringify({timeline,assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
+ return JSON.parse(JSON.stringify({timeline,...(timeline.subtitles?.cues.length?{subtitleProfile:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256}}:{}),assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
   const source=assets.get(id);
   if(!source)throw Object.assign(Error('Timeline snapshot does not match managed asset'),{code:'TIMELINE_SOURCE_UNAVAILABLE'});
   return {id:source.id,sha256:source.sha256,mimeType:source.mimeType,duration:source.duration,width:source.width,height:source.height,
@@ -81,6 +82,7 @@ export function validateSavedTimeline(timeline,{track,asset}){
      throw new AppError('CLIP_OVERLAP','同一轨道的片段不能重叠，可以首尾相接',409,{trackId:lane.id,clipIds:[previous.id,current.id]});
    }
   }
+  if(Object.hasOwn(timeline,'subtitles')){const issue=getTimelineSubtitleIssue(timeline.subtitles,duration);if(issue)throw new AppError(issue.code,issue.message,400,issue.details);}
   timeline.durationFrames=duration;
   return timeline;
  }

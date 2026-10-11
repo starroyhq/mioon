@@ -235,6 +235,7 @@ test('actual navigation epoch guard prevents late confirmation from discarding a
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
   let epoch = 1; const confirmation = deferred();
   const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+    subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft() { assert.fail('Late confirmation must not discard subtitle drafts'); } } } }, setSubtitleDirty() { assert.fail('Late confirmation must not clear subtitle state'); },
     context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
     dirtyRef: { current: false }, confirm: () => confirmation.promise,
   });
@@ -255,15 +256,15 @@ test('actual format save callback uses only the existing durable timeline lane a
 
 test('App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic', () => {
   transformSync(app, { loader: 'jsx', format: 'esm' });
-  for (const id of ['properties-inspector-pane', 'properties-format-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
+  for (const id of ['properties-inspector-pane', 'properties-format-pane', 'properties-subtitle-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
   assert.equal((app.match(/data-testid="right-dock-tab-/g) || []).length, 4);
-  assert.match(app, /const inspectorDirty = shotDirty \|\| clipDirty \|\| sourceDirty \|\| subjectDirty;/);
-  assert.match(app, /visible=\{propertiesPage === 'inspector'\}/); assert.match(app, /visible=\{propertiesPage === 'format'\}/);
-  const open = app.slice(app.indexOf('  function openTimelineFormat()'), app.indexOf('  function clipReplacementContext()'));
+  assert.match(app, /const inspectorDirty = shotDirty \|\| clipDirty \|\| sourceDirty \|\| subjectDirty \|\| subtitleDirty;/);
+  assert.match(app, /visible=\{propertiesPage === 'inspector' \|\| propertiesPage === 'subtitle' && workspaceMode === 'canvas'\}/); assert.match(app, /visible=\{propertiesPage === 'format'\}/);
+  const open = app.slice(app.indexOf('  function openTimelineFormat()'), app.indexOf('  function subtitleContext()'));
   assert.doesNotMatch(open, /guardNavigation|setInspectorEpoch|setSelected|setQuickAsset|setSourceDirty|discardDraft/);
   const wrapper = read('AgentWorkspace.jsx'); assert.match(wrapper, /hidden=\{!shown\} inert=\{!shown\}/);
   const controls = read('WorkspaceControls.jsx'); assert.match(controls, /if \(!visible\) \{ setOpen\(false\)/); assert.match(controls, /inert=\{!popup.visible\}/);
-  const task = read('TaskCenter.jsx'); assert.match(task, /DURABLE_EDIT_OPERATIONS\.length/); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.length, 16);
+  const task = read('TaskCenter.jsx'); assert.match(task, /DURABLE_EDIT_OPERATIONS\.length/); assert.equal(contracts.DURABLE_EDIT_OPERATIONS.length, 19);
 });
 
 test('actual dock pane retains child identity while hidden and removes it from focus and accessibility navigation', () => {

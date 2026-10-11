@@ -1,6 +1,6 @@
 # Mioon approved product roadmap
 
-Updated: 2026-10-10 UTC. This is approved iteration scope, not a completion claim.
+Updated: 2026-10-11 UTC. This is approved iteration scope, not a completion claim.
 Baseline: `66a0193`. Verified deliverables remain in STATUS.md and their acceptance reports.
 
 ## Product direction
@@ -48,6 +48,37 @@ Do not stop at a settings dialog or chat-only demonstration.
 Acceptance: a representative multilayer project remains usable on a stated laptop target;
 select a useful subrange, mix speech/music without clipping, and export the checked range
 and full cut using originals with matching timing and sound.
+
+#### Export configuration, after manual subtitles (approved 2026-10-11)
+
+Approval: user message `Sentinel_0efcc39df20081918255c0a750075fb8`.
+This is the next delivery slice after manual subtitles, not an expansion of the
+subtitle implementation. The current compatible default remains MP4, H.264
+(`libx264`, CRF 23), AAC 128 kb/s, 48 kHz stereo and 30 fps.
+
+1. **First bounded MP4/H.264 settings.** Add explicit output presets, quality/rate
+   controls and output resolution through the same UI/API/CLI/MCP services.
+   Discover the actual installed encoder's capabilities and reject unavailable
+   choices with a useful explanation. Timeline canvas geometry/editing timebase
+   and delivery scaling are separate: a delivery-size choice must not rewrite
+   clip rectangles, source ranges or stored timeline timing. Frame-rate changes
+   require their own explicit conversion semantics; this approval is not a claim
+   that arbitrary project frame rates already work.
+2. **Additional codecs and containers.** Assess HEVC, AV1 and ProRes; MOV/WebM;
+   audio-only and image-sequence delivery; alpha-capable output; and hardware
+   encoders independently. Admission depends on the actual encoder/container
+   combination, platform, licensing/distribution constraints and native evidence.
+   Do not promise every combination or platform, substitute another codec
+   silently, or treat an installed binary's name as proof of a working encoder.
+
+Freeze all accepted delivery options in each render snapshot and replay binding.
+Absent options preserve old snapshots, receipts and default output semantics.
+Unknown outcomes, cancellation and restart must retain the original request key;
+recovery must not turn into an implicit fresh export. Acceptance requires real
+encoded artifacts and full decode/probe checks for dimensions, frame count,
+duration, codec/container and sound, plus explicit unsupported-capability cases.
+This work does not require a paid model call. macOS/Windows delivery remains
+subject to its separate native gates.
 
 ### 3. Connect planning, continuity and generation
 

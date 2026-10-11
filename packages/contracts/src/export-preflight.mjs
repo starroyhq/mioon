@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {timelineOutputPreset} from './timeline-format.mjs';
+import {TIMELINE_SUBTITLE_PROFILE_ID} from './timeline-subtitle-profile.mjs';
 
 // Local source verification is bounded and never claims full media decoding.
 export const EXPORT_PREFLIGHT_LIMITS = Object.freeze({
@@ -48,6 +49,7 @@ export const exportPreflightResponseSchema = z.object({
     checkedAssets: count(EXPORT_PREFLIGHT_LIMITS.assets),
     bytesHashed: count(EXPORT_PREFLIGHT_LIMITS.totalBytes),
     fullDecode: z.literal(false),
+    subtitles:z.object({profileId:z.literal(TIMELINE_SUBTITLE_PROFILE_ID),fontVerified:z.boolean(),inkMeasured:z.literal(false)}).strict().optional(),
   }).strict(),
   issues: z.array(z.object({
     code: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/),
@@ -72,6 +74,7 @@ export const exportPreflightResponseSchema = z.object({
       fail(['timelineRevision'], 'Ready reports must match the requested timeline revision.');
     if (value.checks.checkedAssets !== value.checks.totalAssets || value.summary && value.checks.totalAssets !== value.summary.assetCount)
       fail(['checks', 'checkedAssets'], 'Ready reports require all summarized assets to be checked.');
+    if(value.checks.subtitles&&!value.checks.subtitles.fontVerified)fail(['checks','subtitles','fontVerified'],'Ready reports require a verified font; actual ink measurement still occurs during rendering.');
     if (value.issues.some(issue => issue.severity === 'error'))
       fail(['issues'], 'Ready reports cannot contain known blocking issues.');
   }

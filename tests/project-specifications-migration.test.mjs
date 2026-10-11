@@ -151,15 +151,15 @@ function seed(db){
  assert.deepEqual(new Set(rows.map(row=>row.status)),new Set(['prepared','dispatching','unknown','applied','not_applied']));
  assert.ok(rows.every(row=>row.input.includes('\\u754c')));
 }
-function assertNarrowExpansion(db,before){
+function assertNarrowExpansion(db,before,{startup=false}={}){
  const previous=before.objects.find(row=>row.type==='table'&&row.name==='edit_tasks').sql;
  const current=db.prepare("SELECT sql FROM sqlite_schema WHERE name='edit_tasks'").get().sql;
  const operationList=sql=>sql.match(/CHECK\(operation IN \(([^)]+)\)\)/)[1].split(',').map(value=>value.trim().slice(1,-1));
- assert.deepEqual(new Set(operationList(current)),new Set([...LEGACY_OPERATIONS,'timeline.format.set']));
+ assert.deepEqual(new Set(operationList(current)),new Set([...LEGACY_OPERATIONS,'timeline.format.set',...(startup?['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']:[])]));
  const withoutOperations=sql=>sql.replace(/CHECK\(operation IN \([^)]+\)\)/,'CHECK(operation IN (LEGACY_PLUS_FORMAT))');
  assert.equal(withoutOperations(current),withoutOperations(previous),'the operation allowlist is the only task table DDL change');
  assert.deepEqual(db.prepare('PRAGMA table_info(edit_tasks)').all().map(row=>row.name),COLUMNS);
- assert.equal(db.prepare('SELECT max(version) AS n FROM schema_version').get().n,21);
+ assert.equal(db.prepare('SELECT max(version) AS n FROM schema_version').get().n,startup?22:21);
  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE type='table' AND name LIKE 'edit_tasks_%'").get().n,0);
  assert.deepEqual(db.prepare('SELECT * FROM timeline_format_requests').all(),[],'migration invents no requests or specifications');
 }
@@ -173,10 +173,10 @@ test('schema21 preserves independently frozen schema20 rows, raw task inputs, al
  preserved(db,before);
 });
 
-test('actual schema20 startup migration matches fresh schema21 and is byte-stable across repeated restarts',t=>{
+test('actual schema20 startup migration matches fresh schema22 and is byte-stable across repeated restarts',t=>{
  const upgradedRoot=root(t),freshRoot=root(t),legacy=database(path.join(upgradedRoot,'workbench.sqlite'));seed(legacy);const before=snapshot(legacy);legacy.close();
  let upgraded=openStore(upgradedRoot);const fresh=openStore(freshRoot);t.after(()=>{upgraded.close();fresh.close();});
- preserved(upgraded.db,before);assertNarrowExpansion(upgraded.db,before);
+ preserved(upgraded.db,before);assertNarrowExpansion(upgraded.db,before,{startup:true});
  const relevant=db=>snapshot(db).objects.filter(row=>row.tbl_name==='edit_tasks'||row.tbl_name==='timeline_format_requests');
  assert.deepEqual(relevant(upgraded.db),relevant(fresh.db));
  const after=snapshot(upgraded.db);
@@ -196,7 +196,7 @@ test('failed schema21 marker rolls back both new objects and raw-column task reb
  const before=snapshot(db);db.close();assert.throws(()=>openStore(location),/injected schema21 marker failure/);
  db=new DatabaseSync(filename);db.exec('PRAGMA foreign_keys=ON');assert.deepEqual(snapshot(db),before);
  db.exec('DROP TRIGGER reject_schema21');const retryBefore=snapshot(db);db.close();
- const store=openStore(location);t.after(()=>store.close());preserved(store.db,retryBefore);assertNarrowExpansion(store.db,retryBefore);
+ const store=openStore(location);t.after(()=>store.close());preserved(store.db,retryBefore);assertNarrowExpansion(store.db,retryBefore,{startup:true});
 });
 
 test('migration transaction preconditions and inconsistent task sequence fail without partial rebuild',t=>{
