@@ -95,15 +95,17 @@ test('MCP initializes offline; discovery schemas exactly cover shared contracts 
 test('catalog assertions reject lost, reordered or weakened image union branches and replay-key claims', () => {
   const definition = operationDefinition('image.generate');
   const inspected = assertOperationInputBranches(definition);
-  assert.equal(inspected.branches.length, 2); assert.equal(inspected.requiresRequestId, true);
+  assert.equal(inspected.branches.length, 3); assert.equal(inspected.requiresRequestId, true);
   assert.equal(inspected.optionalRequestId, false);
   for (const change of [
     value => value.inputSchema.anyOf.pop(),
     value => value.inputSchema.anyOf.reverse(),
-    value => { value.inputSchema.anyOf[1].additionalProperties = true; },
-    value => { delete value.inputSchema.anyOf[1].properties.model; },
-    value => { value.inputSchema.anyOf[1].required = value.inputSchema.anyOf[1].required.filter(key => key !== 'requestId'); },
-    value => { value.inputSchema.anyOf[1].properties.unexpected = {type:'boolean'}; },
+    ...[0,1,2].flatMap(index => [
+      value => { value.inputSchema.anyOf[index].additionalProperties = true; },
+      value => { delete value.inputSchema.anyOf[index].properties.model; },
+      value => { value.inputSchema.anyOf[index].required = value.inputSchema.anyOf[index].required.filter(key => key !== 'requestId'); },
+      value => { value.inputSchema.anyOf[index].properties.unexpected = {type:'boolean'}; },
+    ]),
     value => { value.requiresRequestId = false; },
   ]) {
     const altered = structuredClone(definition); change(altered);

@@ -32,6 +32,20 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 For an executable no-cost import → shot → generate → select → timeline → export workflow, read [mock-workflow.md](references/mock-workflow.md). Mock produces visibly labeled synthetic motion, not prompt-faithful AI output. All shipped provider contracts have offline tests; live provider output is unverified unless separately established in the user's session.
 
 ## Local image generation and review preparation
+### Single-PNG reference edits
+
+The same `image.generate` accepts paired `purpose:"edit"` and
+`inputImage:{assetId,sha256}` for Mock and the fixed official OpenAI slot. The
+backend validates one project-owned managed PNG (8 MiB, maximum 1024 per edge,
+opaque 8-bit RGB/RGBA) and derives immutable source provenance. Omit both fields
+for the existing text-generation shape. Custom-compatible/Comfy editing, masks
+and identity/pixel guarantees are outside this profile. Mock remains a static
+test card. Official edits require the existing private user review; preparation
+also performs bounded local source-byte validation. Keep the exact request key
+through uncertain outcomes. See [single-PNG editing](../../docs/IMAGE-EDITING.md) for the
+strict source/output contract, disclosure and current verification status.
+
+
 
 Inspect `image profile list`, `schema image.generate` and
 `schema image.review.prepare` before using the

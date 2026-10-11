@@ -26,7 +26,7 @@ export const IDS = Object.freeze({
 // Preloaded in backend/CLI/MCP children. Only the client children may connect,
 // and only to the exact disposable backend port. Any denied action is durable
 // audit evidence even when application code catches the thrown test error.
-export function installWireGuard({origin = '', auditPath} = {}) {
+export function installWireGuard({origin = '', auditPath, onFetchStage} = {}) {
   const allowed = origin ? new URL(origin) : null;
   const deny = kind => {
     if (auditPath) fs.appendFileSync(auditPath, JSON.stringify({pid: process.pid, kind}) + '\n');
@@ -39,7 +39,17 @@ export function installWireGuard({origin = '', auditPath} = {}) {
     if (!allowed || url.origin !== allowed.origin || !['/api/rpc', '/health'].includes(url.pathname) || url.search || url.hash) deny('outbound network request');
   };
   const nativeFetch = globalThis.fetch;
-  globalThis.fetch = (value, options) => { checkURL(value); return nativeFetch(value, options); };
+  globalThis.fetch = (value, options) => {
+    checkURL(value);
+    if (typeof onFetchStage !== 'function') return nativeFetch(value, options);
+    // Optional fixed test observation only; never expose URL, headers or input.
+    const note = stage => { try { onFetchStage(stage); } catch {} };
+    note('fetch-start');
+    try {
+      return nativeFetch(value, options).then(response => { note('fetch-headers'); return response; },
+        error => { note('fetch-rejected'); throw error; });
+    } catch (error) { note('fetch-rejected'); throw error; }
+  };
   for (const name of ['request', 'get']) {
     const original = http[name];
     http[name] = function (...args) {

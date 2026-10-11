@@ -8,7 +8,7 @@ const columns=[...Object.entries({taskId:36,projectId:36,reviewId:36,promptId:36
  * A remote DTO or current settings cannot attest that a result belongs here. */
 export function validateComfyReceiptOwnership(db,task,input,receipt,{fail=()=>{throw Object.assign(Error('The ComfyUI result cannot be verified.'),{code:'IMAGE_RESULT_INVALID'});},consume=()=>{}}={}){
  if(input.providerId!=='comfy-local')return;
- const review=validateImageTaskReview(db,task.projectId,task.id,input);
+ const review=validateImageTaskReview(db,task.projectId,task.id,input,{consume});
  const row=db.prepare(`SELECT ${columns} FROM image_remote_runs WHERE taskId=? AND projectId=? LIMIT 1`).get(task.id,task.projectId);
  if(!row)fail();consume(JSON.stringify(row));let descriptor;try{descriptor=row.outputDescriptor===null?null:JSON.parse(row.outputDescriptor);}catch{fail();}
  const {rawGraph,...dto}=row;dto.contentVerified=row.contentVerified===1;dto.outputDescriptor=descriptor;

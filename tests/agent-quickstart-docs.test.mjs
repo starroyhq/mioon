@@ -115,7 +115,7 @@ function assertShape(input, fields, label) {
 const generationFields = shape(images, 'const generation=');
 // The audited examples use the pre-Comfy providers. Verify their branch still
 // participates in the public union before inspecting that branch's fields.
-assert.ok(images.includes('const generate=z.union([legacyGenerate,comfyGenerate])'));
+assert.ok(images.includes('const generate=z.union([legacyGenerate,comfyGenerate,editGenerate])'));
 const generateFields = shape(images, 'const legacyGenerate=z.object(', {generation: generationFields});
 const imagePage = shape(images, 'const page=');
 const timelineMutation = shape(contracts, 'const timelineMutation=');

@@ -1,10 +1,11 @@
 import {lookup as lookupDns} from 'node:dns/promises';
 import {request as requestHttps} from 'node:https';
 import {DEFAULT_IMAGE_CONFIGURATION, customImageConfigurationSchema, isCompleteCustomImageConfiguration} from '../../../contracts/src/image-settings.mjs';
-import {IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT, imageSettingsError, sanitizeCustomImageCredentialResult} from './settings.mjs';
+import {IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT, imageSettingsError, sanitizeImageCredentialResult, sanitizeCustomImageCredentialResult} from './settings.mjs';
+import {IMAGE_EDIT_LIMITS} from '../../../contracts/src/images.mjs';
 import {createOpenAIImageAdapter, createCompatibleImageAdapter} from './adapter.mjs';
-import {createImageJsonTransport, createCompatibleImageJsonTransport} from './network.mjs';
-import {parseImageAdapterInput} from './profiles.mjs';
+import {createImageJsonTransport, createImageEditJsonTransport, createCompatibleImageJsonTransport} from './network.mjs';
+import {imageAdapterError, parseImageAdapterInput} from './profiles.mjs';
 
 function reviewedCustomConfiguration(configuration, input) {
   const parsed = customImageConfigurationSchema.safeParse(configuration);
@@ -23,16 +24,21 @@ function reviewedCustomConfiguration(configuration, input) {
  * request. The caller owns the immutable review and durable task-dispatch fence. */
 function createReviewedImageGateway({settings, lookup = lookupDns, httpsRequest = requestHttps}, slot) {
   return Object.freeze({
-    async generate(input, {signal, beforeDispatch, settingsRevision, configuration} = {}) {
+    async generate(input, {signal, beforeDispatch, settingsRevision, configuration, sourceBytes} = {}) {
       if (!settings || !Number.isSafeInteger(settingsRevision) || settingsRevision < 1 || typeof beforeDispatch !== 'function') throw imageSettingsError('IMAGE_SETTINGS_DISABLED');
       const snapshot = slot.input ? slot.input(input) : input;
+      let privateSource;
+      if (snapshot.purpose === 'edit') {
+        if (!Buffer.isBuffer(sourceBytes) || !sourceBytes.length || sourceBytes.length > IMAGE_EDIT_LIMITS.sourceBytes || sourceBytes.length !== snapshot.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+        privateSource = Buffer.from(sourceBytes);
+      } else if (sourceBytes !== undefined) throw imageAdapterError('IMAGE_INVALID_REQUEST');
       const expected = Object.freeze({expectedRevision: settingsRevision, configuration: slot.configuration(configuration, snapshot)});
       const acquired = await settings[IMAGE_CREDENTIAL_ACQUIRE](expected, {signal});
       if (signal?.aborted) throw imageSettingsError('IMAGE_SETTINGS_CLOSED');
       const credential = slot.credential ? slot.credential(acquired, expected) : acquired;
       if (!credential.apiKey) throw imageSettingsError('IMAGE_SETTINGS_NOT_CONFIGURED');
-      const transport = slot.transport({lookup, httpsRequest, apiKey: credential.apiKey, baseUrl: expected.configuration.baseUrl});
-      return slot.adapter({transport}).generate(snapshot, {signal, beforeDispatch: () => {
+      const transport = slot.transport({lookup, httpsRequest, apiKey: credential.apiKey, baseUrl: expected.configuration.baseUrl}, snapshot);
+      return slot.adapter({transport}).generate(snapshot, {signal, ...(privateSource === undefined ? {} : {sourceBytes: privateSource}), beforeDispatch: () => {
         // No await after this current-config assertion. The caller immediately
         // commits its review/task dispatch fence, then transport calls end().
         const confirmed = settings[IMAGE_SETTINGS_ASSERT_CURRENT](expected);
@@ -47,8 +53,15 @@ function createReviewedImageGateway({settings, lookup = lookupDns, httpsRequest 
 }
 export function createLiveImageGateway(options = {}) {
   return createReviewedImageGateway(options, {
-    configuration: () => ({...DEFAULT_IMAGE_CONFIGURATION, enabled: true}),
-    transport: createImageJsonTransport,
+    input: input => {
+      const snapshot = parseImageAdapterInput(input, 'openai');
+      Object.freeze(snapshot.options);
+      if (snapshot.sourceImage) { Object.freeze(snapshot.inputImage); Object.freeze(snapshot.sourceImage.origin); Object.freeze(snapshot.sourceImage); }
+      return Object.freeze(snapshot);
+    },
+    configuration: () => Object.freeze({...DEFAULT_IMAGE_CONFIGURATION, enabled: true}),
+    credential: sanitizeImageCredentialResult,
+    transport: (options, snapshot) => snapshot.purpose === 'edit' ? createImageEditJsonTransport(options) : createImageJsonTransport(options),
     adapter: createOpenAIImageAdapter,
   });
 }

@@ -2,6 +2,9 @@ import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
+import {canonicalImageInput, IMAGE_EDIT_LIMITS} from '../../contracts/src/images.mjs';
+import {describeImageEditSource} from './images/edit-source.mjs';
+import {validateImageTaskReview} from './images/reviews.mjs';
 import {createImageOwnershipReader} from './image-ownership.mjs';
 import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownership.mjs';
 
@@ -70,9 +73,10 @@ function excerpt(value) {
 
 function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
     const cache = new Map(), validatedVersions = new Set(), validatedAssets = new Set(), assetVersions = new Map(), imageSources = new Map(), frameSources = new Map(), frameTasks = new Set(), pendingFrameTasks = new Set();
+    const pendingAssets=new Set(),imageTasks=new Set(),pendingImageTasks=new Set();
     let readBytes = 0, readRecords = 0, frameDepth = 0;
     const consume=text=>{if(++readRecords>INSPECTION_LIMITS.maxReadRecords||(readBytes+=Buffer.byteLength(text))>INSPECTION_LIMITS.maxReadBytes)exhausted();};
-    const imageReader=createImageOwnershipReader(db,projectId,{fail:unavailable,consume});
+    const imageReader=createImageOwnershipReader(db,projectId,{fail:unavailable,consume,validateSource:validateImageTask});
     const frameReader=createFrameOwnershipReader(db,projectId,{fail:unavailable,consume});
     // CASE guards are evaluated by SQLite before data crosses into JavaScript.
     // Oversized/malformed rows are errors, never silently skipped from a page.
@@ -166,9 +170,10 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
         return version;
       }catch(error){validatedVersions.delete(versionId);throw error;}
     }
-    function validateAsset(asset) {
-      if (validatedAssets.has(asset.id)) return asset;
-      validatedAssets.add(asset.id);
+    function validateAsset(asset,{sourceEdge=false}={}) {
+      if(sourceEdge&&pendingAssets.has(asset.id))unavailable();
+      if (validatedAssets.has(asset.id)||pendingAssets.has(asset.id)) return asset;
+      pendingAssets.add(asset.id);
       try{
       // Never trust provenance to hide a reverse relation. Imported assets may
       // have no version; generated assets require exactly one. Foreign and
@@ -186,8 +191,24 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
         validateFrameTask(source.frameTaskId);frameSources.set(asset.id,source);
       }
       if(asset.provenance==='extracted-frame'&&!frames.length)unavailable();
-      return asset;
-      }catch(error){validatedAssets.delete(asset.id);assetVersions.delete(asset.id);imageSources.delete(asset.id);frameSources.delete(asset.id);throw error;}
+      validatedAssets.add(asset.id);return asset;
+      }catch(error){validatedAssets.delete(asset.id);assetVersions.delete(asset.id);imageSources.delete(asset.id);frameSources.delete(asset.id);throw error;}finally{pendingAssets.delete(asset.id);}
+    }
+    function validateImageTask(taskId) {
+      const value=imageReader.task(id(taskId),{shallow:true});
+      if(value.input.purpose!=='edit'||imageTasks.has(taskId))return value;
+      if(pendingImageTasks.has(taskId))unavailable();
+      if(pendingImageTasks.size>=IMAGE_EDIT_LIMITS.sourceChainDepth)exhausted();
+      pendingImageTasks.add(taskId);
+      try{
+        const source=validateAsset(get('assets',id(value.input.inputImage.assetId)),{sourceEdge:true});
+        if(assetVersions.has(source.id))unavailable();
+        const descriptor=describeImageEditSource(source,imageSources.get(source.id),frameSources.get(source.id));
+        if(canonicalImageInput(descriptor)!==canonicalImageInput(value.snapshot.sourceImage))unavailable();
+        const review=validateImageTaskReview(db,projectId,taskId,value.input,{consume});
+        if(review&&canonicalImageInput(review.sourceImage)!==canonicalImageInput(descriptor))unavailable();
+        imageTasks.add(taskId);return value;
+      }finally{pendingImageTasks.delete(taskId);}
     }
     function validateFrameTask(taskId) {
       const value=frameReader.task(id(taskId));
@@ -273,6 +294,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
       assets: args => page('assets', 'asset.inspect', args), shots: args => page('shots', 'shot.inspect', args), timeline: timelineDto, ownedAsset: assetId=>validateAsset(get('assets',id(assetId))),clipSource,
       ownedTimeline:()=>{const timeline=ownedTimeline();if(timeline)timelineDto(timeline);return timeline;},validateTimeline:timelineDto,version:validateVersion,
       imageVersion:(versionId,assetId)=>{const value=imageReader.version(id(versionId));const asset=validateAsset(get('assets',id(assetId??value.assetId)));if(value.assetId!==asset.id)unavailable();return imageReader.version(versionId,asset);},
+      imageTask:validateImageTask,legacySource:assetId=>{const asset=validateAsset(get('assets',id(assetId)));return assetVersions.get(asset.id)??null;},
       imageSource:assetId=>{const asset=validateAsset(get('assets',id(assetId)));return imageSources.get(asset.id)??null;},frameTask:validateFrameTask,
       frameSource:assetId=>{const asset=validateAsset(get('assets',id(assetId)));return frameSources.get(asset.id)??null;}};
   }
@@ -282,7 +304,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
 // unscoped raw reader; all paths retain the same bounded project-owner gates.
 export function createOwnedMediaGraphReader(db,projectId){
  const read=inspectionReader(db,projectId);
- return {asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,frameTask:read.frameTask,frameSource:read.frameSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
+ return {asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,imageTask:read.imageTask,legacySource:read.legacySource,frameTask:read.frameTask,frameSource:read.frameSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
 }
 
 export function createInspectionServices(store) {

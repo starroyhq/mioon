@@ -2,8 +2,9 @@ import {randomUUID, randomInt, randomBytes, createHash, createHmac, timingSafeEq
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '@mioon/contracts';
 import {canonicalImageInput as canonical, IMAGE_LIMITS, imageSchemas} from '../../../contracts/src/images.mjs';
-import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, IMAGE_REVIEW_LIMITS, imageReviewSchemas,
+import {IMAGE_EDIT_REVIEW_DESTINATION, IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY, IMAGE_REVIEW_LIMITS, imageReviewSchemas,
   imageReviewApprovalSchema, imageReviewRejectionSchema, imageReviewIntentSchema, imageReviewResponseSchema} from '../../../contracts/src/image-reviews.mjs';
+import {createImageEditSourceResolver} from './edit-source.mjs';
 import {createImageOwnershipReader} from '../image-ownership.mjs';
 import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination} from '../../../contracts/src/image-settings.mjs';
 import {ownsStoreLock} from '../db.mjs';
@@ -13,6 +14,7 @@ import {buildComfyWorkflow, hashComfyWorkflow, validateComfyExecution} from '../
 const digest = value => createHash('sha256').update(value).digest('hex');
 const now = () => new Date().toISOString();
 const messages = Object.freeze({
+  IMAGE_SOURCE_INVALID: 'The managed PNG source could not be verified.',
   IMAGE_REVIEW_INVALID: 'The retained image review could not be verified.',
   IMAGE_REVIEW_NOT_FOUND: 'This project has no matching image review.',
   IMAGE_REVIEW_CONFLICT: 'This image request already has a different immutable review.',
@@ -53,7 +55,8 @@ function decodeReviewRow(row) {
     inputHash: row.inputHash, settingsRevision: intent.settingsRevision, destination: intent.destination, policy: intent.policy,
     state: row.state, revision: row.revision, taskId: row.taskId, postAttempts: row.postAttempts, createdAt: row.createdAt, updatedAt: row.updatedAt,
     approvedAt: row.approvedAt, rejectedAt: row.rejectedAt, dispatchedAt: row.dispatchedAt,
-    ...(intent.schemaVersion >= 2 ? {configuration: intent.configuration} : {}),
+    ...([2,3].includes(intent.schemaVersion) ? {configuration: intent.configuration} : {}),
+    ...(intent.schemaVersion === 4 ? {sourceImage:intent.sourceImage} : {}),
     ...(intent.schemaVersion === 3 ? {execution: intent.execution} : {})};
   if (!imageReviewResponseSchema.safeParse(dto).success) invalid();
   if(intent.schemaVersion===3){try{validateComfyExecution(intent.execution,{prompt:input.prompt,checkpoint:input.model});}catch{invalid();}}
@@ -63,21 +66,24 @@ function decodeReviewRow(row) {
 /** Safe for the image ownership reader: validates only the review/task binding,
  * never calls that reader recursively, opens files, or changes either record.
  * Legacy Mock tasks have no review and deliberately return null. */
-export function validateImageTaskReview(db, projectId, taskId, input) {
+export function validateImageTaskReview(db, projectId, taskId, input, {consume=()=>{}}={}) {
   if (!imageSchemas['image.generate'].safeParse(input).success || input.projectId !== projectId) invalid();
   if (input.providerId === 'mock') return null;
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_reviews'").get()) invalid();
   const canonicalInput = canonical(input);
   const row = db.prepare(`SELECT ${columns} FROM image_reviews WHERE taskId=? AND projectId=? LIMIT 1`).get(taskId, projectId);
+  if(row)consume(JSON.stringify(row));
   const value = decodeReviewRow(row);
   if (!['approved', 'dispatched'].includes(value.row.state) || value.row.projectId !== projectId || value.row.taskId !== taskId ||
       value.row.canonicalInput !== canonicalInput || value.row.inputHash !== digest(canonicalInput)) invalid();
   const task = db.prepare(`SELECT ${textColumn('id', 36)},${textColumn('projectId', 36)},${textColumn('requestId', 800)},
-    ${textColumn('inputHash', 64)},${textColumn('input', IMAGE_LIMITS.inputBytes)},
+    ${textColumn('inputHash', 64)},${textColumn('input', IMAGE_LIMITS.inputBytes)},${textColumn('snapshot', IMAGE_LIMITS.snapshotBytes)},
     CASE WHEN typeof(dispatched)='integer' AND dispatched IN (0,1) THEN dispatched ELSE -1 END AS dispatched
     FROM image_tasks WHERE id=? AND projectId=? LIMIT 1`).get(taskId, projectId);
+  if(task)consume(JSON.stringify(task));
   if (!task || task.id !== taskId || task.projectId !== projectId || task.requestId !== input.requestId || task.inputHash !== value.row.inputHash ||
       task.input !== canonicalInput || task.dispatched !== value.row.postAttempts) invalid();
+  if(input.purpose==='edit'){let snapshot;try{snapshot=JSON.parse(task.snapshot);}catch{invalid();}if(canonical(snapshot.sourceImage)!==canonical(value.intent.sourceImage))invalid();}
   return value.dto;
 }
 
@@ -85,7 +91,7 @@ export function validateImageTaskReview(db, projectId, taskId, input) {
  * hooks performs I/O, queues work, opens a transaction, or approves a later
  * changed request. The image lifecycle owns task acceptance and dispatch txs. */
 export function createImageReviewServices(store, {getSettings, assertSettings, signal, fault = () => {}} = {}) {
-  const {db, tx} = store, cursorSecret = randomBytes(32);
+  const {db, tx} = store, cursorSecret = randomBytes(32),editSources=createImageEditSourceResolver(store,{signal});
   let stopped = false;
   for (const callback of [getSettings, assertSettings, fault]) {
     if (callback !== undefined && (typeof callback !== 'function' || isAsyncFunction(callback))) throw new TypeError('Image review hooks must be synchronous');
@@ -121,7 +127,7 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     const current = synchronous(getSettings, generation.providerId);
     if (!current || !Number.isSafeInteger(current.revision) || current.revision < 1 || current.revision !== settingsRevision) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     if (current.enabled !== true) fail('IMAGE_LIVE_DISABLED', 403);
-    let expected = {revision: settingsRevision, destination: IMAGE_REVIEW_DESTINATION};
+    let expected = {revision: settingsRevision, destination: generation.purpose==='edit'?IMAGE_EDIT_REVIEW_DESTINATION:IMAGE_REVIEW_DESTINATION};
     if (generation.providerId === 'openai-compatible') {
       const parsed = customImageConfigurationSchema.safeParse(current.configuration);
       if (!parsed.success || !parsed.data.enabled || !isCompleteCustomImageConfiguration(parsed.data) ||
@@ -137,30 +143,31 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
       if(current.destination!==destination||frozenIntent&&(frozenIntent.schemaVersion!==3||frozenIntent.destination!==destination||canonical(frozenIntent.configuration)!==canonical(configuration)))fail('IMAGE_REVIEW_SETTINGS_CHANGED');
       expected={revision:settingsRevision,destination,configuration};
     } else if (generation.providerId !== 'openai' || current.destination !== IMAGE_REVIEW_DESTINATION ||
-        frozenIntent && frozenIntent.schemaVersion !== 1) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+        frozenIntent && (frozenIntent.schemaVersion !== (generation.purpose==='edit'?4:1)||frozenIntent.destination!==expected.destination)) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     if (assertSettings && synchronous(assertSettings, expected, generation.providerId) !== true) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     return expected;
   }
   function boundTask(value, taskId = value.row.taskId) {
     if (!taskId) invalid();
-    const task = createImageOwnershipReader(db, value.row.projectId, {fail: invalid}).task(taskId);
+    const task = createImageOwnershipReader(db, value.row.projectId, {fail: invalid}).task(taskId,{shallow:true});
     if (task.row.projectId !== value.row.projectId || task.row.requestId !== value.row.requestId || task.row.inputHash !== value.row.inputHash ||
-        task.row.input !== value.row.canonicalInput || canonical(task.input) !== value.row.canonicalInput || task.input.providerId !== value.intent.input.providerId || task.input.providerId === 'mock') invalid();
+        task.row.input !== value.row.canonicalInput || canonical(task.input) !== value.row.canonicalInput || task.input.providerId !== value.intent.input.providerId || task.input.providerId === 'mock'||canonical(task.snapshot.sourceImage)!==canonical(value.intent.sourceImage)) invalid();
     return task;
   }
-  function decode(row, {verifyTask = true} = {}) {
+  function decode(row, {verifyTask = true,verifySource=true} = {}) {
     const value = decodeReviewRow(row);
+    if(verifySource&&value.intent.schemaVersion===4)editSources.assertOwned(value.intent.input,value.intent.sourceImage);
     if (row.taskId && verifyTask) {
       const task = boundTask(value);
       if ((row.postAttempts === 1) !== task.dto.dispatched) invalid();
     }
     return value;
   }
-  function review(projectId, reviewId) {
+  function review(projectId, reviewId,options) {
     project(projectId);
     const row = db.prepare(`SELECT ${columns} FROM image_reviews WHERE id=? AND projectId=? LIMIT 1`).get(reviewId, projectId);
     if (!row) fail('IMAGE_REVIEW_NOT_FOUND', 404);
-    return decode(row);
+    return decode(row,options);
   }
   function getForTask(projectId, taskId) {
     project(projectId);
@@ -174,6 +181,19 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     }
   }
   function prepare(raw) {
+    const input=parse(imageReviewSchemas['image.review.prepare'],raw);
+    if(input.input.purpose!=='edit')return prepareVerified(input);
+    const replay=prepareReplay(input);if(replay)return replay;
+    return editSources.verify(input.input).then(verified=>{editSources.assertCurrent(input.input,verified);return prepareVerified(input,verified);});
+  }
+  function prepareReplay(input){
+    owner();project(input.input.projectId);
+    const previous=db.prepare(`SELECT ${columns} FROM image_reviews WHERE requestId=? LIMIT 1`).get(input.input.requestId);
+    if(!previous)return null;
+    if(previous.projectId!==input.input.projectId||previous.canonicalInput!==canonical(input.input))fail('IMAGE_REVIEW_CONFLICT');
+    const original=decode(previous);if(original.intent.settingsRevision!==input.settingsRevision)fail('IMAGE_REVIEW_CONFLICT');return original.dto;
+  }
+  function prepareVerified(raw,verified) {
     const input = parse(imageReviewSchemas['image.review.prepare'], raw), generation = input.input;
     const canonicalInput = canonical(generation);
     if (Buffer.byteLength(canonicalInput) > IMAGE_LIMITS.inputBytes) fail('IMAGE_REVIEW_CAPACITY', 507);
@@ -188,13 +208,14 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
         return original.dto; // Exact history survives setting changes, restarts, rejection, and dispatch.
       }
       if (db.prepare('SELECT 1 FROM image_requests WHERE requestId=? LIMIT 1').get(generation.requestId)||db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_observations'").get()&&db.prepare('SELECT 1 FROM image_remote_observations WHERE requestId=? LIMIT 1').get(generation.requestId)) fail('IMAGE_REVIEW_CONFLICT');
-      if (generation.groupId) createImageOwnershipReader(db, generation.projectId, {fail: invalid}).group(generation.groupId);
+      if(verified)editSources.assertOwned(generation,verified.descriptor);
+      if (generation.groupId){const group=createImageOwnershipReader(db, generation.projectId, {fail: invalid}).group(generation.groupId);if(verified&&(group.revision!==generation.expectedRevision||group.activeTaskId!==null||group.name!==generation.name))fail('IMAGE_REVIEW_CONFLICT');}
       const selected = settings(input.settingsRevision, generation); capacity(generation.projectId);
       const id = randomUUID(), timestamp = now();
       let execution;
       if(generation.providerId==='comfy-local'){const seed=randomInt(0,2**48-1),promptId=randomUUID(),clientId=randomUUID(),outputNonce=randomUUID();const graph=buildComfyWorkflow({prompt:generation.prompt,checkpoint:generation.model,seed,outputNonce});execution={workflowId:COMFY_IMAGE_PROFILE_ID,workflowVersion:1,comfyVersion:COMFY_IMAGE_VERSION,seed,promptId,clientId,outputNonce,filenamePrefix:`mioon_${outputNonce}`,graphHash:hashComfyWorkflow(graph),graph};}
-      const intent = {schemaVersion: generation.providerId==='comfy-local'?3:generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
-        destination: selected.destination, policy: generation.providerId==='comfy-local'?COMFY_IMAGE_POLICY:IMAGE_REVIEW_POLICY,
+      const intent = {schemaVersion: generation.purpose==='edit'?4:generation.providerId==='comfy-local'?3:generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
+        ...(verified?{sourceImage:verified.descriptor}:{}),destination: selected.destination, policy: generation.providerId==='comfy-local'?COMFY_IMAGE_POLICY:IMAGE_REVIEW_POLICY,
         ...(['openai-compatible','comfy-local'].includes(generation.providerId) ? {configuration: selected.configuration} : {}),...(execution?{execution}:{})};
       if (!imageReviewIntentSchema.safeParse(intent).success) invalid();
       const canonicalIntent = canonical(intent);
@@ -224,12 +245,14 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     boundTask(value, taskId);
     return true;
   }
-  function authorizeAcceptance(input, taskId, rawApproval) {
+  function sourceForApproval(raw){const approval=parse(imageReviewApprovalSchema,raw);return structuredClone(review(approval.projectId,approval.reviewId).intent.sourceImage);}
+  function authorizeAcceptance(input, taskId, rawApproval, verified) {
     transactionRequired();
     const {approval, value} = matchingReview(input, rawApproval);
     if (value.row.revision !== approval.expectedRevision) fail('IMAGE_REVIEW_REVISION_CONFLICT');
     if (value.row.state !== 'pending' || value.row.taskId !== null || value.row.postAttempts !== 0) fail('IMAGE_REVIEW_STATE_CONFLICT');
     settings(value.intent.settingsRevision, input, value.intent);
+    if(input.purpose==='edit'){if(!verified||canonical(verified.descriptor)!==canonical(value.intent.sourceImage))fail('IMAGE_REVIEW_CONFLICT');editSources.assertOwned(input,value.intent.sourceImage);}
     const task = boundTask(value, taskId);
     if (task.row.state !== 'queued' || task.row.revision !== 1 || task.dto.dispatched) fail('IMAGE_REVIEW_STATE_CONFLICT');
     const timestamp = now();
@@ -247,6 +270,7 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     if (canonical(input) !== value.row.canonicalInput || value.row.taskId !== taskId) fail('IMAGE_REVIEW_CONFLICT');
     if (value.row.state !== 'approved' || value.row.postAttempts !== 0) fail('IMAGE_REVIEW_STATE_CONFLICT');
     settings(value.intent.settingsRevision, input, value.intent);
+    if(input.purpose==='edit')editSources.assertOwned(input,value.intent.sourceImage);
     const task = boundTask(value, taskId);
     if (task.row.state !== 'queued' || task.dto.dispatched) fail('IMAGE_REVIEW_STATE_CONFLICT');
     const timestamp = now();
@@ -260,7 +284,7 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
   function reject(raw) {
     const input = parse(imageReviewRejectionSchema, raw);
     return tx(() => {
-      owner(); const value = review(input.projectId, input.reviewId);
+      owner(); const value = review(input.projectId, input.reviewId,{verifySource:false});
       // A repeated exact pending-review rejection has no additional effect.
       if (value.row.state === 'rejected' && input.expectedRevision === 1) return value.dto;
       if (value.row.revision !== input.expectedRevision) fail('IMAGE_REVIEW_REVISION_CONFLICT');
@@ -270,7 +294,7 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
         .run(timestamp, timestamp, input.reviewId, input.projectId);
       if (result.changes !== 1) fail('IMAGE_REVIEW_REVISION_CONFLICT');
       synchronous(fault, 'after_review_rejection', {reviewId: input.reviewId});
-      return review(input.projectId, input.reviewId).dto;
+      return review(input.projectId, input.reviewId,{verifySource:false}).dto;
     });
   }
   const sign = body => createHmac('sha256', cursorSecret).update(body).digest('base64url');
@@ -309,5 +333,5 @@ export function createImageReviewServices(store, {getSettings, assertSettings, s
     'image.review.list': snapshotRead(raw => list(parse(imageReviewSchemas['image.review.list'], raw))),
   });
   return Object.freeze({handlers, readForApproval: snapshotRead(readForApproval), authorizeAcceptance, verifyReplay: snapshotRead(verifyReplay),
-    getForTask: snapshotRead(getForTask), beforeDispatch, reject, stop() {stopped = true;}});
+    getForTask: snapshotRead(getForTask), sourceForApproval:snapshotRead(sourceForApproval), beforeDispatch, reject, stop() {stopped = true;}});
 }

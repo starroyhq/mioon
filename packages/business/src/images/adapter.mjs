@@ -1,4 +1,4 @@
-import {IMAGE_NETWORK_LIMITS, createImageGenerationBody, createCompatibleImageGenerationBody, imageAdapterError, parseImageAdapterInput} from './profiles.mjs';
+import {IMAGE_NETWORK_LIMITS, createImageGenerationBody, createImageEditBody, validateImageEditSource, createCompatibleImageGenerationBody, imageAdapterError, parseImageAdapterInput} from './profiles.mjs';
 import {renderMockImagePng, validatePng} from './png.mjs';
 
 function abortIfNeeded(signal, dispatched = false) {
@@ -89,9 +89,11 @@ export async function decodeImageJsonResponse(body, {signal, providerRequestId =
 }
 export function createMockImageAdapter() {
   return Object.freeze({
-    async generate(snapshot, {signal, beforeDispatch} = {}) {
-      parseImageAdapterInput(snapshot, 'mock'); abortIfNeeded(signal);
-      fence(beforeDispatch);
+    async generate(snapshot, {signal, beforeDispatch, sourceBytes} = {}) {
+      const input = parseImageAdapterInput(snapshot, 'mock'); abortIfNeeded(signal);
+      if (input.purpose === 'edit') await validateImageEditSource(input, sourceBytes, {signal, providerId: 'mock'});
+      else if (sourceBytes !== undefined) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+      abortIfNeeded(signal); fence(beforeDispatch);
       try {
         abortIfNeeded(signal, true);
         const bytes = await renderMockImagePng({signal});
@@ -108,9 +110,10 @@ export function createMockImageAdapter() {
 // Shared lifecycle and decoder for the two explicitly constructed live slots.
 function createJsonImageAdapter({transport}, createBody) {
   return Object.freeze({
-    async generate(snapshot, {signal, beforeDispatch} = {}) {
+    async generate(snapshot, {signal, beforeDispatch, sourceBytes} = {}) {
       if (typeof transport !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');
-      const body = createBody(snapshot); abortIfNeeded(signal);
+      const prepared = createBody(snapshot, {signal, sourceBytes});
+      const body = typeof prepared === 'string' ? prepared : await prepared; abortIfNeeded(signal);
       if (typeof beforeDispatch !== 'function') throw imageAdapterError('IMAGE_DISPATCH_BLOCKED');
       let fenced = false, received = false;
       try {
@@ -134,5 +137,14 @@ function createJsonImageAdapter({transport}, createBody) {
 
 /** No ambient credential/network discovery. Only a trusted reviewed Images
  * gateway supplies a transport pinned to that slot's reviewed destination. */
-export function createOpenAIImageAdapter(options = {}) { return createJsonImageAdapter(options, createImageGenerationBody); }
-export function createCompatibleImageAdapter(options = {}) { return createJsonImageAdapter(options, createCompatibleImageGenerationBody); }
+function generationOnly(createBody, snapshot, {sourceBytes} = {}) {
+  if (sourceBytes !== undefined) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+  return createBody(snapshot);
+}
+export function createOpenAIImageAdapter(options = {}) {
+  return createJsonImageAdapter(options, (snapshot, {signal, sourceBytes}) => snapshot?.purpose === 'edit'
+    ? createImageEditBody(snapshot, sourceBytes, {signal}) : generationOnly(createImageGenerationBody, snapshot, {sourceBytes}));
+}
+export function createCompatibleImageAdapter(options = {}) {
+  return createJsonImageAdapter(options, (snapshot, context) => generationOnly(createCompatibleImageGenerationBody, snapshot, context));
+}

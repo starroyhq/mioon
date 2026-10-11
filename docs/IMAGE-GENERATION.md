@@ -289,3 +289,10 @@ Exact run logs, screenshots, immutable source hashes and the native output
 hash are retained in the local `evidence/image-generation/` acceptance record.
 Known platform limits remain: Linux development build only; native macOS and
 Windows/live-provider acceptance are not established by this slice.
+
+## Single managed PNG edits (2026-10-11)
+
+The additive Mock/fixed-OpenAI edit branch and its current verification status are
+specified in [IMAGE-EDITING.md](IMAGE-EDITING.md). Legacy text generation, original
+receipts and versions retain their prior shape. Custom-compatible and ComfyUI
+editing are not included.

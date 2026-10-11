@@ -21,6 +21,15 @@ const action = task => ({projectId: task.projectId, taskId: task.id, digest: tas
 const execute = envelope => ({...action(envelope.task), instanceId: envelope.instanceId});
 const acknowledge = task => ({...action(task), expectedRevision: task.revision, status: task.status});
 
+// WORKER_STARTUP_DIAGNOSTIC: observation only; readiness and cleanup deadlines stay unchanged.
+const startupPhases = new Set(['entry-after-imports', 'open-store-start', 'open-store-end',
+  'services-start', 'services-end', 'tasks-start', 'tasks-end', 'reconcile-start', 'reconcile-end']);
+const startupResourceKeys = ['userCPUTime', 'systemCPUTime', 'maxRSS', 'fsRead', 'fsWrite',
+  'voluntaryContextSwitches', 'involuntaryContextSwitches'];
+const startupNumber = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+const startupResources = value => Object.fromEntries(startupResourceKeys
+  .filter(key => startupNumber(value?.[key])).map(key => [key, value[key]]));
+
 function deadline(promise, label, ms = 10000) {
   let timer;
   return Promise.race([promise, new Promise((_, reject) => {
@@ -29,22 +38,41 @@ function deadline(promise, label, ms = 10000) {
 }
 
 function startWorker(root) {
+  const started = process.hrtime.bigint(), observations = [];
+  const elapsed = () => Math.round(Number(process.hrtime.bigint() - started) / 1000) / 1000;
+  const observe = (event, details = {}) => {
+    if (observations.length < 16) observations.push({event, elapsedMs: elapsed(), ...details});
+  };
+  const exitDetails = (code, signal) => ({code: Number.isInteger(code) ? code : null,
+    signal: ['SIGINT', 'SIGTERM', 'SIGKILL'].includes(signal) ? signal : null});
+  observe('launch');
   const child = spawn(process.execPath, [workerPath, root], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0'}});
-  let output = '';
-  for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', chunk => { output = (output + chunk).slice(-20000); });
+  let output = '', stdoutBytes = 0, stderrBytes = 0;
+  for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.setEncoding('utf8').on('data', chunk => {
+    output = (output + chunk).slice(-20000);
+    if (name === 'stdout') stdoutBytes = Math.min(Number.MAX_SAFE_INTEGER, stdoutBytes + Buffer.byteLength(chunk));
+    else stderrBytes = Math.min(Number.MAX_SAFE_INTEGER, stderrBytes + Buffer.byteLength(chunk));
+  });
   const ready = Promise.withResolvers(), exited = Promise.withResolvers(), pending = new Map();
   let stopped;
   const rejectPending = error => { ready.reject(error); for (const reply of pending.values()) reply.reject(error); };
-  child.once('error', rejectPending);
+  child.once('spawn', () => observe('spawn'));
+  child.once('error', error => { observe('error'); rejectPending(error); });
+  child.once('exit', (code, signal) => observe('exit', exitDetails(code, signal)));
   child.once('close', (code, signal) => {
+    observe('close', exitDetails(code, signal));
     stopped = {code, signal};
     rejectPending(Object.assign(Error(`Worker exited (${code}, ${signal})\n${output}`), {code: 'WORKER_EXITED', signal}));
     exited.resolve(stopped);
   });
   child.on('message', message => {
-    if (message.type === 'ready') ready.resolve(message);
-    else if (message.type === 'fatal') rejectPending(Error(message.message));
+    if (message.type === 'startup-phase') {
+      if (startupPhases.has(message.phase) && startupNumber(message.elapsedMs))
+        observe('phase', {phase: message.phase, workerElapsedMs: message.elapsedMs,
+          resourceUsage: startupResources(message.resourceUsage)});
+    } else if (message.type === 'ready') { observe('ready'); ready.resolve(message); }
+    else if (message.type === 'fatal') { observe('fatal'); rejectPending(Error(message.message)); }
     else if (message.type === 'reply') {
       const reply = pending.get(message.id);
       if (message.error) reply?.reject(Object.assign(Error(message.error.message), {code: message.error.code}));
@@ -52,6 +80,9 @@ function startWorker(root) {
     }
   });
   return {pid: child.pid, ready: ready.promise, exited: exited.promise,
+    startupDiagnostic: () => ({elapsedMs: elapsed(), observations: observations.map(value => ({...value})),
+      stdoutBytes, stderrBytes, connected: child.connected, ...exitDetails(child.exitCode, child.signalCode),
+      parentResourceUsage: startupResources(process.resourceUsage())}),
     async ask(method, input) {
       if (stopped) throw Error('Worker is already stopped');
       const id = randomUUID(), reply = Promise.withResolvers();
@@ -70,11 +101,13 @@ function startWorker(root) {
 
 async function fixture(t) {
   // Canonicalize only this newly created private directory; keep all storage guards enabled.
-  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-edit-task-process-'))), workers = [];
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-edit-task-process-'))), workers = [], timedOutWorkers = new Set();
   let worker;
   t.after(async () => {
     try {
       const results = await Promise.allSettled(workers.map(value => value.close()));
+      for (const value of timedOutWorkers)
+        t.diagnostic(`Worker readiness cleanup observation: ${JSON.stringify(value.startupDiagnostic())}`);
       for (const result of results) if (result.status === 'rejected') throw result.reason;
       t.diagnostic(`All ${workers.length} workers reaped: ${workers.map(value => value.pid).join(', ')}`);
     } finally { await rm(root, {recursive: true, force: true}); }
@@ -99,7 +132,15 @@ async function fixture(t) {
     get worker() { return worker; },
     async start() {
       worker = startWorker(root); workers.push(worker);
-      const ready = await deadline(worker.ready, 'worker ready');
+      let ready;
+      try { ready = await deadline(worker.ready, 'worker ready'); }
+      catch (error) {
+        if (error.message === 'Timed out: worker ready') {
+          timedOutWorkers.add(worker);
+          t.diagnostic(`Worker readiness timeout observation: ${JSON.stringify(worker.startupDiagnostic())}`);
+        }
+        throw error; // The fixture's existing owned-worker cleanup runs immediately after rejection.
+      }
       assert.equal(ready.pid, worker.pid); assert.notEqual(ready.pid, process.pid);
       assert.equal(await readFile(path.join(root, 'server.lock'), 'utf8'), String(worker.pid));
       return ready;

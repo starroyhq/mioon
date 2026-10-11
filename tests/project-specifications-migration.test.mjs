@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {normalizeImageReviewObject} from './image-edit-migration-preservation.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -63,8 +64,11 @@ function preserved(db,before){
  assert.deepEqual(after.inputBytes,before.inputBytes,'input whitespace, escaping, key order and UTF-8 bytes');
  assert.deepEqual(after.columns,before.columns,'no task columns, affinities, nullability or defaults change');
  assert.deepEqual(after.foreignKeys,before.foreignKeys,'legacy task foreign keys remain unchanged');
- for(const object of before.objects.filter(row=>!(row.type==='table'&&row.name==='edit_tasks')))
-  assert.deepEqual(after.objects.find(row=>row.type===object.type&&row.name===object.name),object,`${object.type} ${object.name}: exact SQL retained`);
+ for(const object of before.objects.filter(row=>!(row.type==='table'&&row.name==='edit_tasks'))){
+  const current=after.objects.find(row=>row.type===object.type&&row.name===object.name);
+  const normalized=object.type==='table'&&object.name==='image_reviews'&&db.prepare('SELECT 1 FROM schema_version WHERE version=23').get()?normalizeImageReviewObject(current):current;
+  assert.deepEqual(normalized,object,`${object.type} ${object.name}: exact SQL retained outside the pinned schema23 CHECK addition`);
+ }
  assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
@@ -159,7 +163,7 @@ function assertNarrowExpansion(db,before,{startup=false}={}){
  const withoutOperations=sql=>sql.replace(/CHECK\(operation IN \([^)]+\)\)/,'CHECK(operation IN (LEGACY_PLUS_FORMAT))');
  assert.equal(withoutOperations(current),withoutOperations(previous),'the operation allowlist is the only task table DDL change');
  assert.deepEqual(db.prepare('PRAGMA table_info(edit_tasks)').all().map(row=>row.name),COLUMNS);
- assert.equal(db.prepare('SELECT max(version) AS n FROM schema_version').get().n,startup?22:21);
+ assert.equal(db.prepare('SELECT max(version) AS n FROM schema_version').get().n,startup?23:21);
  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE type='table' AND name LIKE 'edit_tasks_%'").get().n,0);
  assert.deepEqual(db.prepare('SELECT * FROM timeline_format_requests').all(),[],'migration invents no requests or specifications');
 }

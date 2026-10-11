@@ -116,6 +116,20 @@ Three additional read-only discovery tools are available:
 Provider IDs currently include `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`. Discover each configured provider's actual model options before use; adding an adapter does not authorize live generation or mean a credential is configured.
 
 ### Image tools
+### Single-PNG reference edits
+
+The same `image.generate` accepts paired `purpose:"edit"` and
+`inputImage:{assetId,sha256}` for Mock and the fixed official OpenAI slot. The
+backend validates one project-owned managed PNG (8 MiB, maximum 1024 per edge,
+opaque 8-bit RGB/RGBA) and derives immutable source provenance. Omit both fields
+for the existing text-generation shape. Custom-compatible/Comfy editing, masks
+and identity/pixel guarantees are outside this profile. Mock remains a static
+test card. Official edits require the existing private user review; preparation
+also performs bounded local source-byte validation. Keep the exact request key
+through uncertain outcomes. See [single-PNG editing](IMAGE-EDITING.md) for the
+strict source/output contract, disclosure and current verification status.
+
+
 
 The shared catalog exposes `image_profile_list`, `image_generate`,
 `image_request_get`, `image_task_get`, `image_task_list`, `image_group_get`,

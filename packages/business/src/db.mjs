@@ -6,7 +6,7 @@ import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {bootstrapEditTaskSchema,migrateSubjectEditTasks,migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from './edit-task-schema.mjs';
 import {migrateSubjectSchema} from './subject-schema.mjs';
 import {migrateImageSchema} from './image-schema.mjs';
-import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImageReviewSchema} from './images/review-schema.mjs';
+import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImageReviewSchema,migrateImageEditReviewSchema} from './images/review-schema.mjs';
 import {migrateComfyImageSchema} from './comfy-image-schema.mjs';
 import {migrateFrameSchema} from './frame-schema.mjs';
 import {migrateTimelineFormatSchema} from './timeline-format-schema.mjs';
@@ -419,6 +419,21 @@ export function openStore(root,{lock=true}={}){
   try{migrateTimelineSubtitleEditTasks(db);db.exec('INSERT INTO schema_version VALUES(22);COMMIT;');}
   catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
+ // This one parent-table rebuild must retain already-populated Comfy foreign
+ // keys. Only this unexposed startup connection may suspend enforcement; the
+ // migration verifies the complete graph before commit and restores it always.
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=23').get()){
+  if(db.isTransaction)throw new Error('Image edit migration requires an isolated startup connection');
+  try{
+   db.exec('PRAGMA foreign_keys=OFF');
+   if(db.prepare('PRAGMA foreign_keys').get().foreign_keys!==0)throw new Error('Could not guard image edit migration');
+   db.exec('BEGIN IMMEDIATE');
+   migrateImageEditReviewSchema(db);
+   db.exec('INSERT INTO schema_version VALUES(23);COMMIT;');
+  }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+  finally{db.exec('PRAGMA foreign_keys=ON');}
+ }
+ if(db.prepare('PRAGMA foreign_keys').get().foreign_keys!==1)throw new Error('Foreign-key enforcement must be enabled');
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};
  const get=(t,id)=>{const r=db.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);return r?JSON.parse(r.data):null;};

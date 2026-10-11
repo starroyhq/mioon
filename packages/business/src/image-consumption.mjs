@@ -8,7 +8,7 @@ export function validateImageConsumption(db,asset,projectId){
  const imageTable=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_versions'").get());
  const frameTable=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='frame_tasks'").get());
  if(!imageTable&&db.prepare('SELECT 1 FROM schema_version WHERE version=16').get()||!frameTable&&db.prepare('SELECT 1 FROM schema_version WHERE version=20').get())throw invalid();
- const imageOwned=imageTable&&db.prepare('SELECT 1 FROM image_versions WHERE assetId=? LIMIT 1').get(asset.id);
+ const imageOwned=imageTable&&(db.prepare("SELECT 1 FROM image_versions WHERE assetId=? OR CASE WHEN json_valid(data) THEN json_extract(data,'$.assetId') END=? LIMIT 1").get(asset.id,asset.id)||db.prepare("SELECT 1 FROM image_tasks WHERE CASE WHEN json_valid(stagedReceipt) THEN json_extract(stagedReceipt,'$.assetId') END=? LIMIT 1").get(asset.id));
  const frameOwned=frameTable&&db.prepare("SELECT 1 FROM frame_tasks WHERE assetId=? OR CASE WHEN json_valid(stagedReceipt) THEN json_extract(stagedReceipt,'$.assetId') END=? LIMIT 1").get(asset.id,asset.id);
  if(!imageOwned&&!frameOwned&&asset.provenance!=='extracted-frame')return asset;
  try{createOwnedMediaGraphReader(db,projectId).asset(asset.id);}

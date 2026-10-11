@@ -2,10 +2,10 @@ import {isIP} from 'node:net';
 import {getCustomImageDestination} from '../../../contracts/src/image-settings.mjs';
 import {checkServerIdentity} from 'node:tls';
 import {isPublicAgentAddress, assertPinnedAgentSocket} from '../agent/network-policy.mjs';
-import {IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, imageAdapterError} from './profiles.mjs';
+import {IMAGE_EDIT_ENDPOINT, IMAGE_EDIT_NETWORK_LIMITS, IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, imageAdapterError} from './profiles.mjs';
 
-function limitsFor(overrides = {}) {
-  const limits = {...IMAGE_NETWORK_LIMITS};
+function limitsFor(overrides = {}, profileLimits = IMAGE_NETWORK_LIMITS) {
+  const limits = {...profileLimits};
   for (const [name, value] of Object.entries(overrides)) {
     if (!Object.hasOwn(limits, name) || !Number.isSafeInteger(value) || value < 1 || value > limits[name]) throw imageAdapterError('IMAGE_INVALID_REQUEST');
     limits[name] = value;
@@ -39,6 +39,7 @@ function compatibleEndpoint(baseUrl) {
   catch { throw imageAdapterError('IMAGE_INVALID_REQUEST'); }
 }
 export function resolveImageDestination(options = {}) { return resolveDestination(IMAGE_GENERATION_ENDPOINT, options); }
+export function resolveImageEditDestination(options = {}) { return resolveDestination(IMAGE_EDIT_ENDPOINT, options); }
 export async function resolveCompatibleImageDestination({baseUrl, ...options} = {}) {
   return resolveDestination(compatibleEndpoint(baseUrl), options);
 }
@@ -47,14 +48,14 @@ export async function resolveCompatibleImageDestination({baseUrl, ...options} = 
  * synthetic tests supply inert dependencies and a fake sentinel.
  * No retries, redirects, proxy/environment handling or pooled agents. Endpoint
  * selection happens only in the explicit trusted factories below. */
-function createJsonTransport(endpoint, {lookup, httpsRequest, apiKey, limits: overrides} = {}) {
+function createJsonTransport(endpoint, {lookup, httpsRequest, apiKey, limits: overrides} = {}, profileLimits = IMAGE_NETWORK_LIMITS) {
   if (typeof lookup !== 'function' || typeof httpsRequest !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');
   if (typeof apiKey !== 'string' || !/^[\x21-\x7e]{1,4096}$/.test(apiKey)) throw imageAdapterError('IMAGE_INVALID_REQUEST');
-  const limits = limitsFor(overrides);
+  const limits = limitsFor(overrides, profileLimits);
   return async function postImageJson({body, signal, beforeDispatch} = {}) {
     if (typeof body !== 'string' || !body.length || Buffer.byteLength(body) > limits.maxRequestBytes || typeof beforeDispatch !== 'function') throw imageAdapterError('IMAGE_INVALID_REQUEST');
     if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
-    let request, response, rejectPending, failed, closed = false, dispatched = false;
+    let request, response, rejectPending, failed, closed = false, dispatched = false, received = false;
     const controller = new AbortController();
     const fail = code => {
       if (closed || failed) return;
@@ -87,8 +88,8 @@ function createJsonTransport(endpoint, {lookup, httpsRequest, apiKey, limits: ov
           },
         };
         request = httpsRequest(options, incoming => {
-          response = incoming;
-          if (failed || closed || !dispatched) { incoming.destroy(); if (!failed && !closed) fail('IMAGE_RESPONSE_INVALID'); return; }
+          if (failed || closed || !dispatched || received) { incoming.destroy(); if (!failed && !closed) fail('IMAGE_RESPONSE_INVALID'); return; }
+          received = true; response = incoming;
           if (incoming.statusCode !== 200) { fail('IMAGE_HTTP_ERROR'); return; }
           const headers = incoming.headers || {}, type = headers['content-type'], encoding = headers['content-encoding'], length = headers['content-length'];
           if (typeof type !== 'string' || !/^application\/json(?:\s*;\s*charset\s*=\s*utf-8)?\s*$/i.test(type) || (encoding !== undefined && encoding !== 'identity')) { fail('IMAGE_RESPONSE_INVALID'); return; }
@@ -100,7 +101,7 @@ function createJsonTransport(endpoint, {lookup, httpsRequest, apiKey, limits: ov
         request.on('upgrade', (_incoming, socket) => { socket.destroy(); fail('IMAGE_RESPONSE_INVALID'); });
         request.once('socket', socket => {
           socket.once('secureConnect', () => {
-            if (failed || closed || controller.signal.aborted) { socket.destroy(); return; }
+            if (failed || closed || dispatched || controller.signal.aborted) { socket.destroy(); return; }
             try { assertPinnedAgentSocket(socket, destination); }
             catch { fail('IMAGE_NETWORK_DENIED'); return; }
             clearTimeout(connectTimer);
@@ -140,6 +141,7 @@ function createJsonTransport(endpoint, {lookup, httpsRequest, apiKey, limits: ov
 
 // The official factory cannot be redirected by supplied URL/profile properties.
 export function createImageJsonTransport(options = {}) { return createJsonTransport(IMAGE_GENERATION_ENDPOINT, options); }
+export function createImageEditJsonTransport(options = {}) { return createJsonTransport(IMAGE_EDIT_ENDPOINT, options, IMAGE_EDIT_NETWORK_LIMITS); }
 export function createCompatibleImageJsonTransport({baseUrl, ...options} = {}) {
   return createJsonTransport(compatibleEndpoint(baseUrl), options);
 }

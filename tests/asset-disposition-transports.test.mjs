@@ -46,21 +46,58 @@ async function stopOwned(child) {
   if (!child || child.exitCode !== null || child.signalCode) return;
   const ended = once(child, 'close');
   child.kill('SIGTERM');
-  const timer = setTimeout(() => child.kill('SIGKILL'), 3_000);
+  const timer = setTimeout(() => { if (child.exitCode === null && !child.signalCode) child.kill('SIGKILL'); }, 3_000);
   try { await bounded(ended, 'Owned child cleanup', 6_000); } finally { clearTimeout(timer); }
 }
 
-function launch(t, args, env) {
+// Test-only observation: a timeout remains a failure. Reap this exact handle
+// before later subtests, retaining the original deadline error if cleanup fails.
+async function finishOwned(finished, child, snapshot, diagnostic) {
+  try { return await bounded(finished, 'CLI response'); }
+  catch (error) {
+    diagnostic(snapshot());
+    try { await stopOwned(child); }
+    catch { diagnostic({cleanup: 'unconfirmed owned-child close'}); }
+    throw error;
+  }
+}
+
+function launch(t, args, env, label = 'fixture') {
+  const started = performance.now(), milestones = {};
+  const elapsed = () => Math.round((performance.now() - started) * 1000) / 1000;
   const child = spawn(process.execPath, args, {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '', failure;
+  child.once('spawn', () => { milestones.spawnMs = elapsed(); });
+  child.once('exit', (code, signal) => { milestones.exitMs = elapsed(); milestones.exitCode = code; milestones.exitSignal = signal; });
+  const snapshot = () => {
+    const phases = [];
+    for (const line of stderr.split('\n')) {
+      if (!line.startsWith('MIOON_WIRE_PHASE ')) continue;
+      try {
+        const row = JSON.parse(line.slice('MIOON_WIRE_PHASE '.length));
+        if (!['preload-ready', 'fetch-start', 'fetch-headers', 'fetch-rejected'].includes(row.stage)) continue;
+        const safe = {stage: row.stage};
+        for (const key of ['uptimeMs', 'userCPUTime', 'systemCPUTime', 'maxRSS'])
+          if (Number.isFinite(row[key]) && row[key] >= 0) safe[key] = row[key];
+        phases.push(safe);
+      } catch {}
+    }
+    let envelopeObserved = false;
+    try { envelopeObserved = typeof JSON.parse(stdout.trim()).ok === 'boolean'; } catch {}
+    return {label, pid: child.pid ?? null, elapsedMs: elapsed(), ...milestones,
+      exitCode: child.exitCode, signalCode: child.signalCode,
+      stdoutBytes: Buffer.byteLength(stdout), stderrBytes: Buffer.byteLength(stderr),
+      envelopeObserved, phases: phases.slice(-16)};
+  };
   // JSON descriptions may cross pipe chunks inside a UTF-8 character.
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
   for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.setEncoding('utf8').on('data', chunk => {
+    milestones.firstOutputMs ??= elapsed(); milestones.lastOutputMs = elapsed();
     if (name === 'stdout') stdout += chunk; else stderr += chunk;
     if (stdout.length + stderr.length > 512 * 1024) { failure = Error('Owned child exceeded bounded output'); child.kill('SIGKILL'); }
   });
   child.on('error', error => { failure = error; });
-  const finished = new Promise(resolve => child.once('close', (code, signal) => resolve({code, signal})));
+  const finished = new Promise(resolve => child.once('close', (code, signal) => { milestones.closeMs = elapsed(); resolve({code, signal}); }));
   t.after(() => stopOwned(child));
   return {child, get stdout() { return stdout; }, get stderr() { return stderr; },
     lines: () => stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line)),
@@ -78,7 +115,7 @@ function launch(t, args, env) {
       }
       throw Error('Owned backend startup timed out');
     },
-    async finish() { const result = await bounded(finished, 'CLI response'); if (failure) throw failure; return result; },
+    async finish() { const result = await finishOwned(finished, child, snapshot, value => t.diagnostic(JSON.stringify(value))); if (failure) throw failure; return result; },
   };
 }
 
@@ -127,7 +164,10 @@ async function fixture(t) {
     return {raw, envelope};
   }
   async function cliArgs(args, expectedError) {
-    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], env());
+    const label = args.slice(0, args.indexOf('--input') < 0 ? args.length : args.indexOf('--input'))
+      .filter(value => /^[a-z][a-z0-9.-]{0,80}$/.test(value)).slice(0, 4).join('.') || 'cli';
+    const child = launch(t, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args],
+      {...env(), MIOON_DISPOSITION_PHASE_TRACE: '1'}, label);
     const {code, signal} = await child.finish(); noPrivate(child.stdout); noPrivate(child.stderr);
     assert.equal(signal, null, child.stderr);
     const lines = child.lines(); assert.equal(lines.length, 1, 'real CLI returns one JSON envelope');

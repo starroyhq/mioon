@@ -58,7 +58,7 @@ test('remote observation has its own stable acknowledgement and remote-revision 
 });
 test('catalog preserves strict image union branches and reports the common required replay key',()=>{
  const definition=operationDefinition('image.generate');assert.equal(definition.inputSchema.type,'object');assert.equal(definition.requiresRequestId,true);
- assert.equal(definition.inputSchema.anyOf.length,2);for(const branch of definition.inputSchema.anyOf){assert.equal(branch.type,'object');assert.equal(branch.additionalProperties,false);assert.ok(branch.required.includes('requestId'));}
+ assert.equal(definition.inputSchema.anyOf.length,3);for(const branch of definition.inputSchema.anyOf){assert.equal(branch.type,'object');assert.equal(branch.additionalProperties,false);assert.ok(branch.required.includes('requestId'));}
  assert.equal(operationDefinition('image.task.observeRemote').requiresRequestId,true);assert.equal(operationDefinition('image.task.remote.get').requiresRequestId,false);
  const scalar=jsonSchema(comfyRemoteSchemas['image.task.remote.get'].shape.taskId);assert.equal(scalar.type,'string');
 });

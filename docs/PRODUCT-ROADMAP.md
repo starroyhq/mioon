@@ -387,3 +387,16 @@ A custom base URL is not proof of Images API compatibility. Image editing, masks
 and broader reference combinations follow separately; Blender is optional and
 this work does not block the verified Linux trial. No live call or credential
 configuration is authorized by this roadmap entry.
+
+## Single-PNG editing checkpoint (2026-10-11)
+
+The approved image-editing slice after subtitles/export settings is implemented:
+one managed PNG, fixed official OpenAI and Mock, explicit
+right-Properties source/prompt review, preserved originals and a new immutable
+version. [The exact scope](IMAGE-EDITING.md) excludes masks, multiple sources,
+custom-compatible/Comfy editing and identity guarantees. Focused, production
+build/package and Linux native checks passed, followed by the final parent gate
+(3960 total,3958 passed,0 failed,2 skipped). The first timeout failures and unknown
+latency cause are retained in acceptance. Real-provider and Mac/Windows
+verification remain separate. Broader image editing, compositing and provider capability work remains
+on the existing roadmap rather than being declared complete by this slice.

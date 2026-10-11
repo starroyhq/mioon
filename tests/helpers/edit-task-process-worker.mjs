@@ -12,6 +12,19 @@ const crashPhases = new Set(['afterPreparePersist', 'afterClaim', 'afterBusiness
 let store, tasks, armed, closing;
 const dispatches = [], phases = [];
 const report = message => { if (process.connected) process.send(message); };
+// WORKER_STARTUP_DIAGNOSTIC: fixed phase labels and numeric counters only, never fixture inputs or paths.
+const startupEntered = process.hrtime.bigint();
+const startupResourceKeys = ['userCPUTime', 'systemCPUTime', 'maxRSS', 'fsRead', 'fsWrite',
+  'voluntaryContextSwitches', 'involuntaryContextSwitches'];
+const startupPhase = phase => {
+  const usage = process.resourceUsage();
+  report({type: 'startup-phase', phase,
+    elapsedMs: Math.round(Number(process.hrtime.bigint() - startupEntered) / 1000) / 1000,
+    resourceUsage: Object.fromEntries(startupResourceKeys
+      .filter(key => typeof usage[key] === 'number' && Number.isFinite(usage[key]) && usage[key] >= 0)
+      .map(key => [key, usage[key]]))});
+};
+startupPhase('entry-after-imports');
 const crashAt = phase => {
   phases.push(phase);
   if (armed === phase) process.kill(process.pid, 'SIGKILL');
@@ -23,13 +36,21 @@ const close = () => closing ??= (async () => {
 })();
 
 try {
+  startupPhase('open-store-start');
   store = openStore(process.argv[2]);
+  startupPhase('open-store-end');
+  startupPhase('services-start');
   const services = createServices(store, new Map());
+  startupPhase('services-end');
+  startupPhase('tasks-start');
   tasks = createEditTasks({store, services: {call(operation, input) {
     dispatches.push({operation, input});
     return services.call(operation, input);
   }}, fault: crashAt});
+  startupPhase('tasks-end');
+  startupPhase('reconcile-start');
   const startup = tasks.reconcileStartup();
+  startupPhase('reconcile-end');
   process.on('message', async message => {
     try {
       if (message.method === 'close') { await close(); return; }

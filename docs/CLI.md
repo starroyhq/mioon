@@ -147,6 +147,20 @@ Replace placeholders and revisions with the current `project get` results. The s
 Attach/detach both need a caller-owned request ID. After an uncertain response, replay the exact original operation and input, including its original revisions. The response is the original saved result, not a fresh project read, even after the connection was removed or the backend restarted. Refresh before another edit. MCP exposes the identical `reference_attach` and `reference_detach` schemas and behavior. Attaching neither generates nor uploads media; per-model support and live authorization are checked when submitting generation.
 
 ## Local image generation and review preparation
+### Single-PNG reference edits
+
+The same `image.generate` accepts paired `purpose:"edit"` and
+`inputImage:{assetId,sha256}` for Mock and the fixed official OpenAI slot. The
+backend validates one project-owned managed PNG (8 MiB, maximum 1024 per edge,
+opaque 8-bit RGB/RGBA) and derives immutable source provenance. Omit both fields
+for the existing text-generation shape. Custom-compatible/Comfy editing, masks
+and identity/pixel guarantees are outside this profile. Mock remains a static
+test card. Official edits require the existing private user review; preparation
+also performs bounded local source-byte validation. Keep the exact request key
+through uncertain outcomes. See [single-PNG editing](IMAGE-EDITING.md) for the
+strict source/output contract, disclosure and current verification status.
+
+
 
 Image commands use the same backend and schema catalog:
 
@@ -216,7 +230,8 @@ official v1 DTOs and original task/receipt shapes remain intact.
 Image discovery is `image profile list`, separate from video `capabilities`.
 Enabled means local configuration is present, not live verification or permission
 to spend. The `image.generate` effects conservatively include separately approved
-paid/external worker work; prepare is local-database-only, get/list read-only.
+paid/external worker work; prepare writes local records and validates the selected
+local PNG for edits, while get/list remain read-only.
 These effects do not grant agents approval authority.
 
 Retain the complete request/key; lookup never generates and exact replay returns

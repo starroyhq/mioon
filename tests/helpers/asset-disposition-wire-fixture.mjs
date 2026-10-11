@@ -48,8 +48,17 @@ async function seed(root) {
   } finally { store.close(); }
 }
 
+// This opt-in is set only by the owned CLI test child, not production config.
+let phaseCount = 0;
+const phaseTrace = process.env.MIOON_DISPOSITION_PHASE_TRACE === '1' ? stage => {
+  if (++phaseCount > 16 || !['preload-ready', 'fetch-start', 'fetch-headers', 'fetch-rejected'].includes(stage)) return;
+  const {userCPUTime, systemCPUTime, maxRSS} = process.resourceUsage();
+  process.stderr.write('MIOON_WIRE_PHASE ' + JSON.stringify({stage,
+    uptimeMs: Math.round(process.uptime() * 1000), userCPUTime, systemCPUTime, maxRSS}) + '\n');
+} : undefined;
+phaseTrace?.('preload-ready');
 if (process.env.MIOON_DISPOSITION_WIRE_GUARD === '1') installWireGuard({
-  origin: process.env.MIOON_DISPOSITION_WIRE_ALLOWED_ORIGIN || '', auditPath: process.env.MIOON_DISPOSITION_WIRE_AUDIT,
+  origin: process.env.MIOON_DISPOSITION_WIRE_ALLOWED_ORIGIN || '', auditPath: process.env.MIOON_DISPOSITION_WIRE_AUDIT, onFetchStage: phaseTrace,
 });
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

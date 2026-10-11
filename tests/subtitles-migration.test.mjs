@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {normalizeImageReviewObject} from './image-edit-migration-preservation.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -64,8 +65,11 @@ function preserved(db,before){
  assert.deepEqual(after.inputBytes,before.inputBytes,'input whitespace, escaping, key order and UTF-8 bytes');
  assert.deepEqual(after.columns,before.columns,'no task columns, affinities, nullability or defaults change');
  assert.deepEqual(after.foreignKeys,before.foreignKeys,'legacy task foreign keys remain unchanged');
- for(const object of before.objects.filter(row=>!(row.type==='table'&&row.name==='edit_tasks')))
-  assert.deepEqual(after.objects.find(row=>row.type===object.type&&row.name===object.name),object,`${object.type} ${object.name}: exact SQL retained`);
+ for(const object of before.objects.filter(row=>!(row.type==='table'&&row.name==='edit_tasks'))){
+  const current=after.objects.find(row=>row.type===object.type&&row.name===object.name);
+  const normalized=object.type==='table'&&object.name==='image_reviews'&&db.prepare('SELECT 1 FROM schema_version WHERE version=23').get()?normalizeImageReviewObject(current):current;
+  assert.deepEqual(normalized,object,`${object.type} ${object.name}: exact SQL retained outside the pinned schema23 CHECK addition`);
+ }
  assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
@@ -155,7 +159,7 @@ function seed(db){
  assert.deepEqual(new Set(rows.map(row=>row.status)),new Set(['prepared','dispatching','unknown','applied','not_applied']));
  assert.ok(rows.every(row=>row.input.includes('\\u754c')));
 }
-function assertNarrowExpansion(db,before){
+function assertNarrowExpansion(db,before,{startup=false}={}){
  const previous=before.objects.find(row=>row.type==='table'&&row.name==='edit_tasks').sql;
  const current=db.prepare("SELECT sql FROM sqlite_schema WHERE name='edit_tasks'").get().sql;
  const operationList=sql=>sql.match(/CHECK\(operation IN \(([^)]+)\)\)/)[1].split(',').map(value=>value.trim().slice(1,-1));
@@ -163,7 +167,7 @@ function assertNarrowExpansion(db,before){
  const withoutOperations=sql=>sql.replace(/CHECK\(operation IN \([^)]+\)\)/,'CHECK(operation IN (LEGACY_PLUS_SUBTITLES))');
  assert.equal(withoutOperations(current),withoutOperations(previous),'the operation allowlist is the only task table DDL change');
  assert.deepEqual(db.prepare('PRAGMA table_info(edit_tasks)').all().map(row=>row.name),COLUMNS);
- assert.equal(db.prepare('SELECT max(version) AS n FROM schema_version').get().n,22);
+ assert.equal(db.prepare('SELECT max(version) AS n FROM schema_version').get().n,startup?23:22);
  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE type='table' AND name LIKE 'edit_tasks_%'").get().n,0);
  assert.deepEqual(db.prepare('SELECT * FROM timeline_format_requests').all(),[],'migration invents no requests or specifications');
 }
@@ -181,7 +185,7 @@ test('schema22 changes only operation CHECK preserving independently frozen sche
 test('real schema21 startup equals fresh schema22 and repeated restart preserves every retained byte',t=>{
  const upgradedRoot=root(t),freshRoot=root(t),legacy=database(path.join(upgradedRoot,'workbench.sqlite'));seed(legacy);const before=snapshot(legacy);legacy.close();
  let upgraded=openStore(upgradedRoot);const fresh=openStore(freshRoot);t.after(()=>{upgraded.close();fresh.close();});
- preserved(upgraded.db,before);assertNarrowExpansion(upgraded.db,before);
+ preserved(upgraded.db,before);assertNarrowExpansion(upgraded.db,before,{startup:true});
  const objects=db=>snapshot(db).objects.filter(row=>row.tbl_name==='edit_tasks');assert.deepEqual(objects(upgraded.db),objects(fresh.db));
  const after=snapshot(upgraded.db);for(let count=0;count<2;count++){upgraded.close();upgraded=openStore(upgradedRoot);assert.deepEqual(snapshot(upgraded.db),after);}
 });
@@ -195,7 +199,7 @@ test('failed schema22 marker rolls back raw rebuild, schema objects and sequence
  const location=root(t),filename=path.join(location,'workbench.sqlite');let db=database(filename);seed(db);
  db.exec("CREATE TRIGGER reject_schema22 BEFORE INSERT ON schema_version WHEN NEW.version=22 BEGIN SELECT RAISE(ABORT,'injected schema22 marker failure');END");const before=snapshot(db);db.close();
  assert.throws(()=>openStore(location),/injected schema22 marker failure/);db=new DatabaseSync(filename);db.exec('PRAGMA foreign_keys=ON');assert.deepEqual(snapshot(db),before);
- db.exec('DROP TRIGGER reject_schema22');const retryBefore=snapshot(db);db.close();const store=openStore(location);t.after(()=>store.close());preserved(store.db,retryBefore);assertNarrowExpansion(store.db,retryBefore);
+ db.exec('DROP TRIGGER reject_schema22');const retryBefore=snapshot(db);db.close();const store=openStore(location);t.after(()=>store.close());preserved(store.db,retryBefore);assertNarrowExpansion(store.db,retryBefore,{startup:true});
 });
 
 test('subtitle migration refuses invalid preconditions and no-ops when operation CHECK is already expanded',t=>{

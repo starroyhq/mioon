@@ -55,7 +55,7 @@ test('new image identities resist updates, delete and INSERT OR REPLACE and disp
 
 test('normal startup preserves schema15 rows through later migrations and the explicit format allowlist rebuild',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-image-migration-'));let db=legacyDatabase(path.join(root,'workbench.sqlite')),store;
- try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) v FROM schema_version').get().v,22);assertOld(store.db,before,{startupMigrations:true});const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
+ try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) v FROM schema_version').get().v,23);assertOld(store.db,before,{startupMigrations:true});const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 
 test('interruption and unknown results keep fences and permit only explicit local-result recovery',t=>{

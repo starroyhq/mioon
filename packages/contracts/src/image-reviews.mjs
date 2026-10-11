@@ -1,11 +1,12 @@
 import {z} from 'zod';
-import {canonicalImageInput, imageSchemas} from './images.mjs';
+import {canonicalImageInput, imageSchemas, imageEditSourceSchema} from './images.mjs';
 import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination, CUSTOM_IMAGE_ENDPOINT_LIMIT} from './image-settings.mjs';
 import {comfyImageConfigurationSchema,isCompleteComfyImageConfiguration,getComfyImageDestination,comfyImageExecutionSchema,comfyImagePolicySchema} from './comfy-images.mjs';
 
-// This contract intentionally leaves image.generate and its old receipts intact.
+// Strict additive edit branches leave historical text-to-image receipts intact.
 // Review preparation is not authority to send. Approval is a private UI route,
 // never a discoverable RPC, CLI, MCP, or Agent operation.
+export const IMAGE_EDIT_REVIEW_DESTINATION = 'https://api.openai.com/v1/images/edits';
 export const IMAGE_REVIEW_DESTINATION = 'https://api.openai.com/v1/images/generations';
 export const IMAGE_REVIEW_POLICY = Object.freeze({maxPostAttempts: 1, automaticRetry: false,
   price: 'usage-based-unknown', promptStorage: 'local-plaintext'});
@@ -16,7 +17,9 @@ const id = z.string().uuid(), revision = z.number().int().min(1).max(Number.MAX_
 const key = z.string().min(8).max(200), hash = z.string().regex(/^[a-f0-9]{64}$/);
 const timestamp = z.string().min(1).max(40).refine(value => Number.isFinite(Date.parse(value)), 'Invalid timestamp');
 const generation = imageSchemas['image.generate'].refine(value => value.providerId !== 'mock', 'Only live image requests need a review');
-const officialGeneration = generation.refine(value => value.providerId === 'openai');
+const officialGeneration = generation.refine(value => value.providerId === 'openai' && value.purpose === undefined);
+const officialEdit = generation.refine(value => value.providerId === 'openai' && value.purpose === 'edit');
+const matchesEditSource = value => typeof value?.input?.inputImage?.assetId === 'string' && value.input.inputImage.assetId === value.sourceImage?.assetId && value.input.inputImage.sha256 === value.sourceImage?.sha256;
 const customGeneration = generation.refine(value => value.providerId === 'openai-compatible');
 const comfyGeneration = generation.refine(value => value.providerId === 'comfy-local');
 const reviewedComfyConfiguration = comfyImageConfigurationSchema.refine(value=>value.enabled&&isCompleteComfyImageConfiguration(value));
@@ -47,7 +50,9 @@ const customIntent = z.object({schemaVersion: z.literal(2), reviewId: id,
   policy: imageReviewPolicySchema, configuration: reviewedConfiguration}).strict().refine(matchesConfiguration, 'Custom review configuration mismatch');
 const comfyIntent=z.object({schemaVersion:z.literal(3),reviewId:id,input:comfyGeneration,settingsRevision:revision,destination:z.string().max(80),
   policy:comfyImagePolicySchema,configuration:reviewedComfyConfiguration,execution:comfyImageExecutionSchema}).strict().refine(matchesComfyConfiguration,'Local review configuration mismatch');
-export const imageReviewIntentSchema = z.union([officialIntent, customIntent, comfyIntent]);
+const editIntent = z.object({schemaVersion:z.literal(4),reviewId:id,input:officialEdit,settingsRevision:revision,
+ destination:z.literal(IMAGE_EDIT_REVIEW_DESTINATION),policy:imageReviewPolicySchema,sourceImage:imageEditSourceSchema}).strict().refine(matchesEditSource,'Edit source identity mismatch');
+export const imageReviewIntentSchema = z.union([officialIntent, customIntent, comfyIntent, editIntent]);
 const responseFields = {id, projectId: id, requestId: key, input: officialGeneration,
   inputHash: hash, settingsRevision: revision, destination: z.literal(IMAGE_REVIEW_DESTINATION), policy: imageReviewPolicySchema,
   state: z.enum(IMAGE_REVIEW_STATES), revision, taskId: id.nullable(), postAttempts: z.number().int().min(0).max(1),
@@ -67,7 +72,9 @@ const customResponse = z.object({...responseFields, input: customGeneration, des
   .strict().refine(matchesConfiguration, 'Custom review configuration mismatch').superRefine(verifyResponse);
 const comfyResponse=z.object({...responseFields,input:comfyGeneration,destination:z.string().max(80),policy:comfyImagePolicySchema,configuration:reviewedComfyConfiguration,execution:comfyImageExecutionSchema})
   .strict().refine(matchesComfyConfiguration,'Local review configuration mismatch').superRefine(verifyResponse);
-export const imageReviewResponseSchema = z.union([officialResponse, customResponse, comfyResponse]);
+const editResponse=z.object({...responseFields,input:officialEdit,destination:z.literal(IMAGE_EDIT_REVIEW_DESTINATION),sourceImage:imageEditSourceSchema})
+ .strict().refine(matchesEditSource,'Edit source identity mismatch').superRefine(verifyResponse);
+export const imageReviewResponseSchema = z.union([officialResponse, customResponse, comfyResponse, editResponse]);
 export const isImageReviewResponse = value => imageReviewResponseSchema.safeParse(value).success;
 export function isImageReviewListResponse(input, result) {
   if (!imageReviewSchemas['image.review.list'].safeParse(input).success || !result || typeof result !== 'object' || Array.isArray(result) ||
