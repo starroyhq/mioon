@@ -140,9 +140,10 @@ function appHarness(f) {
   return { calls, notices, views, panels, pending, jobs, exports, env, render, renderUnchecked, check, open };
 }
 
-test('actual topbar action opens third dock and checks once without render, mode change or draft guard', async () => {
-  const f = fixture(), h = appHarness(f), waiting = h.open();
-  assert.deepEqual(h.panels, [['tab', 'delivery'], ['inspector', true]]); assert.equal(f.calls.length, 1); assert.equal(h.calls.length, 0);
+test('actual topbar action opens the delivery dock without probing; explicit check reads once without rendering or changing drafts', async () => {
+  const f = fixture(), h = appHarness(f); h.open();
+  assert.deepEqual(h.panels, [['tab', 'delivery'], ['inspector', true]]); assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
+  const waiting = h.check(); assert.equal(f.calls.length, 1);
   f.reads.at(-1).resolve(report()); await waiting; assert.equal(h.calls.length, 0); assert.equal(h.views.length, 0);
 });
 
@@ -298,7 +299,7 @@ test('unchecked intent is distinct, one-use, cannot be forged, and never enters 
 });
 
 test('actual unchecked export is explicit, uses current saved revision without hash, and dispatches only once', async () => {
-  const f = fixture(), h = appHarness(f), pending = h.open(); f.reads.at(-1).resolve(uncheckedReport()); await pending;
+  const f = fixture(), h = appHarness(f); h.open(); const pending = h.check(); f.reads.at(-1).resolve(uncheckedReport()); await pending;
   assert.equal(h.calls.length, 0); const intent = f.state().uncheckedIntent;
   const calls = [], tree = renderPanel({ state: f.state(), onExport: () => assert.fail('Unchecked action cannot use checked export callback'), onUncheckedExport: value => calls.push(value) });
   const button = nodes(tree).find(node => node.props['data-testid'] === 'preflight-export-unchecked');

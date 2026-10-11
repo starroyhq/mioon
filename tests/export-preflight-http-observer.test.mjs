@@ -33,8 +33,8 @@ async function fixture(t, operation) {
   return {url: `http://127.0.0.1:${server.address().port}`, entered, settled, release, observations, calls: () => calls};
 }
 
-test('real HTTP preflight disconnect aborts only observation, detaches listeners and leaves a new connection healthy', {timeout: 10000}, async t => {
-  const f = await fixture(t, 'timeline.export.preflight');
+for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`real HTTP ${operation} disconnect aborts only observation, detaches listeners and leaves a new connection healthy`, {timeout: 10000}, async t => {
+  const f = await fixture(t, operation);
   const request = http.request(f.url, {method: 'POST'});
   request.on('error', () => {}); request.end('{}');
   await f.entered.promise;
@@ -61,10 +61,11 @@ test('real HTTP render disconnect does not cancel or retry its business operatio
   assert.equal(await (await fetch(f.url + '/health')).text(), 'healthy');
 });
 
-test('actual CLI Ctrl+C revokes only its preflight observer and never resubmits', {timeout: 10000}, async t => {
-  const f = await fixture(t, 'timeline.export.preflight');
+for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`actual CLI Ctrl+C revokes only its ${operation} observer and never resubmits`, {timeout: 10000}, async t => {
+  const f = await fixture(t, operation);
+  const input = {projectId: '11111111-1111-4111-8111-111111111111', expectedRevision: 1, ...(operation.endsWith('capabilities') ? {exportSettings: {profileId: 'mp4_h264_v1', resolution: 'native', rateControl: {mode: 'crf', quality: 'standard'}}} : {})};
   const child = spawn(process.execPath, [fileURLToPath(new URL('../apps/cli/src/index.mjs', import.meta.url)),
-    'timeline', 'export', 'preflight', '--input', JSON.stringify({projectId: '11111111-1111-4111-8111-111111111111', expectedRevision: 1})], {
+    ...operation.split('.'), '--input', JSON.stringify(input)], {
     stdio: ['ignore', 'pipe', 'pipe'], env: {PATH: process.env.PATH || '', MIOON_BASE_URL: f.url,
       MIOON_TOKEN: 'preflight-cli-public-synthetic-only-token', MIOON_ENABLE_LIVE_PROVIDER: '0'},
   });
@@ -82,19 +83,19 @@ test('actual CLI Ctrl+C revokes only its preflight observer and never resubmits'
   assert.equal(await (await fetch(f.url + '/health')).text(), 'healthy');
 });
 
-test('already disconnected preflight enters with revoked observer and cleans up on rejection', async () => {
+for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`already disconnected ${operation} enters with revoked observer and cleans up on rejection`, async () => {
   const req = new EventEmitter(), res = new EventEmitter(); res.destroyed = true;
   await assert.rejects(callObservedRpc(req, res, {call: async (_, __, {signal}) => {
     assert.equal(signal.aborted, true); throw Error('synthetic abort');
-  }}, 'timeline.export.preflight', {}), /synthetic abort/);
+  }}, operation, {}), /synthetic abort/);
   assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
 });
 
-test('finished response and later close cannot revoke a settled preflight or retain listeners', async () => {
+for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`finished response and later close cannot revoke settled ${operation} or retain listeners`, async () => {
   const req = new EventEmitter(), res = new EventEmitter(); let signal;
   const result = await callObservedRpc(req, res, {call: async (_, __, options) => {
     signal = options.signal; res.writableFinished = true; res.emit('close'); return {ready: true};
-  }}, 'timeline.export.preflight', {});
+  }}, operation, {});
   assert.deepEqual(result, {ready: true}); assert.equal(signal.aborted, false);
   res.writableFinished = false; res.emit('close'); req.emit('aborted');
   assert.equal(signal.aborted, false);

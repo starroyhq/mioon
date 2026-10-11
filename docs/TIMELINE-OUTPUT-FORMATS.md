@@ -17,6 +17,9 @@ These are dimension pairs, not independent width/height menus. Arbitrary resolut
 
 The setting applies to the project's **timeline preview and timeline export**. Shot-generation aspect ratios, imported/original pixels and Images model options remain separate. Legacy **storyboard export stays 720×1280 / 30 fps / 9:16**. The interface labels that distinction; do not call this a global format switch for every project output.
 
+Per-export [delivery scaling and quality](EXPORT-SETTINGS.md) are separate from these editing presets. A delivery-size choice does not change timeline geometry or the 30fps clock; 1080 short-edge output upscales the existing composition.
+
+
 ## Shared service contract
 
 `timeline.format.get({projectId})` is a bounded, genuinely noncreating metadata read. It returns:

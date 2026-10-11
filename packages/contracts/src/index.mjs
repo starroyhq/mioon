@@ -1,3 +1,5 @@
+import {timelineExportSettingsSchema,timelineExportCapabilitySchemas} from './timeline-export-profile.mjs';
+export * from './timeline-export-profile.mjs';
 import {z} from 'zod';
 import {timelineSubtitleSchemas} from './timeline-subtitles.mjs';
 export * from './timeline-subtitles.mjs';
@@ -64,6 +66,7 @@ export const schemas={
 ...assetDispositionSchemas,
 ...waveformSchemas,
 ...exportPreflightSchemas,
+...timelineExportCapabilitySchemas,
 'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional()}).strict(),
 'project.list':z.object({}).strict(),
 'project.get':z.object({projectId:id}).strict(),
@@ -101,7 +104,7 @@ export const schemas={
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
 'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),
 'timeline.seed':z.object(timelineMutation).strict(),
-'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict()
+'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),exportSettings:timelineExportSettingsSchema.optional(),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict().refine(value=>value.exportSettings===undefined||value.purpose==='export',{message:'Export settings are available only for export renders',path:['exportSettings']})
 };
 // A new operation must receive an audited effect descriptor before discovery
 // or dispatch can initialize; never infer safety from an operation-name suffix.
@@ -139,6 +142,7 @@ Object.assign(descriptions,{
  'subject.list':'分页只读列出项目主体与当前参考版本，不创建记录，不返回媒体路径或 URL',
  'subject.version.list':'分页只读列出主体所有不可变参考版本，可明确重新选择旧版',
  'subject.binding.list':'按唯一镜头或主体过滤器分页只读列出绑定及保留的解绑版本，标记是否需复核',
+ 'timeline.export.capabilities':'显式检查所选 MP4/H264 导出配置的本地编码能力；运行有界本地计算，不修改项目或导出，不调用供应商；结果绑定项目和时间线版本，实际导出会再次验证',
  'timeline.export.preflight':'只读检查既有时间线的本地导出条件；按版本流式核验素材哈希并运行有界ffprobe元数据检查，不完整解码、不创建时间线、缓存或导出，不调用供应商；返回ready、blocked、incomplete或stale，检查结果不保证未来文件可用',
  'asset.waveform.request':'显式请求本地源音频波形缓存；重复请求复用排队、运行或就绪结果，失败或中断须显式retry；运行有界本地解码并写入可淘汰缓存，不调用生成供应商、不编辑素材或时间线',
  'asset.waveform.get':'只读查询指定项目素材的源音频波形；30fps源范围使用排他出点，最多返回2048个归一化峰值；不启动解码、不探测媒体、不修复或写入缓存；不表示时间线混音结果',

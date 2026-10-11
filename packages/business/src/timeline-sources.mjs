@@ -1,4 +1,5 @@
-import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue} from '@mioon/contracts';
+import path from 'node:path';
+import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue,isTimelineExportSnapshot} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 import {validateManagedSource,verifiedManagedHash,sameManagedFile} from './managed-media.mjs';
@@ -38,9 +39,28 @@ export function validateFrozenTimelineSourceGraph(db,projectId,timeline){
  }
 }
 
+// A custom profile adds a capability await after media preparation. Recheck
+// the same bounded owned graph and immutable source identity before consuming
+// cached paths and again at publication. Metadata discovered by ffprobe (size,
+// duration, dimensions and audio flags) is deliberately not an identity fence.
+// This is a synchronous database check, not a byte rehash or pathname sandbox.
+export function validatePreparedTimelineSources(db,projectId,snapshot,prepared,{root}={}){
+ try{
+  if(snapshot?.timeline?.projectId!==projectId||!Array.isArray(snapshot.timeline.clips)||snapshot.timeline.clips.length>100||!Array.isArray(snapshot.assets)||snapshot.assets.length>100||!(prepared instanceof Map)||typeof root!=='string')throw invalid();
+  validateFrozenTimelineSourceGraph(db,projectId,snapshot.timeline);
+  if(prepared.size!==snapshot.assets.length)throw invalid();
+  for(const frozen of snapshot.assets){
+   const current=readOwnedTimelineAsset(db,projectId,frozen.id),verified=prepared.get(frozen.id);
+   if(!current||!verified||current.id!==frozen.id||current.projectId!==projectId||verified.id!==frozen.id||
+    ['sha256','mimeType','relativePath'].some(key=>typeof frozen[key]!=='string'||current[key]!==frozen[key]||verified[key]!==frozen[key])||
+    verified.path!==path.resolve(root,current.relativePath))throw invalid();
+  }
+ }catch{throw fault('TIMELINE_SOURCE_UNAVAILABLE','A frozen timeline source is no longer available in this project.');}
+}
+
 // The transaction contains bounded synchronous reads only. No timeline.ensure,
 // writes, write locks, asynchronous work, or unbounded JSON enters this path.
-export function readTimelinePreflightSnapshot(store,projectId){
+export function readTimelinePreflightSnapshot(store,projectId,exportSettings){
  const {db}=store,outer=db.isTransaction;
  if(!outer)db.exec('BEGIN DEFERRED');
  try{
@@ -58,7 +78,7 @@ export function readTimelinePreflightSnapshot(store,projectId){
   let assets;
   try{assets=readTimelineSourceGraph(db,projectId,timeline);}
   catch(error){if(error.code==='INSPECTION_BUDGET_EXCEEDED')throw error;throw fault('TIMELINE_SOURCE_UNAVAILABLE','A referenced source is unavailable in this project');}
-  return {timeline,snapshot:freezeTimelineSnapshot(timeline,assets)};
+  return {timeline,snapshot:freezeTimelineSnapshot(timeline,assets,exportSettings)};
  }finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
 }
 
@@ -79,7 +99,7 @@ export async function probeTimelineSource(file,{signal,timeout,beforeSpawn}={}){
 export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks}={}){
  throwIfMediaAborted(signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
- if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot))throw invalid();
+ if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot)||!isTimelineExportSnapshot(snapshot))throw invalid();
  if(snapshot.assets.length>100||snapshot.assets.some(a=>!object(a)||!uuid(a.id)||typeof a.mimeType!=='string'||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256))||new Set(snapshot.assets.map(a=>a.id)).size!==snapshot.assets.length)throw invalid();
  validateTimeline(snapshot.timeline,new Map(snapshot.assets.map(a=>[a.id,a])),{structureOnly:true});
  const referenced=new Set(snapshot.timeline.clips.map(clip=>clip.assetId));

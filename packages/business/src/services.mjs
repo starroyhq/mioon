@@ -6,6 +6,7 @@ import {normalizedCapabilities,generationLimit,providerSettings,usesInputProfile
 import {prepareGenerationInputs,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim} from './generation-inputs.mjs';
 import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
+import {createTimelineExportAdmissionServices} from './timeline-export-admission.mjs';
 import {createTimelinePreflightServices} from './timeline-preflight.mjs';
 import {createReferenceServices} from './references.mjs';
 import {createInspectionServices} from './inspection.mjs';
@@ -21,7 +22,7 @@ import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mj
 export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
-export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions}={}){
+export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions}={}){
  const active=new Set();let shutdownFailure;
  const {db,root,get,list,put,tx}=store;
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
@@ -61,7 +62,8 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...shot.referenceAssetIds],referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{})};
   const job={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});return job;
  });
- const timeline=createTimelineServices(store,{required,check,hash,now});
+ const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
+ const timeline=createTimelineServices(store,{required,check,hash,now,exportAdmission});
  const preflight=createTimelinePreflightServices(store,{signal:ownerSignal});
  const references=createReferenceServices(store,{required,check,hash,now});
  const inspection=createInspectionServices(store);
@@ -76,6 +78,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...frames.handlers,
  ...images.handlers,
  ...preflight.handlers,
+ ...exportAdmission.handlers,
  ...waveforms.handlers,
  ...sourceRanges.handlers,
  ...assetDispositions.handlers,
@@ -146,9 +149,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const drain=async()=>{
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),...active]),'SERVICE_STOP_TIMEOUT');
+  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
-  for(const result of results.slice(0,4))if(result.status==='rejected')throw result.reason;
+  for(const result of results.slice(0,5))if(result.status==='rejected')throw result.reason;
  };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.

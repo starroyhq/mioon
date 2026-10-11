@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+import * as exportSettings from '../apps/web/src/export-settings-state.js';
 import * as sourceRanges from '../apps/web/src/source-range-state.js';
 
 // Exercise the real component functions with deterministic hook, ref, media,
@@ -55,6 +56,7 @@ function createHarness(file, exportName = 'default') {
   const mocks = {
     react,
     './source-range-state.js': sourceRanges,
+    './export-settings-state.js': exportSettings,
     '@xyflow/react': { Handle: 'Handle', Position: { Left: 'left', Right: 'right' } },
     './icons.jsx': { default: 'Icon', __esModule: true },
     './api.js': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob: () => false, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },

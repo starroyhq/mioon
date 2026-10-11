@@ -83,6 +83,7 @@ const textSites = {
   "tests/edit-task-process-recovery.test.mjs": 1,
   "tests/edit-tasks-http.test.mjs": 2,
   "tests/export-preflight-http-observer.test.mjs": 2,
+  "tests/export-settings-transports.test.mjs": 3,
   "tests/frame-recovery.test.mjs": 1,
   "tests/frame-transports.test.mjs": 3,
   "tests/generation-input-transports.test.mjs": 4,

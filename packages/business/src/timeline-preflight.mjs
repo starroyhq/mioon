@@ -28,7 +28,7 @@ export const timelineSnapshotHash=snapshot=>createHash('sha256').update(canonica
 function summary(snapshot,verified){
  const t=snapshot.timeline,assets=verified??new Map(snapshot.assets.map(a=>[a.id,a])),tracks=new Map(t.tracks.map(lane=>[lane.id,lane]));
  if(!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
- return {fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
+ return {...(Object.hasOwn(snapshot,'delivery')?{delivery:snapshot.delivery}:{}),fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
   visualClipCount:t.clips.filter(c=>tracks.get(c.trackId)?.kind==='video'&&!tracks.get(c.trackId).hidden).length,
   audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId).muted&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
@@ -59,7 +59,7 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   const report={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision,snapshotHash:null,
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   let initial;
-  try{initial=readTimelinePreflightSnapshot(store,input.projectId);}
+  try{initial=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings);}
   catch(error){if(error.code==='NOT_FOUND')throw error;if(error.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(error.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;report.snapshotHash=timelineSnapshotHash(initial.snapshot);
@@ -114,7 +114,7 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
    // Recheck a fresh coherent snapshot only after all asynchronous reads. A
    // changed row, owner, frozen metadata or revision can never publish ready.
    let current;
-   try{current=readTimelinePreflightSnapshot(store,input.projectId);}
+   try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings);}
    catch{current=null;}
    if(!current?.snapshot||timelineSnapshotHash(current.snapshot)!==report.snapshotHash){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];}
    return report;

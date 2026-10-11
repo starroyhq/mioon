@@ -21,7 +21,7 @@ encoder availability and later filesystem availability are not certified.
 ## Shared rules and checks
 
 Preflight and actual timeline rendering reuse the renderer's existing validator:
-720×1280 at 30 fps, at most 12 tracks/100 clips/18,000 frames, track/media
+the three closed 720-short-edge timeline formats at 30 fps, at most 12 tracks/100 clips/18,000 frames, track/media
 compatibility, integer source bounds, rectangles, gain/fades, overlap, unsupported
 effects and duration consistency. Editing validation is not replaced. Original
 snapshot field absence and legacy replay receipts remain compatible.
@@ -145,3 +145,12 @@ superseded tall-disclosure layout. Final native 08 shows the blocking reason;
 
 No live-provider, real-key entry, Mac/Windows native, packaging, full-decoder
 security or generic database-integrity claim is made.
+
+## Optional delivery settings
+
+Current source preflight accepts an optional closed `exportSettings` profile and
+includes its deterministic delivery block in the snapshot digest and summary.
+Omission retains the prior response shape. It does not perform encoder proof:
+the distinct explicit `timeline.export.capabilities` operation does bounded
+synthetic local encoding. The right Delivery page starts both only after the
+user presses Check. See [EXPORT-SETTINGS.md](EXPORT-SETTINGS.md).

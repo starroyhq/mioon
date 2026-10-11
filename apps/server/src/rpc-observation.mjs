@@ -3,7 +3,7 @@ import {operationEffect} from '@mioon/contracts';
 /** Only an advisory read may be stopped by losing its HTTP observer. Never
  * propagate socket lifetime into mutation, generation or render cancellation. */
 export async function callObservedRpc(req, res, services, operation, input) {
-  if (operation !== 'timeline.export.preflight') return services.call(operation, input);
+  if (!['timeline.export.preflight', 'timeline.export.capabilities'].includes(operation)) return services.call(operation, input);
   const effect = operationEffect(operation);
   // Explicit opt-in plus semantic guards: a later effect change cannot silently
   // attach client cancellation to writes or external/paid work. An annotation

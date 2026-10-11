@@ -405,7 +405,7 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | `timeline.clip.remove` | `clipId` |
 | `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
-| `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256) |
+| `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256), optional export-only `exportSettings` (closed MP4/H.264 profile) |
 
 Mutations return the whole timeline and increment its revision once. Rendering
 returns a queued `exports` record with `mode:'timeline'`, a frozen snapshot and
@@ -683,7 +683,8 @@ context to the built-in Agent allowlist.
 
 ## Local timeline export preflight
 
-`timeline.export.preflight` accepts exactly `{projectId,expectedRevision}`:
+`timeline.export.preflight` accepts `{projectId,expectedRevision}` with optional
+strict `exportSettings` for an export-specific frozen snapshot:
 `projectId` is a UUID and `expectedRevision` is a positive integer for the
 existing timeline. It is a read operation, separate from export submission.
 It does not initialize a missing timeline, write SQLite/cache/files, create an
@@ -699,9 +700,9 @@ The strict public response contains only:
 
 - `projectId`, the requested `expectedRevision`, ISO `checkedAt`
 - `timelineId` (UUID or null), `timelineRevision` (positive integer or null)
-- `snapshotHash` (lowercase 64-character SHA-256 or null)
+- `snapshotHash` (lowercase 64-character SHA-256 or null; includes delivery settings when supplied)
 - `status`: `ready`, `blocked`, `incomplete`, or `stale`
-- `summary` (null or the bounded counts below)
+- `summary` (null or the bounded counts below; optional frozen `delivery` when requested)
 - `checks:{totalAssets,checkedAssets,bytesHashed,fullDecode:false,subtitles?}`;
   only nonempty captions can add `subtitles:{profileId:"bottom_cjk_v1",fontVerified,inkMeasured:false}`.
   `bytesHashed` counts managed-media bytes, excluding the separately fixed font read.
@@ -969,3 +970,15 @@ recovery preserve optional field absence and original receipt bytes. Frozen
 exports retain their accepted subtitle text/font hash. Preflight can verify the
 font resource but does not measure glyph ink; actual render performs bounded
 measurement and can reject overflow. See [scope and acceptance](MANUAL-SUBTITLES.md).
+
+## Timeline delivery profile and local encoder capability
+
+Optional export-only `timeline.render.exportSettings` and optional
+`timeline.export.preflight.exportSettings` use the closed `mp4_h264_v1` profile.
+`timeline.export.capabilities` accepts exactly
+`{projectId,expectedRevision,exportSettings}` and performs an explicit bounded
+local synthetic encode. It creates no timeline/export and writes no DB/cache or
+files. Its read-only/localProcess effect is distinct from media preflight.
+Read [EXPORT-SETTINGS.md](EXPORT-SETTINGS.md) for all settings, caps, safe report
+statuses, exact frozen delivery fields, cancellation and replay semantics.
+Omitted settings preserve legacy requests/receipts; preview rejects settings.

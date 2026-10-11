@@ -2,13 +2,15 @@ import React from 'react';
 import { Badge } from '@mioon/ui/components/badge';
 import Icon from './icons.jsx';
 import { statusText } from './api.js';
+import { exportHistoryDelivery } from './export-settings-state.js';
 
 /** Presentation only. App owns ordering, project identity, dialog lifetime and
  * navigation fences. Rows retain their original immutable export snapshots. */
 export default function ExportHistoryList({ orderedExports, projectName, timelineRevision }) {
   return <div className="export-list">
-    {orderedExports.length ? orderedExports.map(item =>
-      <div className="export-card" key={item.id}>
+    {orderedExports.length ? orderedExports.map(item => {
+      const delivery = exportHistoryDelivery(item);
+      return <div className="export-card" key={item.id}>
         <div className="export-icon"><Icon name="film" size={24} /></div>
         <div className="export-detail">
           <strong>{projectName || '成片'}.mp4</strong>
@@ -17,6 +19,7 @@ export default function ExportHistoryList({ orderedExports, projectName, timelin
           <small>{item.mode === 'timeline'
             ? `${item.purpose === 'preview' ? '时间线预览' : '时间线导出'} · rev ${item.timelineRevision}${item.timelineRevision !== timelineRevision ? ' · 旧快照' : ' · 当前'}`
             : `分镜顺序导出 · ${item.orderedVersionIds?.length || 0} 个镜头`}</small>
+          {delivery && <small className="export-frozen-settings" data-testid="export-history-settings">成片 · {delivery.dimensions} · {delivery.fps} fps · {delivery.rate}{delivery.upscale ? ' · 放大输出，不增加细节' : ''} · AAC 128 kb/s</small>}
         </div>
         {(item.url || item.assetId) && ['succeeded', 'completed', 'ready'].includes(item.status)
           ? <a className="button primary small" href={item.url || `/media/${item.assetId}`}
@@ -26,7 +29,7 @@ export default function ExportHistoryList({ orderedExports, projectName, timelin
           : item.status === 'failed'
             ? <Badge className="small-badge warn">失败</Badge>
             : <span className="spinner" />}
-      </div>)
+      </div>; })
       : <div className="small-empty">
           <Icon name="download" size={29} />
           <h4>还没有导出记录</h4>

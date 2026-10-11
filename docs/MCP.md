@@ -470,8 +470,8 @@ Offline transport acceptance: `node --test tests/waveforms-transports.test.mjs`.
 ### Local timeline export preflight
 
 `timeline_export_preflight` exposes the shared strict
-`timeline.export.preflight` contract: `{projectId,expectedRevision}` with a
-project UUID and positive integer existing-timeline revision. Discover its
+`timeline.export.preflight` contract: `{projectId,expectedRevision}` with optional
+closed `exportSettings`, a project UUID and positive integer existing-timeline revision. Discover its
 schema with `mioon_schema({"operation":"timeline.export.preflight"})`.
 It rejects unknown fields, including credentials, paths, commands and request
 keys. It returns the strict bounded report documented in
@@ -707,3 +707,15 @@ recovery preserve optional field absence and original receipt bytes. Frozen
 exports retain their accepted subtitle text/font hash. Preflight can verify the
 font resource but does not measure glyph ink; actual render performs bounded
 measurement and can reject overflow. See [scope and acceptance](MANUAL-SUBTITLES.md).
+
+## Per-export delivery profile
+
+`timeline_export_capabilities` exposes the same strict project/revision/settings
+schema as HTTP and CLI. It is explicitly read-only, `localProcess:true`: one
+bounded synthetic encode, no persistent writes or external I/O. Discovery does
+not execute the check. `available` is an observation, not export approval.
+For an authorized timeline export, pass the identical closed `exportSettings`
+to optional source preflight and `timeline_render` (`purpose:'export'`). Preserve
+the original key/input after an unknown result. Omission retains historical
+responses and preview rejects custom settings. See [EXPORT-SETTINGS.md](EXPORT-SETTINGS.md).
+No built-in Agent tool is added by this external MCP operation.

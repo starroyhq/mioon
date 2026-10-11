@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+import * as exportSettings from '../apps/web/src/export-settings-state.js';
 import * as format from '../apps/web/src/timeline-format-state.js';
 import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.js';
@@ -149,7 +150,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name, imports = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [typeof value === 'function' ? value() : value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : imports[key] || primitive);
   return module.exports;
 }
 

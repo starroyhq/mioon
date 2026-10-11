@@ -56,7 +56,8 @@ This is the next delivery slice after manual subtitles, not an expansion of the
 subtitle implementation. The current compatible default remains MP4, H.264
 (`libx264`, CRF 23), AAC 128 kb/s, 48 kHz stereo and 30 fps.
 
-1. **First bounded MP4/H.264 settings.** Add explicit output presets, quality/rate
+1. **First bounded MP4/H.264 settings.** The current implementation slice is
+   [EXPORT-SETTINGS.md](EXPORT-SETTINGS.md), with local validation pending. Add explicit output presets, quality/rate
    controls and output resolution through the same UI/API/CLI/MCP services.
    Discover the actual installed encoder's capabilities and reject unavailable
    choices with a useful explanation. Timeline canvas geometry/editing timebase

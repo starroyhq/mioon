@@ -21,7 +21,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 
 // The timeline is its own aggregate: revision checks and idempotent responses
 // must be committed in the same SQLite transaction as every mutation.
-export function createTimelineServices(store,{required,check,hash,now}){
+export function createTimelineServices(store,{required,check,hash,now,exportAdmission}){
  const {db,put,tx}=store;
  function find(projectId){
   const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
@@ -149,6 +149,37 @@ export function createTimelineServices(store,{required,check,hash,now}){
    return saveResponse(operation,input,requestHash,timeline,boundary);
   },specialBoundary);
  }
+ function renderSnapshot(input,boundary,write,expectedTimelineId){
+  // Custom settings cannot initialize a timeline. The old omitted path retains
+  // exactly its historical lazy-initialization and frozen projection behavior.
+  const timeline=input.exportSettings===undefined?currentOrEnsure(input,boundary,write,{sourceSemantics:false}):boundary.read({legacyMissingProject:true,sourceSemantics:false});
+  if(expectedTimelineId!==undefined&&timeline?.id!==expectedTimelineId)throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);
+  if(!timeline)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
+  check(timeline,input.expectedRevision);
+  boundary.validate(clone(timeline));
+  if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
+  const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings);
+  if(input.preflightSnapshotHash!==undefined){
+   let current;
+   try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings).snapshot;}
+   catch{throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);}
+   if(!current||hash(current)!==input.preflightSnapshotHash||hash(frozen)!==input.preflightSnapshotHash)
+    throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
+  }
+  return frozen;
+ }
+ function render(input,admission){
+  return transaction('timeline.render',input,({boundary,requestHash,write})=>{
+   const frozen=renderSnapshot(input,boundary,write,admission?.timelineId);
+   if(admission&&hash(frozen)!==admission.snapshotHash)
+    throw new AppError('EXPORT_CAPABILITY_STALE','时间线或素材元数据已变化，请重新检查当前导出配置',409);
+   if(admission?.failure)throw admission.failure;
+   const createdAt=now();
+   const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:frozen.timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
+   write();put('exports',result);
+   return saveResponse('timeline.render',input,requestHash,result,boundary);
+  });
+ }
  const handlers={
   ...createSubtitleMutations(mutate),
   'timeline.format.get':input=>getTimelineFormat(db,input),
@@ -234,24 +265,12 @@ export function createTimelineServices(store,{required,check,hash,now}){
     startFrame+=durationFrames;
    }
   }),
-  'timeline.render':input=>transaction('timeline.render',input,({boundary,requestHash,write})=>{
-   const timeline=currentOrEnsure(input,boundary,write,{sourceSemantics:false});
-   check(timeline,input.expectedRevision);
-   boundary.validate(clone(timeline));
-   if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
-   const assets=boundary.sources(timeline);
-   const frozen=freezeTimelineSnapshot(timeline,assets);
-   if(input.preflightSnapshotHash!==undefined){
-    let current;
-    try{current=readTimelinePreflightSnapshot(store,input.projectId).snapshot;}
-    catch{throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);}
-    if(!current||hash(current)!==input.preflightSnapshotHash||hash(frozen)!==input.preflightSnapshotHash)
-     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
-   }
-   const createdAt=now();
-   const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
-   write();put('exports',result);
-   return saveResponse('timeline.render',input,requestHash,result,boundary);
+  'timeline.render':(input,options={})=>input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
+   prepare:()=>{
+    const result=transaction('timeline.render',input,({boundary,write})=>({snapshot:renderSnapshot(input,boundary,write)}));
+    return result.mode==='timeline'?{replayed:true,response:result}:result;
+   },
+   accept:admission=>render(input,admission),
   })
  };
  return {ensure,history,handlers};

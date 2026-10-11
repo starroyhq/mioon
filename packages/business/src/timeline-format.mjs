@@ -64,7 +64,7 @@ export function readTimelineFormatState(db,input,{admission=false,context=readTi
    createTimelineRecoveryBoundary(db,saved).replay('timeline.format.set',receipt.response);
   }else{
    if(response.mode==='timeline'){
-    if(!isTimelineRenderRecord(response,{projectId:input.projectId,requestId:receipt.requestId,expectedRevision:response.timelineRevision,purpose:response.purpose}))invalidTimeline();
+    if(!isTimelineRenderRecord(response,{projectId:input.projectId,requestId:receipt.requestId,expectedRevision:response.timelineRevision,purpose:response.purpose,...(response.snapshot?.delivery?{exportSettings:response.snapshot.delivery.exportSettings}:{})}))invalidTimeline();
     if(!timeline||response.snapshot.timeline.id!==timeline.id||response.snapshot.timeline.revision>timeline.revision)invalidTimeline();
     boundary.sources(response.snapshot.timeline);
    }else{
@@ -82,7 +82,7 @@ export function readTimelineFormatState(db,input,{admission=false,context=readTi
   const value=parse(row.data);
   if(!uuid(row.id)||row.id!==value.id||row.projectId!==input.projectId||value.projectId!==input.projectId)invalidTimeline();
   if(value.mode==='timeline'){
-   if(!isTimelineRenderRecord(value,{projectId:input.projectId,requestId:value.requestId,expectedRevision:value.timelineRevision,purpose:value.purpose})||!timeline||value.snapshot.timeline.id!==timeline.id||value.snapshot.timeline.revision>timeline.revision)invalidTimeline();
+   if(!isTimelineRenderRecord(value,{projectId:input.projectId,requestId:value.requestId,expectedRevision:value.timelineRevision,purpose:value.purpose,...(value.snapshot?.delivery?{exportSettings:value.snapshot.delivery.exportSettings}:{})})||!timeline||value.snapshot.timeline.id!==timeline.id||value.snapshot.timeline.revision>timeline.revision)invalidTimeline();
    boundary.sources(value.snapshot.timeline);if(value.assetId!==null)boundary.asset(value.assetId);exportHistory=true;
   }else if(Object.hasOwn(value,'mode')||!Array.isArray(value.snapshot)||!Array.isArray(value.orderedVersionIds))invalidTimeline();
  }

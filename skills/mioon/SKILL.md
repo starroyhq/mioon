@@ -276,8 +276,8 @@ context. See [Source waveforms](../../docs/API.md#opt-in-source-waveforms).
 ## Local timeline export preflight
 
 For an export-readiness check, discover `timeline export preflight` (MCP
-`timeline_export_preflight`) and call it with exactly the chosen project UUID
-and positive `expectedRevision` from the existing timeline. It never creates a
+`timeline_export_preflight`) and call it with the chosen project UUID, optional
+closed `exportSettings`, and positive `expectedRevision` from the existing timeline. It never creates a
 missing timeline. This read hashes bounded managed source bytes and runs local
 ffprobe metadata checks; it does not fully decode, write database/cache/files,
 create an export, contact providers or spend generation credit. Supported
@@ -466,3 +466,22 @@ recovery preserve optional field absence and original receipt bytes. Frozen
 exports retain their accepted subtitle text/font hash. Preflight can verify the
 font resource but does not measure glyph ink; actual render performs bounded
 measurement and can reject overflow. See [scope and acceptance](../../docs/MANUAL-SUBTITLES.md).
+
+## Timeline MP4/H.264 delivery settings
+
+Discover `timeline export capabilities` / `timeline_export_capabilities` before
+using the closed `mp4_h264_v1` profile. The exact input is
+`{projectId,expectedRevision,exportSettings}`. Settings select `native`,
+`short_360` or `short_1080` and either CRF compact/standard/high or average video
+bitrate 2000/4000/8000 kb/s. Explain that 1080 short-edge enlarges an existing
+720 short-edge composition; it adds no detail. Audio/fps/container remain fixed.
+
+This explicit local process check encodes synthetic frames without writing an
+export. It is separate from source preflight and export approval. Never infer
+availability from an encoder name alone or replace an unavailable encoder.
+Use exactly the same settings in optional source preflight and the separately
+authorized export request. Settings are allowed only for `purpose:'export'`.
+Keep every nested field, original request key and digest presence on recovery;
+no automatic retries or settings fallback. A changed setting requires a new
+check and cannot overwrite an unresolved request. Legacy omitted settings stay
+omitted. Read [the profile and limits](../../docs/EXPORT-SETTINGS.md).

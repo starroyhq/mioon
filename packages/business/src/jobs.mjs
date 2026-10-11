@@ -1,10 +1,12 @@
+import {isTimelineExportSnapshot,isTimelineRenderRecord} from '@mioon/contracts';
 import {randomUUID} from 'node:crypto';
 import {terminateMediaProcesses} from './media-processes.mjs';
-import {rename,link,unlink} from 'node:fs/promises';
+import {rename,link,unlink,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {fileInfo,probe,safePath,stitch,run} from './media.mjs';
 import {renderTimeline} from './timeline-media.mjs';
-import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph} from './timeline-sources.mjs';
+import {readTimelineReceipt} from './timeline-recovery.mjs';
+import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph,validatePreparedTimelineSources} from './timeline-sources.mjs';
 import {now} from './services.mjs';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './generation-inputs.mjs';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mjs';
@@ -40,7 +42,37 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
  }
  const workerExports=()=>store.db.prepare(`SELECT ${exportColumns} FROM exports`).all().map(decodeExport).filter(Boolean);
  const workerExport=id=>decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id));
- const currentOwnedExport=e=>{const latest=workerExport(e.id);return latest&&latest.mode===e.mode&&latest.id===e.id&&latest.projectId===e.projectId?latest:null;};
+ // Custom delivery adds an awaited capability step. Preserve the complete
+ // immutable acceptance identity across every existing async/publication fence;
+ // a replaced snapshot must never be restored by publishing an older copy.
+ const customExport=e=>Object.hasOwn(e?.snapshot??{},'delivery');
+ const exportIdentity=e=>JSON.stringify(Object.fromEntries(['id','projectId','requestId','mode','purpose','timelineRevision','snapshot','createdAt'].map(key=>[key,e[key]])));
+ // A removed delivery field must not disguise an accepted custom export as
+ // a historical legacy job before the worker's first observation. The bounded
+ // receipt-side discriminator adds no normalization or legacy render options.
+ function receiptHasDelivery(e){
+  if(e.mode!=='timeline'||typeof e.requestId!=='string')return false;
+  const row=store.db.prepare(`SELECT CASE WHEN typeof(response)='text' AND length(CAST(response AS BLOB)) BETWEEN 1 AND ${exportRowBytes}
+   THEN CASE WHEN json_valid(response) THEN CASE WHEN json_type(response)='object' THEN json_type(response,'$.snapshot.delivery') END END END AS delivery
+   FROM timeline_requests WHERE requestId=?`).get(e.requestId);
+  return row?.delivery!==undefined&&row.delivery!==null;
+ }
+ function customReceiptMatches(e){
+  try{
+   const input={projectId:e.projectId,requestId:e.requestId,expectedRevision:e.timelineRevision,purpose:e.purpose,exportSettings:e.snapshot.delivery.exportSettings};
+   if(typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200)return false;
+   const receipt=readTimelineReceipt(store.db,input,'timeline.render');
+   if(!receipt)return false;
+   const response=JSON.parse(receipt.response);
+   return response.status==='queued'&&isTimelineRenderRecord(response,input)&&exportIdentity(response)===exportIdentity(e);
+  }catch{return false;}
+ }
+ const currentOwnedExport=e=>{
+  const latest=workerExport(e.id);
+  if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return null;
+  if((customExport(e)||customExport(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
+  return latest;
+ };
 
  // An unconfirmed owned writer is a fatal lifecycle boundary. Preserve the
  // first failure and stop this cycle plus every future automatic/manual tick.
@@ -198,12 +230,16 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(!e)return;
   // Fresh non-overwriting publication also preserves a prior successful output.
   const relativePath=`media/export-${e.id}-${randomUUID()}.mp4`,file=path.join(root,relativePath),part=file+'.part.mp4';
+  let preparedAssets,linkedOutput=false,publicationAccepted=false,outputIdentity;
+  const checkCustomSources=()=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});};
   try {
    if(e.mode==='timeline') {
+    if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     const assets=await prepareTimelineInputs(e.snapshot,{root,projectId:e.projectId,signal,
      readAsset:id=>readOwnedTimelineAsset(store.db,e.projectId,id),validateLinks:timeline=>validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline)});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
-    await renderTimeline(e.snapshot,assets,part,{signal});checkpoint(signal);
+    if(customExport(e))preparedAssets=assets;
+    await renderTimeline(e.snapshot,assets,part,{signal,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
    } else {
     const files=[];
     for(const v of e.snapshot) {
@@ -221,19 +257,43 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    const info=await fileInfo(part,{signal});checkpoint(signal);
    // Recheck the preserved relational owner immediately before publication.
    if(currentOwnedExport(e)?.status!=='running')return;
+   checkCustomSources();
+   // Retain only this custom attempt's owned output inode for conservative
+   // cleanup if source ownership changes before the database commit.
+   if(customExport(e)){
+    outputIdentity=await lstat(part);checkpoint(signal);
+    if(!outputIdentity.isFile()||outputIdentity.nlink!==1)throw Object.assign(Error('The local export output cannot be verified safely.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+    if(currentOwnedExport(e)?.status!=='running')return;
+    checkCustomSources();
+   }
    // link is an atomic, non-overwriting publication on the managed filesystem.
-   await link(part,file);checkpoint(signal);
+   await link(part,file);linkedOutput=true;checkpoint(signal);
    await unlink(part);checkpoint(signal);
-   tx(()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});const ratio=e.mode==='timeline'?(e.snapshot.timeline.width===e.snapshot.timeline.height?'1x1':e.snapshot.timeline.width>e.snapshot.timeline.height?'16x9':'9x16'):null;const a={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:'分镜拼接-9x16.mp4',mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now()};a.url=`/media/${a.id}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,updatedAt:now()});});
+   tx(()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();const ratio=e.mode==='timeline'?(e.snapshot.timeline.width===e.snapshot.timeline.height?'1x1':e.snapshot.timeline.width>e.snapshot.timeline.height?'16x9':'9x16'):null;const a={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:'分镜拼接-9x16.mp4',mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now()};a.url=`/media/${a.id}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,updatedAt:now()});});
+   publicationAccepted=true;
   } catch(error) {
    if(error.terminationUnconfirmed)failShutdown(error);
    const fail=()=>{
     const latest=currentOwnedExport(e);
-    if(!latest||latest.status==='cancelled')return;
+    if(!latest||latest.status==='cancelled'||customExport(e)&&latest.status==='succeeded')return;
     put('exports',{...latest,status:signal.aborted?'queued':'failed',error:error.terminationUnconfirmed?mediaPauseError('exports',latest?.status):signal.aborted?null:safeError(error,'EXPORT_FAILED'),updatedAt:now()});
    };
    tx(fail);
-  } finally {await unlink(part).catch(()=>{});}
+  } finally {
+   await unlink(part).catch(()=>{});
+   // An uncertain commit, hostile replacement, foreign export, changed inode,
+   // or failed cleanup never licenses removing an unknown/published output.
+   // Keep the original failure; this cleanup makes no byte-race guarantee.
+   if(customExport(e)&&linkedOutput&&!publicationAccepted&&outputIdentity){
+    try{
+     const unpublished=()=>{const latest=currentOwnedExport(e);return latest&&['queued','running','failed'].includes(latest.status)&&latest.assetId===null&&latest.url===null;};
+     if(unpublished()){
+      const current=await lstat(file).catch(()=>null);
+      if(current?.isFile()&&current.nlink===1&&current.dev===outputIdentity.dev&&current.ino===outputIdentity.ino&&unpublished())await unlink(file).catch(()=>{});
+     }
+    }catch{/* An uncertain read or cleanup preserves the link and original error. */}
+   }
+  }
  }
 
  async function operate(action,value) {

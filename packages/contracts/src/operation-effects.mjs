@@ -90,6 +90,7 @@ export const operationEffects = Object.freeze({
   'timeline.format.set': define({...replayEdit,notes:'Explicitly chooses one closed 30fps output preset only for a pristine timeline. Uses project and timeline CAS, immutable exact replay and the existing timeline task lane; creates only an absent timeline or updates its output dimensions/revision. Does not edit the project, enter undo history, rescale clips, read media or contact providers.'}),
   'timeline.get': define({...localAdd,idempotent:true,notes:'Legacy read creates default empty tracks when no timeline exists. Repeated reads do not add another timeline.'}),
   'timeline.history.get': define({...read,notes:'Reads existing history metadata without initializing a timeline.'}),
+  'timeline.export.capabilities': define({...read,localProcess:true,notes:'Explicit bounded local compute proves the selected fixed MP4/H264 delivery profile with a synthetic in-memory encode/mux. Reads an existing owned timeline without initialization. No media/database/file write, source decoding, network, credentials, paid generation or durable task. Availability is point-in-time; new custom exports and workers recheck separately.'}),
   'timeline.export.preflight': define({...read,localProcess:true,notes:'Reads an existing timeline and bounded managed source bytes, stream-hashes files and invokes local ffprobe metadata checks. Never initializes a timeline, writes database/cache/files, renders, fully decodes, or contacts providers. Repeated reads can observe source changes; idempotent is the conventional read-only hint, not a promise of identical or future-valid results. An incomplete check is not an export ban.'}),
   'timeline.undo': define({...replayEdit,notes:'Restores a prior editable timeline state and advances revision/history cursor; preserves assets, generation and exports. Exact replay is durable.'}),
   'timeline.redo': define({...replayEdit,notes:'Restores a saved editable timeline state and advances revision/history cursor; exact replay is durable.'}),
@@ -101,7 +102,7 @@ export const operationEffects = Object.freeze({
   'timeline.clip.remove': define({...replayEdit,notes:'Removes a timeline clip, preserving its asset; a new branch can discard redo history. Exact replay is durable.'}),
   'timeline.clip.split': define({...replayEdit,notes:'Shortens the original clip and adds the right-hand clip; a new branch can discard redo history. Exact replay preserves the new ID.'}),
   'timeline.seed': define({...replayEdit,notes:'Copies selected shot assets into an empty timeline and records an edit; a new branch can discard redo history. Exact replay is durable.'}),
-  'timeline.render': define({...render,notes:'Queues a frozen timeline render once per exact request; later worker work invokes local FFmpeg/ffprobe and writes managed output. No provider call.'}),
+  'timeline.render': define({...render,notes:'Queues a frozen timeline render once per exact request. Optional export-only fixed delivery settings invoke bounded local capability compute before fresh acceptance; historical replay runs no probe. Later worker work revalidates and invokes local FFmpeg/ffprobe and writes managed output. Omission retains the legacy path. No provider call.'}),
 });
 
 export function assertOperationEffectCoverage(schemas, effects = operationEffects) {

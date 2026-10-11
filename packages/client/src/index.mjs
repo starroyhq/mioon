@@ -9,6 +9,7 @@ import {resolveConnection, connectionSource, ConnectionError} from './connection
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
 import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutationResponse,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '@mioon/contracts';
+import {isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
@@ -212,6 +213,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+    if (operation === 'timeline.export.capabilities' && !isTimelineExportCapabilitiesResponse(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export capability report.');
     return result;
   }
   async function capabilities(options) { return rpc('provider.list', {}, options); }

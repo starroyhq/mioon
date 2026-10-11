@@ -735,3 +735,16 @@ recovery preserve optional field absence and original receipt bytes. Frozen
 exports retain their accepted subtitle text/font hash. Preflight can verify the
 font resource but does not measure glyph ink; actual render performs bounded
 measurement and can reject overflow. See [scope and acceptance](MANUAL-SUBTITLES.md).
+
+## Per-export MP4/H.264 settings
+
+Discover `mioon schema timeline.export.capabilities` and `mioon schema timeline.render`.
+The capability operation requires `{projectId,expectedRevision,exportSettings}`;
+settings are a strict `mp4_h264_v1` profile, for example
+`{"profileId":"mp4_h264_v1","resolution":"short_360","rateControl":{"mode":"crf","quality":"high"}}`.
+Call `mioon timeline export capabilities --input '<JSON>'` explicitly; it runs
+bounded local synthetic encoding without creating an export. Then optionally
+include the same settings in source preflight and in an explicitly authorized
+`timeline render` with `purpose:'export'`, the saved revision and stable key.
+Retain the exact input through unknown outcomes; never change settings/key on
+an unresolved retry. See [scope and recovery](EXPORT-SETTINGS.md).

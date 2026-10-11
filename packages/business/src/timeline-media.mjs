@@ -6,6 +6,8 @@ import {throwIfMediaAborted} from './media-processes.mjs';
 import {timelineAudioFadeFilters} from './timeline-audio.mjs';
 import {prepareTimelineSubtitles,timelineSubtitleFilters} from './subtitle-media.mjs';
 import {validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
+import {isTimelineExportSnapshot} from '@mioon/contracts';
+import {assertTimelineExportCapability,timelineExportVideoArgs} from './timeline-export-capabilities.mjs';
 
 const FPS=30,SAMPLES_PER_FRAME=1600;
 const seconds=frames=>(frames/FPS).toFixed(9);
@@ -13,10 +15,16 @@ const seconds=frames=>(frames/FPS).toFixed(9);
 // clip edges so even a 100-clip / 10-minute composition only opens <=12 media
 // inputs at once. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
-export async function renderTimeline(snapshot,assets,destination,{signal}={}){
+export async function renderTimeline(snapshot,assets,destination,{signal,beforeEncode}={}){
  throwIfMediaAborted(signal);
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
  validateSubtitleSnapshotProfile(snapshot);
+ if(!isTimelineExportSnapshot(snapshot))throw Object.assign(Error('The saved export delivery profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ const delivery=snapshot.delivery;
+ // Never trust an earlier capability report as an admission token. Legacy and
+ // omitted-settings snapshots keep their original no-probe rendering path.
+ if(delivery){await assertTimelineExportCapability(delivery,{signal});beforeEncode?.();}
+ throwIfMediaAborted(signal);
  // The validated frozen snapshot owns output geometry. Keep the editing and
  // audio timebase fixed while portrait, landscape and square share this path.
  const {width,height}=timeline;
@@ -58,11 +66,17 @@ export async function renderTimeline(snapshot,assets,destination,{signal}={}){
    }
    filters.push(`${sounds.map(s=>`[${s}]`).join('')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},asetpts=N/SR/TB[outa]`);
    const captioned=timelineSubtitleFilters(subtitles,begin,end,visual);filters.push(...captioned.filters);visual=captioned.visual;
-   filters.push(`[${visual}]trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[outv]`);
+   // Scale the completed editing-canvas composition, including captions. Clip
+   // rectangles, subtitle layout/cues, source sampling and audio stay untouched.
+   // 1080 short edge is a 1.5x upscale of the fixed 720-short-edge composition.
+   const scale=delivery&&(delivery.effective.width!==width||delivery.effective.height!==height)
+    ?`scale=${delivery.effective.width}:${delivery.effective.height}:flags=${delivery.effective.scaling},setsar=1,`:'';
+   filters.push(`[${visual}]${scale}trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[outv]`);
    const segmentFile=path.join(work,`segment-${String(segment).padStart(3,'0')}.mov`);
    const filterArgs=['-filter_complex',filters.join(';')];
    if(subtitles){const script=path.join(work,`segment-${segment}.filter`);await writeFile(script,filters.join(';'),{flag:'wx',mode:0o600});filterArgs.splice(0,2,'-filter_complex_script',script);}
-   args.push(...filterArgs,'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000','-c:a','pcm_s16le','-ar','48000','-ac','2','-t',seconds(frames),segmentFile);
+   const videoArgs=delivery?timelineExportVideoArgs(delivery):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
+   args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,'-c:a','pcm_s16le','-ar','48000','-ac','2','-t',seconds(frames),segmentFile);
    await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal});
    throwIfMediaAborted(signal);
    entries.push(`file '${segmentFile.replaceAll("'","'\\''")}'\nduration ${seconds(frames)}`);
@@ -74,7 +88,12 @@ export async function renderTimeline(snapshot,assets,destination,{signal}={}){
   throwIfMediaAborted(signal);
   const result=await probe(destination,{signal}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
   throwIfMediaAborted(signal);
-  if(result.width!==width||result.height!==height||v?.codec_name!=='h264'||v?.r_frame_rate!=='30/1'||v?.avg_frame_rate!=='30/1'||Number(v?.nb_frames)!==timeline.durationFrames||a?.codec_name!=='aac'||Number(a?.sample_rate)!==48000||a?.channels!==2||Math.abs(result.duration-timeline.durationFrames/FPS)>0.035)throw Error('Rendered timeline failed frame/duration/audio-format verification');
+  const output=delivery?.effective||{width,height};
+  if(result.width!==output.width||result.height!==output.height||v?.codec_name!=='h264'||v?.r_frame_rate!=='30/1'||v?.avg_frame_rate!=='30/1'||Number(v?.nb_frames)!==timeline.durationFrames||a?.codec_name!=='aac'||Number(a?.sample_rate)!==48000||a?.channels!==2||Math.abs(result.duration-timeline.durationFrames/FPS)>0.035)throw Error('Rendered timeline failed frame/duration/audio-format verification');
+  if(delivery&&(result.probe.streams.length!==2||v?.sample_aspect_ratio!=='1:1'||v?.pix_fmt!=='yuv420p'||v?.has_b_frames!==0||v?.time_base!=='1/30000'||a?.time_base!=='1/48000'||a?.channel_layout!=='stereo'
+   ||!Number.isFinite(Number(v?.duration))||Math.abs(Number(v.duration)-timeline.durationFrames/FPS)>0.00001
+   ||!Number.isFinite(Number(a?.duration))||Math.abs(Number(a.duration)-timeline.durationFrames/FPS)>0.025
+   ||!String(result.probe.format?.format_name).split(',').includes('mp4')))throw Error('Rendered timeline failed delivery-profile verification');
   return result;
  }finally{await rm(work,{recursive:true,force:true});}
 }

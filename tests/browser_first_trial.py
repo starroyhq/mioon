@@ -422,6 +422,9 @@ class Trial:
 
         before_export = self.state()
         self.page.get_by_test_id("export-timeline").click()
+        expect(self.page.get_by_test_id("export-preflight")).to_have_attribute("data-phase", "idle")
+        self.page.get_by_test_id("preflight-check").click()
+        expect(self.page.get_by_test_id("export-capability-status")).to_have_attribute("data-status", "available", timeout=30000)
         expect(self.page.get_by_test_id("export-preflight")).to_have_attribute("data-phase", "ready", timeout=45000)
         check(len(self.state()["exports"]) == len(before_export["exports"]), "Preflight unexpectedly exported")
         self.capture("09-preflight-ready.png")
