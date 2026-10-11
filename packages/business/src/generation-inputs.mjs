@@ -1,4 +1,4 @@
-import {AppError,INPUT_PROFILE_VERSION,getCapabilityProfile,getGenerationProfileRegion,buildAdapterPlan} from '@mioon/contracts';
+import {AppError,getCapabilityProfile,getLegacyCapabilityProfile,getGenerationProfileRegion,buildAdapterPlan,getShotGenerationReferenceSelection} from '@mioon/contracts';
 import {validateImageConsumption} from './image-consumption.mjs';
 
 const fail=(code,message,details={})=>{throw new AppError(code,message,400,details);};
@@ -43,10 +43,19 @@ export function currentGenerationClaim(db,job){
 }
 const pinKeys=['inputProfileVersion','inputProfileId','providerRegion','referenceBindings'];
 
+// Only current shot selections are expanded. A frozen manifest is already
+// complete and must never acquire a tail from the current shot or array order.
+export function generationReferenceSelection(source,{frozen=false}={}) {
+ assertGenerationReferenceIds(source.referenceAssetIds);
+ if(frozen)return {ids:source.referenceAssetIds,references:null};
+ const selection=getShotGenerationReferenceSelection(source);
+ if(!selection.ok){const issue=selection.issues[0];fail(issue.code,issue.message,{issues:selection.issues});}
+ return {ids:selection.references.map(reference=>reference.assetId),references:selection.references};
+}
+
 /** Resolve the complete saved selection. Never accept caller metadata or prune IDs. */
 export function prepareGenerationInputs({source,projectId,providerId,model,capabilities,readAsset,asOf,frozen=false}) {
- const ids=source.referenceAssetIds;
- assertGenerationReferenceIds(ids);
+ const {ids,references:selection}=generationReferenceSelection(source,{frozen});
  const pinned=frozen?source.referenceAssets:null;
  if(frozen&&(!dense(pinned)||pinned.length!==ids.length||pinned.some((ref,index)=>!ref||ref.id!==ids[index])))manifestError();
  const assets=ids.map((id,index)=>{
@@ -62,20 +71,29 @@ export function prepareGenerationInputs({source,projectId,providerId,model,capab
   }
   return asset;
  });
+ const hasPin=pinKeys.some(key=>Object.hasOwn(source,key));
+ if(hasPin&&!pinKeys.every(key=>Object.hasOwn(source,key)))manifestError();
  const connections=source.referenceConnections??[];
- if(!dense(connections)||connections.length>1||connections.some(connection=>!connection||connection.role!=='first_frame'||ids.length!==1||connection.sourceAssetId!==ids[0]))
+ if(!dense(connections)||connections.length>1||connections.some(connection=>!connection||connection.role!=='first_frame'||!ids.length||connection.sourceAssetId!==ids[0]))
   fail('REFERENCE_STATE_CONFLICT','首帧连线与镜头参考选择不一致，请先检查最新状态');
  if(!capabilities.models?.some(item=>(typeof item==='string'?item:item.id)===model))fail('UNSUPPORTED_MODEL','此供应商不支持冻结快照的模型');
- const region=getGenerationProfileRegion(providerId,capabilities),profile=getCapabilityProfile(providerId,model,region);
+ const region=getGenerationProfileRegion(providerId,capabilities);
+ const profile=hasPin?getCapabilityProfile(providerId,model,region,{profileId:source.inputProfileId,profileVersion:source.inputProfileVersion}):frozen?getLegacyCapabilityProfile(providerId,model,region):getCapabilityProfile(providerId,model,region);
  if(frozen&&source.capabilities?.region&&source.capabilities.region!==region)fail('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续');
+ if(!profile&&hasPin)manifestError();
  if(!profile)fail('INPUT_PROFILE_UNAVAILABLE','找不到此模型和服务器区域的精确输入规范；不会自动切换',{providerId,model});
- const hasPin=pinKeys.some(key=>Object.hasOwn(source,key));
  if(hasPin){
-  if(!pinKeys.every(key=>Object.hasOwn(source,key))||source.inputProfileVersion!==INPUT_PROFILE_VERSION||source.inputProfileId!==profile.profileId)manifestError();
+  if(source.inputProfileVersion!==profile.profileVersion||source.inputProfileId!==profile.profileId)manifestError();
   if(source.providerRegion!==region)fail('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续');
  }
- const bindings=hasPin?source.referenceBindings:assets.map((asset,index)=>({role:Object.hasOwn(pinned?.[index]??{},'role')?pinned[index].role:Object.hasOwn(asset,'role')?asset.role:'first_frame',assetId:asset.id,sha256:asset.sha256}));
+ const bindings=hasPin?source.referenceBindings:assets.map((asset,index)=>({role:Object.hasOwn(pinned?.[index]??{},'role')?pinned[index].role:Object.hasOwn(asset,'role')?asset.role:selection?.[index]?.role??'first_frame',assetId:asset.id,sha256:asset.sha256}));
  if(!dense(bindings)||bindings.length!==ids.length||bindings.some((binding,index)=>!binding||Object.keys(binding).some(key=>!['role','assetId','sha256'].includes(key))||binding.assetId!==ids[index]||binding.sha256!==assets[index].sha256))manifestError();
+ // A pair needs an explicit, complete role manifest. The tail selection is
+ // provenance, never a license to reinterpret the second array entry.
+ if(frozen&&source.lastFrameAssetId!=null){
+  if(!hasPin||ids.length!==2||source.lastFrameAssetId!==ids[1]||bindings[0]?.role!=='first_frame'||bindings[1]?.role!=='last_frame')manifestError();
+ }
+ if(bindings.some(binding=>binding.role==='last_frame')&&(!hasPin&&frozen||ids.length!==2||bindings[0]?.role!=='first_frame'||bindings[1]?.role!=='last_frame'||frozen&&source.lastFrameAssetId!==ids[1]))manifestError();
  const references=assets.map((asset,index)=>{
   const metadata=frozen?pinned[index]:asset;
   const role=bindings[index].role;
@@ -87,7 +105,7 @@ export function prepareGenerationInputs({source,projectId,providerId,model,capab
    sizeBytes:metadata.sizeBytes??asset.sizeBytes,
    ...(metadata.width!==undefined?{width:metadata.width}:{}),...(metadata.height!==undefined?{height:metadata.height}:{})};
  });
- const plan=buildAdapterPlan({providerId,model,region,prompt:source.prompt,aspectRatio:source.aspectRatio,duration:source.duration,parameters:source.parameters,references},{asOf});
+ const plan=buildAdapterPlan({providerId,model,region,prompt:source.prompt,aspectRatio:source.aspectRatio,duration:source.duration,parameters:source.parameters,references},{asOf,profileId:profile.profileId,profileVersion:profile.profileVersion});
  if(!plan.ok){const issue=plan.issues[0];fail(issue.code,issue.message,{providerId,model,issues:plan.issues,warnings:plan.warnings});}
  return {assets:assets.map((asset,index)=>({...asset,...plan.adapterSnapshot.referenceAssets[index]})),plan,
   fields:{inputProfileVersion:plan.profileVersion,inputProfileId:plan.profileId,providerRegion:region,referenceBindings:plan.referenceBindings}};

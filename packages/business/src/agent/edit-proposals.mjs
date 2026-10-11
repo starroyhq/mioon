@@ -1,6 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import {canonical} from '../services.mjs';
+import {validateImageConsumption} from '../image-consumption.mjs';
 import {editToolPolicy, parseEditToolArguments, validEditText} from './edit-tool-policy.mjs';
 
 export const AGENT_EDIT_LIMITS = Object.freeze({rows: 2048, bytes: 64 * 1024 * 1024,
@@ -71,6 +72,14 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     if (!plain(value) || value.projectId !== projectId || !uuid(value.id) || !integer(value.revision) ||
       !field(value.title, 'title') || !field(value.prompt, 'prompt') || !Array.isArray(value.referenceAssetIds) || value.referenceAssetIds.length > 8) corrupt();
     for (const assetId of value.referenceAssetIds) { if (!uuid(assetId)) corrupt(); owned('assets', assetId, projectId); }
+    // Saved/replayed tail relations stay private to ownership checking; the
+    // Agent proposal allowlist remains title/prompt only.
+    if(Object.hasOwn(value,'lastFrameAssetId')&&value.lastFrameAssetId!==null){
+      if(!uuid(value.lastFrameAssetId))corrupt();
+      const tail=owned('assets',value.lastFrameAssetId,projectId);
+      if(!['image/png','image/jpeg','image/webp'].includes(tail.mimeType))corrupt();
+      try{validateImageConsumption(db,tail,projectId);}catch{corrupt();}
+    }
     if (value.selectedVersionId != null) {
       if (!uuid(value.selectedVersionId)) corrupt();
       const version = owned('versions', value.selectedVersionId, projectId);

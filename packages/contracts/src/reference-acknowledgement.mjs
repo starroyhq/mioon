@@ -22,8 +22,9 @@ const shotFields = ['id', 'projectId', 'title', 'prompt', 'referenceAssetIds', '
 const edgeFields = ['id', 'projectId', 'source', 'target', 'kind', 'role', 'sourceAssetId', 'createdAt'];
 
 export function isReferenceShotRecord(value, {projectId} = {}) {
-  if (!fields(value, shotFields) || !uuid(value.id) || !uuid(value.projectId) ||
+  if (!fields(value, shotFields, ['lastFrameAssetId']) || !uuid(value.id) || !uuid(value.projectId) ||
       (projectId !== undefined && value.projectId !== projectId) ||
+      (Object.hasOwn(value, 'lastFrameAssetId') && value.lastFrameAssetId !== null && !uuid(value.lastFrameAssetId)) ||
       !text(value.title, 1, 150) || !text(value.prompt, 0, 5000) ||
       !Array.isArray(value.referenceAssetIds) || value.referenceAssetIds.length > 8 || !value.referenceAssetIds.every(uuid) ||
       !['9:16', '16:9', '1:1', '3:4', '4:3', '21:9'].includes(value.aspectRatio) || !integer(value.duration, 1, 20) ||

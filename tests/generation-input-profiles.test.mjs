@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  INPUT_PROFILE_VERSION, GENERATION_INPUT_PROFILES, GENERATION_INPUT_ROLES,
+  INPUT_PROFILE_VERSION, GENERATION_INPUT_PROFILES, GENERATION_INPUT_ROLES, ARCHIVED_CAPABILITY_PROFILES, FRAME_PAIR_PROFILE_VERSION,
   getCapabilityProfile, getGenerationProfileRegion, validateGenerationInput,
   buildAdapterPlan, encodedImageDataUriBytes, evaluateCapabilityLifecycle,
   getGenerationProfileIssue, getGenerationIssue, findModelCapabilities, schemas,
@@ -31,21 +31,32 @@ const snapshotFor=(profile,patch={})=>{
   return {model:input.model,prompt:input.prompt,aspectRatio:input.aspectRatio,duration:input.duration,parameters:{},referenceAssetIds:['managed-image-a'],referenceAssets:[{id:'managed-image-a',mimeType:'image/png',sizeBytes:1024,sha256:'a'.repeat(64),width:720,height:1280}],...patch};
 };
 
-test('exact immutable profiles expose only implemented first-frame routes',()=>{
+test('exact immutable profiles expose only implemented active routes and preserve archived first-only routes',()=>{
   assert.equal(GENERATION_INPUT_PROFILES.length,6);
   for(const profile of GENERATION_INPUT_PROFILES){
     assert.ok(Object.isFrozen(profile.inputs.roles.first_frame));
     assert.deepEqual(Object.keys(profile.inputs.roles),GENERATION_INPUT_ROLES);
+    const pair=['ark','mock'].includes(profile.providerId);
     for(const role of GENERATION_INPUT_ROLES.slice(1)){
-      assert.equal(profile.inputs.roles[role].implemented,false);
-      assert.equal(profile.inputs.roles[role].max,0);
-      assert.match(profile.inputs.roles[role].reason,/current Mioon adapter/);
+      const implemented=pair&&role==='last_frame';
+      assert.equal(profile.inputs.roles[role].implemented,implemented);
+      assert.equal(profile.inputs.roles[role].max,implemented?1:0);
+      if(!implemented)assert.match(profile.inputs.roles[role].reason,/current Mioon adapter/);
     }
-    assert.equal(profile.inputs.maxReferences,1);
+    assert.equal(profile.inputs.maxReferences,pair?2:1);
+    assert.equal(profile.profileVersion,pair?FRAME_PAIR_PROFILE_VERSION:INPUT_PROFILE_VERSION);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model,profile.regions[0]),profile);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model+'-alias',profile.regions[0]),null);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model,'not-a-region'),null);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model),null);
+  }
+  assert.deepEqual(ARCHIVED_CAPABILITY_PROFILES.map(profile=>profile.providerId),['ark','mock']);
+  for(const profile of ARCHIVED_CAPABILITY_PROFILES){
+    assert.equal(profile.profileVersion,INPUT_PROFILE_VERSION);
+    assert.equal(profile.inputs.maxReferences,1);
+    assert.equal(profile.inputs.roles.last_frame.implemented,false);
+    assert.ok(Object.isFrozen(profile.inputs.roles.first_frame));
+    assert.equal(getCapabilityProfile(profile.providerId,profile.model,profile.regions[0],{profileId:profile.profileId,profileVersion:profile.profileVersion}),profile);
   }
 });
 

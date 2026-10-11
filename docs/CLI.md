@@ -763,3 +763,21 @@ include the same settings in source preflight and in an explicitly authorized
 `timeline render` with `purpose:'export'`, the saved revision and stable key.
 Retain the exact input through unknown outcomes; never change settings/key on
 an unresolved retry. See [scope and recovery](EXPORT-SETTINGS.md).
+
+## Saved video frame pairs
+
+`mioon schema shot update` exposes optional `patch.lastFrameAssetId`. Save a
+same-project image UUID with the existing shot revision and stable request ID;
+send `null` to clear it, or omit the property to leave it unchanged. Existing
+`referenceAssetIds` and first-frame connection commands still own only the first
+slot. Read the resulting shot and the exact `provider.list` profile before
+explicitly invoking `generation.submit`. Ark Seedance 2.5 and Mock implement the
+paired route; unsupported roles/providers fail rather than silently discard input.
+A saved tail without a first image is an incomplete draft, not a ready request.
+
+The job snapshot contains the complete first/last binding and source hashes.
+`job.retry` on a confirmed failed job reuses that frozen selection, not the latest
+shot tail. An unknown submission must be reconciled without a new POST. Existing
+manual shot mutation recovery retains its session-only pending receipt limitation.
+See [VIDEO-FRAME-PAIRS.md](VIDEO-FRAME-PAIRS.md); Mock does not depict the references
+and this documentation does not authorize a paid call.

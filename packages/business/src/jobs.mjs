@@ -138,6 +138,9 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
       services.validateGenerationDispatch(claim);
      }catch(error){throw markGenerationPreflightFailure(error);}
     };
+    // During both image reads the same non-mutating claim/ownership fence
+    // rejects drift. The final beforeSubmit fence still runs directly at POST.
+    context.validateReferenceState=context.beforeSubmit;
     const accepted=await awaitProvider(()=>provider.submit({...j.snapshot,referenceAssets},context),signal,{submit:true});
     acceptedProviderId=accepted.providerJobId;
     // Receipt persistence is the sole intentional write permitted after abort.

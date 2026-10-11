@@ -15,6 +15,7 @@ import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUT
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import Icon from './icons.jsx';
 import Inspector from './Inspector.jsx';
+import { VideoFrameSummary } from './VideoFrameControls.jsx';
 import TaskCenter from './TaskCenter.jsx';
 import { createEditTaskController } from './edit-task-controller.js';
 import { isDurableEditOperation, taskInputKey } from './edit-task-client.js';
@@ -47,7 +48,7 @@ import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.js'
 import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, versionUrl } from './api.js';
 import { importAcknowledged, importBusyFeedback, importFeedback } from './import-feedback.js';
-import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel } from './generation-settings.js';
+import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel, generationReferences, generationReferenceIdentity } from './generation-settings.js';
 import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending } from './submissions.js';
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.js';
 import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';
@@ -130,6 +131,9 @@ export default function App() {
   const [comparisonId, setComparisonId] = useState(null);
   const [previewAsset, setPreviewAsset] = useState(null);
   const [realConfirm, setRealConfirm] = useState(null);
+  const realConfirmRef = useRef(null);
+  const generationReviewScope = useRef(null);
+  realConfirmRef.current = realConfirm;
   const [nodes, setNodes] = useState([]);
   const [shotDirty, setShotDirty] = useState(false);
   const [clipDirty, setClipDirty] = useState(false);
@@ -236,6 +240,8 @@ export default function App() {
   const setSelectedClipId = field('editing', 'selectedClipId'), setQuickAssetId = field('editing', 'quickAssetId'), setPreviewKind = field('editing', 'previewKind'), setPlayhead = field('editing', 'playhead'), setTimelineCollapsed = field('editing', 'timelineCollapsed');
   const setAssetFilter = field('shared', 'assetFilter'), setAssetSearch = field('shared', 'assetSearch');
   const setAssetsCollapsed = value => setPanelOpen('assets', !value), setInspectorCollapsed = value => setPanelOpen('inspector', !value);
+  const generationReviewKey = `${workspaceMode}:${selectedId}:${tab}:${rightDockTab}:${propertiesPage}:${JSON.stringify(generationOptions)}`;
+  if (generationReviewScope.current?.key !== generationReviewKey) generationReviewScope.current = { key: generationReviewKey };
   const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current });
   const isCurrent = captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current;
   const isBusy = (key, projectId = currentProject.current) => busyRef.current.has(`${projectId || 'none'}:${key}`);
@@ -557,16 +563,16 @@ export default function App() {
     if (reveal) { setPanelOpen('inspector', true, 'canvas'); if (geometry.narrow) setMobilePanel('inspector'); }
     return true;
   }
-  function checkGeneration(shot, provider, model, inputMode) {
+  function checkGeneration(shot, provider, model, inputMode, frozen = false) {
     if (referenceWorkBlocked()) return false;
-    const issue = generationInputIssue(shot, provider, model, dataRef.current.assets, inputMode) || providerAvailabilityIssue(provider);
+    const issue = generationInputIssue(shot, provider, model, dataRef.current.assets, inputMode, { frozen }) || providerAvailabilityIssue(provider);
     if (issue) { notify(issue, 'error'); return false; }
     if (dataRef.current.jobs.some(j => j.shotId === shot.id && j.status === 'submission_unknown')) { notify('此镜头存在状态未知的提交，服务商可能已经计费。请先核实任务状态，不要重复提交。', 'error'); setShowJobs(true); return false; }
     return true;
   }
   const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId }) => {
     const provider = providers.find(item => item.id === providerId);
-    if (!checkGeneration(shot, provider, model, inputMode)) return;
+    if (!checkGeneration(shot, provider, model, inputMode, Boolean(retryJobId))) return;
     if (retryJobId) return run(`retry:${retryJobId}`, 'job.retry', { jobId: retryJobId, requestId: requestId() }, '已基于原始快照创建重试任务');
     const result = await run(`generate:${shot.id}`, 'generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: requestId(), providerId, ...(model ? { model } : {}), ...(providerId === 'mock' ? { parameters: { scenario } } : {}) });
     if (result) { notify(result.status === 'submission_unknown' ? '提交结果待确认。请查看任务状态，不要重复提交。' : '生成任务已提交，完成后会保存为新版本。', result.status === 'submission_unknown' ? 'warning' : 'success'); setShowJobs(true); }
@@ -575,15 +581,37 @@ export default function App() {
     const { provider, model, scenario, inputMode } = generationSelection(providers, options, shot);
     if (!checkGeneration(shot, provider, model, inputMode)) return;
     const args = { shot, providerId: provider.id, model, scenario, inputMode };
-    if (!provider.mock) setRealConfirm(args); else submitGeneration(args);
+    if (!provider.mock) reviewGeneration(args); else submitGeneration(args);
   }
   function retryGeneration(job) {
     const provider = providers.find(item => item.id === job.providerId);
     const shot = { ...job.snapshot, id: job.shotId };
     const inputMode = shot.referenceAssetIds?.length ? 'image' : 'text';
-    if (!checkGeneration(shot, provider, job.model, inputMode)) return;
+    if (!checkGeneration(shot, provider, job.model, inputMode, true)) return;
     const args = { shot, providerId: job.providerId, model: job.model, inputMode, retryJobId: job.id };
-    if (!provider.mock) { setShowJobs(false); setRealConfirm(args); } else submitGeneration(args);
+    if (!provider.mock) { setShowJobs(false); reviewGeneration(args); } else submitGeneration(args);
+  }
+  function reviewGeneration(args) {
+    const frozen = Boolean(args.retryJobId);
+    const review = { ...args, approvalContext: context(), approvalView: generationReviewScope.current,
+      referenceIdentity: generationReferenceIdentity(args.shot, dataRef.current.assets, { frozen }),
+      // Keep reviewed thumbnail labels/metadata stable while the modal is open.
+      referenceAssets: structuredClone(dataRef.current.assets.filter(asset => generationReferences(args.shot, { frozen }).references.some(reference => reference.assetId === asset.id))) };
+    realConfirmRef.current = review; setRealConfirm(review);
+  }
+  function confirmGeneration(args) {
+    if (realConfirmRef.current !== args) return;
+    realConfirmRef.current = null; setRealConfirm(null);
+    const frozen = Boolean(args.retryJobId);
+    const currentShot = dataRef.current.shots.find(shot => shot.id === args.shot.id);
+    const selection = generationSelection(providers, generationOptionsRef.current[args.shot.id], currentShot || {});
+    const currentJob = frozen ? dataRef.current.jobs.find(job => job.id === args.retryJobId) : null;
+    const stale = !isCurrent(args.approvalContext) || args.approvalView !== generationReviewScope.current || !currentShot ||
+      (!frozen && (currentShot.revision !== args.shot.revision || selection.provider?.id !== args.providerId || selection.model !== args.model || selection.inputMode !== args.inputMode)) ||
+      (frozen && (!currentJob || JSON.stringify(currentJob.snapshot) !== JSON.stringify(Object.fromEntries(Object.entries(args.shot).filter(([key]) => key !== 'id'))))) ||
+      generationReferenceIdentity(args.shot, dataRef.current.assets, { frozen }) !== args.referenceIdentity;
+    if (stale) { notify('镜头、参考素材或当前工作区已变化，请重新检查完整首尾帧后确认生成。', 'warning'); return; }
+    submitGeneration(args);
   }
   async function createProject(name, description) {
     if (!await guardProjectNavigation('当前面板有未保存的修改。放弃修改并新建项目？')) return;
@@ -1036,7 +1064,7 @@ export default function App() {
     pendingState: taskState, refreshGeneration: subjectRefresh[data.project?.id] || 0, onDirtyChange: setSubjectDirty });
   subjectsRef.current = subjects;
   const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === (chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0]));
-  const inUseAssetIds = new Set([...(timeline?.clips || []).map(clip => clip.assetId), ...data.nodes.map(node => node.assetId), ...data.shots.flatMap(shot => shot.referenceAssetIds || []), ...data.shots.map(shot => data.versions.find(version => version.id === shot.selectedVersionId)?.assetId)].filter(Boolean));
+  const inUseAssetIds = new Set([...(timeline?.clips || []).map(clip => clip.assetId), ...data.nodes.map(node => node.assetId), ...data.shots.flatMap(shot => generationReferences(shot).references.map(reference => reference.assetId)), ...data.shots.map(shot => data.versions.find(version => version.id === shot.selectedVersionId)?.assetId)].filter(Boolean));
 
   const timelineJobs = [...data.exports].filter(e => e.mode === 'timeline').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const previewJob = timelineJobs.find(e => ['succeeded','completed','ready'].includes(e.status));
@@ -1081,7 +1109,7 @@ export default function App() {
     {inspectorCollapsed && <PanelRecall name="inspector" label={rightDockTab === 'agent' ? 'Agent' : rightDockTab === 'image' ? '图像' : rightDockTab === 'delivery' ? '交付检查' : '属性'} icon="settings" onClick={() => setPanelOpen('inspector', true)} />}
     <PanelBoundary name="inspector" visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
     <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label="属性、Agent、图像与交付检查" />}><header className="inspector-region-heading"><Tabs value={rightDockTab} onValueChange={value => { if (['properties', 'agent', 'image', 'delivery'].includes(value)) { markPanelIntent(); setRightDockTab(value); } }} className="right-dock-tabs"><TabsList aria-label="右侧工作区" className="segmented"><TabsTrigger id="right-dock-properties-tab" value="properties" data-testid="right-dock-tab-properties" aria-controls="right-dock-properties">属性</TabsTrigger><TabsTrigger id="right-dock-agent-tab" value="agent" data-testid="right-dock-tab-agent" aria-controls="right-dock-agent"><Icon name="sparkle" size={12} />Agent</TabsTrigger><TabsTrigger id="right-dock-image-tab" value="image" data-testid="right-dock-tab-image" aria-controls="right-dock-image">图像</TabsTrigger><TabsTrigger id="right-dock-delivery-tab" value="delivery" data-testid="right-dock-tab-delivery" aria-controls="right-dock-delivery">交付检查</TabsTrigger></TabsList></Tabs><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起右侧面板" title="收起右侧面板" data-testid="toggle-inspector" />}><Icon name="minus" size={16} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy="right-dock-properties-tab" visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{workspaceMode === 'canvas' ? <div className="inspector-container">
-    <Inspector subjects={subjects} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={(id, nextTab) => inspect(id, nextTab, null, { reveal: true })} onAddVersion={assetId => addTimelineAsset(assetId)} />
+    <Inspector actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => setShowJobs(true)} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={(id, nextTab) => inspect(id, nextTab, null, { reveal: true })} onAddVersion={assetId => addTimelineAsset(assetId)} />
     </div> : quickAssetId && sourceAsset ? <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange}><FrameExtractionPanel controller={frameExtraction.controller} /></SourceRangeInspector> : chosenClip ? <TimelineInspector key={`${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`} onReturnToSource={clipSource ? () => returnToSource(chosenClip.assetId) : undefined} sourceDescription={clipSource?.version && chosenClip.versionId === clipSource.version.id ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} replacementContext={clipReplacementContext()} onReplaceSource={replaceTimelineClipSource} onOpenRequests={() => setShowJobs(true)} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} onSave={(clipId, patch, revision) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>片段属性</span></header><div className="inspector-empty"><h3>选择时间线片段</h3><p>在这里调整起止帧、源入点、画面位置和音量。</p></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => setShowJobs(true)} /></AgentDockPane><AgentDockPane id="properties-format-pane" visible={propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => setShowJobs(true)} /></AgentDockPane></AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentWorkspace projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} /></AgentDockPane><AgentDockPane id="right-dock-image" labelledBy="right-dock-image-tab" visible={rightDockTab === 'image'} fallbackFocus="[data-testid=right-dock-tab-properties]"><ImageGeneration key={data.project?.id || 'no-project'} projectId={data.project?.id} projectName={data.project?.name} projectAssets={data.assets} onDirtyChange={onImageDraftChange} onGenerated={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} onRevealAsset={revealImageAsset} /></AgentDockPane><AgentDockPane id="right-dock-delivery" labelledBy="right-dock-delivery-tab" visible={rightDockTab === 'delivery'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineExportPreflight state={exportPreflight.state} timeline={timeline} exportSettings={exportSettings.value} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={value => { if (exportSettings.controller.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export'])} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={binding => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} /></AgentDockPane></CollapsibleContent></Collapsible>
     {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>
     {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={panelVisible('timeline')} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline key={data.project.id} viewState={view.editing} onViewStateChange={patch => { if (data.project?.id === currentProject.current && viewRef.current.activeMode === 'editing') updateView('editing', patch); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} splitState={splitState} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={propertiesPage === 'subtitle' ? null : selectedClipId} selectedCueId={propertiesPage === 'subtitle' ? subtitles.state?.cueId : null} onSelectSubtitle={cueId => openSubtitle(cueId)} onAddSubtitle={frame => openSubtitle(null, frame)} subtitleBlocked={!subtitles.state?.connected} onSelectClip={selectClip} onAddAsset={addTimelineAsset} onMoveClip={moveTimelineClip} onTrackAdd={kind => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId, patch) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={setPlayhead} playhead={playhead} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={() => setPanelOpen('timeline', false)} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{timelineCollapsed && <PanelRecall name="timeline" label="时间线" icon="layers" onClick={() => setPanelOpen('timeline', true)} />}</>}
@@ -1091,7 +1119,7 @@ export default function App() {
     {showCreate && <CreateProject onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create']} />}
     {comparisonShot && <Comparison shot={comparisonShot} versions={data.versions} onClose={() => setComparisonId(null)} onSelect={selectVersion} busy={busy[`version:${comparisonShot.id}`]} />}
     {previewAsset && <Modal title={previewAsset.name} subtitle={`${previewAsset.mimeType} · ${(previewAsset.sizeBytes / 1024 / 1024).toFixed(2)} MB`} onClose={() => setPreviewAsset(null)} wide><div className="asset-preview-large"><Media asset={previewAsset} controls /></div><div className="modal-footer"><Button variant="ghost" className="button primary" onClick={() => { addNode(assetKind(previewAsset), previewAsset); setPreviewAsset(null); }}><Icon name="plus" size={16} />添加到画布</Button></div></Modal>}
-    {realConfirm && <Modal title="确认提交真实生成" subtitle="此操作会调用外部生成服务，可能产生费用。" onClose={() => setRealConfirm(null)}><div className="modal-form"><div className="confirmation-summary"><strong>{providers.find(p => p.id === realConfirm.providerId)?.name || realConfirm.providerId}</strong>{realConfirm.retryJobId && <p>重试明确失败的任务：使用原任务的固定镜头快照。</p>}<span>{realConfirm.model} · {inputModeLabel(realConfirm.inputMode)} · {realConfirm.shot.duration} 秒 · {realConfirm.shot.aspectRatio}</span><p>将发送此镜头的提示词、参数与 {realConfirm.shot.referenceAssetIds?.length || 0} 张参考图。费用由服务商按你的账户计费；工作台不保证远端任务可以取消。</p><p className="muted">此处不提供价格或预算承诺。请先确认服务商计费、账户额度与服务器侧已授权的调用上限。</p><p className="muted">提交状态不明确时，系统会停止重试，防止重复计费。</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => { const args = realConfirm; setRealConfirm(null); submitGeneration(args); }}>确认发送并生成</Button></div></Modal>}
+    {realConfirm && <Modal title="确认提交真实生成" subtitle="此操作会调用外部生成服务，可能产生费用。" onClose={() => { realConfirmRef.current = null; setRealConfirm(null); }}><div className="modal-form"><div className="confirmation-summary"><strong>{providers.find(p => p.id === realConfirm.providerId)?.name || realConfirm.providerId}</strong>{realConfirm.retryJobId && <p>重试明确失败的任务：使用原任务的固定镜头快照。</p>}<span>{realConfirm.model} · {inputModeLabel(realConfirm.inputMode)} · {realConfirm.shot.duration} 秒 · {realConfirm.shot.aspectRatio}</span><p>将发送此镜头的提示词、参数与 {generationReferences(realConfirm.shot, { frozen: Boolean(realConfirm.retryJobId) }).references.length} 张参考图。费用由服务商按你的账户计费；工作台不保证远端任务可以取消。</p><VideoFrameSummary shot={realConfirm.shot} assets={realConfirm.referenceAssets} frozen={Boolean(realConfirm.retryJobId)} /><p className="muted">此处不提供价格或预算承诺。请先确认服务商计费、账户额度与服务器侧已授权的调用上限。</p><p className="muted">提交状态不明确时，系统会停止重试，防止重复计费。</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => confirmGeneration(realConfirm)}>确认发送并生成</Button></div></Modal>}
     {showJobs && <TaskCenter activeCount={activeCount} pending={pending} busy={busy} jobs={jobs} data={data} reconcileIds={reconcileIds} setReconcileIds={setReconcileIds} run={run} retryGeneration={retryGeneration} inspect={inspect} setShowJobs={setShowJobs} context={context} confirm={confirm} isCurrent={isCurrent} onClose={() => { navigationEpoch.current++; setShowJobs(false); }} tasks={taskState} onRecover={recoverTask} onReload={() => tasksRef.current.load(currentProject.current)} onAdopt={adoptLegacyTask} />}
     {showExports && <Modal title="导出记录" subtitle="每个文件使用创建时的固定快照。时间线合成与分镜顺序导出分别标记，后续修改不会覆盖旧文件。" onClose={() => { navigationEpoch.current++; setShowExports(false); }}><ExportHistoryList orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></Modal>}
   </main>;

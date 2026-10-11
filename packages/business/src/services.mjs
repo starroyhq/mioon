@@ -3,7 +3,7 @@ import {writeFile,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {parse,AppError,publicValue,getGenerationIssue} from '@mioon/contracts';
 import {normalizedCapabilities,generationLimit,providerSettings,usesInputProfiles} from './provider-registry.mjs';
-import {prepareGenerationInputs,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim} from './generation-inputs.mjs';
+import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim} from './generation-inputs.mjs';
 import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.mjs';
@@ -37,8 +37,14 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const c=capabilitiesFor(p),first=c.models[0],model=requestedModel||(typeof first==='string'?first:first.id);
   const profiled=profilePolicy||usesInputProfiles(p);
-  if(profiled)assertGenerationReferenceIds(source.referenceAssetIds);
-  const assets=source.referenceAssetIds.map(id=>profiled?readGenerationAsset(db,id,projectId):validateImageConsumption(db,required('assets',id),projectId));
+  const selection=generationReferenceSelection(source,{frozen});
+  const assets=selection.ids.map((id,index)=>{
+   const asset=profiled?readGenerationAsset(db,id,projectId):validateImageConsumption(db,required('assets',id),projectId);
+   const role=frozen?source.referenceBindings?.[index]?.role:selection.references[index]?.role;
+   return selection.ids.length===2&&role&&!Object.hasOwn(asset,'role')?{...asset,role}:asset;
+  });
+  const hasLastFrame=(frozen?source.referenceBindings:selection.references)?.some(reference=>reference?.role==='last_frame')||source.lastFrameAssetId!=null;
+  if(hasLastFrame&&!['ark','mock'].includes(providerId))throw new AppError('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现首尾帧输入；不会忽略尾帧',400,{providerId,model});
   // Config checks never reveal credentials. Raw adapter enabled remains distinct from
   // the exhausted/missing local generation limit exposed in the capability status.
   if(!p.capabilities.enabled||!p.capabilities.configured)throw new AppError('PROVIDER_DISABLED','真实供应商尚未安全配置并授权；当前可使用模拟供应商',403,{providerId,status:c.status,configuration:c.configuration});
@@ -47,19 +53,19 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    if(!max||used>=max)throw new AppError('LIVE_BUDGET_REQUIRED','需要后端设置已授权生成次数上限，或当前额度已耗尽',403,{providerId,budget:c.budget});
   }
   if(source.capabilities?.region&&c.region!==source.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
-  const snapshot={...source,model,referenceAssets:assets,parameters};
+  const snapshot={...source,model,referenceAssetIds:selection.ids,referenceAssets:frozen?source.referenceAssets:assets,parameters};
   const {inputProfiles:ignoredProfiles,...legacyCapabilities}=c;
   const issue=getGenerationIssue(snapshot,legacyCapabilities);if(issue)throw new AppError(issue.code,issue.message,400,{providerId,model});
   if(p.validate){try{p.validate(snapshot);}catch(error){throw new AppError(error.code||'UNSUPPORTED_PARAMETERS',error.message||'此供应商不支持所选参数',400,{providerId,model});}}
   const prepared=profiled?prepareGenerationInputs({source:{...source,parameters},projectId,providerId,model,capabilities:c,readAsset:id=>readGenerationAsset(db,id,projectId),asOf:c.profileEvaluationDate,frozen}):null;
-  return {p,model,assets:prepared?.assets||assets,capabilities:c,inputFields:prepared?.fields};
+  return {p,model,assets:prepared?.assets||assets,referenceAssetIds:selection.ids,capabilities:c,inputFields:prepared?.fields};
  };
  const createJob=(input,retrySnapshot=null,retryOfJobId=null)=>tx(()=>{
   const requestHash=hash(input), prior=dedupe('generation',input.requestId,requestHash,'jobs');if(prior)return prior;
   const shot=required('shots',input.shotId);if(!retrySnapshot)check(shot,input.expectedRevision);
   if(profilePolicy||usesInputProfiles(providers.get(input.providerId)))assertGenerationShotOwnership(db,shot);
-  const source=retrySnapshot||shot;const referenceConnections=retrySnapshot?.referenceConnections||(!retrySnapshot?references.snapshot(shot):[]);const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};const {model,assets,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,parameters,shot.projectId,Boolean(retrySnapshot));
-  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...shot.referenceAssetIds],referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{})};
+  const source=retrySnapshot||shot;const referenceConnections=retrySnapshot?.referenceConnections||(!retrySnapshot?references.snapshot(shot):[]);const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,parameters,shot.projectId,Boolean(retrySnapshot));
+  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{})};
   const job={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});return job;
  });
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});

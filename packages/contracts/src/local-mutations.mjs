@@ -29,5 +29,13 @@ export function isLocalMutationResponse(operation, input, result, {projectId} = 
   if (typeof result.projectId !== 'string' || !result.projectId ||
       (input.projectId && result.projectId !== input.projectId) || (projectId && result.projectId !== projectId)) return false;
   if (operation === 'version.select' && result.selectedVersionId !== input.versionId) return false;
+  // New explicit tail writes need an exact acknowledgement. Do not strengthen
+  // old callers or compare against today's shot: keyed receipts are historical.
+  const tailInput = operation === 'shot.create' ? input : operation === 'shot.update' ? input.patch : null;
+  if (tailInput && Object.hasOwn(tailInput, 'lastFrameAssetId')) {
+    const expected = tailInput.lastFrameAssetId;
+    if (!(expected === null || typeof expected === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(expected)) ||
+        !Object.hasOwn(result, 'lastFrameAssetId') || result.lastFrameAssetId !== expected) return false;
+  }
   return true;
 }

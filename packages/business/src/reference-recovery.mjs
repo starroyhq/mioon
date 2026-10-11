@@ -54,6 +54,7 @@ export function createReferenceRecoveryBoundary(db,input){
  function shotRelations(value){
   if(!isReferenceShotRecord(value,{projectId}))invalidReference();
   for(const id of value.referenceAssetIds)asset(id);
+  if(value.lastFrameAssetId!=null){const tail=asset(value.lastFrameAssetId);if(!['image/png','image/jpeg','image/webp'].includes(tail.mimeType))invalidReference();}
   if(value.selectedVersionId!==null)guarded(()=>project().version(value.selectedVersionId,value.id));
   return value;
  }

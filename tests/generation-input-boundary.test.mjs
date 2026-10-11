@@ -10,7 +10,7 @@ import {createProviderRegistry,usesInputProfiles,registerInputProfileWrapper,nor
 import {startWorker} from '../packages/business/src/jobs.mjs';
 import {createJsonRequest} from '../packages/business/src/providers/live-common.mjs';
 import {createVeoProvider} from '../packages/business/src/providers/veo.mjs';
-import {INPUT_PROFILE_VERSION} from '../packages/contracts/src/index.mjs';
+import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} from '../packages/contracts/src/index.mjs';
 
 async function fixture(t,{providerId='mock',date='2026-10-10',image=false}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-input-boundary-')),store=openStore(root);
@@ -36,7 +36,7 @@ const markFailed=(f,id)=>f.store.put('jobs',{...f.store.get('jobs',id),status:'f
 test('production discovery carries exact safe regions, lifecycle results and all role facts',async t=>{
  const f=await fixture(t),caps=await f.services.call('provider.list',{});
  assert.equal(caps.length,6);assert.ok(usesInputProfiles(f.providers));
- for(const c of caps){assert.equal(c.inputProfileVersion,INPUT_PROFILE_VERSION);assert.equal(c.profileEvaluationDate,'2026-10-10');assert.equal(c.inputProfiles.length,1);assert.ok(c.inputProfiles[0].regions.includes(c.providerRegion));assert.equal(c.inputProfileEvaluations[0].profileId,c.inputProfiles[0].profileId);assert.equal(Object.keys(c.inputProfiles[0].inputs.roles).length,5);assert.equal(c.inputProfiles[0].inputs.roles.last_frame.implemented,false);}
+ for(const c of caps){assert.equal(c.inputProfileVersion,INPUT_PROFILE_VERSION);assert.equal(c.profileEvaluationDate,'2026-10-10');assert.equal(c.inputProfiles.length,1);assert.ok(c.inputProfiles[0].regions.includes(c.providerRegion));assert.equal(c.inputProfileEvaluations[0].profileId,c.inputProfiles[0].profileId);assert.equal(Object.keys(c.inputProfiles[0].inputs.roles).length,5);assert.equal(c.inputProfiles[0].inputs.roles.last_frame.implemented,['ark','mock'].includes(c.id));if(['ark','mock'].includes(c.id))assert.equal(getLegacyCapabilityProfile(c.id,c.models[0],c.providerRegion).inputs.roles.last_frame.implemented,false);}
  assert.equal(caps.find(c=>c.id==='mock').inputProfiles[0].output.depictsPromptOrReferences,false);
  assert.equal(caps.find(c=>c.id==='ark').providerRegion,'cn-beijing');
  assert.ok(!JSON.stringify(caps).includes('inert-fixture'));
@@ -46,7 +46,7 @@ test('production discovery carries exact safe regions, lifecycle results and all
 
 test('new snapshot pins profile, exact region, complete role identity and byte size',async t=>{
  const f=await fixture(t,{image:true}),job=await f.submit(),saved=f.store.get('jobs',job.id);
- assert.equal(saved.snapshot.inputProfileVersion,INPUT_PROFILE_VERSION);assert.equal(saved.snapshot.providerRegion,'local');
+ assert.equal(saved.snapshot.inputProfileVersion,getCapabilityProfile('mock','mock-motion-v1','local').profileVersion);assert.equal(saved.snapshot.providerRegion,'local');
  assert.deepEqual(saved.snapshot.referenceBindings,[{role:'first_frame',assetId:f.asset.id,sha256:f.asset.sha256}]);
  assert.equal(saved.snapshot.referenceAssets[0].sizeBytes,1024);assert.ok(!JSON.stringify(job).includes('relativePath'));
 });
@@ -116,7 +116,7 @@ test('new retry checks frozen references, manifest and current lifecycle but pre
 });
 
 for(const [name,alter,code] of [
- ['unsupported role',s=>s.referenceBindings[0].role='style_reference','UNSUPPORTED_INPUT_ROLE'],
+ ['contradictory role',s=>s.referenceBindings[0].role='style_reference','INVALID_REFERENCE_MANIFEST'],
  ['partial manifest',s=>s.referenceBindings=[],'INVALID_REFERENCE_MANIFEST'],
  ['missing pin',s=>delete s.providerRegion,'INVALID_REFERENCE_MANIFEST'],
  ['changed profile',s=>s.inputProfileId='other','INVALID_REFERENCE_MANIFEST'],
@@ -302,4 +302,11 @@ test('only registered enforcement publishes canonical reserved profile discovery
  const registered=(await f.services.call('provider.list',{})).find(provider=>provider.id==='veo');
  for(const key of reserved)assert.deepEqual(registered[key],canonical[key],`${key} must be canonical`);
  assert.equal(f.posts(),0);assert.equal(f.store.list('jobs').length,0);
+});
+
+
+test('archived v1 queued unsupported role retains semantic rejection without dispatch',async t=>{
+ const f=await fixture(t,{image:true}),job=await f.submit(),saved=f.store.get('jobs',job.id),profile=getLegacyCapabilityProfile('mock','mock-motion-v1','local');
+ saved.snapshot.inputProfileId=profile.profileId;saved.snapshot.inputProfileVersion=profile.profileVersion;delete saved.snapshot.referenceAssets[0].role;saved.snapshot.referenceBindings[0].role='style_reference';f.store.put('jobs',saved);const before=snapshotBytes(f.store,job.id);
+ await f.tick();await f.stop();const failed=f.store.get('jobs',job.id);assert.equal(failed.error.code,'UNSUPPORTED_INPUT_ROLE');assert.equal(failed.submissionCount,0);assert.equal(snapshotBytes(f.store,job.id),before);assert.equal(f.posts(),0);
 });

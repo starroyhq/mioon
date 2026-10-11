@@ -47,9 +47,9 @@ export function GenerationInputDetails({ selection }) {
   const source = sourceUrl(lifecycle?.source);
   return <div className="generation-input-details-body">
     <p>Mioon 当前适配器的已接入范围；不代表服务商全部能力。</p>
-    {profile && <p>总参考图：{profile.inputs.minReferences}–{profile.inputs.maxReferences} 张。{profile.inputs.maxReferences === 1 ? '只接入单张首帧，不组合多个参考角色。' : ''}</p>}
+    {profile && <p>总参考图：{profile.inputs.minReferences}–{profile.inputs.maxReferences} 张。{profile.inputs.roles.last_frame?.implemented ? '支持单张首帧，或一张首帧加一张尾帧；尾帧不能单独提交。' : '只接入单张首帧，不组合多个参考角色。'}</p>}
     <ul className="generation-input-roles" aria-label="各参考角色的数量与限制">{roles.map(([role, label]) => <RoleLimits key={role} role={role} label={label} rule={profile?.inputs?.roles?.[role]} />)}</ul>
-    <p className="generation-input-planning" data-testid="generation-subject-planning">主体库与风格关联仅用于本地策划，尚不作为生成输入。首帧仍由现有参考图选择或首帧连接提供。</p>
+    <p className="generation-input-planning" data-testid="generation-subject-planning">主体库与风格关联仅用于本地策划，尚不作为生成输入。首帧仍由现有参考图选择或首帧连接提供。尾帧在镜头属性中单独保存；首尾帧组合仅接入 Ark 与 Mock，同一素材不可同时作为首尾帧（当前应用限制）。</p>
     {profile && <dl className="generation-input-provenance">
       <div><dt>适配配置</dt><dd>{profile.profileId} · {profile.profileVersion}</dd></div>
       <div><dt>配置核查</dt><dd>{profile.reviewedOn || '未提供核查日期'}</dd></div>
@@ -80,10 +80,11 @@ export default function GenerationInputSummary({ provider, model }) {
   const lifecycleIssue = evaluation?.issues?.[0];
   const lifecycleMessage = lifecycleIssue?.code === 'MODEL_LIFECYCLE_REVALIDATION_REQUIRED' ? `服务端评估（${evaluatedAsOf}）：此 Veo 模型已到生命周期复核日期，已阻止新提交。` : lifecycleIssue?.message;
   const firstFrame = profile?.inputs?.roles?.first_frame;
+  const lastFrame = profile?.inputs?.roles?.last_frame;
   return <section className="generation-input-summary" aria-label="Mioon 模型输入限制" data-testid="generation-input-summary" data-profile-state={state}>
     <p className="generation-input-model" data-testid="generation-input-model">{model || '尚未选择模型'}</p>
     <p className="generation-input-route" data-testid="generation-input-route">API：{profile?.apiFamily || '尚未确认'} · 区域：{region || '尚未确认'}</p>
-    <p className="generation-input-brief" data-testid="generation-input-brief">{profile ? `Mioon 首帧 ${firstFrame ? countLabel(firstFrame) : '数量未确认'} · 其他参考角色见限制` : message}</p>
+    <p className="generation-input-brief" data-testid="generation-input-brief">{profile ? `Mioon 首帧 ${firstFrame ? countLabel(firstFrame) : '数量未确认'} · 尾帧 ${lastFrame?.implemented ? countLabel(lastFrame) : '未接入'} · 其他角色见限制` : message}</p>
     {lifecycleIssue ? <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-blocked">{lifecycleMessage} 不会自动替换模型。</p> : profile?.lifecycle && <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-warning">Veo 生命周期提示：最早 {profile.lifecycle.earliestShutdownDate} 关闭；核查于 {profile.lifecycle.checkedOn}，到期需重新核验。</p>}
     <Collapsible open={open} onOpenChange={next => {
       if (visible && current.current === scope) setDisclosure({ scope, open: Boolean(next) });

@@ -996,3 +996,24 @@ files. Its read-only/localProcess effect is distinct from media preflight.
 Read [EXPORT-SETTINGS.md](EXPORT-SETTINGS.md) for all settings, caps, safe report
 statuses, exact frozen delivery fields, cancellation and replay semantics.
 Omitted settings preserve legacy requests/receipts; preview rejects settings.
+
+## Saved first/last-frame video selection
+
+See [VIDEO-FRAME-PAIRS.md](VIDEO-FRAME-PAIRS.md) for implementation/acceptance status and exact provider scope.
+`shot.create` and `shot.update.patch` accept optional `lastFrameAssetId: UUID | null`.
+An omitted property keeps legacy shape (and means no change in an update); `null`
+explicitly clears it. Non-null values must identify a same-project managed image.
+The existing `referenceAssetIds` array and `reference.attach` / `reference.detach`
+remain first-frame-only. Detaching a first frame does not erase the saved tail.
+Saving a tail-only draft is allowed, but generation requires one distinct first
+image. Only current Ark Seedance 2.5 and Mock profiles accept this paired mode;
+subject/style bindings are not sent. Other adapters reject the complete unsupported
+selection rather than dropping the tail. The original `generation.submit` shape is
+unchanged: shot revision pins the saved choices; each accepted job freezes both
+roles, identities, hashes and metadata. Old job retry uses only its old snapshot.
+
+Use the existing stable shot mutation request key and `expectedRevision`. Exact
+replay returns its original shot response. No new operation, migration, edit-task
+namespace or built-in Agent write privilege is added. Manual shot-edit pending
+receipt recovery remains session-scoped; this does not add a cross-restart pending
+edit ledger or undo/history for shot fields. Successful saved choices persist.

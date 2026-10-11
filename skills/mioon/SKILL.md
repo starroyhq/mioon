@@ -499,3 +499,25 @@ Keep every nested field, original request key and digest presence on recovery;
 no automatic retries or settings fallback. A changed setting requires a new
 check and cannot overwrite an unresolved request. Legacy omitted settings stay
 omitted. Read [the profile and limits](../../docs/EXPORT-SETTINGS.md).
+
+### Saved video first/last frames
+
+Discover `shot.update` and `provider.list` before editing. Optional
+`patch.lastFrameAssetId` is a same-project managed image UUID, or explicit `null`
+to clear. Omission leaves it unchanged. Keep `referenceAssetIds` and typed canvas
+connections first-frame-only; never reinterpret a second historical array entry
+as a tail. Use the existing shot revision and stable request key, verify the
+acknowledgement, and preserve that identity if the outcome is unknown. Manual shot
+pending recovery remains session-scoped.
+
+Only exact current Ark Seedance 2.5 and Mock profiles implement first+last. Both
+images must be distinct and the whole combination must satisfy that profile; do
+not silently remove references or infer broader vendor support. Subject/style
+planning bindings remain local and are not transmitted. Saving an incomplete
+tail-only draft is allowed; generation is not.
+
+Generation is a separate explicit action. Its frozen job/version records preserve
+both roles and hashes; a confirmed-failure retry uses those old inputs even if
+the current shot changed. Unknown submission is reconciled without a new POST.
+Mock tests lifecycle only, never visual reference adherence. No real-call authority
+is granted by this workflow. See ../../docs/VIDEO-FRAME-PAIRS.md for current scope.

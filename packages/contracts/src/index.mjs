@@ -16,8 +16,9 @@ import {comfyRemoteSchemas} from './comfy-images.mjs';
 export * from './comfy-images.mjs';
 import {getCapabilityProfile,getGenerationProfileRegion,INPUT_PROFILE_VERSION} from './generation-input-profiles.mjs';
 import {getGenerationProfileIssue} from './generation-input-validation.mjs';
-export {INPUT_PROFILE_VERSION,PROFILE_VERSION,GENERATION_INPUT_ROLES,INPUT_ROLES,GENERATION_INPUT_PROFILES,CAPABILITY_PROFILES,getCapabilityProfile,getGenerationProfileRegion} from './generation-input-profiles.mjs';
+export {INPUT_PROFILE_VERSION,PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION,ARCHIVED_CAPABILITY_PROFILES,getLegacyCapabilityProfile,GENERATION_INPUT_ROLES,INPUT_ROLES,GENERATION_INPUT_PROFILES,CAPABILITY_PROFILES,getCapabilityProfile,getGenerationProfileRegion} from './generation-input-profiles.mjs';
 export {validateGenerationInput,buildAdapterPlan,encodedImageDataUriBytes,evaluateCapabilityLifecycle,getGenerationProfileIssue} from './generation-input-validation.mjs';
+export {getShotGenerationReferenceSelection} from './video-frame-selection.mjs';
 import {subjectSchemas} from './subjects.mjs';
 export {SUBJECT_KINDS,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,subjectSchemas,subjectResponseSchema,subjectVersionResponseSchema,subjectBindingResponseSchema,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from './subjects.mjs';
 import {inspectionSchemas} from './inspection.mjs';
@@ -42,7 +43,7 @@ export {DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, EDIT_TASK_STATUSES, editTaskL
 const id=z.string().uuid(), key=z.string().min(8).max(200), position=z.object({x:z.number().finite(),y:z.number().finite()}).strict();
 const mutationRequestId=key.optional().describe('Optional stable replay key (8–200 characters). Reuse the exact operation and caller-supplied input to recover the original response, even after later revisions. Changed reuse conflicts; without a key legacy mutation semantics apply.');
 const params=z.object({scenario:z.enum(['success','failure','delay','timeout','unknown','reject','download_fail_once','rejected_before_accept','accepted_then_response_lost','poll_timeout_then_recover','terminal_failure']).optional(),delayMs:z.number().int().min(0).max(120000).optional(),seed:z.number().int().optional()}).strict();
-const shotFields={title:z.string().min(1).max(150),prompt:z.string().max(5000),referenceAssetIds:z.array(id).max(8),aspectRatio:z.enum(['9:16','16:9','1:1','3:4','4:3','21:9']),duration:z.number().int().min(1).max(20),parameters:params,position};
+const shotFields={title:z.string().min(1).max(150),prompt:z.string().max(5000),referenceAssetIds:z.array(id).max(8),lastFrameAssetId:id.nullable().describe('Optional saved last-frame image. Omission preserves the previous shape/selection; null explicitly clears it. First-frame references and reference edges are unchanged.'),aspectRatio:z.enum(['9:16','16:9','1:1','3:4','4:3','21:9']),duration:z.number().int().min(1).max(20),parameters:params,position};
 const frame=z.number().int().min(0).max(18000), durationFrames=z.number().int().min(1).max(18000);
 const sourceFrame=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-18000);
 const even=(minimum,maximum)=>z.number().int().min(minimum).max(maximum).multipleOf(2);
@@ -188,7 +189,9 @@ export function findModelCapabilities(capabilities, model) {
  const id=model||(typeof models[0]==='string'?models[0]:models[0]?.id);
  if(Object.hasOwn(capabilities||{},'inputProfiles')){
   const region=getGenerationProfileRegion(capabilities?.id,capabilities),profile=getCapabilityProfile(capabilities?.id,id,region);
-  if(!profile||capabilities.providerRegion!==region||capabilities.inputProfileVersion!==INPUT_PROFILE_VERSION||!Array.isArray(capabilities.inputProfiles)||!capabilities.inputProfiles.some(item=>item?.profileId===profile.profileId&&item?.profileVersion===INPUT_PROFILE_VERSION&&item?.providerId===capabilities.id&&item?.model===id&&Array.isArray(item?.regions)&&item.regions.includes(region)))return null;
+  if(!profile||capabilities.providerRegion!==region||capabilities.inputProfileVersion!==INPUT_PROFILE_VERSION||!Array.isArray(capabilities.inputProfiles))return null;
+  const profileMatches=capabilities.inputProfiles.filter(item=>item?.providerId===capabilities.id&&item?.model===id&&Array.isArray(item?.regions)&&item.regions.includes(region));
+  if(profileMatches.length!==1||profileMatches[0].profileId!==profile.profileId||profileMatches[0].profileVersion!==profile.profileVersion)return null;
   const image=profile.inputs.roles.first_frame;
   const advertised=(Array.isArray(capabilities.modelCapabilities)?capabilities.modelCapabilities:[]).find(item=>item?.id===id);
   return {...advertised,id,name:advertised?.name||id,
@@ -217,7 +220,12 @@ export function getGenerationIssue(snapshot, capabilities) {
  const count=snapshot.referenceAssetIds?.length??refs.length;
  const mode=count?'image':'text';
  if(!model.inputModes?.includes(mode))return issue('UNSUPPORTED_INPUT',mode==='text'?'此模型需要一张首帧参考图':'此模型不支持参考图输入');
- const constraints=model.referenceImages||{min:mode==='text'?0:1,max:1};
+ const declaredConstraints=model.referenceImages||{min:mode==='text'?0:1,max:1};
+ const typedTail=refs.some(asset=>dataRecord(asset)&&asset.role==='last_frame')||(denseArray(snapshot.referenceBindings)&&snapshot.referenceBindings.some(binding=>dataRecord(binding)&&binding.role==='last_frame'));
+ const activeProfile=getCapabilityProfile(capabilities?.id,model.id,getGenerationProfileRegion(capabilities?.id,capabilities));
+ // A larger new pair envelope cannot relax the legacy first-only count pass.
+ // In particular an old second reference never becomes an implicit tail.
+ const constraints=activeProfile?.inputs.roles.last_frame.implemented&&!typedTail?{...declaredConstraints,max:Math.min(declaredConstraints.max,1)}:declaredConstraints;
  if(count<constraints.min||count>constraints.max)return issue('UNSUPPORTED_INPUT',`此模型支持 ${constraints.min}–${constraints.max} 张参考图片`);
  if(refs.some(asset=>!dataRecord(asset)))return issue('UNSUPPORTED_INPUT','参考素材必须为普通数据对象');
  if(refs.some(asset=>!asset||typeof asset.mimeType!=='string'||!asset.mimeType.startsWith('image/')))return issue('UNSUPPORTED_INPUT','首帧参考素材必须为图片');

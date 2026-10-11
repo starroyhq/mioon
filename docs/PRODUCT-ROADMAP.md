@@ -139,6 +139,10 @@ providers remain unverified. Continued iteration does not block that limited tri
    full release gate passed. This does not expand built-in Agent tools/
    context or depend on Blender, paid calls or live-provider approval.
 
+Current implementation in progress: [saved first/last video frames](VIDEO-FRAME-PAIRS.md),
+limited to Ark Seedance 2.5 and Mock. Subject/style provider consumption remains a
+separate next combination; no automatic upload or second-stage generation is implied.
+
 2. **Capability-checked inputs and reviewed keyframe-to-video stages.** Subject
    references and first/last images can be uploaded, extracted from managed video,
    generated as images, or imported from external rendering. Motion references

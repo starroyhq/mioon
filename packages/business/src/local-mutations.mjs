@@ -35,6 +35,12 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
   if(!Array.isArray(ids))invalid();
   for(const id of ids)owned('assets',id,projectId);
  }
+ function lastFrame(projectId,id) {
+  if(id===null)return;
+  if(typeof id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))invalid();
+  const value=owned('assets',id,projectId);
+  if(!['image/png','image/jpeg','image/webp'].includes(value.mimeType))throw new AppError('INVALID_REFERENCE_SOURCE','尾帧必须为已导入或生成的 PNG、JPEG 或 WebP 图片');
+ }
  function version(shot,versionId) {
   let value;
   try{value=owned('versions',versionId,shot.projectId);}
@@ -51,6 +57,7 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
  }
  function shotRelations(shot) {
   assets(shot.projectId,shot.referenceAssetIds);
+  if(Object.hasOwn(shot,'lastFrameAssetId'))lastFrame(shot.projectId,shot.lastFrameAssetId);
   if(shot.selectedVersionId!=null)version(shot,shot.selectedVersionId);
  }
  function nodeRelations(node) {
@@ -88,7 +95,7 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
     throw error;
    }
   },
-  validate:({value})=>{shotRelations(value);if(input.patch.referenceAssetIds!==undefined)assets(value.projectId,input.patch.referenceAssetIds);},
+  validate:({value})=>{shotRelations(value);if(input.patch.referenceAssetIds!==undefined)assets(value.projectId,input.patch.referenceAssetIds);if(Object.hasOwn(input.patch,'lastFrameAssetId'))lastFrame(value.projectId,input.patch.lastFrameAssetId);},
   apply:({value:shot})=>{
    check(shot,input.expectedRevision);references.guardManualUpdate(shot,input.patch.referenceAssetIds);
    return put('shots',{...shot,...input.patch,revision:shot.revision+1,updatedAt:now()});
@@ -98,9 +105,9 @@ export function createLocalMutationServices(store,{check,canonical,now,reference
  const handlers={
   'shot.create':input=>mutate('shot.create',input,{
    resolve:()=>({projectId:project(input.projectId).id}),
-   validate:()=>assets(input.projectId,input.referenceAssetIds||[]),
+   validate:()=>{assets(input.projectId,input.referenceAssetIds||[]);if(Object.hasOwn(input,'lastFrameAssetId'))lastFrame(input.projectId,input.lastFrameAssetId);},
    apply:()=>{
-    const shot={id:randomUUID(),projectId:input.projectId,title:input.title,prompt:input.prompt||'',referenceAssetIds:input.referenceAssetIds||[],aspectRatio:input.aspectRatio||'9:16',duration:input.duration||2,parameters:input.parameters||{},position:input.position||{x:80+list('shots',input.projectId).length*300,y:100},orderIndex:list('shots',input.projectId).length,revision:1,selectedVersionId:null,createdAt:now(),updatedAt:now()};
+    const shot={id:randomUUID(),projectId:input.projectId,title:input.title,prompt:input.prompt||'',referenceAssetIds:input.referenceAssetIds||[],...(Object.hasOwn(input,'lastFrameAssetId')?{lastFrameAssetId:input.lastFrameAssetId}:{}),aspectRatio:input.aspectRatio||'9:16',duration:input.duration||2,parameters:input.parameters||{},position:input.position||{x:80+list('shots',input.projectId).length*300,y:100},orderIndex:list('shots',input.projectId).length,revision:1,selectedVersionId:null,createdAt:now(),updatedAt:now()};
     put('shots',shot);touchProject(input.projectId);return shot;
    },
    replay:(response,context)=>replayRecord('shots',response,context),

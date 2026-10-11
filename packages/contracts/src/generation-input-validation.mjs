@@ -1,4 +1,4 @@
-import { CAPABILITY_PROFILES, INPUT_ROLES, PROFILE_VERSION, deepFreeze, getCapabilityProfile, getGenerationProfileRegion } from './generation-input-profiles.mjs';
+import { CAPABILITY_PROFILES, ARCHIVED_CAPABILITY_PROFILES, INPUT_ROLES, PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, deepFreeze, getCapabilityProfile, getGenerationProfileRegion } from './generation-input-profiles.mjs';
 const requestKeys = ['schemaVersion', 'providerId', 'model', 'region', 'prompt', 'aspectRatio', 'duration', 'references', 'parameters'];
 const referenceKeys = ['role', 'assetId', 'mimeType', 'sizeBytes', 'sha256', 'width', 'height', 'durationSeconds'];
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -31,12 +31,15 @@ export function validateGenerationInput(input, options = {}) {
     for (const key of Object.keys(value).sort()) if (!allowed.includes(key)) add('UNKNOWN_FIELD', [...path, key], 'This field is not supported; it will not be ignored.');
 
   };
-  const finish = (profile, value) => deepFreeze({ ok: issues.length === 0, profileVersion: PROFILE_VERSION,
+  const finish = (profile, value) => deepFreeze({ ok: issues.length === 0, profileVersion: profile?.profileVersion ?? PROFILE_VERSION,
     ...(profile ? { profileId: profile.profileId } : {}), evaluatedAsOf: asOf,
     issues, warnings, ...(issues.length === 0 && value ? { value } : {}) });
   let asOf = null;
   if (!record(options) || !dataProperties(options)) { add('INVALID_OPTIONS', [], 'Options must be an object.'); return finish(); }
-  unknown(options, ['asOf'], ['options']);
+  unknown(options, ['asOf', 'profileId', 'profileVersion'], ['options']);
+  const hasPin = own(options, 'profileId') || own(options, 'profileVersion');
+  const pin = hasPin ? { profileId: options.profileId, profileVersion: options.profileVersion } : undefined;
+  if (hasPin && (!own(options, 'profileId') || !own(options, 'profileVersion'))) add('UNKNOWN_INPUT_PROFILE', ['options'], 'An exact complete profile identity and version are required.');
   if (own(options, 'asOf')) asOf = options.asOf;
   if (own(options, 'asOf') && !dateValid(asOf)) { add('INVALID_AS_OF_DATE', ['options', 'asOf'], 'Use an actual YYYY-MM-DD calendar date.'); asOf = null; }
   if (!record(input) || !dataProperties(input)) { add('INVALID_INPUT', [], 'Input must be a plain object.'); return finish(); }
@@ -45,7 +48,8 @@ export function validateGenerationInput(input, options = {}) {
   if (!CAPABILITY_PROFILES.some(p => p.providerId === input.providerId)) add('UNKNOWN_PROVIDER', ['providerId'], 'Choose an implemented provider explicitly.');
   else if (!CAPABILITY_PROFILES.some(p => p.providerId === input.providerId && p.model === input.model)) add('UNSUPPORTED_MODEL', ['model'], 'Choose the exact implemented model explicitly.');
   else if (!getCapabilityProfile(input.providerId, input.model, input.region)) add('UNSUPPORTED_REGION', ['region'], 'Choose an explicit implemented account/API region; there is no fallback.');
-  const profile = getCapabilityProfile(input.providerId, input.model, input.region);
+  const profile = getCapabilityProfile(input.providerId, input.model, input.region, pin);
+  if (hasPin && !profile) add('UNKNOWN_INPUT_PROFILE', ['options'], 'The exact frozen input profile is not supported; no current-profile fallback is allowed.');
   if (!Array.isArray(input.references)) add('INVALID_REFERENCES', ['references'], 'An explicit references array is required, including for text-only input.');
   else if (input.references.length > 8) add('REFERENCE_PAYLOAD_LIMIT', ['references'], 'At most eight reference records may be inspected.');
   else if (!referenceArray(input.references)) add('INVALID_REFERENCES', ['references'], 'References must be a plain dense array of data properties without extra keys.');
@@ -65,7 +69,9 @@ export function validateGenerationInput(input, options = {}) {
   }
   if (referenceArray(input.references)) {
     const refs = input.references, seen = new Set(), counts = new Map();
-    if (refs.length < profile.inputs.minReferences || refs.length > profile.inputs.maxReferences) add('INVALID_REFERENCE_COUNT', ['references'], 'The current route accepts at most one first-frame image; Runway requires one.');
+    const typedTail = refs.some(ref => record(ref) && dataProperties(ref) && ref.role === 'last_frame');
+    const maxReferences = profile.profileVersion === FRAME_PAIR_PROFILE_VERSION && !typedTail ? 1 : profile.inputs.maxReferences;
+    if (refs.length < profile.inputs.minReferences || refs.length > maxReferences) add('INVALID_REFERENCE_COUNT', ['references'], typedTail && profile.profileVersion === FRAME_PAIR_PROFILE_VERSION ? 'This route accepts text, one first-frame image, or one first-frame and one last-frame image.' : 'The current route accepts at most one first-frame image; Runway requires one.');
     for (let index = 0; index < refs.length; index++) {
       const ref = refs[index], path = ['references', index];
       if (!record(ref) || !dataProperties(ref)) { add('INVALID_REFERENCE', path, 'Every reference must be a plain object.'); continue; }
@@ -103,6 +109,7 @@ export function validateGenerationInput(input, options = {}) {
     for (const [role, count] of counts) if (count > profile.inputs.roles[role].max) add('ROLE_COUNT_EXCEEDED', ['references'], 'A role exceeds its implemented count limit.');
     const selectedRoles = refs.map(ref => record(ref) && dataProperties(ref) && typeof ref.role === 'string' ? ref.role : null).sort();
     if (!profile.inputs.combinations.some(combination => combination.length === selectedRoles.length && [...combination].sort().every((role, index) => role === selectedRoles[index]))) add('UNSUPPORTED_ROLE_COMBINATION', ['references'], 'The complete reference combination is unsupported; no references will be dropped.');
+    if (refs.length === 2 && selectedRoles.includes('last_frame') && refs.every(ref => record(ref) && dataProperties(ref)) && (refs[0].role !== 'first_frame' || refs[1].role !== 'last_frame')) add('INVALID_REFERENCE_ORDER', ['references'], 'The complete frame manifest must be ordered first_frame, then last_frame; role labels are required.');
     if (profile.simulationOnly) warnings.push({ code: 'MOCK_REFERENCE_NOT_RENDERED', message: 'Mock preserves reference metadata for workflow simulation. Its moving test pattern does not depict the image or prompt.' });
   }
   const lifecycle = evaluateCapabilityLifecycle(profile, own(options, 'asOf') ? { asOf: options.asOf } : {});
@@ -111,7 +118,7 @@ export function validateGenerationInput(input, options = {}) {
   warnings.push(...lifecycle.warnings);
   return finish(profile, issues.length ? undefined : copy({ ...input, parameters: input.parameters ?? {} }));
 }
-/** Pure bridge for existing first-frame-only adapters. No managed paths or network. */
+/** Pure exact-profile bridge. New frame roles remain explicit; legacy bytes stay unchanged. */
 export function buildAdapterPlan(input, options) {
   const result = validateGenerationInput(input, options);
   if (!result.ok) return result;
@@ -121,7 +128,7 @@ export function buildAdapterPlan(input, options) {
     referenceBindings: value.references.map(ref => ({ role: ref.role, assetId: ref.assetId, sha256: ref.sha256 })),
     adapterSnapshot: {
       model: value.model, prompt: value.prompt, aspectRatio: value.aspectRatio, duration: value.duration, parameters: copy(value.parameters),
-      referenceAssets: value.references.map(({ role, assetId, ...metadata }) => ({ id: assetId, ...metadata })),
+      referenceAssets: value.references.map(({ role, assetId, ...metadata }) => ({ id: assetId, ...(result.profileVersion === FRAME_PAIR_PROFILE_VERSION ? { role } : {}), ...metadata })),
     },
   });
 }
@@ -140,7 +147,7 @@ export function evaluateCapabilityLifecycle(profile, options = {}) {
     }
   }
   // Accept only a canonical profile: arbitrary vendor metadata cannot add routes.
-  const known = record(profile) && dataProperties(profile) ? CAPABILITY_PROFILES.find(item => item.profileId === profile.profileId && profile.profileVersion === PROFILE_VERSION && item.providerId === profile.providerId && item.model === profile.model) : null;
+  const known = record(profile) && dataProperties(profile) ? [...CAPABILITY_PROFILES, ...ARCHIVED_CAPABILITY_PROFILES].find(item => item.profileId === profile.profileId && profile.profileVersion === item.profileVersion && item.providerId === profile.providerId && item.model === profile.model) : null;
   if (!known) add('UNKNOWN_INPUT_PROFILE', ['profile'], 'An exact implemented Mioon input profile is required.');
   else if (known.lifecycle) {
     if (!record(options) || !own(options, 'asOf')) add('AS_OF_DATE_REQUIRED', ['options', 'asOf'], 'Supply the current server UTC date when checking a lifecycle-limited model.');
@@ -166,10 +173,13 @@ export function getGenerationProfileIssue(snapshot, capabilities) {
   if (!region || capabilities.providerRegion !== region) return issue('UNSUPPORTED_REGION', '供应商服务器区域缺失或不受支持');
   if (snapshot.providerId !== undefined && snapshot.providerId !== capabilities.id) return issue('UNKNOWN_PROVIDER', '任务供应商与所选供应商不一致');
   if (snapshot.providerRegion !== undefined && snapshot.providerRegion !== region) return issue('PROVIDER_REGION_CHANGED', '供应商账户区域已更改，请恢复此任务原有区域后继续');
-  const profile = getCapabilityProfile(capabilities.id, model, region);
-  const advertised = capabilities.inputProfiles.find(item => record(item) && dataProperties(item) && item.profileId === profile?.profileId && item.profileVersion === PROFILE_VERSION && item.providerId === capabilities.id && item.model === model && referenceArray(item.regions) && item.regions.includes(region));
-  if (!profile || !advertised) return issue('UNKNOWN_INPUT_PROFILE', '所选模型和服务器区域没有已实现的输入配置');
-  if (snapshot.inputProfileVersion !== undefined && snapshot.inputProfileVersion !== PROFILE_VERSION || snapshot.inputProfileId !== undefined && snapshot.inputProfileId !== profile.profileId) return issue('UNKNOWN_INPUT_PROFILE', '冻结任务的输入配置已不受支持');
+  const active = getCapabilityProfile(capabilities.id, model, region);
+  const advertised = capabilities.inputProfiles.filter(item => record(item) && dataProperties(item) && item.providerId === capabilities.id && item.model === model && referenceArray(item.regions) && item.regions.includes(region));
+  if (!active || advertised.length !== 1 || advertised[0].profileId !== active.profileId || advertised[0].profileVersion !== active.profileVersion) return issue('UNKNOWN_INPUT_PROFILE', '所选模型和服务器区域没有唯一已实现的输入配置');
+  const hasPin = own(snapshot, 'inputProfileVersion') || own(snapshot, 'inputProfileId');
+  if (hasPin && !['inputProfileVersion', 'inputProfileId', 'providerRegion', 'referenceBindings'].every(key => own(snapshot, key))) return issue('UNKNOWN_INPUT_PROFILE', '冻结任务必须包含完整的输入配置身份、区域和角色');
+  const profile = hasPin ? getCapabilityProfile(capabilities.id, model, region, {profileId:snapshot.inputProfileId, profileVersion:snapshot.inputProfileVersion}) : active;
+  if (!profile) return issue('UNKNOWN_INPUT_PROFILE', '冻结任务的输入配置已不受支持');
   const assets = snapshot.referenceAssets ?? [];
   if (!referenceArray(assets)) return issue('INVALID_REFERENCES', '参考素材必须为完整且有界的数组', ['referenceAssets']);
   const ids = snapshot.referenceAssetIds === undefined ? assets.map(asset => record(asset) && dataProperties(asset) ? asset.id : undefined) : snapshot.referenceAssetIds;
@@ -178,8 +188,15 @@ export function getGenerationProfileIssue(snapshot, capabilities) {
   const bindings = snapshot.referenceBindings;
   if (bindings !== undefined && (!referenceArray(bindings) || bindings.length !== ids.length || bindings.some((binding, index) => !record(binding) || !dataProperties(binding) || binding.assetId !== ids[index] || binding.sha256 !== assets[index].sha256 || Object.keys(binding).some(key => !['role', 'assetId', 'sha256'].includes(key))))) return issue('REFERENCE_BINDING_MISMATCH', '冻结参考角色与完整素材选择不一致', ['referenceBindings']);
   const connections = snapshot.referenceConnections;
-  if (connections !== undefined && (!referenceArray(connections) || connections.length > 1 || connections.some(connection => !record(connection) || !dataProperties(connection) || connection.role !== 'first_frame' || ids.length !== 1 || connection.sourceAssetId !== ids[0]))) return issue('REFERENCE_BINDING_MISMATCH', '首帧连线与完整素材选择不一致', ['referenceConnections']);
+  const completePair = bindings?.length === 2 && bindings[0].role === 'first_frame' && bindings[1].role === 'last_frame';
+  if (connections !== undefined && (!referenceArray(connections) || connections.length > 1 || connections.some(connection => !record(connection) || !dataProperties(connection) || connection.role !== 'first_frame' || (ids.length !== 1 && !completePair) || connection.sourceAssetId !== ids[0] || (bindings !== undefined && bindings[0]?.role !== 'first_frame')))) return issue('REFERENCE_BINDING_MISMATCH', '首帧连线与完整素材选择不一致', ['referenceConnections']);
   if (bindings && assets.some((asset, index) => own(asset, 'role') && asset.role !== bindings[index].role)) return issue('REFERENCE_BINDING_MISMATCH', '参考素材角色与冻结绑定不一致', ['referenceBindings']);
+  // A pair must carry complete typed bindings. A second array element never
+  // acquires last-frame semantics merely from its position.
+  const pair = assets.some((asset, index) => (bindings ? bindings[index].role : asset.role) === 'last_frame');
+  if (pair && (!bindings || bindings.length !== 2 || bindings[0].role !== 'first_frame' || bindings[1].role !== 'last_frame')) return issue('REFERENCE_BINDING_MISMATCH', '首尾帧必须包含完整且按首尾顺序固定的角色绑定', ['referenceBindings']);
+  if (own(snapshot, 'lastFrameAssetId') && snapshot.lastFrameAssetId !== null && (!pair || snapshot.lastFrameAssetId !== ids[1])) return issue('REFERENCE_BINDING_MISMATCH', '尾帧选择与完整冻结角色不一致', ['lastFrameAssetId']);
+  if (own(snapshot, 'lastFrameAssetId') && snapshot.lastFrameAssetId === null && pair) return issue('REFERENCE_BINDING_MISMATCH', '已清除的尾帧不能出现在冻结角色中', ['lastFrameAssetId']);
   const input = {
     providerId: capabilities.id, model, region,
     prompt: snapshot.prompt, aspectRatio: snapshot.aspectRatio, duration: snapshot.duration,
@@ -193,5 +210,5 @@ export function getGenerationProfileIssue(snapshot, capabilities) {
       ...(asset.height === undefined ? {} : { height: asset.height }),
     })),
   };
-  return validateGenerationInput(input, { asOf: capabilities.profileEvaluationDate }).issues[0] ?? null;
+  return validateGenerationInput(input, { asOf: capabilities.profileEvaluationDate, profileId:profile.profileId, profileVersion:profile.profileVersion }).issues[0] ?? null;
 }

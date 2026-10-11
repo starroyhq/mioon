@@ -1,4 +1,4 @@
-import { findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, GENERATION_INPUT_ROLES } from '@mioon/contracts';
+import { findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
 
 export const providerStatus = provider => provider?.status || (!provider?.configured ? 'not_configured' : !provider?.enabled ? 'disabled' : 'available');
 export const providerStatusLabel = provider => ({ available: '可用', disabled: '未启用', not_configured: '配置未完成' }[providerStatus(provider)] || '不可用');
@@ -27,7 +27,7 @@ export function generationProfileSelection(provider, model) {
     const rule = profile.inputs?.roles?.[role];
     return typeof rule?.implemented === 'boolean' && countKnown(rule.min) && countKnown(rule.max) && rule.min <= rule.max && (!rule.implemented || Array.isArray(rule.mimeTypes) && rule.mimeTypes.length > 0 && Number.isSafeInteger(rule.maxBytes) && rule.maxBytes > 0);
   };
-  if (profile.profileVersion !== INPUT_PROFILE_VERSION || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
+  if (![INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION].includes(profile.profileVersion) || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
   const date = provider.profileEvaluationDate;
   const evaluations = Array.isArray(provider.inputProfileEvaluations) ? provider.inputProfileEvaluations.filter(item => item?.profileId === profile.profileId) : [];
   const evaluation = evaluations[0];
@@ -42,7 +42,7 @@ export function generationSelection(providers, options = {}, shot = {}) {
   const models = providerModels(provider);
   const model = options.model || models[0]?.id || '';
   const capabilities = provider ? findModelCapabilities(provider, model) : undefined;
-  const inputMode = shot.referenceAssetIds?.length ? 'image' : options.inputMode || (capabilities?.inputModes?.includes('text') ? 'text' : 'image');
+  const inputMode = shot.referenceAssetIds?.length || shot.lastFrameAssetId ? 'image' : options.inputMode || (capabilities?.inputModes?.includes('text') ? 'text' : 'image');
   return { provider, model, capabilities, inputMode, scenario: options.scenario || 'success' };
 }
 
@@ -60,7 +60,7 @@ const inputIssueMessages = {
   UNKNOWN_INPUT_ROLE: '未识别此参考角色，不能自动推断用途。',
   UNSUPPORTED_ROLE_COMBINATION: '当前 Mioon 适配器未接入此参考组合，不会自动丢弃素材。',
   ROLE_COUNT_EXCEEDED: '所选参考角色的数量超过当前 Mioon 适配器限制。',
-  INVALID_REFERENCE_COUNT: '当前适配器至多接入一张首帧参考图；Runway 必须提供一张。',
+  INVALID_REFERENCE_COUNT: '参考图数量不符合当前模型限制；首尾帧组合仅接入 Ark 与 Mock。',
   UNSUPPORTED_REFERENCE_MIME: '当前 Mioon 适配器未接入此参考图片格式。',
   DUPLICATE_REFERENCE: '同一参考素材不能重复提交。',
   MODEL_LIFECYCLE_REVALIDATION_REQUIRED: '此模型已到生命周期复核日期，服务器已阻止新提交。请重新核验该精确模型；不会自动替换模型。',
@@ -70,10 +70,57 @@ export function generationIssueMessage(issue) {
   return /^[\x00-\x7F]+$/.test(issue.message || '') && inputIssueMessages[issue.code] || issue.message || '';
 }
 
-export function generationInputIssue(shot, provider, model, assets, inputMode) {
+// Frozen job IDs already contain the complete manifest. In particular, never
+// expand a historical job from today's shot tail or infer roles by position.
+export function generationReferences(shot, { frozen = false } = {}) {
+  if (!frozen) return getShotGenerationReferenceSelection(shot);
+  const ids = shot.referenceAssetIds || [];
+  if (!Array.isArray(ids) || ids.length > 8 || Object.keys(ids).length !== ids.length || ids.some(id => typeof id !== 'string')) return { ok: false, issues: [{ code: 'INVALID_REFERENCES', message: '冻结参考素材清单无效，不能自动修复或缩短。' }], references: [] };
+  return { ok: true, issues: [], references: ids.map((assetId, index) => ({
+    assetId, role: shot.referenceBindings?.[index]?.role || shot.referenceAssets?.[index]?.role || 'first_frame',
+  })) };
+}
+
+export function generationReferencePreview(shot, assets, options = {}) {
+  return generationReferences(shot, options).references.map(({ assetId, role }, index) => {
+    const pinned = options.frozen ? shot.referenceAssets?.[index] : undefined;
+    const current = assets.find(asset => asset.id === assetId);
+    const unchanged = Boolean(current && (!pinned?.sha256 || pinned.sha256 === current.sha256));
+    return { assetId, role, name: unchanged ? current.name : pinned?.name,
+      sha256: pinned?.sha256 || current?.sha256, asset: unchanged ? current : null };
+  });
+}
+
+// Bind paid confirmation to content identity, not a mutable count or thumbnail.
+export function generationReferenceIdentity(shot, assets, options = {}) {
+  return JSON.stringify(generationReferences(shot, options).references.map(({ assetId, role }) => {
+    const asset = assets.find(item => item.id === assetId);
+    return [assetId, role, ...['projectId', 'sha256', 'mimeType', 'width', 'height', 'sizeBytes', 'relativePath'].map(key => asset?.[key] ?? null)];
+  }));
+}
+
+export function generationInputIssue(shot, provider, model, assets, inputMode, { frozen = false } = {}) {
   if (!provider) return '未找到生成服务商，请刷新工作台后重试。';
-  const references = (shot.referenceAssetIds || []).map(id => assets.find(asset => asset.id === id)).filter(Boolean);
-  if (references.length !== (shot.referenceAssetIds || []).length) return '参考素材已不存在，请重新选择并保存。';
+  const selection = generationReferences(shot, { frozen });
+  if (!selection.ok) return generationIssueMessage(selection.issues[0]);
+  const references = selection.references.map(({ assetId, role }, index) => {
+    const asset = assets.find(item => item.id === assetId);
+    if (!asset) return null;
+    if (frozen) {
+      const pinned = shot.referenceAssets?.[index];
+      if (!pinned || pinned.id !== assetId) return null;
+      return { ...pinned, ...(pinned.sizeBytes === undefined ? { sizeBytes: asset.sizeBytes } : {}) };
+    }
+    return { ...asset, ...(asset.role === undefined ? { role } : {}) };
+  });
+  if (references.some(asset => !asset)) return '参考素材已不存在或冻结清单不完整，请重新核对原始素材。';
+  if (frozen && references.some((asset, index) => {
+    const current = assets.find(item => item.id === selection.references[index].assetId);
+    return ['sha256', 'mimeType', 'width', 'height', 'relativePath', 'sizeBytes'].some(key => Object.hasOwn(asset, key) && asset[key] !== current[key]);
+  })) return '参考素材与原任务的冻结内容不一致，不能替换后重试。';
   if (inputMode === 'image' && !references.length) return '图生视频需要选择一张首帧参考图。';
-  return generationIssueMessage(getGenerationIssue({ ...shot, model, referenceAssets: references }, provider));
+  if (inputMode === 'text' && references.length) return '切换文生视频前须明确清除首帧与尾帧选择，不会自动丢弃参考图。';
+  const snapshot = { ...shot, model, referenceAssetIds: selection.references.map(item => item.assetId), referenceAssets: references };
+  if (!frozen && shot.lastFrameAssetId) snapshot.referenceBindings = selection.references.map(({ role, assetId }, index) => ({ role, assetId, sha256: references[index].sha256 }));
+  return generationIssueMessage(getGenerationIssue(snapshot, provider));
 }

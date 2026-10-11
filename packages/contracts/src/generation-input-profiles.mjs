@@ -3,7 +3,10 @@
  * These describe implemented app routes, never vendor feature unions or runtime
  * enablement. Actual bytes, ownership, authorization and dispatch stay server-side.
  */
+// Discovery-envelope version stays stable. Individual exact profiles version
+// independently; archived jobs must never be reinterpreted using active policy.
 export const PROFILE_VERSION = 'mioon-input-profiles/1';
+export const FRAME_PAIR_PROFILE_VERSION = 'mioon-input-profiles/2';
 export const REVIEWED_ON = '2026-10-10';
 export const INPUT_ROLES = Object.freeze(['first_frame', 'last_frame', 'subject_reference', 'style_reference', 'motion_reference']);
 export const MOCK_SCENARIOS = Object.freeze(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure']);
@@ -31,7 +34,7 @@ const common = {
 };
 const image = { mimeTypes: ['image/png', 'image/jpeg'], maxBytes: 10 * MiB, maxBytesSource: 'Mioon managedImage default', dimensions: null };
 const profile = (providerId, model, fields) => ({ ...common, providerId, model, profileId: `${providerId}:${model}:v1`, ...fields });
-export const CAPABILITY_PROFILES = deepFreeze([
+const legacyProfiles = deepFreeze([
   profile('runway', 'gen4_turbo', {
     regions: ['global'], regionMeaning: 'Fixed Runway API endpoint label; not a data-residency guarantee.',
     apiFamily: 'runway-v1', origins: { global: 'https://api.dev.runwayml.com' },
@@ -86,10 +89,35 @@ export const CAPABILITY_PROFILES = deepFreeze([
     inputs: roles(0, { ...image, mimeTypes: ['image/png', 'image/jpeg', 'image/webp'], maxBytes: 30 * MiB, maxBytesSource: 'Mioon asset.import cap; mock does not read reference image bytes' }, true),
   }),
 ]);
-/** Exact lookup only. No model aliases, vendor feature union, or regional fallback. */
-export function getCapabilityProfile(providerId, model, region) {
+const withFramePair = legacy => ({
+  ...legacy, profileId: `${legacy.providerId}:${legacy.model}:v2`, profileVersion: FRAME_PAIR_PROFILE_VERSION,
+  reviewedOn: '2026-10-11',
+  inputs: {
+    ...legacy.inputs, maxReferences: 2, combinations: [[], ['first_frame'], ['first_frame', 'last_frame']],
+    roles: { ...legacy.inputs.roles, last_frame: { ...legacy.inputs.roles.first_frame, min: 0,
+      semantics: legacy.simulationOnly ? 'simulation-only' : 'last-frame-conditioning' } },
+    distinctAssetsRequired: true,
+    distinctAssetsReason: 'Current Mioon app restriction; not a claimed provider requirement.',
+  },
+});
+export const CAPABILITY_PROFILES = deepFreeze(legacyProfiles.map(profile =>
+  ['ark', 'mock'].includes(profile.providerId) ? withFramePair(profile) : profile));
+export const ARCHIVED_CAPABILITY_PROFILES = deepFreeze(legacyProfiles.filter(profile => ['ark', 'mock'].includes(profile.providerId)));
+const exactProfiles = [...CAPABILITY_PROFILES, ...ARCHIVED_CAPABILITY_PROFILES];
+/** Exact lookup. Optional pins must be complete; never fall back to current policy. */
+export function getCapabilityProfile(providerId, model, region, pin) {
   if (![providerId, model, region].every(value => typeof value === 'string')) return null;
-  return CAPABILITY_PROFILES.find(p => p.providerId === providerId && p.model === model && p.regions.includes(region)) ?? null;
+  const matches = p => p.providerId === providerId && p.model === model && p.regions.includes(region);
+  if (pin === undefined) return CAPABILITY_PROFILES.find(matches) ?? null;
+  if (!pin || typeof pin !== 'object' || Array.isArray(pin) || ![Object.prototype, null].includes(Object.getPrototypeOf(pin)) ||
+      Object.getOwnPropertySymbols(pin).length || Object.values(Object.getOwnPropertyDescriptors(pin)).some(d => d.get || d.set || !d.enumerable) ||
+      Object.keys(pin).length !== 2 || !Object.hasOwn(pin, 'profileId') || !Object.hasOwn(pin, 'profileVersion') || typeof pin.profileId !== 'string' || typeof pin.profileVersion !== 'string') return null;
+  return exactProfiles.find(p => matches(p) && p.profileId === pin.profileId && p.profileVersion === pin.profileVersion) ?? null;
+}
+/** Only for already-frozen jobs that predate profile pins. Never new discovery. */
+export function getLegacyCapabilityProfile(providerId, model, region) {
+  if (![providerId, model, region].every(value => typeof value === 'string')) return null;
+  return legacyProfiles.find(p => p.providerId === providerId && p.model === model && p.regions.includes(region)) ?? null;
 }
 
 // Fixed-origin labels are endpoint identities, not selectable browser regions.

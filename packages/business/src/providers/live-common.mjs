@@ -111,11 +111,12 @@ export function validateModelSnapshot(snapshot, model, { maximumPrompt = 1000, p
   if ((snapshot.model ?? model.id) !== model.id) throw providerError('UNSUPPORTED_MODEL', 'This provider model is not implemented.');
   if (!model.aspectRatios.includes(snapshot.aspectRatio) || !model.durations.includes(snapshot.duration)) throw providerError('UNSUPPORTED_CAPABILITY', 'Choose an advertised aspect ratio and duration for this model.');
   if (typeof snapshot.prompt !== 'string' || !snapshot.prompt.trim() || snapshot.prompt.length > maximumPrompt) throw providerError('INVALID_PROMPT', `Prompt must contain 1 to ${maximumPrompt} UTF-16 code units.`);
-  if (!Array.isArray(snapshot.referenceAssets) || snapshot.referenceAssets.length < model.referenceImages.min || snapshot.referenceAssets.length > model.referenceImages.max) throw providerError('INVALID_REFERENCE_COUNT', 'This model accepts text alone or one first-frame reference image.');
+  if (!Array.isArray(snapshot.referenceAssets) || snapshot.referenceAssets.length < model.referenceImages.min || snapshot.referenceAssets.length > model.referenceImages.max) throw providerError('INVALID_REFERENCE_COUNT', 'This model does not support the requested number of reference images.');
   const parameters = snapshot.parameters ?? {};
   if (typeof parameters !== 'object' || Array.isArray(parameters) || Object.keys(parameters).some(key => !parameterNames.includes(key))) throw providerError('UNSUPPORTED_PARAMETER', 'This provider accepts only its advertised generation parameters.');
   if (parameters.resolution !== undefined && !model.resolutions.includes(parameters.resolution)) throw providerError('UNSUPPORTED_RESOLUTION', 'Choose an advertised output resolution.');
   for (const asset of snapshot.referenceAssets) {
+    if(model.referenceImages.max<2&&asset?.role!==undefined&&asset.role!=='first_frame')throw providerError('UNSUPPORTED_INPUT_ROLE','This adapter only supports first-frame image input.');
     if (!asset || !/^[0-9a-f]{64}$/i.test(asset.sha256 ?? '')) throw providerError('INVALID_REFERENCE', 'A managed reference image with its checksum is required.');
     if (!['image/png', 'image/jpeg'].includes(asset.mimeType)) throw providerError('INVALID_REFERENCE_TYPE', 'This adapter accepts PNG or JPEG reference images.');
   }
@@ -143,19 +144,25 @@ export function imageDimensions(bytes, mime) {
   throw providerError('INVALID_REFERENCE_TYPE', 'Reference bytes do not match a supported PNG or JPEG image.');
 }
 
-export async function managedImage({ root, asset, approvedHashes, maxBytes = 10 * 1024 * 1024 }) {
+export async function managedImage({ root, asset, approvedHashes, maxBytes = 10 * 1024 * 1024, signal, validateCurrent }) {
+  let boundaryError;
+  const check=()=>{if(signal?.aborted)throw operationCancelled({beforeDispatch:true});try{validateCurrent?.();}catch(error){boundaryError=error;throw error;}};
+  check();
   if (!root || !asset || typeof asset.path !== 'string' || !/^[0-9a-f]{64}$/i.test(asset.sha256 ?? '')) throw providerError('INVALID_REFERENCE', 'A managed local reference image is required.');
   if (!approvedHashes.has(asset.sha256.toLowerCase())) throw providerError('REFERENCE_NOT_APPROVED', 'This reference image is not in the server-side provider asset approval list.');
   let bytes;
   try {
-    const base = await realpath(root), file = await realpath(asset.path);
+    const base = await realpath(root);check();
+    const file = await realpath(asset.path);check();
     if (!inside(base, file)) throw providerError('UNSAFE_REFERENCE_PATH', 'Reference image must remain inside managed storage.');
-    const info = await stat(file);
+    const info = await stat(file);check();
     if (!info.isFile()) throw providerError('INVALID_REFERENCE', 'Reference must be a managed file.');
     if (info.size > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference image exceeds this adapter’s managed input limit.');
-    bytes = await readFile(file);
+    bytes = await readFile(file);check();
     if (bytes.length > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference image exceeds this adapter’s managed input limit.');
   } catch (cause) {
+    if(cause===boundaryError)throw cause;
+    check();
     if (['UNSAFE_REFERENCE_PATH', 'REFERENCE_TOO_LARGE', 'INVALID_REFERENCE'].includes(cause.code)) throw cause;
     throw providerError('REFERENCE_UNAVAILABLE', 'The managed reference image could not be read.');
   }

@@ -733,3 +733,20 @@ to optional source preflight and `timeline_render` (`purpose:'export'`). Preserv
 the original key/input after an unknown result. Omission retains historical
 responses and preview rejects custom settings. See [EXPORT-SETTINGS.md](EXPORT-SETTINGS.md).
 No built-in Agent tool is added by this external MCP operation.
+
+## Saved first/last-frame selection
+
+The shared `shot_create` / `shot_update` schemas expose optional
+`lastFrameAssetId` (inside `patch` for update): UUID selects a same-project image,
+`null` clears it, omission preserves the old shape/no-change semantics. Keep the
+existing first-frame `referenceAssetIds` / `reference_attach` / `reference_detach`
+meaning; disconnecting first does not implicitly clear last. Paired submission is
+implemented only by the exact current Ark and Mock input profiles. A lone tail or
+unsupported/mixed role selection is rejected before dispatch. Subject/style
+planning metadata is not converted into provider inputs.
+
+Use the existing stable mutation key/CAS, reread after an unknown result, and
+inspect the job's frozen role/source hashes. Retrying a confirmed failed job uses
+its original snapshot. No new model tool, paid authority, generic dispatcher or
+cross-restart manual-shot pending ledger is introduced. See
+[VIDEO-FRAME-PAIRS.md](VIDEO-FRAME-PAIRS.md) for limits and validation status.

@@ -103,9 +103,18 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
         .get(...(table === 'projects' ? [recordId] : [recordId, projectId]));
       return materialize(table, row);
     }
+    // Ownership only: tails never enter the Agent inspection DTO. Check the
+    // optional relation even on historical snapshots without legacy IDs.
+    function lastFrameAsset(value) {
+      if(Object.hasOwn(value,'lastFrameAssetId')&&value.lastFrameAssetId!==null){
+        const tail=validateAsset(get('assets',id(value.lastFrameAssetId)));
+        if(!['image/png','image/jpeg','image/webp'].includes(tail.mimeType))unavailable();
+      }
+    }
     function referenceAssets(value) {
       const references = ids(value.referenceAssetIds);
       references.forEach(reference => validateAsset(get('assets', reference)));
+      lastFrameAsset(value);
       return references;
     }
     function snapshotLinks(snapshot, shotId) {
@@ -114,6 +123,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
       if (Object.hasOwn(snapshot, 'shotId') && snapshot.shotId !== shotId) unavailable();
       if (Object.hasOwn(snapshot, 'projectId') && snapshot.projectId !== projectId) unavailable();
       if (Object.hasOwn(snapshot, 'referenceAssetIds')) referenceAssets(snapshot);
+      else lastFrameAsset(snapshot);
       if (Object.hasOwn(snapshot, 'referenceAssets')) {
         if (!Array.isArray(snapshot.referenceAssets) || snapshot.referenceAssets.length > 8) unavailable();
         for (const source of snapshot.referenceAssets) {

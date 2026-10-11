@@ -63,6 +63,7 @@ function createHarness(file, exportName = 'default') {
     './Timeline.jsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.js': { referenceForShot: () => null },
     './generation-settings.js': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String },
+    './VideoFrameControls.jsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
     './ProviderSettings.jsx': { default: 'ProviderSettings', __esModule: true },
     './ShotSubjectBindings.jsx': { default: 'ShotSubjectBindings', __esModule: true },
     './WorkspaceControls.jsx': { WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip' },
