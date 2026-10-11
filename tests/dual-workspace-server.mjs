@@ -70,7 +70,7 @@ const externalTimer=setInterval(async()=>{
   let result;
   if(task.transport==='cli'){
    const child=spawn(process.execPath,[path.resolve('apps/cli/src/index.mjs'),...task.operation.split('.'),'--input','-'],{cwd:path.resolve('.'),env,stdio:['pipe','pipe','pipe']});
-   let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);child.stdin.end(JSON.stringify(task.input));
+   let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',b=>stdout+=b);child.stderr.setEncoding('utf8').on('data',b=>stderr+=b);child.stdin.end(JSON.stringify(task.input));
    const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});
    result=JSON.parse(stdout);if(code||!result.ok)throw Error(JSON.stringify({code,result,stderr}));result=result.data;
   }else{

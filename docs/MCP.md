@@ -621,3 +621,49 @@ catalog does not expand built-in Agent tools/context. Subject/style bindings are
 local planning only: actual `first_frame` still uses `reference_attach`;
 last-frame/motion and identity-lock guarantees are unsupported. No Blender or
 live-generation step is needed. See [scope and current release gate](SUBJECT-LIBRARY.md).
+
+## Local frame extraction tools
+
+The existing official SDK bridge exposes exactly six strict frame tools from
+shared runtime schemas: `frame_extract`, `frame_request_get`, `frame_task_get`,
+`frame_task_list`, `frame_task_cancelQueued`, `frame_task_recoverResult`.
+Discover them through `tools/list` or `mioon_schema`; this is external tool
+availability, not extra authority for the built-in conversational Agent.
+[Source-frame acceptance](SOURCE-FRAMES.md) is still in progress.
+
+- `frame_extract`: `{projectId,sourceAssetId,sourceHash,sourceFrame,requestId}`.
+  Pins a project-owned managed video/hash and integer 30fps editing mark. The
+  fixed local decoder selects the first PTS at or after the mark; it does not
+  claim native/VFR frame accuracy. The new PNG is at most 1024×1024, no upscale.
+- `frame_request_get`: `{projectId,requestId}`; returns the immutable original
+  operation acknowledgement or `null`, never starts work.
+- `frame_task_get`: `{projectId,taskId}`; current task state, no execution.
+- `frame_task_list`: `{projectId,limit?,cursor?}`; pages default 20/max 50. Keep a
+  returned cursor unchanged with the same scope/limit; backend restart expires it.
+- Both controls: `{projectId,taskId,expectedRevision,requestId}`. Cancel only
+  provably unstarted work; recover only complete already-staged local bytes.
+  Recovery never decodes again, even when its checkpoint is missing or corrupt.
+
+IDs are UUIDs, hashes lowercase SHA-256 and write request IDs 8–200 characters.
+No local path, output name, decoder command, provider, profile override or generic
+executor is accepted. Effects describe local database/file writes and, only for
+extraction, scheduled local media processes. All six have no provider/network/
+paid-generation effect. Schema metadata remains advisory, never authorization.
+Outputs do not automatically change clips, versions, references or subject plans.
+
+Preserve the full original input/key yourself across an unknown response. Only
+three frame writes join client uncertainty tracking; receipt reads remain reads.
+Exact replay returns the old ACK without scheduling extraction; read current
+state separately. Changed operation/input/project reuse conflicts in the frame
+namespace, which remains separate from image and older journals. Task DTOs retain
+the original extraction key even when a control uses a different receipt key.
+
+The shared client rejects malformed/foreign 200 DTOs without normalization and
+never silently retries or invents a replacement ID. Only a strictly verified
+`frameOutcome` nonacceptance proof for the exact operation/project/key/canonical
+input SHA and the [API code/status whitelist](API.md#local-source-frame-extraction)
+can clear uncertainty. Generic status/message, ownership failure or missing
+lookup cannot. Startup, schema discovery, task reads and historical replay never
+resume work. Request/task metadata is stored in plaintext local SQLite; PNG and
+manifest files are ordinary private local files, not vault-encrypted. This is
+backend-durable accepted work, not durable preparation of an unsent MCP request.

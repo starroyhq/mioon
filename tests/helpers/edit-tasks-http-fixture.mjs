@@ -59,7 +59,7 @@ async function childBackend(root) {
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0'},
   });
   let output = '', resolveReady, rejectReady;
-  for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { output = (output + chunk).slice(-20000); });
+  for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', chunk => { output = (output + chunk).slice(-20000); });
   const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
   const exited = new Promise((resolve, reject) => { child.once('exit', (code, signal) => resolve({code, signal})); child.once('error', reject); });
   const replies = new Map();

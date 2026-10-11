@@ -14,8 +14,8 @@ async function isolated(t, mode) {
     PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', MIOON_ENABLE_LIVE_PROVIDER: '0',
   }});
   let output = '', errors = '';
-  child.stdout.on('data', chunk => {output = (output + chunk).slice(-16384);});
-  child.stderr.on('data', chunk => {errors = (errors + chunk).slice(-16384);});
+  child.stdout.setEncoding('utf8').on('data', chunk => {output = (output + chunk).slice(-16384);});
+  child.stderr.setEncoding('utf8').on('data', chunk => {errors = (errors + chunk).slice(-16384);});
   const outcome = new Promise((resolve, reject) => {child.once('error', reject); child.once('close', (code, signal) => resolve({code, signal}));});
   t.after(async () => {if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await outcome.catch(() => {}); await rm(root, {recursive: true, force: true});});
   const result = await outcome;

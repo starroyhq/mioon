@@ -28,6 +28,7 @@ catch (error) { startupStorageError = error; }
 let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let startupOperation;
+const cancelledStartupErrors = new WeakSet();
 let quitFailureNotice;
 let smokeDiscardDecision;
 const smokeOutput = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
@@ -62,36 +63,58 @@ async function toolsFromUser(startup) {
   return configuration;
 }
 
+function cancelledStartupError() {
+  // Only this exact result belongs to an explicitly cancelled start. A provider
+  // or cleanup error with the same code must still reach fatal().
+  const error = Object.assign(new Error('本地服务启动已取消。'), { code: 'DESKTOP_START_CANCELLED' });
+  cancelledStartupErrors.add(error);
+  return error;
+}
+
 async function start() {
-  if (quitting) throw Object.assign(new Error('本地服务启动已取消。'), { code: 'DESKTOP_START_CANCELLED' });
+  if (quitting) throw cancelledStartupError();
   const startup = startupOperation = createDesktopStartup();
-  await ensureDataIdentity(paths, identity);
-  startup.checkpoint();
-  const tools = await toolsFromUser(startup);
-  startup.checkpoint();
-  // Main owns the single settings instance across trusted backend restarts.
-  if (!agentSettings) {
-    const settings = await createDesktopAgentSettings({ safeStorage, userData: app.getPath('userData'), appId: identity.appId, signal: startup.signal });
-    if (startup.signal.aborted) { await settings.close(); startup.checkpoint(); }
-    agentSettings = settings;
+  let closingCancelledSettings = false;
+  try {
+    await ensureDataIdentity(paths, identity);
+    startup.checkpoint();
+    const tools = await toolsFromUser(startup);
+    startup.checkpoint();
+    // Main owns the single settings instance across trusted backend restarts.
+    if (!agentSettings) {
+      const settings = await createDesktopAgentSettings({ safeStorage, userData: app.getPath('userData'), appId: identity.appId, signal: startup.signal });
+      if (startup.signal.aborted) {
+        closingCancelledSettings = true;
+        await settings.close();
+        closingCancelledSettings = false;
+        startup.checkpoint();
+      }
+      agentSettings = settings;
+    }
+    startup.checkpoint();
+    const token = randomBytes(32).toString('hex');
+    backend = new BackendSupervisor({ fork: utilityProcess.fork,
+      modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
+      imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }) });
+    backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
+    const started = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'), token });
+    startup.checkpoint();
+    ready = started;
+    activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
+    installSessionPolicy(activeSession, ready.url, () => win, { downloadsPath: path.join(app.getPath('downloads'), 'mioon.mp4') });
+    await activeSession.cookies.set(sessionCookie(ready.url, token));
+    startup.checkpoint();
+    await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
+    startup.checkpoint();
+    await openWindow();
+    startup.checkpoint();
+    return { identity, runtime: ready.runtime, tools: tools.versions };
+  } catch (error) {
+    // stop()/quit abort this scope before draining, so an old result may arrive
+    // even before its replacement starts. Never suppress a failed settings drain.
+    if (startup.signal.aborted && !closingCancelledSettings) throw cancelledStartupError();
+    throw error;
   }
-  startup.checkpoint();
-  const token = randomBytes(32).toString('hex');
-  backend = new BackendSupervisor({ fork: utilityProcess.fork,
-    modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
-    imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }) });
-  backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
-  const started = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'), token });
-  startup.checkpoint();
-  ready = started;
-  activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
-  installSessionPolicy(activeSession, ready.url, () => win, { downloadsPath: path.join(app.getPath('downloads'), 'mioon.mp4') });
-  await activeSession.cookies.set(sessionCookie(ready.url, token));
-  startup.checkpoint();
-  await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
-  startup.checkpoint();
-  await openWindow();
-  return { identity, runtime: ready.runtime, tools: tools.versions };
 }
 
 async function openWindow() {
@@ -175,7 +198,7 @@ async function rendererFailed() {
 }
 
 async function fatal(error) {
-  if (quitting && ['DESKTOP_START_CANCELLED', 'BACKEND_START_CANCELLED', 'MEDIA_CANCELLED'].includes(error?.code)) return;
+  if (cancelledStartupErrors.has(error)) return;
   if (smokeOutput) {
     await mkdir(path.dirname(smokeOutput), { recursive: true });
     await writeFile(smokeOutput, JSON.stringify({ ok: false, error: error.message }, null, 2));

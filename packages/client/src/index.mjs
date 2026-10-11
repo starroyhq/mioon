@@ -8,6 +8,7 @@ import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_
 import {resolveConnection, connectionSource, ConnectionError} from './connection.mjs';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
+import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutationResponse,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '@mioon/contracts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
@@ -46,7 +47,8 @@ function safeValue(value, secrets = []) {
     return text.replace(/Bearer\s+[^\s"',;]+/gi, 'Bearer [redacted]').replace(/\bsk-[A-Za-z0-9_-]{8,}/g, '[redacted]');
   }
   if (Array.isArray(value)) return value.map(item => safeValue(item, secrets));
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([key]) => !privateKeys.test(key)).map(([key, item]) => [key, safeValue(item, secrets)]));
+  // Drop sensitive field names rather than renaming them into colliding keys.
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([key]) => !privateKeys.test(key) && safeValue(key, secrets) === key).map(([key, item]) => [key, safeValue(item, secrets)]));
   return value;
 }
 export function errorEnvelope(error) {
@@ -81,7 +83,7 @@ export function validateDiscovery(name, input) {
 function interrupted() { return new ClientError('INTERRUPTED', 'Stopped waiting locally. No remote job was cancelled.'); }
 function checkSignal(signal) { if (signal?.aborted) throw interrupted(); }
 const keyedMutationOperations = new Set([
-  ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS,
+  ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS,
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare',
 ]);
 function uncertainRequestDetails(body) {
@@ -97,6 +99,22 @@ function comfyObservationNotAccepted(error,status,input) {
   return Object.hasOwn(statuses,error?.code)&&status===statuses[error.code]&&proof?.outcome==='not_accepted'&&
     proof.operation==='image.task.observeRemote'&&proof.projectId===input.projectId&&proof.taskId===input.taskId&&proof.requestId===input.requestId&&
     proof.inputHash===createHash('sha256').update(canonicalImageInput(input)).digest('hex');
+}
+
+
+const frameRefusalStatuses = Object.freeze({FRAME_CAPACITY:507,FRAME_QUEUE_FULL:409,FRAME_REVISION_CONFLICT:409,
+  FRAME_STATE_CONFLICT:409,FRAME_SOURCE_INVALID:409,FRAME_SOURCE_CHANGED:409,FRAME_RESULT_INVALID:409});
+function frameNotAccepted(error, status, operation, input) {
+  const proof = error?.details?.frameOutcome;
+  // Status/message alone never settle an unknown write. Match the same bounded
+  // proof as the renderer against the exact operation and canonical input.
+  return FRAME_MUTATION_OPERATIONS.includes(operation) && Object.hasOwn(frameRefusalStatuses, error?.code) &&
+    status === frameRefusalStatuses[error.code] && frameSchemas[operation].safeParse(input).success &&
+    proof && typeof proof === 'object' && !Array.isArray(proof) &&
+    Object.keys(proof).sort().join(',') === 'inputHash,operation,projectId,requestId,status' &&
+    proof.status === 'not_accepted' && proof.operation === operation && proof.projectId === input.projectId &&
+    proof.requestId === input.requestId && /^[a-f0-9]{64}$/.test(proof.inputHash || '') &&
+    proof.inputHash === createHash('sha256').update(canonicalFrameInput(input)).digest('hex');
 }
 
 export function createClient(clientOptions = {}) {
@@ -130,13 +148,21 @@ export function createClient(clientOptions = {}) {
           // adding recovery guidance: downstream clients could mistake it for proof.
           if (!proven) delete details.mutationOutcome;
         }
+        if (body && Object.hasOwn(frameSchemas, body.operation)) {
+          const mutation = FRAME_MUTATION_OPERATIONS.includes(body.operation);
+          const proven = mutation && frameNotAccepted(error, response.status, body.operation, body.input);
+          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
+            ...(mutation ? proven ? {operation:body.operation,requestId:body.input.requestId,submissionMayHaveSucceeded:false} : recoveryDetails : {})};
+          if (!proven) delete details.frameOutcome;
+          else delete details.recovery;
+        }
         if(body?.operation==='image.task.observeRemote'){
           const proven=comfyObservationNotAccepted(error,response.status,body.input);
           details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),
             ...(proven?{operation:body.operation,requestId:body.input.requestId,submissionMayHaveSucceeded:false}:recoveryDetails)};
           if(!proven)delete details.observation;
         }
-        throw new ClientError(typeof error.code === 'string' ? error.code : 'BACKEND_UNAVAILABLE', typeof error.message === 'string' ? safeValue(error.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
+        throw new ClientError(typeof error.code === 'string' ? safeValue(error.code, [token]) : 'BACKEND_UNAVAILABLE', typeof error.message === 'string' ? safeValue(error.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
       }
       return result;
     } catch (error) {
@@ -164,6 +190,12 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (IMAGE_MUTATION_OPERATIONS.includes(operation) && !isImageMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid image acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (FRAME_MUTATION_OPERATIONS.includes(operation) && !isFrameMutationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid frame acknowledgement.', {details: uncertainRequestDetails(body)});
+    const frameReadValid = operation === 'frame.task.get' ? isFrameTaskResponse(result) && result.projectId === parsed.projectId && result.id === parsed.taskId
+      : operation === 'frame.request.get' ? isFrameRequestResponse(result) && (result === null || result.projectId === parsed.projectId && result.requestId === parsed.requestId)
+      : operation === 'frame.task.list' ? isFrameListResponse(operation, parsed, result) : true;
+    if (!frameReadValid) throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid frame record.');
     if(operation==='image.task.observeRemote'&&!isComfyObserveResponse(parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI observation acknowledgement.',{details:{...uncertainRequestDetails(body),submissionMayHaveSucceeded:true}});
     if(operation==='image.task.remote.get'&&(!isComfyRemoteResponse(result)||result.projectId!==parsed.projectId||result.taskId!==parsed.taskId))

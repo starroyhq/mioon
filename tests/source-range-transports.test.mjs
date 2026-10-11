@@ -53,7 +53,9 @@ async function stopOwned(child) {
 function launch(t, args, env) {
   const child = spawn(process.execPath, args, {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '', failure;
-  for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.on('data', chunk => {
+  // JSON descriptions may cross pipe chunks inside a UTF-8 character.
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.setEncoding('utf8').on('data', chunk => {
     if (name === 'stdout') stdout += chunk; else stderr += chunk;
     if (stdout.length + stderr.length > 512 * 1024) { failure = Error('Owned child exceeded bounded output'); child.kill('SIGKILL'); }
   });
@@ -139,7 +141,7 @@ async function fixture(t) {
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env()), stderr: 'pipe',
     args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')]});
   let stderr = '';
-  transport.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
+  transport.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
   cleanups.push(() => bounded(client.close(), 'Official MCP cleanup', 7_000));
   await bounded(client.connect(transport), 'Official MCP initialization');
   assert.equal(client.getServerVersion().name, 'mioon');

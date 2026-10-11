@@ -47,8 +47,10 @@ function launch(t, args, env = {}, ipc = false) {
   if (!ownedChildren.has(t)) ownedChildren.set(t, new Set());
   ownedChildren.get(t).add(child);
   let stdout = '', stderr = '', error;
-  child.stdout.on('data', chunk => { stdout += chunk; });
-  child.stderr.on('data', chunk => { stderr += chunk; });
+  // JSON descriptions may cross pipe chunks inside a UTF-8 character.
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
   child.on('error', value => { error = value; });
   const finished = new Promise(resolve => child.once('close', (code, signal) => resolve({code, signal})));
   t.after(() => stopOwned(child));
@@ -147,7 +149,7 @@ async function mcpFixture(t, env) {
   const transport = new StdioClientTransport({command: process.execPath,
     args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(env), stderr: 'pipe'});
   let stderr = '', timer;
-  transport.stderr?.on('data', chunk => { stderr += chunk; });
+  transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
   t.after(() => client.close());
   try { await Promise.race([client.connect(transport), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Official MCP initialization timed out')), 15_000); })]); }
   finally { clearTimeout(timer); }

@@ -646,3 +646,53 @@ UI tasks. Local metadata is ordinary SQLite, not vault-encrypted: keep secrets o
 of names and inputs. This is local planning without provider calls, paid work,
 Blender or built-in Agent catalog/context changes. Actual `first_frame` continues
 through `reference attach`; last-frame/motion support is future work.
+
+## Local source-frame extraction
+
+The six `frame` commands use the same existing backend and strict
+[frame RPC contract](API.md#local-source-frame-extraction). The feature is under
+acceptance; check [current scope/gates](SOURCE-FRAMES.md). Discover exact fields:
+
+```sh
+mioon schema frame.extract
+mioon schema frame.task.recoverResult
+mioon frame task list --input '{"projectId":"11111111-1111-4111-8111-111111111111","limit":20}'
+```
+
+Replace illustrative IDs with actual project-owned IDs. `frame extract` takes
+`{projectId,sourceAssetId,sourceHash,sourceFrame,requestId}`. Read the managed
+source's actual hash; do not accept client paths, output names, timestamps,
+provider choices or decoder arguments. `sourceFrame` is a 30fps editing mark,
+not a native frame/PTS. The fixed profile selects the first PTS at or after the
+mark, returning a new local PNG with longest edge 1024 and no upscaling.
+It does not modify or automatically bind existing media, timeline or references.
+
+Read `frame request get` with `{projectId,requestId}` for the original receipt,
+`frame task get` with `{projectId,taskId}` for current state, and `frame task list`
+with `{projectId,limit?,cursor?}` for read-only history. Lists default to 20/max 50;
+pass only a returned cursor unchanged with the same project/limit. Restart
+invalidates cursors. No `frame watch` command or hidden read-to-write retry exists.
+
+`frame task cancelQueued` and `frame task recoverResult` each require
+`{projectId,taskId,expectedRevision,requestId}`. Use the current task revision and
+a new key for a new explicit control intent. Cancellation covers only provably
+unstarted work; recovery publishes an already-staged complete PNG/manifest,
+without re-decoding. Missing/corrupt local results never cause new extraction.
+Restart/list/get/replay do not execute unfinished tasks.
+
+Retain the exact operation, full input and caller-owned 8–200-character key until
+known. The three writes share only the frame request namespace, separate from
+image/timeline/reference/local edits. Exact replay returns the immutable original
+ACK, even when a later task read says succeeded/interrupted. Changed input,
+operation or project under the same key conflicts. Control task DTOs retain the
+initial extraction key; their receipt lookup uses the control request's key.
+
+Timeout, connection loss or a malformed/mismatched 200 response retains the
+original key with `submissionMayHaveSucceeded:true`; the CLI never replaces it
+or automatically retries. Only the exact operation/input/project/key/SHA-bound
+backend `frameOutcome` proof under the API's code/status whitelist permits
+`false`. A code, message, generic 4xx or absent lookup alone is insufficient.
+The request journal is plaintext local SQLite, not encrypted durable CLI intent
+storage; retain any not-yet-accepted request outside the short-lived CLI process.
+The local limits and supported video profile are in the API contract. No paid
+provider call, Blender dependency or built-in Agent catalog expansion is added.

@@ -168,3 +168,60 @@ legacy explicit clip-add remains available. External tool availability does not
 expand built-in Agent context or tool authority. Browser pending requests live
 only for that session; CLI/MCP callers need their own retained recovery identity.
 See [asset dispositions](../../../docs/ASSET-DISPOSITIONS.md).
+
+## Local source-frame extraction
+
+Inspect `schema frame.extract` and `schema frame.task.recoverResult` first.
+This increment is [under acceptance](../../../docs/SOURCE-FRAMES.md), with no
+claim of native/platform verification from transport tests alone. Six commands
+have exact MCP equivalents obtained by replacing spaces with underscores:
+
+- `frame extract`: `{projectId,sourceAssetId,sourceHash,sourceFrame,requestId}`
+- `frame request get`: `{projectId,requestId}`
+- `frame task get`: `{projectId,taskId}`
+- `frame task list`: `{projectId,limit?,cursor?}`
+- `frame task cancelQueued`: `{projectId,taskId,expectedRevision,requestId}`
+- `frame task recoverResult`: the same control fields
+
+Use actual project/source/task UUIDs, the managed source's lowercase SHA-256 and
+a caller-owned 8–200-character key. `sourceFrame` is a nonnegative integer 30fps
+editing mark below the source's exclusive end, never a native frame index or
+observed PTS. Fixed `local-png-1024-v1` selects the first PTS at or after that mark.
+The new managed PNG has longest edge 1024 without upscaling, maximum 4 MiB.
+Source profile: managed MP4/WebM; H.264/VP8/VP9 8-bit yuv420p progressive, one
+unambiguous video stream, zero start, square pixels/no rotation; maximum 512 MiB,
+600 seconds, edge 4096 and 8 Mi pixels. Unsupported sources fail capture only.
+No output path/name, timestamp policy, profile override, provider or command is
+accepted. No provider/network call or Blender dependency is introduced.
+
+A new extraction acknowledges `queued`, revision 1, before work admission. Query
+`frame task get` for current state; successful `result` gives the new image's
+asset ID/hash/MIME/dimensions/byte length. Reuse it through separately authorized
+existing image actions. Capture never changes existing media, versions, timeline,
+exports, first-frame references or subject bindings automatically.
+
+The three frame writes share their own workspace-wide request namespace. Exact
+replay returns the immutable original ACK, before fresh CAS checks, without new
+decode. Changed project/operation/input under the same key conflicts without
+revealing a foreign receipt. Controls use the current task revision and their
+own key, while the task DTO keeps its original extraction `requestId`. Retain
+both identities correctly. A new control is a new intent; replay keeps old CAS.
+
+Lost/malformed/foreign output keeps the exact original operation/input/key.
+Clients never retry silently, replace keys or normalize invalid DTOs. Only exact
+`frameOutcome:{status:"not_accepted",operation,projectId,requestId,inputHash}`
+from the authenticated backend, with matching canonical-input SHA-256 and the
+[API code/status whitelist](../../../docs/API.md#local-source-frame-extraction),
+proves fresh nonacceptance. Status/message/code or an absent lookup alone cannot
+settle an earlier unknown write. An unverified marker is discarded.
+
+List/get/request lookup never creates, repairs or resumes work. Pages default to
+20/max 50, with returned cursors up to 768 bytes bound to project/limit and invalid
+after restart. Cancel only provably unstarted queued/interrupted tasks. Recover
+only an existing complete task-bound PNG/manifest; missing/corrupt data cannot
+trigger another decode. Startup classifies unfinished work as interrupted and
+never runs it. Maximum one active task, queued two/project and eight/workspace;
+retain 256 tasks/project, 2048/workspace and 16 ACKs/task, without silent eviction.
+Metadata and journals are plaintext local SQLite; PNGs/manifests are ordinary
+private local files, not vault-encrypted. External callers must retain their own
+not-yet-accepted intent. No built-in Agent catalog or generic executor expands.

@@ -30,7 +30,7 @@ async function fixture(t) {
   async function start() {
     const number = ++processNumber;
     processHandle = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = ''; processHandle.stdout.on('data', data => stdout += data); processHandle.stderr.on('data', data => stderr += data);
+    let stdout = '', stderr = ''; processHandle.stdout.setEncoding('utf8').on('data', data => stdout += data); processHandle.stderr.setEncoding('utf8').on('data', data => stderr += data);
     const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout, stderr }));
     records.processEvents.push({ action: 'spawn', number, pid: processHandle.pid, port, dataDirectory: root });
     const deadline = Date.now() + 10_000;

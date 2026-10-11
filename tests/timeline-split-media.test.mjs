@@ -47,8 +47,8 @@ async function fixture(t) {
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['server/index.mjs'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '', RUNWAY_MAX_GENERATIONS: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
   records.server = { pid: child.pid, port, stdout: '', stderr: '' };
-  child.stdout.on('data', bytes => records.server.stdout += bytes);
-  child.stderr.on('data', bytes => records.server.stderr += bytes);
+  child.stdout.setEncoding('utf8').on('data', bytes => records.server.stdout += bytes);
+  child.stderr.setEncoding('utf8').on('data', bytes => records.server.stderr += bytes);
   child.on('close', (exitCode, signal) => Object.assign(records.server, { exitCode, signal }));
   t.after(async () => {
     if (child.exitCode === null && !child.signalCode) { const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; }

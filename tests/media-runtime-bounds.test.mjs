@@ -39,7 +39,7 @@ test('child environment omits synthetic credentials/injection settings and canno
     process.env.MIOON_FFMPEG_PATH='';
     const first=JSON.parse(await run(process.execPath,[${JSON.stringify(fixture)},'keys',...keys],{env:{UNRELATED_SECRET:'override-sentinel'}}));
     const child=spawnMedia(process.execPath,[${JSON.stringify(fixture)},'keys',...keys],{env:{UNRELATED_SECRET:'override-sentinel'},stdio:['ignore','pipe','pipe'],shell:true,windowsHide:false});
-    let text='';child.stdout.on('data',b=>text+=b);child.stderr.resume();await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve)});
+    let text='';child.stdout.setEncoding('utf8').on('data',b=>text+=b);child.stderr.resume();await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve)});
     console.log(JSON.stringify({first,second:JSON.parse(text)}));`;
   const { stdout } = await exec(process.execPath, ['--input-type=module', '-e', script], { env: { PATH: path.dirname(process.execPath), HOME: root, TMPDIR: root, LANG: 'C' }, timeout: 10000 });
   const result = JSON.parse(stdout);

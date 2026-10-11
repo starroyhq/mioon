@@ -1,0 +1,15 @@
+.source-frame-capture { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.source-frame-capture .input-hint { margin: 0; font-size: 11px; }
+.frame-extraction-panel { display: grid; gap: 10px; padding-top: 14px; margin-top: 6px; border-top: 1px solid var(--border); min-width: 0; }
+.frame-extraction-panel p, .frame-extraction-panel h3, .frame-extraction-panel h4 { margin: 0; }
+.frame-extraction-heading { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.frame-extraction-heading h3 { font-size: 14px; }
+.frame-extraction-heading h4, .frame-extraction-heading strong { font-size: 12px; }
+.frame-extraction-profile { font-size: 12px; color: var(--text-secondary); }
+.frame-extraction-task { display: grid; gap: 8px; border: 1px solid var(--border); padding: 10px; border-radius: 8px; min-width: 0; }
+.frame-extraction-task details { font-size: 11px; color: var(--text-secondary); }
+.frame-extraction-task summary { cursor: pointer; margin-bottom: 5px; }
+.frame-extraction-id { display: block; overflow-wrap: anywhere; font-size: 10px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.frame-extraction-result { display: grid; gap: 5px; min-width: 0; font-size: 11px; }
+.frame-extraction-result strong { overflow-wrap: anywhere; font-size: 12px; }
+.frame-extraction-actions { display: flex; flex-wrap: wrap; gap: 6px; }

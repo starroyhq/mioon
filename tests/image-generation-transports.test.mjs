@@ -67,8 +67,10 @@ async function cli(args, env, expectedError) {
     cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
-  child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 2 * 1024 * 1024) child.kill('SIGKILL'); });
-  child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-20_000); });
+  // JSON descriptions may cross pipe chunks inside a UTF-8 character.
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; if (stdout.length > 2 * 1024 * 1024) child.kill('SIGKILL'); });
+  child.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-20_000); });
   const timer = setTimeout(() => child.kill('SIGKILL'), 15_000);
   let code, signal;
   try { [code, signal] = await once(child, 'close'); } finally { clearTimeout(timer); }
@@ -107,8 +109,8 @@ async function fixture(t) {
       cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: String(port)}),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stdout.on('data', chunk => { stdout = (stdout + chunk).slice(-20_000); });
-    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-20_000); });
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout = (stdout + chunk).slice(-20_000); });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-20_000); });
     const deadline = Date.now() + 15_000;
     while (Date.now() < deadline) {
       assert.equal(child.exitCode, null, stdout + stderr);
@@ -184,7 +186,7 @@ async function mcpFixture(t, env) {
   const client = new Client({name: 'image-transport-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath,
     args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(env), stderr: 'pipe'});
-  let stderr = ''; transport.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(-20_000); });
+  let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-20_000); });
   t.after(() => client.close());
   await client.connect(transport);
   assert.equal(client.getServerVersion().name, 'mioon');

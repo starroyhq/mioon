@@ -31,8 +31,10 @@ async function cli(args, env = {}, expectedError) {
     cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
-  child.stdout.on('data', bytes => stdout += bytes);
-  child.stderr.on('data', bytes => stderr += bytes);
+  // JSON descriptions may cross pipe chunks inside a UTF-8 character.
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes);
+  child.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
   const timeout = setTimeout(() => child.kill('SIGKILL'), 15_000);
   let code, signal;
   try { [code, signal] = await once(child, 'close'); }
@@ -151,8 +153,8 @@ async function backendFixture(t) {
     });
     let spawnError;
     backend.once('error', error => spawnError = error);
-    backend.stdout.on('data', bytes => stdout += bytes);
-    backend.stderr.on('data', bytes => stderr += bytes);
+    backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes);
+    backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError;

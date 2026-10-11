@@ -58,20 +58,29 @@ test('graceful utility exit is confirmed without requesting any signal', async (
   assert.equal(supervisor.child, null);
 });
 
-test('a missing utility exit rejects within the budget without forgetting or restarting its child', async () => {
+test('a missing utility exit rejects within the budget without forgetting or restarting its child', async t => {
   const child = fakeChild(), killed = [];
   let hardCalls = 0, forks = 0;
   const supervisor = supervisorFor(child, { fork: () => { forks++; return child; },
     forceKill: owned => { assert.equal(owned, child); hardCalls++; }, killMedia: pid => killed.push(pid) });
   await supervisor.start({});
   child.emit('message', { type: 'media-process', event: 'started', pid: 45678 });
+  // Drive all three timely phases causally; a delayed real event-loop turn may
+  // legitimately reach the absolute deadline before the nested hard-stop timer.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const started = performance.now();
-  await assert.rejects(supervisor.stop(), error => {
+  const rejected = assert.rejects(supervisor.stop(), error => {
     assert.equal(error.code, 'BACKEND_STOP_UNCONFIRMED');
     assert.equal(error.exitConfirmed, false);
     assert.doesNotMatch(error.message, /34567|backend\.cjs/);
     return true;
   });
+  t.mock.timers.tick(9); assert.equal(child.termCalls, 0); assert.equal(hardCalls, 0);
+  t.mock.timers.tick(1); assert.equal(child.termCalls, 1); assert.equal(hardCalls, 0);
+  t.mock.timers.tick(9); assert.equal(hardCalls, 0);
+  t.mock.timers.tick(1); assert.equal(hardCalls, 1);
+  t.mock.timers.tick(9); assert.equal(supervisor.state, 'stopping');
+  t.mock.timers.tick(1); await rejected;
   assert.ok(performance.now() - started < 1000);
   assert.equal(supervisor.state, 'stop-unconfirmed');
   assert.equal(supervisor.child, child);
@@ -93,6 +102,38 @@ test('a missing utility exit rejects within the budget without forgetting or res
   assert.deepEqual(supervisor.stopOutcome, { exitConfirmed: true, forced: true, code: 9 });
   assert.deepEqual(killed, []);
   assert.equal(supervisor.mediaPids.size, 0);
+});
+
+test('delayed grace cannot extend the absolute utility deadline or signal after unconfirmed completion', async t => {
+  const child = fakeChild();
+  let hardCalls = 0, forks = 0;
+  const supervisor = supervisorFor(child, { fork: () => { forks++; return child; },
+    forceKill: owned => { assert.equal(owned, child); hardCalls++; } });
+  await supervisor.start({});
+  const timers = [];
+  t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+    const timer = { callback, delay, cleared: false }; timers.push(timer); return timer;
+  });
+  t.mock.method(globalThis, 'clearTimeout', timer => { if (timer) timer.cleared = true; });
+  const rejected = assert.rejects(supervisor.stop(), { code: 'BACKEND_STOP_UNCONFIRMED', exitConfirmed: false });
+  assert.deepEqual(timers.map(timer => timer.delay), [30, 10], 'absolute confirmation timer is armed before graceful phase');
+  // Deliver grace late: its nested +10 ms hard-stop is still pending when the
+  // original absolute deadline becomes runnable. No wall-clock sleep is needed.
+  timers[1].callback();
+  assert.equal(child.termCalls, 1); assert.equal(hardCalls, 0);
+  assert.deepEqual(timers.map(timer => timer.delay), [30, 10, 10], 'late grace never reschedules the original deadline');
+  timers[0].callback(); await rejected;
+  assert.equal(supervisor.state, 'stop-unconfirmed');
+  assert.equal(supervisor.child, child); assert.equal(supervisor.stopOutcome, null);
+  assert.equal(timers[2].cleared, true);
+  // Even already-queued callbacks must respect the completed attempt fence.
+  timers[2].callback(); timers[1].callback();
+  await assert.rejects(supervisor.stop(), { code: 'BACKEND_STOP_UNCONFIRMED' });
+  assert.throws(() => supervisor.start({}), /already active/);
+  assert.equal(child.termCalls, 1); assert.equal(hardCalls, 0); assert.equal(forks, 1);
+  child.emit('exit', 9);
+  assert.equal(supervisor.child, null); assert.equal(supervisor.state, 'stopped');
+  assert.deepEqual(supervisor.stopOutcome, { exitConfirmed: true, forced: true, code: 9 });
 });
 
 test('throwing stop IPC and signals still have a fixed safe unconfirmed outcome', async () => {
@@ -340,8 +381,8 @@ test('desktop real version and encoder children reject synthetic secrets and inj
     const source = `import {validateTools} from ${JSON.stringify(url)}; Object.assign(process.env,${JSON.stringify(env)}); await validateTools(${JSON.stringify({ ffmpeg, ffprobe })}); process.stdout.write('validated');`;
     const child = spawn(process.execPath, ['--input-type=module', '-e', source], { env: {}, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
     let stdout = '', stderr = '';
-    child.stdout.on('data', chunk => { stdout += chunk; });
-    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
     const [code] = await once(child, 'exit');
     assert.equal(code, 0, stderr);
     assert.equal(stdout, 'validated');

@@ -36,7 +36,9 @@ function environment(extra = {}) {
 async function cli(args, env = {}, expectedError) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args], {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
-  child.stdout.on('data', bytes => stdout += bytes); child.stderr.on('data', bytes => stderr += bytes);
+  // JSON descriptions may cross pipe chunks inside a UTF-8 character.
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); child.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
   const timeout = setTimeout(() => child.kill('SIGKILL'), 15000);
   let code, signal;
   try { [code, signal] = await once(child, 'close'); } finally { clearTimeout(timeout); }
@@ -56,7 +58,7 @@ async function cli(args, env = {}, expectedError) {
 async function mcpFixture(t, env = {}) {
   const client = new Client({name: 'timeline-fades-transport-tests', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(env), stderr: 'pipe'});
-  let stderr = ''; transport.stderr?.on('data', bytes => stderr += bytes);
+  let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', bytes => stderr += bytes);
   t.after(() => client.close()); await client.connect(transport);
   assert.equal(client.getServerVersion().name, 'mioon', 'official SDK initializes the actual MCP bridge');
   return {client, async call(name, input, expectedError) {
@@ -137,7 +139,7 @@ async function backendFixture(t) {
     let stdout = '', stderr = '', spawnError;
     backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.mjs')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe']});
     backend.once('error', error => spawnError = error);
-    backend.stdout.on('data', bytes => stdout += bytes); backend.stderr.on('data', bytes => stderr += bytes);
+    backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError;

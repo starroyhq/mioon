@@ -74,7 +74,7 @@ async function crashFixture(t, protocol, boundary) {
   const child = spawn(process.execPath, ['--input-type=module', '-e', CHILD], {cwd,
     env: {...process.env, FIXTURE_ROOT: root, FIXTURE_PROTOCOL: protocol, FIXTURE_BOUNDARY: boundary}, stdio: ['ignore', 'pipe', 'pipe']});
   let stderr = '', stdout = '';
-  child.stderr.on('data', chunk => { stderr += chunk; }); child.stdout.on('data', chunk => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; }); child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
   const result = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (code, signal) => resolve({code, signal})); });
   assert.equal(result.signal, 'SIGKILL', `owned fixture did not crash at ${boundary}: ${stderr}\n${stdout}`);

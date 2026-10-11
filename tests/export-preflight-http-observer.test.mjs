@@ -69,7 +69,7 @@ test('actual CLI Ctrl+C revokes only its preflight observer and never resubmits'
       MIOON_TOKEN: 'preflight-cli-public-synthetic-only-token', MIOON_ENABLE_LIVE_PROVIDER: '0'},
   });
   let stdout = '', stderr = '';
-  child.stdout.on('data', bytes => {stdout += bytes;}); child.stderr.on('data', bytes => {stderr += bytes;});
+  child.stdout.setEncoding('utf8').on('data', bytes => {stdout += bytes;}); child.stderr.setEncoding('utf8').on('data', bytes => {stderr += bytes;});
   const done = new Promise((resolve, reject) => {child.once('error', reject); child.once('close', (code, signal) => resolve({code, signal}));});
   t.after(async () => {if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await done.catch(() => {});});
   await f.entered.promise;

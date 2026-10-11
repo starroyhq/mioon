@@ -43,8 +43,10 @@ async function runCli(args, env, expectedError) {
     cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
-  child.stdout.on('data', chunk => { stdout += chunk; });
-  child.stderr.on('data', chunk => { stderr += chunk; });
+  // JSON descriptions may cross pipe chunks inside a UTF-8 character.
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
   const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
   let code, signal;
   try { [code, signal] = await once(child, 'close'); }
@@ -83,8 +85,8 @@ async function backendFixture(t) {
     });
     let spawnError;
     child.once('error', error => { spawnError = error; });
-    child.stdout.on('data', chunk => { stdout += chunk; });
-    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
     const deadline = Date.now() + 15_000;
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError;
@@ -129,7 +131,7 @@ async function mcpFixture(t, env) {
   const transport = new StdioClientTransport({command: process.execPath,
     args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')], cwd: repo, env: environment(env), stderr: 'pipe'});
   let stderr = '';
-  transport.stderr?.on('data', chunk => { stderr += chunk; });
+  transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
   t.after(() => client.close());
   await client.connect(transport);
   assert.equal(client.getServerVersion().name, 'mioon', 'official SDK initialize negotiates with the actual MCP server');

@@ -343,8 +343,8 @@ async function cli(input, env) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), 'rpc', operation, '--input', JSON.stringify(input)],
     {cwd: repo, env: childEnvironment(env), stdio: ['ignore','pipe','pipe']});
   let stdout = '', stderr = '';
-  child.stdout.on('data', chunk => {stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL');});
-  child.stderr.on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
+  child.stdout.setEncoding('utf8').on('data', chunk => {stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL');});
+  child.stderr.setEncoding('utf8').on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
   const timeout = setTimeout(() => child.kill('SIGKILL'), 15000);
   let code, signal; try {[code, signal] = await once(child, 'close');} finally {clearTimeout(timeout);}
   assert.equal(signal, null, stderr); assert.equal(code, 0, stdout + stderr);
@@ -389,7 +389,7 @@ test('real HTTP, CLI and official MCP discover the same revisions without provid
   mcp = new Client({name: 'image-profile-discovery-test', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.mjs')],
     cwd: repo, env: childEnvironment(env), stderr: 'pipe'});
-  let stderr = ''; transport.stderr?.on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
+  let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
   await mcp.connect(transport);
   const tools = (await mcp.listTools()).tools, definition = operationDefinition(operation);
   const tool = tools.find(value => value.name === 'image_profile_list');

@@ -225,7 +225,7 @@ async function child(script, args, expectedCode = 0) {
   const process = spawn(globalThis.process.execPath, ['--input-type=module', '-e', script, ...args],
     {cwd: repo, env: childEnvironment(), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
-  process.stdout.on('data', bytes => {stdout += bytes;}); process.stderr.on('data', bytes => {stderr = (stderr + bytes).slice(-10_000);});
+  process.stdout.setEncoding('utf8').on('data', bytes => {stdout += bytes;}); process.stderr.setEncoding('utf8').on('data', bytes => {stderr = (stderr + bytes).slice(-10_000);});
   const timer = setTimeout(() => process.kill('SIGKILL'), 20_000);
   try {
     const [exitCode, signal] = await new Promise((resolve, reject) => {process.once('error', reject); process.once('close', (...result) => resolve(result));});

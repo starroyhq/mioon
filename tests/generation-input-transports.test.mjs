@@ -16,7 +16,7 @@ const repo=fileURLToPath(new URL('..',import.meta.url)),token='profile-parity-lo
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function environment(extra={}){const env={...process.env};for(const key of Object.keys(env))if(/^(MIOON_|ARK_|VEO_|RUNWAY|MINIMAX_|VIDU_|GEMINI_|GOOGLE_)/.test(key))delete env[key];return {...env,MIOON_ENABLE_LIVE_PROVIDER:'0',...extra};}
 async function cli(args,env){
- const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',data=>stdout+=data);child.stderr.on('data',data=>stderr+=data);
+ const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',data=>stdout+=data);child.stderr.setEncoding('utf8').on('data',data=>stderr+=data);
  const timer=setTimeout(()=>child.kill('SIGKILL'),10000);let code,signal;try{[code,signal]=await once(child,'close');}finally{clearTimeout(timer);}
  assert.equal(signal,null,stderr);const response=JSON.parse(stdout);assert.equal(code,response.ok?0:6,stderr);return response;
 }
@@ -27,7 +27,7 @@ test('actual HTTP, CLI and official MCP expose identical dated profiles and reje
  store.put('assets',asset);const shot=await services.call('shot.create',{projectId:project.id,title:'Oversized input',referenceAssetIds:[asset.id]});store.close();
  let child,url,stdout='',stderr='';
  t.after(async()=>{if(child?.exitCode===null){const ended=once(child,'exit');child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),10000);try{await ended;}finally{clearTimeout(timer);}}await rm(root,{recursive:true,force:true});});
- child=spawn(process.execPath,[path.join(repo,'apps/server/src/cli.mjs')],{cwd:repo,env:environment({MIOON_DATA_DIR:root,MIOON_TOKEN:token,PORT:'0'}),stdio:['ignore','pipe','pipe']});child.stdout.on('data',data=>stdout+=data);child.stderr.on('data',data=>stderr+=data);
+ child=spawn(process.execPath,[path.join(repo,'apps/server/src/cli.mjs')],{cwd:repo,env:environment({MIOON_DATA_DIR:root,MIOON_TOKEN:token,PORT:'0'}),stdio:['ignore','pipe','pipe']});child.stdout.setEncoding('utf8').on('data',data=>stdout+=data);child.stderr.setEncoding('utf8').on('data',data=>stderr+=data);
  const deadline=Date.now()+10000;while(Date.now()<deadline){assert.equal(child.exitCode,null,stderr);url=/Mioon ready at (http:\/\/127\.0\.0\.1:\d+)/.exec(stdout)?.[1];if(url)break;await pause(20);}assert.ok(url,stderr);
  const env={MIOON_BASE_URL:url,MIOON_TOKEN:token},http=async(operation,input)=>{const response=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});return response.json();};
  const client=new Client({name:'input-profile-parity',version:'1.0.0'},{capabilities:{}}),transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.mjs')],cwd:repo,env:environment(env),stderr:'pipe'});

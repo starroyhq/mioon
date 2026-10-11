@@ -16,6 +16,82 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are 
 
 `provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. Existing submit/retry schemas and historical replay are unchanged. See [model input limits](GENERATION-INPUT-LIMITS.md).
 
+## Local source-frame extraction
+
+Six strict RPCs share the existing authenticated backend. The authoritative
+schemas and non-normalizing response validators are in
+`packages/contracts/src/frame-extraction.mjs`. This increment is under acceptance;
+see [source-frame scope and release gates](SOURCE-FRAMES.md). No native, live
+provider or platform acceptance is implied by API availability.
+
+| Operation | Exact input | Result / effect |
+| --- | --- | --- |
+| `frame.extract` | `{projectId,sourceAssetId,sourceHash,sourceFrame,requestId}` | Immutable original queued task acknowledgement; accepts one local decode |
+| `frame.request.get` | `{projectId,requestId}` | `{projectId,requestId,operation,response}` or `null`; original acknowledgement only |
+| `frame.task.get` | `{projectId,taskId}` | Current project-owned task |
+| `frame.task.list` | `{projectId,limit?,cursor?}` | `{projectId,items,nextCursor}`; read-only |
+| `frame.task.cancelQueued` | `{projectId,taskId,expectedRevision,requestId}` | Original `cancelled_before_start` acknowledgement; only provably unstarted work |
+| `frame.task.recoverResult` | `{projectId,taskId,expectedRevision,requestId}` | Original `persisting` acknowledgement; verifies/publishes a complete local checkpoint |
+
+IDs are UUIDs; `sourceHash` is lowercase SHA-256; `sourceFrame` is a nonnegative
+integer 30fps editing mark, with the source end exclusive. It is not a native
+source-frame index or observed VFR PTS. Profile `local-png-1024-v1` selects the
+first presentation timestamp at or after that timepoint, then outputs one PNG
+within 1024×1024 without upscaling. It does not promise browser-identical pixels.
+The local initial profile permits managed MP4/WebM, one unambiguous H.264/VP8/VP9
+8-bit yuv420p progressive stream, known zero start, square pixels and no rotation.
+Source limits are 512 MiB, 600 seconds, edge 4096 and 8 Mi pixels; output is at
+most 4 MiB. Unsupported capture sources remain usable by existing editor flows.
+No path, filename, decoder command, profile override, provider or generic executor
+is accepted. It calls no provider or network service and never changes originals,
+existing clips, versions, exports, references or subject bindings automatically.
+
+Tasks expose only `id,projectId,requestId,sourceAssetId,sourceHash,sourceFrame,fps,
+profileId,state,revision,started,result,errorCode,createdAt,updatedAt`. A successful
+`result` contains `assetId,sha256,mimeType,width,height,byteLength`; it names a new
+managed image with `extracted-frame` provenance. Other states have `result:null`.
+States are `queued`, `running`, `persisting`, `succeeded`,
+`cancelled_before_start`, `interrupted`, `local_result_error`, `failed`.
+Public DTOs omit bytes, local paths, snapshots and staged manifests. A task/ACK
+response is bounded to 4 KiB. Pages default to 20/max 50, with cursors bounded to
+768 bytes; use only a returned cursor unchanged with the same project and limit.
+Cursors expire at backend restart; pages are not a frozen snapshot.
+
+The three writes require caller-owned 8–200-character request IDs in a separate
+workspace-wide frame namespace. Changed operation/input/project reuse conflicts
+without disclosing another project's receipt. Exact replay returns the historical
+original acknowledgement before current task revision checks, never another
+extraction. Control ACKs retain the task's initial extraction `requestId`; their
+own keys belong to their separate request receipts. Read current state before a
+new control intent, and use its task revision (not a project/timeline revision).
+
+Lost, malformed or mismatched success responses remain uncertain. First-party
+clients keep the original operation/key in recovery guidance, never generate a
+replacement key, retry automatically or normalize an invalid DTO. Preserve the
+complete original input yourself. An authenticated backend refusal can resolve
+nonacceptance only through exact `details.frameOutcome`:
+`{status:"not_accepted",operation,projectId,requestId,inputHash}`. `inputHash` is
+lowercase SHA-256 of shared `canonicalFrameInput(input)` for that exact operation.
+Clients require HTTP 507 with `FRAME_CAPACITY`, or HTTP 409 with
+`FRAME_QUEUE_FULL`, `FRAME_REVISION_CONFLICT`, `FRAME_STATE_CONFLICT`,
+`FRAME_SOURCE_INVALID`, `FRAME_SOURCE_CHANGED` or `FRAME_RESULT_INVALID`.
+Every identity field and the proof's exact shape must match. Any other status,
+code, message, missing receipt or unverified marker cannot settle a previous
+unknown write; unverified frame proofs are discarded. A proven fresh refusal
+has `submissionMayHaveSucceeded:false`; an unknown frame write retains `true`.
+Reads carrying a request ID never imply a submission.
+
+Only explicit new extraction may decode. Restart classifies unfinished tasks as
+interrupted; reads, replay and opening a panel never resume them. Explicit
+`recoverResult` may publish the same verified staged PNG/manifest; missing or
+corrupt checkpoints never trigger another decode. Running work cannot be
+cancelled as unstarted. One local task is active, with at most two queued per
+project/eight per workspace; retention is 256 tasks/project, 2048/workspace and
+16 immutable ACKs/task, without silent eviction. Task metadata and request
+journals use plaintext local SQLite; PNGs/manifests are local managed files,
+not vault-encrypted. No built-in Agent tool/catalog or generic recovery allowlist
+is expanded by these six external operations.
+
 ## Local image generation and review preparation
 
 The same RPC exposes `image.profile.list`, `image.generate`, `image.request.get`,

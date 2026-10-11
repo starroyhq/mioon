@@ -37,12 +37,12 @@ export function createSubjectRecoveryBoundary(db,input){
   const relative=value.relativePath;
   if(typeof relative!=='string'||relative.length>4096||!relative.startsWith('media/')||relative.includes('\\')||relative.includes('\0')||relative.split('/').some(part=>!part||part==='.'||part==='..'))invalid();
   if(!['image/png','image/jpeg','image/webp'].includes(value.mimeType))throw new AppError('SUBJECT_ASSET_UNSUPPORTED','主体版本需要托管 PNG、JPEG 或 WebP 图片',400);
-  if(!/^[a-f0-9]{64}$/.test(value.sha256??'')||![value.width,value.height].every(n=>Number.isSafeInteger(n)&&n>0&&n<=100000)||!['user-import','generated','synthetic-mock','export'].includes(value.provenance))invalid();
+  if(!/^[a-f0-9]{64}$/.test(value.sha256??'')||![value.width,value.height].every(n=>Number.isSafeInteger(n)&&n>0&&n<=100000)||!['user-import','generated','synthetic-mock','export','extracted-frame'].includes(value.provenance))invalid();
   const sources=db.prepare(`SELECT ${columns('id')} FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(id);
   if(sources.length>1)invalid();
   let source=null;if(sources.length){try{source=graph.version(sources[0].id,undefined,id);}catch{invalid();}}
-  let imageSource;try{imageSource=graph.imageSource(id);}catch{invalid();}
-  return {assetId:value.id,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:{kind:value.provenance,versionId:source?.id??null,shotId:source?.shotId??null,jobId:source?.jobId??null,...(imageSource?{imageSource}:{})}};
+  let imageSource,frameSource;try{imageSource=graph.imageSource(id);frameSource=graph.frameSource(id);}catch(error){if(error.code==='INSPECTION_BUDGET_EXCEEDED')throw error;invalid();}
+  return {assetId:value.id,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:{kind:value.provenance,versionId:source?.id??null,shotId:source?.shotId??null,jobId:source?.jobId??null,...(imageSource?{imageSource}:{}),...(frameSource?{frameSource}:{})}};
  }
  function subjectRow(id){
   if(subjects.has(id))return subjects.get(id);

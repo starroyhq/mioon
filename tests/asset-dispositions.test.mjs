@@ -276,7 +276,7 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
  const old=snapshot(f,['schema_version']);f.restart();
  assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests']),old);assert.deepEqual(schema(),fresh);
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,19);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,20);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
 });
 
@@ -300,7 +300,7 @@ const childCode=`
 function child(t,f,operation,input,release=''){
  const proc=spawn(process.execPath,['--input-type=module','-e',childCode,f.root,operation,JSON.stringify(input),release],{cwd:path.resolve(new URL('..',import.meta.url).pathname),stdio:['ignore','pipe','pipe','ipc']});
  const messages=[],pending=[];let errorText='';
- proc.stderr.on('data',chunk=>errorText+=chunk);
+ proc.stderr.setEncoding('utf8').on('data',chunk=>errorText+=chunk);
  proc.on('message',value=>{messages.push(value);for(const p of [...pending])if(p.phase===value.phase){pending.splice(pending.indexOf(p),1);p.resolve(value);}});
  proc.on('error',error=>{for(const p of pending.splice(0))p.reject(error);});
  proc.on('exit',(code,signal)=>{for(const p of pending.splice(0))p.reject(Error(`Race child exited ${code}/${signal}: ${errorText}`));});

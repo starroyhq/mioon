@@ -1,13 +1,16 @@
 import {AppError} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 
-// Preserve legacy-only asset semantics while extending every image-consumption
-// seam. Detection deliberately ignores provenance and project: a foreign image
+// Preserve legacy-only asset semantics while extending every typed image-consumption
+// seam. Detection deliberately ignores provenance and project: a foreign image/frame
 // reverse owner must not disappear behind an imported/legacy label.
 export function validateImageConsumption(db,asset,projectId){
- const table=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_versions'").get();
- if(!table){if(db.prepare('SELECT 1 FROM schema_version WHERE version=16').get())throw invalid();return asset;}
- if(!db.prepare('SELECT 1 FROM image_versions WHERE assetId=? LIMIT 1').get(asset.id))return asset;
+ const imageTable=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_versions'").get());
+ const frameTable=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='frame_tasks'").get());
+ if(!imageTable&&db.prepare('SELECT 1 FROM schema_version WHERE version=16').get()||!frameTable&&db.prepare('SELECT 1 FROM schema_version WHERE version=20').get())throw invalid();
+ const imageOwned=imageTable&&db.prepare('SELECT 1 FROM image_versions WHERE assetId=? LIMIT 1').get(asset.id);
+ const frameOwned=frameTable&&db.prepare("SELECT 1 FROM frame_tasks WHERE assetId=? OR CASE WHEN json_valid(stagedReceipt) THEN json_extract(stagedReceipt,'$.assetId') END=? LIMIT 1").get(asset.id,asset.id);
+ if(!imageOwned&&!frameOwned&&asset.provenance!=='extracted-frame')return asset;
  try{createOwnedMediaGraphReader(db,projectId).asset(asset.id);}
  catch{throw invalid();}
  return asset;

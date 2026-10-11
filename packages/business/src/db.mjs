@@ -8,6 +8,7 @@ import {migrateSubjectSchema} from './subject-schema.mjs';
 import {migrateImageSchema} from './image-schema.mjs';
 import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImageReviewSchema} from './images/review-schema.mjs';
 import {migrateComfyImageSchema} from './comfy-image-schema.mjs';
+import {migrateFrameSchema} from './frame-schema.mjs';
 
 // Backend-only proof of the actual acquired workspace lock. Neither caller
 // options nor copied store properties can manufacture ownership. A replaced,
@@ -32,6 +33,7 @@ export function validateWorkspaceStorage(root){
  if(!validatePrivateDirectory(root,{allowMissing:true}))return;
  validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true});
  validateManagedDirectory(path.join(root,'image-staging'),{root,allowMissing:true,private:true});
+ validateManagedDirectory(path.join(root,'frame-staging'),{root,allowMissing:true,private:true});
  for(const name of ['workbench.sqlite','workbench.sqlite-wal','workbench.sqlite-shm','workbench.sqlite-journal']){
   validateManagedFile(path.join(root,name),{root,allowMissing:true});
  }
@@ -399,6 +401,11 @@ export function openStore(root,{lock=true}={}){
  if(!db.prepare('SELECT 1 FROM schema_version WHERE version=19').get()){
   db.exec('BEGIN IMMEDIATE');
   try{migrateComfyImageReviewSchema(db);migrateComfyImageSchema(db);db.exec('INSERT INTO schema_version VALUES(19);COMMIT;');}
+  catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+ }
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=20').get()){
+  db.exec('BEGIN IMMEDIATE');
+  try{migrateFrameSchema(db);db.exec('INSERT INTO schema_version VALUES(20);COMMIT;');}
   catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);

@@ -32,7 +32,7 @@ function startWorker(root) {
   const child = spawn(process.execPath, [workerPath, root], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0'}});
   let output = '';
-  for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { output = (output + chunk).slice(-20000); });
+  for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', chunk => { output = (output + chunk).slice(-20000); });
   const ready = Promise.withResolvers(), exited = Promise.withResolvers(), pending = new Map();
   let stopped;
   const rejectPending = error => { ready.reject(error); for (const reply of pending.values()) reply.reject(error); };

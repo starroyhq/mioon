@@ -46,7 +46,7 @@ async function backend(dataDir) {
   });
   let output = '', acquisitions = 0;
   const observations = new Map();
-  for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { output = (output + chunk.toString()).slice(-32000); });
+  for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', chunk => { output = (output + chunk.toString()).slice(-32000); });
   const exited = new Promise((resolve, reject) => {
     child.once('exit', (code, signal) => resolve({code, signal}));
     child.once('error', reject);

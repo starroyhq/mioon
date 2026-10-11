@@ -193,7 +193,7 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,19);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,20);
  assert.deepEqual(fullSchema(),completeFresh);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(fullSchema(),completeFresh);
 });
@@ -219,7 +219,7 @@ const childCode=`
 function child(t,f,operation,input,release=''){
  const proc=spawn(process.execPath,['--input-type=module','-e',childCode,f.root,operation,JSON.stringify(input),release],{cwd:path.resolve(new URL('..',import.meta.url).pathname),stdio:['ignore','pipe','pipe','ipc']});
  const messages=[],pending=[];let errorText='';
- proc.stderr.on('data',chunk=>errorText+=chunk);
+ proc.stderr.setEncoding('utf8').on('data',chunk=>errorText+=chunk);
  proc.on('message',value=>{messages.push(value);for(const p of [...pending])if(p.phase===value.phase){pending.splice(pending.indexOf(p),1);p.resolve(value);}});
  proc.on('error',error=>{for(const p of pending.splice(0))p.reject(error);});
  proc.on('exit',(code,signal)=>{for(const p of pending.splice(0))p.reject(Error(`Race child exited ${code}/${signal}: ${errorText}`));});

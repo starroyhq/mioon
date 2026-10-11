@@ -23,7 +23,7 @@ async function reassignWhileLocked(t, f, corrupt = false) {
     [path.join(f.root, 'workbench.sqlite'), f.shot.id, f.other.id, corrupt ? 'yes' : 'no'],
     {stdio: ['ignore', 'ignore', 'pipe', 'ipc']});
   let stderr = '';
-  child.stderr.on('data', bytes => { stderr += bytes; });
+  child.stderr.setEncoding('utf8').on('data', bytes => { stderr += bytes; });
   const ended = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code, signal) => code === 0 && signal === null ? resolve() : reject(Error(stderr || `writer ${code}/${signal}`))); });
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await ended.catch(() => {}); });
   await Promise.race([new Promise(resolve => child.once('message', message => { assert.equal(message.type, 'locked'); resolve(); })), ended.then(() => { throw Error('writer exited before lock'); })]);

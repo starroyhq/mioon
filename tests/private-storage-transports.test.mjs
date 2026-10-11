@@ -18,7 +18,7 @@ function environment(base, tokenFile) {
 async function cli(env, args = ['project', 'list']) {
   const child = spawn(process.execPath, ['apps/cli/src/index.mjs', ...args], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
-  for (const [kind, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.on('data', bytes => {
+  for (const [kind, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.setEncoding('utf8').on('data', bytes => {
     if (kind === 'stdout') stdout += bytes; else stderr += bytes;
     if (stdout.length + stderr.length > 65536) child.kill();
   });
@@ -30,7 +30,7 @@ async function cli(env, args = ['project', 'list']) {
 }
 async function mcp(t, env) {
   const transport = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.mjs'], cwd: repo, env, stderr: 'pipe'});
-  let stderr = ''; transport.stderr?.on('data', bytes => {stderr += bytes;});
+  let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', bytes => {stderr += bytes;});
   const client = new Client({name: 'q2-private-storage-acceptance', version: '1.0.0'}, {capabilities: {}});
   t.after(() => client.close());
   await client.connect(transport);

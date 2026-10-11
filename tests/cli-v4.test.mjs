@@ -27,8 +27,8 @@ function environment(extra = {}) {
 function startCli(args, env = {}, stdin = '') {
   const child = spawn(process.execPath, [cliPath, ...args], {cwd:repo, env:environment(env), stdio:['pipe','pipe','pipe']});
   let stdout = '', stderr = '';
-  child.stdout.on('data', bytes => stdout += bytes);
-  child.stderr.on('data', bytes => stderr += bytes);
+  child.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes);
+  child.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
   child.stdin.on('error', () => {});
   child.stdin.end(stdin);
   const result = new Promise((resolve, reject) => {

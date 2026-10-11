@@ -3,6 +3,7 @@ import {types} from 'node:util';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {createImageOwnershipReader} from './image-ownership.mjs';
+import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownership.mjs';
 
 // This boundary is deliberately independent of legacy get/list/ensure helpers.
 // In particular, reading an absent timeline must never initialize one.
@@ -68,9 +69,11 @@ function excerpt(value) {
 }
 
 function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
-    const cache = new Map(), validatedVersions = new Set(), validatedAssets = new Set(), assetVersions = new Map(), imageSources = new Map();
-    let readBytes = 0, readRecords = 0;
-    const imageReader=createImageOwnershipReader(db,projectId,{fail:unavailable,consume:text=>{if(++readRecords>INSPECTION_LIMITS.maxReadRecords||(readBytes+=Buffer.byteLength(text))>INSPECTION_LIMITS.maxReadBytes)exhausted();}});
+    const cache = new Map(), validatedVersions = new Set(), validatedAssets = new Set(), assetVersions = new Map(), imageSources = new Map(), frameSources = new Map(), frameTasks = new Set(), pendingFrameTasks = new Set();
+    let readBytes = 0, readRecords = 0, frameDepth = 0;
+    const consume=text=>{if(++readRecords>INSPECTION_LIMITS.maxReadRecords||(readBytes+=Buffer.byteLength(text))>INSPECTION_LIMITS.maxReadBytes)exhausted();};
+    const imageReader=createImageOwnershipReader(db,projectId,{fail:unavailable,consume});
+    const frameReader=createFrameOwnershipReader(db,projectId,{fail:unavailable,consume});
     // CASE guards are evaluated by SQLite before data crosses into JavaScript.
     // Oversized/malformed rows are errors, never silently skipped from a page.
     const identity=column=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
@@ -157,9 +160,11 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
       // Mark only after direct identity checks; this breaks legitimate graph
       // cycles while every encountered relation still receives validation.
       validatedVersions.add(versionId);
-      validateAsset(asset); referenceAssets(shot);
-      snapshotLinks(version.snapshot, shot.id); snapshotLinks(job.snapshot, shot.id);
-      return version;
+      try{
+        validateAsset(asset); referenceAssets(shot);
+        snapshotLinks(version.snapshot, shot.id); snapshotLinks(job.snapshot, shot.id);
+        return version;
+      }catch(error){validatedVersions.delete(versionId);throw error;}
     }
     function validateAsset(asset) {
       if (validatedAssets.has(asset.id)) return asset;
@@ -169,21 +174,39 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
       // have no version; generated assets require exactly one. Foreign and
       // duplicate owners are rejected, including mismatched SQL/JSON scope.
       const rows = db.prepare(`SELECT ${identity('id')} FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(asset.id);
-      const images=imageReader.owners(asset.id),total=rows.length+images.length;
-      // A damaged oversized legacy JSON owner must not be invisible beside a
-      // new typed owner. The normal old-asset path retains its indexed lookup.
-      if(images.length&&db.prepare(`SELECT 1 FROM versions WHERE length(CAST(data AS BLOB))>${rowLimits.versions} AND CASE WHEN json_valid(data) THEN json_extract(data,'$.assetId') END=? LIMIT 1`).get(asset.id))unavailable();
-      if (total > 1 || (total === 0 && ['generated', 'synthetic-mock'].includes(asset.provenance))) unavailable();
+      const images=imageReader.owners(asset.id),frames=frameReader.owners(asset.id),total=rows.length+images.length+frames.length;
+      // A damaged oversized legacy owner must never become an unowned import
+      // or hide beside a typed owner, regardless of its provenance label.
+      if(db.prepare(`SELECT 1 FROM versions WHERE length(CAST(data AS BLOB))>${rowLimits.versions} AND CASE WHEN json_valid(data) THEN json_extract(data,'$.assetId') END=? LIMIT 1`).get(asset.id))unavailable();
+      if (total > 1 || (total === 0 && ['generated', 'synthetic-mock', 'extracted-frame'].includes(asset.provenance))) unavailable();
       if (rows.length) assetVersions.set(asset.id, validateVersion(rows[0].id, undefined, asset.id));
       if (images.length) imageSources.set(asset.id,imageReader.source(images[0].id,asset));
+      if (frames.length) {
+        const source=frameReader.source(id(frames[0].id),asset);
+        validateFrameTask(source.frameTaskId);frameSources.set(asset.id,source);
+      }
+      if(asset.provenance==='extracted-frame'&&!frames.length)unavailable();
       return asset;
-      }catch(error){validatedAssets.delete(asset.id);assetVersions.delete(asset.id);imageSources.delete(asset.id);throw error;}
+      }catch(error){validatedAssets.delete(asset.id);assetVersions.delete(asset.id);imageSources.delete(asset.id);frameSources.delete(asset.id);throw error;}
+    }
+    function validateFrameTask(taskId) {
+      const value=frameReader.task(id(taskId));
+      if(frameTasks.has(taskId)||pendingFrameTasks.has(taskId))return value;
+      if(++frameDepth>FRAME_OWNERSHIP_LIMITS.maxAncestors){frameDepth--;exhausted();}
+      pendingFrameTasks.add(taskId);
+      try{
+        const source=get('assets',id(value.input.sourceAssetId));
+        if(!['video/mp4','video/webm'].includes(source.mimeType)||source.provenance==='extracted-frame')unavailable();
+        validateAsset(source);
+        if(value.row.assetId!==null){const asset=get('assets',id(value.row.assetId));frameReader.source(taskId,asset);validateAsset(asset);}
+        frameTasks.add(taskId);return value;
+      }finally{pendingFrameTasks.delete(taskId);frameDepth--;}
     }
     function assetDto(asset) {
       validateAsset(asset);
       return {id: asset.id, name: string(asset.name, 200), mimeType: enumValue(asset.mimeType, ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4']),
         ...optional(asset, {width: value => number(value, 0, 100000, true), height: value => number(value, 0, 100000, true), duration: value => number(value, 0, 864000),
-          hasAudio: boolean, hasVideo: boolean, provenance: value => enumValue(value, ['user-import', 'generated', 'synthetic-mock', 'export']), createdAt: timestamp})};
+          hasAudio: boolean, hasVideo: boolean, provenance: value => enumValue(value, ['user-import', 'generated', 'synthetic-mock', 'export', 'extracted-frame']), createdAt: timestamp})};
     }
     function shotDto(shot) {
       const references = referenceAssets(shot);
@@ -248,7 +271,8 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
       assets: args => page('assets', 'asset.inspect', args), shots: args => page('shots', 'shot.inspect', args), timeline: timelineDto, ownedAsset: assetId=>validateAsset(get('assets',id(assetId))),clipSource,
       ownedTimeline:()=>{const timeline=ownedTimeline();if(timeline)timelineDto(timeline);return timeline;},validateTimeline:timelineDto,version:validateVersion,
       imageVersion:(versionId,assetId)=>{const value=imageReader.version(id(versionId));const asset=validateAsset(get('assets',id(assetId??value.assetId)));if(value.assetId!==asset.id)unavailable();return imageReader.version(versionId,asset);},
-      imageSource:assetId=>{const asset=validateAsset(get('assets',id(assetId)));return imageSources.get(asset.id)??null;}};
+      imageSource:assetId=>{const asset=validateAsset(get('assets',id(assetId)));return imageSources.get(asset.id)??null;},frameTask:validateFrameTask,
+      frameSource:assetId=>{const asset=validateAsset(get('assets',id(assetId)));return frameSources.get(asset.id)??null;}};
   }
 
 
@@ -256,7 +280,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
 // unscoped raw reader; all paths retain the same bounded project-owner gates.
 export function createOwnedMediaGraphReader(db,projectId){
  const read=inspectionReader(db,projectId);
- return {asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
+ return {asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,frameTask:read.frameTask,frameSource:read.frameSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
 }
 
 export function createInspectionServices(store) {

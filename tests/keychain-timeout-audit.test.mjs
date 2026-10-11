@@ -50,7 +50,7 @@ test('historical 9e synchronous defect still reproduces its original seven synth
       path.join(directory, 'tests/keychain-timeout-audit.test.mjs')], {cwd: directory, env: {}, shell: false, stdio: ['ignore', 'pipe', 'pipe']});
     let stdout = '', stderr = '', oversized = false;
     const timer = setTimeout(() => child.kill(), 35000);
-    for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.on('data', bytes => {
+    for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.setEncoding('utf8').on('data', bytes => {
       if (name === 'stdout') stdout += bytes; else stderr += bytes;
       if (stdout.length + stderr.length > 2 * 1024 * 1024) {oversized = true; child.kill();}
     });

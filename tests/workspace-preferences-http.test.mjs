@@ -33,7 +33,7 @@ async function backend(t) {
   async function start() {
     let stdout = '', stderr = '';
     child = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.mjs')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: '0'}), stdio: ['ignore', 'pipe', 'pipe']});
-    child.stdout.on('data', chunk => stdout += chunk); child.stderr.on('data', chunk => stderr += chunk);
+    child.stdout.setEncoding('utf8').on('data', chunk => stdout += chunk); child.stderr.setEncoding('utf8').on('data', chunk => stderr += chunk);
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
       assert.equal(child.exitCode, null, stderr);

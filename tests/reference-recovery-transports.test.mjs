@@ -29,7 +29,7 @@ function png(color){
 }
 async function command(operation,input,env){
  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});
- let stdout='',stderr='';for(const [stream,append] of [[child.stdout,b=>stdout+=b],[child.stderr,b=>stderr+=b]])stream.on('data',b=>{append(b);if(stdout.length+stderr.length>1024*1024)child.kill('SIGKILL');});
+ let stdout='',stderr='';for(const [stream,append] of [[child.stdout,b=>stdout+=b],[child.stderr,b=>stderr+=b]])stream.setEncoding('utf8').on('data',b=>{append(b);if(stdout.length+stderr.length>1024*1024)child.kill('SIGKILL');});
  const timer=setTimeout(()=>child.kill('SIGKILL'),15000);let code,signal;try{[code,signal]=await once(child,'close');}finally{clearTimeout(timer);}
  assert.equal(signal,null,stderr);assert.ok(!stdout.includes(token)&&!stderr.includes(token));const body=JSON.parse(stdout);assert.equal(code===0,body.ok,stdout+stderr);return body;
 }

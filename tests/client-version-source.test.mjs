@@ -157,7 +157,7 @@ test('official MCP initialization separates application serverInfo from negotiat
   const transport = new StdioClientTransport({command: process.execPath,
     args: [fileURLToPath(new URL('apps/mcp/src/index.mjs', root))], cwd: fileURLToPath(root),
     env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'pipe'});
-  let stderr = ''; transport.stderr.on('data', bytes => { stderr += bytes; });
+  let stderr = ''; transport.stderr.setEncoding('utf8').on('data', bytes => { stderr += bytes; });
   const messages = [];
   const wire = {
     onmessage: undefined, onerror: undefined, onclose: undefined,

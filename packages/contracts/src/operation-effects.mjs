@@ -21,6 +21,12 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  'frame.extract': define({...render,notes:'Durably accepts one project/source-hash/30fps-mark-bound local PNG extraction before bounded FFmpeg work. Required stable requestId replays the immutable original acknowledgement without scheduling again. No provider or network access; originals are preserved.'}),
+  'frame.request.get': define({...read,notes:'Reads the exact retained project-scoped frame acknowledgement. Never decodes, repairs or resumes a task.'}),
+  'frame.task.get': define({...read,notes:'Reads an existing owned local frame task and safe result metadata. No file reads or work scheduling.'}),
+  'frame.task.list': define({...read,notes:'Reads a bounded project-owned frame task page without resuming or creating work.'}),
+  'frame.task.cancelQueued': define({...replayEdit,notes:'Explicitly cancels only queued or interrupted provably unstarted local extraction under task CAS. Exact replay is retained; running extraction is not reported cancelled.'}),
+  'frame.task.recoverResult': define({...localAdd,idempotent:true,fileWrite:true,notes:'Explicitly verifies and publishes an existing complete task-bound PNG and manifest. Never reruns the decoder, submits generation or edits source media.'}),
   'image.profile.list': define({...read,notes:'Reads profiles and local availability; explicit includeSettingsRevision:true may include each eligible slot\'s non-secret configuration revision from the same safe snapshot. Default output is unchanged. No provider probe, decryption, approval or dispatch; enabled is not live verification.'}),
   'image.review.prepare': define({...localAdd,idempotent:true,notes:'Retains exact project/input/settings-bound pending image review, without granting approval, dispatch or payment authority. Same key with changed content conflicts; user approval is a separate authenticated UI route.'}),
   'image.review.get': define({...read,notes:'Reads an existing owned immutable image review and bounded attempt state. Never approves or dispatches.'}),

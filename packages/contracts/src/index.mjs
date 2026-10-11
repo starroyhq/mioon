@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {frameSchemas} from './frame-extraction.mjs';
+export * from './frame-extraction.mjs';
 import {imageSchemas} from './images.mjs';
 export * from './images.mjs';
 import {imageReviewSchemas} from './image-reviews.mjs';
@@ -44,6 +46,7 @@ const clipFields={trackId:id,name:z.string().min(1).max(200),startFrame:frame,du
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
+...frameSchemas,
 ...imageSchemas,
 ...imageReviewSchemas,
 ...comfyRemoteSchemas,
@@ -98,6 +101,12 @@ assertOperationEffectCoverage(schemas);
 export const descriptions={
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
+ 'frame.extract':'用稳定请求键从本项目固定素材哈希与30fps源时点显式提取一张本地PNG；先持久化任务再解码，不修改原素材，不生成或付费；30fps标记不是原生或VFR帧号',
+ 'frame.request.get':'只读查询原抽帧操作的不可变受理回执；历史状态不触发执行，当前状态另查task.get',
+ 'frame.task.get':'只读查询本项目已有抽帧任务和安全结果元数据；不读取媒体或恢复任务',
+ 'frame.task.list':'按项目分页只读发现本地抽帧任务，默认20条、最多50条；重启和查询不会自动解码',
+ 'frame.task.cancelQueued':'按任务版本和稳定请求键仅取消排队或明确未启动的中断抽帧任务；已运行任务不伪称取消成功',
+ 'frame.task.recoverResult':'按任务版本和稳定请求键明确校验并发布已存在的完整PNG与任务凭据；不重新解码，不重新提交',
  'image.profile.list':'读取图像预设；includeSettingsRevision:true 可发现对应槽的非秘密配置版本，默认响应不变；不探测网络、解密密钥或授予生成批准',
  'image.review.prepare':'保存当前项目的精确官方 OpenAI、自定义兼容或本机 ComfyUI 图像请求；本机工作流含后端生成并冻结的种子和任务标识，供用户完整确认；不批准、不生成、不发送请求',
  'image.review.get':'读取当前项目已保存的图像请求确认记录；不会批准、执行或重试',

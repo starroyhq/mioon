@@ -40,8 +40,8 @@ async function cli(args, env) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.mjs'), ...args], {cwd: repo,
     env: childEnvironment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
-  child.stdout.on('data', chunk => {stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL');});
-  child.stderr.on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
+  child.stdout.setEncoding('utf8').on('data', chunk => {stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL');});
+  child.stderr.setEncoding('utf8').on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
   const timer = setTimeout(() => child.kill('SIGKILL'), 10000);
   let result; try {result = await once(child, 'close');} finally {clearTimeout(timer);}
   assert.deepEqual(result, [0, null], stderr); assert.ok(!stdout.includes(syntheticKey) && !stderr.includes(token));

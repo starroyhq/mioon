@@ -53,8 +53,8 @@ async function stopOwned(child) {
 function launch(t, args, env) {
   const child = spawn(process.execPath, args, {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '', failure;
-  child.stdout.on('data', chunk => { stdout += chunk; enforceOutput(); });
-  child.stderr.on('data', chunk => { stderr += chunk; enforceOutput(); });
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; enforceOutput(); });
+  child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; enforceOutput(); });
   function enforceOutput() { if (stdout.length + stderr.length > 512 * 1024) { failure = Error('Owned child exceeded bounded output'); child.kill('SIGKILL'); } }
   child.on('error', error => { failure = error; });
   const finished = new Promise(resolve => child.once('close', (code, signal) => resolve({code, signal})));
@@ -215,7 +215,7 @@ if(process.argv[2] === 'preflight-server'){
   client = new Client({name: 'timeline-preflight-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env), stderr: 'pipe',
     args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.mjs')]});
-  let stderr = ''; transport.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
+  let stderr = ''; transport.stderr?.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-64 * 1024); });
   await bounded(client.connect(transport), 'Official MCP initialization');
   assert.equal(client.getServerVersion().name, 'mioon'); assert.ok(client.getServerCapabilities().tools);
   async function mcp(op, request, expectedError) {

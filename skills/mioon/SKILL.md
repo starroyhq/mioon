@@ -404,3 +404,27 @@ These bindings are planning-only. They never become provider inputs, change shot
 first frames, promise identity locking or authorize generation. Continue using
 `reference attach` for an actual `first_frame`; last-frame/motion support is
 future work. No built-in Agent catalog/context expansion or Blender dependency.
+
+## Local source-frame capture
+
+For an explicitly requested source capture, use only the six discovered `frame`
+operations described in [operations.md](references/operations.md#local-source-frame-extraction).
+The increment is under acceptance; [current gates](../../docs/SOURCE-FRAMES.md)
+do not establish native/platform acceptance. `sourceFrame` is a 30fps editing
+mark, not native/VFR frame accuracy or browser-pixel equivalence. `frame extract`
+pins the chosen managed source/hash and yields one new local PNG (longest edge
+1024, no upscale). No provider, arbitrary path/command, Blender or implicit
+reference/timeline/subject binding participates.
+
+Keep the exact operation/input and stable request ID on unknown outcomes.
+The frame-only request namespace is separate from image/older mutations. Replay
+returns the original ACK without another decode; read task state separately.
+Only exact authoritative operation/project/key/canonical-input-SHA refusal proof
+under the documented code/status whitelist resolves nonacceptance. Errors or
+missing receipt text alone do not. Never re-key, retry silently or treat list/get
+as permission to run work. Explicit cancel applies only before proven start;
+explicit result recovery publishes existing complete local PNG/manifest bytes
+and cannot re-decode. Startup/opening never resumes extraction. Accepted task
+metadata/journals are plaintext local SQLite, not encrypted prepared intents.
+Public CLI/MCP access does not expand the built-in Agent tool/catalog or generic
+durable-edit recovery allowlist.
