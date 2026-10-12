@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.mjs",
-    "./private-storage": "./src/private-storage.mjs"
+    "./private-storage": "./src/private-storage.mjs",
+    "./timeline-delivery": "./src/timeline-delivery.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

@@ -804,3 +804,9 @@ and previews/exports are enabled in restored v1; disabled calls return the same
 structured business refusal as UI/CLI. Do not interpret it as confirmed rollback.
 Offline restore/status has no MCP filesystem executor; use the explicitly
 requested local CLI described in [CLI.md](CLI.md#guarded-offline-restoration).
+
+
+## Named timeline deliveries
+
+`timeline_render` (export only) and `timeline_export_preflight` expose optional `deliveryName` through shared strict discovery. Preserve its exact presence/value and all quality settings when replaying an unknown original request. `timeline_export_capabilities` still excludes display names. Read `export_get` for accepted historical metadata. This adds no built-in Agent tool or generation permission.
+See [scope and acceptance](NAMED-DELIVERIES.md).

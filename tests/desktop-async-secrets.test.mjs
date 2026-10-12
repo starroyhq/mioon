@@ -1,6 +1,7 @@
-import test from 'node:test';
+import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {stripTypeScriptTypes} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {randomUUID, createCipheriv, createDecipheriv} from 'node:crypto';
 
@@ -14,10 +15,18 @@ const data = source => 'data:text/javascript;base64,' + Buffer.from(source).toSt
 
 // No installed dependencies are used or borrowed. Real Agent config/settings,
 // codecs, brokers, supervisor and quit-helper bodies use import-only rewriting.
+// The one reviewed TypeScript download helper uses Node's strip-only erasure;
+// its Electron imports are type-only and must never become runtime imports.
 // The Images validator is explicitly a two-string test double: these tests do
 // NOT claim Zod/profile schema or filesystem acceptance. Existing suites cover it.
+// Download parsing is outside this fixture. Its exact contract double counts
+// calls as well as throwing, because the production download guard catches errors.
 const forbidden = () => { throw Error('Filesystem persistence is outside this fixture'); };
+const deliveryParserUrl = data('export let calls = 0; export function parseTimelineDeliveryContentDisposition() { calls++; throw Error("Timeline delivery parsing is outside this secrets fixture"); }');
+const deliveryParser = await import(deliveryParserUrl);
+after(() => assert.equal(deliveryParser.calls, 0, 'Secrets fixtures must never execute download parsing'));
 const overrides = new Map([
+  ['@mioon/contracts/timeline-delivery', deliveryParserUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.mjs', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
   ['@mioon/business/images/settings', data('const accepted = ' + JSON.stringify(imagePlaintexts) + '; export function validateImageSecretPlaintext(value) { if (!accepted.includes(value)) throw Object.assign(new Error("Synthetic Images validation"), {code: "IMAGE_SETTINGS_VALIDATION"}); } export const imageSettingsError = code => Object.assign(new Error("Synthetic Images error"), {code});')],
   ['@mioon/business/agent/settings-file', data('export const createAgentSettingsFile = ' + forbidden.toString())],
@@ -25,7 +34,7 @@ const overrides = new Map([
 ]);
 const approved = new Set(['apps/desktop/src/secret-store-linux.mjs', 'apps/desktop/src/secret-store.mjs', 'apps/desktop/src/image-secret-store.mjs',
   'apps/desktop/src/image-secret-broker.mjs', 'apps/desktop/src/secret-broker.mjs', 'apps/desktop/src/supervisor.mjs',
-  'apps/desktop/src/security.mjs', 'apps/desktop/src/shutdown.mjs', 'packages/business/src/agent/settings.mjs', 'packages/business/src/agent/config.mjs',
+  'apps/desktop/src/security.mjs', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/shutdown.mjs', 'packages/business/src/agent/settings.mjs', 'packages/business/src/agent/config.mjs',
   'packages/business/src/agent/presets.mjs']);
 const urls = new Map();
 function moduleUrl(name) {
@@ -33,6 +42,7 @@ function moduleUrl(name) {
   assert.ok(approved.has(name), 'Unreviewed source: ' + name);
   let source = readFileSync(new URL(name, root), 'utf8');
   assert.doesNotMatch(source, /\bimport\s*\(|\brequire\s*\(/);
+  if (name === 'apps/desktop/src/timeline-delivery-download.ts') source = stripTypeScriptTypes(source, {mode: 'strip'});
   source = source.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_, quote, specifier) => {
     let url = overrides.get(specifier);
     if (!url && ['node:path', 'node:crypto', 'node:net', 'node:events'].includes(specifier)) url = specifier;
@@ -117,11 +127,28 @@ test('audited imports and codec construction make no native calls; Images client
   const f = vault(), codec = imageFor(f);
   assert.deepEqual(f.calls, []);
   assert.ok(![...urls.keys()].some(name => /\/(?:main|backend)\.mjs$/.test(name)));
+  assert.ok(urls.has('apps/desktop/src/timeline-delivery-download.ts'));
+  assert.ok(!urls.has('packages/contracts/src/timeline-delivery.ts'));
   const pair = imagePair(codec); t.after(() => pair.close());
   const encrypted = await pair.client.encrypt(imagePlaintexts[0]);
   assert.equal(await pair.client.decrypt(encrypted), imagePlaintexts[0]);
   assert.deepEqual(pair.client.storage(), {persistentAvailable: true, sessionScope: 'server', reasonCode: null});
   assert.ok(['status', 'encrypt', 'decrypt'].every(method => f.calls.includes(method)));
+});
+
+test('import fixture permits only the reviewed erased download helper and refuses runtime Electron or unknown source paths', () => {
+  const name = 'apps/desktop/src/timeline-delivery-download.ts';
+  const original = readFileSync(new URL(name, root), 'utf8');
+  assert.match(original, /import type \{[^}]*\} from 'electron'/);
+  const erased = stripTypeScriptTypes(original, {mode: 'strip'});
+  assert.doesNotMatch(erased, /from ['"]electron['"]/);
+  assert.deepEqual([...erased.matchAll(/\bfrom\s+(['"])([^'"]+)\1/g)].map(match => match[2]), ['node:path', '@mioon/contracts/timeline-delivery']);
+  assert.equal(overrides.has('electron'), false);
+  assert.equal(overrides.has('@mioon/contracts/arbitrary'), false);
+  for (const unreviewed of ['apps/desktop/src/main.mjs', 'apps/desktop/src/backend.mjs', 'packages/contracts/src/timeline-delivery.ts', 'apps/desktop/src/../src/not-approved.ts']) {
+    assert.throws(() => moduleUrl(unreviewed), /Unreviewed source:/);
+  }
+  assert.equal(deliveryParser.calls, 0);
 });
 
 test('Images client directly arms its 2000ms default and times out a silent port', {timeout: 5000}, async t => {

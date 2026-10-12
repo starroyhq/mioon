@@ -127,7 +127,7 @@ function appFunction(begin, end, scope) {
 function appHarness(f) {
   const calls = [], notices = [], views = [], panels = [], pending = [], jobs = [], exports = [];
   const owner = context(), currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4, clips: [{ id: id(20) }] } } };
-  const env = { workspaceRef: { current: { restored: false } }, dataRef, currentProject, exportPreflight: { controller: f.controller }, exportCheckContext: () => ({ ...owner, projectId: currentProject.current, timelineId: dataRef.current.timeline.id, revision: dataRef.current.timeline.revision }),
+  const env = { panelIntent: { current: 0 }, openExportHistory: () => exports.push(true), workspaceRef: { current: { restored: false } }, deliveryNameRef: { current: null }, dataRef, currentProject, exportPreflight: { controller: f.controller }, exportCheckContext: () => ({ ...owner, projectId: currentProject.current, timelineId: dataRef.current.timeline.id, revision: dataRef.current.timeline.revision }),
     isBusy: () => false, pendingForProject: () => pending, notify: (...args) => notices.push(args), setShowJobs: value => jobs.push(value), setShowExports: value => exports.push(value),
     run: async (...args) => { calls.push(args); return { id: id(30), status: 'queued' }; }, requestId: () => 'stable-test-request',
     updateView: (...args) => views.push(args), setPreviewKind: value => views.push(['previewKind', value]),

@@ -1,3 +1,5 @@
+import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput} from './timeline-delivery.ts';
+export * from './timeline-delivery.ts';
 import {workspaceBackupSchemas} from './workspace-backup.mjs';
 export * from './workspace-backup.mjs';
 import {workspaceRestoreSchemas} from './workspace-restore.mjs';
@@ -114,7 +116,7 @@ export const schemas={
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
 'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),
 'timeline.seed':z.object(timelineMutation).strict(),
-'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),exportSettings:timelineExportSettingsSchema.optional(),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict().refine(value=>value.exportSettings===undefined||value.purpose==='export',{message:'Export settings are available only for export renders',path:['exportSettings']})
+'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),deliveryName:timelineDeliveryNameSchema.optional(),exportSettings:timelineExportSettingsSchema.optional(),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict().refine(value=>value.exportSettings===undefined||value.purpose==='export',{message:'Export settings are available only for export renders',path:['exportSettings']}).refine(value=>isTimelineDeliveryNameInput(value,value.purpose),{message:'Delivery names are available only for export renders and must be explicitly valid',path:['deliveryName']})
 };
 // A new operation must receive an audited effect descriptor before discovery
 // or dispatch can initialize; never infer safety from an operation-name suffix.

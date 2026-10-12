@@ -3,13 +3,16 @@ import { Badge } from '@mioon/ui/components/badge';
 import Icon from './icons.jsx';
 import { statusText } from './api.js';
 import { exportHistoryDelivery } from './export-settings-state.js';
+import { hasNamedTimelineDelivery } from './export-delivery-state.ts';
+import TimelineDeliveryHistory from './TimelineDeliveryHistory.tsx';
 
-/** Presentation only. App owns ordering, project identity, dialog lifetime and
+/** Presentation only. App owns ordering, project identity, right-dock lifetime and
  * navigation fences. Rows retain their original immutable export snapshots. */
 export default function ExportHistoryList({ orderedExports, projectName, timelineRevision, heldExportIds = [] }) {
   return <div className="export-list">
     {orderedExports.length ? orderedExports.map(item => {
       const delivery = exportHistoryDelivery(item), held = heldExportIds.includes(item.id);
+      if (hasNamedTimelineDelivery(item)) return <TimelineDeliveryHistory key={item.id} item={item} frozenDelivery={delivery} timelineRevision={timelineRevision} statusLabel={statusText(item.status)} held={held} filmIcon={<Icon name="film" size={24} />} downloadIcon={<Icon name="download" size={15} />} />;
       return <div className="export-card" key={item.id}>
         <div className="export-icon"><Icon name="film" size={24} /></div>
         <div className="export-detail">

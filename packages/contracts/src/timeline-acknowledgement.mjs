@@ -1,3 +1,4 @@
+import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
 import {isTimelineExportSnapshot,timelineExportSettingsSchema,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES} from './timeline-export-profile.mjs';
 import {TIMELINE_SUBTITLE_OPERATIONS,timelineSubtitleSchemas,isTimelineSubtitleSnapshotProfile} from './timeline-subtitles.mjs';
 import {timelineFormatSchemas,timelineOutputPreset} from './timeline-format.mjs';
@@ -40,7 +41,7 @@ export function isTimelineMutationResponse(operation, input, value) {
     isTimelineRecord(value,{projectId:input.projectId}) && value.revision===input.expectedRevision+1 &&
     timelineOutputPreset(value)?.id===input.presetId && value.clips.length===0 && value.durationFrames===0;
   if (!TIMELINE_MUTATION_OPERATIONS.includes(operation) || !baseInput(input)) return false;
-  if (operation === 'timeline.render') return operationInput(input, ['purpose'], ['preflightSnapshotHash','exportSettings']) && isTimelineRenderRecord(value, input);
+  if (operation === 'timeline.render') return operationInput(input, ['purpose'], ['preflightSnapshotHash','exportSettings','deliveryName']) && isTimelineRenderRecord(value, input);
   if (input.expectedRevision === Number.MAX_SAFE_INTEGER || !isTimelineRecord(value, {projectId: input.projectId}) || value.revision !== input.expectedRevision + 1) return false;
   const target = value.clips.find(clip => clip.id === input.clipId);
   switch (operation) {
@@ -101,14 +102,14 @@ const renderError = value => fields(value, ['code', 'message'], ['retryable']) &
 // relativePath is removed from public responses; old snapshots may omit either
 // relativePath or hasAudio. Those omissions are preserved rather than repaired.
 export function isTimelineRenderRecord(value, input) {
-  if (!baseInput(input) || !['preview', 'export'].includes(input.purpose) ||
+  if (!baseInput(input) || !['preview', 'export'].includes(input.purpose) || !isTimelineDeliveryNameInput(input,input.purpose) ||
       (input.preflightSnapshotHash !== undefined && !digest(input.preflightSnapshotHash)) ||
       (input.exportSettings !== undefined && (input.purpose!=='export'||!timelineExportSettingsSchema.safeParse(input.exportSettings).success)) ||
       !fields(value, renderFields) || !uuid(value.id) || value.projectId !== input.projectId || value.requestId !== input.requestId ||
       value.mode !== 'timeline' || value.purpose !== input.purpose || value.timelineRevision !== input.expectedRevision ||
       (input.exportId !== undefined && value.id !== input.exportId) ||
       !['queued', 'running', 'succeeded', 'failed'].includes(value.status) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
-      !fields(value.snapshot, ['timeline', 'assets'], ['subtitleProfile','delivery']) || !isTimelineExportSnapshot(value.snapshot,{purpose:input.purpose,exportSettings:input.exportSettings}) || !isTimelineSubtitleSnapshotProfile(value.snapshot) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
+      !fields(value.snapshot, ['timeline', 'assets'], ['subtitleProfile','delivery','deliveryName']) || !isTimelineExportSnapshot(value.snapshot,{purpose:input.purpose,exportSettings:input.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(value.snapshot) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
       value.snapshot.timeline.revision !== input.expectedRevision || !value.snapshot.timeline.clips.length ||
       (input.timelineId !== undefined && value.snapshot.timeline.id !== input.timelineId) ||
       !Array.isArray(value.snapshot.assets) || value.snapshot.assets.length < 1 || value.snapshot.assets.length > 100 ||
@@ -152,7 +153,7 @@ const subjectProofCodes = new Set(['REVISION_CONFLICT', 'SUBJECT_NO_CHANGE', 'SU
 export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
   const details = error?.details;
   if(TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error?.code)) return Boolean(operation==='timeline.render' &&
-    operationInput(input,['purpose','exportSettings'],['preflightSnapshotHash']) && input.purpose==='export' && timelineExportSettingsSchema.safeParse(input.exportSettings).success &&
+    operationInput(input,['purpose','exportSettings'],['preflightSnapshotHash','deliveryName']) && isTimelineDeliveryNameInput(input,input.purpose) && input.purpose==='export' && timelineExportSettingsSchema.safeParse(input.exportSettings).success &&
     (input.preflightSnapshotHash===undefined||digest(input.preflightSnapshotHash)) && object(details) &&
     (integer(error.status,400,499)&&![401,403].includes(error.status)||error.status===undefined&&error.definitive===true) &&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===input.projectId&&details.requestId===input.requestId);

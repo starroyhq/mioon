@@ -167,10 +167,10 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   check(timeline,input.expectedRevision);
   boundary.validate(clone(timeline));
   if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
-  const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings);
+  const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
   if(input.preflightSnapshotHash!==undefined){
    let current;
-   try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings).snapshot;}
+   try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input).snapshot;}
    catch{throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);}
    if(!current||hash(current)!==input.preflightSnapshotHash||hash(frozen)!==input.preflightSnapshotHash)
     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);

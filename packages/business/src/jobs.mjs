@@ -1,3 +1,4 @@
+import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVERY_RECEIPT_SQL} from '@mioon/contracts/timeline-delivery';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {matchesRestoredExport,restoreExportIdentity} from './workspace-restore-exports.mjs';
 import {workspaceRestoreError} from './workspace-restore-policy.mjs';
@@ -59,13 +60,13 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
  function receiptHasDelivery(e){
   if(e.mode!=='timeline'||typeof e.requestId!=='string')return false;
   const row=store.db.prepare(`SELECT CASE WHEN typeof(response)='text' AND length(CAST(response AS BLOB)) BETWEEN 1 AND ${exportRowBytes}
-   THEN CASE WHEN json_valid(response) THEN CASE WHEN json_type(response)='object' THEN json_type(response,'$.snapshot.delivery') END END END AS delivery
+   THEN CASE WHEN json_valid(response) THEN CASE WHEN json_type(response)='object' THEN ${TIMELINE_DELIVERY_RECEIPT_SQL} END END END AS delivery
    FROM timeline_requests WHERE requestId=?`).get(e.requestId);
   return row?.delivery!==undefined&&row.delivery!==null;
  }
  function customReceiptMatches(e){
   try{
-   const input={projectId:e.projectId,requestId:e.requestId,expectedRevision:e.timelineRevision,purpose:e.purpose,exportSettings:e.snapshot.delivery.exportSettings};
+   const input={projectId:e.projectId,requestId:e.requestId,expectedRevision:e.timelineRevision,purpose:e.purpose,...timelineRenderDeliveryFields(e.snapshot)};
    if(typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200)return false;
    const receipt=readTimelineReceipt(store.db,input,'timeline.render');
    if(!receipt)return false;
@@ -77,7 +78,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   const latest=workerExport(e.id);
   if(restored&&(!matchesRestoredExport(store,e)||!matchesRestoredExport(store,latest)||restoreExportIdentity(e)!==restoreExportIdentity(latest)))return null;
   if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return null;
-  if((customExport(e)||customExport(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
+  if((hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
   return latest;
  };
 

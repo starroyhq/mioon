@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createExportPreflightController } from './export-preflight-state.js';
 
-export function useExportPreflight({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, connected, visible, read, readCapabilities, getContext, getInvocation, onUnauthorized }) {
+export function useExportPreflight({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, connected, visible, read, readCapabilities, getContext, getInvocation, onUnauthorized }) {
   const callbacks = useRef({ read, readCapabilities, getContext, getInvocation, onUnauthorized });
   callbacks.current = { read, readCapabilities, getContext, getInvocation, onUnauthorized };
   const [state, setState] = useState(null), controller = useRef(null);
@@ -13,8 +13,8 @@ export function useExportPreflight({ scope, projectId, timelineId, revision, exp
     onUnauthorized: () => callbacks.current.onUnauthorized?.(),
   });
   useLayoutEffect(() => {
-    controller.current.setContext({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, connected });
-  }, [scope, projectId, timelineId, revision, exportSettings, settingsVersion, connected]);
+    controller.current.setContext({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, connected });
+  }, [scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, connected]);
   useLayoutEffect(() => { controller.current.setVisible(visible); }, [visible]);
   useLayoutEffect(() => () => controller.current.dispose(), []);
   // Mount, visibility, mode changes and reconnect never start a check or export.

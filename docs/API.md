@@ -419,7 +419,7 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | `timeline.clip.remove` | `clipId` |
 | `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
-| `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256), optional export-only `exportSettings` (closed MP4/H.264 profile) |
+| `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256), optional export-only `exportSettings` (closed MP4/H.264 profile), optional export-only `deliveryName` |
 
 Mutations return the whole timeline and increment its revision once. Rendering
 returns a queued `exports` record with `mode:'timeline'`, a frozen snapshot and
@@ -1091,3 +1091,10 @@ an earlier unknown write failed. Never discard its original key on that basis.
 Restore and status discovery are explicit offline Node/CLI actions only. No
 HTTP endpoint receives restore filesystem paths. See [WORKSPACE-RESTORE.md](WORKSPACE-RESTORE.md)
 for fixed schema gates, limits, recursive-backup restriction and current evidence.
+
+
+## Named timeline deliveries
+
+`timeline.render` with `purpose:'export'` and `timeline.export.preflight` accept optional `deliveryName`: exact nonblank1–120 UTF-16 units, valid Unicode without control/line characters. Omission remains absent in historical requests and receipts. The preflight digest and original render key bind the name together with the frozen timeline/settings; changed or removed names cannot reuse that key. The encoding-capability request does not accept a name. `export.get` returns the immutable `snapshot.deliveryName` when supplied.
+
+Named download links bind `/media/{assetId}?download=1&exportId={exportId}`. The authenticated server validates the historical export/output/receipt and derives a safe attachment filename; callers cannot supply a destination path or trusted filename. Existing unnamed/storyboard behavior remains. See [scope, safety and acceptance](NAMED-DELIVERIES.md).

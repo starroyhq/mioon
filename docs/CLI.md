@@ -908,3 +908,9 @@ on uncertainty reuse only the exact original key/input, never reselect a newer
 head. `job.retry` of a confirmed failure retains the old snapshot. Mock does not
 render reference likeness. Ark is a separately authorized paid action and direct
 real-human-face uploads are unsupported. See [the scope and validation status](SUBJECT-VIDEO-INPUTS.md).
+
+
+## Named timeline deliveries
+
+Discover `mioon schema timeline.render` and `mioon schema timeline.export.preflight`. Include the identical optional `deliveryName` in preflight and a separately intended export request. Do not pass it to `timeline export capabilities` or a preview. Read `export get` for the frozen name/settings. Existing `export download` keeps its explicitly selected local destination; a display title never grants filesystem authority.
+See [scope and acceptance](NAMED-DELIVERIES.md).

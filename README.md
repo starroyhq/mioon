@@ -2,6 +2,8 @@
 
 个人、本地优先的视频画布与多轨剪辑工作台。简体中文界面；项目、素材、分镜、任务与版本持久化。Web UI、HTTP API、CLI 和 MCP 使用同一个后端业务服务。采用 Electron + pnpm monorepo：桌面壳、Web、HTTP、MCP 独立工作区，共用 Node 24 + SQLite 业务层；通用界面组件使用官方 shadcn/ui 的 Base UI（base-nova）版本，画布保留 React Flow。FFmpeg 执行真实多轨合成。V4 提供 Runway、火山方舟 Seedance、Gemini Veo、MiniMax H3 和 Vidu Q3 Turbo 五个平台的适配器，以及本地模拟供应商。真实生成尚未执行；供应商能力由模型、输入方式及后端安全配置共同决定。
 
+当前源码试用从[核心试用一页指南](docs/CORE-TRIAL.zh-CN.md)开始：注明已验收基线、成片命名候选的最终检查状态和最短无密钥流程。历史 Mac 源码包、GitHub 检查点与当前候选不是同一份源码，不会自动同步或发布。
+
 ## 安装与启动
 
 源码开发要求 Node.js 24 或更新版本、pnpm 11.25.0，以及 FFmpeg/ffprobe。测试浏览器需要 Python 3、Playwright 和 Chromium。所有依赖由根目录 pnpm-lock.yaml 锁定。
@@ -12,7 +14,7 @@ pnpm run doctor
 pnpm build
 ```
 
-已安装依赖时，也可直接运行无 shell 包装的 `node scripts/tooling.mjs doctor`、`node scripts/tooling.mjs build` 和 `node scripts/tooling.mjs test`（默认 66 项可移植检查，不等于完整回归）。完整 Linux 回归使用 `node scripts/tooling.mjs test --suite=full --concurrency=1`。检查通过不代表 macOS/Windows 原生发布就绪；退出码、平台阻塞项和运行范围见 [本地构建与可移植检查](docs/PORTABLE-TOOLING.md)。
+已安装依赖时，也可直接运行无 shell 包装的 `node scripts/tooling.mjs doctor`、`node scripts/tooling.mjs build` 和 `node scripts/tooling.mjs test`（默认使用明确列出的可移植测试清单，不等于完整回归；数量随源码变化）。完整 Linux 回归使用 `node scripts/tooling.mjs test --suite=full --concurrency=1`。检查通过不代表 macOS/Windows 原生发布就绪；退出码、平台阻塞项和运行范围见 [本地构建与可移植检查](docs/PORTABLE-TOOLING.md)，当前试用检查点见[核心试用指南](docs/CORE-TRIAL.zh-CN.md)。
 
 启动 Electron 桌面开发版：
 

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
 import * as settingsState from '../apps/web/src/export-settings-state.js';
+import * as deliveryState from '../apps/web/src/export-delivery-state.ts';
 import * as preflightState from '../apps/web/src/export-preflight-state.js';
 import { prepareSubmission, prepareRequestReplay, readPending, reconcilePending } from '../apps/web/src/submissions.js';
 import { isDurableEditOperation } from '../apps/web/src/edit-task-client.js';
@@ -162,7 +163,7 @@ const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.ur
 function appFunction(begin, end, scope) { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope)); }
 function appHarness(f) {
   const calls = [], panels = [], notices = [], pending = []; let ids = 0;
-  const environment = { workspaceRef: { current: { restored: false } }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
+  const environment = { panelIntent: { current: 0 }, openExportHistory() {}, workspaceRef: { current: { restored: false } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
     setRightDockTab: value => panels.push(value), setPanelOpen: (...args) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
     notify: (...args) => notices.push(args), setShowJobs() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
     requestId: () => { ids++; return 'frozen-render-id'; }, run: async (...args) => { calls.push(args); return { id: id(20) }; } };
@@ -206,7 +207,7 @@ const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree &&
 function component(file, extra = {}) {
   const module = { exports: {} }, react = { createElement: element, useRef: current => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: value => [value, () => {}] }; react.default = react;
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : name === './export-settings-state.js' ? settingsState : name === './export-preflight-state.js' ? preflightState : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' });
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : name === './export-settings-state.js' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-preflight-state.js' ? preflightState : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' });
   return module.exports.default;
 }
 

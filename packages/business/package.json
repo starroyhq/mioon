@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.mjs",
-    "./*": "./src/*.mjs"
+    "./*": "./src/*.mjs",
+    "./timeline-delivery-read": "./src/timeline-delivery-read.ts"
   },
   "dependencies": {
     "@mioon/contracts": "workspace:*"

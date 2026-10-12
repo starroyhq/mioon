@@ -1,3 +1,6 @@
+import {readTimelineDeliveryDownload, timelineDeliveryResponseHeaders} from '@mioon/business/timeline-delivery-read';
+import {readOwnedTimelineAsset} from '@mioon/business/timeline-sources';
+import {isTimelineRenderRecord} from '@mioon/contracts';
 import {getWorkspaceRestoreContext} from '@mioon/business/workspace-restore-schema';
 import {isUnavailableRestoredRoute,workspaceRestoreError} from '@mioon/business/workspace-restore-policy';
 import http from 'node:http';
@@ -201,14 +204,17 @@ export async function startServer({
           return json(res, 200, {ok: true, data});
         }
         if (url.pathname.startsWith('/media/') && ['GET', 'HEAD'].includes(req.method)) {
-          const asset = store.get('assets', url.pathname.slice(7));
+          const named = url.searchParams.has('exportId');
+          const deliveryGuards = {isTimelineRenderRecord, readOwnedAsset: (projectId, assetId) => readOwnedTimelineAsset(store.db, projectId, assetId)};
+          const delivery = named ? readTimelineDeliveryDownload(store.db, url, deliveryGuards) : null;
+          const asset = named ? delivery : store.get('assets', url.pathname.slice(7));
           if (!asset) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
           let file;
           try { file = await safePath(root, asset.relativePath); }
           catch { return json(res, 404, {ok: false, error: {code: 'FILE_UNAVAILABLE', message: '本地文件不可用。'}}); }
           const headers = {'Content-Type': asset.mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
-          if (url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${asset.mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
-          return await files.send(req, res, {file, headers, ranges: true});
+          if (!delivery && url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${asset.mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
+          return await files.send(req, res, {file, headers: delivery ? () => timelineDeliveryResponseHeaders(store.db, url, deliveryGuards, delivery) : headers, ranges: true});
         }
         if (url.pathname.startsWith('/api/') || req.method !== 'GET') return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '接口不存在'}});
         const requested = decodeURIComponent(url.pathname);

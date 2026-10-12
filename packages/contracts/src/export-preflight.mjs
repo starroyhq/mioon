@@ -1,3 +1,4 @@
+import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput,isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {timelineExportSettingsSchema,timelineExportDeliverySchema,isTimelineExportDelivery} from './timeline-export-profile.mjs';
 import {z} from 'zod';
 import {timelineOutputPreset} from './timeline-format.mjs';
@@ -21,8 +22,9 @@ export const exportPreflightSchemas = Object.freeze({
   'timeline.export.preflight': z.object({
     projectId: id,
     exportSettings: timelineExportSettingsSchema.optional(),
+    deliveryName: timelineDeliveryNameSchema.optional(),
     expectedRevision: revision.describe('Existing timeline revision to check. This read never creates a timeline; a different current revision is reported as stale.'),
-  }).strict(),
+  }).strict().refine(value=>isTimelineDeliveryNameInput(value),{message:'Delivery name must be explicitly valid',path:['deliveryName']}),
 });
 
 export const exportPreflightResponseSchema = z.object({
@@ -35,6 +37,7 @@ export const exportPreflightResponseSchema = z.object({
   status: z.enum(['ready', 'blocked', 'incomplete', 'stale']),
   summary: z.object({
     delivery: timelineExportDeliverySchema.optional(),
+    deliveryName: timelineDeliveryNameSchema.optional(),
     fps: z.literal(30),
     width: z.union([z.literal(720),z.literal(1280)]),
     height: z.union([z.literal(720),z.literal(1280)]),
@@ -66,6 +69,7 @@ export const exportPreflightResponseSchema = z.object({
   if (value.checks.checkedAssets > value.checks.totalAssets)
     fail(['checks', 'checkedAssets'], 'Checked assets must not exceed the total asset count.');
   if (value.summary) {
+    if(!isTimelineDeliveryNameInput(value.summary))fail(['summary','deliveryName'],'Delivery name must be explicitly valid.');
     if(value.summary.delivery&&!isTimelineExportDelivery(value.summary.delivery,value.summary))fail(['summary','delivery'],'Delivery must match the composition dimensions and frozen settings.');
     for (const key of ['visualClipCount', 'audibleClipCount'])
       if (value.summary[key] > value.summary.clipCount)
@@ -88,6 +92,6 @@ export const exportPreflightResponseSchema = z.object({
 // available. A report is a point-in-time check, never a durable replay receipt.
 export function isExportPreflightResponse(value, input) {
   if (!exportPreflightResponseSchema.safeParse(value).success) return false;
-  return !input || (value.projectId === input.projectId && value.expectedRevision === input.expectedRevision &&
-    (!value.summary || (input.exportSettings!==undefined)===Object.hasOwn(value.summary,'delivery') && (input.exportSettings===undefined||isTimelineExportDelivery(value.summary.delivery,value.summary,input.exportSettings))));
+  return !input || (isTimelineDeliveryNameInput(input) && value.projectId === input.projectId && value.expectedRevision === input.expectedRevision &&
+    (!value.summary || isTimelineDeliveryNameSnapshot(value.summary,{input}) && (input.exportSettings!==undefined)===Object.hasOwn(value.summary,'delivery') && (input.exportSettings===undefined||isTimelineExportDelivery(value.summary.delivery,value.summary,input.exportSettings))));
 }

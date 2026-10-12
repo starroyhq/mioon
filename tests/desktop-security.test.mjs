@@ -79,7 +79,7 @@ test('native export permits project query but never assigns an automatic save pa
   const win = { isDestroyed: () => false, webContents: contents };
   installSessionPolicy(session, origin, () => win, { downloadsPath: '/tmp/video.mp4' });
   let options, cancelled = false;
-  const item = { getURLChain: () => [`${origin}/media/${id}`], getURL: () => `${origin}/media/${id}`, getMimeType: () => 'video/mp4',
+  const item = { getInitiatorOrigin: () => origin, getURLChain: () => [`${origin}/media/${id}`], getURL: () => `${origin}/media/${id}`, getMimeType: () => 'video/mp4',
     setSaveDialogOptions: value => { options = value; }, setSavePath: () => assert.fail('Must show native Save As') };
   session.emit('will-download', { preventDefault: () => { cancelled = true; } }, item, contents);
   assert.equal(cancelled, false); assert.equal(options.defaultPath, '/tmp/video.mp4');

@@ -1,3 +1,5 @@
+import {configureTimelineDeliveryDownload, timelineDownloadIdentity} from './timeline-delivery-download.ts';
+
 export const COOKIE_NAME = 'mioon_session';
 
 export function trustedOrigin(value) {
@@ -32,10 +34,7 @@ export function isAllowedRequest(value, origin) {
 }
 
 export function isAllowedDownload(value, origin) {
-  if (!isSameOrigin(value, origin)) return false;
-  const url = new URL(value);
-  return /^\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(url.pathname) &&
-    [...url.searchParams.keys()].every(key => key === 'download') && !url.hash;
+  return timelineDownloadIdentity(value, origin) !== null;
 }
 
 export function secureWebPreferences(session) {
@@ -64,23 +63,13 @@ export function sessionCookie(origin, token) {
     httpOnly: true, sameSite: 'strict' };
 }
 
-export function installSessionPolicy(session, origin, getWindow, { downloadsPath }) {
+export function installSessionPolicy(session, origin, getWindow, downloads) {
   session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.setPermissionCheckHandler(() => false);
   session.setDevicePermissionHandler(() => false);
   session.setDisplayMediaRequestHandler((_request, callback) => callback({}));
   session.on('will-download', (event, item, webContents) => {
-    const win = getWindow();
-    if (!win || win.isDestroyed() || webContents !== win.webContents ||
-        !isAllowedNavigation(webContents.getURL(), origin) ||
-        !item.getURLChain().every(url => isAllowedDownload(url, origin)) ||
-        !isAllowedDownload(item.getURL(), origin) || item.getMimeType() !== 'video/mp4') {
-      event.preventDefault();
-      return;
-    }
-    // No automatic path writes: Chromium shows its native Save As / overwrite dialog.
-    item.setSaveDialogOptions({ title: '保存视频', defaultPath: downloadsPath,
-      filters: [{ name: 'MP4 视频', extensions: ['mp4'] }], properties: ['showOverwriteConfirmation'] });
+    configureTimelineDeliveryDownload(event, item, webContents, getWindow(), origin, downloads, isAllowedNavigation);
   });
   session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: details.resourceType === 'subFrame' || !isAllowedRequest(details.url, origin) }));
 }

@@ -103,7 +103,7 @@ async function start() {
     startup.checkpoint();
     ready = started;
     activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
-    installSessionPolicy(activeSession, ready.url, () => win, { downloadsPath: path.join(app.getPath('downloads'), 'mioon.mp4') });
+    installSessionPolicy(activeSession, ready.url, () => win, { downloadsDirectory: app.getPath('downloads') });
     await activeSession.cookies.set(sessionCookie(ready.url, token));
     startup.checkpoint();
     await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });

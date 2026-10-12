@@ -573,3 +573,9 @@ Only explicit offline `backup.mjs restore` writes a new destination; no model
 RPC accepts restore paths. `restore-status` with the original backup and target
 can discover a guarded branch after total stdout loss, but never repairs,
 reexecutes or proves an earlier fsync. See ../../docs/WORKSPACE-RESTORE.md.
+
+
+## Named timeline deliveries
+
+When the user wants a named timeline export, discover the shared render/preflight schemas and use the same optional `deliveryName` in both. A blank UI draft means omitted name; API text must be nonblank. Preserve the exact original request/name/settings/key after ambiguity. Renaming the project does not rename a named historical export. Capabilities and previews do not accept a name. Download filenames are server-derived; any local destination still needs the existing explicit user-selected path.
+See [scope and acceptance](../../docs/NAMED-DELIVERIES.md).

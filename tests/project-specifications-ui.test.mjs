@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as exportSettings from '../apps/web/src/export-settings-state.js';
 import * as format from '../apps/web/src/timeline-format-state.js';
+import { createTimelineDeliveryNameController } from '../apps/web/src/export-delivery-state.ts';
 import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.js';
 
@@ -223,7 +224,7 @@ const appFunction = (name, end, env) => Function(...Object.keys(env), `${app.sli
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
   let approved = false; const checks = [];
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, guardNavigation: async (message, dirty) => { checks.push({ message, dirty }); return approved; } });
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, guardNavigation: async (message, dirty) => { checks.push({ message, dirty }); return approved; } });
   assert.equal(await guard('leave'), false); assert.equal(f.state().dirty, true); assert.equal(checks[0].dirty, true);
   approved = true; assert.equal(await guard('leave'), true); assert.equal(f.state().dirty, false);
   assert.match(app, /selectProject[\s\S]*?guardProjectNavigation\(draftMessage/);
@@ -240,10 +241,60 @@ test('actual navigation epoch guard prevents late confirmation from discarding a
     context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
     dirtyRef: { current: false }, confirm: () => confirmation.promise,
   });
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, guardNavigation });
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, guardNavigation });
   const leaving = guard('leave'); epoch++; f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_720');
   confirmation.resolve(true); assert.equal(await leaving, false); assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().dirty, true);
 });
+
+function deliveryNameController() {
+  const live = { scope: context().scope, projectId, enabled: true };
+  const controller = createTimelineDeliveryNameController({ getContext: () => live });
+  controller.setContext(live);
+  return controller;
+}
+
+for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name changed back', 'replacement controller']) {
+  test(`actual project guard preserves combined format and delivery-name drafts unless confirmation is current: ${outcome}`, async () => {
+    const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_720'), true);
+    const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
+    const deliveryNameRef = { current: { controller: delivery } }, confirmation = deferred(), checks = [];
+    const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+      context: () => ({ projectId, epoch: 1 }), isCurrent: captured => captured.projectId === projectId && captured.epoch === 1,
+      subtitlesRef: { current: null }, dirtyRef: { current: false },
+      confirm: message => { checks.push(message); return confirmation.promise; },
+    });
+    const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', {
+      timelineFormatRef: { current: f }, deliveryNameRef, guardNavigation,
+    });
+    const leaving = guard('Discard both drafts?');
+    assert.deepEqual(checks, ['Discard both drafts?']);
+    assert.equal(f.controller.hasUnsaved(), true); assert.equal(delivery.hasUnsaved(), true);
+    assert.equal(f.state().draftPresetId, 'landscape_720'); assert.equal(delivery.getState().value, 'First delivery');
+    if (outcome === 'newer name' || outcome === 'name changed back') {
+      assert.equal(delivery.choose('Newer delivery', context().scope), true);
+      if (outcome === 'name changed back') assert.equal(delivery.choose('First delivery', context().scope), true);
+    }
+    if (outcome === 'replacement controller') {
+      const replacement = deliveryNameController(); assert.equal(replacement.choose('First delivery', context().scope), true);
+      assert.deepEqual(replacement.getState(), delivery.getState());
+      deliveryNameRef.current = { controller: replacement };
+    }
+    const formatDraft = f.state(), originalNameDraft = delivery.getState(), currentDelivery = deliveryNameRef.current.controller, currentNameDraft = currentDelivery.getState();
+    confirmation.resolve(outcome !== 'cancelled');
+    const accepted = outcome === 'accepted unchanged';
+    assert.equal(await leaving, accepted);
+    assert.equal(f.controller.hasUnsaved(), !accepted); assert.equal(currentDelivery.hasUnsaved(), !accepted);
+    if (accepted) {
+      assert.equal(f.state().dirty, false); assert.equal(f.state().draftPresetId, 'portrait_720');
+      assert.equal(currentDelivery.getState().dirty, false); assert.equal(currentDelivery.getState().value, '');
+    } else {
+      assert.equal(f.state(), formatDraft); assert.equal(f.state().dirty, true);
+      assert.equal(delivery.getState(), originalNameDraft); assert.equal(delivery.hasUnsaved(), true);
+      assert.equal(currentDelivery.getState(), currentNameDraft); assert.equal(currentDelivery.getState().dirty, true);
+    }
+    assert.equal(f.submits.length, 0);
+  });
+}
 
 test('actual format save callback uses only the existing durable timeline lane and exact frozen input', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720'); const pending = f.controller.save(); const intent = f.submits[0];
@@ -282,13 +333,38 @@ test('actual dock pane retains child identity while hidden and removes it from f
 test('actual unload callback sees synchronous format edits and in-flight saves through its independent owner', async () => {
   const f = fixture(); await f.ready();
   const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
-  const dirtyRef = { current: false }, warn = Function('dirtyRef', 'timelineFormatRef', `${source}; return warn;`)(dirtyRef, { current: f });
+  const dirtyRef = { current: false }, warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', `${source}; return warn;`)(dirtyRef, { current: f }, { current: null });
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   let e = event(); warn(e); assert.equal(e.prevented, false);
   f.controller.choose('landscape_720'); e = event(); warn(e); assert.equal(e.prevented, true); assert.equal(e.returnValue, '');
   const saving = f.controller.save(); e = event(); warn(e); assert.equal(e.prevented, true);
   f.ack(); await saving; e = event(); warn(e); assert.equal(e.prevented, false);
   dirtyRef.current = true; e = event(); warn(e); assert.equal(e.prevented, true);
+});
+
+test('actual unload callback observes either current format or delivery-name controller without retaining replaced owners', async () => {
+  const f = fixture(); await f.ready(); const delivery = deliveryNameController();
+  const timelineFormatRef = { current: f }, deliveryNameRef = { current: { controller: delivery } };
+  const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
+  const warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', `${source}; return warn;`)({ current: false }, timelineFormatRef, deliveryNameRef);
+  const check = expected => {
+    const event = { prevented: false, preventDefault() { this.prevented = true; } }; warn(event);
+    assert.equal(event.prevented, expected); assert.equal(event.returnValue, expected ? '' : undefined);
+  };
+  check(false);
+  assert.equal(f.controller.choose('landscape_720'), true); check(true);
+  f.controller.discardDraft(); check(false);
+  assert.equal(delivery.choose('First delivery', context().scope), true); check(true);
+  assert.equal(delivery.discardDraft(), true); check(false);
+  assert.equal(f.controller.choose('square_720'), true); assert.equal(delivery.choose('Retained delivery', context().scope), true); check(true);
+  const replacementFormat = fixture(); await replacementFormat.ready(); const replacementDelivery = deliveryNameController();
+  timelineFormatRef.current = replacementFormat; deliveryNameRef.current = { controller: replacementDelivery };
+  assert.equal(f.controller.hasUnsaved(), true); assert.equal(delivery.hasUnsaved(), true); check(false);
+  assert.equal(replacementDelivery.choose('Current delivery', context().scope), true); check(true);
+  assert.equal(replacementDelivery.discardDraft(), true); check(false);
+  assert.equal(replacementFormat.controller.choose('landscape_720'), true); check(true);
+  replacementFormat.controller.discardDraft(); check(false);
+  assert.equal(f.submits.length, 0); assert.equal(replacementFormat.submits.length, 0);
 });
 
 test('actual hook keeps the project draft across visibility and polling without creating a mutation', async () => {

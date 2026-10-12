@@ -59,7 +59,7 @@ export function validatePreparedTimelineSources(db,projectId,snapshot,prepared,{
 
 // The transaction contains bounded synchronous reads only. No timeline.ensure,
 // writes, write locks, asynchronous work, or unbounded JSON enters this path.
-export function readTimelinePreflightSnapshot(store,projectId,exportSettings){
+export function readTimelinePreflightSnapshot(store,projectId,exportSettings,deliveryInput={}){
  const {db}=store,outer=db.isTransaction;
  if(!outer)db.exec('BEGIN DEFERRED');
  try{
@@ -77,7 +77,7 @@ export function readTimelinePreflightSnapshot(store,projectId,exportSettings){
   let assets;
   try{assets=readTimelineSourceGraph(db,projectId,timeline);}
   catch(error){if(error.code==='INSPECTION_BUDGET_EXCEEDED')throw error;throw fault('TIMELINE_SOURCE_UNAVAILABLE','A referenced source is unavailable in this project');}
-  return {timeline,snapshot:freezeTimelineSnapshot(timeline,assets,exportSettings)};
+  return {timeline,snapshot:freezeTimelineSnapshot(timeline,assets,exportSettings,deliveryInput)};
  }finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
 }
 

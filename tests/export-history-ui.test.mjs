@@ -72,10 +72,14 @@ test('presentation uses supplied order and never mutates frozen input rows', () 
   const source = readFileSync(path.join(root, 'apps/web/src/ExportHistoryList.jsx'), 'utf8');
   assert.doesNotMatch(source, /useState|useEffect|useRef|\bfetch\s*\(|\brpc\s*\(|\.sort\s*\(|navigationEpoch|requestId/);
 });
-test('App retains controlled accessible modal lifetime, project identity, ordering and close epoch fence', () => {
+test('App keeps history inside the controlled visible right dock with project identity and ordering', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.jsx'), 'utf8');
   assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt\.localeCompare\(a\.createdAt\)\);/);
-  assert.match(app, /showExports && <Modal title="导出记录"[\s\S]*?onClose=\{\(\) => \{ navigationEpoch\.current\+\+; setShowExports\(false\); \}\}><ExportHistoryList heldExportIds=\{data\.restore\?\.heldExportIds\} orderedExports=\{orderedExports\} projectName=\{data\.project\?\.name\} timelineRevision=\{timeline\?\.revision\} \/><\/Modal>/);
+  assert.match(app, /<DeliveryWorkspace page=\{showExports \? 'history' : 'compose'\}/);
+  assert.match(app, /<AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible=\{showExports\}/);
+  assert.match(app, /<ExportHistoryList heldExportIds=\{data\.restore\?\.heldExportIds\} orderedExports=\{orderedExports\} projectName=\{data\.project\?\.name\} timelineRevision=\{timeline\?\.revision\} \/>/);
+  assert.doesNotMatch(app, /showExports && <Modal|<Modal title="导出记录"/);
+  // Other existing dialogs keep their accessible close behavior.
   assert.match(app, /<Dialog open onOpenChange=\{open => \{ if \(!open\) onClose\(\); \}\}>/);
   assert.match(app, /<DialogTitle>\{title\}<\/DialogTitle>/); assert.match(app, /aria-label="关闭对话框"/);
   assert.match(app, /setShowJobs\(false\); setShowExports\(false\); setComparisonId\(null\)/);
