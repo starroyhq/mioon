@@ -245,7 +245,10 @@ test('App confirmed-apply refresh is same-project and cannot mark an Inspector d
   const calls = [], apply = Function('currentProject', 'refresh', `return projectId => { ${handler} };`)({ current: projectId }, id => calls.push(id));
   apply(id(90)); assert.equal(calls.length, 0); apply(projectId); assert.deepEqual(calls, [projectId]);
   // Prop order is irrelevant; evaluate the actual key to preserve remount fences.
-  const keyExpression = app.match(/<Inspector\b[^>]*?\bkey=\{(`[^`]+`)\}/)?.[1];
+  const inspectorStart = app.indexOf('<Inspector '), inspectorEnd = app.indexOf('/>', inspectorStart);
+  assert.ok(inspectorStart >= 0 && inspectorEnd > inspectorStart);
+  const inspectorTag = app.slice(inspectorStart, inspectorEnd);
+  const keyExpression = inspectorTag.match(/\bkey=\{(`[^`]+`)\}/)?.[1];
   assert.equal(keyExpression, "`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`");
   const keyFor = Function('data', 'selectedId', 'inspectorEpoch', `return ${keyExpression};`);
   const key = keyFor({project:{id:projectId}, shots:[]}, shotId, 3);
@@ -253,7 +256,7 @@ test('App confirmed-apply refresh is same-project and cannot mark an Inspector d
   assert.notEqual(keyFor({project:{id:id(90)}}, shotId, 3), key);
   assert.notEqual(keyFor({project:{id:projectId}}, id(91), 3), key);
   assert.notEqual(keyFor({project:{id:projectId}}, shotId, 4), key);
-  const inspector = readFileSync(new URL('../apps/web/src/Inspector.jsx', import.meta.url), 'utf8'); assert.match(inspector, /if \(!dirty\) \{ setDraft\(latest\)/); assert.match(inspector, /else if \(record.revision !== baseRevision\) setConflict\(true\)/);
+  const inspector = readFileSync(new URL('../apps/web/src/Inspector.jsx', import.meta.url), 'utf8'); assert.match(inspector, /if \(!dirty\) \{ draftRef\.current = latest; setDraft\(latest\)/); assert.match(inspector, /else if \(record.revision !== baseRevision\) setConflict\(true\)/);
 });
 
 test('a stale-epoch rejection only rereads and preserves uncertainty until terminal evidence or explicit same-intent retry', async () => {

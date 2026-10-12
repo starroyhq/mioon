@@ -180,7 +180,7 @@ const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'u
 test('actual App recovery replays the exact key and refreshes current marks separately from historical ACK', async t => {
   storage(t); let lost = true, refreshes = 0, markRefreshes = 0; const calls = [], busy = new Set();
   const input = { projectId, assetId: assetId(1), expectedRevision: 0, disposition: 'favorite' };
-  const scope = { context: () => ({ projectId, epoch: 1 }), currentProject: { current: projectId }, isCurrent: () => true,
+  const scope = { shotTextRef: { current: null }, context: () => ({ projectId, epoch: 1 }), currentProject: { current: projectId }, isCurrent: () => true,
     isBusy: key => busy.has(key), markBusy: (_id, key, value) => value ? busy.add(key) : busy.delete(key),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, validateMutationResponse, mutationNotApplied, prepareSubmission, clearPending, pendingForProject,

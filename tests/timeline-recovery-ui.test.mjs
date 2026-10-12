@@ -86,7 +86,7 @@ function harness(dispatch, { projectSnapshot, workspace = { restored: false } } 
   const currentProject = { current: projectId }, workspaceRef = { current: workspace }, busy = new Set();
   const dataRef = { current: { project: { id: projectId }, timeline: timeline(7), timelineHistory: { revision: 7 } } };
   const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
-    currentProject, workspaceRef, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch, workspace: workspaceRef.current }),
+    shotTextRef: { current: null }, currentProject, workspaceRef, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch, workspace: workspaceRef.current }),
     isCurrent: owner => owner.projectId === currentProject.current && owner.epoch === state.epoch && workspaceOrigin.workspaceOriginScope(owner.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: (key, owner) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
     requestCounter: { current: 0 }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; },

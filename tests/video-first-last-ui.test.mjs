@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
+import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as subjectVideo from '../apps/web/src/subject-video.js';
 import * as settings from '../apps/web/src/generation-settings.js';
 import * as api from '../apps/web/src/api.js';
@@ -52,6 +53,13 @@ function harness(patch = {}) {
     const module = { exports: {} };
     Function('require', 'module', 'exports', code)(name => {
       if (name === 'react') return react;
+      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
+        assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
+        return { state: {}, controller: { setContext() {} } };
+      }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } };
+      if (name === './ShotTextDraftRecovery.tsx') return { default: 'ShotTextDraftRecovery', __esModule: true };
+      if (name === '@mioon/contracts') return contracts;
+      if (name === '@mioon/contracts/local-shot-text') return { LOCAL_SHOT_TEXT_LIMITS };
       if (name === './generation-settings.js') return settings;
       if (name === './subject-video.js') return subjectVideo;
       if (['./SubjectVideoSelection.jsx', './SubjectVideoSummary.jsx'].includes(name)) return { default: name, __esModule: true };
@@ -222,8 +230,11 @@ test('App paid review wires complete frames and count, frozen retries, asset-use
   assert.match(app, /generationReferences\(realConfirm.shot, \{ frozen: Boolean\(realConfirm.retryJobId\), subjectReference: realConfirm.subjectReference \}\).references.length/);
   assert.match(app, /VideoFrameSummary shot=\{realConfirm.shot\} assets=\{realConfirm.referenceAssets\}/);
   assert.match(app, /shots.flatMap\(shot => generationReferences\(shot\).references.map/);
-  assert.match(app, /<Inspector\b[^>]*\bactionScopeKey=\{`\$\{rightDockTab\}:\$\{propertiesPage\}`\}/);
-  assert.match(app, /<Inspector\b[^>]*\bgenerationUnavailableReason=\{generationUnavailableReason\}/);
+  const inspectorStart = app.indexOf('<Inspector '), inspectorEnd = app.indexOf('/>', inspectorStart);
+  assert.ok(inspectorStart >= 0 && inspectorEnd > inspectorStart);
+  const inspectorTag = app.slice(inspectorStart, inspectorEnd);
+  assert.match(inspectorTag, /\bactionScopeKey=\{`\$\{rightDockTab\}:\$\{propertiesPage\}`\}/);
+  assert.match(inspectorTag, /\bgenerationUnavailableReason=\{generationUnavailableReason\}/);
   assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current.assets, \{ frozen, subjectReference: args.subjectReference \}\) !== args.referenceIdentity/);
   assert.match(app, /currentShot.revision !== args.shot.revision/);
   const submit = app.slice(app.indexOf('const submitGeneration ='), app.indexOf('function generate('));
@@ -275,7 +286,7 @@ function mutationRunner(t, result) {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const code = app.slice(app.indexOf('  async function runSession('), app.indexOf('  async function inspect('));
   const state = { result, calls: [], notices: [], pending: [] }, locks = new Set();
-  const scope = { ...contracts, ...submissions, ...mutations, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },
+  const scope = { ...contracts, ...submissions, ...mutations, shotTextRef: { current: null }, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },
     context: () => ({ projectId, epoch: 1 }), isCurrent: () => true,
     isBusy: key => locks.has(key), markBusy: (_, key, busy) => busy ? locks.add(key) : locks.delete(key),
     setPending: value => { state.pending = value; }, rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return state.result; },

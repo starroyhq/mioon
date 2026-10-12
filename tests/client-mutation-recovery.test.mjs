@@ -107,7 +107,10 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   // `timeline || isReferenceOperation(...)` spelling. Reference proof handling
   // must remain stricter than a generic definitive 4xx after the alias refactor.
   const run = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
-  const flags = run.slice(run.indexOf('const mutation ='), run.indexOf('if (isBusy('));
+  const flagsEnd = 'const requestBound = timeline || reference;';
+  const flagsStart = run.indexOf('const mutation ='), flagsStop = run.indexOf(flagsEnd);
+  assert.ok(flagsStart >= 0 && flagsStop > flagsStart, 'The actual classification declarations must remain present');
+  const flags = run.slice(flagsStart, flagsStop + flagsEnd.length);
   const decision = run.slice(run.indexOf('const rejected ='), run.indexOf('onFailure?.'));
   assert.ok(flags && decision, 'The test must evaluate the real App failure path');
   const classify = Function('operation', 'e', 'stored', 'isMutationOperation', 'TIMELINE_MUTATION_OPERATIONS', 'REFERENCE_MUTATION_OPERATIONS',

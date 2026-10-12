@@ -218,7 +218,7 @@ test('actual App history handler blocks a dirty subtitle and calls the shared un
 });
 
 function navigationGuard(h, confirm, resets) {
-  const scope = { clipDraftRef: { current: null }, context: () => ({ projectId }), isCurrent: () => true, subtitlesRef: { current: { controller: h.controller } }, dirtyRef: { current: false }, confirm,
+  const scope = { shotTextRef: { current: null }, clipDraftRef: { current: null }, context: () => ({ projectId }), isCurrent: () => true, subtitlesRef: { current: { controller: h.controller } }, dirtyRef: { current: false }, confirm,
     subjectsRef: { current: null }, ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, value => resets.push([name, value])])) };
   return compile(section('  async function guardNavigation(', '  async function guardProjectNavigation('), 'guardNavigation', scope);
 }

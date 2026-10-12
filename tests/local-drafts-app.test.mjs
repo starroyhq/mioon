@@ -63,7 +63,7 @@ function appHarness(controller, { confirm = async () => true, dirty = false } = 
   const clipDraftRef = { current: controller }, dirtyRef = { current: dirty };
   const subtitleState = { text: 'Separate subtitle draft' };
   const scope = {
-    clipDraftRef, dirtyRef, context: () => ({ ...owner }),
+    shotTextRef: { current: null }, clipDraftRef, dirtyRef, context: () => ({ ...owner }),
     isCurrent: captured => captured.projectId === owner.projectId && captured.epoch === owner.epoch,
     confirm: message => { events.push(['confirm', message]); return confirm(message); },
     subtitlesRef: { current: { controller: { getState: () => subtitleState, hasUnsaved: () => false, discardDraft: () => resets.push(['subtitle']) } } },
@@ -186,7 +186,7 @@ test('actual beforeunload reads synchronous clip state and follows registration 
   const clipDraftRef = { current: f.controller }, dirtyRef = { current: false };
   const warnSource = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)?.[0];
   assert.ok(warnSource, 'Extract the actual beforeunload warning');
-  const warn = compile(warnSource, 'warn', { dirtyRef, clipDraftRef, timelineFormatRef: { current: null }, deliveryNameRef: { current: null } });
+  const warn = compile(warnSource, 'warn', { shotTextRef: { current: null }, dirtyRef, clipDraftRef, timelineFormatRef: { current: null }, deliveryNameRef: { current: null } });
   const check = expected => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; warn(event); assert.equal(event.prevented, expected); assert.equal(event.returnValue, expected ? '' : undefined); };
   check(false); f.controller.edit('name', 'Same-tick input'); check(true);
   assert.equal(dirtyRef.current, false);

@@ -255,7 +255,7 @@ test('actual parent guard rechecks current project, selection, scope, revision, 
 
 function runHarness(rpc) {
   const currentProject = { current: projectId }, calls = [], notices = [], busy = new Set(), dataRef = { current: { project: { id: projectId }, timeline: timeline() } };
-  const deps = { ...submissions, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage,
+  const deps = { ...submissions, shotTextRef: { current: null }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage,
     readableError: error => error.message, context: () => ({ projectId }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: key => busy.has(key), markBusy: (_project, key, value) => value ? busy.add(key) : busy.delete(key),
     isReferenceOperation: () => false, currentProject, dataRef, requestCounter: { current: 0 }, setData: value => { if (typeof value === 'function') value(dataRef.current); },

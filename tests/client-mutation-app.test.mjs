@@ -20,7 +20,7 @@ function harness(t, dispatch) {
   const state = { epoch: 0, calls: [], notices: [], refreshes: [], pending: [], jobs: false, auth: true };
   const currentProject = { current: 'project-a' }, busy = new Set();
   const scope = {
-    currentProject, context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
+    shotTextRef: { current: null }, currentProject, context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (key, id) => busy.has(`${id}:${key}`), markBusy: (id, key, value) => value ? busy.add(`${id}:${key}`) : busy.delete(`${id}:${key}`),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,

@@ -52,7 +52,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
   const dataRef = { current: snapshot() }, viewRef = { current: defaultWorkspaceState() };
   viewRef.current.canvas.selectedId = id(7);
   const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, workspaceRef: { current: { restored: false } }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse,
-    REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, currentProject, dataRef,
+    REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, shotTextRef: { current: null }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (name, owner) => busy.has(`${owner}:${name}`),

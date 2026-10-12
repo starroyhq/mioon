@@ -9,6 +9,7 @@
     "./timeline-delivery": "./src/timeline-delivery.ts",
     "./local-drafts": "./src/local-drafts.ts",
     "./local-delivery": "./src/local-delivery.ts",
+    "./local-shot-text": "./src/local-shot-text.ts",
     "./last-project": "./src/last-project.ts"
   },
   "dependencies": {

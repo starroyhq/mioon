@@ -10,7 +10,12 @@ import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createLocalDrafts} from '@mioon/business/local-drafts';
 import {createLastProject,readLastProjectTarget} from '@mioon/business/last-project';
 import {createLocalDelivery} from '@mioon/business/local-delivery';
-import {hash} from '@mioon/business/services';
+import {hash,canonical} from '@mioon/business/services';
+import {createLocalShotText} from '@mioon/business/local-shot-text';
+import {createLocalShotTextDomain} from '@mioon/business/local-shot-text-domain';
+import {createLocalMutationServices} from '@mioon/business/local-mutations';
+import {validateImageConsumption} from '@mioon/business/image-consumption';
+import {createLocalShotTextHttp} from './local-shot-text-http.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt} from '@mioon/business/timeline-recovery';
 import {createLocalDraftHttp} from './local-drafts-http.ts';
 import {createLastProjectHttp} from './last-project-http.ts';
@@ -157,6 +162,18 @@ export async function startServer({
         },
         render:input=>services.call('timeline.render',input)}});
     const localDeliveryHttp = createLocalDeliveryHttp({delivery:localDelivery,signal:shutdown.signal});
+    const neverMutate=()=>{throw new Error('Read-only shot receipt boundary');};
+    const shotReplay=createLocalMutationServices(store,{canonical,readOnly:true,check:neverMutate,now:neverMutate,references:{guardManualUpdate:neverMutate}});
+    const shotTextDomain=createLocalShotTextDomain({db:store.db,canonical,
+      replay:(projectId,input)=>shotReplay.updateShotInProject(projectId,input),
+      validateAsset:(projectId,asset)=>validateImageConsumption(store.db,asset,projectId),
+      isRevisionConflict:error=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
+      updateShotInProject:(projectId,input)=>services.updateShotInProject(projectId,input)});
+    const localShotText=createLocalShotText({root,channel:localDraftChannel,signal:shutdown.signal,
+      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+      guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+        isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
+    const localShotTextHttp=createLocalShotTextHttp({shotText:localShotText,signal:shutdown.signal});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored){
@@ -218,6 +235,7 @@ export async function startServer({
         if (await localDraftHttp(req, res, url)) return;
         if (await lastProjectHttp(req, res, url)) return;
         if (await localDeliveryHttp(req, res, url)) return;
+        if (await localShotTextHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {

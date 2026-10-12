@@ -9,7 +9,9 @@
     "./timeline-delivery-read": "./src/timeline-delivery-read.ts",
     "./local-drafts": "./src/local-drafts.ts",
     "./last-project": "./src/last-project.ts",
-    "./local-delivery": "./src/local-delivery.ts"
+    "./local-delivery": "./src/local-delivery.ts",
+    "./local-shot-text": "./src/local-shot-text.ts",
+    "./local-shot-text-domain": "./src/local-shot-text-domain.ts"
   },
   "dependencies": {
     "@mioon/contracts": "workspace:*"

@@ -85,3 +85,7 @@ last-project-v1.json
 # Private export-name drafts and fixed local export recovery intents.
 local-delivery-v1.json
 .local-delivery-v1.json.*.tmp
+
+# Private shot title/prompt drafts and fixed local text recovery intents.
+local-shot-text-v1.json
+.local-shot-text-v1.json.*.tmp

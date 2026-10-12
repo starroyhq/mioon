@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
+import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as settings from '../apps/web/src/generation-settings.js';
 import * as subjectVideo from '../apps/web/src/subject-video.js';
 import * as subjectState from '../apps/web/src/subject-state.js';
@@ -47,7 +48,13 @@ function harness(file, initial) {
     const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
     Function('module', 'exports', 'require', code)(module, module.exports, name => {
       if (name === 'react') return react;
+      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
+        assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
+        return { state: {}, controller: { setContext() {} } };
+      }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } };
+      if (name === './ShotTextDraftRecovery.tsx') return { default: 'ShotTextDraftRecovery', __esModule: true };
       if (name === '@mioon/contracts') return contracts;
+      if (name === '@mioon/contracts/local-shot-text') return { LOCAL_SHOT_TEXT_LIMITS };
       if (name === './mutation-submissions.js') return { isMutationOperation: () => false };
       if (name === './edit-task-client.js') return { isDurableEditOperation: () => false };
       if (name === './generation-settings.js') return settings;

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+import * as contracts from '@mioon/contracts';
+import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.js';
 import * as sourceRanges from '../apps/web/src/source-range-state.js';
 
@@ -55,6 +57,13 @@ function createHarness(file, exportName = 'default') {
   const ui = new Proxy({ useConfirmation: () => async () => true }, { get: (target, key) => target[key] ?? String(key) });
   const mocks = {
     react,
+    '@mioon/contracts': contracts,
+    '@mioon/contracts/local-shot-text': { LOCAL_SHOT_TEXT_LIMITS },
+    './local-shot-text-state.ts': { useLocalShotText: ({ context }) => {
+      assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
+      return { state: {}, controller: { setContext() {} } };
+    }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } },
+    './ShotTextDraftRecovery.tsx': { default: 'ShotTextDraftRecovery', __esModule: true },
     './source-range-state.js': sourceRanges,
     './export-settings-state.js': exportSettings,
     '@xyflow/react': { Handle: 'Handle', Position: { Left: 'left', Right: 'right' } },

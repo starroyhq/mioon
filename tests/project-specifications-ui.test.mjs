@@ -246,7 +246,7 @@ test('actual navigation epoch guard prevents late confirmation from discarding a
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
   let epoch = 1; const confirmation = deferred();
   const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
-    clipDraftRef: { current: null },
+    shotTextRef: { current: null }, clipDraftRef: { current: null },
     subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft() { assert.fail('Late confirmation must not discard subtitle drafts'); } } } }, setSubtitleDirty() { assert.fail('Late confirmation must not clear subtitle state'); },
     context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
     dirtyRef: { current: false }, confirm: () => confirmation.promise,
@@ -281,7 +281,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     };
     const local = makeLocalController(), localDeliveryRef = { current: { controller: local } }, timelineFormatRef = { current: f };
     const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
-      clipDraftRef: { current: null },
+      shotTextRef: { current: null }, clipDraftRef: { current: null },
       context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
       subtitlesRef: { current: null }, dirtyRef: { current: false },
       confirm: message => { checks.push(message); return confirmation.promise; },
@@ -349,7 +349,7 @@ test('newer delivery title during joint confirmation preserves dirty inspector, 
   const confirmation = deferred(), dirtyRef = { current: true }, resets = [], prompts = [];
   const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
     context: () => ({ projectId, epoch: 1 }), isCurrent: captured => captured.projectId === projectId && captured.epoch === 1,
-    clipDraftRef: { current: null }, subtitlesRef: { current: null }, dirtyRef,
+    shotTextRef: { current: null }, clipDraftRef: { current: null }, subtitlesRef: { current: null }, dirtyRef,
     subjectsRef: { current: { state: { scope: context().scope }, controller: { discardDrafts: () => resets.push('discard subjects') } } },
     confirm: message => { prompts.push(message); return confirmation.promise; },
     ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, () => resets.push(name)])),
@@ -406,7 +406,7 @@ test('actual dock pane retains child identity while hidden and removes it from f
 test('actual unload callback sees synchronous format edits and in-flight saves through its independent owner', async () => {
   const f = fixture(); await f.ready();
   const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
-  const dirtyRef = { current: false }, warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', `${source}; return warn;`)(dirtyRef, { current: f }, { current: null }, { current: null });
+  const dirtyRef = { current: false }, warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', 'shotTextRef', `${source}; return warn;`)(dirtyRef, { current: f }, { current: null }, { current: null }, { current: null });
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   let e = event(); warn(e); assert.equal(e.prevented, false);
   f.controller.choose('landscape_720'); e = event(); warn(e); assert.equal(e.prevented, true); assert.equal(e.returnValue, '');
@@ -419,7 +419,7 @@ test('actual unload callback observes either current format or delivery-name con
   const f = fixture(); await f.ready(); const delivery = deliveryNameController();
   const timelineFormatRef = { current: f }, deliveryNameRef = { current: { controller: delivery } };
   const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
-  const warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', `${source}; return warn;`)({ current: false }, timelineFormatRef, deliveryNameRef, { current: null });
+  const warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', 'shotTextRef', `${source}; return warn;`)({ current: false }, timelineFormatRef, deliveryNameRef, { current: null }, { current: null });
   const check = expected => {
     const event = { prevented: false, preventDefault() { this.prevented = true; } }; warn(event);
     assert.equal(event.prevented, expected); assert.equal(event.returnValue, expected ? '' : undefined);

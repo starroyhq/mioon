@@ -1228,3 +1228,7 @@ for fixed schema gates, limits, recursive-backup restriction and current evidenc
 `timeline.render` with `purpose:'export'` and `timeline.export.preflight` accept optional `deliveryName`: exact nonblank1–120 UTF-16 units, valid Unicode without control/line characters. Omission remains absent in historical requests and receipts. The preflight digest and original render key bind the name together with the frozen timeline/settings; changed or removed names cannot reuse that key. The encoding-capability request does not accept a name. `export.get` returns the immutable `snapshot.deliveryName` when supplied.
 
 Named download links bind `/media/{assetId}?download=1&exportId={exportId}`. The authenticated server validates the historical export/output/receipt and derives a safe attachment filename; callers cannot supply a destination path or trusted filename. Existing unnamed/storyboard behavior remains. See [scope, safety and acceptance](NAMED-DELIVERIES.md).
+
+### 私有镜头文字草稿与保存恢复
+
+普通工作区的右侧镜头表单使用 authenticated `/api/local-shot-text` 私有接口保存 title/prompt 草稿及原 `shot.update` 精确意图；不是公共 RPC/CLI/MCP/Agent 操作。GET 必须携带 projectId 与 shotId，只读且不创建记录；草稿与意图使用独立 CAS、后端工作区/实例身份。公开 shot.update 输入与响应仍兼容。文字请求的 prepare/execute/recover、容量/隐私/备份排除及 restored unsupported 合同见 [SHOT-TEXT-DRAFTS.md](SHOT-TEXT-DRAFTS.md)。读取或恢复表单不自动执行业务。

@@ -206,7 +206,7 @@ test('actual App range replay uses its original request and triggers latest scop
   const calls = [], busy = new Set(), notices = [];
   const currentProject = { current: 'project-a' };
   const scope = {
-    currentProject, context: () => ({ projectId: currentProject.current, epoch: 1 }), isCurrent: owner => owner.projectId === currentProject.current,
+    shotTextRef: { current: null }, currentProject, context: () => ({ projectId: currentProject.current, epoch: 1 }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: (key, project) => busy.has(`${project}:${key}`), markBusy: (project, key, value) => value ? busy.add(`${project}:${key}`) : busy.delete(`${project}:${key}`),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, clearPending, pendingForProject,
