@@ -67,6 +67,7 @@ export function createClipDraftController({ context: initial, client, validateTi
   let context = copy(initial), generation = 1, serial = 0, active = true, readSerial = 0, loaded = false;
   let deleting: object | null = null;
   let envelope: ClipDraftEnvelope | null = null, timer: ReturnType<typeof setTimeout> | undefined, flight: Promise<void> | null = null;
+  let closeFlight: Promise<boolean> | null = null;
   let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false,
     phase: context.restored ? 'unsupported' : 'loading', error: '', candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
   const captures = new WeakSet<ClipDraftCapture>();
@@ -79,8 +80,12 @@ export function createClipDraftController({ context: initial, client, validateTi
   }
   const belongs = (owner: number) => active && owner === generation;
   const conflict = () => context.timelineRevision !== state.baseRevision || !sameClipDraftValue(context.source, state.source);
-  const readyToWrite = () => active && !state.autosavePaused && !deleting && loaded && envelope && context.connected && !context.restored && state.dirty && !state.candidate && !['error', 'unsupported'].includes(state.phase);
-  function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToWrite() && !flight) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
+  const draftMatches = () => Boolean(envelope?.draft && sameClipDraftValue(envelope.draft.raw, state.raw) && envelope.draft.baseRevision === state.baseRevision && sameClipDraftValue(envelope.draft.source, state.source));
+  // Business dirty remains true after a sidecar ACK. A clean form (including an
+  // explicit local-only abandonment) has no current raw input left to persist.
+  const hasUnpersisted = () => Boolean(flight || deleting || state.dirty && (!active || context.restored || !loaded || state.autosavePaused || ['loading', 'error', 'unsupported'].includes(state.phase) || !draftMatches()));
+  const readyToWrite = () => active && !state.autosavePaused && !deleting && loaded && envelope && context.connected && !context.restored && state.dirty && !state.candidate && !['loading', 'error', 'unsupported'].includes(state.phase);
+  function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToWrite() && !flight && !closeFlight) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
   function accept(next: ClipDraftEnvelope, expected: ClipDraftEnvelope | null, write = false) {
     if (!sameClipDraftValue(next.key, keyOf(context)) || expected && (next.workspaceScope !== expected.workspaceScope || next.instanceId !== expected.instanceId || next.revision !== expected.revision + (write ? 1 : 0))) throw Error('本地草稿确认与当前记录不一致；已停止覆盖。');
     if (expected && envelope && envelope.revision !== expected.revision && !sameClipDraftValue(envelope, next)) throw Error('另一个本地草稿确认已更新记录；忽略旧回复。');
@@ -104,11 +109,11 @@ export function createClipDraftController({ context: initial, client, validateTi
       if (!next.draft && !state.autosavePaused) schedule();
     } catch (error) { if (belongs(owner) && reading === readSerial) { loaded = false; pausePersistence(error, '', true); } }
   }
-  async function flush(): Promise<void> {
+  async function flushOnce(): Promise<void> {
     if (timer) clearTimeout(timer); timer = undefined;
-    if (flight) { const waiting = flight, owner = generation; await waiting; if (belongs(owner) && readyToWrite()) await flush(); return; }
+    if (flight) { await flight; return; }
     if (!readyToWrite() || !envelope) return;
-    if (envelope.draft && sameClipDraftValue(envelope.draft.raw, state.raw) && envelope.draft.baseRevision === state.baseRevision && sameClipDraftValue(envelope.draft.source, state.source)) { emit({ phase: 'saved', savedAt: envelope.draft.updatedAt }); return; }
+    if (draftMatches()) { emit({ phase: 'saved', savedAt: envelope.draft!.updatedAt }); return; }
     const owner = generation, capturedSerial = serial, previous = copy(envelope), raw = copy(state.raw), source = copy(state.source), baseRevision = state.baseRevision;
     readSerial++;
     emit({ phase: 'saving', error: '' });
@@ -125,6 +130,37 @@ export function createClipDraftController({ context: initial, client, validateTi
     try { await work; } finally { if (flight === work) flight = null; }
     if (belongs(owner) && capturedSerial !== serial) schedule();
   }
+  async function flush(): Promise<void> {
+    if (closeFlight) { await closeFlight; return; }
+    const owner = generation;
+    if (flight) await flight;
+    // Concurrent callers join the same next write; they never recursively chase
+    // input arriving during it. Ordinary autosave handles that later input.
+    if (belongs(owner)) await flushOnce();
+  }
+  function flushForClose(): Promise<boolean> {
+    if (closeFlight) return closeFlight;
+    if (timer) clearTimeout(timer); timer = undefined;
+    const token = capture();
+    const draining = (async () => {
+      if (!isCurrent(token) || deleting) return false;
+      if (flight) await flight;
+      if (!isCurrent(token) || deleting) return false;
+      if (!hasUnpersisted()) return true;
+      if (!readyToWrite()) return false;
+      // At most one current-raw PUT after an older flight, under its accepted
+      // next CAS. This never dispatches Save or retries a paused/unknown write.
+      await flushOnce();
+      return isCurrent(token) && !hasUnpersisted();
+    })();
+    const completed = draining.finally(() => {
+      if (closeFlight !== completed) return;
+      closeFlight = null;
+      if (belongs(token.generation) && hasUnpersisted()) schedule();
+    }).then(persisted => persisted && isCurrent(token) && !hasUnpersisted());
+    closeFlight = completed;
+    return completed;
+  }
   function capture(): ClipDraftCapture { const token = Object.freeze({ ...keyOf(context), scope: context.scope, serial, generation }); captures.add(token); return token; }
   function isCurrent(token: ClipDraftCapture | null | undefined): boolean { return Boolean(token && captures.has(token) && active && token.scope === context.scope && sameClipDraftValue(keyOf(context), { projectId: token.projectId, timelineId: token.timelineId, clipId: token.clipId }) && token.generation === generation && token.serial === serial); }
   async function clearRecord(expected: ClipDraftEnvelope, owner: number): Promise<boolean> {
@@ -138,7 +174,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     } finally { if (deleting === deletion) deleting = null; }
   }
   const controller = {
-    getState: () => state, getDirty: () => state.dirty, hasUnsaved: () => state.dirty || state.submitting,
+    getState: () => state, getDirty: () => state.dirty, hasUnsaved: () => state.dirty || state.submitting, hasUnpersisted,
     capture, isCurrent,
     canAbandon(token?: ClipDraftCapture) { return (!token || isCurrent(token)) && active && context.visible && !context.busy && !state.businessPending && !deleting && state.dirty; },
     abandonCurrentInput(token: ClipDraftCapture): boolean {
@@ -147,7 +183,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       // nor deletes any persisted record or durable business request.
       const localWriteInFlight = flight !== null;
       if (timer) clearTimeout(timer); timer = undefined;
-      generation++; serial++; readSerial++; flight = null; loaded = false;
+      generation++; serial++; readSerial++; flight = null; closeFlight = null; loaded = false;
       emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false,
         submitting: false, businessPending: false, autosavePaused: true, retainedRecord: true, phase: 'ready',
         failure: localWriteInFlight ? { code: 'LOCAL_DRAFT_WRITE_RETAINED', status: null, kind: 'unknown' } : state.failure,
@@ -226,9 +262,9 @@ export function createClipDraftController({ context: initial, client, validateTi
         serial++; emit({ raw: clipDraftRaw(saved), dirty: false, baseRevision: base + 1, source, conflict: false, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: context.restored ? 'unsupported' : 'ready', error: '' }); return result;
       } catch (error) { if (belongs(owner)) emit({ submitting: false, businessPending: false, error: message(error) }); return null; }
     },
-    load, flush,
+    load, flush, flushForClose,
     activate() { active = true; },
-    dispose() { active = false; generation++; readSerial++; if (timer) clearTimeout(timer); timer = undefined; flight = null; deleting = null; loaded = false; },
+    dispose() { active = false; generation++; readSerial++; if (timer) clearTimeout(timer); timer = undefined; flight = null; closeFlight = null; deleting = null; loaded = false; },
   };
   return controller;
 }

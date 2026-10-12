@@ -153,9 +153,9 @@ async function openWindow(context = windowContext) {
     flush: () => ownsWindow(window, context) && isAllowedNavigation(window.webContents.getURL(), context.ready.url)
       ? window.webContents.executeJavaScript("typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : true")
       : true,
-    confirmClose: () => !ownsWindow(window, context) || smokeOutput || dialog.showMessageBoxSync(window, { type: 'warning', title: '视图位置尚未保存',
-      message: '当前视图位置尚未保存，仍要退出？',
-      detail: '可以继续编辑并重试连接。直接退出可能丢失最近的工作区、选择或缩放位置；这不会改变已保存的项目和媒体。',
+    confirmClose: () => !ownsWindow(window, context) || smokeOutput || dialog.showMessageBoxSync(window, { type: 'warning', title: '本地草稿或视图尚未确认保存',
+      message: '部分本地草稿或视图位置尚未确认保存，仍要退出？',
+      detail: '可以继续编辑并核对保存状态。直接退出可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。',
       buttons: ['仍然退出', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0,
     onCancel: () => { if (ownsWindow(window, context)) quitCoordinator.cancel(); }
   });

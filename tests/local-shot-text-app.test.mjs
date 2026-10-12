@@ -63,7 +63,7 @@ test('actual App beforeunload reads synchronous shot state independently of lega
 test('actual App lifecycle drain waits on local shot persistence only, no business replay',async()=>{
   const from=app.indexOf('const drain = async () =>'),to=app.indexOf('\n    globalThis.__mioonFlushWorkspacePreferences = drain;',from);assert.ok(from>=0&&to>from);
   let saved=false,calls=0;
-  const drain=Function('controller','workspaceRef','locator','localDeliveryRef','shotTextRef',`return (${app.slice(from+'const drain = '.length,to).trim().replace(/;$/,'')});`)({flush:async()=>{},hasUnsaved:()=>false},{current:{restored:false}},{flush:async()=>true},{current:null},{current:{hasUnpersisted:()=>true,flush:async()=>{calls++;return saved;}}});
+  const drain=Function('controller','workspaceRef','locator','localDeliveryRef','shotTextRef','clipDraftRef',`return (${app.slice(from+'const drain = '.length,to).trim().replace(/;$/,'')});`)({flush:async()=>{},hasUnsaved:()=>false},{current:{restored:false}},{flush:async()=>true},{current:null},{current:{hasUnpersisted:()=>true,flush:async()=>{calls++;return saved;}}},{current:null});
   assert.equal(await drain(),false);saved=true;assert.equal(await drain(),true);assert.equal(calls,2);
   assert.doesNotMatch(app.slice(from,to),/execute|recover|prepare|rpc\(/);
 });

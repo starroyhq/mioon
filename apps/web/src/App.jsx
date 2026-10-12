@@ -444,11 +444,21 @@ export default function App() {
   useEffect(() => {
     const controller = preferencesRef.current;
     const locator = lastProjectRef.current;
-    const flush = () => { void controller.flush({ keepalive: true }); if (!workspaceRef.current?.restored) { void locator.flush(); if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current.flush(); } };
+    const flush = () => { void controller.flush({ keepalive: true }); if (!workspaceRef.current?.restored) { void locator.flush(); if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current.flush(); if (clipDraftRef.current?.hasUnpersisted()) void clipDraftRef.current.flushForClose(); } };
     const onHidden = () => { if (document.visibilityState === 'hidden') flush(); };
     // An unprivileged lifecycle function: desktop main may await this fixed
     // function before closing; it exposes no Electron/IPC/native capability.
-    const drain = async () => { const [, remembered, titleSaved, shotSaved] = await Promise.all([controller.flush({ keepalive: true }), workspaceRef.current?.restored ? true : locator.flush(), workspaceRef.current?.restored || !localDeliveryRef.current?.controller.hasUnsaved() ? true : localDeliveryRef.current.controller.flush(), workspaceRef.current?.restored || !shotTextRef.current?.hasUnpersisted() ? true : shotTextRef.current.flush()]); return !controller.hasUnsaved() && remembered && titleSaved && shotSaved; };
+    const drain = async () => {
+      const restored = Boolean(workspaceRef.current?.restored), clip = restored ? null : clipDraftRef.current, clipCapture = clip?.capture();
+      const [, remembered, titleSaved, shotSaved, clipSaved] = await Promise.all([
+        controller.flush({ keepalive: true }), restored ? true : locator.flush(),
+        restored || !localDeliveryRef.current?.controller.hasUnsaved() ? true : localDeliveryRef.current.controller.flush(),
+        restored || !shotTextRef.current?.hasUnpersisted() ? true : shotTextRef.current.flush(),
+        clip ? clip.flushForClose() : true,
+      ]);
+      return !controller.hasUnsaved() && remembered && titleSaved && shotSaved && clipSaved && restored === Boolean(workspaceRef.current?.restored)
+        && (restored || clip === clipDraftRef.current && (!clip || clip.isCurrent(clipCapture) && !clip.hasUnpersisted()));
+    };
     globalThis.__mioonFlushWorkspacePreferences = drain;
     window.addEventListener('beforeunload', flush);
     window.addEventListener('pagehide', flush);

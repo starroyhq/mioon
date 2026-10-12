@@ -1,4 +1,4 @@
-import { clipDraftEnvelopeSchema } from '../../../packages/contracts/src/local-drafts.ts';
+import { clipDraftEnvelopeSchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
 import type { ClipDraftClient, ClipDraftDelete, ClipDraftEnvelope, ClipDraftKey, ClipDraftRead, ClipDraftWrite } from './clip-draft-state.ts';
 
 export type ClipDraftFailureKind = 'refused' | 'conflict' | 'unknown';
@@ -22,26 +22,73 @@ export function clipDraftFailure(error: unknown): ClipDraftFailure {
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const endpoint = '/api/local-drafts/clip';
-export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch(...args)): ClipDraftClient {
+const protocolError = (status: number) => new ClipDraftRequestError('本地草稿服务返回无效确认；未替换当前输入。', 'LOCAL_DRAFT_PROTOCOL_UNKNOWN', status);
+const timeoutError = () => new ClipDraftRequestError('本地草稿请求超时，结果仍待确认。中断连接不会取消草稿保存或删除。', 'LOCAL_DRAFT_TIMEOUT_UNKNOWN');
+async function boundedJSON(response: Response, signal: AbortSignal, expiresAt: number): Promise<unknown> {
+  if (!response.body) throw protocolError(response.status);
+  // A single saved row is at most rowBytes (8 KiB). The 12 KiB HTTP budget
+  // also accommodates the authority, key and success-envelope metadata.
+  const limit = LOCAL_DRAFT_LIMITS.httpBytes, bytes = new Uint8Array(limit);
+  const reader = response.body.getReader(); let length = 0;
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  const expired = () => signal.aborted || Date.now() >= expiresAt;
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    const declared = response.headers.get('content-length');
+    if (declared !== null && (!/^(?:0|[1-9][0-9]*)$/u.test(declared) || !Number.isSafeInteger(Number(declared)) || Number(declared) > limit)) throw protocolError(response.status);
+    for (;;) {
+      if (expired()) throw timeoutError();
+      const part = await reader.read();
+      if (expired()) throw timeoutError();
+      if (part.done) break;
+      if (part.value.byteLength > limit - length) throw protocolError(response.status);
+      bytes.set(part.value, length); length += part.value.byteLength;
+    }
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, length))) as unknown;
+  } catch (error) {
+    cancel();
+    if (expired() || error instanceof ClipDraftRequestError && error.code === 'LOCAL_DRAFT_TIMEOUT_UNKNOWN') throw timeoutError();
+    throw protocolError(response.status);
+  } finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
+}
+/** Deadlines bound HTTP transport only, including response headers and body.
+ * They do not cancel backend writes, establish refusal, or authorize a retry. */
+export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch(...args), { timeoutMs = 10000 }: { timeoutMs?: number } = {}): ClipDraftClient {
   async function request(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftWrite | ClipDraftDelete): Promise<ClipDraftRead> {
+    const deadline = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(60000, timeoutMs)) : 10000;
+    const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
+    const work = perform(method, input, controller.signal, Date.now() + deadline);
+    try {
+      return await Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => {
+        reject(timeoutError()); controller.abort();
+      }, deadline); })]);
+    } finally { if (timer !== undefined) clearTimeout(timer); }
+  }
+  async function perform(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftWrite | ClipDraftDelete, signal: AbortSignal, expiresAt: number): Promise<ClipDraftRead> {
     const query = method === 'GET' ? `?${new URLSearchParams(input as unknown as Record<string, string>)}` : '';
     let response: Response;
-    try { response = await fetcher(endpoint + query, { method, credentials: 'same-origin', cache: 'no-store', ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }) }); }
-    catch { throw new ClipDraftRequestError('本地草稿请求未收到确认；写入结果可能仍待确认。', 'LOCAL_DRAFT_NETWORK_UNKNOWN'); }
-    const protocol = () => new ClipDraftRequestError('本地草稿服务返回无效确认；未替换当前输入。', 'LOCAL_DRAFT_PROTOCOL_UNKNOWN', response.status);
-    let body: unknown;
-    try { body = await response.json(); } catch { throw protocol(); }
-    if (!object(body) || typeof body.ok !== 'boolean') throw protocol();
+    try { response = await fetcher(endpoint + query, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }) }); }
+    catch {
+      if (signal.aborted || Date.now() >= expiresAt) throw timeoutError();
+      throw new ClipDraftRequestError('本地草稿请求未收到确认；写入结果可能仍待确认。', 'LOCAL_DRAFT_NETWORK_UNKNOWN');
+    }
+    if (signal.aborted || Date.now() >= expiresAt) {
+      if (response.body) void response.body.cancel().catch(() => {});
+      throw timeoutError();
+    }
+    const protocol = () => protocolError(response.status);
+    const body = await boundedJSON(response, signal, expiresAt);
+    if (!object(body) || typeof body.ok !== 'boolean' || Object.keys(body).length !== 2 || !Object.hasOwn(body, 'ok')) throw protocol();
     if (!body.ok) {
       const error = body.error;
-      if (response.ok || Object.keys(body).length !== 2 || !Object.hasOwn(body, 'error') || !object(error) ||
+      if (response.ok || !Object.hasOwn(body, 'error') || !object(error) ||
           Object.keys(error).length !== 4 || !['code', 'message', 'details', 'retryable'].every(key => Object.hasOwn(error, key)) ||
           typeof error.code !== 'string' || !/^[A-Z][A-Z0-9_]{0,99}$/.test(error.code) ||
           typeof error.message !== 'string' || error.message.length < 1 || error.message.length > 1000 ||
           !object(error.details) || Object.keys(error.details).length !== 0 || error.retryable !== false) throw protocol();
       throw new ClipDraftRequestError(error.message, error.code, response.status);
     }
-    if (!response.ok) throw protocol();
+    if (response.status !== 200 || !Object.hasOwn(body, 'data')) throw protocol();
     const value = clipDraftEnvelopeSchema.safeParse(body.data);
     if (!value.success) throw protocol();
     return value.data;
