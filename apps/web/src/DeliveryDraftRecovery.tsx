@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '@mioon/ui/components/button';
+import RecoveryStorageDetails from './RecoveryStorageDetails.tsx';
 import type { LocalDeliveryRenderInput } from '@mioon/contracts/local-delivery';
 import type { LocalDeliveryController, LocalDeliveryState } from './local-delivery-state.ts';
 
@@ -44,11 +45,7 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
             : original?.outcome.status === 'not_applied' ? '原导出请求已确认未应用' : '';
   return <section className="notice delivery-draft-recovery" data-testid="delivery-draft-recovery" aria-label="本地交付草稿与原导出请求">
     <p role="status" aria-live="polite" data-testid="delivery-draft-status">{status}</p>
-    <details className="export-preflight-scope" data-testid="delivery-draft-disclosure"><summary>本地保存什么？</summary>
-      <p>名称草稿仅保存原始名称输入，本地明文；此草稿不保存可编辑的输出规格。最后未收到确认的输入可能丢失。恢复名称不会导出，也不会自动改用当前时间线版本。</p>
-      <p>导出前会单独保存原请求编号与完整参数，包括本次输出规格和已有的检查摘要。打开面板、重新连接或读取记录均不会提交或重试导出。</p>
-      <p>本工作区最多保留 128 个项目槽位；尚未提供槽位清理，已有记录不会自动删除。</p>
-    </details>
+    <RecoveryStorageDetails domain="delivery" />
     {state.phase === 'unsupported' && <p className="input-hint">此恢复分支不读写交付草稿或原请求记录。现有的明确确认本机导出流程仍可使用。</p>}
     {state.candidate && <div data-testid="delivery-draft-candidate">
       <p>已保存名称：<strong style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{title(state.candidate.raw.deliveryName)}</strong></p>

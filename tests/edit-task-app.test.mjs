@@ -224,7 +224,9 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
   const pending = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
   assert.match(source, /<DialogTitle>任务中心<\/DialogTitle>/); assert.match(source, /本地编辑请求/); assert.match(source, /<h3>生成任务<\/h3>/);
   assert.match(source, /明文 SQLite/); assert.match(source, /未经保险库加密/); assert.match(source, /不会自动执行/);
-  assert.match(source, /其他 8 类画板\/素材编辑、时间线渲染/); assert.match(source, /4096/);
+  assert.match(source, /import RecoveryStorageDetails from '\.\/RecoveryStorageDetails\.tsx'/);
+  assert.match(source, /<RecoveryStorageDetails domain="task-center" durableOperationCount=\{DURABLE_EDIT_OPERATIONS\.length\} \/>/);
+  assert.doesNotMatch(source, /其他 8 类画板\/素材编辑、时间线渲染及生成\/导出提交的待确认参数仍依赖当前浏览器会话/);
   for (const text of ['submission_unknown', 'providerJobId', 'outputReviewRequired', 'retryGeneration', 'job.cancel', '服务商可能已接受任务并计费']) assert.ok(source.includes(text), text);
   assert.match(pending, /恢复记录仅存于当前浏览器会话/); assert.match(pending, /adopt-legacy-task/); assert.match(pending, /legacy-task-duplicate/);
   assert.match(app, /void tasksRef.current.load\(id\)/);
@@ -234,14 +236,21 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
 test('actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible', () => {
   const source = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
   const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
+  const disclosure = { exports: {} };
+  Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(name => {
+    assert.equal(name, 'react'); return { ...react, default: react };
+  }, disclosure, disclosure.exports);
   Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? { ...react, default: react }
     : name === '@mioon/contracts' ? { DURABLE_EDIT_OPERATIONS }
+    : name === './RecoveryStorageDetails.tsx' ? disclosure.exports
     : name.endsWith('mutation-submissions.js') ? { isMutationOperation } : name.endsWith('edit-task-client.js') ? { isDurableEditOperation }
       : new Proxy({}, { get: (_object, property) => String(property) }), module, module.exports);
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   const props = { activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [] }, reconcileIds: {} };
   for (const phase of ['loading', 'error', 'ready']) {
     const rendered = nodes(module.exports.default({ ...props, tasks: { phase, items: [], uncertain: [], busy: [] } }));
+    const details = rendered.find(node => node.type === disclosure.exports.default);
+    assert.equal(details.props.domain, 'task-center'); assert.equal(details.props.durableOperationCount, DURABLE_EDIT_OPERATIONS.length);
     assert.match(rendered.find(node => node.props?.['data-testid'] === 'durable-task-storage').props.children.join(''), /^19 类时间线元数据（含输出规格）/);
     assert.equal(rendered.some(node => node.props?.['data-testid'] === 'no-durable-tasks'), phase === 'ready');
     assert.equal(rendered.some(node => node.props?.['data-testid'] === 'task-list-unavailable'), phase !== 'ready');

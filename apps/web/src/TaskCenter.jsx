@@ -10,6 +10,7 @@ import Icon from './icons.jsx';
 import SubjectVideoSummary from './SubjectVideoSummary.jsx';
 import { isSubjectRetryPending } from './submissions.js';
 import PendingSubmission from './PendingSubmission.jsx';
+import RecoveryStorageDetails from './RecoveryStorageDetails.tsx';
 import { isMutationOperation } from './mutation-submissions.js';
 import { isDurableEditOperation } from './edit-task-client.js';
 import { activeJob, jobStatusText, outputReviewRequired, outputReviewMessage } from './api.js';
@@ -35,7 +36,7 @@ function DurableTask({ task, uncertain, busy, held = false, onRecover, onAcknowl
 export default function TaskCenter({ workspace, activeCount, pending, busy, jobs, data, reconcileIds, setReconcileIds, run, retryGeneration, inspect, setShowJobs, context, confirm, isCurrent, onClose, tasks, onRecover, onReload, onAdopt }) {
   const restored = workspace?.restored === true;
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="jobs-drawer" showCloseButton={false}><header className="drawer-header"><div><DialogTitle>任务中心</DialogTitle><DialogDescription>{activeCount ? `${activeCount} 个任务正在处理` : '每次提交都有迹可循'}</DialogDescription></div><Button variant="ghost" className="icon-button" aria-label="关闭任务中心" onClick={onClose}><Icon name="close" /></Button></header><div className="drawer-content"><h3>本地编辑请求</h3><p className="helper muted" data-testid="durable-task-storage">{DURABLE_EDIT_OPERATIONS.length} 类时间线元数据（含输出规格）、首帧连接与主体编辑请求：本机明文 SQLite 保存，未经保险库加密；不会自动执行。</p>
-      <details className="helper muted"><summary>保存范围与容量说明</summary>重建应用后可恢复这 {DURABLE_EDIT_OPERATIONS.length} 类请求的原编号与完整参数。其他 8 类画板/素材编辑、时间线渲染及生成/导出提交的待确认参数仍依赖当前浏览器会话。试用上限为 4096 条保留记录；达到上限后会阻止新建任务，需要后续归档能力。此限制不代表整个数据库文件或 WAL 的大小上限。</details>
+      <RecoveryStorageDetails domain="task-center" durableOperationCount={DURABLE_EDIT_OPERATIONS.length} />
       {tasks.phase !== 'ready' && <div className="notice warning" role="status" data-testid="task-list-unavailable">{tasks.phase === 'loading' ? '正在核对全部恢复记录，此类编辑暂不可用。' : '任务恢复列表暂不可用，此类编辑仍被阻止。'}<Button variant="ghost" className="button small" disabled={tasks.phase === 'loading'} onClick={onReload}>重新载入任务</Button></div>}
       {tasks.items.map(task => <DurableTask key={task.id} task={task} held={tasks.heldIds?.includes(task.id)} uncertain={tasks.uncertain.includes(task.id)} busy={busy[`task:${task.id}`] || tasks.busy.includes(task.id) || tasks.busy.includes(task.lane)} onRecover={() => onRecover(task)} onAcknowledge={() => onRecover(task, true)} />)}
       {tasks.phase === 'ready' && !tasks.items.length && <p className="helper muted" data-testid="no-durable-tasks">没有待确认的本地编辑请求。</p>}

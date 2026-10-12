@@ -57,6 +57,7 @@ async function inspectorHarness(patch = {}) {
       if (id === './clip-draft-client.ts') return { createClipDraftClient: () => client };
       if (id === './clip-draft-hook.ts') return load('clip-draft-hook.ts');
       if (id === './ClipDraftRecovery.tsx') return load('ClipDraftRecovery.tsx');
+      if (id === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
       if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => true };
       if (id === './ClipAudioControls.jsx') return load('ClipAudioControls.jsx');
       if (id === './Timeline.jsx') return { assetKind: value => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from '@mioon/ui/components/button';
-import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
+import RecoveryStorageDetails from './RecoveryStorageDetails.tsx';
 import type { LocalShotTextController, LocalShotTextState } from './local-shot-text-state.ts';
 
 export interface ShotTextDraftRecoveryProps {
@@ -25,11 +25,7 @@ export default function ShotTextDraftRecovery({ state, controller, disabled = fa
     <p role="status" aria-live="polite" data-testid="shot-text-draft-status">{status}</p>
     {state.phase !== 'unsupported' && <Button type="button" size="sm" className="button primary" data-testid="save-shot-text" disabled={blocked || !canSave} onClick={() => { void controller.submit(); }}>保存标题和提示词</Button>}
     {state.dirty && (!state.raw.title.trim() || state.raw.title.length > 150 || state.raw.prompt.length > 5000) && <p className="input-hint" role="status">镜头保存需要 1–150 字符的有效标题，提示词最多 5000 字符。原始输入仍可保存在本地草稿。</p>}
-    <details data-testid="shot-text-draft-disclosure"><summary>本地保存什么？</summary>
-      <p>仅保存原始标题、提示词及原始保存版本，不保存参考图、生成参数、账号或认证设置。草稿在本机私有目录中以明文保存，不包含在工作区备份中；最后未收到确认的输入可能丢失。</p>
-      <p>保存文字前会单独持久保存原请求编号与精确文字修改。打开面板、重新连接和读取记录都不会恢复文字或执行保存。恢复草稿只替换标题和提示词，其他输入保留。</p>
-      <p>本工作区最多保留 {LOCAL_SHOT_TEXT_LIMITS.slots} 个镜头槽位，已有记录不会自动删除。</p>
-    </details>
+    <RecoveryStorageDetails domain="shot-text" />
     {state.phase === 'unsupported' && <p className="input-hint">此恢复分支不读写本地文字记录，现有镜头编辑与保存仍可使用。</p>}
     {state.candidate && <div data-testid="shot-text-draft-candidate">
       <p>已保存标题：<strong style={rawStyle}>{state.candidate.raw.title || '（空标题）'}</strong></p>

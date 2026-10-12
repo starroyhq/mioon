@@ -37,7 +37,7 @@ function harness(file, initial) {
   const slots = [], modules = new Map(), h = { visible: true };
   const effect = (queue, callback, deps) => { const i = cursor++, old = slots[i]; if (old && equalDeps(old.deps, deps)) return; slots[i] = { callback, deps, cleanup: old?.cleanup }; queue.push(i); };
   const react = {
-    createElement: (type, properties, ...children) => ({ type, props: { ...properties, children } }),
+    createElement: (type, properties, ...children) => typeof type === 'function' && type === modules.get('RecoveryStorageDetails.tsx')?.default ? type({ ...properties, children }) : ({ type, props: { ...properties, children } }),
     useState(initial) { const i = cursor++; slots[i] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, value => { const next = typeof value === 'function' ? value(slots[i].value) : value; if (next !== slots[i].value) { dirty = true; slots[i].value = next; } }]; },
     useRef(initial) { const i = cursor++; return slots[i] ||= { current: initial }; },
     useMemo(factory, deps) { const i = cursor++; if (!slots[i] || !equalDeps(slots[i].deps, deps)) slots[i] = { value: factory(), deps }; return slots[i].value; },
@@ -45,9 +45,10 @@ function harness(file, initial) {
   }; react.default = react;
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename);
-    const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code;
+    const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code;
     Function('module', 'exports', 'require', code)(module, module.exports, name => {
       if (name === 'react') return react;
+      if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
       if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
         assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
         return { state: {}, controller: { setContext() {} } };

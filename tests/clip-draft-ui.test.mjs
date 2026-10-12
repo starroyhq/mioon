@@ -33,10 +33,15 @@ const treeNodes = tree => Array.isArray(tree) ? tree.flatMap(treeNodes) : tree &
 function recoveryView(state, controller, confirm, pending = false, refs = []) {
   const file = readFileSync(new URL('../apps/web/src/ClipDraftRecovery.tsx', import.meta.url), 'utf8');
   let cursor = 0;
-  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: initial => refs[cursor++] ||= { current: initial } }; react.default = react;
+  const disclosure = { exports: {} };
+  const react = { createElement: (type, props, ...children) => type === disclosure.exports.default ? type({ ...props, children }) : ({ type, props: { ...props, children } }), useRef: initial => refs[cursor++] ||= { current: initial } }; react.default = react;
+  Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(name => {
+    assert.equal(name, 'react'); return react;
+  }, disclosure, disclosure.exports);
   const module = { exports: {} };
   Function('require', 'module', 'exports', transformSync(file, { loader: 'tsx', format: 'cjs' }).code)(name => {
     if (name === 'react') return react;
+    if (name === './RecoveryStorageDetails.tsx') return disclosure.exports;
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
     if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => confirm };
     throw Error(`Unexpected recovery component dependency: ${name}`);

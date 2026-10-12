@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
+import RecoveryStorageDetails from './RecoveryStorageDetails.tsx';
 import type { ClipDraftController, ClipDraftState } from './clip-draft-state.ts';
 
 export default function ClipDraftRecovery({ state, controller, pending, onOpenRequests }: { state: ClipDraftState; controller: ClipDraftController; pending: boolean; onOpenRequests?: () => void }) {
@@ -25,6 +26,7 @@ export default function ClipDraftRecovery({ state, controller, pending, onOpenRe
   return <section className="notice" data-testid="clip-draft-recovery" aria-label="本地片段草稿">
     <p role="status" data-testid="clip-draft-status">{status}</p>
     <p className="input-hint">仅片段属性，本地明文；最后未确认输入可能丢失。草稿不会自动应用到时间线。</p>
+    <RecoveryStorageDetails domain="clip" />
     {state.candidate && <div><Button type="button" size="sm" variant="outline" data-testid="restore-clip-draft" disabled={state.dirty || state.submitting} onClick={() => controller.restore()}>恢复到属性表单</Button><Button type="button" size="sm" variant="ghost" data-testid="discard-stored-clip-draft" disabled={state.submitting} onClick={() => { void controller.discardStored(); }}>放弃已保存草稿</Button>{state.dirty && <p className="input-hint">当前有新输入，未替换为旧草稿。放弃旧草稿后可继续保留当前输入。</p>}</div>}
     {state.failure && <p className="input-hint" data-testid="clip-draft-failure-kind">{state.failure.kind === 'refused' ? '服务明确拒绝了本次请求。' : state.failure.kind === 'conflict' ? '本地记录或服务身份发生冲突。' : '先前请求的结果可能仍未确认。'} 重新核对只读取记录，不会重新提交或自动恢复写入。</p>}
     {state.error && <p role="alert">{state.error}</p>}

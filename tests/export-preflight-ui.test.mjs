@@ -220,8 +220,16 @@ test('accessible topbar export action opens recovery even when a candidate, base
 
 test('blocked Check retains accessible recovery controls and pending copy points to the original request entry', () => {
   const recoverySource = readFileSync(new URL('../apps/web/src/DeliveryDraftRecovery.tsx', import.meta.url), 'utf8');
-  const module = { exports: {} }, react = { createElement: element }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(recoverySource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : { Button: 'Button' });
+  const module = { exports: {} }, disclosure = { exports: {} };
+  const react = { createElement: (type, props, ...children) => type === disclosure.exports.default ? type({ ...props, children }) : element(type, props, ...children) }; react.default = react;
+  Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(disclosure, disclosure.exports, name => {
+    assert.equal(name, 'react'); return react;
+  });
+  Function('module', 'exports', 'require', transformSync(recoverySource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => {
+    if (name === 'react') return react;
+    if (name === './RecoveryStorageDetails.tsx') return disclosure.exports;
+    assert.equal(name, '@mioon/ui/components/button'); return { Button: 'Button' };
+  });
   const events = [], recovery = module.exports.default({ state: { phase: 'ready', busy: false,
     candidate: { timelineId, baseRevision: 4, raw: { deliveryName: 'Saved draft' }, updatedAt: '2026-10-12T00:00:00.000Z' },
     intent: { intentId: id(40), timelineId, baseRevision: 4, input: { requestId: 'original-request', deliveryName: 'Original delivery' }, outcome: { status: 'pending' } } },
