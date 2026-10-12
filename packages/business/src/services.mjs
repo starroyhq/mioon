@@ -1,15 +1,15 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {writeFile,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
-import {parse,AppError,publicValue,getGenerationIssue} from '@mioon/contracts';
+import {parse,AppError,publicValue,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
 import {normalizedCapabilities,generationLimit,providerSettings,usesInputProfiles} from './provider-registry.mjs';
-import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim} from './generation-inputs.mjs';
+import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob} from './generation-inputs.mjs';
 import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.mjs';
 import {createTimelinePreflightServices} from './timeline-preflight.mjs';
 import {createReferenceServices} from './references.mjs';
-import {createInspectionServices} from './inspection.mjs';
+import {createInspectionServices,createOwnedMediaGraphReader} from './inspection.mjs';
 import {createLocalMutationServices} from './local-mutations.mjs';
 import {createSourceRangeServices} from './source-ranges.mjs';
 import {createSubjectServices} from './subjects.mjs';
@@ -27,22 +27,24 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const {db,root,get,list,put,tx}=store;
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
  const check=(v,rev)=>{if(v.revision!==rev)throw new AppError('REVISION_CONFLICT','内容已有新版本，请重新读取后再修改',409,{entityId:v.id,expectedRevision:rev,currentRevision:v.revision,current:publicValue(v)});};
- const dedupe=(scope,requestId,requestHash,table)=>{const r=db.prepare('SELECT * FROM idempotency WHERE scope=? AND requestId=?').get(scope,requestId);if(!r)return null;if(r.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同内容',409,{requestId});return required(table,r.resourceId);};
+ const dedupe=(scope,requestId,requestHash,table)=>{const r=db.prepare(scope==='generation'?`SELECT CASE WHEN typeof(requestHash)='text' AND length(CAST(requestHash AS BLOB))=64 THEN requestHash END AS requestHash,CASE WHEN typeof(resourceId)='text' AND length(CAST(resourceId AS BLOB))=36 THEN resourceId END AS resourceId FROM idempotency WHERE scope=? AND requestId=?`:'SELECT * FROM idempotency WHERE scope=? AND requestId=?').get(scope,requestId);if(!r)return null;if(r.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同内容',409,{requestId});return required(table,r.resourceId);};
  const idem=(scope,key,h,id)=>db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run(scope,key,h,id);
  const event=(job,event)=>db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id,JSON.stringify(event),now());
  const saveJob=(job,patch)=>{const current=required('jobs',job.id);if((current.revision||0)!==(job.revision||0))return current;const result={...current,...patch,revision:(current.revision||0)+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;};
  const profilePolicy=usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
  const capabilitiesFor=(provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,env,list('jobs').filter(j=>j.providerId===provider.id).length,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
- const validateProvider=(source,providerId,requestedModel,parameters,projectId,frozen=false)=>{
+ const validateProvider=(source,providerId,requestedModel,parameters,projectId,frozen=false,subjectGraph=null)=>{
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const c=capabilitiesFor(p),first=c.models[0],model=requestedModel||(typeof first==='string'?first:first.id);
   const profiled=profilePolicy||usesInputProfiles(p);
+  if(hasSubjectGeneration(source)&&!profiled)throw new AppError('INPUT_PROFILE_UNAVAILABLE','主体参考需要服务器已注册的精确输入规范',400);
   const selection=generationReferenceSelection(source,{frozen});
   const assets=selection.ids.map((id,index)=>{
-   const asset=profiled?readGenerationAsset(db,id,projectId):validateImageConsumption(db,required('assets',id),projectId);
+   const asset=subjectGraph?subjectGraph.asset(id):profiled?readGenerationAsset(db,id,projectId):validateImageConsumption(db,required('assets',id),projectId);
    const role=frozen?source.referenceBindings?.[index]?.role:selection.references[index]?.role;
-   return selection.ids.length===2&&role&&!Object.hasOwn(asset,'role')?{...asset,role}:asset;
+   return (selection.ids.length===2||role==='subject_reference')&&role&&!Object.hasOwn(asset,'role')?{...asset,role}:asset;
   });
+  if(hasSubjectGeneration(source)&&!['ark','mock'].includes(providerId))throw new AppError('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现主体参考视频输入',400,{providerId,model});
   const hasLastFrame=(frozen?source.referenceBindings:selection.references)?.some(reference=>reference?.role==='last_frame')||source.lastFrameAssetId!=null;
   if(hasLastFrame&&!['ark','mock'].includes(providerId))throw new AppError('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现首尾帧输入；不会忽略尾帧',400,{providerId,model});
   // Config checks never reveal credentials. Raw adapter enabled remains distinct from
@@ -53,20 +55,50 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    if(!max||used>=max)throw new AppError('LIVE_BUDGET_REQUIRED','需要后端设置已授权生成次数上限，或当前额度已耗尽',403,{providerId,budget:c.budget});
   }
   if(source.capabilities?.region&&c.region!==source.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
-  const snapshot={...source,model,referenceAssetIds:selection.ids,referenceAssets:frozen?source.referenceAssets:assets,parameters};
+  const subjectMode=hasSubjectGeneration(source);
+  let prepared=subjectMode?prepareGenerationInputs({source:{...source,parameters},projectId,providerId,model,capabilities:c,readAsset:id=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,projectId),asOf:c.profileEvaluationDate,frozen}):null;
+  const snapshot={...source,model,referenceAssetIds:selection.ids,referenceAssets:frozen?source.referenceAssets:assets,parameters,...(subjectMode?{providerId,...prepared.fields}:{})};
   const {inputProfiles:ignoredProfiles,...legacyCapabilities}=c;
   const issue=getGenerationIssue(snapshot,legacyCapabilities);if(issue)throw new AppError(issue.code,issue.message,400,{providerId,model});
   if(p.validate){try{p.validate(snapshot);}catch(error){throw new AppError(error.code||'UNSUPPORTED_PARAMETERS',error.message||'此供应商不支持所选参数',400,{providerId,model});}}
-  const prepared=profiled?prepareGenerationInputs({source:{...source,parameters},projectId,providerId,model,capabilities:c,readAsset:id=>readGenerationAsset(db,id,projectId),asOf:c.profileEvaluationDate,frozen}):null;
+  prepared??=profiled?prepareGenerationInputs({source:{...source,parameters},projectId,providerId,model,capabilities:c,readAsset:id=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,projectId),asOf:c.profileEvaluationDate,frozen}):null;
   return {p,model,assets:prepared?.assets||assets,referenceAssetIds:selection.ids,capabilities:c,inputFields:prepared?.fields};
  };
+ function replaySubjectJob(job,input,retryOfJobId=null){
+  if(job.requestId!==input.requestId||job.requestHash!==hash(input)||job.shotId!==input.shotId||job.providerId!==input.providerId||input.model!==undefined&&job.model!==input.model||job.retryOfJobId!==retryOfJobId||job.snapshot?.shotRevision!==input.expectedRevision||job.snapshot?.subjectReference?.subjectVersionId!==input.subjectVersionId)throw new AppError('INVALID_REFERENCE_MANIFEST','任务身份与原始主体参考请求不一致',409);
+  validateSubjectGenerationOwnership(db,job);
+  return job;
+ }
  const createJob=(input,retrySnapshot=null,retryOfJobId=null)=>tx(()=>{
-  const requestHash=hash(input), prior=dedupe('generation',input.requestId,requestHash,'jobs');if(prior)return prior;
+  const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
+  if(prior)return input.subjectVersionId!==undefined||hasSubjectGeneration(prior.snapshot)?replaySubjectJob(prior,input,retryOfJobId):prior;
+  assertSubjectGenerationRequestVacant(db,input);
   const shot=required('shots',input.shotId);if(!retrySnapshot)check(shot,input.expectedRevision);
-  if(profilePolicy||usesInputProfiles(providers.get(input.providerId)))assertGenerationShotOwnership(db,shot);
-  const source=retrySnapshot||shot;const referenceConnections=retrySnapshot?.referenceConnections||(!retrySnapshot?references.snapshot(shot):[]);const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,parameters,shot.projectId,Boolean(retrySnapshot));
-  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{})};
-  const job={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});return job;
+  if(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined)assertGenerationShotOwnership(db,shot);
+  let source=retrySnapshot||shot,subjectGraph=null;
+  const subjectMode=input.subjectVersionId!==undefined||hasSubjectGeneration(source);
+  let referenceConnections;
+  if(subjectMode){
+   subjectGraph=createOwnedMediaGraphReader(db,shot.projectId);
+   if(retrySnapshot){
+    const issue=getSubjectGenerationSnapshotIssue(retrySnapshot,{projectId:shot.projectId,requireProfilePin:true});if(issue)throw new AppError(issue.code,issue.message,400);
+    subjectGraph.validateSubjectReference(retrySnapshot.subjectReference);
+    if(input.subjectVersionId!==retrySnapshot.subjectReference.subjectVersionId)throw new AppError('INVALID_REFERENCE_MANIFEST','重试必须保留原始主体版本',409);
+    referenceConnections=retrySnapshot.referenceConnections;
+   }else{
+    assertSubjectGenerationSelection(db,shot);
+    const subjectReference=subjectGraph.subjectReference(input.subjectVersionId),version=subjectReference.subjectVersion;
+    referenceConnections=[];
+    source={...shot,subjectReference,referenceAssetIds:[version.assetId],referenceConnections,referenceBindings:[{role:'subject_reference',assetId:version.assetId,sha256:version.sha256}]};
+   }
+  }else referenceConnections=retrySnapshot?.referenceConnections||(!retrySnapshot?references.snapshot(shot):[]);
+  const parameters=retrySnapshot?.parameters||{...shot.parameters,...input.parameters};
+  const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,parameters,shot.projectId,Boolean(retrySnapshot),subjectGraph);
+  const snapshot=retrySnapshot||{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:assets.map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:source.subjectReference}:{})};
+  const job={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
+  put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});
+  if(subjectMode)replaySubjectJob(job,input,retryOfJobId);
+  return job;
  });
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
  const timeline=createTimelineServices(store,{required,check,hash,now,exportAdmission});
@@ -80,6 +112,23 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const waveforms=createWaveformServices(store,{signal:ownerSignal});
  const images=createImageServices(store,{...imageOptions,signal:ownerSignal});
  const frames=createFrameServices(store,{...frameOptions,signal:ownerSignal});
+ // Read disclosure verifies only retained subject ownership/provenance. It
+ // never evaluates current provider lifecycle, quota, enabled state or POST policy.
+ function subjectDisclosure(table,value,projectId){
+  if(table==='jobs'&&hasSubjectGeneration(value.snapshot)){
+   if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','任务的项目归属已改变',409);
+   validateSubjectGenerationOwnership(db,value);
+  }else if(table==='versions'){
+   const job=value.jobId?readGenerationLinkedJob(db,value.jobId):null;
+   if(hasSubjectGeneration(value.snapshot)||hasSubjectGeneration(job?.snapshot)){
+    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','版本的项目归属已改变',409);
+    if(!job||canonical(value.snapshot)!==canonical(job.snapshot))throw new AppError('INVALID_REFERENCE_MANIFEST','版本与任务的主体参考快照不一致',409);
+    const graph=validateSubjectGenerationOwnership(db,job);
+    graph.version(value.id,value.shotId,value.assetId);
+   }
+  }
+  return value;
+ }
  const handlers={
  ...frames.handlers,
  ...images.handlers,
@@ -95,7 +144,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...localMutations.handlers,
  'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
- 'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
+ 'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).map(value=>subjectDisclosure(t,value,i.projectId)).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
  'asset.import':async (i,{signal=ownerSignal}={})=>{
   checkpoint(signal);
   required('projects',i.projectId);
@@ -130,12 +179,43 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  'edge.delete':i=>{const edge=required('edges',i.edgeId);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(i.edgeId);return {deleted:true};},
  'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
  'generation.submit':i=>createJob(i),
- 'job.get':i=>required('jobs',i.jobId),
- 'job.list':i=>{required('projects',i.projectId);return list('jobs',i.projectId);},
- 'job.retry':i=>{const old=required('jobs',i.jobId);const newInput={shotId:old.shotId,expectedRevision:old.snapshot.shotRevision,requestId:i.requestId,providerId:old.providerId,model:old.model,parameters:old.snapshot.parameters,retryOfJobId:old.id};const prior=dedupe('generation',i.requestId,hash(newInput),'jobs');if(prior)return prior;if(old.status!=='failed')throw new AppError('UNSAFE_RETRY','只有明确失败的任务可重新提交；未知提交结果须先对账',409);const activeChild=list('jobs',old.projectId).find(child=>child.retryOfJobId===old.id&&['queued','submitting','running','downloading','submission_unknown'].includes(child.status));if(activeChild)throw new AppError('RETRY_ALREADY_ACTIVE','该失败任务已有重试正在处理，请查询已有任务',409,{jobId:activeChild.id});if(i.requestId===old.requestId)throw new AppError('NEW_REQUEST_REQUIRED','重试必须使用新的请求 ID',409);if(profilePolicy||usesInputProfiles(providers.get(old.providerId)))assertGenerationJobOwnership(db,old);return createJob(newInput,old.snapshot,old.id);},
- 'job.cancel':i=>{const j=required('jobs',i.jobId);if(['succeeded','failed','cancelled'].includes(j.status))return j;return saveJob(j,{status:'cancelled',phase:'local_wait_stopped',cancelScope:'local_only',error:{code:'LOCAL_WAIT_STOPPED',message:'已停止本地等待；供应商任务未确认取消，可能仍会完成或计费',retryable:true}});},
- 'job.reconcile':async (i,{signal=ownerSignal}={})=>{checkpoint(signal);const j=required('jobs',i.jobId),context={jobId:j.id,requestId:j.requestId,providerRegion:j.snapshot.capabilities?.region,signal};if(['succeeded','failed','queued','submitting'].includes(j.status)){if(i.providerJobId)throw new AppError('INVALID_RECONCILIATION_STATE','当前任务状态不允许绑定供应商任务',409);return j;}if(i.providerJobId&&j.providerJobId&&i.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);if(i.providerJobId){const owner=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===i.providerJobId);if(owner)throw new AppError('TASK_ID_CONFLICT','供应商任务已属于另一个本地任务，不能替换其参数快照',409);if(j.providerId==='mock'){const own=await awaitProvider(()=>providers.get('mock').reconcile(j.requestId,context),signal);checkpoint(signal);if(!own||own.providerJobId!==i.providerJobId)throw new AppError('TASK_ID_CONFLICT','模拟任务 ID 与此提交请求不匹配',409);}}const p=providers.get(j.providerId);if(j.snapshot.capabilities?.region&&p.capabilities.region!==j.snapshot.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);const found=i.providerJobId?{providerJobId:i.providerJobId}:j.providerJobId?{providerJobId:j.providerJobId}:await awaitProvider(()=>p.reconcile(j.requestId,context),signal);checkpoint(signal);if(!found)return saveJob(j,{status:'submission_unknown',phase:'reconciliation_required',error:{code:'SUBMISSION_UNKNOWN',message:'无法确认是否已被受理；不会自动重新提交。请在供应商后台核实已有任务 ID',retryable:true}});await awaitProvider(()=>p.poll(found.providerJobId,context),signal);checkpoint(signal);const competing=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===found.providerJobId);if(competing)throw new AppError('TASK_ID_CONFLICT','供应商任务已由另一个本地任务占用',409);return saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null});},
- 'version.list':i=>{const s=required('shots',i.shotId);return list('versions',s.projectId).filter(v=>v.shotId===s.id).sort((a,b)=>a.number-b.number);},
+ 'job.get':i=>subjectDisclosure('jobs',required('jobs',i.jobId)),
+ 'job.list':i=>{required('projects',i.projectId);return list('jobs',i.projectId).map(value=>subjectDisclosure('jobs',value,i.projectId));},
+ 'job.retry':i=>{
+  const old=required('jobs',i.jobId),subjectMode=hasSubjectGeneration(old.snapshot);
+  if(subjectMode)validateSubjectGenerationOwnership(db,old);
+  const newInput={shotId:old.shotId,expectedRevision:old.snapshot.shotRevision,requestId:i.requestId,providerId:old.providerId,model:old.model,parameters:old.snapshot.parameters,retryOfJobId:old.id,...(subjectMode?{subjectVersionId:old.snapshot.subjectReference.subjectVersionId}:{})};
+  const prior=dedupe('generation',i.requestId,hash(newInput),'jobs');if(prior)return subjectMode||hasSubjectGeneration(prior.snapshot)?replaySubjectJob(prior,newInput,old.id):prior;
+  if(old.status!=='failed')throw new AppError('UNSAFE_RETRY','只有明确失败的任务可重新提交；未知提交结果须先对账',409);
+  const activeChild=list('jobs',old.projectId).find(child=>child.retryOfJobId===old.id&&['queued','submitting','running','downloading','submission_unknown'].includes(child.status));
+  if(activeChild)throw new AppError('RETRY_ALREADY_ACTIVE','该失败任务已有重试正在处理，请查询已有任务',409,{jobId:activeChild.id});
+  if(i.requestId===old.requestId)throw new AppError('NEW_REQUEST_REQUIRED','重试必须使用新的请求 ID',409);
+  if(profilePolicy||usesInputProfiles(providers.get(old.providerId)))assertGenerationJobOwnership(db,old);
+  return createJob(newInput,old.snapshot,old.id);
+ },
+ 'job.cancel':i=>{const j=required('jobs',i.jobId);if(hasSubjectGeneration(j.snapshot))currentGenerationClaim(db,j);if(['succeeded','failed','cancelled'].includes(j.status))return subjectDisclosure('jobs',j);return subjectDisclosure('jobs',saveJob(j,{status:'cancelled',phase:'local_wait_stopped',cancelScope:'local_only',error:{code:'LOCAL_WAIT_STOPPED',message:'已停止本地等待；供应商任务未确认取消，可能仍会完成或计费',retryable:true}}));},
+ 'job.reconcile':async (i,{signal=ownerSignal}={})=>{
+  checkpoint(signal);
+  const j=required('jobs',i.jobId),subjectMode=hasSubjectGeneration(j.snapshot),context={jobId:j.id,requestId:j.requestId,providerRegion:j.snapshot.capabilities?.region,signal};
+  const claim=()=>{if(subjectMode)currentGenerationClaim(db,j);};claim();
+  // Paid task observation is not gated by current source availability or a new
+  // provider profile. Identity is rechecked after awaits; disclosure is checked
+  // only after safe progress is saved, and cannot authorize another submission.
+  const disclose=value=>subjectDisclosure('jobs',value);
+  if(['succeeded','failed','queued','submitting'].includes(j.status)){if(i.providerJobId)throw new AppError('INVALID_RECONCILIATION_STATE','当前任务状态不允许绑定供应商任务',409);return disclose(j);}
+  if(i.providerJobId&&j.providerJobId&&i.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);
+  if(i.providerJobId){
+   const owner=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===i.providerJobId);if(owner)throw new AppError('TASK_ID_CONFLICT','供应商任务已属于另一个本地任务，不能替换其参数快照',409);
+   if(j.providerId==='mock'){const own=await awaitProvider(()=>providers.get('mock').reconcile(j.requestId,context),signal);checkpoint(signal);claim();if(!own||own.providerJobId!==i.providerJobId)throw new AppError('TASK_ID_CONFLICT','模拟任务 ID 与此提交请求不匹配',409);}
+  }
+  const p=providers.get(j.providerId);if(j.snapshot.capabilities?.region&&p.capabilities.region!==j.snapshot.capabilities.region)throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
+  const found=i.providerJobId?{providerJobId:i.providerJobId}:j.providerJobId?{providerJobId:j.providerJobId}:await awaitProvider(()=>p.reconcile(j.requestId,context),signal);checkpoint(signal);claim();
+  if(!found)return disclose(saveJob(j,{status:'submission_unknown',phase:'reconciliation_required',error:{code:'SUBMISSION_UNKNOWN',message:'无法确认是否已被受理；不会自动重新提交。请在供应商后台核实已有任务 ID',retryable:true}}));
+  await awaitProvider(()=>p.poll(found.providerJobId,context),signal);checkpoint(signal);claim();
+  const competing=list('jobs').find(other=>other.id!==j.id&&other.providerId===j.providerId&&other.providerJobId===found.providerJobId);if(competing)throw new AppError('TASK_ID_CONFLICT','供应商任务已由另一个本地任务占用',409);
+  return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
+ },
+ 'version.list':i=>{const s=required('shots',i.shotId);return list('versions',s.projectId).filter(v=>v.shotId===s.id).map(value=>subjectDisclosure('versions',value,s.projectId)).sort((a,b)=>a.number-b.number);},
  'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>required('versions',s.selectedVersionId));const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);return e;}),
  'export.get':i=>required('exports',i.exportId)
  };
@@ -170,18 +250,20 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job){
   const provider=providers.get(job.providerId);
-  if(!profilePolicy&&!usesInputProfiles(provider))return null;
+  const subjectMode=hasSubjectGeneration(job.snapshot);
+  if(!profilePolicy&&!usesInputProfiles(provider)&&!subjectMode)return null;
+  const subjectGraph=subjectMode?validateSubjectGenerationOwnership(db,job):null;
   currentGenerationClaim(db,job);
   if(!provider||provider.id!==job.providerId)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const capabilities=capabilitiesFor(provider);
   if(job.snapshot.providerId!==job.providerId||job.snapshot.model!==job.model)throw new AppError('INVALID_REFERENCE_MANIFEST','任务身份与冻结快照不一致');
-  return prepareGenerationInputs({source:job.snapshot,projectId:job.projectId,providerId:job.providerId,model:job.model,capabilities,readAsset:id=>readGenerationAsset(db,id,job.projectId),asOf:capabilities.profileEvaluationDate,frozen:true});
+  return prepareGenerationInputs({source:job.snapshot,projectId:job.projectId,providerId:job.providerId,model:job.model,capabilities,readAsset:id=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,job.projectId),asOf:capabilities.profileEvaluationDate,frozen:true});
  }
  // Limit this ownership fence to unaccepted claims and restart classification.
  // Policy rejection must not authorize writing a foreign or replaced record.
  let invalidGenerationReported=false;
  function saveGenerationGuarded(job,patch){
-  if(!profilePolicy&&!usesInputProfiles(providers.get(job.providerId)))return saveJob(job,patch);
+  if(!profilePolicy&&!usesInputProfiles(providers.get(job.providerId))&&!hasSubjectGeneration(job.snapshot))return saveJob(job,patch);
   return tx(()=>{
    let current;try{current=currentGenerationClaim(db,job);}catch{
     if(!invalidGenerationReported){invalidGenerationReported=true;console.error('Skipped invalid local generation record.');}

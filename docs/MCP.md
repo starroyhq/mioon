@@ -632,8 +632,10 @@ UI durable preparation adds only these three writes under `subject:mutation`,
 bringing its explicit allowlist to fifteen at that stage; the later format operation makes sixteen, and three subtitle writes now make nineteen in total. External calls do not automatically
 create UI tasks, and no generic task-execution MCP tool is added. This external
 catalog does not expand built-in Agent tools/context. Subject/style bindings are
-local planning only: actual `first_frame` still uses `reference_attach`;
-last-frame/motion and identity-lock guarantees are unsupported. No Blender or
+local planning only: actual `first_frame` still uses `reference_attach`. Later
+[saved first/last frames](VIDEO-FRAME-PAIRS.md) and
+[explicit subject-version input](SUBJECT-VIDEO-INPUTS.md) are separate generation
+choices. Motion and identity-lock guarantees remain unsupported. No Blender or
 live-generation step is needed. See [scope and current release gate](SUBJECT-LIBRARY.md).
 
 ## Local frame extraction tools
@@ -750,3 +752,17 @@ inspect the job's frozen role/source hashes. Retrying a confirmed failed job use
 its original snapshot. No new model tool, paid authority, generic dispatcher or
 cross-restart manual-shot pending ledger is introduced. See
 [VIDEO-FRAME-PAIRS.md](VIDEO-FRAME-PAIRS.md) for limits and validation status.
+## Explicit one-subject video input
+
+The existing `generation_submit` schema adds optional non-null UUID
+`subjectVersionId`. Read the shared subject/version lists and explicitly choose
+one version. This adds no model tool or generic authority. The server freezes its
+complete owned source and the `subject_reference` role; local subject/style
+bindings are not automatic input. Saved first/last selections or connections must
+be explicitly cleared separately, otherwise submission rejects.
+
+Discover the exact Ark/Mock v3 profile. Keep original input/key after uncertainty;
+changed versions conflict, and confirmed-failure retry uses its original source.
+Only a validated original acknowledgement/read settles the request. Mock proves
+workflow only; Ark real-face direct uploads are unsupported and no live call is
+approved by schema discovery. See [SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md).

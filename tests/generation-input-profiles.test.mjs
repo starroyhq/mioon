@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  INPUT_PROFILE_VERSION, GENERATION_INPUT_PROFILES, GENERATION_INPUT_ROLES, ARCHIVED_CAPABILITY_PROFILES, FRAME_PAIR_PROFILE_VERSION,
+  INPUT_PROFILE_VERSION, GENERATION_INPUT_PROFILES, GENERATION_INPUT_ROLES, ARCHIVED_CAPABILITY_PROFILES, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION,
   getCapabilityProfile, getGenerationProfileRegion, validateGenerationInput,
   buildAdapterPlan, encodedImageDataUriBytes, evaluateCapabilityLifecycle,
   getGenerationProfileIssue, getGenerationIssue, findModelCapabilities, schemas,
@@ -31,30 +31,33 @@ const snapshotFor=(profile,patch={})=>{
   return {model:input.model,prompt:input.prompt,aspectRatio:input.aspectRatio,duration:input.duration,parameters:{},referenceAssetIds:['managed-image-a'],referenceAssets:[{id:'managed-image-a',mimeType:'image/png',sizeBytes:1024,sha256:'a'.repeat(64),width:720,height:1280}],...patch};
 };
 
-test('exact immutable profiles expose only implemented active routes and preserve archived first-only routes',()=>{
+test('exact immutable profiles expose only implemented active routes and preserve archived v1/v2 routes',()=>{
   assert.equal(GENERATION_INPUT_PROFILES.length,6);
   for(const profile of GENERATION_INPUT_PROFILES){
     assert.ok(Object.isFrozen(profile.inputs.roles.first_frame));
     assert.deepEqual(Object.keys(profile.inputs.roles),GENERATION_INPUT_ROLES);
     const pair=['ark','mock'].includes(profile.providerId);
     for(const role of GENERATION_INPUT_ROLES.slice(1)){
-      const implemented=pair&&role==='last_frame';
+      const implemented=pair&&['last_frame','subject_reference'].includes(role);
       assert.equal(profile.inputs.roles[role].implemented,implemented);
       assert.equal(profile.inputs.roles[role].max,implemented?1:0);
       if(!implemented)assert.match(profile.inputs.roles[role].reason,/current Mioon adapter/);
     }
     assert.equal(profile.inputs.maxReferences,pair?2:1);
-    assert.equal(profile.profileVersion,pair?FRAME_PAIR_PROFILE_VERSION:INPUT_PROFILE_VERSION);
+    assert.equal(profile.profileVersion,pair?SUBJECT_REFERENCE_PROFILE_VERSION:INPUT_PROFILE_VERSION);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model,profile.regions[0]),profile);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model+'-alias',profile.regions[0]),null);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model,'not-a-region'),null);
     assert.equal(getCapabilityProfile(profile.providerId,profile.model),null);
   }
-  assert.deepEqual(ARCHIVED_CAPABILITY_PROFILES.map(profile=>profile.providerId),['ark','mock']);
+  assert.deepEqual(ARCHIVED_CAPABILITY_PROFILES.map(profile=>profile.providerId),['ark','mock','ark','mock']);
   for(const profile of ARCHIVED_CAPABILITY_PROFILES){
-    assert.equal(profile.profileVersion,INPUT_PROFILE_VERSION);
-    assert.equal(profile.inputs.maxReferences,1);
-    assert.equal(profile.inputs.roles.last_frame.implemented,false);
+    const pair=profile.profileVersion===FRAME_PAIR_PROFILE_VERSION;
+    assert.ok([INPUT_PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION].includes(profile.profileVersion));
+    assert.equal(profile.inputs.maxReferences,pair?2:1);
+    assert.equal(profile.inputs.roles.last_frame.implemented,pair);
+    assert.equal(profile.inputs.roles.subject_reference.implemented,false);
+    assert.ok(codes(validateGenerationInput(inputFor(profile,{references:[reference({role:'subject_reference'})]}),{asOf,profileId:profile.profileId,profileVersion:profile.profileVersion})).includes('UNSUPPORTED_INPUT_ROLE'));
     assert.ok(Object.isFrozen(profile.inputs.roles.first_frame));
     assert.equal(getCapabilityProfile(profile.providerId,profile.model,profile.regions[0],{profileId:profile.profileId,profileVersion:profile.profileVersion}),profile);
   }
@@ -101,7 +104,7 @@ for(const profile of GENERATION_INPUT_PROFILES){
         assert.throws(()=>provider.validate({...good,...patch}));
       }
     }
-    const unsupported=validate(inputFor(profile,{references:[reference({role:'subject_reference'})]}));
+    const unsupported=validate(inputFor(profile,{references:[reference({role:'style_reference'})]}));
     assert.ok(codes(unsupported).includes('UNSUPPORTED_INPUT_ROLE'));
   });
 }
@@ -123,7 +126,7 @@ test('existing adapter-specific dimensional and MIME validators agree on adverti
 
 test('all unsupported roles, duplicates and complete multi-reference combinations fail closed',()=>{
   for(const profile of GENERATION_INPUT_PROFILES){
-    for(const role of [...GENERATION_INPUT_ROLES.slice(1),'invented'])assert.equal(validate(inputFor(profile,{references:[reference({role})]})).ok,false);
+    for(const role of [...GENERATION_INPUT_ROLES.slice(1).filter(role=>role!=='subject_reference'||!profile.inputs.roles[role].implemented),'invented'])assert.equal(validate(inputFor(profile,{references:[reference({role})]})).ok,false);
     for(const references of [[reference(),reference({assetId:'managed-image-b'})],[reference(),reference()]]){
       const result=buildAdapterPlan(inputFor(profile,{references}),{asOf});
       assert.equal(result.ok,false);

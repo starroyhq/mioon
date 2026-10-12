@@ -2,7 +2,7 @@
 
 Date: 2026-10-10. Baseline: `cfbbfd3`. Implementation, final 414-case focused
 verification, fresh web/desktop builds and actual Linux native acceptance are
-complete. The independent full aggregate release gate is pending. No live
+complete. Its independent full aggregate release gate passed (recorded below). No live
 provider request, credential entry or upload is authorized by this increment.
 The existing Linux trial does not depend on this addition.
 
@@ -12,7 +12,7 @@ The production `provider.list` response adds exact, read-only input profiles,
 their version, server UTC evaluation date, server-selected API region and
 lifecycle evaluation. UI, HTTP, CLI `capabilities` and MCP `mioon_capabilities`
 share this response. The public `generation.submit` / `job.retry` input schemas
-are unchanged. There is no new RPC, task namespace, database migration, region
+were unchanged in the original profile slice. There is no new RPC, task namespace, database migration, region
 override or model-authority field.
 
 | Provider / exact model | Server API region | Actual input mapping |
@@ -24,9 +24,13 @@ override or model-authority field.
 | MiniMax / `MiniMax-H3` | global or cn | Text, optionally one first-frame image |
 | Vidu / `viduq3-turbo` | global or cn | Text, optionally one first-frame image |
 
-Every profile explicitly marks last-frame, subject, style and motion-reference
-roles unimplemented. A vendor may document broader combinations; these do not
-enable an app route. Subject/style library associations remain local planning.
+The table above records the original v1 route. The subsequent saved first/last
+slice enables one pair for Ark/Mock in v2; the explicit subject-video candidate
+adds one chosen subject-version image in v3. Exact archived v1/v2 definitions stay
+unchanged. See [first/last scope](VIDEO-FRAME-PAIRS.md) and
+[subject-video scope and acceptance status](SUBJECT-VIDEO-INPUTS.md).
+Style and motion roles remain unimplemented. A vendor's broader capabilities do
+not enable an app route. Subject/style library associations remain local planning.
 The old first-frame selection/connection continues to supply actual generation
 inputs. No image is pruned, inferred from a subject binding, cropped, uploaded,
 or exchanged for a different model to pass validation.

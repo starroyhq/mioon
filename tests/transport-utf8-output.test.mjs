@@ -121,6 +121,7 @@ const textSites = {
   "tests/timeline-split-transports.test.mjs": 4,
   "tests/waveforms-transports.test.mjs": 2,
   "tests/workspace-preferences-http.test.mjs": 2,
+  "tests/subject-video-transports.test.mjs": 5,
   "tests/video-first-last-transports.test.mjs": 5
 };
 const binarySites = {

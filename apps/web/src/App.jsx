@@ -11,10 +11,12 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';
 import Icon from './icons.jsx';
 import Inspector from './Inspector.jsx';
+import SubjectVideoSummary from './SubjectVideoSummary.jsx';
+import { subjectVideoIdentity, subjectVideoProfileIdentity, ARK_SUBJECT_WARNING, MOCK_SUBJECT_WARNING } from './subject-video.js';
 import { VideoFrameSummary } from './VideoFrameControls.jsx';
 import TaskCenter from './TaskCenter.jsx';
 import { createEditTaskController } from './edit-task-controller.js';
@@ -49,7 +51,7 @@ import { Media, nodeTypes } from './Nodes.jsx';
 import { rpc, requestId, activeJob, assetUrl, versionUrl } from './api.js';
 import { importAcknowledged, importBusyFeedback, importFeedback } from './import-feedback.js';
 import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel, generationReferences, generationReferenceIdentity } from './generation-settings.js';
-import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending } from './submissions.js';
+import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending, isSubjectRetryPending } from './submissions.js';
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.js';
 import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';
 import { createWorkspacePreferences } from './workspace-preferences.js';
@@ -107,7 +109,7 @@ export default function App() {
   const [providers, setProviders] = useState([]);
   const [generationOptions, setGenerationOptions] = useState({});
   const generationOptionsRef = useRef(generationOptions); generationOptionsRef.current = generationOptions;
-  const updateGenerationOptions = useCallback((shotId, options) => { if (shotId) setGenerationOptions(current => ({ ...current, [shotId]: options })); }, []);
+  const updateGenerationOptions = useCallback((shotId, options) => { if (shotId) { const next = { ...generationOptionsRef.current, [shotId]: options }; generationOptionsRef.current = next; setGenerationOptions(next); } }, []);
   const [loading, setLoading] = useState(false);
   const [busyByProject, setBusyByProject] = useState({});
   const busyRef = useRef(new Set());
@@ -483,8 +485,9 @@ export default function App() {
     } catch (error) { if (isCurrent(captured)) notify(readableError(error), 'error'); }
     finally { markBusy(entry.projectId, entry.key, false); }
   }
-  async function runSession(key, operation, input, message, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError } = {}) {
+  async function runSession(key, operation, input, message, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError, expectedSubjectReference, subjectRetry = false, expectedRetrySnapshot } = {}) {
     const captured = context(), projectId = captured.projectId;
+    if (operation === 'job.retry' && dataRef.current.jobs?.length) subjectRetry = subjectRetry || isSubjectRetryPending({ projectId, key, operation, input }, dataRef.current.jobs);
     const mutation = isMutationOperation(operation);
     const timeline = TIMELINE_MUTATION_OPERATIONS.includes(operation);
     const reference = REFERENCE_MUTATION_OPERATIONS.includes(operation);
@@ -505,7 +508,18 @@ export default function App() {
       if (requestBound && input?.projectId !== projectId)
         throw Object.assign(new Error('项目已变化，已阻止旧面板提交。请回到原项目的任务面板核对请求。'), { code: 'MUTATION_PROJECT_MISMATCH' });
       if (durable) {
-        const entry = { projectId, key, operation, input, createdAt: new Date().toISOString() };
+        const entry = { projectId, key, operation, input, createdAt: new Date().toISOString(),
+          ...((operation === 'generation.submit' && Object.hasOwn(input, 'subjectVersionId') || operation === 'job.retry' && subjectRetry) && expectedSubjectReference ? { expectedSubjectReference: structuredClone(expectedSubjectReference) } : {}),
+          ...(operation === 'job.retry' && subjectRetry ? { subjectRetry: true, ...(expectedRetrySnapshot ? { expectedRetrySnapshot: structuredClone(expectedRetrySnapshot) } : {}) } : {}) };
+        if (operation === 'job.retry' && replay && subjectRetry) {
+          const original = readPending(projectId, key);
+          if (!original || original.operation !== operation || original.subjectRetry !== true || original.input?.jobId !== input.jobId || original.input?.requestId !== input.requestId || Object.keys(original.input).length !== Object.keys(input).length || Object.keys(original.input).some(field => original.input[field] !== input[field]))
+            throw Object.assign(new Error('主体重试的原请求已变化或缺失，已阻止恢复；不会重新创建请求。'), { code: 'MUTATION_REPLAY_MISMATCH' });
+        }
+        if (operation === 'job.retry' && !replay && pendingForProject(projectId, { strict: true }).some(item => item.key === key && (subjectRetry || isSubjectRetryPending(item, dataRef.current.jobs || []))))
+          throw Object.assign(new Error('主体重试有原请求待确认，请先在任务中心核对同一请求。'), { code: 'MUTATION_PENDING' });
+        if (operation === 'generation.submit' && !replay && pendingForProject(projectId, { strict: true }).some(item => item.key === key && (Object.hasOwn(input, 'subjectVersionId') || Object.hasOwn(item.input ?? {}, 'subjectVersionId'))))
+          throw Object.assign(new Error('主体生成有原请求待确认，请先在任务中心核对；不会提交新选择或自动重试原请求。'), { code: 'MUTATION_PENDING' });
         if (mutation && !replay) assertMutationOwner(entry, dataRef.current);
         // A new timeline or reference click must not silently replay an older
         // uncertain request. Only the task panel may recover its original input.
@@ -518,6 +532,7 @@ export default function App() {
         if (requestBound && stored.input.projectId !== projectId)
           throw Object.assign(new Error('原请求所属项目不一致，已阻止提交。请先核对原项目的任务记录。'), { code: 'MUTATION_PROJECT_MISMATCH' });
         input = stored.input; operation = stored.operation;
+        if (operation === 'job.retry' && (stored.subjectRetry || stored.expectedSubjectReference || stored.expectedRetrySnapshot || dataRef.current.jobs?.length)) subjectRetry = subjectRetry || isSubjectRetryPending(stored, dataRef.current.jobs || []);
         if (currentProject.current === projectId) setPending(pendingForProject(projectId));
       }
       invalidateHistory();
@@ -527,6 +542,10 @@ export default function App() {
       if (mutation) validateMutationResponse(stored, result);
       if (timeline && !isTimelineMutationResponse(operation, input, result)) throw Object.assign(new Error('未收到与原请求一致的时间线确认。'), { code: 'BACKEND_PROTOCOL_ERROR' });
       if (reference && !isReferenceMutationResponse(operation, input, result)) throw Object.assign(new Error('未收到与原请求一致的首帧参考确认。'), { code: 'BACKEND_PROTOCOL_ERROR' });
+      if (operation === 'generation.submit' && Object.hasOwn(input, 'subjectVersionId') && (!stored?.expectedSubjectReference || !isSubjectGenerationResponse(operation, input, result, { projectId, subjectReference: stored.expectedSubjectReference })))
+        throw Object.assign(new Error('主体生成确认与原请求的固定图片不一致。原请求保留，请在任务中心核对。'), { code: 'BACKEND_PROTOCOL_ERROR' });
+      if (operation === 'job.retry' && subjectRetry && (!stored.expectedSubjectReference || !stored.expectedRetrySnapshot || !isSubjectGenerationRetryResponse(input, result, { projectId, subjectReference: stored.expectedSubjectReference, snapshot: stored.expectedRetrySnapshot })))
+        throw Object.assign(new Error('主体重试确认与原任务的固定快照不一致。原请求保留，请在任务中心核对。'), { code: 'BACKEND_PROTOCOL_ERROR' });
       validateResponse?.(result);
       if (replay && operation === 'asset.range.set' && currentProject.current === projectId) {
         const assetId = stored.input.assetId;
@@ -540,7 +559,7 @@ export default function App() {
       if (message) notify(message); return mutation && replay ? null : result;
     } catch (e) {
       if (dispatched) invalidateHistory();
-      const rejected = mutation ? mutationNotApplied(e, stored) : requestBound
+      const rejected = operation === 'generation.submit' && Object.hasOwn(input, 'subjectVersionId') || operation === 'job.retry' && (subjectRetry || stored?.subjectRetry === true) ? false : mutation ? mutationNotApplied(e, stored) : requestBound
         ? Boolean(stored && hasRequestNotAppliedProof(e, stored.input, { operation })) : e.definitive;
       onFailure?.(e, { dispatched, rejected });
       if (durable && stored && rejected) { clearPending(projectId, key); if (currentProject.current === projectId) setPending(pendingForProject(projectId)); }
@@ -563,40 +582,49 @@ export default function App() {
     if (reveal) { setPanelOpen('inspector', true, 'canvas'); if (geometry.narrow) setMobilePanel('inspector'); }
     return true;
   }
-  function checkGeneration(shot, provider, model, inputMode, frozen = false) {
+  function checkGeneration(shot, provider, model, inputMode, frozen = false, subjectReference) {
     if (referenceWorkBlocked()) return false;
-    const issue = generationInputIssue(shot, provider, model, dataRef.current.assets, inputMode, { frozen }) || providerAvailabilityIssue(provider);
+    const issue = generationInputIssue(shot, provider, model, dataRef.current.assets, inputMode, { frozen, subjectReference, ...(!frozen && inputMode === 'subject' ? { savedShot: dataRef.current.shots.find(item => item.id === shot.id), boundReference: Boolean(referenceForShot(dataRef.current.edges, shot.id)) } : {}) }) || providerAvailabilityIssue(provider);
     if (issue) { notify(issue, 'error'); return false; }
     if (dataRef.current.jobs.some(j => j.shotId === shot.id && j.status === 'submission_unknown')) { notify('此镜头存在状态未知的提交，服务商可能已经计费。请先核实任务状态，不要重复提交。', 'error'); setShowJobs(true); return false; }
     return true;
   }
-  const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId }) => {
+  const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId, subjectReference, expectedRetrySnapshot }) => {
     const provider = providers.find(item => item.id === providerId);
-    if (!checkGeneration(shot, provider, model, inputMode, Boolean(retryJobId))) return;
+    if (!checkGeneration(shot, provider, model, inputMode, Boolean(retryJobId), subjectReference)) return;
+    if (retryJobId && shot.subjectReference) {
+      if (!expectedRetrySnapshot || subjectVideoIdentity(expectedRetrySnapshot.subjectReference) !== subjectVideoIdentity(shot.subjectReference)) { notify('原主体任务快照缺失或变化，已阻止重试。请重新读取原任务。', 'warning'); return; }
+      return run(`retry:${retryJobId}`, 'job.retry', { jobId: retryJobId, requestId: requestId() }, '已基于原始快照创建重试任务', { subjectRetry: true, expectedSubjectReference: expectedRetrySnapshot.subjectReference, expectedRetrySnapshot });
+    }
     if (retryJobId) return run(`retry:${retryJobId}`, 'job.retry', { jobId: retryJobId, requestId: requestId() }, '已基于原始快照创建重试任务');
-    const result = await run(`generate:${shot.id}`, 'generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: requestId(), providerId, ...(model ? { model } : {}), ...(providerId === 'mock' ? { parameters: { scenario } } : {}) });
+    const result = await run(`generate:${shot.id}`, 'generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: requestId(), providerId, ...(model ? { model } : {}), ...(providerId === 'mock' ? { parameters: { scenario } } : {}), ...(subjectReference ? { subjectVersionId: subjectReference.subjectVersionId } : {}) }, undefined, subjectReference ? { expectedSubjectReference: subjectReference } : {});
     if (result) { notify(result.status === 'submission_unknown' ? '提交结果待确认。请查看任务状态，不要重复提交。' : '生成任务已提交，完成后会保存为新版本。', result.status === 'submission_unknown' ? 'warning' : 'success'); setShowJobs(true); }
   };
   function generate(shot, options = generationOptionsRef.current[shot.id] || {}) {
     const { provider, model, scenario, inputMode } = generationSelection(providers, options, shot);
-    if (!checkGeneration(shot, provider, model, inputMode)) return;
-    const args = { shot, providerId: provider.id, model, scenario, inputMode };
+    const subjectReference = inputMode === 'subject' ? options.subjectReference : undefined;
+    const currentOptions = generationOptionsRef.current[shot.id] || {};
+    const currentSelection = generationSelection(providers, currentOptions, shot);
+    if (inputMode === 'subject' && (shot.projectId !== currentProject.current || !dataRef.current.shots.some(current => current.id === shot.id && current.revision === shot.revision) || currentSelection.inputMode !== 'subject' || currentSelection.provider?.id !== provider?.id || currentSelection.model !== model || currentSelection.scenario !== scenario || subjectVideoIdentity(currentOptions.subjectReference) !== subjectVideoIdentity(subjectReference))) return;
+    if (!checkGeneration(shot, provider, model, inputMode, false, subjectReference)) return;
+    const args = { shot, providerId: provider.id, model, scenario, inputMode, ...(subjectReference ? { subjectReference: structuredClone(subjectReference) } : {}) };
     if (!provider.mock) reviewGeneration(args); else submitGeneration(args);
   }
   function retryGeneration(job) {
     const provider = providers.find(item => item.id === job.providerId);
     const shot = { ...job.snapshot, id: job.shotId };
-    const inputMode = shot.referenceAssetIds?.length ? 'image' : 'text';
+    const inputMode = shot.subjectReference ? 'subject' : shot.referenceAssetIds?.length ? 'image' : 'text';
     if (!checkGeneration(shot, provider, job.model, inputMode, true)) return;
-    const args = { shot, providerId: job.providerId, model: job.model, inputMode, retryJobId: job.id };
+    const args = { shot, providerId: job.providerId, model: job.model, inputMode, retryJobId: job.id, ...(job.snapshot.subjectReference ? { expectedRetrySnapshot: structuredClone(job.snapshot) } : {}) };
     if (!provider.mock) { setShowJobs(false); reviewGeneration(args); } else submitGeneration(args);
   }
   function reviewGeneration(args) {
     const frozen = Boolean(args.retryJobId);
-    const review = { ...args, approvalContext: context(), approvalView: generationReviewScope.current,
-      referenceIdentity: generationReferenceIdentity(args.shot, dataRef.current.assets, { frozen }),
+    const referenceOptions = { frozen, subjectReference: args.subjectReference };
+    const review = { ...structuredClone(args), ...(args.subjectReference || args.shot.subjectReference ? { subjectProviderIdentity: subjectVideoProfileIdentity(providers.find(provider => provider.id === args.providerId), args.model) } : {}), approvalContext: context(), approvalView: generationReviewScope.current,
+      referenceIdentity: generationReferenceIdentity(args.shot, dataRef.current.assets, referenceOptions),
       // Keep reviewed thumbnail labels/metadata stable while the modal is open.
-      referenceAssets: structuredClone(dataRef.current.assets.filter(asset => generationReferences(args.shot, { frozen }).references.some(reference => reference.assetId === asset.id))) };
+      referenceAssets: structuredClone(dataRef.current.assets.filter(asset => generationReferences(args.shot, referenceOptions).references.some(reference => reference.assetId === asset.id))) };
     realConfirmRef.current = review; setRealConfirm(review);
   }
   function confirmGeneration(args) {
@@ -607,10 +635,11 @@ export default function App() {
     const selection = generationSelection(providers, generationOptionsRef.current[args.shot.id], currentShot || {});
     const currentJob = frozen ? dataRef.current.jobs.find(job => job.id === args.retryJobId) : null;
     const stale = !isCurrent(args.approvalContext) || args.approvalView !== generationReviewScope.current || !currentShot ||
-      (!frozen && (currentShot.revision !== args.shot.revision || selection.provider?.id !== args.providerId || selection.model !== args.model || selection.inputMode !== args.inputMode)) ||
+      (!frozen && (currentShot.revision !== args.shot.revision || selection.provider?.id !== args.providerId || selection.model !== args.model || selection.inputMode !== args.inputMode || (args.subjectReference || selection.inputMode === 'subject') && subjectVideoIdentity(selection.inputMode === 'subject' ? generationOptionsRef.current[args.shot.id]?.subjectReference : null) !== subjectVideoIdentity(args.subjectReference))) ||
       (frozen && (!currentJob || JSON.stringify(currentJob.snapshot) !== JSON.stringify(Object.fromEntries(Object.entries(args.shot).filter(([key]) => key !== 'id'))))) ||
-      generationReferenceIdentity(args.shot, dataRef.current.assets, { frozen }) !== args.referenceIdentity;
-    if (stale) { notify('镜头、参考素材或当前工作区已变化，请重新检查完整首尾帧后确认生成。', 'warning'); return; }
+      (args.subjectProviderIdentity && subjectVideoProfileIdentity(providers.find(provider => provider.id === args.providerId), args.model) !== args.subjectProviderIdentity) ||
+      generationReferenceIdentity(args.shot, dataRef.current.assets, { frozen, subjectReference: args.subjectReference }) !== args.referenceIdentity;
+    if (stale) { notify('镜头、参考素材或当前工作区已变化，请重新检查固定主体图片或完整首尾帧后确认生成。', 'warning'); return; }
     submitGeneration(args);
   }
   async function createProject(name, description) {
@@ -1119,7 +1148,7 @@ export default function App() {
     {showCreate && <CreateProject onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create']} />}
     {comparisonShot && <Comparison shot={comparisonShot} versions={data.versions} onClose={() => setComparisonId(null)} onSelect={selectVersion} busy={busy[`version:${comparisonShot.id}`]} />}
     {previewAsset && <Modal title={previewAsset.name} subtitle={`${previewAsset.mimeType} · ${(previewAsset.sizeBytes / 1024 / 1024).toFixed(2)} MB`} onClose={() => setPreviewAsset(null)} wide><div className="asset-preview-large"><Media asset={previewAsset} controls /></div><div className="modal-footer"><Button variant="ghost" className="button primary" onClick={() => { addNode(assetKind(previewAsset), previewAsset); setPreviewAsset(null); }}><Icon name="plus" size={16} />添加到画布</Button></div></Modal>}
-    {realConfirm && <Modal title="确认提交真实生成" subtitle="此操作会调用外部生成服务，可能产生费用。" onClose={() => { realConfirmRef.current = null; setRealConfirm(null); }}><div className="modal-form"><div className="confirmation-summary"><strong>{providers.find(p => p.id === realConfirm.providerId)?.name || realConfirm.providerId}</strong>{realConfirm.retryJobId && <p>重试明确失败的任务：使用原任务的固定镜头快照。</p>}<span>{realConfirm.model} · {inputModeLabel(realConfirm.inputMode)} · {realConfirm.shot.duration} 秒 · {realConfirm.shot.aspectRatio}</span><p>将发送此镜头的提示词、参数与 {generationReferences(realConfirm.shot, { frozen: Boolean(realConfirm.retryJobId) }).references.length} 张参考图。费用由服务商按你的账户计费；工作台不保证远端任务可以取消。</p><VideoFrameSummary shot={realConfirm.shot} assets={realConfirm.referenceAssets} frozen={Boolean(realConfirm.retryJobId)} /><p className="muted">此处不提供价格或预算承诺。请先确认服务商计费、账户额度与服务器侧已授权的调用上限。</p><p className="muted">提交状态不明确时，系统会停止重试，防止重复计费。</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => confirmGeneration(realConfirm)}>确认发送并生成</Button></div></Modal>}
+    {realConfirm && <Modal title="确认提交真实生成" subtitle="此操作会调用外部生成服务，可能产生费用。" onClose={() => { realConfirmRef.current = null; setRealConfirm(null); }}><div className="modal-form"><div className="confirmation-summary"><strong>{providers.find(p => p.id === realConfirm.providerId)?.name || realConfirm.providerId}</strong>{realConfirm.retryJobId && <p>重试明确失败的任务：使用原任务的固定镜头快照。</p>}<span>{realConfirm.model} · {inputModeLabel(realConfirm.inputMode)} · {realConfirm.shot.duration} 秒 · {realConfirm.shot.aspectRatio}</span><p>将发送此镜头的提示词、参数与 {generationReferences(realConfirm.shot, { frozen: Boolean(realConfirm.retryJobId), subjectReference: realConfirm.subjectReference }).references.length} 张参考图。费用由服务商按你的账户计费；工作台不保证远端任务可以取消。</p>{(realConfirm.subjectReference || realConfirm.shot.subjectReference) ? <><SubjectVideoSummary reference={realConfirm.subjectReference || realConfirm.shot.subjectReference} assets={realConfirm.referenceAssets} latestSubject={subjects?.state?.subjects[(realConfirm.subjectReference || realConfirm.shot.subjectReference).subjectVersion.subjectId]} /><p className="subject-warning" data-testid="paid-subject-face-warning">{realConfirm.providerId === 'ark' ? ARK_SUBJECT_WARNING : MOCK_SUBJECT_WARNING}</p><p className="muted">将发送上方固定版本的原图；提示词保持原样，不会自动注入主体名称或身份指令。</p></> : <VideoFrameSummary shot={realConfirm.shot} assets={realConfirm.referenceAssets} frozen={Boolean(realConfirm.retryJobId)} />}<p className="muted">此处不提供价格或预算承诺。请先确认服务商计费、账户额度与服务器侧已授权的调用上限。</p><p className="muted">提交状态不明确时，系统会停止重试，防止重复计费。</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => confirmGeneration(realConfirm)}>确认发送并生成</Button></div></Modal>}
     {showJobs && <TaskCenter activeCount={activeCount} pending={pending} busy={busy} jobs={jobs} data={data} reconcileIds={reconcileIds} setReconcileIds={setReconcileIds} run={run} retryGeneration={retryGeneration} inspect={inspect} setShowJobs={setShowJobs} context={context} confirm={confirm} isCurrent={isCurrent} onClose={() => { navigationEpoch.current++; setShowJobs(false); }} tasks={taskState} onRecover={recoverTask} onReload={() => tasksRef.current.load(currentProject.current)} onAdopt={adoptLegacyTask} />}
     {showExports && <Modal title="导出记录" subtitle="每个文件使用创建时的固定快照。时间线合成与分镜顺序导出分别标记，后续修改不会覆盖旧文件。" onClose={() => { navigationEpoch.current++; setShowExports(false); }}><ExportHistoryList orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></Modal>}
   </main>;

@@ -21,7 +21,7 @@ Work against the user's chosen running Mioon service. CLI, MCP and the UI share 
 ## Generation and editing
 
 1. Resolve the intended project, or create one when requested. Import only the local files the user authorized. CLI import reads bytes on the client's computer; the backend has no arbitrary-path import.
-2. Read provider/model capabilities and the latest shot revision. Production discovery includes exact model/region input profiles and server-dated lifecycle evaluations. Only currently implemented roles may be used; subject/style bindings remain local planning. Veo's earliest-retirement policy can block new submission without blocking historical recovery. See [model input limits](../../docs/GENERATION-INPUT-LIMITS.md). Reference count determines text versus first-frame image mode. Do not silently drop images, crop them, change providers or replace the requested model to make a request pass.
+2. Read provider/model capabilities and the latest shot revision. Production discovery includes exact model/region input profiles and server-dated lifecycle evaluations. Only currently implemented roles may be used; subject/style bindings remain local planning. Veo's earliest-retirement policy can block new submission without blocking historical recovery. See [model input limits](../../docs/GENERATION-INPUT-LIMITS.md). For the legacy non-subject path, reference count distinguishes text from frame-conditioned image mode. Explicit subject mode instead requires a separately selected immutable `subjectVersionId`; it cannot be combined with first/last frames or connections. Do not silently drop images, crop them, change providers or replace the requested model to make a request pass.
    To connect a canvas image as the actual first frame, use `reference attach` / `reference_attach` with current source-node and shot revisions. Visual `edge create` links never feed generation. Only one managed, project-local image connection is supported; never clear a manual image choice without the user's intent. Use `reference detach` before changing a connected reference. See [operations.md](references/operations.md) for the exact inputs and removal semantics.
 3. Before live video generation, obtain provider/model, prompt and reference-media scope, generation count and total currency limit approval. Images use the separate user-visible review boundary below; external agents cannot approve paid Images requests. Credentials are configured only in the backend through a secure local route. A configured key or available provider is not permission to incur charges; count limits are not dollar-spend guarantees.
 4. Use a stable request ID for generation, retry, reference attach/detach, timeline mutation and render. Also opt into the optional `requestId` on shot create/update/reorder, node create/update and version select for recoverable edits; omission has legacy non-idempotent behavior. Retain the complete exact request until the response is known. After a lost response, replay that same request; never invent a new ID for the same attempted generation or reference mutation.
@@ -416,8 +416,11 @@ silent eviction. Metadata is plain local SQLite, not vault-encrypted; no secrets
 
 These bindings are planning-only. They never become provider inputs, change shot
 first frames, promise identity locking or authorize generation. Continue using
-`reference attach` for an actual `first_frame`; last-frame/motion support is
-future work. No built-in Agent catalog/context expansion or Blender dependency.
+`reference attach` for an actual `first_frame`. Later
+[saved first/last frames](../../docs/VIDEO-FRAME-PAIRS.md) and
+[explicit subject-version input](../../docs/SUBJECT-VIDEO-INPUTS.md) require
+separate generation choices. Motion remains future work. No built-in Agent
+catalog/context expansion or Blender dependency.
 
 ## Local source-frame capture
 
@@ -521,3 +524,19 @@ both roles and hashes; a confirmed-failure retry uses those old inputs even if
 the current shot changed. Unknown submission is reconciled without a new POST.
 Mock tests lifecycle only, never visual reference adherence. No real-call authority
 is granted by this workflow. See ../../docs/VIDEO-FRAME-PAIRS.md for current scope.
+### Explicit subject-image video input
+
+For an authorized generation, discover the exact profile and `generation.submit`
+schema. Read `subject.list` and `subject.version.list`, then explicitly select one
+immutable character/product/location version via optional `subjectVersionId`.
+Never infer the latest head or upload planning subject/style bindings. Saved
+first/last images and canvas first-frame links conflict; do not clear them without
+the user's editing intent. Preserve the raw prompt without automatic rewriting.
+
+Retain the exact submit key and version before sending; compare the returned
+frozen subject ID/version/hash/typed provenance. An uncertain response does not
+authorize another key or a changed source. Confirmed-failure retry retains the
+original snapshot. Ark direct-upload real-human-face references are unsupported;
+the local library does not establish platform portrait authorization. Mock only
+tests workflow, never subject likeness. This adds no paid permission or built-in
+Agent tool. Scope and status: ../../docs/SUBJECT-VIDEO-INPUTS.md.

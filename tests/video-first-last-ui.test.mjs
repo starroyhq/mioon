@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
+import * as subjectVideo from '../apps/web/src/subject-video.js';
 import * as settings from '../apps/web/src/generation-settings.js';
 import * as api from '../apps/web/src/api.js';
 import * as submissions from '../apps/web/src/submissions.js';
@@ -51,6 +52,8 @@ function harness(patch = {}) {
     Function('require', 'module', 'exports', code)(name => {
       if (name === 'react') return react;
       if (name === './generation-settings.js') return settings;
+      if (name === './subject-video.js') return subjectVideo;
+      if (['./SubjectVideoSelection.jsx', './SubjectVideoSummary.jsx'].includes(name)) return { default: name, __esModule: true };
       if (name === './api.js') return api;
       if (name === './reference-connections.js') return { referenceForShot };
       if (name === './VideoFrameControls.jsx') return load('VideoFrameControls.jsx');
@@ -194,11 +197,11 @@ test('history summary includes both frozen human labels/thumbnails with collapse
 test('App paid review wires complete frames and count, frozen retries, asset-use and tab scope without new submission fields', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /checkGeneration\(shot, provider, job.model, inputMode, true\)/);
-  assert.match(app, /generationReferences\(realConfirm.shot, \{ frozen: Boolean\(realConfirm.retryJobId\) \}\).references.length/);
+  assert.match(app, /generationReferences\(realConfirm.shot, \{ frozen: Boolean\(realConfirm.retryJobId\), subjectReference: realConfirm.subjectReference \}\).references.length/);
   assert.match(app, /VideoFrameSummary shot=\{realConfirm.shot\} assets=\{realConfirm.referenceAssets\}/);
   assert.match(app, /shots.flatMap\(shot => generationReferences\(shot\).references.map/);
   assert.match(app, /Inspector actionScopeKey=\{`\$\{rightDockTab\}:\$\{propertiesPage\}`\}/);
-  assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current.assets, \{ frozen \}\) !== args.referenceIdentity/);
+  assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current.assets, \{ frozen, subjectReference: args.subjectReference \}\) !== args.referenceIdentity/);
   assert.match(app, /currentShot.revision !== args.shot.revision/);
   const submit = app.slice(app.indexOf('const submitGeneration ='), app.indexOf('function generate('));
   assert.doesNotMatch(submit, /lastFrameAssetId|referenceAssetIds|approve|budget|limit/);

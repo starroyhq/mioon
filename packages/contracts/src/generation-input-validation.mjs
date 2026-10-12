@@ -1,4 +1,5 @@
-import { CAPABILITY_PROFILES, ARCHIVED_CAPABILITY_PROFILES, INPUT_ROLES, PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, deepFreeze, getCapabilityProfile, getGenerationProfileRegion } from './generation-input-profiles.mjs';
+import { CAPABILITY_PROFILES, ARCHIVED_CAPABILITY_PROFILES, INPUT_ROLES, PROFILE_VERSION, deepFreeze, getCapabilityProfile, getGenerationProfileRegion } from './generation-input-profiles.mjs';
+import {getSubjectGenerationSnapshotIssue} from './subject-generation.mjs';
 const requestKeys = ['schemaVersion', 'providerId', 'model', 'region', 'prompt', 'aspectRatio', 'duration', 'references', 'parameters'];
 const referenceKeys = ['role', 'assetId', 'mimeType', 'sizeBytes', 'sha256', 'width', 'height', 'durationSeconds'];
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -70,8 +71,9 @@ export function validateGenerationInput(input, options = {}) {
   if (referenceArray(input.references)) {
     const refs = input.references, seen = new Set(), counts = new Map();
     const typedTail = refs.some(ref => record(ref) && dataProperties(ref) && ref.role === 'last_frame');
-    const maxReferences = profile.profileVersion === FRAME_PAIR_PROFILE_VERSION && !typedTail ? 1 : profile.inputs.maxReferences;
-    if (refs.length < profile.inputs.minReferences || refs.length > maxReferences) add('INVALID_REFERENCE_COUNT', ['references'], typedTail && profile.profileVersion === FRAME_PAIR_PROFILE_VERSION ? 'This route accepts text, one first-frame image, or one first-frame and one last-frame image.' : 'The current route accepts at most one first-frame image; Runway requires one.');
+    const framePairs = profile.inputs.roles.last_frame.implemented;
+    const maxReferences = framePairs && !typedTail ? 1 : profile.inputs.maxReferences;
+    if (refs.length < profile.inputs.minReferences || refs.length > maxReferences) add('INVALID_REFERENCE_COUNT', ['references'], typedTail && framePairs ? 'This route accepts text, one first-frame image, or one first-frame and one last-frame image.' : 'The current route accepts at most one first-frame image; Runway requires one.');
     for (let index = 0; index < refs.length; index++) {
       const ref = refs[index], path = ['references', index];
       if (!record(ref) || !dataProperties(ref)) { add('INVALID_REFERENCE', path, 'Every reference must be a plain object.'); continue; }
@@ -104,6 +106,8 @@ export function validateGenerationInput(input, options = {}) {
           const [width, height] = input.aspectRatio.split(':').map(BigInt);
           if (BigInt(ref.width) * height !== BigInt(ref.height) * width) add('REFERENCE_ASPECT_RATIO_MISMATCH', path, 'Reference dimensions must exactly match the selected aspect ratio; no automatic crop occurs.');
         }
+        if ([ref.width, ref.height].every(safePositiveInteger) &&
+            (dims.minAspectRatio !== undefined && ref.width / ref.height < dims.minAspectRatio || dims.maxAspectRatio !== undefined && ref.width / ref.height > dims.maxAspectRatio)) add('REFERENCE_ASPECT_RATIO_OUT_OF_RANGE', path, 'Reference image aspect ratio is outside the implemented range.');
       }
     }
     for (const [role, count] of counts) if (count > profile.inputs.roles[role].max) add('ROLE_COUNT_EXCEEDED', ['references'], 'A role exceeds its implemented count limit.');
@@ -128,7 +132,7 @@ export function buildAdapterPlan(input, options) {
     referenceBindings: value.references.map(ref => ({ role: ref.role, assetId: ref.assetId, sha256: ref.sha256 })),
     adapterSnapshot: {
       model: value.model, prompt: value.prompt, aspectRatio: value.aspectRatio, duration: value.duration, parameters: copy(value.parameters),
-      referenceAssets: value.references.map(({ role, assetId, ...metadata }) => ({ id: assetId, ...(result.profileVersion === FRAME_PAIR_PROFILE_VERSION ? { role } : {}), ...metadata })),
+      referenceAssets: value.references.map(({ role, assetId, ...metadata }) => ({ id: assetId, ...(result.profileVersion !== PROFILE_VERSION ? { role } : {}), ...metadata })),
     },
   });
 }
@@ -165,6 +169,8 @@ export function evaluateCapabilityLifecycle(profile, options = {}) {
 export function getGenerationProfileIssue(snapshot, capabilities) {
   const issue = (code, message, path = []) => ({ code, message, path });
   if (!record(snapshot) || !dataProperties(snapshot) || !record(capabilities) || !dataProperties(capabilities)) return issue('INVALID_INPUT', '生成输入和供应商能力必须为普通数据对象');
+  const subjectIssue = getSubjectGenerationSnapshotIssue(snapshot);
+  if (subjectIssue) return subjectIssue;
   if (capabilities.inputProfileVersion !== PROFILE_VERSION) return issue('UNKNOWN_INPUT_PROFILE', '供应商输入配置版本缺失或不受支持');
   if (!dateValid(capabilities.profileEvaluationDate)) return issue('INVALID_AS_OF_DATE', '缺少有效的服务器 UTC 输入检查日期');
   if (!referenceArray(capabilities.inputProfiles)) return issue('UNKNOWN_INPUT_PROFILE', '供应商输入配置缺失或无效');
@@ -191,6 +197,7 @@ export function getGenerationProfileIssue(snapshot, capabilities) {
   const completePair = bindings?.length === 2 && bindings[0].role === 'first_frame' && bindings[1].role === 'last_frame';
   if (connections !== undefined && (!referenceArray(connections) || connections.length > 1 || connections.some(connection => !record(connection) || !dataProperties(connection) || connection.role !== 'first_frame' || (ids.length !== 1 && !completePair) || connection.sourceAssetId !== ids[0] || (bindings !== undefined && bindings[0]?.role !== 'first_frame')))) return issue('REFERENCE_BINDING_MISMATCH', '首帧连线与完整素材选择不一致', ['referenceConnections']);
   if (bindings && assets.some((asset, index) => own(asset, 'role') && asset.role !== bindings[index].role)) return issue('REFERENCE_BINDING_MISMATCH', '参考素材角色与冻结绑定不一致', ['referenceBindings']);
+  if (hasPin && profile.inputs.roles.subject_reference.implemented && assets.some((asset,index) => !own(asset,'role') || asset.role !== bindings[index].role)) return issue('REFERENCE_BINDING_MISMATCH', 'v3 冻结参考素材必须显式包含与绑定一致的角色', ['referenceAssets']);
   // A pair must carry complete typed bindings. A second array element never
   // acquires last-frame semantics merely from its position.
   const pair = assets.some((asset, index) => (bindings ? bindings[index].role : asset.role) === 'last_frame');

@@ -1,5 +1,5 @@
 import { migratePendingStorage } from './storage-migration.js';
-import { LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS } from '@mioon/contracts';
+import { LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS, isSubjectReference, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 // A lost HTTP response is not proof that the server rejected a paid request.
 // Preserve the exact operation and input until a verified response or matching
 // durable job/export establishes the outcome. Never re-key it.
@@ -22,13 +22,38 @@ export function writePending(entry) {
 }
 export function prepareSubmission(entry) {
   const existing = readPending(entry.projectId, entry.key);
-  if (existing) return existing;
+  if (existing) { assertSubjectPending(existing); return existing; }
+  assertSubjectPending(entry);
   writePending(entry);
   // Verify persistence before the caller is allowed to perform the side effect.
   const persisted = readPending(entry.projectId, entry.key);
   if (!persisted) throw new Error('请求恢复记录未能保存，已阻止提交。');
   return persisted;
 }
+// This renderer-only pin is saved alongside, never added to the wire input.
+// An immutable version ID selects the source on the server; the complete pin
+// also proves an acknowledgement matches the exact image reviewed in this UI.
+function assertSubjectPending(entry) {
+  if (isSubjectRetryPending(entry)) {
+    const reference = entry.expectedSubjectReference, snapshot = entry.expectedRetrySnapshot;
+    if (entry.subjectRetry !== true || !isSubjectReference(reference) || reference.subjectVersion.projectId !== entry.projectId ||
+      getSubjectGenerationSnapshotIssue(snapshot, { projectId: entry.projectId, requireProfilePin: true }) ||
+      canonical(snapshot.subjectReference) !== canonical(reference))
+      throw Object.assign(new Error('主体重试的原始快照记录不完整。请先核对原任务，不会重建请求或重新选择图片。'), { code: 'SUBJECT_SUBMISSION_MISMATCH' });
+    return;
+  }
+  if (entry.operation !== 'generation.submit' || !Object.hasOwn(entry.input ?? {}, 'subjectVersionId')) return;
+  const reference = entry.expectedSubjectReference;
+  if (!isSubjectReference(reference) || reference.subjectVersionId !== entry.input.subjectVersionId || reference.subjectVersion.projectId !== entry.projectId)
+    throw Object.assign(new Error('主体参考的原始确认记录不完整。请先核对原任务，不会生成新的提交编号。'), { code: 'SUBJECT_SUBMISSION_MISMATCH' });
+}
+const subjectClaim = snapshot => snapshot && typeof snapshot === 'object' && (Object.hasOwn(snapshot, 'subjectReference') || Object.hasOwn(snapshot, 'subjectVersionId') ||
+  ['referenceAssets', 'referenceBindings'].some(field => Array.isArray(snapshot[field]) && snapshot[field].some(item => item?.role === 'subject_reference')));
+// Read data may show that proof is required, but must never reconstruct that
+// proof or change the exact intent saved before the original request.
+export const isSubjectRetryPending = (entry, jobs = []) => entry.operation === 'job.retry' && (entry.subjectRetry === true ||
+  Object.hasOwn(entry, 'expectedSubjectReference') || Object.hasOwn(entry, 'expectedRetrySnapshot') || jobs.some(job => job?.projectId === entry.projectId &&
+    (job.id === entry.input?.jobId || job.requestId === entry.input?.requestId && job.retryOfJobId === entry.input?.jobId) && subjectClaim(job.snapshot)));
 // Tasks recovery is read-only until the original receipt is found and matched.
 // An obsolete callback must never create a replacement receipt or change owners.
 export function prepareRequestReplay(entry) {
@@ -56,6 +81,22 @@ export function reconcilePending(projectId, data) {
   const jobIds = new Set((data.jobs || []).map(record => record.requestId));
   const exportIds = new Set((data.exports || []).map(record => record.requestId));
   for (const entry of pendingForProject(projectId)) {
+    if (isSubjectRetryPending(entry, data.jobs || [])) {
+      const matches = (data.jobs || []).filter(record => record?.requestId === entry.input.requestId);
+      if (entry.subjectRetry === true && matches.length === 1 && isSubjectReference(entry.expectedSubjectReference) && entry.expectedRetrySnapshot &&
+        isSubjectGenerationRetryResponse(entry.input, matches[0], { projectId, subjectReference: entry.expectedSubjectReference, snapshot: entry.expectedRetrySnapshot }))
+        clearPending(projectId, entry.key);
+      continue;
+    }
+    if (entry.operation === 'generation.submit' && Object.hasOwn(entry.input ?? {}, 'subjectVersionId')) {
+      const matches = (data.jobs || []).filter(record => record?.requestId === entry.input.requestId);
+      // A coincident ID, partial record, changed source or duplicate observation
+      // cannot clear the original key. Never infer its pin from current heads.
+      if (matches.length === 1 && isSubjectReference(entry.expectedSubjectReference) &&
+        isSubjectGenerationResponse(entry.operation, entry.input, matches[0], { projectId, subjectReference: entry.expectedSubjectReference }))
+        clearPending(projectId, entry.key);
+      continue;
+    }
     // Request IDs are scoped by operation on the server. A coincident job ID
     // cannot establish the outcome of a reference or timeline mutation.
     if (entry.operation === 'timeline.render') {

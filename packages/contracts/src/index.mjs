@@ -16,9 +16,11 @@ import {comfyRemoteSchemas} from './comfy-images.mjs';
 export * from './comfy-images.mjs';
 import {getCapabilityProfile,getGenerationProfileRegion,INPUT_PROFILE_VERSION} from './generation-input-profiles.mjs';
 import {getGenerationProfileIssue} from './generation-input-validation.mjs';
-export {INPUT_PROFILE_VERSION,PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION,ARCHIVED_CAPABILITY_PROFILES,getLegacyCapabilityProfile,GENERATION_INPUT_ROLES,INPUT_ROLES,GENERATION_INPUT_PROFILES,CAPABILITY_PROFILES,getCapabilityProfile,getGenerationProfileRegion} from './generation-input-profiles.mjs';
+export {INPUT_PROFILE_VERSION,PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION,SUBJECT_REFERENCE_PROFILE_VERSION,ARCHIVED_CAPABILITY_PROFILES,getLegacyCapabilityProfile,GENERATION_INPUT_ROLES,INPUT_ROLES,GENERATION_INPUT_PROFILES,CAPABILITY_PROFILES,getCapabilityProfile,getGenerationProfileRegion} from './generation-input-profiles.mjs';
 export {validateGenerationInput,buildAdapterPlan,encodedImageDataUriBytes,evaluateCapabilityLifecycle,getGenerationProfileIssue} from './generation-input-validation.mjs';
 export {getShotGenerationReferenceSelection} from './video-frame-selection.mjs';
+import {getSubjectGenerationSnapshotIssue} from './subject-generation.mjs';
+export * from './subject-generation.mjs';
 import {subjectSchemas} from './subjects.mjs';
 export {SUBJECT_KINDS,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,subjectSchemas,subjectResponseSchema,subjectVersionResponseSchema,subjectBindingResponseSchema,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from './subjects.mjs';
 import {inspectionSchemas} from './inspection.mjs';
@@ -83,7 +85,7 @@ export const schemas={
 'reference.attach':z.object({projectId:id,sourceNodeId:id,targetShotId:id,expectedSourceRevision:z.number().int().positive(),expectedShotRevision:z.number().int().positive(),requestId:key,role:z.literal('first_frame')}).strict(),
 'reference.detach':z.object({projectId:id,edgeId:id,expectedShotRevision:z.number().int().positive(),requestId:key}).strict(),
 'provider.list':z.object({}).strict(),
-'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu']),model:z.string().max(100).optional(),parameters:params.optional()}).strict(),
+'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu']),model:z.string().max(100).optional(),parameters:params.optional(),subjectVersionId:id.optional().describe('Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined.')}).strict(),
 'job.get':z.object({jobId:id}).strict(),
 'job.list':z.object({projectId:id}).strict(),
 'job.retry':z.object({jobId:id,requestId:key}).strict(),
@@ -209,6 +211,8 @@ export function getGenerationIssue(snapshot, capabilities) {
  const dataRecord=value=>value&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value))&&!Object.getOwnPropertySymbols(value).length&&Object.values(Object.getOwnPropertyDescriptors(value)).every(d=>!d.get&&!d.set&&d.enumerable);
  const denseArray=value=>{if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>8)return false;const descriptors=Object.getOwnPropertyDescriptors(value);return Reflect.ownKeys(descriptors).length===value.length+1&&Reflect.ownKeys(descriptors).every(key=>key==='length'||typeof key==='string'&&/^(0|[1-9]\d*)$/.test(key)&&Number(key)<value.length&&!descriptors[key].get&&!descriptors[key].set&&descriptors[key].enumerable);};
  if(!dataRecord(snapshot))return issue('INVALID_INPUT','生成输入必须为对象');
+ const subjectIssue=getSubjectGenerationSnapshotIssue(snapshot);
+ if(subjectIssue)return issue(subjectIssue.code,subjectIssue.message);
  // Keep the same legacy first-error pass as authoritative service validation.
  // Profile-only restrictions must not change established error precedence.
  const {inputProfiles:ignoredProfiles,...legacyCapabilities}=capabilities||{};
@@ -225,7 +229,10 @@ export function getGenerationIssue(snapshot, capabilities) {
  const activeProfile=getCapabilityProfile(capabilities?.id,model.id,getGenerationProfileRegion(capabilities?.id,capabilities));
  // A larger new pair envelope cannot relax the legacy first-only count pass.
  // In particular an old second reference never becomes an implicit tail.
- const constraints=activeProfile?.inputs.roles.last_frame.implemented&&!typedTail?{...declaredConstraints,max:Math.min(declaredConstraints.max,1)}:declaredConstraints;
+ const subjectImage=Object.hasOwn(snapshot,'subjectReference')?activeProfile?.inputs.roles.subject_reference:null;
+ if(Object.hasOwn(snapshot,'subjectReference')&&!subjectImage?.implemented)return issue('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现主体参考生成');
+ const subjectConstraints=subjectImage?.implemented?{min:1,max:1,mimeTypes:subjectImage.mimeTypes,...(subjectImage.dimensions?{minDimension:subjectImage.dimensions.min,maxDimension:subjectImage.dimensions.max,matchAspectRatio:subjectImage.dimensions.matchAspectRatio}:{})}:null;
+ const constraints=subjectConstraints??(activeProfile?.inputs.roles.last_frame.implemented&&!typedTail?{...declaredConstraints,max:Math.min(declaredConstraints.max,1)}:declaredConstraints);
  if(count<constraints.min||count>constraints.max)return issue('UNSUPPORTED_INPUT',`此模型支持 ${constraints.min}–${constraints.max} 张参考图片`);
  if(refs.some(asset=>!dataRecord(asset)))return issue('UNSUPPORTED_INPUT','参考素材必须为普通数据对象');
  if(refs.some(asset=>!asset||typeof asset.mimeType!=='string'||!asset.mimeType.startsWith('image/')))return issue('UNSUPPORTED_INPUT','首帧参考素材必须为图片');

@@ -1,9 +1,10 @@
-import { findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
+import { findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
+import { ARK_SUBJECT_MODEL, subjectVideoConflictIssue, subjectVideoReferenceIssue, subjectVideoSnapshot } from './subject-video.js';
 
 export const providerStatus = provider => provider?.status || (!provider?.configured ? 'not_configured' : !provider?.enabled ? 'disabled' : 'available');
 export const providerStatusLabel = provider => ({ available: '可用', disabled: '未启用', not_configured: '配置未完成' }[providerStatus(provider)] || '不可用');
 export const providerAvailabilityIssue = provider => !provider ? '未找到生成服务商，请刷新工作台后重试。' : providerStatus(provider) === 'available' ? '' : `${provider.name || provider.id}：${providerStatusLabel(provider)}。请按下方服务器配置说明完成设置后重启服务。`;
-export const inputModeLabel = mode => ({ text: '文生视频', image: '图生视频' }[mode] || mode);
+export const inputModeLabel = mode => ({ text: '文生视频', image: '图生视频', subject: '主体图片视频' }[mode] || mode);
 export function providerModels(provider) {
   if (provider?.modelCapabilities?.length) return provider.modelCapabilities;
   return (provider?.models || []).map(model => typeof model === 'string' ? { id: model, name: model } : { ...model, id: model.id || model.name });
@@ -27,7 +28,7 @@ export function generationProfileSelection(provider, model) {
     const rule = profile.inputs?.roles?.[role];
     return typeof rule?.implemented === 'boolean' && countKnown(rule.min) && countKnown(rule.max) && rule.min <= rule.max && (!rule.implemented || Array.isArray(rule.mimeTypes) && rule.mimeTypes.length > 0 && Number.isSafeInteger(rule.maxBytes) && rule.maxBytes > 0);
   };
-  if (![INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION].includes(profile.profileVersion) || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
+  if (![INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION].includes(profile.profileVersion) || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
   const date = provider.profileEvaluationDate;
   const evaluations = Array.isArray(provider.inputProfileEvaluations) ? provider.inputProfileEvaluations.filter(item => item?.profileId === profile.profileId) : [];
   const evaluation = evaluations[0];
@@ -35,14 +36,22 @@ export function generationProfileSelection(provider, model) {
   return { state: evaluation.ok ? 'ready' : 'blocked', message: evaluation.issues[0]?.message || '', region, profile, evaluation, evaluatedAsOf: date };
 }
 
-// Provider capabilities are read-only metadata. Only the scalar UI choices belong
+export function subjectVideoProfileIssue(provider, model) {
+  if (provider?.id !== 'mock' && !(provider?.id === 'ark' && model === ARK_SUBJECT_MODEL)) return '主体图片视频仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628，不会自动切换其他模型或服务商。';
+  const selection = generationProfileSelection(provider, model);
+  if (selection.state !== 'ready') return selection.message || '主体输入配置尚未确认，请刷新服务商信息。';
+  if (selection.profile.profileVersion !== SUBJECT_REFERENCE_PROFILE_VERSION || !selection.profile.inputs.roles.subject_reference?.implemented || !selection.profile.inputs.combinations?.some(roles => roles.length === 1 && roles[0] === 'subject_reference')) return '当前精确模型与区域尚未开放单张主体图片输入，请核对服务器配置。';
+  return providerAvailabilityIssue(provider);
+}
+
+// Provider capabilities are read-only metadata. Explicit session UI choices belong
 // in this session map; none are merged into a shot's persisted parameters.
 export function generationSelection(providers, options = {}, shot = {}) {
   const provider = providers.find(item => item.id === options.providerId) || (!options.providerId ? providers.find(item => item.mock && providerStatus(item) === 'available') || providers[0] : undefined);
   const models = providerModels(provider);
   const model = options.model || models[0]?.id || '';
   const capabilities = provider ? findModelCapabilities(provider, model) : undefined;
-  const inputMode = shot.referenceAssetIds?.length || shot.lastFrameAssetId ? 'image' : options.inputMode || (capabilities?.inputModes?.includes('text') ? 'text' : 'image');
+  const inputMode = options.inputMode === 'subject' ? 'subject' : shot.referenceAssetIds?.length || shot.lastFrameAssetId ? 'image' : options.inputMode || (capabilities?.inputModes?.includes('text') ? 'text' : 'image');
   return { provider, model, capabilities, inputMode, scenario: options.scenario || 'success' };
 }
 
@@ -72,7 +81,8 @@ export function generationIssueMessage(issue) {
 
 // Frozen job IDs already contain the complete manifest. In particular, never
 // expand a historical job from today's shot tail or infer roles by position.
-export function generationReferences(shot, { frozen = false } = {}) {
+export function generationReferences(shot, { frozen = false, subjectReference } = {}) {
+  if (!frozen && subjectReference) return { ok: true, issues: [], references: [{ assetId: subjectReference.subjectVersion?.assetId, role: 'subject_reference' }] };
   if (!frozen) return getShotGenerationReferenceSelection(shot);
   const ids = shot.referenceAssetIds || [];
   if (!Array.isArray(ids) || ids.length > 8 || Object.keys(ids).length !== ids.length || ids.some(id => typeof id !== 'string')) return { ok: false, issues: [{ code: 'INVALID_REFERENCES', message: '冻结参考素材清单无效，不能自动修复或缩短。' }], references: [] };
@@ -99,8 +109,20 @@ export function generationReferenceIdentity(shot, assets, options = {}) {
   }));
 }
 
-export function generationInputIssue(shot, provider, model, assets, inputMode, { frozen = false } = {}) {
+export function generationInputIssue(shot, provider, model, assets, inputMode, { frozen = false, subjectReference, boundReference = false, savedShot } = {}) {
   if (!provider) return '未找到生成服务商，请刷新工作台后重试。';
+  if (!frozen && inputMode === 'subject') {
+    const issue = subjectVideoConflictIssue(shot, { savedShot, boundReference }) || subjectVideoProfileIssue(provider, model) || subjectVideoReferenceIssue(subjectReference, assets, shot.projectId);
+    if (issue) return issue;
+    const selected = generationProfileSelection(provider, model);
+    const snapshot = { ...subjectVideoSnapshot(shot, subjectReference, assets), providerId: provider.id, model,
+      inputProfileId: selected.profile.profileId, inputProfileVersion: selected.profile.profileVersion, providerRegion: selected.region };
+    return generationIssueMessage(getGenerationIssue(snapshot, provider));
+  }
+  if (frozen && shot.subjectReference) {
+    const issue = subjectVideoProfileIssue(provider, model) || subjectVideoReferenceIssue(shot.subjectReference, assets, shot.projectId);
+    if (issue) return issue;
+  }
   const selection = generationReferences(shot, { frozen });
   if (!selection.ok) return generationIssueMessage(selection.issues[0]);
   const references = selection.references.map(({ assetId, role }, index) => {

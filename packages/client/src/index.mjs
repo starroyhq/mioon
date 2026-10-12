@@ -10,6 +10,7 @@ import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,is
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
 import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutationResponse,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '@mioon/contracts';
 import {isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
+import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
@@ -181,6 +182,11 @@ export function createClient(clientOptions = {}) {
     const parsed = parse(operation, input);
     const body = {operation, input: parsed};
     const result = (await request('/api/rpc', {body, ...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : {}), ...options})).data;
+    if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (operation === 'job.retry' && result?.snapshot && (Object.hasOwn(result.snapshot, 'subjectReference') || Object.hasOwn(result.snapshot, 'subjectVersionId') ||
+      [result.snapshot.referenceBindings,result.snapshot.referenceAssets].some(items => Array.isArray(items) && items.some(item => item?.role === 'subject_reference'))) && !isSubjectGenerationRetryResponse(parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation retry acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (LOCAL_MUTATION_OPERATIONS.includes(operation) && !isLocalMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (TIMELINE_MUTATION_OPERATIONS.includes(operation) && !isTimelineMutationResponse(operation, parsed, result))

@@ -659,7 +659,10 @@ fifteen at that stage, under `subject:mutation`; the later format operation make
 UI tasks. Local metadata is ordinary SQLite, not vault-encrypted: keep secrets out
 of names and inputs. This is local planning without provider calls, paid work,
 Blender or built-in Agent catalog/context changes. Actual `first_frame` continues
-through `reference attach`; last-frame/motion support is future work.
+through `reference attach`. Later [saved first/last frames](VIDEO-FRAME-PAIRS.md)
+and [explicit subject-version input](SUBJECT-VIDEO-INPUTS.md) are separate
+generation choices, never implicit planning-binding uploads. Motion remains
+future work.
 
 ## Local source-frame extraction
 
@@ -781,3 +784,20 @@ shot tail. An unknown submission must be reconciled without a new POST. Existing
 manual shot mutation recovery retains its session-only pending receipt limitation.
 See [VIDEO-FRAME-PAIRS.md](VIDEO-FRAME-PAIRS.md); Mock does not depict the references
 and this documentation does not authorize a paid call.
+## Explicit subject-version video submission
+
+Discover `generation.submit` and `provider.list`, then read the chosen project's
+`subject.list` / `subject.version.list`. Select a fixed version UUID explicitly;
+neither the head nor planning bindings are inferred. Save the exact request JSON
+and stable key before sending. Example for local workflow testing:
+
+```sh
+mioon generation submit --input '{"shotId":"SHOT_UUID","expectedRevision":1,"requestId":"subject-video-0001","providerId":"mock","subjectVersionId":"SUBJECT_VERSION_UUID"}'
+```
+
+The shot must have no saved first/last images or first-frame connection. These
+are not removed by submission. Inspect the returned full frozen subject source;
+on uncertainty reuse only the exact original key/input, never reselect a newer
+head. `job.retry` of a confirmed failure retains the old snapshot. Mock does not
+render reference likeness. Ark is a separately authorized paid action and direct
+real-human-face uploads are unsupported. See [the scope and validation status](SUBJECT-VIDEO-INPUTS.md).

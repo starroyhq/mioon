@@ -3,6 +3,7 @@ import {throwIfMediaAborted} from '../media-processes.mjs';
 import {run} from '../media-runtime.mjs';
 import { mkdir, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 
 const ALIASES = { rejected_before_accept: 'reject', terminal_failure: 'failure', poll_timeout_then_recover: 'timeout' };
 const SCENARIOS = new Set(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'accepted_then_response_lost', ...Object.keys(ALIASES)]);
@@ -66,14 +67,20 @@ export function createMockProvider({ db, root, now = Date.now }) {
   function validate(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') throw error('INVALID_SNAPSHOT', 'A generation snapshot is required.');
     if ((snapshot.model ?? 'mock-motion-v1') !== 'mock-motion-v1') throw error('UNSUPPORTED_MODEL', 'Only the simulated motion model is implemented.');
+    const subjectIssue=getSubjectGenerationSnapshotIssue(snapshot,{requireProfilePin:true});
+    if(subjectIssue)throw error(subjectIssue.code,subjectIssue.message);
+    const subject=Object.hasOwn(snapshot,'subjectReference');
     const references=snapshot.referenceAssets??[];
     if(!Array.isArray(references)||references.length>2)throw error('INVALID_REFERENCE_COUNT','Mock supports text, one first frame, or an explicit frame pair.');
+    if(snapshot.inputProfileVersion===SUBJECT_REFERENCE_PROFILE_VERSION)for(const asset of references){
+      if(!asset||!['first_frame','last_frame','subject_reference'].includes(asset.role))throw error('INVALID_REFERENCE_MANIFEST','Version 3 references require explicit supported roles.');
+    }
     if(snapshot.lastFrameAssetId!=null&&references.length!==2)throw error('INVALID_REFERENCE_MANIFEST','A declared last frame requires a complete explicit frame pair.');
     if(snapshot.referenceAssetIds!==undefined&&(!Array.isArray(snapshot.referenceAssetIds)||snapshot.referenceAssetIds.length!==references.length||snapshot.referenceAssetIds.some((id,index)=>id!==references[index]?.id)))throw error('INVALID_REFERENCE_MANIFEST','Reference identities differ from the explicit frame manifest.');
     if(references.length===2&&(references[0]?.role!=='first_frame'||references[1]?.role!=='last_frame'||!references[0].id||!references[1].id||references[0].id===references[1].id))throw error('INVALID_REFERENCE_MANIFEST','Mock frame pairs require distinct assets and explicit first_frame/last_frame roles.');
     if(references.length===2&&Object.hasOwn(snapshot,'lastFrameAssetId')&&snapshot.lastFrameAssetId!==references[1].id)throw error('INVALID_REFERENCE_MANIFEST','Last-frame selection differs from the explicit frame manifest.');
     if(snapshot.referenceBindings!==undefined){const bindings=snapshot.referenceBindings;if(!Array.isArray(bindings)||bindings.length!==references.length||Object.keys(bindings).length!==bindings.length||bindings.some((binding,index)=>!binding||Object.keys(binding).some(key=>!['role','assetId','sha256'].includes(key))||binding.assetId!==references[index].id||binding.sha256!==references[index].sha256||binding.role!==(references[index].role??'first_frame')))throw error('INVALID_REFERENCE_MANIFEST','Explicit frame bindings differ from the frozen image manifest.');}
-    if(references.length===1&&references[0]?.role!==undefined&&references[0].role!=='first_frame')throw error(['first_frame','last_frame','reference_image','subject_reference','style_reference'].includes(references[0].role)?'UNSUPPORTED_INPUT_ROLE':'UNKNOWN_INPUT_ROLE','A last frame requires a first frame; other reference roles are unsupported.');
+    if(!subject&&references.length===1&&references[0]?.role!==undefined&&references[0].role!=='first_frame')throw error(['first_frame','last_frame','reference_image','subject_reference','style_reference'].includes(references[0].role)?'UNSUPPORTED_INPUT_ROLE':'UNKNOWN_INPUT_ROLE','A last frame requires a first frame; other reference roles are unsupported.');
     const requestedScenario = snapshot.parameters?.scenario ?? 'success';
     if (!SCENARIOS.has(requestedScenario)) throw error('INVALID_SCENARIO', 'Unknown mock scenario.');
     if (snapshot.aspectRatio !== '9:16' || ![2, 4, 8].includes(snapshot.duration)) throw error('UNSUPPORTED_CAPABILITY', 'Mock supports portrait 9:16 and 2, 4, or 8 seconds.');

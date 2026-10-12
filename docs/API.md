@@ -14,7 +14,7 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these same schemas through tools/list.
 
-`provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. Existing submit/retry schemas and historical replay are unchanged. See [model input limits](GENERATION-INPUT-LIMITS.md).
+`provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. That original discovery increment left submit/retry schemas and historical replay unchanged; the later explicit subject-video input adds an optional `subjectVersionId` to submit, with historical replay preserved. See [model input limits](GENERATION-INPUT-LIMITS.md).
 
 ## Local source-frame extraction
 
@@ -942,8 +942,11 @@ vault-encrypted and must contain no secrets.
 
 No shot revision, first-frame reference, timeline, frozen generation snapshot,
 provider input, built-in Agent catalog/context or paid generation changes.
-`reference.attach` remains the separate actual `first_frame` path; last-frame
-and motion support are future work. See [subject scope and recovery](SUBJECT-LIBRARY.md).
+`reference.attach` remains the separate actual `first_frame` path. The later
+[saved first/last frames](VIDEO-FRAME-PAIRS.md) and
+[explicit subject-version input](SUBJECT-VIDEO-INPUTS.md) are separate generation
+choices; they do not automatically consume planning bindings. Motion remains
+future work. See [subject scope and recovery](SUBJECT-LIBRARY.md).
 
 
 ## Timeline output presets (schema 21)
@@ -1008,8 +1011,8 @@ remain first-frame-only. Detaching a first frame does not erase the saved tail.
 Saving a tail-only draft is allowed, but generation requires one distinct first
 image. Only current Ark Seedance 2.5 and Mock profiles accept this paired mode;
 subject/style bindings are not sent. Other adapters reject the complete unsupported
-selection rather than dropping the tail. The original `generation.submit` shape is
-unchanged: shot revision pins the saved choices; each accepted job freezes both
+selection rather than dropping the tail. For this saved-frame mode, shot revision
+pins the saved choices; each accepted job freezes both
 roles, identities, hashes and metadata. Old job retry uses only its old snapshot.
 
 Use the existing stable shot mutation request key and `expectedRevision`. Exact
@@ -1017,3 +1020,21 @@ replay returns its original shot response. No new operation, migration, edit-tas
 namespace or built-in Agent write privilege is added. Manual shot-edit pending
 receipt recovery remains session-scoped; this does not add a cross-restart pending
 edit ledger or undo/history for shot fields. Successful saved choices persist.
+
+## Explicit one-version subject-image video input
+
+`generation.submit` additionally accepts optional `subjectVersionId: UUID` for
+one immutable same-project `character`, `product` or `location` image version.
+It is a per-submit choice, not a shot patch. Omission preserves the legacy path;
+null, arrays and caller-supplied asset/hash metadata reject. Planning subject/style
+bindings never automatically enter the request. Any saved first/last image or
+first-frame connection conflicts; clearing it requires a separate explicit save.
+
+Only current Ark Seedance 2.5 and Mock v3 profiles support this role. The server
+freezes complete `snapshot.subjectReference` plus the exact one-image manifest.
+Same-key changed version conflicts; failed-job retry keeps its old version, even
+after head advances. Malformed acknowledgements do not settle new subject pending
+requests. The renderer's full reviewed pin is session storage, not a new durable
+intent ledger. No operation, migration or Agent authority is added. See
+[SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md) for implementation status, exact
+wire mapping, real-face restrictions, immutable provenance and acceptance.

@@ -1,12 +1,13 @@
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
-import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue} from '@mioon/contracts';
+import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {canonicalImageInput, IMAGE_EDIT_LIMITS} from '../../contracts/src/images.mjs';
 import {describeImageEditSource} from './images/edit-source.mjs';
 import {validateImageTaskReview} from './images/reviews.mjs';
 import {createImageOwnershipReader} from './image-ownership.mjs';
 import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownership.mjs';
+import {createSubjectOwnershipReader} from './subject-ownership.mjs';
 
 // This boundary is deliberately independent of legacy get/list/ensure helpers.
 // In particular, reading an absent timeline must never initialize one.
@@ -78,6 +79,10 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
     const consume=text=>{if(++readRecords>INSPECTION_LIMITS.maxReadRecords||(readBytes+=Buffer.byteLength(text))>INSPECTION_LIMITS.maxReadBytes)exhausted();};
     const imageReader=createImageOwnershipReader(db,projectId,{fail:unavailable,consume,validateSource:validateImageTask});
     const frameReader=createFrameOwnershipReader(db,projectId,{fail:unavailable,consume});
+    const subjectReader=createSubjectOwnershipReader(db,projectId,{fail:unavailable,notFound:unavailable,consume,resolveAsset:assetId=>{
+      const asset=validateAsset(get('assets',id(assetId)));
+      return {asset,legacySource:assetVersions.get(assetId),imageSource:imageSources.get(assetId),frameSource:frameSources.get(assetId)};
+    }});
     // CASE guards are evaluated by SQLite before data crosses into JavaScript.
     // Oversized/malformed rows are errors, never silently skipped from a page.
     const identity=column=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
@@ -120,6 +125,10 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
     function snapshotLinks(snapshot, shotId) {
       if (snapshot === undefined) return;
       object(snapshot);
+      if(getSubjectGenerationSnapshotIssue(snapshot,{projectId,requireProfilePin:true}))unavailable();
+      if(Object.hasOwn(snapshot,'subjectReference')){
+        subjectReader.validateReference(snapshot.subjectReference);
+      }
       if (Object.hasOwn(snapshot, 'shotId') && snapshot.shotId !== shotId) unavailable();
       if (Object.hasOwn(snapshot, 'projectId') && snapshot.projectId !== projectId) unavailable();
       if (Object.hasOwn(snapshot, 'referenceAssetIds')) referenceAssets(snapshot);
@@ -301,6 +310,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
     const project = get('projects', projectId);
     return {project: () => ({id: project.id, name: string(project.name, 150, 1), description: string(project.description, 2000), revision: number(project.revision, 1, Number.MAX_SAFE_INTEGER, true),
       counts: Object.fromEntries(countTables.map(table => [table, number(db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE projectId=?`).get(projectId).count, 0, Number.MAX_SAFE_INTEGER, true)]))}),
+      subjectAsset:subjectReader.asset,subjectOwner:subjectReader.owner,subjectVersion:subjectReader.version,subjectReference:subjectReader.reference,validateSubjectReference:subjectReader.validateReference,
       assets: args => page('assets', 'asset.inspect', args), shots: args => page('shots', 'shot.inspect', args), timeline: timelineDto, ownedAsset: assetId=>validateAsset(get('assets',id(assetId))),clipSource,
       ownedTimeline:()=>{const timeline=ownedTimeline();if(timeline)timelineDto(timeline);return timeline;},validateTimeline:timelineDto,version:validateVersion,
       imageVersion:(versionId,assetId)=>{const value=imageReader.version(id(versionId));const asset=validateAsset(get('assets',id(assetId??value.assetId)));if(value.assetId!==asset.id)unavailable();return imageReader.version(versionId,asset);},
@@ -314,7 +324,7 @@ function inspectionReader(db,projectId,{encodeCursor,decodeCursor}={}) {
 // unscoped raw reader; all paths retain the same bounded project-owner gates.
 export function createOwnedMediaGraphReader(db,projectId){
  const read=inspectionReader(db,projectId);
- return {asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,imageTask:read.imageTask,legacySource:read.legacySource,frameTask:read.frameTask,frameSource:read.frameSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
+ return {subjectAsset:read.subjectAsset,subjectOwner:read.subjectOwner,subjectVersion:read.subjectVersion,subjectReference:read.subjectReference,validateSubjectReference:read.validateSubjectReference,asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,imageTask:read.imageTask,legacySource:read.legacySource,frameTask:read.frameTask,frameSource:read.frameSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
 }
 
 export function createInspectionServices(store) {

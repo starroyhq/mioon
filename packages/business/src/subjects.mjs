@@ -2,7 +2,7 @@ import {randomUUID,randomBytes,createHmac,timingSafeEqual} from 'node:crypto';
 import {AppError,subjectSchemas,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,SUBJECT_LIMITS} from '@mioon/contracts';
 import {createMutationReplay} from './mutation-replay.mjs';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
-import {INSPECTION_ROW_LIMITS,INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
+import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 
 const missing=()=>{throw new AppError('NOT_FOUND','找不到记录',404);};
 const invalid=()=>{throw new AppError('INVALID_SUBJECT_RECORD','主体或关联状态不一致，请先检查项目',409);};
@@ -10,8 +10,6 @@ const badCursor=()=>{throw new AppError('INVALID_CURSOR','主体分页游标无�
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const decode=text=>{let value;try{value=JSON.parse(text);}catch{invalid();}if(!value||typeof value!=='object'||Array.isArray(value))invalid();return value;};
 const columns=(names)=>names.split(',').map(name=>['revision','number'].includes(name)?`CASE WHEN typeof(${name})='integer' AND ${name} BETWEEN 1 AND 9007199254740991 THEN ${name} END AS ${name}`:`CASE WHEN length(CAST(${name} AS BLOB))<=${name==='name'?480:name==='data'?4096:64} THEN ${name} END AS ${name}`).join(',');
-const subjectColumns=columns('id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt');
-const versionColumns=columns('id,projectId,subjectId,number,assetId,data');
 const bindingColumns=columns('id,projectId,shotId,subjectId,role,revision,subjectVersionId,reviewedHeadVersionId,createdAt,updatedAt');
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const conflict=(current,expectedRevision)=>{if(current.revision!==expectedRevision)throw new AppError('REVISION_CONFLICT','主体或绑定已有新版本，请重新读取后再修改',409,{entityId:current.id,expectedRevision,currentRevision:current.revision,current});};
@@ -31,34 +29,20 @@ export function createSubjectRecoveryBoundary(db,input){
  }
  function project(){return legacy('projects',projectId);}
  function shot(id){return legacy('shots',id);}
- function asset(id){
-  legacy('assets',id);
-  let value;try{graph??=createOwnedMediaGraphReader(db,projectId);value=graph.asset(id);}catch(error){if(error.code==='INSPECTION_BUDGET_EXCEEDED')throw error;invalid();}
-  const relative=value.relativePath;
-  if(typeof relative!=='string'||relative.length>4096||!relative.startsWith('media/')||relative.includes('\\')||relative.includes('\0')||relative.split('/').some(part=>!part||part==='.'||part==='..'))invalid();
-  if(!['image/png','image/jpeg','image/webp'].includes(value.mimeType))throw new AppError('SUBJECT_ASSET_UNSUPPORTED','主体版本需要托管 PNG、JPEG 或 WebP 图片',400);
-  if(!/^[a-f0-9]{64}$/.test(value.sha256??'')||![value.width,value.height].every(n=>Number.isSafeInteger(n)&&n>0&&n<=100000)||!['user-import','generated','synthetic-mock','export','extracted-frame'].includes(value.provenance))invalid();
-  const sources=db.prepare(`SELECT ${columns('id')} FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(id);
-  if(sources.length>1)invalid();
-  let source=null;if(sources.length){try{source=graph.version(sources[0].id,undefined,id);}catch{invalid();}}
-  let imageSource,frameSource;try{imageSource=graph.imageSource(id);frameSource=graph.frameSource(id);}catch(error){if(error.code==='INSPECTION_BUDGET_EXCEEDED')throw error;invalid();}
-  return {assetId:value.id,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:{kind:value.provenance,versionId:source?.id??null,shotId:source?.shotId??null,jobId:source?.jobId??null,...(imageSource?{imageSource}:{}),...(frameSource?{frameSource}:{})}};
+ function withGraph(read){
+  try{graph??=createOwnedMediaGraphReader(db,projectId);return read(graph);}catch(error){if(['INSPECTION_BUDGET_EXCEEDED','SUBJECT_ASSET_UNSUPPORTED'].includes(error.code))throw error;invalid();}
  }
+ function asset(id){legacy('assets',id);return withGraph(read=>read.subjectAsset(id));}
  function subjectRow(id){
   if(subjects.has(id))return subjects.get(id);
-  const row=db.prepare(`SELECT ${subjectColumns} FROM subjects WHERE id=? AND projectId=?`).get(id,projectId);if(!row)missing();
-  if(!uuid(row.id)||row.id!==id||row.projectId!==projectId||!uuid(row.headVersionId)||!Number.isSafeInteger(row.revision)||row.revision<1)invalid();
-  subjects.set(id,row);return row;
+  if(!db.prepare('SELECT 1 FROM subjects WHERE id=? AND projectId=?').get(id,projectId))missing();
+  const row=withGraph(read=>read.subjectOwner(id));subjects.set(id,row);return row;
  }
  function version(id,subjectId){
   if(versions.has(id)){const saved=versions.get(id);if(subjectId&&saved.subjectId!==subjectId)missing();return saved;}
-  const row=db.prepare(`SELECT ${versionColumns} FROM subject_versions WHERE id=? AND projectId=?`).get(id,projectId);if(!row)missing();
-  if(subjectId&&row.subjectId!==subjectId)missing();const owner=subjectRow(row.subjectId);
-  const value=decode(row.data);
-  if(!isSubjectVersionResponse(value)||value.id!==row.id||value.projectId!==row.projectId||value.subjectId!==row.subjectId||value.number!==row.number||value.assetId!==row.assetId||value.number>owner.revision)invalid();
-  const frozen=asset(value.assetId);
-  if(!equal(frozen,{assetId:value.assetId,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:value.provenance}))invalid();
-  versions.set(id,value);return value;
+  const row=db.prepare(`SELECT ${columns('subjectId,assetId')} FROM subject_versions WHERE id=? AND projectId=?`).get(id,projectId);if(!row)missing();
+  if(subjectId&&row.subjectId!==subjectId)missing();subjectRow(row.subjectId);legacy('assets',row.assetId);
+  const value=withGraph(read=>read.subjectVersion(id,subjectId));versions.set(id,value);return value;
  }
  function subject(id){
   const row=subjectRow(id),value={...row,headVersion:version(row.headVersionId,id)};
@@ -102,7 +86,7 @@ export function createSubjectRecoveryBoundary(db,input){
   }
   return response;
  }
- return {context,replay,project,shot,asset,subject,version,binding,bindingRow};
+ return {context,replay,project,shot,asset,subject,subjectRow,version,binding,bindingRow};
 }
 
 export function createSubjectServices(store,{canonical,now}){
@@ -125,7 +109,7 @@ export function createSubjectServices(store,{canonical,now}){
     rows=db.prepare(`SELECT ${columns('id')} FROM subjects WHERE projectId=? AND id>? ORDER BY id LIMIT ?`).all(input.projectId,start,limit+1);
     items=rows.slice(0,limit).map(row=>boundary.subject(row.id));
    }else if(operation==='subject.version.list'){
-    boundary.subject(input.subjectId);
+    boundary.subjectRow(input.subjectId);
     rows=db.prepare(`SELECT ${columns('id,number')} FROM subject_versions WHERE projectId=? AND subjectId=? AND number>? ORDER BY number LIMIT ?`).all(input.projectId,input.subjectId,start,limit+1);
     items=rows.slice(0,limit).map(row=>boundary.version(row.id,input.subjectId));
    }else{

@@ -117,6 +117,9 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
      const asset=get('assets',ref.id);
      if(!asset||asset.projectId!==j.projectId||asset.sha256!==ref.sha256)throw Error('Reference snapshot no longer matches managed asset');
      const file=await safePath(root,asset.relativePath);checkpoint(signal);
+     // A source owner can change during an awaited path read, before an
+     // adapter's own byte reads and final POST fence begin.
+     services.validateGenerationDispatch(j);
      referenceAssets.push({...ref,path:file});
     }
     checkpoint(signal);

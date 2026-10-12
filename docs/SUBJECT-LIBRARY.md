@@ -22,7 +22,11 @@ imports, byte copies, file probes, subprocesses, paid calls or Blender dependenc
 Subject names and kinds cannot be edited, and there is no subject/version delete.
 Existing `reference.attach` / `reference.detach` still govern the actual
 `first_frame` input. Subject bindings support only `subject` and `style`;
-`last_frame`, motion references and richer provider-role adapters are future work.
+The separate saved last-frame workflow is described in
+[VIDEO-FRAME-PAIRS.md](VIDEO-FRAME-PAIRS.md). The explicit per-submit
+[subject-video candidate](SUBJECT-VIDEO-INPUTS.md) selects one immutable version;
+it does not make these planning bindings automatic provider inputs. Motion and
+style-generation roles remain future work.
 Built-in Agent tools, context, inspection DTOs and approval scope do not expand.
 
 Existing image assets and result lineage stay authoritative. Original media,

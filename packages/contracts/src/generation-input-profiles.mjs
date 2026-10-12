@@ -7,6 +7,7 @@
 // independently; archived jobs must never be reinterpreted using active policy.
 export const PROFILE_VERSION = 'mioon-input-profiles/1';
 export const FRAME_PAIR_PROFILE_VERSION = 'mioon-input-profiles/2';
+export const SUBJECT_REFERENCE_PROFILE_VERSION = 'mioon-input-profiles/3';
 export const REVIEWED_ON = '2026-10-10';
 export const INPUT_ROLES = Object.freeze(['first_frame', 'last_frame', 'subject_reference', 'style_reference', 'motion_reference']);
 export const MOCK_SCENARIOS = Object.freeze(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure']);
@@ -100,9 +101,24 @@ const withFramePair = legacy => ({
     distinctAssetsReason: 'Current Mioon app restriction; not a claimed provider requirement.',
   },
 });
+const framePairProfiles = legacyProfiles.filter(profile => ['ark', 'mock'].includes(profile.providerId)).map(withFramePair);
+const withSubjectReference = pair => ({
+  ...pair, profileId: `${pair.providerId}:${pair.model}:v3`, profileVersion: SUBJECT_REFERENCE_PROFILE_VERSION,
+  inputs: {
+    ...pair.inputs, combinations: [...pair.inputs.combinations, ['subject_reference']],
+    roles: { ...pair.inputs.roles, subject_reference: {
+      ...pair.inputs.roles.first_frame, ...image, min: 0,
+      semantics: pair.simulationOnly ? 'simulation-only' : 'subject-image-reference',
+      ...(pair.providerId === 'ark' ? { dimensions: { min: 300, max: 6000, matchAspectRatio: false, minAspectRatio: 0.4, maxAspectRatio: 2.5 } } : {}),
+    } },
+  },
+});
 export const CAPABILITY_PROFILES = deepFreeze(legacyProfiles.map(profile =>
-  ['ark', 'mock'].includes(profile.providerId) ? withFramePair(profile) : profile));
-export const ARCHIVED_CAPABILITY_PROFILES = deepFreeze(legacyProfiles.filter(profile => ['ark', 'mock'].includes(profile.providerId)));
+  ['ark', 'mock'].includes(profile.providerId) ? withSubjectReference(framePairProfiles.find(pair => pair.providerId === profile.providerId)) : profile));
+// Keep both generations unchanged. Pins never inherit an active role or limit.
+export const ARCHIVED_CAPABILITY_PROFILES = deepFreeze([
+  ...legacyProfiles.filter(profile => ['ark', 'mock'].includes(profile.providerId)), ...framePairProfiles,
+]);
 const exactProfiles = [...CAPABILITY_PROFILES, ...ARCHIVED_CAPABILITY_PROFILES];
 /** Exact lookup. Optional pins must be complete; never fall back to current policy. */
 export function getCapabilityProfile(providerId, model, region, pin) {

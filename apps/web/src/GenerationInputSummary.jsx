@@ -34,7 +34,7 @@ function RoleLimits({ role, label, rule }) {
       <p>格式：{rule.mimeTypes?.length ? rule.mimeTypes.map(type => type.replace('image/', '').toUpperCase()).join(' / ') : '未声明'}</p>
       <p>单张文件：{Number.isSafeInteger(rule.maxBytes) ? `最多 ${bytesLabel(rule.maxBytes)}` : '大小上限未声明'}</p>
       {Number.isSafeInteger(rule.maxDataUriBytes) && <p>编码后 data URI：最多 {bytesLabel(rule.maxDataUriBytes)}</p>}
-      <p>尺寸：{[dimensions?.min && `宽高均至少 ${dimensions.min}px`, dimensions?.max && `宽高均不超过 ${dimensions.max}px`, dimensions?.matchAspectRatio && '须与镜头画幅比例一致'].filter(Boolean).join('；') || '此适配配置未声明像素范围'}</p>
+      <p>尺寸：{[dimensions?.min && `宽高均至少 ${dimensions.min}px`, dimensions?.max && `宽高均不超过 ${dimensions.max}px`, dimensions?.matchAspectRatio && '须与镜头画幅比例一致', dimensions?.matchAspectRatio === false && '图片比例与输出画幅独立，可用方形图', dimensions?.minAspectRatio && `宽高比至少 ${dimensions.minAspectRatio}`, dimensions?.maxAspectRatio && `宽高比不超过 ${dimensions.maxAspectRatio}`].filter(Boolean).join('；') || '此适配配置未声明像素范围'}</p>
     </>}
   </li>;
 }
@@ -47,9 +47,9 @@ export function GenerationInputDetails({ selection }) {
   const source = sourceUrl(lifecycle?.source);
   return <div className="generation-input-details-body">
     <p>Mioon 当前适配器的已接入范围；不代表服务商全部能力。</p>
-    {profile && <p>总参考图：{profile.inputs.minReferences}–{profile.inputs.maxReferences} 张。{profile.inputs.roles.last_frame?.implemented ? '支持单张首帧，或一张首帧加一张尾帧；尾帧不能单独提交。' : '只接入单张首帧，不组合多个参考角色。'}</p>}
+    {profile && <p>总参考图：{profile.inputs.minReferences}–{profile.inputs.maxReferences} 张。{profile.inputs.roles.last_frame?.implemented ? '支持单张首帧，或一张首帧加一张尾帧；尾帧不能单独提交。' : '只接入单张首帧，不组合多个参考角色。'}{profile.inputs.roles.subject_reference?.implemented && '另支持单张固定主体图片；不能与首帧、尾帧或连线组合。'}</p>}
     <ul className="generation-input-roles" aria-label="各参考角色的数量与限制">{roles.map(([role, label]) => <RoleLimits key={role} role={role} label={label} rule={profile?.inputs?.roles?.[role]} />)}</ul>
-    <p className="generation-input-planning" data-testid="generation-subject-planning">主体库与风格关联仅用于本地策划，尚不作为生成输入。首帧仍由现有参考图选择或首帧连接提供。尾帧在镜头属性中单独保存；首尾帧组合仅接入 Ark 与 Mock，同一素材不可同时作为首尾帧（当前应用限制）。</p>
+    <p className="generation-input-planning" data-testid="generation-subject-planning">主体与风格的策划关联不会自动作为生成输入。角色、产品或场景图片须在镜头属性中明确选择本次固定版本；此入口仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628。风格仍仅供策划。首帧仍由现有参考图选择或首帧连接提供。尾帧在镜头属性中单独保存；首尾帧组合仅接入 Ark 与 Mock，同一素材不可同时作为首尾帧（当前应用限制）。</p>
     {profile && <dl className="generation-input-provenance">
       <div><dt>适配配置</dt><dd>{profile.profileId} · {profile.profileVersion}</dd></div>
       <div><dt>配置核查</dt><dd>{profile.reviewedOn || '未提供核查日期'}</dd></div>

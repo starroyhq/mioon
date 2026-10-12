@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {schemas,parse,INPUT_PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION,GENERATION_INPUT_PROFILES,ARCHIVED_CAPABILITY_PROFILES,getCapabilityProfile,getLegacyCapabilityProfile,validateGenerationInput,buildAdapterPlan,getGenerationProfileIssue,getGenerationIssue,findModelCapabilities,isReferenceShotRecord,isReferenceMutationResponse,isLocalMutationResponse,getShotGenerationReferenceSelection} from '../packages/contracts/src/index.mjs';
+import {schemas,parse,INPUT_PROFILE_VERSION,FRAME_PAIR_PROFILE_VERSION,SUBJECT_REFERENCE_PROFILE_VERSION,GENERATION_INPUT_PROFILES,ARCHIVED_CAPABILITY_PROFILES,getCapabilityProfile,getLegacyCapabilityProfile,validateGenerationInput,buildAdapterPlan,getGenerationProfileIssue,getGenerationIssue,findModelCapabilities,isReferenceShotRecord,isReferenceMutationResponse,isLocalMutationResponse,getShotGenerationReferenceSelection} from '../packages/contracts/src/index.mjs';
 const ids=Array.from({length:8},(_,index)=>`00000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`);
 const asOf='2026-10-11';
 const asset=(id=ids[0],patch={})=>({id,mimeType:'image/png',sizeBytes:1024,sha256:(id===ids[0]?'a':'b').repeat(64),width:720,height:1280,...patch});
@@ -54,8 +54,8 @@ test('new-shot selection appends an explicit tail without reinterpreting histori
  assert.equal(getShotGenerationReferenceSelection({referenceAssetIds:null}).ok,false);
 });
 
-test('active discovery is unique, exact archived v1 profiles remain immutable, and pin misses never fall back',()=>{
- assert.equal(GENERATION_INPUT_PROFILES.length,6);assert.equal(ARCHIVED_CAPABILITY_PROFILES.length,2);
+test('active discovery is unique, exact archived v1/v2 profiles remain immutable, and pin misses never fall back',()=>{
+ assert.equal(GENERATION_INPUT_PROFILES.length,6);assert.equal(ARCHIVED_CAPABILITY_PROFILES.length,4);
  for(const p of GENERATION_INPUT_PROFILES){
   assert.equal(GENERATION_INPUT_PROFILES.filter(other=>other.providerId===p.providerId&&other.model===p.model).length,1);
   const old=getLegacyCapabilityProfile(p.providerId,p.model,p.regions[0]);
@@ -64,7 +64,13 @@ test('active discovery is unique, exact archived v1 profiles remain immutable, a
   assert.equal(getCapabilityProfile(p.providerId,p.model,p.regions[0],{profileId:p.profileId}),null);
   assert.equal(getCapabilityProfile(p.providerId,p.model,p.regions[0],{...pin(p),extra:true}),null);
   assert.equal(getCapabilityProfile(p.providerId,p.model,p.regions[0],{profileId:p.profileId,profileVersion:'future'}),null);
-  assert.equal(p.profileVersion,['ark','mock'].includes(p.providerId)?FRAME_PAIR_PROFILE_VERSION:INPUT_PROFILE_VERSION);
+  assert.equal(p.profileVersion,['ark','mock'].includes(p.providerId)?SUBJECT_REFERENCE_PROFILE_VERSION:INPUT_PROFILE_VERSION);
+  if(['ark','mock'].includes(p.providerId)){
+   const archived=getCapabilityProfile(p.providerId,p.model,p.regions[0],{profileId:`${p.providerId}:${p.model}:v2`,profileVersion:FRAME_PAIR_PROFILE_VERSION});
+   assert.ok(ARCHIVED_CAPABILITY_PROFILES.includes(archived));assert.deepEqual(archived.inputs.combinations,[[],['first_frame'],['first_frame','last_frame']]);
+   assert.equal(buildAdapterPlan(input(p.providerId,{references:[ref(),ref('last_frame',ids[1])]}),{asOf,...pin(archived)}).ok,true);
+   assert.equal(buildAdapterPlan(input(p.providerId,{references:[ref('subject_reference')]}),{asOf,...pin(archived)}).ok,false);
+  }
   assert.equal(p.liveVerified,false);assert.ok(Object.isFrozen(p.inputs.combinations));
  }
 });
@@ -84,13 +90,13 @@ test('legacy no-pin frozen selection and exact pinned v1 plan preserve historica
  }
 });
 
-test('only exact active Ark and Mock permit the three complete combinations with explicit canonical roles',()=>{
+test('only exact active Ark and Mock permit the existing frame combinations with explicit canonical roles',()=>{
  for(const p of GENERATION_INPUT_PROFILES){
   const pair=[ref(),ref('last_frame',ids[1])];
   const result=buildAdapterPlan(input(p.providerId,{references:pair}),{asOf});
   assert.equal(result.ok,['ark','mock'].includes(p.providerId));
   if(result.ok){
-   assert.equal(result.profileVersion,FRAME_PAIR_PROFILE_VERSION);
+   assert.equal(result.profileVersion,SUBJECT_REFERENCE_PROFILE_VERSION);
    assert.deepEqual(result.referenceBindings.map(r=>r.role),['first_frame','last_frame']);
    assert.deepEqual(result.adapterSnapshot.referenceAssets.map(r=>r.role),['first_frame','last_frame']);
    for(const references of [[],[ref()]])assert.equal(validateGenerationInput(input(p.providerId,{references}),{asOf}).ok,true);

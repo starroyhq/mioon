@@ -75,7 +75,7 @@ test('renderer preserves missing/full-reference checks and never converts subjec
   for (const role of ['last_frame', 'subject_reference', 'style_reference', 'motion_reference']) {
     const explicit = { ...asset, role };
     assert.equal(generationInputIssue(linked, provider, model, [explicit], 'image'), generationIssueMessage(getGenerationIssue({ ...linked, model, referenceAssets: [explicit] }, provider)));
-    assert.match(generationInputIssue(linked, provider, model, [explicit], 'image'), role === 'last_frame' ? /首尾帧必须包含完整.*角色绑定/ : /Mioon 当前适配器未接入此参考角色/);
+    assert.match(generationInputIssue(linked, provider, model, [explicit], 'image'), role === 'last_frame' ? /首尾帧必须包含完整.*角色绑定/ : role === 'subject_reference' ? /必须冻结一个完整且有效的主体版本/ : /Mioon 当前适配器未接入此参考角色/);
   }
   const planning = { ...shot, subjectBindings: [{ role: 'subject_reference', assetId: asset.id }, { role: 'style_reference', assetId: asset.id }] };
   const original = structuredClone(planning);
@@ -133,9 +133,10 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
     assert.doesNotMatch(summary, /generation-role-subject_reference|各参考角色的数量与限制/);
     assert.match(details, /不代表服务商全部能力/);
     for (const role of ['first_frame', 'last_frame', 'subject_reference', 'style_reference', 'motion_reference']) assert.ok(details.includes(`data-testid="generation-role-${role}"`));
-    assert.equal((details.match(/尚无对应的生成输入映射/g) || []).length, profile.inputs.roles.last_frame.implemented ? 3 : 4);
+    assert.equal((details.match(/尚无对应的生成输入映射/g) || []).length, profile.inputs.roles.subject_reference.implemented ? 2 : profile.inputs.roles.last_frame.implemented ? 3 : 4);
     if (profile.inputs.roles.last_frame.implemented) { assert.match(details, /一张首帧加一张尾帧/); assert.match(summary, /尾帧 0–1 张/); }
-    assert.match(details, /主体库与风格关联仅用于本地策划/);
+    assert.match(details, /主体与风格的策划关联不会自动作为生成输入/);
+    assert.doesNotMatch(details, /主体库与风格关联仅用于本地策划|尚不作为生成输入/);
     assert.match(details, /首帧仍由现有参考图选择或首帧连接提供/);
     assert.ok(details.includes(profile.inputs.roles.first_frame.maxBytes.toLocaleString('en-US')));
     assert.match(details, /2026-10-10/);

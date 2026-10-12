@@ -1,4 +1,5 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.mjs';
+import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 
 const API = 'https://ark.cn-beijing.volces.com/api/v3';
 const MODEL = {
@@ -17,6 +18,13 @@ function validateFrame(asset, ratio) {
   if (asset.width * height !== asset.height * width) throw providerError('REFERENCE_ASPECT_RATIO_MISMATCH', 'Seedance frame images must match the chosen 9:16 or 16:9 ratio.');
 }
 
+function validateSubjectImage(asset) {
+  if (!Number.isInteger(asset.width) || !Number.isInteger(asset.height) || asset.width < 300 || asset.height < 300 || asset.width > 6000 || asset.height > 6000) throw providerError('INVALID_REFERENCE_DIMENSIONS', 'Seedance subject images must be 300–6000 pixels on each side.');
+  // Subject references condition identity, not the first output frame. A square
+  // image is valid; it must not be silently cropped to the output aspect ratio.
+  if (asset.width * 5 < asset.height * 2 || asset.width * 2 > asset.height * 5) throw providerError('REFERENCE_ASPECT_RATIO_MISMATCH', 'Seedance subject image aspect ratio must be between 0.4 and 2.5.');
+}
+
 /** Fixed-origin Seedance adapter. No request, upload, or credential use at construction. */
 export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now } = {}) {
   const config = liveConfiguration(env, 'ARK_API_KEY', 'ARK');
@@ -26,6 +34,15 @@ export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = pr
   function validate(snapshot) {
     validateModelSnapshot(snapshot, MODEL);
     const assets=snapshot.referenceAssets;
+    const subjectIssue=getSubjectGenerationSnapshotIssue(snapshot,{requireProfilePin:true});
+    if(subjectIssue)throw providerError(subjectIssue.code,subjectIssue.message);
+    if(snapshot.inputProfileVersion===SUBJECT_REFERENCE_PROFILE_VERSION)for(const asset of assets){
+      if(!asset||!['first_frame','last_frame','subject_reference'].includes(asset.role))throw providerError('INVALID_REFERENCE_MANIFEST','Version 3 references require explicit supported roles.');
+    }
+    if(Object.hasOwn(snapshot,'subjectReference')){
+      validateSubjectImage(assets[0]);
+      return true;
+    }
     if(snapshot.lastFrameAssetId!=null&&assets.length!==2)throw providerError('INVALID_REFERENCE_MANIFEST','A declared last frame requires a complete explicit frame pair.');
     if(snapshot.referenceAssetIds!==undefined&&(!Array.isArray(snapshot.referenceAssetIds)||snapshot.referenceAssetIds.length!==assets.length||snapshot.referenceAssetIds.some((id,index)=>id!==assets[index]?.id)))throw providerError('INVALID_REFERENCE_MANIFEST','Reference identities differ from the frozen image manifest.');
     if(assets.length===2){
@@ -62,17 +79,19 @@ export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = pr
     async submit(snapshot, context = {}) {
       config.ensureEnabled();
       validate(snapshot);
+      const subject=Object.hasOwn(snapshot,'subjectReference');
       const content = [{ type: 'text', text: snapshot.prompt }];
       // Each image is independently approved and verified from actual bytes.
       // Only the legacy one-image case may default to the first-frame role.
       for(const asset of snapshot.referenceAssets){
         const image = await managedImage({ root, asset, approvedHashes, signal:context.signal, validateCurrent:context.validateReferenceState });
-        validateFrame(image, snapshot.aspectRatio);
+        if(subject)validateSubjectImage(image);else validateFrame(image, snapshot.aspectRatio);
         if(image.width!==asset.width||image.height!==asset.height)throw providerError('REFERENCE_CHANGED','Actual frame dimensions differ from the frozen image metadata.');
-        content.push({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}` }, role: asset.role??'first_frame' });
+        content.push({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}` }, role: subject?'reference_image':asset.role??'first_frame' });
       }
       const response = await request('/contents/generations/tasks', { method: 'POST', context, body: {
-        model: MODEL.id, content, duration: snapshot.duration, ratio: snapshot.referenceAssets.length ? 'adaptive' : snapshot.aspectRatio,
+        model: MODEL.id, content, duration: snapshot.duration, ratio: !subject&&snapshot.referenceAssets.length ? 'adaptive' : snapshot.aspectRatio,
+        ...(subject?{omni_reference_task_type:'reference'}:{}),
         resolution: '720p', output_format: 'mp4', generate_audio: false,
       } });
       if (typeof response.id !== 'string' || !TASK_ID.test(response.id)) throw providerError('SUBMISSION_UNKNOWN', 'Seedance did not return a valid task ID. Do not resubmit.', { uncertain: true });

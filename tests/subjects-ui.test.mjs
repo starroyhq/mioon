@@ -267,7 +267,16 @@ test('library composition retains both panes and never changes source/range sele
   const library = readFileSync(new URL('../apps/web/src/AssetLibrary.jsx', import.meta.url), 'utf8');
   assert.match(library, /library-subjects-pane/); assert.match(library, /WorkspaceVisibilityProvider visible=\{libraryView === 'assets'\}/); assert.match(library, /hidden=\{libraryView !== 'subjects'\} inert=\{libraryView !== 'subjects'\}/);
   assert.doesNotMatch(library, /setQuickAssetId|setSelectedClipId|sourceRangeScope/);
-  const components = ['SubjectLibrary.jsx', 'ShotSubjectBindings.jsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8')).join('\n');
-  assert.match(components, /本地策划关联，尚不作为生成输入/); assert.doesNotMatch(components, /generation\.submit|asset\.import|<video|<Dialog|referenceAssetIds\s*=/);
+  const componentSources = ['SubjectLibrary.jsx', 'ShotSubjectBindings.jsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
+  for (const component of componentSources) {
+    assert.match(component, /策划关联不会自动用于生成；生成输入需另行选择版本/);
+    assert.doesNotMatch(component, /尚不作为生成输入/);
+  }
+  assert.match(componentSources[0], /策划关联此主体的镜头/);
+  assert.match(componentSources[0], /策划关联的镜头需要逐个确认新版本/);
+  assert.match(componentSources[0], /已读取的策划关联中没有镜头/);
+  assert.doesNotMatch(componentSources[0], /使用此主体的镜头|使用中的镜头/);
+  const components = componentSources.join('\n');
+  assert.doesNotMatch(components, /generation\.submit|asset\.import|<video|<Dialog|referenceAssetIds\s*=/);
   assert.doesNotMatch(components, /更早版本/); assert.match(library, /const libraryScope = project\?\.id/);
 });
