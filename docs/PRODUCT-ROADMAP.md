@@ -54,6 +54,30 @@ Acceptance: a representative multilayer project remains usable on a stated lapto
 select a useful subrange, mix speech/music without clipping, and export the checked range
 and full cut using originals with matching timing and sound.
 
+#### Crash recovery and local drafts (approved 2026-10-12)
+
+The user confirmed this iteration on 2026-10-12. This is planned, not implemented
+in the current core engineering trial. See the [bounded recovery plan](CRASH-RECOVERY-PLAN.zh-CN.md).
+
+- Persist explicitly supported unsent drafts locally, with bounded capacity, private
+  permissions, retention/cleanup controls and visible saved/pending/failed status.
+  Exclude credentials, connection tokens and authentication configuration; prompt
+  text can still be sensitive. Do not promise every final keystroke survives a crash.
+- Restore last-project/editing context through stable workspace/channel identity,
+  not a desktop backend's changing HTTP origin. Preserve explicit project selection
+  precedence and distinguish saved projects, view state and unsent drafts.
+- Present a recovery choice after restart. Bind drafts to target/source identity
+  and base revision; compare current data before applying. Reject stale or foreign
+  restores and late multi-window overwrites. Preserve the original request ID for
+  uncertain submissions; restoring a draft never submits or retries generation,
+  spends money, approves an Agent edit, or replaces the existing task ledgers.
+- Prove crash boundaries with real owned-process termination, lost acknowledgements,
+  changed revisions, corrupt/full storage, channel isolation and subsequent real
+  edit/export checks. Keep normal quit evidence separate from forced-exit evidence.
+
+Ship narrow TS/TSX increments after their contracts are reviewed. Mac/Windows
+native checks and live-provider verification retain their separate gates.
+
 #### Export configuration, after manual subtitles (approved 2026-10-11)
 
 Approval: user message `Sentinel_0efcc39df20081918255c0a750075fb8`.
