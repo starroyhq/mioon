@@ -43,6 +43,7 @@ export function validateWorkspaceStorage(root){
  }
  validateManagedFile(path.join(root,'server.lock'),{root,allowMissing:true,maxBytes:64});
  validateManagedFile(path.join(root,'access-token'),{root,allowMissing:true,private:true,maxBytes:4098});
+  validateManagedFile(path.join(root,'local-drafts-v1.json'),{root,allowMissing:true,private:true,maxBytes:2*1024*1024});
  for(const name of ['agent-settings','image-settings','comfy-settings']){
   const settings=path.join(root,name);
   if(validateManagedDirectory(settings,{root,allowMissing:true,private:true})){

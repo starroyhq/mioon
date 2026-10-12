@@ -7,6 +7,7 @@ import * as format from '../apps/web/src/timeline-format-state.js';
 import { createTimelineDeliveryNameController } from '../apps/web/src/export-delivery-state.ts';
 import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.js';
+import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
 
 const id = n => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
@@ -207,7 +208,9 @@ test('actual timeline header and preflight summary use their own saved dimension
 });
 
 test('actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles', () => {
-  const Inspector = component('TimelineInspector.jsx', { './clip-audio-state.js': audio, './Timeline.jsx': { assetKind: () => 'image', framesLabel: String }, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => true } }).default;
+  const Inspector = component('TimelineInspector.jsx', { './clip-audio-state.js': audio, './Timeline.jsx': { assetKind: () => 'image', framesLabel: String }, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => true }, './workspace-visibility.jsx': { useWorkspaceVisibility: () => true }, './clip-draft-state.ts': clipDraft,
+    './clip-draft-hook.ts': { useClipDraft: ({ context }) => { const controller = clipDraft.createClipDraftController({ context, client: { get: () => assert.fail('Static bounds inspection does not load persistence') } }); return { state: controller.getState(), controller }; } },
+  }).default;
   for (const preset of ['landscape_720', 'square_720']) {
     const saved = timeline(preset), rect = { x: 0, y: 0, width: saved.width, height: saved.height };
     const tree = Inspector({ clip: { id: id(4), trackId: id(3), name: 'Image', rect, startFrame: 0, durationFrames: 30, sourceInFrame: 0, gain: 1 }, timeline: saved, asset: { mimeType: 'image/png' } });
@@ -237,6 +240,7 @@ test('actual navigation epoch guard prevents late confirmation from discarding a
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
   let epoch = 1; const confirmation = deferred();
   const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+    clipDraftRef: { current: null },
     subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft() { assert.fail('Late confirmation must not discard subtitle drafts'); } } } }, setSubtitleDirty() { assert.fail('Late confirmation must not clear subtitle state'); },
     context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
     dirtyRef: { current: false }, confirm: () => confirmation.promise,
@@ -259,6 +263,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
     const deliveryNameRef = { current: { controller: delivery } }, confirmation = deferred(), checks = [];
     const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+      clipDraftRef: { current: null },
       context: () => ({ projectId, epoch: 1 }), isCurrent: captured => captured.projectId === projectId && captured.epoch === 1,
       subtitlesRef: { current: null }, dirtyRef: { current: false },
       confirm: message => { checks.push(message); return confirmation.promise; },
@@ -333,7 +338,7 @@ test('actual dock pane retains child identity while hidden and removes it from f
 test('actual unload callback sees synchronous format edits and in-flight saves through its independent owner', async () => {
   const f = fixture(); await f.ready();
   const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
-  const dirtyRef = { current: false }, warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', `${source}; return warn;`)(dirtyRef, { current: f }, { current: null });
+  const dirtyRef = { current: false }, warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', `${source}; return warn;`)(dirtyRef, { current: f }, { current: null }, { current: null });
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   let e = event(); warn(e); assert.equal(e.prevented, false);
   f.controller.choose('landscape_720'); e = event(); warn(e); assert.equal(e.prevented, true); assert.equal(e.returnValue, '');
@@ -346,7 +351,7 @@ test('actual unload callback observes either current format or delivery-name con
   const f = fixture(); await f.ready(); const delivery = deliveryNameController();
   const timelineFormatRef = { current: f }, deliveryNameRef = { current: { controller: delivery } };
   const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
-  const warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', `${source}; return warn;`)({ current: false }, timelineFormatRef, deliveryNameRef);
+  const warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', `${source}; return warn;`)({ current: false }, timelineFormatRef, deliveryNameRef, { current: null });
   const check = expected => {
     const event = { prevented: false, preventDefault() { this.prevented = true; } }; warn(event);
     assert.equal(event.prevented, expected); assert.equal(event.returnValue, expected ? '' : undefined);

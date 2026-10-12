@@ -7,6 +7,9 @@ import http from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createEditTasks} from '@mioon/business/edit-tasks';
+import {createLocalDrafts} from '@mioon/business/local-drafts';
+import {createTimelineRecoveryBoundary} from '@mioon/business/timeline-recovery';
+import {createLocalDraftHttp} from './local-drafts-http.ts';
 import {createChatHttp} from './chat-http.mjs';
 import {createEditTasksHttp} from './edit-tasks-http.mjs';
 import {createImageHttp} from './image-http.mjs';
@@ -25,8 +28,8 @@ import {createAgentSettings, sanitizeAgentSettingsError, sanitizeAgentSettingsRe
 import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
-import {validateWorkspaceStorage} from '@mioon/business/db';
-import {readPrivateFile, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
+import {validateWorkspaceStorage,ownsStoreLock} from '@mioon/business/db';
+import {readPrivateFile, writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {assertMediaTerminated, boundedShutdown, checkpoint} from '@mioon/business/operation-lifecycle';
 import {terminateMediaProcesses} from '@mioon/business/media-processes';
 
@@ -73,6 +76,7 @@ export async function startServer({
   chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
   agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
   taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
+  localDraftChannel = 'web', // Trusted desktop build identity only; never HTTP/environment configuration.
 
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
@@ -122,6 +126,12 @@ export async function startServer({
     await editTasks.reconcileStartup();
     const editTasksHttp = createEditTasksHttp({tasks: editTasks, signal: shutdown.signal});
     const workspacePreferences = createWorkspacePreferences(store);
+    const localDrafts = createLocalDrafts({root,channel:localDraftChannel,signal:shutdown.signal,
+      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+      guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+        readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read(),
+        readClipAsset:(projectId,clip)=>createTimelineRecoveryBoundary(store.db,{projectId}).clipSource(clip)}});
+    const localDraftHttp = createLocalDraftHttp({drafts:localDrafts,signal:shutdown.signal});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored){
@@ -180,6 +190,7 @@ export async function startServer({
         if (await imageHttp(req,res,url)) return;
         if (await chatHttp?.handle(req, res, url)) return;
         if (await editTasksHttp(req, res, url)) return;
+        if (await localDraftHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {

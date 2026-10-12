@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.mjs",
     "./private-storage": "./src/private-storage.mjs",
-    "./timeline-delivery": "./src/timeline-delivery.ts"
+    "./timeline-delivery": "./src/timeline-delivery.ts",
+    "./local-drafts": "./src/local-drafts.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

@@ -56,8 +56,11 @@ and full cut using originals with matching timing and sound.
 
 #### Crash recovery and local drafts (approved 2026-10-12)
 
-The user confirmed this iteration on 2026-10-12. This is planned, not implemented
-in the current core engineering trial. See the [bounded recovery plan](CRASH-RECOVERY-PLAN.zh-CN.md).
+The user confirmed this iteration on 2026-10-12. The first isolated implementation
+now covers [local clip-property drafts](LOCAL-CLIP-DRAFTS.md), verified by the final
+independent typecheck/full suite and a rebuilt Linux package crash/recovery/export run.
+Other draft forms and origin-independent last-project selection remain planned.
+See the [bounded recovery plan](CRASH-RECOVERY-PLAN.zh-CN.md).
 
 - Persist explicitly supported unsent drafts locally, with bounded capacity, private
   permissions, retention/cleanup controls and visible saved/pending/failed status.

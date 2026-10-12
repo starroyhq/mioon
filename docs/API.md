@@ -14,6 +14,19 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these same schemas through tools/list.
 
+### Private clip-property drafts
+
+The authenticated `/api/local-drafts/clip` GET/PUT/DELETE and
+`/api/local-drafts?projectId=…` GET routes share the bounded local-draft service.
+These are renderer draft storage, outside RPC/MCP/CLI and the Agent catalog.
+They cannot execute timeline edits or model tasks. Exact fields, limits,
+workspace/instance binding and CAS are specified in
+[`local-drafts.ts`](../packages/contracts/src/local-drafts.ts) and
+[the first-slice scope](LOCAL-CLIP-DRAFTS.md). Reads do not create or reset files.
+Restored workspaces return an explicit unsupported result without reading or
+writing a companion file; their existing local editing remains available.
+Unconfirmed writes require read-only reconciliation before any new write.
+
 `provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. That original discovery increment left submit/retry schemas and historical replay unchanged; the later explicit subject-video input adds an optional `subjectVersionId` to submit, with historical replay preserved. See [model input limits](GENERATION-INPUT-LIMITS.md).
 
 ## Local source-frame extraction

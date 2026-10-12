@@ -527,7 +527,8 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
   port.postMessage = message => { messages.push(message); };
   const sandbox = { process: { parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: code => exits.push(code) },
-    DatabaseSync: function () {}, startServer: options => { enterStart(options); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
+    __MIOON_DESKTOP_CHANNEL__: 'development',
+    DatabaseSync: function () {}, startServer: options => { assert.equal(options.localDraftChannel,'development'); enterStart(options); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
     initializeSubtitleResources: directory => { assert.equal(directory,'/synthetic/trusted/subtitles'); },
     onMediaProcess: () => {}, createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({close: imageClose, refreshStorage: imageRefresh}),

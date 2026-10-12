@@ -47,6 +47,8 @@ desktop-config.json.tmp
 credentials.json
 secrets.json
 secrets/
+local-drafts-v1.json
+.local-drafts-v1.json.*.tmp
 *.pem
 *.key
 *.p12
