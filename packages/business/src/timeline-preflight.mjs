@@ -1,3 +1,5 @@
+import {restoreEffectFence} from './workspace-restore-invocation.mjs';
+import {refuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.mjs';
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
 import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.mjs';
@@ -53,6 +55,8 @@ function classify(error){
 export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS}={}){
  const active=new Set();let stopped=false,shutdownFailure;
  async function preflight(input,{signal:callSignal}={}){
+  refuseRestoredOperation(store,'timeline.export.preflight',input);
+  const beforeEffect=restoreEffectFence(store);
   const started=performance.now();
   const external=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
@@ -83,9 +87,9 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:0};
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},remaining);
   const preparation=(async()=>{
-   if(report.checks.subtitles){await verifySubtitleFontResource({signal});checkpoint(signal);report.checks.subtitles.fontVerified=true;}
-   return prepareTimelineInputs(initial.snapshot,{root:store.root,projectId:input.projectId,readAsset:id=>readOwnedTimelineAsset(store.db,input.projectId,id),
-   signal,budget,probe,onChecked:()=>{report.checks.checkedAssets++;}});
+   if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;}
+   return prepareTimelineInputs(initial.snapshot,{root:store.root,projectId:input.projectId,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id);},
+   signal,budget,beforeEffect,probe:async(file,options)=>{beforeEffect?.();const result=await probe(file,{...options,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}});
   })();
   // A caller can observe its deadline, but the exact underlying preparation
   // remains owned until it settles. No new check is admitted, nor successful
@@ -98,9 +102,10 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   const work=(async()=>{
    try{
     const verified=await awaitProvider(()=>preparation,signal);
-    checkpoint(signal);report.status='ready';report.summary=summary(initial.snapshot,verified);
+    checkpoint(signal);beforeEffect?.();report.status='ready';report.summary=summary(initial.snapshot,verified);
    }catch(error){
     if(error.terminationUnconfirmed){shutdownFailure=error;throw error;}
+    if(safeWorkspaceRestoreError(error))throw error;
     checkpoint(external);if(stopped)checkpoint(controller.signal);
     const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(error);
     report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];

@@ -6,9 +6,9 @@ import {validateImageConsumption} from './image-consumption.mjs';
 // Local canvas mutations share the existing revision/reference guards. Relation
 // reads also verify relational columns against JSON before a conflict can expose
 // a current record or an old receipt can return its original response.
-export function createLocalMutationServices(store,{check,canonical,now,references}) {
+export function createLocalMutationServices(store,{check,canonical,now,references,readOnly=false}) {
  const {db,get,list,put}=store;
- const mutate=createMutationReplay(store,{canonical});
+ const mutate=createMutationReplay(store,{canonical,readOnly});
  const invalid=()=>{throw new AppError('INVALID_MUTATION_RECORD','记录或关联状态不一致，请先检查项目',409);};
  const foreign=()=>{throw new AppError('CROSS_PROJECT_REFERENCE','记录或关联不属于此项目');};
  const tables=new Set(['projects','shots','nodes','assets','versions','jobs']);

@@ -1,3 +1,5 @@
+import {getWorkspaceRestoreContext} from '../workspace-restore-schema.mjs';
+import {workspaceRestoreError} from '../workspace-restore-policy.mjs';
 import {createHash, randomUUID} from 'node:crypto';
 import {exactObject, parseAgentConfiguration} from './config.mjs';
 import {AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentCredentialResult, sanitizeAgentSettingsResult} from './settings.mjs';
@@ -81,6 +83,7 @@ function bounded(operation, signal, ms = 10000) {
  * Gateway/limit injection is trusted synthetic QA, never HTTP/env input. */
 export function createChatRuntime({store, agentSettings, gateway = streamAgentResponse, selfPort,
   mode = 'provider', journalLimits, inspection = createInspectionServices(store), editService}) {
+ if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
   const instanceId = randomUUID(), active = new Map(), watchers = new Map(), publications = [];
   const modeName = mode === 'simulated' ? 'simulated' : 'provider';
   let closing = false, fault = null, subscribers = 0, publishing = false, tail = Promise.resolve();

@@ -7,6 +7,7 @@ import * as settings from '../apps/web/src/generation-settings.js';
 import * as subjectVideo from '../apps/web/src/subject-video.js';
 import * as subjectState from '../apps/web/src/subject-state.js';
 import * as submissions from '../apps/web/src/submissions.js';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as api from '../apps/web/src/api.js';
 import { referenceForShot } from '../apps/web/src/reference-connections.js';
 
@@ -55,6 +56,7 @@ function harness(file, initial) {
       if (name === './use-subjects.js') return load('use-subjects.js');
       if (name === './api.js') return api;
       if (name === './submissions.js') return submissions;
+      if (name === './workspace-origin.js') return workspaceOrigin;
       if (name === './reference-connections.js') return { referenceForShot };
       if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };

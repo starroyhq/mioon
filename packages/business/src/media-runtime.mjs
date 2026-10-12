@@ -3,15 +3,28 @@ import { spawnMedia, mediaInterrupted, onMediaInterruption, interruptedMediaErro
 
 export const MEDIA_RUNTIME_LIMITS = Object.freeze({ stdoutBytes: 4 * 1024 * 1024, streamingStdoutBytes: 600 * 48000 * 2 * 4, stderrBytes: 1024 * 1024, stderrTailBytes: 16 * 1024, timeoutMs: 120000 });
 const mediaError = (code, message) => Object.assign(new Error(message), { code });
+export const isMediaEffectRestriction = error => ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH'].includes(error?.code);
+// Backend-owned invocation/claim fences are synchronous. A Promise is not an
+// admission token: do not let an expired caller schedule an effect after await.
+export function checkMediaEffect(beforeEffect, signal) {
+  throwIfMediaAborted(signal);
+  if (beforeEffect !== undefined && typeof beforeEffect !== 'function') throw mediaConfigurationError();
+  const result = beforeEffect?.(signal);
+  if (result != null && typeof result.then === 'function') {
+    Promise.resolve(result).catch(() => {});
+    throw mediaConfigurationError();
+  }
+  throwIfMediaAborted(signal);
+}
 const byteLimit = (value, maximum) => {
   if (!Number.isSafeInteger(value) || value < 0 || value > maximum) throw mediaConfigurationError();
   return value;
 };
 
 /** Bounded, shell-free runner. Errors never contain child output, argv or paths. */
-export async function run(command, args, { timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal,
+export async function run(command, args, { timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal, beforeSpawn, beforeEffect,
   maxStdoutBytes = MEDIA_RUNTIME_LIMITS.stdoutBytes, maxStderrBytes = MEDIA_RUNTIME_LIMITS.stderrBytes } = {}) {
-  return runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStderrBytes });
+  return runMedia(command, args, { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes });
 }
 
 /** Consume bounded binary stdout synchronously, without retaining its chunks.
@@ -19,14 +32,14 @@ export async function run(command, args, { timeout = MEDIA_RUNTIME_LIMITS.timeou
  * callbacks are rejected: their queued work could otherwise grow without bound.
  * The larger streaming ceiling never applies to the buffered run() API.
  */
-export async function runStreaming(command, args, { onStdout, timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal,
+export async function runStreaming(command, args, { onStdout, timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal, beforeSpawn, beforeEffect,
   maxStdoutBytes = MEDIA_RUNTIME_LIMITS.stdoutBytes, maxStderrBytes = MEDIA_RUNTIME_LIMITS.stderrBytes } = {}) {
   throwIfMediaAborted(signal);
   if (typeof onStdout !== 'function') throw mediaConfigurationError();
-  return runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStderrBytes }, onStdout);
+  return runMedia(command, args, { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }, onStdout);
 }
 
-async function runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStderrBytes }, onStdout) {
+async function runMedia(command, args, { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }, onStdout) {
   throwIfMediaAborted(signal);
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 2147483647 || !Array.isArray(args) || args.some(arg => typeof arg !== 'string' || arg.includes('\0'))) throw mediaConfigurationError();
   const stdoutLimit = byteLimit(maxStdoutBytes, onStdout ? MEDIA_RUNTIME_LIMITS.streamingStdoutBytes : MEDIA_RUNTIME_LIMITS.stdoutBytes), stderrLimit = byteLimit(maxStderrBytes, MEDIA_RUNTIME_LIMITS.stderrBytes);
@@ -41,6 +54,9 @@ async function runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStd
       signal?.removeEventListener('abort', abort);
       removeInterruptionObserver?.();
       if (!failure && mediaInterrupted(child)) failure = interruptedMediaError();
+      if (!failure && beforeEffect !== undefined) {
+        try { checkMediaEffect(beforeEffect, signal); } catch (error) { failure = error; }
+      }
       if (failure) reject(failure);
       else resolve(onStdout ? { stdoutBytes } : Buffer.concat(stdout, stdoutBytes).toString('utf8'));
     };
@@ -56,6 +72,10 @@ async function runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStd
       });
     };
     const abort = () => stop(interruptedMediaError());
+    // Keep callback failures outside spawn-error sanitization. There is no
+    // await between these fences and the actual child creation.
+    try { checkMediaEffect(beforeSpawn, signal); checkMediaEffect(beforeEffect, signal); }
+    catch (error) { reject(error); return; }
     try { child = spawnMedia(executable, args, { stdio: ['ignore', 'pipe', 'pipe'] }, { kind: command, signal }); }
     catch (error) { reject(error.terminationUnconfirmed ? error : signal?.aborted ? interruptedMediaError() : mediaError('MEDIA_SPAWN_FAILED', 'Could not start the local media tool.')); return; }
     child.stdout.on('data', chunk => {
@@ -70,7 +90,7 @@ async function runMedia(command, args, { timeout, signal, maxStdoutBytes, maxStd
           Promise.resolve(result).catch(() => {});
           stop(mediaConfigurationError());
         }
-      } catch { stop(mediaError('MEDIA_STREAM_FAILED', 'Local media output could not be processed.')); }
+      } catch (error) { stop(isMediaEffectRestriction(error) ? error : mediaError('MEDIA_STREAM_FAILED', 'Local media output could not be processed.')); }
     });
     child.stderr.on('data', chunk => {
       if (failure || settled) return;

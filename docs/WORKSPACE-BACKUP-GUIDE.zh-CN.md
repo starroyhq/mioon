@@ -35,3 +35,29 @@
 Ctrl+C/SIGTERM请求停止后续本地步骤，并等待已发出的文件操作收尾。它不是立即中断内核I/O的硬时限。中断或失败可能留下没有完整标记的新目录，请保留并检查，不覆盖或自动重试。若返回发布状态无法确认，保留该目录并单独执行verify；仅存在COMPLETE.json不能证明备份完整。
 
 成功结果若附带SOURCE_LOCK_RELEASE_UNCONFIRMED，表示备份本身已校验，但工具未能确认释放自己的源锁。请保留备份和源锁，先核查原进程已退出；不要删除锁后自动重试。失败结果若附带sourceLockRelease: unconfirmed，同样不能将清理视为完成。
+
+
+## 安全恢复到新的独立工作区
+
+原始备份format1/schema24可使用独立离线恢复命令：
+
+```sh
+node apps/cli/src/backup.mjs restore --directory /绝对路径/原始备份 --destination /绝对路径/新工作区
+```
+
+新目标的父目录需要存在，目标本身必须不存在。不要选原工作区内部。
+工具只检查固定祖先标记，format1未保存原始路径，不能识别所有改名来源。
+失败或中断后保留目标，不要删锁、覆盖或自动重试。
+若整段stdout丢失，可只读检查：
+
+```sh
+node apps/cli/src/backup.mjs restore-status --directory /绝对路径/原始备份 --destination /绝对路径/新工作区
+```
+
+`observed_guarded`只说明当前目标的固定schema及来源绑定符合原备份；它不证明
+上次命令成功或此前fsync已完成，不会补发布、修复或执行任务。
+打开恢复分支后，可开始新的本地导入、编辑、预览、导出。继承任务/审批/未知
+结果保持历史状态且停止执行；新生成/Agent/Comfy/抽帧/波形解码暂不可用。
+恢复分支首版也不能再次创建备份，保留原始备份是必要条件。
+Desktop需把目标放在新根目录的`workspace`子目录，并显式选择新根目录；
+不要复制旧token或会话文件。完整范围、限制和验证状态见[安全恢复说明](WORKSPACE-RESTORE.md)。

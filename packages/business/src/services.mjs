@@ -1,6 +1,12 @@
+import {lstatSync} from 'node:fs';
+import {bindRestoredExport} from './workspace-restore-exports.mjs';
+import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,assertWorkspaceRestoreOrigin,refuseRestoredOperation,safeWorkspaceRestoreError,workspaceRestoreError} from './workspace-restore-policy.mjs';
+import {withRestoreInvocation,freezeRestoreInput,hasRestoreInvocation,restoreEffectFence} from './workspace-restore-invocation.mjs';
+import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
+import {createRestoredReadServices} from './workspace-restore-read.mjs';
 import {inspectWorkspaceBackup} from './backup-readiness.mjs';
 import {randomUUID,createHash} from 'node:crypto';
-import {writeFile,rename,unlink} from 'node:fs/promises';
+import {writeFile,rename,unlink,open,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {parse,AppError,publicValue,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
 import {normalizedCapabilities,generationLimit,providerSettings,usesInputProfiles} from './provider-registry.mjs';
@@ -24,15 +30,19 @@ export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions}={}){
- const active=new Set();let shutdownFailure;
+ const restored=getWorkspaceRestoreContext(store);
+ const restoredReads=restored?createRestoredReadServices(store,{signal:ownerSignal}):null;
+ const disabled=()=>{throw workspaceRestoreError();};
+ const inactive=()=>({handlers:{},drain:async()=>{},approveReviewed:disabled,rejectReview:disabled});
+ const active=new Set(),restoredLifetime=restored?new AbortController():null;let shutdownFailure;
  const {db,root,get,list,put,tx}=store;
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
  const check=(v,rev)=>{if(v.revision!==rev)throw new AppError('REVISION_CONFLICT','内容已有新版本，请重新读取后再修改',409,{entityId:v.id,expectedRevision:rev,currentRevision:v.revision,current:publicValue(v)});};
  const dedupe=(scope,requestId,requestHash,table)=>{const r=db.prepare(scope==='generation'?`SELECT CASE WHEN typeof(requestHash)='text' AND length(CAST(requestHash AS BLOB))=64 THEN requestHash END AS requestHash,CASE WHEN typeof(resourceId)='text' AND length(CAST(resourceId AS BLOB))=36 THEN resourceId END AS resourceId FROM idempotency WHERE scope=? AND requestId=?`:'SELECT * FROM idempotency WHERE scope=? AND requestId=?').get(scope,requestId);if(!r)return null;if(r.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同内容',409,{requestId});return required(table,r.resourceId);};
  const idem=(scope,key,h,id)=>db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run(scope,key,h,id);
- const event=(job,event)=>db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id,JSON.stringify(event),now());
- const saveJob=(job,patch)=>{const current=required('jobs',job.id);if((current.revision||0)!==(job.revision||0))return current;const result={...current,...patch,revision:(current.revision||0)+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;};
- const profilePolicy=usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
+ const event=(job,event)=>{if(restored)disabled();return db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id,JSON.stringify(event),now());};
+ const saveJob=(job,patch)=>{if(restored)disabled();const current=required('jobs',job.id);if((current.revision||0)!==(job.revision||0))return current;const result={...current,...patch,revision:(current.revision||0)+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;};
+ const profilePolicy=restored?false:usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
  const capabilitiesFor=(provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,env,list('jobs').filter(j=>j.providerId===provider.id).length,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
  const validateProvider=(source,providerId,requestedModel,parameters,projectId,frozen=false,subjectGraph=null)=>{
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
@@ -71,6 +81,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   return job;
  }
  const createJob=(input,retrySnapshot=null,retryOfJobId=null)=>tx(()=>{
+  if(restored)disabled();
   const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
   if(prior)return input.subjectVersionId!==undefined||hasSubjectGeneration(prior.snapshot)?replaySubjectJob(prior,input,retryOfJobId):prior;
   assertSubjectGenerationRequestVacant(db,input);
@@ -110,9 +121,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const sourceRanges=createSourceRangeServices(store,{canonical});
  const assetDispositions=createAssetDispositionServices(store,{canonical});
  const subjects=createSubjectServices(store,{canonical,now});
- const waveforms=createWaveformServices(store,{signal:ownerSignal});
- const images=createImageServices(store,{...imageOptions,signal:ownerSignal});
- const frames=createFrameServices(store,{...frameOptions,signal:ownerSignal});
+ const waveforms=restored?inactive():createWaveformServices(store,{signal:ownerSignal});
+ const images=restored?inactive():createImageServices(store,{...imageOptions,signal:ownerSignal});
+ const frames=restored?inactive():createFrameServices(store,{...frameOptions,signal:ownerSignal});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
  function subjectDisclosure(table,value,projectId){
@@ -132,6 +143,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  }
  const handlers={
  'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
+ 'workspace.restore.inspect':()=>({restored:false}),
  ...frames.handlers,
  ...images.handlers,
  ...preflight.handlers,
@@ -148,8 +160,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
  'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).map(value=>subjectDisclosure(t,value,i.projectId)).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
  'asset.import':async (i,{signal=ownerSignal}={})=>{
-  checkpoint(signal);
-  required('projects',i.projectId);
+  const invocationFence=restoreEffectFence(store);
+  checkpoint(signal);invocationFence?.();
+  const importProject=required('projects',i.projectId);
   if(!/^[A-Za-z0-9+/]*={0,2}$/.test(i.dataBase64)||i.dataBase64.length%4)throw new AppError('INVALID_MEDIA','无效的 base64');
   const bytes=Buffer.from(i.dataBase64,'base64');
   if(bytes.length>30*1024*1024||bytes.length===0)throw new AppError('INVALID_MEDIA','素材大小须为 1 字节至 30 MiB');
@@ -166,15 +179,21 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   if(!matches)throw new AppError('INVALID_MEDIA','文件类型与实际内容不符');
   const id=randomUUID(),ext={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','audio/wav':'wav','audio/mpeg':'mp3','audio/mp4':'m4a'}[i.mimeType],relativePath=`media/${id}.${ext}`,file=path.join(root,relativePath);
   checkpoint(signal);
-  await writeFile(file,bytes,{flag:'wx'});
+  const expectedByteHash=restored?createHash('sha256').update(bytes).digest('hex'):null;
+  let ownedHandle,ownedIdentity,writtenIdentity;
+  const beforeEffect=restored?()=>{invocationFence();const row=db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM projects WHERE id=?").get(i.projectId);let project;try{project=JSON.parse(row?.data);}catch{throw workspaceRestoreError();}if(!row||project?.id!==row.id||row.id!==i.projectId||project.createdAt!==importProject.createdAt)throw workspaceRestoreError();if(ownedIdentity){let actual;try{actual=lstatSync(file);}catch{throw workspaceRestoreError();}if(!actual.isFile()||actual.nlink!==1||actual.dev!==ownedIdentity.dev||actual.ino!==ownedIdentity.ino||writtenIdentity&&['size','mtimeMs','ctimeMs'].some(key=>actual[key]!==writtenIdentity[key]))throw workspaceRestoreError();}}:undefined;
+  beforeEffect?.();
+  if(!restored)await writeFile(file,bytes,{flag:'wx'});
   try{
+   if(restored){ownedHandle=await open(file,'wx');ownedIdentity=await ownedHandle.stat();beforeEffect();await ownedHandle.writeFile(bytes);writtenIdentity=await ownedHandle.stat();beforeEffect();}
    checkpoint(signal);
-   const info=await fileInfo(file,{signal});checkpoint(signal);
+   const info=await fileInfo(file,{signal,beforeEffect});checkpoint(signal);beforeEffect?.();
+   if(restored&&info.sha256!==expectedByteHash)throw workspaceRestoreError();
    const hasVideo=info.hasVideo??(info.width>0&&info.height>0);
    if(i.mimeType.startsWith('audio/')?(!info.hasAudio||hasVideo||!(info.duration>0)):!hasVideo)
     throw Error('Declared media kind does not match decoded streams');
    return put('assets',{id,projectId:i.projectId,name:i.name,mimeType:i.mimeType,...info,relativePath,url:`/media/${id}`,createdAt:now(),provenance:'user-import'});
-  }catch(e){await unlink(file).catch(()=>{});if(e.terminationUnconfirmed)throw e;checkpoint(signal);throw new AppError('INVALID_MEDIA','无法解码素材或媒体类型不符，请检查文件');}
+  }catch(e){if(!restored)await unlink(file).catch(()=>{});else if(ownedIdentity){const actual=await lstat(file).catch(()=>null);if(actual?.isFile()&&actual.dev===ownedIdentity.dev&&actual.ino===ownedIdentity.ino)await unlink(file).catch(()=>{});}if(e.terminationUnconfirmed||safeWorkspaceRestoreError(e))throw e;checkpoint(signal);throw new AppError('INVALID_MEDIA','无法解码素材或媒体类型不符，请检查文件');}finally{if(ownedHandle)await ownedHandle.close();}
  },
  'asset.list':i=>{required('projects',i.projectId);return list('assets',i.projectId);},
  'edge.create':i=>{required('projects',i.projectId);for(const id of [i.source,i.target]){const n=get('shots',id)||get('nodes',id);if(!n||n.projectId!==i.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(i.source===i.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',i.projectId).find(e=>e.kind!=='reference'&&e.source===i.source&&e.target===i.target);return existing||put('edges',{id:randomUUID(),...i,kind:'decorative'});},
@@ -218,15 +237,34 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
  },
  'version.list':i=>{const s=required('shots',i.shotId);return list('versions',s.projectId).filter(v=>v.shotId===s.id).map(value=>subjectDisclosure('versions',value,s.projectId)).sort((a,b)=>a.number-b.number);},
- 'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>required('versions',s.selectedVersionId));const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);return e;}),
+ 'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>{const version=required('versions',s.selectedVersionId);if(restored){const graph=createOwnedMediaGraphReader(db,i.projectId),owned=graph.version(version.id,s.id,version.assetId),asset=graph.asset(owned.assetId);if(typeof owned.sha256!=='string'||owned.sha256!==asset.sha256)throw workspaceRestoreError();return owned;}return version;});const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);bindRestoredExport(store,'export.create',i,e,h);return e;}),
  'export.get':i=>required('exports',i.exportId)
  };
- async function call(op,input,{signal:callSignal}={}){
-  const signal=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
+ // Public handlers are the same invocation boundary as RPC. Raw internal
+ // mutation closures remain protected at their shared transaction precondition.
+ const domainHandlers={...handlers};
+ if(restored)for(const op of Object.keys({...domainHandlers,...restoredReads.handlers}))handlers[op]=(input,context={})=>call(op,input,context);
+ async function call(op,input,context={}){
+  const {signal:callSignal}=context;
+  const signals=[ownerSignal,callSignal,restoredLifetime?.signal].filter(Boolean);
+  const signal=restored?(signals.length>1?AbortSignal.any(signals):signals[0]):ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
+  if(restoredLifetime?.signal.aborted)throw workspaceRestoreError();
   checkpoint(signal);
   const operation=(async()=>{
+   if(restored){
+    const parsed=freezeRestoreInput(parse(op,input));
+    if(Object.hasOwn(restoredReads.readers,op))return restoredReads.call(op,parsed,{signal});
+    const saved=restoredReads.replay(op,parsed);if(saved)return publicValue(saved.response);
+    if(!RESTORE_LOCAL_OPERATIONS.includes(op)){refuseRestoredOperation(store,op,parsed);}
+    if(!hasRestoreInvocation(store,op,parsed))assertWorkspaceRestoreOrigin(store,context);
+    return withRestoreInvocation(store,op,parsed,{signal},async frozen=>{
+     refuseRestoredOperation(store,op,frozen);
+     const result=await domainHandlers[op](frozen,{signal});
+     restoreEffectFence(store)();checkpoint(signal);return publicValue(result);
+    });
+   }
    if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input);
-   const parsed=parse(op,input),result=await handlers[op](parsed,{signal});checkpoint(signal);
+   const parsed=parse(op,input),result=await domainHandlers[op](parsed,{signal});checkpoint(signal);
    return publicValue(result);
   })();
   active.add(operation);
@@ -235,6 +273,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  // Drain async RPC work before closing SQLite. Rejection is a settled operation;
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
  const drain=async()=>{
+  restoredLifetime?.abort();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
   const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),...active]),'SERVICE_STOP_TIMEOUT');
@@ -257,6 +296,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  // Only queued/new provider dispatch uses lifecycle validation. Paid task
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job){
+  if(restored)disabled();
   const provider=providers.get(job.providerId);
   const subjectMode=hasSubjectGeneration(job.snapshot);
   if(!profilePolicy&&!usesInputProfiles(provider)&&!subjectMode)return null;
@@ -271,6 +311,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  // Policy rejection must not authorize writing a foreign or replaced record.
  let invalidGenerationReported=false;
  function saveGenerationGuarded(job,patch){
+  if(restored)disabled();
   if(!profilePolicy&&!usesInputProfiles(providers.get(job.providerId))&&!hasSubjectGeneration(job.snapshot))return saveJob(job,patch);
   return tx(()=>{
    let current;try{current=currentGenerationClaim(db,job);}catch{
@@ -280,5 +321,5 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    return saveJob(current,patch);
   });
  }
- return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject,moveTimelineClipInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
+ return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
 }

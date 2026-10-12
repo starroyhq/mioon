@@ -2,6 +2,7 @@ import {TIMELINE_SUBTITLE_OPERATIONS} from './timeline-subtitles.mjs';
 import {TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse} from './timeline-acknowledgement.mjs';
 import {REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse} from './reference-acknowledgement.mjs';
 import {SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse} from './subjects.mjs';
+import {workspaceRestoreTaskContextSchema,workspaceRestoreTaskListContextSchema} from './workspace-restore.mjs';
 import {schemas} from './index.mjs';
 
 // Local UI coordination only. These are not RPC/model-tool operations.
@@ -46,12 +47,15 @@ export function isEditTask(value) {
   } catch { return false; }
 }
 export function isEditTaskEnvelope(value) {
-  return exact(value, ['task', 'instanceId'], ['result']) && uuid(value.instanceId) && isEditTask(value.task) &&
+  return exact(value, ['task', 'instanceId'], ['result','restore']) && uuid(value.instanceId) && isEditTask(value.task) &&
+    (!Object.hasOwn(value,'restore') || workspaceRestoreTaskContextSchema.safeParse(value.restore).success) &&
     (!Object.hasOwn(value, 'result') || value.task.status === 'applied' &&
       responseValidators[value.task.lane]?.(value.task.operation, value.task.input, value.result));
 }
 export function isEditTaskListEnvelope(value) {
-  return exact(value, ['items', 'nextCursor', 'instanceId']) && uuid(value.instanceId) && Array.isArray(value.items) &&
+  return exact(value, ['items', 'nextCursor', 'instanceId'], ['restore']) && uuid(value.instanceId) && Array.isArray(value.items) &&
     value.items.length <= EDIT_TASK_LIMITS.maxPageSize && value.items.every(isEditTask) && new Set(value.items.map(item => item.id)).size === value.items.length &&
+    (!Object.hasOwn(value,'restore') || workspaceRestoreTaskListContextSchema.safeParse(value.restore).success &&
+      value.restore.tasks.length===value.items.length && value.restore.tasks.every((item,index)=>item.taskId===value.items[index].id)) &&
     (value.nextCursor === null || typeof value.nextCursor === 'string' && value.nextCursor.length >= 1 && value.nextCursor.length <= 512);
 }

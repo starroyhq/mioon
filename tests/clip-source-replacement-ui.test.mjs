@@ -237,7 +237,7 @@ function sessionFixture(t) {
 }
 function parentHarness() {
   const c = context(), calls = [], dataRef = { current: { project: { id: projectId }, ...c } }, viewRef = { current: { activeMode: 'editing', editing: { selectedClipId: clipId, quickAssetId: null } } };
-  const deps = { ...replacement, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
+  const deps = { ...replacement, workspaceRef: { current: { restored: false } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
     tasksRef: { current: { blocked: () => false } }, pendingForProject: () => [], online: true, auth: true, loading: false, mutateTimeline: async (...args) => { calls.push(args); return acknowledged(args[3].review || replacement.createClipReplacementReview(c, `asset:${newAssetId}`)); } };
   const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function clipReplacementContext()', 'function exportSettingsContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps);
   return { ...compiled, deps, calls, c };
@@ -304,7 +304,8 @@ test('source wiring uses the existing inline inspector, stable mutation key, ses
   assert.match(appSource, /chosenClip\.versionId === clipSource\.version\.id/);
   assert.match(appSource, /CollapsibleContent keepMounted className="inspector-region-content"/);
   assert.match(appSource, /return run\('timeline:mutation', operation/);
-  assert.ok(appSource.indexOf('!isTimelineMutationResponse(operation, input, result)') < appSource.indexOf('clearPending(projectId, key)'));
+  const responseGuard = appSource.indexOf('!isTimelineMutationResponse(operation, input, result)'), exactClear = appSource.indexOf('clearPending(projectId, key, stored)');
+  assert.ok(responseGuard >= 0 && exactClear > responseGuard, 'Validate the exact response before compare-and-clear of its retained intent');
   const component = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.jsx', import.meta.url), 'utf8');
   assert.doesNotMatch(component, /\brpc\(|requestId\(|Dialog|Modal|confirm\(/);
 });

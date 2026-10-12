@@ -6,14 +6,15 @@ import { exportHistoryDelivery } from './export-settings-state.js';
 
 /** Presentation only. App owns ordering, project identity, dialog lifetime and
  * navigation fences. Rows retain their original immutable export snapshots. */
-export default function ExportHistoryList({ orderedExports, projectName, timelineRevision }) {
+export default function ExportHistoryList({ orderedExports, projectName, timelineRevision, heldExportIds = [] }) {
   return <div className="export-list">
     {orderedExports.length ? orderedExports.map(item => {
-      const delivery = exportHistoryDelivery(item);
+      const delivery = exportHistoryDelivery(item), held = heldExportIds.includes(item.id);
       return <div className="export-card" key={item.id}>
         <div className="export-icon"><Icon name="film" size={24} /></div>
         <div className="export-detail">
           <strong>{projectName || '成片'}.mp4</strong>
+          {held && <span className="restored-held-label" data-testid="restored-export-held">历史记录 · 暂停执行，原状态保留</span>}
           <span>{statusText(item.status)} · {new Date(item.createdAt).toLocaleString('zh-CN')}</span>
           {item.error && <p className="job-error">{typeof item.error === 'string' ? item.error : item.error.message}</p>}
           <small>{item.mode === 'timeline'
@@ -26,7 +27,7 @@ export default function ExportHistoryList({ orderedExports, projectName, timelin
               download={`${projectName || 'film'}.mp4`} data-testid="download-export">
               <Icon name="download" size={15} />下载
             </a>
-          : item.status === 'failed'
+          : held ? <Badge className="small-badge neutral">已保留 · 暂停</Badge> : item.status === 'failed'
             ? <Badge className="small-badge warn">失败</Badge>
             : <span className="spinner" />}
       </div>; })

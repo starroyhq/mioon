@@ -1,3 +1,5 @@
+import {bindRestoredExport} from './workspace-restore-exports.mjs';
+import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
 import {createAgentTimelineMoveBoundary} from './agent/timeline-edit-domain.mjs';
 import {createSubtitleMutations} from './timeline-subtitles.mjs';
 import {randomUUID} from 'node:crypto';
@@ -32,6 +34,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   required('projects',projectId);
   const existing=find(projectId);
   if(existing)return existing;
+  refuseRestoredOperation(store,'timeline.get',{projectId});
   return put('timelines',newTimeline(projectId));
  }
  function newTimeline(projectId,preset=timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET)){
@@ -53,6 +56,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   return result;
  }
  function transaction(operation,input,apply,boundary=createTimelineRecoveryBoundary(db,input)){
+  refuseRestoredOperation(store,operation,input);
   const state={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
@@ -63,6 +67,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
      throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
     if(previous)return boundary.replay(operation,previous.response);
     state.receiptAbsent=true;
+    refuseRestoredOperation(store,operation,input);
     return apply({boundary,requestHash,write});
    }catch(error){state.callbackFailed=true;throw error;}
   });}catch(error){rejectTimelineMutation(db,input,error,state);throw error;}
@@ -181,19 +186,21 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:frozen.timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
    write();put('exports',result);
-   return saveResponse('timeline.render',input,requestHash,result,boundary);
+   const response=saveResponse('timeline.render',input,requestHash,result,boundary);
+   bindRestoredExport(store,'timeline.render',input,result,requestHash);
+   return response;
   });
  }
  const handlers={
   ...createSubtitleMutations(mutate),
-  'timeline.format.get':input=>getTimelineFormat(db,input),
+  'timeline.format.get':input=>getTimelineFormat(db,input,{store}),
   'timeline.format.set':input=>transaction('timeline.format.set',input,({boundary,requestHash,write})=>{
    const context=readTimelineFormatOwner(db,input);
    check(context.project,input.expectedProjectRevision);
    const revision=context.timeline?.revision??0;
    if(revision!==input.expectedRevision)throw new AppError('REVISION_CONFLICT','时间线已有新版本，请重新读取后再修改',409,{expectedRevision:input.expectedRevision,currentRevision:revision});
    if(revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
-   assertTimelineFormatEligible(readTimelineFormatState(db,input,{admission:true,context}));
+   assertTimelineFormatEligible(readTimelineFormatState(db,input,{admission:true,context,store}));
    const preset=timelineOutputPreset(input.presetId);
    if(context.timeline&&timelineOutputPreset(context.timeline)?.id===preset.id)throw new AppError('TIMELINE_FORMAT_UNCHANGED','时间线已使用此输出规格',409);
    const timeline=context.timeline??newTimeline(input.projectId,preset);
@@ -267,13 +274,15 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
     startFrame+=durationFrames;
    }
   }),
-  'timeline.render':(input,options={})=>input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
+  'timeline.render':(input,options={})=>{
+   refuseRestoredOperation(store,'timeline.render',input);
+   return input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
    prepare:()=>{
     const result=transaction('timeline.render',input,({boundary,write})=>({snapshot:renderSnapshot(input,boundary,write)}));
     return result.mode==='timeline'?{replayed:true,response:result}:result;
    },
    accept:admission=>render(input,admission),
-  })
+  });}
  };
  // Fixed backend-only Agent scope. It uses precisely the existing update,
  // history, revision and receipt transaction, with no second mutation engine.

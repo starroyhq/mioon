@@ -55,7 +55,7 @@ export function Media({ asset, version, className = '', controls = false, ...pro
 }
 const ShotNode = memo(function ShotNode({ data, selected }) {
   const { record, asset, version, job, index, onInspect, onGenerate } = data;
-  const generating = job && activeJob(job);
+  const generating = !data.generationUnavailableReason && job && activeJob(job);
   return <article className={`canvas-node shot-node ${selected ? 'is-selected' : ''}`} data-testid={`shot-node-${record.id}`}>
     <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label="镜头视觉连线输入，不参与生成" title="视觉连线 · 不参与生成" />
     <Handle id={REFERENCE_TARGET_HANDLE} type="target" position={Position.Left} className="reference-handle" style={{ top: 66 }} aria-label="首帧参考输入" title="将图片的首帧输出连接到这里" isConnectable={!data.referenceBusy && !data.referenceConnection && !record.referenceAssetIds?.length} />
@@ -64,7 +64,7 @@ const ShotNode = memo(function ShotNode({ data, selected }) {
     <div className="shot-media"><Media asset={asset} version={version} controls={Boolean(version)} /><span className="media-corner">{record.aspectRatio} · {record.duration}s</span>{version && <span className={`version-tag ${version.isMock ? 'mock' : ''}`}>V{version.number}{version.isMock ? ' · 模拟' : ''}</span>}{generating && <div className="node-generating"><span className="spinner" />{statusText(job.status)}<span>{Math.round(job.progress || 0)}%</span></div>}</div>
     <div className="node-body"><p>{record.prompt || '写下这个镜头的画面、动作与光线…'}</p><div className="node-meta"><span className={`status-dot ${version ? 'green' : generating ? 'orange' : ''}`} /><span>{generating ? statusText(job.status) : version ? '已选用版本' : '待生成'}</span><span className="spacer" /><span>{record.referenceAssetIds?.length || 0} 张参考</span></div></div>
     {data.referenceConnection && <Button variant="ghost" className="node-bound-reference nodrag" onClick={() => onInspect(record.id, 'settings')} title={data.referenceSourceLabel}><Icon name="link" size={12} /><span>首帧 · {data.referenceSourceLabel}</span></Button>}
-    <footer className="node-footer"><Button variant="ghost" className="node-link nodrag" onClick={() => onInspect(record.id, 'versions')}><Icon name="layers" size={14} />{data.versionCount || 0} 个版本</Button><Button variant="ghost" className="node-generate nodrag" aria-label={`生成 ${record.title}`} title={data.generationLabel ? `使用 ${data.generationLabel} 生成；参数与右侧设置一致` : '在右侧选择生成服务商'} disabled={generating || data.busy || data.referenceBusy} onClick={() => onGenerate(record)}><Icon name="sparkle" size={13} />生成</Button></footer>
+    <footer className="node-footer"><Button variant="ghost" className="node-link nodrag" onClick={() => onInspect(record.id, 'versions')}><Icon name="layers" size={14} />{data.versionCount || 0} 个版本</Button><Button variant="ghost" className="node-generate nodrag" aria-label={`生成 ${record.title}`} title={data.generationUnavailableReason || (data.generationLabel ? `使用 ${data.generationLabel} 生成；参数与右侧设置一致` : '在右侧选择生成服务商')} disabled={Boolean(data.generationUnavailableReason) || generating || data.busy || data.referenceBusy} onClick={() => onGenerate(record)}><Icon name="sparkle" size={13} />生成</Button></footer>
     <Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label="镜头视觉连线输出，不参与生成" title="视觉连线 · 不参与生成" />
   </article>;
 });

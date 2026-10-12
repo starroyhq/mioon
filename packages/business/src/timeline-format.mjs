@@ -1,3 +1,4 @@
+import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
 import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isTimelineRenderRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline,restoreTimelineEditableSnapshot} from './timeline-recovery.mjs';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-format-schema.mjs';
@@ -31,7 +32,7 @@ export function readTimelineFormatOwner(db,input){
  if(project.id!==input.projectId||projectRow.id!==project.id||!integer(project.revision,1))invalidTimeline();
  return {project,timeline,boundary};
 }
-export function readTimelineFormatState(db,input,{admission=false,context=readTimelineFormatOwner(db,input)}={}){
+export function readTimelineFormatState(db,input,{admission=false,context=readTimelineFormatOwner(db,input),store}={}){
  const {project,timeline,boundary}=context;
  const reasons=[];
  if(timeline&&(timeline.clips.length||timeline.durationFrames))reasons.push('CLIPS_PRESENT');
@@ -87,7 +88,8 @@ export function readTimelineFormatState(db,input,{admission=false,context=readTi
   }else if(Object.hasOwn(value,'mode')||!Array.isArray(value.snapshot)||!Array.isArray(value.orderedVersionIds))invalidTimeline();
  }
  if(exportHistory)reasons.push('EXPORT_HISTORY');
- const tasks=rows(db,`SELECT position,revision,acknowledged,bytes,${Object.entries({id:36,projectId:36,operation:80,input:8192,requestId:800,digest:64,lane:32,origin:32,status:32,claim:36,claimInstance:36,receiptDigest:64,errorCode:80,createdAt:40,updatedAt:40}).map(([column,bytes])=>bounded(column,bytes)+' AS '+column).join(',')} FROM edit_tasks WHERE projectId=? AND (lane='timeline:mutation' OR operation LIKE 'timeline.%') ORDER BY position`,input.projectId);
+ const restored=store&&store.db===db?getWorkspaceRestoreContext(store):null;
+ const tasks=rows(db,`SELECT position,revision,acknowledged,bytes,${restored?'executionEpoch,':''}${Object.entries({id:36,projectId:36,operation:80,input:8192,requestId:800,digest:64,lane:32,origin:32,status:32,claim:36,claimInstance:36,receiptDigest:64,errorCode:80,createdAt:40,updatedAt:40}).map(([column,bytes])=>bounded(column,bytes)+' AS '+column).join(',')} FROM edit_tasks WHERE projectId=? AND (lane='timeline:mutation' OR operation LIKE 'timeline.%') ORDER BY position`,input.projectId);
  let pendingCount=0;
  for(const row of tasks){
   const saved=parse(row.input),task={id:row.id,projectId:row.projectId,operation:row.operation,input:saved,requestId:row.requestId,digest:row.digest,lane:row.lane,status:row.status,revision:row.revision,createdAt:row.createdAt,updatedAt:row.updatedAt,acknowledged:row.acknowledged===1,origin:row.origin,...(row.errorCode===null?{}:{errorCode:row.errorCode})};
@@ -103,6 +105,7 @@ export function readTimelineFormatState(db,input,{admission=false,context=readTi
    const response=createTimelineRecoveryBoundary(db,saved).replay(row.operation,retained.response);
    if(row.receiptDigest!==null&&row.receiptDigest!==hash(response))invalidTimeline();
   }
+  if(restored&&row.executionEpoch!==restored.workspaceOrigin){if(row.executionEpoch!=='captured')invalidTimeline();continue;}
   if(row.acknowledged===1)continue;
   if(++pendingCount>1)invalidTimeline();
   const executing=admission&&executingTimelineFormatTask(db);
@@ -114,9 +117,9 @@ export function readTimelineFormatState(db,input,{admission=false,context=readTi
  if(!preset)invalidTimeline();
  return {project,timeline,boundary,response:{projectId:input.projectId,projectRevision:project.revision,timelineId:timeline?.id??null,timelineRevision:timeline?.revision??0,presetId:preset.id,fps:preset.fps,width:preset.width,height:preset.height,eligible:reasons.length===0,blockedReasons:reasons}};
 }
-export function getTimelineFormat(db,input){
- if(db.isTransaction)return readTimelineFormatState(db,input).response;
- db.exec('BEGIN');try{const result=readTimelineFormatState(db,input).response;db.exec('COMMIT');return result;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+export function getTimelineFormat(db,input,options={}){
+ if(db.isTransaction)return readTimelineFormatState(db,input,options).response;
+ db.exec('BEGIN');try{const result=readTimelineFormatState(db,input,options).response;db.exec('COMMIT');return result;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
 }
 export function assertTimelineFormatEligible(state){
  if(!state.response.eligible)throw new AppError('TIMELINE_FORMAT_LOCKED','只有尚未编辑、导出或保留其他编辑请求的空白时间线可以修改输出规格',409,{blockedReasons:state.response.blockedReasons});

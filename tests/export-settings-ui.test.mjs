@@ -162,7 +162,7 @@ const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.ur
 function appFunction(begin, end, scope) { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope)); }
 function appHarness(f) {
   const calls = [], panels = [], notices = [], pending = []; let ids = 0;
-  const environment = { exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
+  const environment = { workspaceRef: { current: { restored: false } }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
     setRightDockTab: value => panels.push(value), setPanelOpen: (...args) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
     notify: (...args) => notices.push(args), setShowJobs() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
     requestId: () => { ids++; return 'frozen-render-id'; }, run: async (...args) => { calls.push(args); return { id: id(20) }; } };

@@ -1,11 +1,26 @@
 #!/usr/bin/env node
 // Deliberately separate from the HTTP CLI: never resolve connections, read
-// credentials, initialize services, migrate a database or contact a provider.
+// credentials, initialize services or contact a provider. Restore only installs
+// the fixed offline guard into a private candidate before atomic publication.
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
 
 const messages = Object.freeze({
+  RESTORE_BACKUP_UNAVAILABLE: 'This restored working branch cannot create another backup until recursive restore is supported. No backup destination was created; keep the original verified backup.',
+  WORKSPACE_RESTORE_IO: 'Offline restore did not complete. Preserve the incomplete destination and original backup; use a different new destination after review.',
+  WORKSPACE_RESTORE_INVALID_PATH: 'Use explicit canonical absolute backup and new destination directories with no overlap.',
+  WORKSPACE_RESTORE_DESTINATION_WORKSPACE_ANCESTOR: 'The destination is inside a directory with an existing workspace database or workspace lock. Choose an independent new destination outside existing workspaces.',
+  WORKSPACE_RESTORE_DESTINATION_EXISTS: 'The restore destination already exists. Choose a new destination; existing contents were not changed.',
+  WORKSPACE_RESTORE_LOCKED: 'The destination contains a preexisting lock. No lock was removed or repaired.',
+  WORKSPACE_RESTORE_LOCK_LOST: 'The destination lock changed. Preserve the incomplete destination and original backup.',
+  WORKSPACE_RESTORE_SOURCE_SCHEMA_UNSUPPORTED: 'Only fully classified schema24 original backups can be restored. Restored and unknown schemas are not supported.',
+  WORKSPACE_RESTORE_CHANGED: 'A backup or destination file changed. Preserve the incomplete destination and original backup.',
+  WORKSPACE_RESTORE_LIMIT: 'The backup or restored candidate exceeds a fixed offline restore safety limit.',
+  WORKSPACE_RESTORE_CANCELLED: 'Restore was cancelled before activation. Incomplete files are retained; choose a different new destination after review.',
+  WORKSPACE_RESTORE_DATABASE_INVALID: 'The candidate failed fixed schema, captured identity or preservation validation. It was not activated.',
+  WORKSPACE_RESTORE_PUBLICATION_UNCONFIRMED: 'The guarded database may be activated, but publication or durability is unconfirmed. Preserve the original backup and this destination. Run restore-status with the original backup directory and destination, or the exact returned binding; if unavailable, review this destination and use a different new destination for another offline copy. Do not retry inherited tasks.',
+  WORKSPACE_RESTORE_STATUS_UNAVAILABLE: 'The destination is not safely inspectable offline or does not match the supplied restoration binding. Close the backend before inspection. Existing locks, links and sidecars were not repaired.',
   VALIDATION_ERROR: 'Use exactly one supported command and its documented options. Run node apps/cli/src/backup.mjs --help for usage.',
   WORKSPACE_BACKUP_INVALID_PATH: 'Use explicit canonical absolute directories with no overlapping source and destination.',
   WORKSPACE_BACKUP_DESTINATION_EXISTS: 'The backup destination already exists. Choose a new destination; existing contents were not changed.',
@@ -40,16 +55,24 @@ export function parseBackupArguments(argv) {
   if (argv.length === 0 || (argv.length === 1 && argv[0] === '--help')) return {command: 'help'};
   if (argv.length === 1 && argv[0] === '--version') return {command: 'version'};
   const [command, ...options] = argv;
-  if (!['create', 'verify'].includes(command)) fail();
+  if (!['create', 'verify', 'restore', 'restore-status'].includes(command)) fail();
   if (options.length === 1 && options[0] === '--help') return {command: 'help', topic: command};
-  const allowed = command === 'create' ? ['--source', '--destination'] : ['--directory'];
+  const allowed = command === 'create' ? ['--source', '--destination'] : command === 'restore' ? ['--directory', '--destination'] : command === 'restore-status' ? (options.includes('--directory') ? ['--directory', '--destination'] : ['--destination', '--restoration-id', '--backup-id', '--manifest-hash', '--source-db-hash']) : ['--directory'];
   const values = Object.create(null);
   for (let index = 0; index < options.length; index += 2) {
     const flag = options[index], value = options[index + 1];
     if (!allowed.includes(flag) || Object.hasOwn(values, flag) || value === undefined || value.startsWith('--')) fail();
-    values[flag] = absoluteDirectory(value);
+    if (['--source', '--destination', '--directory'].includes(flag)) values[flag] = absoluteDirectory(value);
+    else {
+      const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+      if (flag.endsWith('-hash') ? value.length !== 64 || !/^[a-f0-9]{64}$/.test(value) : value.length !== 36 || !uuid.test(value)) fail();
+      values[flag] = value;
+    }
   }
   if (allowed.some(flag => !Object.hasOwn(values, flag))) fail();
+  if (command === 'restore') return {command, directory: values['--directory'], destination: values['--destination']};
+  if (command === 'restore-status' && values['--directory']) return {command, directory: values['--directory'], destination: values['--destination']};
+  if (command === 'restore-status') return {command, destination: values['--destination'], restorationId: values['--restoration-id'], sourceBackupId: values['--backup-id'], manifestHash: values['--manifest-hash'], sourceDbHash: values['--source-db-hash']};
   return command === 'create'
     ? {command, source: values['--source'], destination: values['--destination']}
     : {command, directory: values['--directory']};
@@ -65,6 +88,8 @@ function help(topic) {
   const commands = {
     create: 'node apps/cli/src/backup.mjs create --source /absolute/workspace --destination /absolute/new-backup',
     verify: 'node apps/cli/src/backup.mjs verify --directory /absolute/backup',
+    restore: 'node apps/cli/src/backup.mjs restore --directory /absolute/verified-backup --destination /absolute/new-workspace',
+    'restore-status': 'node apps/cli/src/backup.mjs restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace',
   };
   return {
     name: 'mioon-backup', version: version(), offline: true,
@@ -72,7 +97,8 @@ function help(topic) {
     requirements: [
       'Node.js 24+ with installed source workspace dependencies.',
       'Close every backend or desktop app using the source workspace before capture. Existing locks and uncheckpointed SQLite sidecars are refused without repair.',
-      'Use explicit canonical absolute paths. The destination must be new, with an existing safe parent, and must not overlap the source.',
+      'Use explicit canonical absolute paths. The destination must be new, with an existing safe parent, and must not overlap the source. Restore also refuses destination ancestors containing workbench.sqlite or server.lock; choose an independent workspace root.',
+      'Backup format1 does not record its original source path. Renamed or uninitialized source directories lacking fixed workspace/lock markers cannot be identified automatically; keep the new destination outside your original workspace.',
     ],
     privacy: [
       'Whole-workspace capture includes the database and supported managed media/staging payloads across all projects.',
@@ -81,20 +107,33 @@ function help(topic) {
     ],
     safety: [
       'Local files only. No connection or token configuration is read, and no HTTP, provider, recovery or generation operation is started.',
-      'Verification checks supported manifest and payload integrity; it does not establish restoration readiness. Restore is not implemented.',
-      'No overwrite, restore, automatic retry or automatic deletion. Interrupted captures may leave an incomplete new destination; choose a different new destination after review.',
+      'Verification checks supported manifest and payload integrity; it does not establish restoration readiness. Restore separately accepts only classified schema24 and installs permanent held-work guards in schema25.',
+      'Restored branches allow supported fresh local editing and export. Captured tasks, approvals, histories, receipts and unknown outcomes remain held; generation, Agent, Comfy, frame and waveform work are unavailable. Backup creation of restored branches is unavailable; keep the original verified backup.',
+      'Restore never opens or switches the backend automatically. For Web, select the new workspace with MIOON_DATA_DIR. For Desktop, restore to a new root/workspace child, then explicitly select that new root with MIOON_DESKTOP_USER_DATA; never share old token/session files.',
+      'Restore budgets payload plus four 512MiB database/copy/journal allowances and 64MiB sidecars. This is an estimate, not a free-space or memory guarantee.',
+      'After total stdout/acknowledgement loss, use restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace. It verifies the whole original backup and target binding before disclosing the existing restoration identity. Exact-ID mode remains available: restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256.',
+      'Restore-status is a read-only guarded-schema and provenance observation. It does not repair locks or sidecars, resume work, or prove a previously unconfirmed fsync was durable.',
+      'No overwrite, automatic retry or automatic deletion. Interrupted captures may leave an incomplete new destination; choose a different new destination after review.',
       'SIGINT and SIGTERM request cancellation and wait for local cleanup attempts. Unconfirmed source lock release is explicitly reported; inspect it before another capture.',
       'A published backup may include warnings:["SOURCE_LOCK_RELEASE_UNCONFIRMED"]. A failed or cancelled operation preserves its error code and adds details.sourceLockRelease:"unconfirmed" if source lock cleanup is unconfirmed.',
     ],
-    output: 'Exactly one JSON envelope on stdout. Success is {ok:true,data:...}; errors are {ok:false,error:{code,message,details:{...},retryable:false}}. Details are empty except the fixed source-lock cleanup warning. Exit codes: 0 success, 2 invalid arguments, 1 operation failure, 130 SIGINT cancellation, 143 SIGTERM cancellation.',
+    output: 'Exactly one JSON envelope on stdout. Success is {ok:true,data:...}; errors are {ok:false,error:{code,message,details:{...},retryable:false}}. Details contain only fixed cleanup warnings and generated restore provenance after uncertain publication. Exit codes: 0 success, 2 invalid arguments, 1 operation failure, 130 SIGINT cancellation, 143 SIGTERM cancellation.',
   };
 }
 
 // Diagnostics are an allowlist; never forward raw exception messages, causes,
 // paths, input values, SQLite rows, stack traces or validation details.
-function safeError(error) {
+function safeError(error, command) {
   const code = typeof error?.code === 'string' && Object.hasOwn(messages, error.code) ? error.code : 'WORKSPACE_BACKUP_IO';
-  return {code, message: messages[code], details: error?.cleanupUnconfirmed === true ? {sourceLockRelease: 'unconfirmed'} : {}, retryable: false};
+  const details = error?.cleanupUnconfirmed === true ? {[command === 'restore' ? 'destinationLockRelease' : 'sourceLockRelease']: 'unconfirmed'} : {};
+  if (code === 'WORKSPACE_RESTORE_PUBLICATION_UNCONFIRMED' && error?.publication) {
+    const p = error.publication, uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, hash = /^[a-f0-9]{64}$/;
+    if (['restorationId', 'workspaceOrigin', 'sourceBackupId'].every(key => typeof p[key] === 'string' && p[key].length === 36 && uuid.test(p[key])) && ['manifestHash', 'sourceDbHash'].every(key => typeof p[key] === 'string' && p[key].length === 64 && hash.test(p[key]))) {
+      details.publication = Object.fromEntries(['restorationId', 'workspaceOrigin', 'sourceBackupId', 'manifestHash', 'sourceDbHash'].map(key => [key, p[key]]));
+      details.publication.state = 'unconfirmed';
+    }
+  }
+  return {code, message: messages[code], details, retryable: false};
 }
 
 function output(stream, text) {
@@ -122,11 +161,12 @@ function output(stream, text) {
 }
 
 export async function runBackupCli(argv = process.argv.slice(2)) {
-  let firstSignal;
+  let firstSignal, command;
   let data;
   let error;
   try {
     const input = parseBackupArguments(argv);
+    command = input.command;
     if (input.command === 'help') data = help(input.topic);
     else if (input.command === 'version') data = {name: 'mioon-backup', version: version()};
     else {
@@ -140,12 +180,22 @@ export async function runBackupCli(argv = process.argv.slice(2)) {
       process.on('SIGINT', onInterrupt);
       process.on('SIGTERM', onTerminate);
       try {
-        const {createWorkspaceBackup, verifyWorkspaceBackup} = await import('../../../packages/business/src/workspace-backup.mjs');
-        const {workspaceBackupResultSchema} = await import('../../../packages/contracts/src/workspace-backup.mjs');
-        const result = input.command === 'create'
-          ? await createWorkspaceBackup({source: input.source, destination: input.destination, signal: controller.signal})
-          : await verifyWorkspaceBackup({directory: input.directory, signal: controller.signal});
-        const parsed = workspaceBackupResultSchema.safeParse(result);
+        let result, resultSchema;
+        if (input.command === 'restore' || input.command === 'restore-status') {
+          const {restoreWorkspaceBackup, inspectWorkspaceRestorePublication} = await import('../../../packages/business/src/workspace-restore.mjs');
+          const {workspaceRestoreOfflineResultSchema, workspaceRestorePublicationStatusSchema} = await import('../../../packages/contracts/src/workspace-restore-offline.mjs');
+          const {command: ignored, ...options} = input;
+          result = await (input.command === 'restore' ? restoreWorkspaceBackup : inspectWorkspaceRestorePublication)({...options, signal: controller.signal});
+          resultSchema = input.command === 'restore' ? workspaceRestoreOfflineResultSchema : workspaceRestorePublicationStatusSchema;
+        } else {
+          const {createWorkspaceBackup, verifyWorkspaceBackup} = await import('../../../packages/business/src/workspace-backup.mjs');
+          const {workspaceBackupResultSchema} = await import('../../../packages/contracts/src/workspace-backup.mjs');
+          result = input.command === 'create'
+            ? await createWorkspaceBackup({source: input.source, destination: input.destination, signal: controller.signal})
+            : await verifyWorkspaceBackup({directory: input.directory, signal: controller.signal});
+          resultSchema = workspaceBackupResultSchema;
+        }
+        const parsed = resultSchema.safeParse(result);
         if (!parsed.success) fail('WORKSPACE_BACKUP_IO');
         data = parsed.data;
       } finally {
@@ -156,13 +206,13 @@ export async function runBackupCli(argv = process.argv.slice(2)) {
       }
     }
   } catch (caught) {
-    error = safeError(caught);
+    error = safeError(caught, command);
   }
   if (error) {
     await output(process.stdout, `${JSON.stringify({ok: false, error})}\n`);
     await output(process.stderr, `${error.code}: ${error.message}\n`);
-    return error.code === 'VALIDATION_ERROR' || error.code === 'WORKSPACE_BACKUP_INVALID_PATH' ? 2
-      : error.code === 'WORKSPACE_BACKUP_CANCELLED' ? (firstSignal === 'SIGTERM' ? 143 : 130) : 1;
+    return error.code === 'VALIDATION_ERROR' || ['WORKSPACE_BACKUP_INVALID_PATH', 'WORKSPACE_RESTORE_INVALID_PATH'].includes(error.code) ? 2
+      : ['WORKSPACE_BACKUP_CANCELLED', 'WORKSPACE_RESTORE_CANCELLED'].includes(error.code) ? (firstSignal === 'SIGTERM' ? 143 : 130) : 1;
   }
   return await output(process.stdout, `${JSON.stringify({ok: true, data})}\n`) ? 0 : 1;
 }

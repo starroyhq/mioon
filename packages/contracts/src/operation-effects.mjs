@@ -21,6 +21,7 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  'workspace.restore.inspect': define({...read,notes:'Reads verified restored-workspace profile, non-secret origin, bounded held counts and operation availability. No paths, credentials, task transitions, storage repair, filesystem/media/network work or execution authority. Not a built-in Agent tool.'}),
   'workspace.backup.inspect': define({...read,notes:'Reads bounded database counts for a whole-workspace cold backup. No path arguments, file reads/writes, task reconciliation, credential access or process/network activity. Backend must close before offline capture; readiness is not an integrity or restoration guarantee.'}),
   'timeline.subtitle.add': define({...replayEdit,notes:'Adds one bounded manual subtitle under timeline CAS with a backend-generated ID and fixed local font profile. Saves the complete timeline, undo history and exact immutable acknowledgement in one transaction. No media read, process, network or generation.'}),
   'timeline.subtitle.update': define({...replayEdit,notes:'Updates only text or timing of an existing owned manual subtitle under timeline CAS and exact request replay. Preserves source media, frozen exports and other subtitles. No automatic transcription or media work.'}),

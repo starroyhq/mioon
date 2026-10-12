@@ -1,3 +1,5 @@
+import {getWorkspaceRestoreContext} from '../workspace-restore-schema.mjs';
+import {workspaceRestoreError} from '../workspace-restore-policy.mjs';
 import {createHash, randomUUID} from 'node:crypto';
 import {AppError, isAgentTimelineMoveTarget, isAgentTimelineMoveArguments, agentTimelineMovePublicTarget, agentTimelineMoveDiff, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {timelineEditToolPolicy, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.mjs';
@@ -55,6 +57,7 @@ const publicTarget = value => ({projectId: value.projectId, shotId: value.shotId
  * shot.update dispatcher outside any transaction. Trusted fault/limit injection
  * is for synthetic tests. */
 export function createAgentEditService({store, services, fault = () => {}, limits = {}}) {
+ if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
   if (!store?.db || typeof store.tx !== 'function' || typeof services?.updateShotInProject !== 'function' || typeof fault !== 'function') corrupt();
   const {db} = store, bounds = {...AGENT_EDIT_LIMITS, ...limits};
   for (const key of ['rows', 'bytes', 'definitionBytes', 'rowBytes', 'pageSize', 'maxPageSize'])

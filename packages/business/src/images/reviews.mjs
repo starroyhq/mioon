@@ -1,3 +1,5 @@
+import {getWorkspaceRestoreContext} from '../workspace-restore-schema.mjs';
+import {workspaceRestoreError} from '../workspace-restore-policy.mjs';
 import {randomUUID, randomInt, randomBytes, createHash, createHmac, timingSafeEqual} from 'node:crypto';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '@mioon/contracts';
@@ -91,6 +93,7 @@ export function validateImageTaskReview(db, projectId, taskId, input, {consume=(
  * hooks performs I/O, queues work, opens a transaction, or approves a later
  * changed request. The image lifecycle owns task acceptance and dispatch txs. */
 export function createImageReviewServices(store, {getSettings, assertSettings, signal, fault = () => {}} = {}) {
+ if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
   const {db, tx} = store, cursorSecret = randomBytes(32),editSources=createImageEditSourceResolver(store,{signal});
   let stopped = false;
   for (const callback of [getSettings, assertSettings, fault]) {

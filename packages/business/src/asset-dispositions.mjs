@@ -4,8 +4,8 @@ import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 
 // Shared metadata belongs to the existing source asset. No asset or media write,
 // timeline initialization, provider call, name change or deletion is involved.
-export function createAssetDispositionServices(store,{canonical}) {
- const {db}=store,mutate=createMutationReplay(store,{canonical});
+export function createAssetDispositionServices(store,{canonical,readOnly=false}) {
+ const {db}=store,mutate=createMutationReplay(store,{canonical,readOnly});
  const missing=()=>{throw new AppError('NOT_FOUND','找不到记录',404);};
  const invalid=()=>{throw new AppError('INVALID_ASSET_DISPOSITION_RECORD','素材标记或关联状态不一致，请先检查项目',409);};
  const decode=text=>{let value;try{value=JSON.parse(text);}catch{invalid();}if(!value||typeof value!=='object'||Array.isArray(value))invalid();return value;};

@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 import {throwIfMediaAborted} from './media-processes.mjs';
+import {checkMediaEffect,isMediaEffectRestriction} from './media-runtime.mjs';
 
 export const SUBTITLE_FONT_FILE='mioon-subtitle-cjk-sc-v1.otf';
 export const SUBTITLE_FONT_BYTES=16437296;
@@ -31,33 +32,38 @@ export function validateSubtitleSnapshotProfile(snapshot){
 // Bounded regular-file hashing; there is no whole-font stdout or ASAR read.
 // Optionally write the verified bytes to one private render staging file. That
 // exact copy is reused for measurement and rendering, eliminating a font TOCTOU.
-export async function verifySubtitleFontResource({signal,destination}={}){
- throwIfMediaAborted(signal);
- let source,output;
+export async function verifySubtitleFontResource({signal,destination,beforeEffect,openOwnedFile}={}){
+ checkMediaEffect(beforeEffect,signal);
+ let source,output,failure;
  try{
-  const directory=await lstat(resourceDirectory);
+  const directory=await lstat(resourceDirectory);checkMediaEffect(beforeEffect,signal);
   if(!directory.isDirectory()||directory.isSymbolicLink())throw Error('Invalid resource directory');
-  const file=path.join(resourceDirectory,SUBTITLE_FONT_FILE),before=await lstat(file);
+  const file=path.join(resourceDirectory,SUBTITLE_FONT_FILE),before=await lstat(file);checkMediaEffect(beforeEffect,signal);
   if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size!==SUBTITLE_FONT_BYTES)throw Error('Invalid font resource');
-  source=await open(file,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0));
-  const opened=await source.stat();
+  source=await open(file,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0));checkMediaEffect(beforeEffect,signal);
+  const opened=await source.stat();checkMediaEffect(beforeEffect,signal);
   if(!opened.isFile()||!same(before,opened))throw Error('Changed font resource');
-  if(destination)output=await open(destination,'wx',0o600);
+  if(destination){checkMediaEffect(beforeEffect,signal);output=await (openOwnedFile?openOwnedFile(destination):open(destination,'wx',0o600));checkMediaEffect(beforeEffect,signal);}
   const hash=createHash('sha256'),buffer=Buffer.alloc(64*1024);let bytes=0;
   while(bytes<SUBTITLE_FONT_BYTES){
-   throwIfMediaAborted(signal);
+   checkMediaEffect(beforeEffect,signal);
    const {bytesRead}=await source.read(buffer,0,Math.min(buffer.length,SUBTITLE_FONT_BYTES-bytes),bytes);
+   checkMediaEffect(beforeEffect,signal);
    if(!bytesRead)throw Error('Truncated font resource');
    hash.update(buffer.subarray(0,bytesRead));
-   if(output){let written=0;while(written<bytesRead){throwIfMediaAborted(signal);const part=await output.write(buffer,written,bytesRead-written,bytes+written);if(!part.bytesWritten)throw Error('Incomplete font copy');written+=part.bytesWritten;}}
+   if(output){let written=0;while(written<bytesRead){checkMediaEffect(beforeEffect,signal);const part=await output.write(buffer,written,bytesRead-written,bytes+written);checkMediaEffect(beforeEffect,signal);if(!part.bytesWritten)throw Error('Incomplete font copy');written+=part.bytesWritten;}}
    bytes+=bytesRead;
   }
-  if((await source.read(buffer,0,1,bytes)).bytesRead||!same(opened,await source.stat())||!same(opened,await lstat(file))||hash.digest('hex')!==TIMELINE_SUBTITLE_FONT_SHA256)throw Error('Changed font resource');
-  throwIfMediaAborted(signal);
+  const trailing=await source.read(buffer,0,1,bytes);checkMediaEffect(beforeEffect,signal);
+  const after=await source.stat();checkMediaEffect(beforeEffect,signal);
+  const current=await lstat(file);checkMediaEffect(beforeEffect,signal);
+  if(trailing.bytesRead||!same(opened,after)||!same(opened,current)||hash.digest('hex')!==TIMELINE_SUBTITLE_FONT_SHA256)throw Error('Changed font resource');
   return {profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256,bytes};
  }catch(error){
+  failure=error;
+  if(isMediaEffectRestriction(error))throw error;
   throwIfMediaAborted(signal);
   if(error.code==='MEDIA_CANCELLED'||error.terminationUnconfirmed)throw error;
   throw fault('SUBTITLE_RESOURCE_UNAVAILABLE','The bundled subtitle font is missing or does not match this rendering profile.');
- }finally{await Promise.all([source?.close(),output?.close()]).catch(()=>{throw fault('SUBTITLE_RESOURCE_UNAVAILABLE','Subtitle resource handles could not be closed.');});}
+ }finally{await Promise.all([source?.close(),output?.close()]).catch(()=>{if(!isMediaEffectRestriction(failure))throw fault('SUBTITLE_RESOURCE_UNAVAILABLE','Subtitle resource handles could not be closed.');});if(!failure)checkMediaEffect(beforeEffect,signal);}
 }

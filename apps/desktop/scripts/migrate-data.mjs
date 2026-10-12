@@ -2,6 +2,7 @@ import { cp, mkdir, readdir, lstat, stat, realpath, open } from 'node:fs/promise
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStore } from '@mioon/business';
+import { withOrdinaryMigrationSource } from './migration-restore-guard.mjs';
 
 async function optionalStat(file) { try { return await stat(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
 async function checkAncestors(file, { allowMissing = false } = {}) {
@@ -57,10 +58,16 @@ export async function migrateData(source, destination) {
   try { await dbFile.read(buffer, 0, buffer.length, 0); } finally { await dbFile.close(); }
   const header = buffer.toString();
   if (header !== 'SQLite format 3\0') throw new Error('Source does not contain a SQLite database');
+  // A valid/partial restored profile must not be cloned with the same origin.
+  // Inspect only a private disposable copy before creating the destination.
+  return withOrdinaryMigrationSource(path.join(source, 'workbench.sqlite'), async checked => {
+  checked.check();
   await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
   await mkdir(destination, { mode: 0o700 });
-  await cp(path.join(source, 'workbench.sqlite'), path.join(destination, 'workbench.sqlite'), { errorOnExist: true, force: false });
+  checked.check();
+  await cp(checked.file, path.join(destination, 'workbench.sqlite'), { errorOnExist: true, force: false });
   await cp(path.join(source, 'media'), path.join(destination, 'media'), { recursive: true, errorOnExist: true, force: false });
+  checked.check();
   // Apply the exact same additive migrations to the copy, then close normally.
   const store = openStore(destination);
   try {
@@ -69,6 +76,7 @@ export async function migrateData(source, destination) {
     return { ok: true, projects: store.list('projects').length, assets: store.list('assets').length,
       destination, sourceUnchanged: true, copiedCredentials: false };
   } finally { store.close(); }
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

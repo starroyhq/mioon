@@ -34,7 +34,7 @@ export function WorkspaceBackupDetails({ state, controller }) {
       <pre data-testid="workspace-backup-create-command"><code>{WORKSPACE_BACKUP_CREATE_COMMAND}</code></pre>
       <p>单独核验已有备份：</p>
       <pre data-testid="workspace-backup-verify-command"><code>{WORKSPACE_BACKUP_VERIFY_COMMAND}</code></pre>
-      <p>核验成功只表示声明的备份内容通过完整性检查，不表示可以安全恢复。本阶段不支持恢复。</p>
+      <p>核验成功只表示声明的备份内容通过完整性检查，不表示可以安全恢复。恢复需按离线指南写入全新目录；恢复分支仅开放本地编辑与导出，受限功能和后续备份限制请先阅读指南。</p>
       <Collapsible open={guideOpen} onOpenChange={setGuideOpen} className="workspace-backup-guide">
         <a href="#workspace-backup-guide-text" aria-expanded={guideOpen} aria-controls="workspace-backup-guide-text" data-testid="workspace-backup-guide" onClick={event => { event.preventDefault(); setGuideOpen(value => !value); }}>{guideOpen ? '收起离线备份指南' : '查看离线备份指南'}</a>
         <CollapsibleContent inert={!guideOpen || !state?.visible} aria-hidden={!guideOpen || undefined}><pre id="workspace-backup-guide-text" className="workspace-backup-guide-text">{backupGuideText}</pre></CollapsibleContent>

@@ -54,13 +54,13 @@ result with `integrity:"verified"`, `restoration:"not_tested"`, payload counts a
 bounded inventory issues. Inspect `inventory.complete` and `inventory.issues`:
 verified bytes do not imply every referenced media item was present or that
 pending work is resolved. Verification does not repair, import or resume work.
-Restore is not implemented, and a verified backup has not been restore-tested.
+Verification alone does not restore data or grant execution. The separate guarded restore workflow below supports fixed schema24 original backups.
 
 Errors contain only a safe code/message, allowlisted details and `retryable:false`;
 concise diagnostics go to stderr. Exit codes are 0 for success, 2 for invalid
 arguments/paths, 1 for operational refusal/failure, 130 for SIGINT cancellation,
 and 143 for SIGTERM cancellation. Flags must be exact and unique; no stdin,
-credential, destination-reuse, restore or server options are accepted. The
+credential, destination-reuse or server options are accepted. Each offline command accepts only its own strict options. The
 ordinary authenticated `mioon workspace backup inspect` operation is a separate
 bounded read of running-backend metadata; it cannot select filesystem paths or
 create a backup.
@@ -79,6 +79,41 @@ rollback could not be confirmed: a complete marker may already exist. Preserve
 that destination and run the separate `verify` command. Marker presence alone
 is not proof of a complete backup;
 do not assume capture failed without publishing or overwrite/retry in place.
+
+## Guarded offline restoration
+
+From a verified original schema24 backup, use a new independent destination:
+
+```sh
+node apps/cli/src/backup.mjs restore --directory /absolute/original-backup --destination /absolute/new-workspace
+# Read-only discovery when the original restore stdout was completely lost:
+node apps/cli/src/backup.mjs restore-status --directory /absolute/original-backup --destination /absolute/new-workspace
+```
+
+The target's parent must exist. Existing targets, locks, partial publication and
+unsupported privacy/schema are never repaired or overwritten. For the exact-ID
+status mode, use all four returned `--restoration-id`, `--backup-id`,
+`--manifest-hash`, `--source-db-hash` flags with `--destination`; do not mix that
+mode with `--directory`. Status returns only `observed_guarded` and
+`durability:"not_reconfirmed"`, not proof of the previous command's successful
+completion or crash durability. Preserve uncertain targets and original backups.
+
+A restored branch permits explicit fresh local imports/edits/previews/exports.
+Captured tasks, approvals, unknown outcomes and requests remain held, unchanged.
+New provider/image/Agent/Comfy/frame/waveform execution and recursive backup
+creation are unavailable in this first profile. Keep the original backup. No
+backend starts automatically. Web can explicitly select `MIOON_DATA_DIR`; for
+Desktop restore into a new root's `workspace` child and select that root with
+`MIOON_DESKTOP_USER_DATA`. Never copy old credentials/session files into it.
+See [the exact restore contract and validation status](WORKSPACE-RESTORE.md).
+
+For a running restored backend, `mioon workspace restore inspect` takes `{}` and
+reads the safe origin/restriction summary. Explicit fresh local effects require
+`--workspace-origin UUID`; omission or another origin refuses. Pin the value once
+for that intended branch; do not automatically adopt a different origin on
+reconnect. Original domain inputs/keys/CAS and exact old receipts stay unchanged.
+This origin is a mismatch guard, not paid-generation permission. Ordinary
+workspaces retain their existing commands and default wire shape.
 
 ## Connect securely
 

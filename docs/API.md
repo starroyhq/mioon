@@ -1064,3 +1064,30 @@ Actual create/verify are explicit offline local CLI actions backed by shared Nod
 business services. No HTTP RPC accepts backup paths or grants restore authority.
 See [scope and safeguards](WORKSPACE-BACKUP.md) and the
 [offline user guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md).
+
+
+## Restored workspace profile
+
+`workspace.restore.inspect` accepts exactly `{}` under normal local authentication.
+An ordinary workspace returns exactly `{restored:false}`. A restored workspace
+returns fixed `restored-local-v1` schema25 identity, source backup/hash binding,
+creation time, bounded held counts and explicit operation availability. It returns
+no filesystem paths, prompts, credentials or generic execution capability.
+Built-in Agent tools stay unchanged.
+
+For explicitly fresh allowed effects on a restored branch, the RPC outer body
+adds `expectedWorkspaceOrigin: UUID` alongside `operation` and `input`. It is not
+a domain field, request hash change, bearer credential or permission to resume
+captured work. Missing/mismatched origin refuses; old valid receipt reads remain
+exact and cannot enqueue work. Special edit-task/preference routes enforce the
+same backend profile. Captured identities, even terminal ones, are held.
+
+Local metadata/timeline editing and fresh local export share existing validators,
+CAS, history and request journals. New generation/Agent/Comfy/frame/waveform
+execution is unavailable. Fixed saved history/media readers do not construct
+recovery runtimes. `RESTORED_RECORD_HELD` and `RESTORE_*` refusals are not proof that
+an earlier unknown write failed. Never discard its original key on that basis.
+
+Restore and status discovery are explicit offline Node/CLI actions only. No
+HTTP endpoint receives restore filesystem paths. See [WORKSPACE-RESTORE.md](WORKSPACE-RESTORE.md)
+for fixed schema gates, limits, recursive-backup restriction and current evidence.

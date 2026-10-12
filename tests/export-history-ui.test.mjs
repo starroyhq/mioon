@@ -75,7 +75,7 @@ test('presentation uses supplied order and never mutates frozen input rows', () 
 test('App retains controlled accessible modal lifetime, project identity, ordering and close epoch fence', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.jsx'), 'utf8');
   assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt\.localeCompare\(a\.createdAt\)\);/);
-  assert.match(app, /showExports && <Modal title="导出记录"[\s\S]*?onClose=\{\(\) => \{ navigationEpoch\.current\+\+; setShowExports\(false\); \}\}><ExportHistoryList orderedExports=\{orderedExports\} projectName=\{data\.project\?\.name\} timelineRevision=\{timeline\?\.revision\} \/><\/Modal>/);
+  assert.match(app, /showExports && <Modal title="导出记录"[\s\S]*?onClose=\{\(\) => \{ navigationEpoch\.current\+\+; setShowExports\(false\); \}\}><ExportHistoryList heldExportIds=\{data\.restore\?\.heldExportIds\} orderedExports=\{orderedExports\} projectName=\{data\.project\?\.name\} timelineRevision=\{timeline\?\.revision\} \/><\/Modal>/);
   assert.match(app, /<Dialog open onOpenChange=\{open => \{ if \(!open\) onClose\(\); \}\}>/);
   assert.match(app, /<DialogTitle>\{title\}<\/DialogTitle>/); assert.match(app, /aria-label="关闭对话框"/);
   assert.match(app, /setShowJobs\(false\); setShowExports\(false\); setComparisonId\(null\)/);

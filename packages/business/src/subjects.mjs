@@ -89,8 +89,8 @@ export function createSubjectRecoveryBoundary(db,input){
  return {context,replay,project,shot,asset,subject,subjectRow,version,binding,bindingRow};
 }
 
-export function createSubjectServices(store,{canonical,now}){
- const {db,tx}=store,mutate=createMutationReplay(store,{canonical}),secret=randomBytes(32);
+export function createSubjectServices(store,{canonical,now,readOnly=false}){
+ const {db,tx}=store,mutate=createMutationReplay(store,{canonical,readOnly}),secret=randomBytes(32);
  const sign=body=>createHmac('sha256',secret).update(body).digest('base64url');
  function cursor(input,operation,after){const body=Buffer.from(JSON.stringify([1,input.projectId,operation,input.subjectId??null,input.shotId??null,input.limit??20,after])).toString('base64url');return `${body}.${sign(body)}`;}
  function after(input,operation){

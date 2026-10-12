@@ -1,3 +1,4 @@
+import { workspaceOriginScope, assertWorkspaceIntent } from './workspace-origin.js';
 import { defaultWorkspaceState, normalizeWorkspaceState, readStoredWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 
 // This projection is deliberately independent of project data and request recovery.
@@ -48,7 +49,7 @@ const failure = (message, code = 'NETWORK', transient = true) => Object.assign(n
  * callbacks immediately while allowing that same final keepalive chain to finish.
  */
 export function createWorkspacePreferences({
-  fetchImpl = (...args) => globalThis.fetch(...args), storage,
+  fetchImpl = (...args) => globalThis.fetch(...args), storage, getWorkspace = () => ({ restored: false }),
   onState = () => {}, onStatus = () => {},
   delayMs = 250, maxWaitMs = 1000, retryDelays = [500, 1500, 4000],
   requestTimeoutMs = 8000, now = () => Date.now(),
@@ -57,7 +58,8 @@ export function createWorkspacePreferences({
   const entries = new Map();
   let activeId = null, activation = 0, disposed = false, disposePromise;
 
-  function live(entry) { return entries.get(entry.projectId) === entry && !entry.retired; }
+  const entryKey = projectId => JSON.stringify([workspaceOriginScope(getWorkspace()), projectId]);
+  function live(entry) { return entries.get(entry.key) === entry && !entry.retired; }
   function pending(entry) { return Boolean(entry.request) || entry.desiredKey !== entry.savedKey; }
   function snapshotStatus(entry) {
     return { phase: entry.phase, revision: entry.revision, pending: entry.ready && pending(entry),
@@ -65,12 +67,12 @@ export function createWorkspacePreferences({
   }
   function emit(entry, phase = entry.phase, error = entry.error) {
     entry.phase = phase; entry.error = error;
-    if (!disposed && live(entry)) {
+    if (!disposed && live(entry) && entry.key === entryKey(entry.projectId)) {
       try { onStatus(entry.projectId, snapshotStatus(entry)); } catch { /* UI callbacks cannot break a save. */ }
     }
   }
   function publish(entry, token) {
-    if (!disposed && live(entry) && activeId === entry.projectId && activation === token) {
+    if (!disposed && live(entry) && activeId === entry.key && activation === token) {
       try { onState(entry.projectId, normalizeWorkspaceState(entry.state)); } catch { /* Same isolation as status callbacks. */ }
       return normalizeWorkspaceState(entry.state);
     }
@@ -82,7 +84,7 @@ export function createWorkspacePreferences({
   }
   function cache(entry) {
     // Keep an offline fallback without search text, unknown fields or credentials.
-    writeWorkspaceState(entry.projectId, durableWorkspaceState(entry.state), storage);
+    writeWorkspaceState(entry.cacheId, durableWorkspaceState(entry.state), storage);
   }
   function plan(entry, delay, retry = false) {
     clearTimer(entry);
@@ -93,14 +95,14 @@ export function createWorkspacePreferences({
       void drain(entry);
     }, Math.max(0, delay));
   }
-  async function request(entry, method, body) {
+  async function request(entry, method, body, invocation = {}) {
     const controller = new AbortController();
     let timeout;
     try {
       const transport = (async () => {
         const response = await fetchImpl(`/api/workspace-preferences/${encodeURIComponent(entry.projectId)}`, {
           method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
-          ...(method === 'PUT' ? { keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+          ...(method === 'PUT' ? { keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...invocation }) } : {}),
         });
         let envelope;
         try { envelope = await response.json(); } catch { throw failure('Workspace preferences returned invalid data.'); }
@@ -139,11 +141,11 @@ export function createWorkspacePreferences({
         entry.due = false; entry.burstStart = null;
         // Preserve this exact revision/body after ambiguous failures, even if the UI
         // has changed again. The server can acknowledge an exact replay safely.
-        entry.request ||= { expectedRevision: entry.revision, state: entry.desired, key: entry.desiredKey };
+        entry.request ||= { expectedRevision: entry.revision, state: entry.desired, key: entry.desiredKey, invocation: entry.desiredInvocation ?? {} };
         const sent = entry.request;
         emit(entry, 'saving', null);
         try {
-          const data = await request(entry, 'PUT', { expectedRevision: sent.expectedRevision, state: sent.state });
+          const data = await request(entry, 'PUT', { expectedRevision: sent.expectedRevision, state: sent.state }, assertWorkspaceIntent(sent.invocation, entry.workspace));
           if (!live(entry)) break;
           entry.revision = data.revision; entry.savedKey = sent.key; entry.request = null; entry.failures = 0;
           if (!pending(entry)) { clearTimer(entry); entry.force = false; emit(entry, 'saved', null); }
@@ -180,7 +182,9 @@ export function createWorkspacePreferences({
     return drain(entry);
   }
   function makeEntry(projectId) {
-    return { projectId, state: defaultWorkspaceState(), revision: null, ready: false, retired: false,
+    const workspace = structuredClone(getWorkspace()), key = entryKey(projectId);
+    if (workspaceOriginScope(workspace) === null) throw failure('Workspace identity has not been verified.', 'WORKSPACE_ORIGIN_UNVERIFIED', false);
+    return { projectId, workspace, key, cacheId: workspace.restored ? `restore:${workspace.workspaceOrigin}:${projectId}` : projectId, state: defaultWorkspaceState(), revision: null, ready: false, retired: false,
       desired: null, desiredKey: null, savedKey: null, request: null, inFlight: null,
       loadPromise: null, timer: null, burstStart: null, due: false, force: false,
       failures: 0, blocked: false, phase: 'loading', error: null };
@@ -188,23 +192,23 @@ export function createWorkspacePreferences({
 
   async function load(projectId, { reload = false } = {}) {
     if (disposed || !projectId) return null;
-    if (activeId && activeId !== projectId) void flushEntry(entries.get(activeId));
-    activeId = projectId;
+    if (activeId && activeId !== entryKey(projectId)) void flushEntry(entries.get(activeId));
+    activeId = entryKey(projectId);
     const token = ++activation;
-    let entry = entries.get(projectId);
+    let entry = entries.get(entryKey(projectId));
     let previousRequest;
     if (entry && reload) {
       entry.retired = true; clearTimer(entry); previousRequest = entry.inFlight;
       entry = null;
     }
     if (!entry) {
-      entry = makeEntry(projectId); entries.set(projectId, entry);
+      entry = makeEntry(projectId); entries.set(entry.key, entry);
       emit(entry, 'loading', null);
       entry.loadPromise = (async () => {
         // A reload cannot race an older request from this same controller.
         if (previousRequest) await previousRequest;
         if (disposed || !live(entry)) return;
-        const legacy = readStoredWorkspaceState(projectId, storage);
+        const legacy = readStoredWorkspaceState(entry.cacheId, storage);
         try {
           const data = await request(entry, 'GET');
           if (disposed || !live(entry)) return;
@@ -213,7 +217,7 @@ export function createWorkspacePreferences({
           entry.desired = durableWorkspaceState(entry.state); entry.desiredKey = keyOf(entry.desired);
           // Existing server preferences always win. Legacy import is allowed only
           // after an authenticated GET positively establishes absence.
-          entry.savedKey = data.state ? keyOf(durableWorkspaceState(data.state)) : (legacy ? null : entry.desiredKey);
+          entry.savedKey = data.state ? keyOf(durableWorkspaceState(data.state)) : (legacy && !entry.workspace.restored ? null : entry.desiredKey);
           entry.ready = true; cache(entry);
           emit(entry, pending(entry) ? 'pending' : 'saved', null);
           if (pending(entry)) { entry.burstStart = now(); plan(entry, delayMs); }
@@ -233,13 +237,18 @@ export function createWorkspacePreferences({
     return publish(entry, token);
   }
 
-  function update(projectId, state, { immediate = false } = {}) {
-    const entry = entries.get(projectId);
+  function update(projectId, state, options = {}) {
+    const { immediate = false } = options;
+    const entry = entries.get(entryKey(projectId));
     if (disposed || !entry?.ready || !live(entry)) return false;
     entry.state = normalizeWorkspaceState(state); cache(entry);
+    // Passive reconciliation can adjust this window's view, but only a fresh
+    // explicit update supplies the origin used by the deferred PUT/retry chain.
+    if (entry.workspace.restored && options.expectedWorkspaceOrigin === undefined) return true;
+    const invocation = Object.freeze(assertWorkspaceIntent(options, entry.workspace));
     const desired = durableWorkspaceState(entry.state), desiredKey = keyOf(desired);
     if (desiredKey === entry.desiredKey) return true;
-    entry.desired = desired; entry.desiredKey = desiredKey;
+    entry.desired = desired; entry.desiredKey = desiredKey; entry.desiredInvocation = invocation;
     if (entry.revision === null || entry.blocked) { emit(entry); return true; }
     if (!pending(entry)) { clearTimer(entry); entry.burstStart = null; emit(entry, 'saved', null); return true; }
     emit(entry, 'pending');
@@ -254,7 +263,7 @@ export function createWorkspacePreferences({
   function flush({ projectId, keepalive = false } = {}) {
     // PUT always starts with keepalive; an in-flight fetch cannot be upgraded later.
     void keepalive;
-    return Promise.all((projectId ? [entries.get(projectId)] : [...entries.values()]).map(flushEntry));
+    return Promise.all((projectId ? [entries.get(entryKey(projectId))] : [...entries.values()]).map(flushEntry));
   }
   function dispose({ flush: shouldFlush = true } = {}) {
     if (disposePromise) return disposePromise;
@@ -265,7 +274,7 @@ export function createWorkspacePreferences({
   }
   return { load, update, flush, dispose,
     hasUnsaved: () => [...entries.values()].some(entry => entry.ready && pending(entry)),
-    getStatus: projectId => entries.has(projectId) ? snapshotStatus(entries.get(projectId)) : null,
-    getSnapshot: projectId => entries.get(projectId)?.ready ? normalizeWorkspaceState(entries.get(projectId).state) : null,
+    getStatus: projectId => entries.has(entryKey(projectId)) ? snapshotStatus(entries.get(entryKey(projectId))) : null,
+    getSnapshot: projectId => entries.get(entryKey(projectId))?.ready ? normalizeWorkspaceState(entries.get(entryKey(projectId)).state) : null,
   };
 }

@@ -1,3 +1,5 @@
+import {restoreEffectFence} from './workspace-restore-invocation.mjs';
+import {refuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.mjs';
 import {AppError,timelineExportCapabilityResultSchema,resolveTimelineExportDelivery,timelineExportCapabilitySchemas} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary} from './timeline-recovery.mjs';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.mjs';
@@ -27,19 +29,22 @@ export function timelineExportCapabilityError(code){return new AppError(code,mes
 export function createTimelineExportAdmissionServices(store,{signal:ownerSignal,inspect=inspectTimelineExportCapability,hash}={}){
  const active=new Set();let stopped=false,shutdownFailure;
  async function inspectOwned(delivery,{signal:callSignal}={}){
+  refuseRestoredOperation(store,'timeline.export.capabilities');
+  const beforeEffect=restoreEffectFence(store);
   const external=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
   if(store.db.isTransaction)throw new AppError('EXPORT_CAPABILITY_CONFIGURATION',messages.EXPORT_CAPABILITY_CONFIGURATION,409);
   const controller=new AbortController(),signal=external?AbortSignal.any([external,controller.signal]):controller.signal;
   const entry={controller,task:null};active.add(entry);
-  const task=Promise.resolve().then(()=>inspect(delivery,{signal}));
+  const task=Promise.resolve().then(()=>{beforeEffect?.();return inspect(delivery,{signal,beforeEffect});});
   entry.task=task.catch(error=>{if(error.terminationUnconfirmed)shutdownFailure=error;}).finally(()=>active.delete(entry));
   try{
-   const value=await awaitProvider(()=>task,signal);checkpoint(signal);
+   const value=await awaitProvider(()=>task,signal);checkpoint(signal);beforeEffect?.();
    if(value?.code==='EXPORT_CAPABILITY_TERMINATION_UNCONFIRMED')throw Object.assign(Error(messages.EXPORT_CAPABILITY_TERMINATION_UNCONFIRMED),{code:'MEDIA_TERMINATION_UNCONFIRMED',terminationUnconfirmed:true});
    return timelineExportCapabilityResultSchema.safeParse(value).success?value:{status:'incomplete',code:'EXPORT_CAPABILITY_FAILED'};
   }catch(error){
    if(error.terminationUnconfirmed){shutdownFailure=error;throw error;}
+   if(safeWorkspaceRestoreError(error))throw error;
    checkpoint(signal);if(['OPERATION_CANCELLED','MEDIA_CANCELLED'].includes(error.code))throw error;
    return {status:'incomplete',code:'EXPORT_CAPABILITY_FAILED'};
   }
@@ -49,6 +54,7 @@ export function createTimelineExportAdmissionServices(store,{signal:ownerSignal,
   return timeline?{timeline,delivery:resolveTimelineExportDelivery(timeline,input.exportSettings)}:null;
  }
  async function capabilities(input,options={}){
+  refuseRestoredOperation(store,'timeline.export.capabilities',input);
   // Direct service users get the same strict syntax boundary as RPC callers.
   input=timelineExportCapabilitySchemas['timeline.export.capabilities'].parse(input);
   checkpoint(options.signal);checkpoint(ownerSignal);
@@ -67,6 +73,7 @@ export function createTimelineExportAdmissionServices(store,{signal:ownerSignal,
   report.status=result.status;report.issues=result.status==='available'?[]:[issue(result.code)];return report;
  }
  async function render(input,options,{prepare,accept}){
+  refuseRestoredOperation(store,'timeline.render',input);
   // prepare replays immutable historical ACKs before current revision, any
   // local compute, or capability availability can affect their result.
   const before=prepare();if(before.replayed)return before.response;

@@ -176,7 +176,7 @@ test('offline backup help/version disclose whole-workspace sensitivity without s
     assert.equal(output.name, 'mioon-backup');
     assert.equal(output.offline, true);
     assert.ok(output.usage.every(usage => usage.startsWith('node apps/cli/src/backup.mjs ') || usage.startsWith('pnpm backup ')), 'only verified source-checkout launchers are advertised');
-    for (const text of ['Whole-workspace', 'chats', 'prompts', 'caches', 'may contain secrets', 'private plaintext', 'Restore is not implemented', 'App credential, settings and connection files are excluded', 'cleanup attempts', 'SOURCE_LOCK_RELEASE_UNCONFIRMED']) assert.ok(content.includes(text), text);
+    for (const text of ['Whole-workspace', 'chats', 'prompts', 'caches', 'may contain secrets', 'private plaintext', 'Restore separately accepts only classified schema24', 'App credential, settings and connection files are excluded', 'cleanup attempts', 'SOURCE_LOCK_RELEASE_UNCONFIRMED']) assert.ok(content.includes(text), text);
   }
   const output = success(await run(t, ['--version'], context));
   const metadata = JSON.parse(await readFile(path.join(repo, 'package.json'), 'utf8'));

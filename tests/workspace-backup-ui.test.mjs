@@ -142,7 +142,8 @@ test('actual compact component uses shared collapsible controls and never reads 
 test('actual details truthfully describe SQLite scope, exclusions, readonly limits and exact local commands', async () => {
   const f = fixture(); await f.ready(); const Details = component().WorkspaceBackupDetails;
   const tree = Details({ state: f.state(), controller: f.controller }), text = textOf(tree);
-  for (const label of ['整个工作区', '所有项目、聊天、提示词', 'SQLite 内的本地缓存', '不包含应用凭据与应用设置', '用户文本仍可能含密钥', '未逐一检查源文件', '没有创建备份或验证恢复', '正常关闭 Mioon 和所有使用同一工作区的后端', '不会自动恢复、提交或重试任务', '不表示可以安全恢复', '本阶段不支持恢复']) assert.ok(text.includes(label), label);
+  for (const label of ['整个工作区', '所有项目、聊天、提示词', 'SQLite 内的本地缓存', '不包含应用凭据与应用设置', '用户文本仍可能含密钥', '未逐一检查源文件', '没有创建备份或验证恢复', '正常关闭 Mioon 和所有使用同一工作区的后端', '不会自动恢复、提交或重试任务', '不表示可以安全恢复', '恢复需按离线指南写入全新目录', '受限功能和后续备份限制请先阅读指南']) assert.ok(text.includes(label), label);
+  assert.equal(text.includes('本阶段不支持恢复'), false);
   assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-create-command')), backup.WORKSPACE_BACKUP_CREATE_COMMAND);
   assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-verify-command')), backup.WORKSPACE_BACKUP_VERIFY_COMMAND);
   const guide = nodes(tree).find(node => node.type === 'a');

@@ -3,8 +3,7 @@ import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue,isTi
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 import {validateManagedSource,verifiedManagedHash,sameManagedFile} from './managed-media.mjs';
-import {throwIfMediaAborted} from './media-processes.mjs';
-import {run} from './media-runtime.mjs';
+import {run,checkMediaEffect} from './media-runtime.mjs';
 import {parseProbeOutput,withProbePermit} from './media-probe.mjs';
 import {validateTimeline,freezeTimelineSnapshot} from './timeline-inputs.mjs';
 
@@ -84,20 +83,19 @@ export function readTimelinePreflightSnapshot(store,projectId,exportSettings){
 
 // Both worker and preflight use one restricted local-only metadata probe. The
 // allowlist includes all supported still/audio/video containers, not playlists.
-export async function probeTimelineSource(file,{signal,timeout,beforeSpawn}={}){
+export async function probeTimelineSource(file,{signal,timeout,beforeSpawn,beforeEffect}={}){
  return withProbePermit(signal,async()=>{
-  throwIfMediaAborted(signal);beforeSpawn?.();
   const output=await run('ffprobe',['-v','error','-protocol_whitelist','file,pipe',
    '-format_whitelist','mov,matroska,mp3,wav,png_pipe,jpeg_pipe,webp_pipe',
-   '-show_format','-show_streams','-of','json',file],{signal,timeout});
-  throwIfMediaAborted(signal);return parseProbeOutput(output);
+   '-show_format','-show_streams','-of','json',file],{signal,timeout,beforeSpawn,beforeEffect});
+  checkMediaEffect(beforeEffect,signal);return parseProbeOutput(output);
  });
 }
 
 // These are preparation budgets, never export limits. The render worker omits
 // budget entirely and re-verifies source ownership, bytes and metadata itself.
-export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks}={}){
- throwIfMediaAborted(signal);
+export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect}={}){
+ checkMediaEffect(beforeEffect,signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
  if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot)||!isTimelineExportSnapshot(snapshot))throw invalid();
  if(snapshot.assets.length>100||snapshot.assets.some(a=>!object(a)||!uuid(a.id)||typeof a.mimeType!=='string'||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256))||new Set(snapshot.assets.map(a=>a.id)).size!==snapshot.assets.length)throw invalid();
@@ -107,26 +105,33 @@ export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,s
  validateLinks?.(snapshot.timeline);
  const assets=new Map();
  for(const frozen of snapshot.assets){
-  throwIfMediaAborted(signal);
+  checkMediaEffect(beforeEffect,signal);
   const a=readAsset(frozen.id);
   if(!a||a.projectId!==projectId||a.sha256!==frozen.sha256||a.mimeType!==frozen.mimeType||assets.has(a.id))throw fault('TIMELINE_SOURCE_UNAVAILABLE','Timeline snapshot does not match managed asset');
   try{
   if(frozen.relativePath!==undefined&&frozen.relativePath!==a.relativePath)throw fault('TIMELINE_SOURCE_UNAVAILABLE','Timeline snapshot path no longer matches managed asset');
   const maxBytes=budget?.sourceBytes??Infinity;
-  const source=validateManagedSource(root,a,{maxBytes});
+  checkMediaEffect(beforeEffect,signal);const source=validateManagedSource(root,a,{maxBytes});
   if(budget&&source.info.size>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');
-  const hashed=await verifiedManagedHash(root,a,{signal,maxBytes,expected:source.info,onBytes:bytes=>{
-   if(budget){if(bytes>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');budget.bytesHashed+=bytes;}
-  }});
-  throwIfMediaAborted(signal);
-  const checkSource=()=>{throwIfMediaAborted(signal);const latest=readAsset(frozen.id);if(!latest||latest.projectId!==projectId||latest.sha256!==a.sha256||latest.mimeType!==a.mimeType||latest.relativePath!==a.relativePath||!sameManagedFile(hashed.info,validateManagedSource(root,a,{maxBytes}).info))throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from frozen asset hash');};
+  let hashed,hashEffectFailure;
+  try{
+   checkMediaEffect(beforeEffect,signal);
+   hashed=await verifiedManagedHash(root,a,{signal,maxBytes,expected:source.info,onBytes:bytes=>{
+    // The shared hash helper sanitizes arbitrary callback failures. Retain the
+    // backend fence's exact rejection until that helper closes its descriptor.
+    try{checkMediaEffect(beforeEffect,signal);}catch(error){hashEffectFailure=error;throw error;}
+    if(budget){if(bytes>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');budget.bytesHashed+=bytes;}
+   }});
+  }catch(error){throw hashEffectFailure??error;}
+  checkMediaEffect(beforeEffect,signal);
+  const checkSource=()=>{checkMediaEffect(beforeEffect,signal);const latest=readAsset(frozen.id);if(!latest||latest.projectId!==projectId||latest.sha256!==a.sha256||latest.mimeType!==a.mimeType||latest.relativePath!==a.relativePath||!sameManagedFile(hashed.info,validateManagedSource(root,a,{maxBytes}).info))throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from frozen asset hash');};
   checkSource();
-  const media=await probe(hashed.file,{signal,beforeSpawn:checkSource});throwIfMediaAborted(signal);checkSource();
+  const media=await probe(hashed.file,{signal,beforeSpawn:checkSource,beforeEffect});checkMediaEffect(beforeEffect,signal);checkSource();
   assets.set(a.id,{...frozen,sizeBytes:hashed.sizeBytes,sha256:hashed.sha256,width:media.width,height:media.height,duration:media.duration,
    hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file});
   onChecked?.(a.id);
   }catch(error){if(error&&typeof error==='object'){error.timelineAssetId=a.id;if(error.code==='MANAGED_SOURCE_CHANGED')error.message='Export input bytes differ from frozen version hash';}throw error;}
  }
- validateTimeline(snapshot.timeline,assets);
+ checkMediaEffect(beforeEffect,signal);validateTimeline(snapshot.timeline,assets);
  return assets;
 }

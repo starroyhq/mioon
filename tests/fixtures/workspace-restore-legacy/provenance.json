@@ -1,0 +1,79 @@
+[
+  {
+    "commit": "beb7fcf663cb45b935b1aab53d60a89e356be9b9",
+    "source": "packages/business/src/db.mjs",
+    "fixture": "beb7fcf-db.mjs",
+    "bytes": 33075,
+    "sha256": "f8bbc0b749b81b336c13b031377e062416b591cb9862b0e3df54e97752691e0f"
+  },
+  {
+    "commit": "beb7fcf663cb45b935b1aab53d60a89e356be9b9",
+    "source": "apps/server/src/index.mjs",
+    "fixture": "beb7fcf-server.mjs",
+    "bytes": 17772,
+    "sha256": "49670022b97051ee680b2f0b209d1a708352dcbe75a52809424bfa5d691f15b4"
+  },
+  {
+    "commit": "1536878f0fc972f3db681dcd6bd14d1900aa8d53",
+    "source": "packages/business/src/db.mjs",
+    "fixture": "1536878-db.mjs",
+    "bytes": 34573,
+    "sha256": "e45cc161b9ad13af8002694390974fbb89fea4346ce4688959ed979a7a603dac"
+  },
+  {
+    "commit": "1536878f0fc972f3db681dcd6bd14d1900aa8d53",
+    "source": "apps/server/src/index.mjs",
+    "fixture": "1536878-server.mjs",
+    "bytes": 17772,
+    "sha256": "49670022b97051ee680b2f0b209d1a708352dcbe75a52809424bfa5d691f15b4"
+  },
+  {
+    "commit": "3446aed51c2057f982c8b9a0b1c41c50932fdd84",
+    "source": "packages/business/src/db.mjs",
+    "fixture": "3446aed-db.mjs",
+    "bytes": 4578,
+    "sha256": "64eac0f6e18a413e357928176ed0de26ad476ce026969090ce2fa039ac8ac4c4"
+  },
+  {
+    "commit": "3446aed51c2057f982c8b9a0b1c41c50932fdd84",
+    "source": "apps/server/src/index.mjs",
+    "fixture": "3446aed-server.mjs",
+    "bytes": 8994,
+    "sha256": "28809b1bb137b0d7cd5e1544671687bed4c6e3a15788ea7f148546c4139012ec"
+  },
+  {
+    "commit": "beb7fcf663cb45b935b1aab53d60a89e356be9b9",
+    "source": "apps/desktop/scripts/migrate-data.mjs",
+    "fixture": "beb7fcf-migrate-data.mjs",
+    "bytes": 5175,
+    "sha256": "290c8cf30da3ab0bda5fff079822743acefbc564256aa4602461124593f76d90"
+  },
+  {
+    "commit": "beb7fcf663cb45b935b1aab53d60a89e356be9b9",
+    "source": "apps/desktop/src/backend.mjs",
+    "fixture": "beb7fcf-desktop-backend.mjs",
+    "bytes": 3541,
+    "sha256": "f0f93cc3a3dc55710abeff17405bf019ec365a1769d043a4af2e3f2dd461f9d3"
+  },
+  {
+    "commit": "3446aed51c2057f982c8b9a0b1c41c50932fdd84",
+    "source": "packages/business/src/services.mjs",
+    "fixture": "3446aed-services.mjs",
+    "bytes": 16047,
+    "sha256": "a38b306659166e216a4badaf4eb3309bd43170aff9ba885740ad3369c7ed5ed2"
+  },
+  {
+    "commit": "3446aed51c2057f982c8b9a0b1c41c50932fdd84",
+    "source": "packages/business/src/timeline.mjs",
+    "fixture": "3446aed-timeline.mjs",
+    "bytes": 9406,
+    "sha256": "27173519696a8c75f5d00aa29566a0ea265e8b5d2e985108a1c13ffbecfa88a5"
+  },
+  {
+    "commit": "3446aed51c2057f982c8b9a0b1c41c50932fdd84",
+    "source": "packages/contracts/src/index.mjs",
+    "fixture": "3446aed-contracts.mjs",
+    "bytes": 11352,
+    "sha256": "bfde85657924b854e0ee1ac8f52d2bccff82d810080ab7bc11312d9114ae4b42"
+  }
+]

@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import * as submissions from '../apps/web/src/submissions.js';
 import * as mutations from '../apps/web/src/mutation-submissions.js';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
+import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
 
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
@@ -49,7 +51,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
   const currentProject = { current: projectId }, projectEpoch = { current: 1 }, busy = new Set();
   const dataRef = { current: snapshot() }, viewRef = { current: defaultWorkspaceState() };
   viewRef.current.canvas.selectedId = id(7);
-  const scope = { ...submissions, ...mutations, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse,
+  const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, workspaceRef: { current: { restored: false } }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse,
     REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,

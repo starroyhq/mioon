@@ -554,4 +554,22 @@ and the explicit local CLI in ../../docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md. No MCP
 or HTTP operation accepts arbitrary backup paths or restores data. Do not delete
 locks/WAL/journals, retry an unknown paid task, erase old request keys, or open a
 backup as an executable workspace. Successful verify checks the declared cold
-snapshot; restore and inherited execution authority are a later separate feature.
+snapshot; guarded restore is a separate explicit offline workflow and does not restore inherited execution authority.
+
+
+### Restored branch safety
+
+Read `workspace.restore.inspect` with exactly `{}` before intentionally operating
+on a restored branch. Pin the disclosed origin once at CLI/MCP launch with
+`--workspace-origin`; never infer or silently replace it after reconnect. The
+origin is not authorization to generate, approve or release old work. Preserve
+original pending keys and all historical outcomes on a restore refusal.
+
+Restored v1 allows fresh supported local imports/edits/previews/exports. Captured
+tasks and approvals remain held, even terminal or unknown ones. New supplier,
+image, Agent, Comfy, extraction and waveform decoding are unavailable. Recursive
+backup creation is also unavailable: preserve the verified original backup.
+Only explicit offline `backup.mjs restore` writes a new destination; no model
+RPC accepts restore paths. `restore-status` with the original backup and target
+can discover a guarded branch after total stdout loss, but never repairs,
+reexecutes or proves an earlier fsync. See ../../docs/WORKSPACE-RESTORE.md.

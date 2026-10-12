@@ -61,7 +61,7 @@ function canOfferUnchecked(report, context) {
 
 // One in-memory report for the current project. Reads are explicit and never
 // mutate a project, create a render, or reuse a report as a request receipt.
-export function createExportPreflightController({ read, readCapabilities, getContext, onChange = () => {}, onUnauthorized = () => {} }) {
+export function createExportPreflightController({ read, readCapabilities, getContext, getInvocation = () => ({}), onChange = () => {}, onUnauthorized = () => {} }) {
   let state = initialState(), generation = 0, activeRead = null, visible = false;
   const invalidate = () => { generation++; activeRead?.abort(); activeRead = null; };
   const emit = patch => { state = { ...state, ...patch }; onChange(state); };
@@ -96,6 +96,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
       if (state.settingsKey === null || !state.projectId || !state.timelineId || !hasRevision(state.revision) || !state.connected) return null;
       invalidate();
       const captured = { scope: state.scope, projectId: state.projectId, timelineId: state.timelineId, revision: state.revision, settingsKey: state.settingsKey, settingsVersion: state.settingsVersion, exportSettings: state.exportSettings, generation };
+      const invocation = Object.freeze({ ...getInvocation() });
       const abort = new AbortController(); activeRead = abort;
       const input = { projectId: captured.projectId, expectedRevision: captured.revision, ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) };
       emit({ phase: 'checking', checkingStep: captured.exportSettings === undefined ? 'media' : 'capability', capability: null, capabilityPhase: captured.exportSettings === undefined ? 'idle' : 'checking', binding: null, uncheckedIntent: null, error: '', attempted: false });
@@ -104,7 +105,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
         // encode. Media preflight remains a separate read-only operation.
         if (captured.exportSettings !== undefined) {
           if (!readCapabilities) throw protocolError();
-          const capability = await readCapabilities(input, { signal: abort.signal });
+          const capability = await readCapabilities(input, { ...invocation, signal: abort.signal });
           if (!current(captured)) return null;
           if (!isTimelineExportCapabilitiesResponse(capability, input) ||
             capability.timelineId !== null && capability.timelineId !== captured.timelineId ||
@@ -117,7 +118,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
           }
           emit({ checkingStep: 'media' });
         }
-        const result = await read(input, { signal: abort.signal });
+        const result = await read(input, { ...invocation, signal: abort.signal });
         if (!current(captured)) return null;
         if (!isExportPreflightResponse(result, input)) throw protocolError();
         // A bounded ownership read can end before a timeline tuple is available.

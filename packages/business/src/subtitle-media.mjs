@@ -1,8 +1,7 @@
 import {writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {TIMELINE_SUBTITLE_PROFILE} from '@mioon/contracts';
-import {runStreaming} from './media-runtime.mjs';
-import {throwIfMediaAborted} from './media-processes.mjs';
+import {runStreaming,checkMediaEffect} from './media-runtime.mjs';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
 
 const P=TIMELINE_SUBTITLE_PROFILE,WIDTH=4096,HEIGHT=256,FRAME_BYTES=WIDTH*HEIGHT,ORIGIN=64,GUARD=16;
@@ -38,24 +37,25 @@ export function createSubtitleInkScanner(frameCount,width=WIDTH,height=HEIGHT){
  }};
 }
 
-export async function prepareTimelineSubtitles(snapshot,work,{signal}={}){
+export async function prepareTimelineSubtitles(snapshot,work,{signal,beforeEffect,openOwnedFile,writeOwnedFile}={}){
+ checkMediaEffect(beforeEffect,signal);
  if(!validateSubtitleSnapshotProfile(snapshot))return null;
  const cues=snapshot.timeline.subtitles.cues,font=path.join(work,'subtitle-font.otf');
- await verifySubtitleFontResource({signal,destination:font});throwIfMediaAborted(signal);
+ await verifySubtitleFontResource({signal,destination:font,beforeEffect,openOwnedFile});checkMediaEffect(beforeEffect,signal);
  const distinct=[...new Set(cues.map(c=>c.text))],files=[];
  for(let i=0;i<distinct.length;i++){
-  throwIfMediaAborted(signal);
+  checkMediaEffect(beforeEffect,signal);
   const file=path.join(work,`subtitle-${String(i).padStart(3,'0')}.txt`);
-  await writeFile(file,distinct[i],{encoding:'utf8',flag:'wx',mode:0o600});files.push(file);
+  await (writeOwnedFile?writeOwnedFile(file,distinct[i]):writeFile(file,distinct[i],{encoding:'utf8',flag:'wx',mode:0o600}));checkMediaEffect(beforeEffect,signal);files.push(file);
  }
  const scanner=createSubtitleInkScanner(distinct.length);
  const filters=files.map((file,index)=>`${drawText(font,file)}:fontcolor=white:bordercolor=white:x=${ORIGIN}:y=${ORIGIN}:enable='eq(n,${index})'`);
  filters.push('alphaextract,format=gray');
- const script=path.join(work,'subtitle-measure.filter');throwIfMediaAborted(signal);await writeFile(script,filters.join(','),{flag:'wx',mode:0o600});
+ const script=path.join(work,'subtitle-measure.filter');checkMediaEffect(beforeEffect,signal);await (writeOwnedFile?writeOwnedFile(script,filters.join(',')):writeFile(script,filters.join(','),{flag:'wx',mode:0o600}));checkMediaEffect(beforeEffect,signal);
  await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-filter_threads','1','-f','lavfi','-i',`color=c=black@0:s=${WIDTH}x${HEIGHT}:r=30,format=rgba`,
   '-filter_script:v',script,'-frames:v',String(distinct.length),'-an','-c:v','rawvideo','-pix_fmt','gray','-threads','1','-f','rawvideo','pipe:1'],
-  {signal,timeout:30000,maxStdoutBytes:distinct.length*FRAME_BYTES,maxStderrBytes:64*1024,onStdout:chunk=>scanner.consume(chunk)});
- throwIfMediaAborted(signal);
+  {signal,beforeEffect,timeout:30000,maxStdoutBytes:distinct.length*FRAME_BYTES,maxStderrBytes:64*1024,onStdout:chunk=>scanner.consume(chunk)});
+ checkMediaEffect(beforeEffect,signal);
  const measured=scanner.finish();
  const entries=new Map(distinct.map((text,index)=>{
   const ink=measured[index];

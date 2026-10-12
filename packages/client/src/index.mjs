@@ -1,3 +1,4 @@
+import {parseExpectedWorkspaceOrigin, isWorkspaceRestoreInspection} from '@mioon/contracts';
 import {isWorkspaceBackupInspection} from '@mioon/contracts';
 import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
@@ -31,6 +32,15 @@ export class ClientError extends Error {
     super(message); this.name = 'ClientError'; this.code = code; this.status = status; this.details = details;
     this.exitCode = exitCode ?? errorExitCode(this);
   }
+}
+// Explicit invocation-only identity. Undefined preserves the v24 wire shape;
+// there is no backend discovery, client default, credential-file or reconnect
+// fallback. CLI/MCP also use this parser before dispatching any request.
+export function workspaceOriginOptions(value) {
+  let origin;
+  try { origin = parseExpectedWorkspaceOrigin(value); }
+  catch { throw new ClientError('VALIDATION_ERROR', 'Workspace origin must be an explicit UUID. Preserve the origin saved with an existing request.'); }
+  return origin === undefined ? {} : {expectedWorkspaceOrigin: origin};
 }
 export function errorExitCode(error) {
   if (Number.isInteger(error.exitCode)) return error.exitCode;
@@ -94,7 +104,7 @@ function uncertainRequestDetails(body) {
   // Receipt reads also carry requestId. Only a known keyed write can have an
   // uncertain submission; review preparation keeps its key in the exact intent.
   const requestId = body.operation === 'image.review.prepare' ? body.input?.input?.requestId : body.input?.requestId;
-  return {operation: body.operation, ...(keyedMutationOperations.has(body.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
+  return {operation: body.operation, ...(Object.hasOwn(body, 'expectedWorkspaceOrigin') ? {expectedWorkspaceOrigin: body.expectedWorkspaceOrigin} : {}), ...(keyedMutationOperations.has(body.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
 }
 function comfyObservationNotAccepted(error,status,input) {
   const statuses={COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
@@ -165,6 +175,10 @@ export function createClient(clientOptions = {}) {
             ...(proven?{operation:body.operation,requestId:body.input.requestId,submissionMayHaveSucceeded:false}:recoveryDetails)};
           if(!proven)delete details.observation;
         }
+        if (body && ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'RESTORE_BACKUP_UNAVAILABLE'].includes(error.code)) {
+          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}), ...recoveryDetails};
+          delete details.mutationOutcome; delete details.frameOutcome; delete details.observation;
+        }
         throw new ClientError(typeof error.code === 'string' ? safeValue(error.code, [token]) : 'BACKEND_UNAVAILABLE', typeof error.message === 'string' ? safeValue(error.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
       }
       return result;
@@ -176,13 +190,14 @@ export function createClient(clientOptions = {}) {
       throw new ClientError(response ? 'BACKEND_PROTOCOL_ERROR' : 'BACKEND_UNAVAILABLE', response ? 'The backend returned an unreadable response.' : 'The local backend is unavailable. Start or reopen Mioon, then retry safely.', {details});
     }
   }
-  async function rpc(operation, input = {}, options) {
+  async function rpc(operation, input = {}, options = {}) {
     // Parse the exact shared contracts before sending. Required and opt-in request
     // IDs stay caller-owned; this client never creates them and never resubmits.
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     const parsed = parse(operation, input);
-    const body = {operation, input: parsed};
-    const result = (await request('/api/rpc', {body, ...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : {}), ...options})).data;
+    const {expectedWorkspaceOrigin, ...transportOptions} = options ?? {};
+    const body = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
+    const result = (await request('/api/rpc', {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : {}), ...transportOptions, body})).data;
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (operation === 'job.retry' && result?.snapshot && (Object.hasOwn(result.snapshot, 'subjectReference') || Object.hasOwn(result.snapshot, 'subjectVersionId') ||
@@ -220,6 +235,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+    if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid restored workspace summary.');
     if (operation === 'workspace.backup.inspect' && !isWorkspaceBackupInspection(result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid workspace backup summary.');
     if (operation === 'timeline.export.capabilities' && !isTimelineExportCapabilitiesResponse(result, parsed))

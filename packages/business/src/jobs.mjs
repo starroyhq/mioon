@@ -1,7 +1,12 @@
+import {createOwnedMediaGraphReader} from './inspection.mjs';
+import {matchesRestoredExport,restoreExportIdentity} from './workspace-restore-exports.mjs';
+import {workspaceRestoreError} from './workspace-restore-policy.mjs';
+import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
 import {isTimelineExportSnapshot,isTimelineRenderRecord} from '@mioon/contracts';
+import {lstatSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {terminateMediaProcesses} from './media-processes.mjs';
-import {rename,link,unlink,lstat} from 'node:fs/promises';
+import {rename,link,unlink,lstat,open} from 'node:fs/promises';
 import path from 'node:path';
 import {fileInfo,probe,safePath,stitch,run} from './media.mjs';
 import {renderTimeline} from './timeline-media.mjs';
@@ -12,6 +17,7 @@ import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './gen
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mjs';
 
 export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
+ const restored=getWorkspaceRestoreContext(store);
  const {list,get,put,tx,root}=store;
  let stopped=Boolean(ownerSignal?.aborted),cycle=null,stopping,shutdownFailure;
  const operations=new Set();
@@ -27,7 +33,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    CASE WHEN (SELECT count(*) FROM json_each(exports.data) WHERE key='mode')<=1 THEN
     CASE WHEN json_type(data,'$.mode')='text' AND length(CAST(json_extract(data,'$.mode') AS BLOB))=8 AND json_extract(data,'$.mode')='timeline'
      THEN CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${exportRowBytes} THEN data END
-     ELSE data END
+     ELSE ${restored?`CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${exportRowBytes} THEN data END`:'data'} END
    END END END END AS data`;
  let invalidExportReported=false;
  const invalidExport=()=>{if(!invalidExportReported){invalidExportReported=true;console.error('Skipped invalid local export record.');}return null;};
@@ -40,7 +46,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(record.mode==='timeline'&&record.snapshot?.timeline?.projectId!==row.projectId)return invalidExport();
   return record;
  }
- const workerExports=()=>store.db.prepare(`SELECT ${exportColumns} FROM exports`).all().map(decodeExport).filter(Boolean);
+ const workerExports=()=>store.db.prepare(`SELECT ${exportColumns} FROM exports${restored?" WHERE id IN (SELECT exportId FROM workspace_restore_export_origins WHERE workspaceOrigin=?) AND CASE WHEN json_valid(data) THEN json_extract(data,'$.status') END IN ('queued','running') ORDER BY id":''}`).all(...(restored?[restored.workspaceOrigin]:[])).map(decodeExport).filter(value=>value&&(!restored||matchesRestoredExport(store,value)));
  const workerExport=id=>decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id));
  // Custom delivery adds an awaited capability step. Preserve the complete
  // immutable acceptance identity across every existing async/publication fence;
@@ -69,6 +75,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
  }
  const currentOwnedExport=e=>{
   const latest=workerExport(e.id);
+  if(restored&&(!matchesRestoredExport(store,e)||!matchesRestoredExport(store,latest)||restoreExportIdentity(e)!==restoreExportIdentity(latest)))return null;
   if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return null;
   if((customExport(e)||customExport(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
   return latest;
@@ -84,6 +91,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   const apply=()=>{
    const latest=table==='exports'?workerExport(id):get(table,id);
    if(!latest||['succeeded','cancelled'].includes(latest.status)||table==='exports'&&(latest.mode!==mode||latest.projectId!==projectId))return;
+   if(restored&&(table!=='exports'||!matchesRestoredExport(store,latest)))return;
    const error=mediaPauseError(table,latest.status);
    if(latest.error?.code===error.code&&latest.error?.message===error.message)return;
    if(table==='jobs')services.saveJob(latest,{error});
@@ -92,7 +100,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(table==='exports')tx(apply);else apply();
  };
  const safeError=(e,code='PROVIDER_ERROR')=>({code:e.code||code,message:e.uncertain?'供应商可能已受理。正在对账，不会自动重新提交。':String(e.message||'任务操作失败').replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true});
- for(const j of list('jobs'))if(j.status==='submitting')services.saveGenerationGuarded(j,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
+ for(const j of restored?[]:list('jobs'))if(j.status==='submitting')services.saveGenerationGuarded(j,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
  for(const e of workerExports())if(e.status==='running')tx(()=>{
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...current,status:'queued',updatedAt:now()});
  });
@@ -236,61 +244,75 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(!e)return;
   // Fresh non-overwriting publication also preserves a prior successful output.
   const relativePath=`media/export-${e.id}-${randomUUID()}.mp4`,file=path.join(root,relativePath),part=file+'.part.mp4';
-  let preparedAssets,linkedOutput=false,publicationAccepted=false,outputIdentity;
+  let preparedAssets,linkedOutput=false,publicationAccepted=false,outputIdentity,outputHandle,claimLive=true,validateSources;
+  const beforeEffect=restored?()=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw workspaceRestoreError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw workspaceRestoreError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw workspaceRestoreError();}}:undefined;
   const checkCustomSources=()=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});};
   try {
+   beforeEffect?.();
+   if(restored){outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect();}
    if(e.mode==='timeline') {
     if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     const assets=await prepareTimelineInputs(e.snapshot,{root,projectId:e.projectId,signal,
-     readAsset:id=>readOwnedTimelineAsset(store.db,e.projectId,id),validateLinks:timeline=>validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline)});checkpoint(signal);
+     beforeEffect,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id);},validateLinks:timeline=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
-    if(customExport(e))preparedAssets=assets;
-    await renderTimeline(e.snapshot,assets,part,{signal,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
+    if(customExport(e)||restored)preparedAssets=assets;
+    if(restored)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});
+    await renderTimeline(e.snapshot,assets,part,{signal,beforeEffect,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
    } else {
     const files=[];
+    const checkStoryboard=()=>{if(restored)for(const frozen of e.snapshot){const graph=createOwnedMediaGraphReader(store.db,e.projectId),asset=graph.asset(frozen.assetId),version=graph.version(frozen.versionId,frozen.shotId,frozen.assetId);if(asset.sha256!==frozen.sha256||version.sha256!==frozen.sha256)throw workspaceRestoreError();}};
+    if(restored)validateSources=checkStoryboard;
+    checkStoryboard();
     for(const v of e.snapshot) {
      checkpoint(signal);
      const a=get('assets',v.assetId);
      if(!a||a.projectId!==e.projectId||a.sha256!==v.sha256)throw Error('Export snapshot hash mismatch');
      const mediaPath=await safePath(root,a.relativePath);checkpoint(signal);
-     const actual=await fileInfo(mediaPath,{signal});checkpoint(signal);
+     const actual=await fileInfo(mediaPath,{signal,beforeEffect});checkpoint(signal);
      if(actual.sha256!==v.sha256)throw Error('Export input bytes differ from frozen version hash');
      files.push(mediaPath);
     }
     if(currentOwnedExport(e)?.status!=='running')return;
-    await stitch(files,part,{signal});checkpoint(signal);
+    checkStoryboard();
+    await stitch(files,part,{signal,beforeEffect});checkpoint(signal);
    }
-   const info=await fileInfo(part,{signal});checkpoint(signal);
+   const info=await fileInfo(part,{signal,beforeEffect});checkpoint(signal);
    // Recheck the preserved relational owner immediately before publication.
    if(currentOwnedExport(e)?.status!=='running')return;
    checkCustomSources();
    // Retain only this custom attempt's owned output inode for conservative
    // cleanup if source ownership changes before the database commit.
-   if(customExport(e)){
-    outputIdentity=await lstat(part);checkpoint(signal);
+   if(customExport(e)||restored){
+    const actual=await lstat(part);checkpoint(signal);beforeEffect?.();
+    if(restored&&(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino))throw workspaceRestoreError();
+    outputIdentity=actual;
     if(!outputIdentity.isFile()||outputIdentity.nlink!==1)throw Object.assign(Error('The local export output cannot be verified safely.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     if(currentOwnedExport(e)?.status!=='running')return;
     checkCustomSources();
    }
    // link is an atomic, non-overwriting publication on the managed filesystem.
-   await link(part,file);linkedOutput=true;checkpoint(signal);
-   await unlink(part);checkpoint(signal);
-   tx(()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();const ratio=e.mode==='timeline'?(e.snapshot.timeline.width===e.snapshot.timeline.height?'1x1':e.snapshot.timeline.width>e.snapshot.timeline.height?'16x9':'9x16'):null;const a={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:'分镜拼接-9x16.mp4',mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now()};a.url=`/media/${a.id}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,updatedAt:now()});});
+   beforeEffect?.();
+   await link(part,file);linkedOutput=true;checkpoint(signal);beforeEffect?.();
+   if(restored){const actual=await lstat(part);beforeEffect();if(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw workspaceRestoreError();}
+   await unlink(part);checkpoint(signal);beforeEffect?.();
+   tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();const ratio=e.mode==='timeline'?(e.snapshot.timeline.width===e.snapshot.timeline.height?'1x1':e.snapshot.timeline.width>e.snapshot.timeline.height?'16x9':'9x16'):null;const a={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:'分镜拼接-9x16.mp4',mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now()};a.url=`/media/${a.id}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,updatedAt:now()});});
    publicationAccepted=true;
   } catch(error) {
    if(error.terminationUnconfirmed)failShutdown(error);
    const fail=()=>{
     const latest=currentOwnedExport(e);
-    if(!latest||latest.status==='cancelled'||customExport(e)&&latest.status==='succeeded')return;
+    if(!latest||latest.status==='cancelled'||(customExport(e)||restored)&&latest.status==='succeeded')return;
     put('exports',{...latest,status:signal.aborted?'queued':'failed',error:error.terminationUnconfirmed?mediaPauseError('exports',latest?.status):signal.aborted?null:safeError(error,'EXPORT_FAILED'),updatedAt:now()});
    };
    tx(fail);
   } finally {
-   await unlink(part).catch(()=>{});
+   claimLive=false;
+   if(!restored)await unlink(part).catch(()=>{});
+   else if(outputIdentity){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&currentOwnedExport(e))await unlink(part).catch(()=>{});}catch{}}
    // An uncertain commit, hostile replacement, foreign export, changed inode,
    // or failed cleanup never licenses removing an unknown/published output.
    // Keep the original failure; this cleanup makes no byte-race guarantee.
-   if(customExport(e)&&linkedOutput&&!publicationAccepted&&outputIdentity){
+   if((customExport(e)||restored)&&linkedOutput&&!publicationAccepted&&outputIdentity){
     try{
      const unpublished=()=>{const latest=currentOwnedExport(e);return latest&&['queued','running','failed'].includes(latest.status)&&latest.assetId===null&&latest.url===null;};
      if(unpublished()){
@@ -299,6 +321,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
      }
     }catch{/* An uncertain read or cleanup preserves the link and original error. */}
    }
+   if(outputHandle)await outputHandle.close().catch(()=>{});
   }
  }
 
@@ -320,7 +343,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(cycle)return cycle;
   cycle=(async()=>{
    try {
-    for(const j of list('jobs'))if(!stopped&&['queued','running','downloading','submission_unknown'].includes(j.status))await operate(processJob,j);
+    for(const j of restored?[]:list('jobs'))if(!stopped&&['queued','running','downloading','submission_unknown'].includes(j.status))await operate(processJob,j);
     if(stopped)return;
     for(const e of workerExports())if(!stopped&&e.status==='queued')await operate(processExport,e);
    } catch(error) {console.error('Worker cycle failed:',error.code||error.name);}

@@ -82,15 +82,17 @@ export function createEditTasksHttp({tasks, signal}) {
         }
       } else {
         query(url, []);
-        const input = await readBody(req, res, preparing ? EDIT_TASK_HTTP_LIMITS.prepareBytes : EDIT_TASK_HTTP_LIMITS.actionBytes);
+        const envelope = await readBody(req, res, preparing ? EDIT_TASK_HTTP_LIMITS.prepareBytes : EDIT_TASK_HTTP_LIMITS.actionBytes);
+        const {expectedWorkspaceOrigin,...input}=envelope;
+        const context=Object.hasOwn(envelope,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin}:{};
         // The backend checks every fixed action's complete closed schema. Never
         // overwrite a supplied taskId and thereby hide a conflicting field.
         if (Object.hasOwn(input, 'taskId')) throw validation();
         if (signal?.aborted) throw editTaskError('EDIT_TASK_STORAGE_UNAVAILABLE');
-        if (preparing) result = await tasks.prepare(input);
-        else if (action === 'execute') result = await tasks.execute({...input, taskId});
-        else if (action === 'reconcile') result = await tasks.reconcile({...input, taskId});
-        else result = await tasks.acknowledge({...input, taskId});
+        if (preparing) result = await tasks.prepare(input,context);
+        else if (action === 'execute') result = await tasks.execute({...input, taskId},context);
+        else if (action === 'reconcile') result = await tasks.reconcile({...input, taskId},context);
+        else result = await tasks.acknowledge({...input, taskId},context);
       }
       json(res, 200, {ok: true, data: result});
     } catch (error) {

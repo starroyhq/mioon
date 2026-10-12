@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { transformSync } from 'esbuild';
+import * as contracts from '@mioon/contracts';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
+import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
 import { rpc as realRpc } from '../apps/web/src/api.js';
 import * as feedback from '../apps/web/src/import-feedback.js';
 
@@ -18,14 +22,20 @@ const defer = () => { let resolve, reject; const promise = new Promise((yes, no)
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 const lifecycleSource = appSource.slice(appSource.indexOf('  const importSession ='), appSource.indexOf('  const currentProject ='));
 const refreshSource = appSource.slice(appSource.indexOf('  const refresh = useCallback('), appSource.indexOf('  async function revealImageAsset('));
-function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false } = {}) {
+function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false, workspace = { restored: false } } = {}) {
   const notifications = [], requests = [], refreshes = [], busyWrites = [], stateWrites = [], busy = new Set(), input = { value: 'selected-files' };
   const currentProject = { current: projectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, requestCounter = { current: 0 };
   const data = { project: { id: projectId }, assets: [] }, dataRef = { current: data };
-  const api = Function('fetch', `${apiSource.replace(/^export /gm, '')}\nreturn { rpc, ApiError };`)(async (url, options) => {
+  const apiModule = { exports: {} }, workspaceRef = { current: workspace };
+  Function('module', 'exports', 'require', 'fetch', transformSync(apiSource, { format: 'cjs' }).code)(apiModule, apiModule.exports, name => {
+    if (name === '@mioon/contracts') return contracts;
+    if (name === './workspace-origin.js') return workspaceOrigin;
+    throw new Error(`Unexpected API dependency ${name}`);
+  }, async (url, options) => {
     const body = JSON.parse(options.body);
     return fetchImpl ? fetchImpl(url, options, body, requests.length) : Response.json({ ok: true, data: ack(body.input) });
   });
+  const api = apiModule.exports;
   class FileReader {
     readAsDataURL(selected) {
       if (readerImpl) return readerImpl(this, selected);
@@ -35,9 +45,9 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
   let effect, cleanup;
   const importSession = Function('useRef', 'useEffect', 'requestCounter', `${lifecycleSource}\nreturn importSession;`)(
     value => ({ current: value }), fn => { effect = fn; cleanup = fn(); }, requestCounter);
-  const scope = { data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
-    setShowCreate: value => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current }),
-    isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current,
+  const scope = { ...workspaceOrigin, ...restoredWorkspace, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
+    setShowCreate: value => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current }),
+    isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOrigin.workspaceOriginScope(captured.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: key => busy.has(`${currentProject.current}:${key}`), markBusy: (owner, key, value) => { busyWrites.push({ owner, key, value }); if (value) busy.add(`${owner}:${key}`); else busy.delete(`${owner}:${key}`); },
     notify: (message, type = 'success') => notifications.push({ message, type }),
     fileInput: { current: input }, FileReader, rpc: (operation, input, options) => { requests.push({ operation, input }); return (rpcImpl || api.rpc)(operation, input, options); },
@@ -360,4 +370,24 @@ test('actual App polling honors hidden/dragging guards and removes its timer and
   poll.dragging.current = false; await poll.tick(); assert.deepEqual(h.scope.dataRef.current.assets, [saved]);
   assert.equal(h.refreshes.length, 1); assert.equal(notice(h), newerNotice); assert.equal(h.input.value, 'later-picker-selection');
   poll.cleanup(); await poll.tick(); await poll.visibility('visible'); assert.equal(h.refreshes.length, 1); assert.equal(poll.cleared, true); assert.equal(poll.listeners.size, 0);
+});
+
+
+test('restored import pins the first gesture and treats origin refusal as unknown without rekeying or batch replay', async () => {
+  const origin = '96000000-0000-4000-8000-000000000001';
+  const workspace = { restored: true, workspaceOrigin: origin, operationPolicy: [{ operation: 'asset.import', available: true }] };
+  const bodies = [], h = harness({ workspace, fetchImpl: async (_url, _options, body) => {
+    bodies.push(body);
+    return Response.json({ ok: false, error: { code: 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', message: 'Workspace changed', details: { mutationOutcome: 'not_applied' } } }, { status: 409 });
+  } });
+  await h.importFiles([file('原始素材.png'), file('后续素材.png')]);
+  assert.equal(bodies.length, 1); assert.equal(bodies[0].expectedWorkspaceOrigin, origin);
+  assert.deepEqual(bodies[0].input, { projectId, name: '原始素材.png', mimeType: 'image/png', dataBase64: 'YWJjZA==' });
+  assertUnknown(h); assert.equal(h.busy.size, 0);
+  let reader;
+  const delayed = harness({ workspace, readerImpl: current => { reader = current; } });
+  const running = delayed.importFiles([file('delayed.png')]);
+  delayed.scope.workspaceRef.current = { ...workspace, workspaceOrigin: '96000000-0000-4000-8000-000000000002' };
+  reader.result = 'data:image/png;base64,YWJjZA=='; reader.onload(); await running;
+  assert.equal(delayed.requests.length, 0, 'A changed origin after file reading cannot submit using a newly adopted pin');
 });

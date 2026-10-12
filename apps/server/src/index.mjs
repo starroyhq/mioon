@@ -1,3 +1,5 @@
+import {getWorkspaceRestoreContext} from '@mioon/business/workspace-restore-schema';
+import {isUnavailableRestoredRoute,workspaceRestoreError} from '@mioon/business/workspace-restore-policy';
 import http from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
@@ -94,7 +96,10 @@ export async function startServer({
       token = randomBytes(32).toString('hex');
       writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false});
     }
-    const providers = createProviderRegistry({db: store.db, root});
+    const restored=getWorkspaceRestoreContext(store);
+    const providers = restored?new Map():createProviderRegistry({db: store.db, root});
+    let imageHttp=async()=>false,comfyHttp=async()=>false;
+    if(!restored){
     imageSettings = await createImageSettings({persistence:createImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
     customImageSettings = await createCustomImageSettings({persistence:createCustomImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
@@ -105,8 +110,9 @@ export async function startServer({
     comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
     const comfyConnector = createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})});
     services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector}});
-    const imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
-    const comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,signal:shutdown.signal});
+    imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
+    comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,signal:shutdown.signal});
+    }else services=createServices(store,providers,{signal:shutdown.signal});
     editTasks = createEditTasks({store, services, ...(taskFault ? {fault: taskFault} : {})});
     // openStore already owns the exclusive workspace lock. Startup only
     // reconciles durable evidence and never dispatches a prepared edit.
@@ -115,12 +121,14 @@ export async function startServer({
     const workspacePreferences = createWorkspacePreferences(store);
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
+    if(!restored){
     agentSettings = suppliedAgentSettings || await createAgentSettings({
       persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
     });
     const editService = createAgentEditService({store, services, ...(agentEditFault ? {fault: agentEditFault} : {})});
     chatRuntime = createChatRuntime({store, agentSettings, editService, inspection: services.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
     chatHttp = createChatHttp({runtime: chatRuntime});
+    }
     const origins = new Set(), hosts = new Set();
     const auth = req => {
       const bearer = req.headers.authorization?.replace(/^Bearer /, '');
@@ -146,6 +154,7 @@ export async function startServer({
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
         }
+        if(restored&&isUnavailableRestoredRoute(url.pathname,req.method))throw workspaceRestoreError();
         if (url.pathname === '/api/agent/settings') {
           try {
             const context = {selfPort: server.address().port};
@@ -166,7 +175,7 @@ export async function startServer({
         }
         if (await comfyHttp(req,res,url)) return;
         if (await imageHttp(req,res,url)) return;
-        if (await chatHttp.handle(req, res, url)) return;
+        if (await chatHttp?.handle(req, res, url)) return;
         if (await editTasksHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
@@ -178,7 +187,7 @@ export async function startServer({
           if (req.method === 'PUT') {
             const input = await body(req, MAX_WORKSPACE_PREFERENCES_BYTES);
             checkpoint(shutdown.signal);
-            return json(res, 200, {ok: true, data: workspacePreferences.put(projectId, input)});
+            return json(res, 200, {ok: true, data: await workspacePreferences.put(projectId, Object.hasOwn(input,'expectedWorkspaceOrigin')?Object.fromEntries(Object.entries(input).filter(([key])=>key!=='expectedWorkspaceOrigin')):input, {signal:shutdown.signal,...(Object.hasOwn(input,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin:input.expectedWorkspaceOrigin}:{})})});
           }
           res.setHeader('Allow', 'GET, PUT');
           return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
@@ -187,7 +196,7 @@ export async function startServer({
           const input = await body(req);
           checkpoint(shutdown.signal);
           if (typeof input.operation !== 'string') return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '缺少 operation'}});
-          const data = await callObservedRpc(req, res, services, input.operation, input.input || {});
+          const data = await callObservedRpc(req, res, services, input.operation, input.input || {},Object.hasOwn(input,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin:input.expectedWorkspaceOrigin}:{});
           if (res.destroyed || res.writableEnded) return;
           return json(res, 200, {ok: true, data});
         }
@@ -231,8 +240,8 @@ export async function startServer({
       // Fence all async RPC/worker continuations before taking any child snapshot.
       shutdown.abort();
       // Abort inference and close long-lived SSE BEFORE HTTP drain and SQLite.
-      chatRuntime.close();
-      chatHttp.close();
+      chatRuntime?.close();
+      chatHttp?.close();
       const drain = new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       const forceDrain = setTimeout(() => server.closeAllConnections(), 3000);
       forceDrain.unref();

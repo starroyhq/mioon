@@ -1,3 +1,4 @@
+import { workspaceOriginOptions } from './workspace-origin.js';
 import { ApiError } from './api.js';
 import { DURABLE_EDIT_OPERATIONS, isEditTaskEnvelope, isEditTaskListEnvelope } from '@mioon/contracts';
 
@@ -17,15 +18,16 @@ export function validateTaskEnvelope(value, expected = {}) {
   // Shared envelope validation explicitly selects the operation family's ACK.
   return value;
 }
-export function validateTaskList(value, projectId) {
-  if (!isEditTaskListEnvelope(value) || value.items.some(task => task.projectId !== projectId || task.acknowledged)) throw taskProtocolError();
+export function validateTaskList(value, projectId, { pendingOnly = true } = {}) {
+  if (!isEditTaskListEnvelope(value) || value.items.some(task => task.projectId !== projectId || pendingOnly && task.acknowledged)) throw taskProtocolError();
   return value;
 }
 
 export function createEditTaskClient({ fetcher = (...args) => fetch(...args) } = {}) {
-  async function request(path, body) {
+  async function request(path, body, options = {}) {
+    const invocation = workspaceOriginOptions(options.expectedWorkspaceOrigin);
     const response = await fetcher(path, { method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store',
-      ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) });
+      ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...invocation }) } : {}) });
     let payload;
     try { payload = await response.json(); } catch { throw taskProtocolError(); }
     if (!payload || typeof payload.ok !== 'boolean' || (payload.ok ? !response.ok || !Object.hasOwn(payload, 'data')
@@ -35,14 +37,14 @@ export function createEditTaskClient({ fetcher = (...args) => fetch(...args) } =
   }
   const endpoint = taskId => `/api/tasks/${encodeURIComponent(taskId)}`;
   return {
-    async prepare(input) { return validateTaskEnvelope(await request('/api/tasks/prepare', input), input); },
-    async list({ projectId, limit = 50, cursor }) {
-      const query = new URLSearchParams({ projectId, pendingOnly: 'true', limit: String(limit), ...(cursor ? { cursor } : {}) });
-      return validateTaskList(await request(`/api/tasks?${query}`), projectId);
+    async prepare(input, options) { return validateTaskEnvelope(await request('/api/tasks/prepare', input, options), input); },
+    async list({ projectId, limit = 50, cursor, pendingOnly = true }) {
+      const query = new URLSearchParams({ projectId, pendingOnly: String(pendingOnly), limit: String(limit), ...(cursor ? { cursor } : {}) });
+      return validateTaskList(await request(`/api/tasks?${query}`), projectId, { pendingOnly });
     },
     async get({ projectId, taskId }) { return validateTaskEnvelope(await request(`${endpoint(taskId)}?${new URLSearchParams({ projectId })}`), { projectId, taskId }); },
-    async execute({ taskId, ...body }) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/execute`, body), { ...body, taskId }); },
-    async reconcile({ taskId, ...body }) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/reconcile`, body), { ...body, taskId }); },
-    async acknowledge({ taskId, ...body }) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/acknowledge`, body), { ...body, taskId }); },
+    async execute({ taskId, ...body }, options) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/execute`, body, options), { ...body, taskId }); },
+    async reconcile({ taskId, ...body }, options) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/reconcile`, body, options), { ...body, taskId }); },
+    async acknowledge({ taskId, ...body }, options) { return validateTaskEnvelope(await request(`${endpoint(taskId)}/acknowledge`, body, options), { ...body, taskId }); },
   };
 }

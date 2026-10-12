@@ -4,8 +4,8 @@ import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 
 // The saved range belongs to the source asset, never to a generated version or
 // timeline clip. Reading it does not materialize state or acquire a write lock.
-export function createSourceRangeServices(store,{canonical}) {
- const {db}=store,mutate=createMutationReplay(store,{canonical});
+export function createSourceRangeServices(store,{canonical,readOnly=false}) {
+ const {db}=store,mutate=createMutationReplay(store,{canonical,readOnly});
  const missing=()=>{throw new AppError('NOT_FOUND','找不到记录',404);};
  const invalid=()=>{throw new AppError('INVALID_SOURCE_RANGE_RECORD','素材范围或关联状态不一致，请先检查项目',409);};
  const mediaTypes=new Set(['video/mp4','video/webm','audio/wav','audio/mpeg','audio/mp4']);

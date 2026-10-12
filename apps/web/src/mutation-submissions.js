@@ -23,12 +23,12 @@ export function prepareMutation(entry, { replay = false, requestId = () => globa
   if (entry.input.projectId !== undefined && entry.input.projectId !== entry.projectId)
     throw failure('MUTATION_PROJECT_MISMATCH', '项目已变化，已阻止提交。');
   if (replay) {
-    const stored = readPending(entry.projectId, entry.key);
+    const stored = readPending(entry.projectId, entry.key, entry);
     if (!stored || stored.operation !== entry.operation || canonical(stored.input) !== canonical(entry.input))
       throw failure('MUTATION_REPLAY_MISMATCH', '原请求记录已变化，已阻止提交。请重新打开任务面板核对。');
     return stored;
   }
-  if (pendingForProject(entry.projectId, { strict: true }).some(item => isMutationOperation(item.operation) || item.key === entry.key))
+  if (pendingForProject(entry.projectId, { strict: true }).some(item => item.expectedWorkspaceOrigin === entry.expectedWorkspaceOrigin && (isMutationOperation(item.operation) || item.key === entry.key)))
     throw failure('MUTATION_PENDING', '此项目有编辑请求结果待确认。草稿仍保留；请先在任务面板恢复原请求，再提交新的修改。');
   return prepareSubmission({ ...entry, input: { ...entry.input, requestId: entry.input.requestId || requestId() } });
 }

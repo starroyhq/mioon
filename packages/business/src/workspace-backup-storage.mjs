@@ -28,7 +28,7 @@ export function backupError(reason){return Object.assign(new Error(messages[reas
 export function fail(reason){throw backupError(reason);}
 export function checkCancelled(signal){if(signal?.aborted)fail('CANCELLED');}
 export function safeBackupError(error){
- if(typeof error?.code==='string'&&(error.code.startsWith('WORKSPACE_BACKUP_')||['STORAGE_PRIVATE_REQUIRED','STORAGE_PRIVACY_UNAVAILABLE'].includes(error.code)))return error;
+ if(typeof error?.code==='string'&&(error.code.startsWith('WORKSPACE_BACKUP_')||['STORAGE_PRIVATE_REQUIRED','STORAGE_PRIVACY_UNAVAILABLE','RESTORE_BACKUP_UNAVAILABLE'].includes(error.code)))return error;
  return backupError('IO');
 }
 export const sameNode=(a,b)=>a&&b&&a.dev===b.dev&&a.ino===b.ino;

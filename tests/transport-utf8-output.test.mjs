@@ -68,6 +68,9 @@ test('actual full shared catalog survives the reproduced version-list descriptio
 // the same file are counted separately. SDK-owned stdout has no such listener:
 // the SDK concatenates its protocol Buffers before decoding complete messages.
 const textSites = {
+  "tests/workspace-restore-transports.test.mjs": 2,
+  "tests/helpers/workspace-restore-offline-fixture.mjs": 2,
+  "tests/workspace-origin-transports.test.mjs": 2,
   "tests/workspace-backup-cli.test.mjs": 2,
   "tests/workspace-backup-inspection-transports.test.mjs": 3,
   "tests/agent-chat-durable-crash.test.mjs": 1,

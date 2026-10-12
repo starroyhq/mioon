@@ -1,6 +1,8 @@
-import {randomUUID,randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
-import {AppError,IMAGE_LIMITS,IMAGE_MODELS,IMAGE_FIXED_OPTIONS,IMAGE_MUTATION_OPERATIONS,IMAGE_UNRESOLVED_STATES,imageSchemas,isImageMutationResponse,imageRequestResponseSchema} from '@mioon/contracts';
-import {createImageOwnershipReader} from './image-ownership.mjs';
+import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
+import {workspaceRestoreError} from './workspace-restore-policy.mjs';
+import {randomUUID,createHash} from 'node:crypto';
+import {IMAGE_LIMITS,IMAGE_MODELS,IMAGE_FIXED_OPTIONS,IMAGE_MUTATION_OPERATIONS,IMAGE_UNRESOLVED_STATES,isImageMutationResponse} from '@mioon/contracts';
+import {createImageHistoryReaders,imageServiceMessages as messages,imageServiceError as error} from './images/history.mjs';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {createImageEditSourceResolver,imageEditFields} from './images/edit-source.mjs';
 import {createImageStorage} from './image-storage.mjs';
@@ -8,7 +10,7 @@ import {createMockImageAdapter} from './images/adapter.mjs';
 import {validatePng} from './images/png.mjs';
 import {ownsStoreLock} from './db.mjs';
 import {awaitProvider,boundedShutdown} from './operation-lifecycle.mjs';
-import {createImageReviewServices,validateImageTaskReview} from './images/reviews.mjs';
+import {createImageReviewServices} from './images/reviews.mjs';
 import {createLiveImageGateway,createCompatibleImageGateway} from './images/gateway.mjs';
 import {IMAGE_SETTINGS_ASSERT_CURRENT,IMAGE_SETTINGS_READ_CURRENT} from './images/settings.mjs';
 import {DEFAULT_IMAGE_CONFIGURATION,isCompleteCustomImageConfiguration,getCustomImageDestination} from '../../contracts/src/image-settings.mjs';
@@ -21,26 +23,24 @@ const owners=new WeakMap();
 const noop=()=>{};
 const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
 const hash=value=>createHash('sha256').update(canonical(value)).digest('hex');
-const equal=(a,b)=>canonical(a)===canonical(b),now=()=>new Date().toISOString();
-const messages={IMAGE_SOURCE_INVALID:'此项目的原始 PNG 无法安全核验；不会发送或重新生成。',IMAGE_NOT_FOUND:'找不到此项目的图像记录。',IMAGE_RECORD_INVALID:'图像记录无法安全核验，请保留原任务并检查本地数据。',IMAGE_LIVE_DISABLED:'OpenAI 图像调用尚未启用；请先配置独立图像设置。',IMAGE_REVIEW_REQUIRED:'当前付费图像请求需要用户明确确认；请先准备并查看原请求。',IMAGE_REQUEST_CONFLICT:'此图像请求 ID 已用于不同的操作、项目或内容。',IMAGE_REVISION_CONFLICT:'图像组或任务已有新状态，请重新读取后明确操作。',IMAGE_GROUP_BUSY:'此图像组仍有待处理或结果待确认的任务，请先查看原任务。',IMAGE_STATE_CONFLICT:'当前图像任务状态不允许此操作。',IMAGE_CAPACITY:'图像任务或回执保留容量已满，无法安全接受新操作；这不表示磁盘已满。',IMAGE_QUEUE_FULL:'本地图像队列已满，请稍后再明确提交。',IMAGE_OWNER_REQUIRED:'此操作需要当前工作区的独占后端，请连接运行中的后端。',IMAGE_SERVICE_STOPPED:'图像服务已停止，请重新打开后查看原任务。',IMAGE_RESULT_INVALID:'本地图像结果无法完整核验；不会重新调用供应商。',IMAGE_STORAGE_FAILED:'无法保存图像结果，请查看原任务；不会重新生成。'};
+const now=()=>new Date().toISOString();
 // Safe custom pre-dispatch diagnostics. A dispatched task always remains unknown.
 const customPreDispatchCodes=new Set(['IMAGE_NETWORK_DENIED','IMAGE_CONNECTION_FAILED','IMAGE_TIMEOUT','IMAGE_DISPATCH_BLOCKED','IMAGE_SETTINGS_CONFLICT','IMAGE_SETTINGS_NOT_CONFIGURED','IMAGE_SETTINGS_DISABLED']);
-const error=(code,status=409)=>new AppError(code,messages[code]||'图像操作未完成，请查看原任务。',status);
 export function safeImageServiceError(cause){const code=Object.hasOwn(messages,cause?.code)?cause.code:'IMAGE_STORAGE_FAILED';return {code,message:messages[code],status:Number.isInteger(cause?.status)&&cause.status>=400&&cause.status<=599?cause.status:503};}
 const fail=(code,status)=>{throw error(code,status);};
-const missing=()=>fail('IMAGE_NOT_FOUND',404),invalid=()=>fail('IMAGE_RECORD_INVALID');
+const invalid=()=>fail('IMAGE_RECORD_INVALID');
 const maxRevision=revision=>{if(!Number.isSafeInteger(revision)||revision>=Number.MAX_SAFE_INTEGER)fail('IMAGE_CAPACITY',507);};
 const bounded=(name,size,nullable=false)=>`CASE WHEN ${nullable?`${name} IS NULL OR `:''}(typeof(${name})='text' AND length(CAST(${name} AS BLOB)) BETWEEN 1 AND ${size}) THEN ${name} ELSE 0 END AS ${name}`;
-const requestColumns=[bounded('requestId',800),bounded('operation',80),bounded('projectId',36),bounded('inputHash',64),bounded('canonicalInput',IMAGE_LIMITS.inputBytes),bounded('response',IMAGE_LIMITS.responseBytes)].join(',');
 const defaultGenerate=createMockImageAdapter().generate;
 
 /** Image-specific durable lifecycle. No chat/tool authority and no generic
  * operation dispatch. Live images require dedicated settings and immutable
  * user approval; injected dependencies are trusted tests, never RPC options. */
 export function createImageServices(store,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector}={}){
+ if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
- const {db,tx}=store,queue=[],pending=new Map(),active=new Set(),secret=randomBytes(32);
+ const {db,tx}=store,queue=[],pending=new Map(),active=new Set();
  const controller=new AbortController(),signal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
  let stopped=false,running=false,reconciled=false,reported=false;
  const selectedSettings=providerId=>providerId==='openai'?settings:providerId==='openai-compatible'?customSettings:providerId==='comfy-local'?comfySettings:null;
@@ -51,26 +51,9 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
  const live=liveGateway??(settings?createLiveImageGateway({settings}):null);
  const compatible=customGateway??(customSettings?createCompatibleImageGateway({settings:customSettings}):null);
  const selectedGateway=providerId=>providerId==='openai'?live:providerId==='openai-compatible'?compatible:providerId==='comfy-local'?comfyConnector:null;
- const reviewBinding=value=>validateImageTaskReview(db,value.row.projectId,value.row.id,value.input);
- const schemaPresent=()=>{
-  const present=db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('image_groups','image_tasks','image_versions','image_requests')").get().n;
-  if(present===4)return true;
-  if(present||db.prepare('SELECT 1 FROM schema_version WHERE version=16').get())invalid();
-  return false;
- };
+ const history=createImageHistoryReaders(store),{schemaPresent,project,reader,task,group,reviewBinding,prior}=history;
  const storage=createImageStorage(store,{validatePng}),editSources=createImageEditSourceResolver(store,{signal});
  function owner(){if(stopped||signal.aborted)fail('IMAGE_SERVICE_STOPPED',503);if(!ownsStoreLock(store))fail('IMAGE_OWNER_REQUIRED',403);}
- function project(projectId){
-  const row=db.prepare(`SELECT id,${bounded('data',16384)} FROM projects WHERE id=? LIMIT 1`).get(projectId);
-  let value;try{value=JSON.parse(row?.data);}catch{missing();}if(value?.id!==projectId)missing();return value;
- }
- const reader=projectId=>createImageOwnershipReader(db,projectId,{fail:invalid});
- function task(projectId,id,{shallow=false}={}){project(projectId);const row=db.prepare('SELECT id FROM image_tasks WHERE id=? AND projectId=?').get(id,projectId);if(!row)missing();return reader(projectId).task(id,{shallow});}
- function group(projectId,id){
-  project(projectId);if(!db.prepare('SELECT id FROM image_groups WHERE id=? AND projectId=?').get(id,projectId))missing();
-  const read=reader(projectId),value=read.group(id);if(value.headVersionId)createOwnedMediaGraphReader(db,projectId).imageVersion(value.headVersionId);if(value.activeTaskId){const active=read.task(value.activeTaskId);reviewBinding(active);}return value;
- }
- function taskDto(projectId,id){const value=task(projectId,id);reviewBinding(value);if(value.dto.versionId)createOwnedMediaGraphReader(db,projectId).imageVersion(value.dto.versionId);return value.dto;}
  function current(original,{allowStopped=false}={}){
   if(!allowStopped)owner();else if(!ownsStoreLock(store))fail('IMAGE_OWNER_REQUIRED',403);
   const value=task(original.row.projectId,original.row.id,{shallow:true});
@@ -84,24 +67,6 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   const result=db.prepare(`UPDATE image_tasks SET ${entries.map(([key])=>`${key}=?`).join(',')},revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?`).run(...entries.map(([,v])=>v),timestamp,value.row.id,value.row.projectId,value.row.revision);if(result.changes!==1)fail('IMAGE_REVISION_CONFLICT');
   if(release){const g=reader(value.row.projectId).group(value.row.groupId);maxRevision(g.revision);if(g.activeTaskId!==value.row.id)invalid();db.prepare('UPDATE image_groups SET activeTaskId=NULL,headVersionId=?,revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(headVersionId??g.headVersionId,timestamp,g.id,g.projectId,g.revision);}
   return task(value.row.projectId,value.row.id,{shallow:true});
- }
- function prior(operation,input){
-  if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_observations'").get()&&db.prepare('SELECT 1 FROM image_remote_observations WHERE requestId=?').get(input.requestId))fail('IMAGE_REQUEST_CONFLICT');
-  const row=db.prepare(`SELECT ${requestColumns} FROM image_requests WHERE requestId=?`).get(input.requestId);if(!row)return null;
-  if(row.projectId!==input.projectId||row.operation!==operation||row.inputHash!==hash(input)||row.canonicalInput!==canonical(input))fail('IMAGE_REQUEST_CONFLICT');
-  let response;try{response=JSON.parse(row.response);}catch{invalid();}
-  if(!isImageMutationResponse(operation,input,response))invalid();
-  const currentTask=task(input.projectId,response.id,{shallow:operation==='image.task.cancelQueued'});reviewBinding(currentTask);
-  if(currentTask.row.requestId!==response.requestId||currentTask.row.groupId!==response.groupId||currentTask.row.revision<response.revision||currentTask.snapshot.prompt!==response.prompt||currentTask.snapshot.name!==response.name||currentTask.snapshot.providerId!==response.providerId||currentTask.snapshot.model!==response.model||!equal(currentTask.snapshot.options,response.options)||!equal(imageEditFields(currentTask.snapshot),imageEditFields(response)))invalid();
-  if(currentTask.dto.versionId)createOwnedMediaGraphReader(db,input.projectId).imageVersion(currentTask.dto.versionId);
-  return response;
- }
- function requestGet(input){
-  project(input.projectId);
-  const row=db.prepare(`SELECT ${requestColumns} FROM image_requests WHERE requestId=? AND projectId=?`).get(input.requestId,input.projectId);if(!row)return null;
-  let original;try{original=JSON.parse(row.canonicalInput);}catch{invalid();}
-  if(!imageSchemas[row.operation]?.safeParse(original).success||original.projectId!==input.projectId||original.requestId!==input.requestId)invalid();
-  const response=prior(row.operation,original),value={projectId:input.projectId,requestId:input.requestId,operation:row.operation,response};if(!imageRequestResponseSchema.safeParse(value).success)invalid();return value;
  }
  const count=(table,where,args,cap)=>db.prepare(`SELECT count(*) AS n FROM (SELECT 1 FROM ${table}${where?' WHERE '+where:''} LIMIT ?)`).get(...args,cap+1).n;
  function capacity(projectId,generating){
@@ -256,21 +221,7 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
     else change(target,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'});});
   }catch{diagnose();}}
  }
- const sign=text=>createHmac('sha256',secret).update(text).digest('base64url');
- function page(operation,input){
-  project(input.projectId);if(input.groupId)group(input.projectId,input.groupId);
-  const limit=input.limit??IMAGE_LIMITS.pageSize,table=operation==='image.task.list'?'image_tasks':operation==='image.group.list'?'image_groups':'image_versions',versions=table==='image_versions';
-  const scope=[operation,input.projectId,input.groupId??null,limit];let after=null;
-  if(input.cursor){try{const [body,mac,...rest]=input.cursor.split('.');if(rest.length||mac.length!==43||!timingSafeEqual(Buffer.from(mac),Buffer.from(sign(body))))throw Error();const decoded=JSON.parse(Buffer.from(body,'base64url').toString());if(!equal(decoded.slice(0,4),scope)||decoded.length!==5)throw Error();after=decoded[4];if(versions?!Number.isSafeInteger(after)||after<1:!Array.isArray(after)||after.length!==2||typeof after[0]!=='string'||after[0].length>40||!/^[-a-f0-9]{36}$/i.test(after[1]))throw Error();}catch{throw new AppError('INVALID_CURSOR','图像分页游标无效或已过期',400);}}
-  const where=['projectId=?'],args=[input.projectId];if(input.groupId){where.push('groupId=?');args.push(input.groupId);}if(after!==null){where.push(versions?'number<?':'(createdAt<? OR (createdAt=? AND id<?))');args.push(...(versions?[after]:[after[0],after[0],after[1]]));}
-  const rows=db.prepare(`SELECT ${bounded('id',36)},${versions?'number':bounded('createdAt',40)} FROM ${table} WHERE ${where.join(' AND ')} ORDER BY ${versions?'number DESC':'createdAt DESC,id DESC'} LIMIT ?`).all(...args,limit+1),selected=rows.slice(0,limit);
-  const items=selected.map(row=>versions?createOwnedMediaGraphReader(db,input.projectId).imageVersion(row.id):table==='image_tasks'?taskDto(input.projectId,row.id):group(input.projectId,row.id));
-  let nextCursor=null;if(rows.length>limit){const last=selected.at(-1),body=Buffer.from(JSON.stringify([...scope,versions?last.number:[last.createdAt,last.id]])).toString('base64url');nextCursor=`${body}.${sign(body)}`;}
-  return {projectId:input.projectId,items,nextCursor};
- }
  const profiles={items:[{providerId:'mock',model:IMAGE_MODELS.mock,name:'Mock 本地图像流程测试',enabled:true,isMock:true,evidence:'deterministic-mock',options:IMAGE_FIXED_OPTIONS},{providerId:'openai',model:IMAGE_MODELS.openai,name:'OpenAI Images · 未启用',enabled:false,isMock:false,evidence:'offline-tested-not-live',options:IMAGE_FIXED_OPTIONS}],liveEnabled:false};
- const snapshotRead=read=>input=>{const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');try{return read(input);}finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}};
- const readHandlers={'image.request.get':requestGet,'image.task.get':input=>taskDto(input.projectId,input.taskId),'image.group.get':input=>group(input.projectId,input.groupId),...Object.fromEntries(['image.task.list','image.group.list','image.version.list'].map(operation=>[operation,input=>page(operation,input)]))};
  function listProfiles(input={}){
   const value=structuredClone(profiles);
   // Opt-in metadata only, taken from the same safe snapshot as the profile.
@@ -281,8 +232,8 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   try{const state=comfySettings?.[COMFY_SETTINGS_READ_CURRENT]();if(isCompleteComfyImageConfiguration(state?.configuration)){const enabled=Boolean(comfyConnector&&state.configuration.enabled&&state.readiness.checked);value.items.push(withRevision({providerId:'comfy-local',model:state.configuration.model,name:enabled?'ComfyUI 本机 · 逐次确认':'ComfyUI 本机 · 尚未检查',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{}
   return value;
  }
- const handlers={...reviews.handlers,...remote.handlers,'image.profile.list':listProfiles,...Object.fromEntries(Object.entries(readHandlers).map(([operation,read])=>[operation,snapshotRead(read)])),...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,input=>mutateWithSource(operation,input)]))};
+ const handlers={...reviews.handlers,...remote.handlers,'image.profile.list':listProfiles,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,input=>mutateWithSource(operation,input)]))};
  async function drain(){if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);}
- for(const operation of Object.keys(handlers)){const handler=handlers[operation];handlers[operation]=input=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
+ for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];handlers[operation]=input=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
  const service={handlers,drain,approveReviewed:approval=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input,approval);},rejectReview:reviews.reject};owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,service});reconcile();remote.reconcile();return service;
 }

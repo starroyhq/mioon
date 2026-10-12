@@ -1,3 +1,4 @@
+import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
 import {AppError,publicValue,LOCAL_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {isAsyncFunction,isPromise} from 'node:util/types';
 
@@ -14,10 +15,13 @@ function synchronous(callback,...args) {
 // A single global key space for the explicitly supported local mutations. Keep
 // the canonical caller input, without inserting defaults or normalizing intent.
 // resolve/validate/apply/replay are synchronous and run under one write lock.
-export function createMutationReplay(store,{canonical}) {
+export const NO_MUTATION_REPLAY=Symbol('no-mutation-replay');
+export function createMutationReplay(store,{canonical,readOnly=false}) {
  const {db,tx}=store;
  const conflict=requestId=>{throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同操作、项目或内容',409,{requestId});};
+ const transaction=readOnly?callback=>{if(db.isTransaction)return callback();db.exec('BEGIN');try{const value=callback();db.exec('COMMIT');return value;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}:tx;
  return function mutation(operation,input,{resolve,validate,apply,replay,verify}) {
+  if(!readOnly)refuseRestoredOperation(store,operation,input);
   if(!LOCAL_MUTATION_OPERATIONS.includes(operation))throw new AppError('UNKNOWN_OPERATION','此操作不支持本地变更重放',404);
   if([resolve,validate,apply,replay,verify].some(callback=>callback&&isAsyncFunction(callback)))
    throw new TypeError('Mutation transactions require synchronous callbacks');
@@ -30,7 +34,7 @@ export function createMutationReplay(store,{canonical}) {
   const canonicalInput=requestId===undefined?null:canonical(fields);
   let absent=false;
   try {
-   return tx(()=>{
+   return transaction(()=>{
     // Subject replay must pass ownership gates before any retained receipt is used.
     const subjectContext=subjectMutation?synchronous(resolve):null;
     const receiptIdentity=subjectMutation?`CASE WHEN length(CAST(operation AS BLOB)) BETWEEN 1 AND 80 THEN operation END AS operation,CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId`:'operation,projectId';
@@ -75,6 +79,8 @@ export function createMutationReplay(store,{canonical}) {
      synchronous(replay,response,context);
      return response;
     }
+    if(readOnly)return NO_MUTATION_REPLAY;
+    refuseRestoredOperation(store,operation,input);
     const response=synchronous(apply,context);
     if(requestId===undefined)return response;
     const serialized=JSON.stringify(publicValue(response));
@@ -91,7 +97,7 @@ export function createMutationReplay(store,{canonical}) {
    // error can be mistaken for proof that an earlier attempt never committed.
    // An asset metadata scope denial is deliberately indistinguishable from absence. Keep
    // client recovery state on that error; preserve the original six semantics.
-   if(absent&&!db.isTransaction&&error instanceof AppError&&definite.has(error.code)&&
+   if(!readOnly&&absent&&!db.isTransaction&&error instanceof AppError&&definite.has(error.code)&&
       !((['asset.range.set','asset.disposition.set'].includes(operation)||subjectMutation)&&error.code==='NOT_FOUND'))
     error.details={...error.details,mutationOutcome:'not_applied',requestId,...(subjectMutation?{operation,projectId:input.projectId}:{})};
    throw error;

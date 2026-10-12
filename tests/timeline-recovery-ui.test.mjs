@@ -5,6 +5,9 @@ import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof, timelineOutputPreset } from '@mioon/contracts';
 import * as submissions from '../apps/web/src/submissions.js';
 import * as mutations from '../apps/web/src/mutation-submissions.js';
+import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
+import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
 import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
 
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
@@ -78,32 +81,32 @@ function acknowledged(operation, input) {
       assets: [{ id: assetId, sha256: 'a'.repeat(64), mimeType: 'video/mp4', duration: 10, width: 720, height: 1280, hasAudio: true }] },
     status: 'queued', assetId: null, url: null, error: null, createdAt: value.createdAt, updatedAt: value.updatedAt };
 }
-function harness(dispatch, { projectSnapshot } = {}) {
-  const state = { epoch: 0, calls: [], notices: [], refreshes: [], pending: submissions.pendingForProject(projectId), jobs: false, auth: true };
-  const currentProject = { current: projectId }, busy = new Set();
+function harness(dispatch, { projectSnapshot, workspace = { restored: false } } = {}) {
+  const state = { epoch: 0, calls: [], reads: [], notices: [], refreshes: [], pending: submissions.pendingForProject(projectId), jobs: false, auth: true, online: null, providers: null };
+  const currentProject = { current: projectId }, workspaceRef = { current: workspace }, busy = new Set();
   const dataRef = { current: { project: { id: projectId }, timeline: timeline(7), timelineHistory: { revision: 7 } } };
-  const scope = { ...submissions, ...mutations, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
-    currentProject, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
-    isCurrent: owner => owner.projectId === currentProject.current && owner.epoch === state.epoch,
+  const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
+    currentProject, workspaceRef, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch, workspace: workspaceRef.current }),
+    isCurrent: owner => owner.projectId === currentProject.current && owner.epoch === state.epoch && workspaceOrigin.workspaceOriginScope(owner.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: (key, owner) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
     requestCounter: { current: 0 }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; },
     setPending: entries => { state.pending = entries; }, setShowJobs: value => { state.jobs = value; }, setAuth: value => { state.auth = value; },
     readableError: error => error.message, clipReplacementErrorMessage: error => error.message,
     notify: (message, type) => state.notices.push({ message, type }), refresh: async owner => { state.refreshes.push(owner); },
     rpc: async (operation, input) => {
-      if (projectSnapshot && operation === 'project.get') return projectSnapshot(input.projectId);
-      if (projectSnapshot && operation === 'provider.list') return [];
+      if (projectSnapshot && operation === 'project.get') { state.reads.push({ operation, input: clone(input) }); return projectSnapshot(input.projectId); }
+      if (projectSnapshot && operation === 'provider.list') { state.reads.push({ operation }); return []; }
       state.calls.push({ operation, input: clone(input) }); return dispatch(operation, input);
     },
   };
   if (projectSnapshot) {
     const refreshScope = { ...scope, useCallback: callback => callback, emptyData: {}, projectEpoch: { current: 1 },
-      setProviders() {}, setLastSync() {}, setOnline() {}, reconcileWorkspaceState: value => value,
-      viewRef: { current: {} }, viewReady: { current: false }, setView() {}, preferencesRef: { current: {} } };
+      setProviders: value => { state.providers = value; }, setLastSync() {}, setOnline: value => { state.online = value; }, reconcileWorkspaceState,
+      viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false }, setView() {}, preferencesRef: { current: {} } };
     delete refreshScope.refresh;
     scope.refresh = Function(...Object.keys(refreshScope), `${refreshSource}; return refresh;`)(...Object.values(refreshScope));
   }
-  return { state, currentProject, dataRef, busy, run: Function(...Object.keys(scope), `${runSource}; return run;`)(...Object.values(scope)) };
+  return { state, currentProject, workspaceRef, dataRef, busy, refresh: scope.refresh, run: Function(...Object.keys(scope), `${runSource}; return run;`)(...Object.values(scope)) };
 }
 const keyFor = operation => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
@@ -381,10 +384,61 @@ test('actual App catch and project refresh cannot erase a render receipt after s
       assert.deepEqual(h.state.pending, [original], code);
     }
     assert.equal(refreshes, 4); assert.equal(h.state.calls.length, 4);
+    assert.equal(h.state.reads.filter(call => call.operation === 'provider.list').length, 4, 'normal workspace refresh still reads provider capabilities');
     assert.ok(h.state.calls.every(call => JSON.stringify(call.input) === JSON.stringify(input)));
     failure = null; await h.run(key, operation, input, undefined, { replay: true });
     assert.equal(submissions.readPending(projectId, key), null);
   }
+});
+
+test('actual App refresh validates restored identity and held exports before changing data or reconciling receipts', async t => {
+  const values = storage(t), workspace = { restored: true, workspaceOrigin: id(40) };
+  const operation = 'timeline.render', input = inputFor(operation, { purpose: 'export' }), record = acknowledged(operation, input);
+  const original = submissions.prepareSubmission({ projectId, key: 'timeline:render:export', operation, input });
+  const current = submissions.prepareSubmission(workspaceOrigin.pinNewWorkspaceIntent({ projectId, key: 'timeline:render:current', operation,
+    input: { ...input, requestId: 'current-restored-export' } }, workspace));
+  const historicalGeneration = submissions.prepareSubmission({ projectId, key: 'generate:historical', operation: 'generation.submit', input: { requestId: 'captured-generation-request' } });
+  const originalBytes = [...values.entries()], restore = { workspaceOrigin: workspace.workspaceOrigin, heldExportIds: [record.id] };
+  for (const [name, activeWorkspace, metadata, valid] of [
+    ['matching branch', workspace, restore, true],
+    ['missing metadata', workspace, undefined, false],
+    ['different origin', workspace, { ...restore, workspaceOrigin: id(41) }, false],
+    ['unknown held export', workspace, { ...restore, heldExportIds: [id(42)] }, false],
+    ['duplicate held export', workspace, { ...restore, heldExportIds: [record.id, record.id] }, false],
+    ['extra metadata field', workspace, { ...restore, accepted: true }, false],
+    ['restored reply to normal workspace', { restored: false }, restore, false],
+  ]) {
+    const next = { project: { id: projectId }, timeline: timeline(99), exports: [record], jobs: [{ requestId: historicalGeneration.input.requestId }],
+      ...(metadata === undefined ? {} : { restore: metadata }) };
+    const h = harness(() => assert.fail('refresh must not dispatch a write'), { workspace: activeWorkspace, projectSnapshot: () => next });
+    const before = h.dataRef.current;
+    assert.equal(await h.refresh(projectId, false), valid ? next : null, name);
+    assert.equal(h.dataRef.current === before, !valid, name);
+    assert.equal(h.state.online, valid, name); assert.deepEqual(h.state.providers, valid ? [] : null, name);
+    assert.deepEqual(h.state.reads.map(call => call.operation), activeWorkspace.restored ? ['project.get'] : ['project.get', 'provider.list'], name);
+    assert.deepEqual(h.state.calls, [], name);
+    assert.equal(h.state.notices.length, valid ? 0 : 1, name);
+    if (!valid) assert.equal(h.state.notices[0].type, 'error', name);
+    assert.deepEqual([...values.entries()], originalBytes, `${name}: refresh cannot rewrite or acknowledge retained requests`);
+    assert.deepEqual(submissions.readPending(projectId, original.key), original);
+    assert.deepEqual(submissions.readPending(projectId, current.key, current), current);
+    assert.deepEqual(submissions.readPending(projectId, historicalGeneration.key), historicalGeneration);
+  }
+});
+
+test('actual App refresh discards a late same-project snapshot after restored origin changes', async t => {
+  const values = storage(t), workspace = { restored: true, workspaceOrigin: id(40) };
+  const original = submissions.prepareSubmission(workspaceOrigin.pinNewWorkspaceIntent({ projectId, key: 'timeline:render:export', operation: 'timeline.render', input: inputFor('timeline.render') }, workspace));
+  const originalBytes = [...values.entries()]; let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const h = harness(() => assert.fail('refresh must not dispatch a write'), { workspace, projectSnapshot: () => held });
+  const before = h.dataRef.current, pending = h.refresh(projectId, false);
+  h.workspaceRef.current = { ...workspace, workspaceOrigin: id(41) };
+  release({ project: { id: projectId }, timeline: timeline(99), exports: [], restore: { workspaceOrigin: workspace.workspaceOrigin, heldExportIds: [] } });
+  assert.equal(await pending, null); assert.equal(h.dataRef.current, before);
+  assert.equal(h.state.online, null); assert.equal(h.state.providers, null); assert.deepEqual(h.state.notices, []);
+  assert.deepEqual(h.state.reads, [{ operation: 'project.get', input: { projectId } }]); assert.deepEqual(h.state.calls, []);
+  assert.deepEqual([...values.entries()], originalBytes); assert.deepEqual(submissions.readPending(projectId, original.key, original), original);
 });
 
 test('pending timeline and reference cards disclose session-only recovery without broadening generation copy', () => {

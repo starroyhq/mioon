@@ -1,5 +1,7 @@
 import {workspaceBackupSchemas} from './workspace-backup.mjs';
 export * from './workspace-backup.mjs';
+import {workspaceRestoreSchemas} from './workspace-restore.mjs';
+export * from './workspace-restore.mjs';
 import {timelineExportSettingsSchema,timelineExportCapabilitySchemas} from './timeline-export-profile.mjs';
 export * from './timeline-export-profile.mjs';
 import {z} from 'zod';
@@ -61,6 +63,7 @@ const clipFields={trackId:id,name:z.string().min(1).max(200),startFrame:frame,du
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
 ...workspaceBackupSchemas,
+...workspaceRestoreSchemas,
 ...timelineFormatSchemas,
 ...timelineSubtitleSchemas,
 ...frameSchemas,
@@ -118,6 +121,7 @@ export const schemas={
 assertOperationEffectCoverage(schemas);
 export const descriptions={
 'workspace.backup.inspect':'只读检查整个工作区的有界数据库计数；不复制文件、不恢复任务、不读取密钥。冷备份前必须正常关闭应用和同工作区后端。',
+'workspace.restore.inspect':'只读查看工作区恢复分支身份、隔离计数与可用操作；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。',
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
  'timeline.subtitle.add':'按时间线版本添加一条手动字幕；固定字体排版，30fps时间，返回完整已保存时间线',

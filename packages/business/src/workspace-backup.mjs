@@ -9,6 +9,7 @@ import {acquireWorkspaceLock} from './workspace-lock.mjs';
 import {fail,checkCancelled,safeBackupError,sameNode,sameFile,explicitPath,checkSeparate,createDestination,createNewDirectory,
  checkDirectoryIdentity,inspectFile,syncDirectory,syncDestinationParent,streamFile,readJsonFile,writeBoundedFile,publishMarker,scanDirectory,removeOwnedFile,removeOwnedDirectory} from './workspace-backup-storage.mjs';
 import {createIssueCollector,buildWorkspaceInventory,inspectDatabase} from './workspace-backup-inventory.mjs';
+import {detectWorkspaceRestoreEvidence} from './workspace-restore-schema.mjs';
 
 const applicationVersion=applicationPackage.version;
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -39,21 +40,32 @@ function resultFor(manifest){
 // SQLite's pathname-only API is restricted to this private disposable copy.
 // Even readOnly WAL-mode SQLite may make temporary -wal/-shm files. They never
 // appear beside the source database or the published byte-for-byte payload.
-async function withDisposableDatabase({database,databaseRoot,temporaryParent,signal,check},fn){
+export async function withDisposableDatabase({database,databaseRoot,temporaryParent,signal,check,databasePrivate=true},fn){
  const directory=path.join(temporaryParent,`.inspection-${randomUUID()}`),identity=createNewDirectory(directory,temporaryParent);
  const file=path.join(directory,'workbench.sqlite');let db,copied;const sidecars=new Map();let result,error;
+ const captureSidecars=()=>{
+  for(const suffix of ['-wal','-shm','-journal']){
+   const name=file+suffix,current=inspectFile(name,directory,{allowMissing:true,maxBytes:64*1024*1024});
+   if(!current)continue;
+   const first=sidecars.get(name);
+   // SQLite may change its own sidecar size/timestamps. A pathname replacement
+   // cannot grant deletion authority over a different inode.
+   if(first&&!sameNode(first,current))fail('CHANGED');
+   sidecars.set(name,current);
+  }
+ };
  try{
-  copied=await streamFile({file:database,root:databaseRoot,destination:file,destinationRoot:directory,signal,check,maxBytes:limits.databaseBytes,private:true,cleanupOnFailure:true});
+  copied=await streamFile({file:database,root:databaseRoot,destination:file,destinationRoot:directory,signal,check,maxBytes:limits.databaseBytes,private:databasePrivate,cleanupOnFailure:true});
   check();
   db=new DatabaseSync(file,{readOnly:true,enableForeignKeyConstraints:false,enableDoubleQuotedStringLiterals:false});
-  for(const suffix of ['-wal','-shm','-journal']){const sidecar=inspectFile(file+suffix,directory,{allowMissing:true,maxBytes:64*1024*1024});if(sidecar)sidecars.set(file+suffix,sidecar);}
+  captureSidecars();
   result=await fn(db);check();
  }catch(cause){error=cause;}
  finally{
   try{
    // Capture only fixed SQLite sidecars while our connection still owns them;
    // unknown files are never recursively removed.
-   if(db)for(const suffix of ['-wal','-shm','-journal']){const sidecar=inspectFile(file+suffix,directory,{allowMissing:true,maxBytes:64*1024*1024});if(sidecar)sidecars.set(file+suffix,sidecar);}
+   if(db)captureSidecars();
    db?.close();db=undefined;
    if(copied&&!removeOwnedFile(file,directory,copied.savedIdentity))fail('CHANGED');
    for(const [sidecar,info] of sidecars){if(!removeOwnedFile(sidecar,directory,info))fail('CHANGED');}
@@ -61,6 +73,21 @@ async function withDisposableDatabase({database,databaseRoot,temporaryParent,sig
   }catch(cause){try{db?.close();}catch{}error??=cause;}
  }
  if(error)throw error;return result;
+}
+
+// A restored working branch cannot produce a second-generation backup until
+// capture and recursive restore are supported together. Inspect only a private
+// disposable copy before creating the user's requested destination. Ordinary
+// backup keeps its original permissive byte-preservation/inventory semantics;
+// this is not source-schema migration or a general legacy schema validator.
+async function refuseRestoredCapture({database,source,destination,signal,check}){
+ const temporary=path.join(path.dirname(destination),`.backup-profile-${randomUUID()}`),identity=createDestination(temporary);
+ try{
+  await withDisposableDatabase({database,databaseRoot:source,temporaryParent:temporary,signal,check,databasePrivate:false},db=>{
+   db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;');
+   if(detectWorkspaceRestoreEvidence(db))throw Object.assign(new Error('Backups of restored working branches are unavailable until recursive restore is supported.'),{code:'RESTORE_BACKUP_UNAVAILABLE'});
+  });
+ }finally{removeOwnedDirectory(temporary,temporary,identity);}
 }
 
 /** Cold, local, whole-workspace evidence capture. Never opens/migrates source
@@ -79,6 +106,8 @@ export async function createWorkspaceBackup({source,destination,signal}={}){
   check();checkCold(source);
   const sourceDirs=sourceDirectorySnapshot(source),databasePath=path.join(source,'workbench.sqlite');
   const databaseIdentity=inspectFile(databasePath,source,{maxBytes:limits.databaseBytes});if(databaseIdentity.size===0)fail('DATABASE_INVALID');
+  await refuseRestoredCapture({database:databasePath,source,destination,signal,check});
+  if(!sameFile(databaseIdentity,inspectFile(databasePath,source,{maxBytes:limits.databaseBytes})))fail('CHANGED');
   const destinationIdentity=createDestination(destination);syncDestinationParent(destination);check();
   const destinationCheck=()=>{check();checkDirectoryIdentity(destination,destination,destinationIdentity);};
   const payload=path.join(destination,'payload');createNewDirectory(payload,destination);
@@ -155,8 +184,7 @@ async function verifyExactTree(directory,manifest,{signal,check}){
 
 /** Rehash exact captured bytes and inspect only a disposable database copy.
  * Integrity is not authenticity, inventory completeness or restoration proof. */
-export async function verifyWorkspaceBackup({directory,signal}={}){
- try{
+export async function withVerifiedWorkspaceBackup({directory,signal,inspectDatabaseCopy}={},use){
   directory=explicitPath(directory);checkCancelled(signal);const rootIdentity=validatePrivateDirectory(directory);
   const check=()=>{checkCancelled(signal);checkDirectoryIdentity(directory,directory,rootIdentity);};
   const marker=readJsonFile(path.join(directory,'COMPLETE.json'),directory,4096,{allowMissing:true});if(!marker)fail('INCOMPLETE');
@@ -176,13 +204,26 @@ export async function verifyWorkspaceBackup({directory,signal}={}){
   // Verification temp files live in a separate private sibling, never inside
   // the backup being verified. No successful verification edits that backup.
   const temporary=path.join(path.dirname(directory),`.backup-verify-${randomUUID()}`),temporaryIdentity=createDestination(temporary);let schemaVersion;
-  try{schemaVersion=await withDisposableDatabase({database:path.join(directory,'payload/workbench.sqlite'),databaseRoot:directory,temporaryParent:temporary,signal,check},db=>inspectDatabase(db).version);}
+  try{schemaVersion=await withDisposableDatabase({database:path.join(directory,'payload/workbench.sqlite'),databaseRoot:directory,temporaryParent:temporary,signal,check},async db=>{if(inspectDatabaseCopy)await inspectDatabaseCopy(db);return inspectDatabase(db).version;});}
   finally{removeOwnedDirectory(temporary,temporary,temporaryIdentity);}
   if(schemaVersion!==manifest.databaseSchemaVersion)fail('CORRUPT');
-  check();
-  for(const [entry,identity] of verified)if(!sameFile(identity,inspectFile(path.join(directory,entry.path),directory,{private:true})))fail('CHANGED');
-  if(!sameFile(markerIdentity,inspectFile(path.join(directory,'COMPLETE.json'),directory,{private:true,maxBytes:4096}))||!sameFile(manifestIdentity,inspectFile(path.join(directory,'manifest.json'),directory,{private:true,maxBytes:limits.manifestBytes})))fail('CHANGED');
-  await verifyExactTree(directory,manifest,{signal,check});
-  return result;
- }catch(error){throw safeBackupError(error);}
+  const checkFiles=()=>{
+   check();
+   for(const [entry,identity] of verified)if(!sameFile(identity,inspectFile(path.join(directory,entry.path),directory,{private:true})))fail('CHANGED');
+   if(!sameFile(markerIdentity,inspectFile(path.join(directory,'COMPLETE.json'),directory,{private:true,maxBytes:4096}))||!sameFile(manifestIdentity,inspectFile(path.join(directory,'manifest.json'),directory,{private:true,maxBytes:limits.manifestBytes})))fail('CHANGED');
+  };
+  const recheck=async()=>{checkFiles();await verifyExactTree(directory,manifest,{signal,check});checkFiles();};
+  await recheck();
+  if(!use)return result;
+  // Trusted offline embedding only. This is not registered in the RPC catalog.
+  // Freeze all supplied evidence; callers cannot mutate our later rechecks.
+  const freeze=value=>{if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+  const context=Object.freeze({directory,manifest:freeze(manifest),manifestHash:complete.manifestSha256,
+   result:freeze(result),files:Object.freeze(verified.map(([entry,identity])=>Object.freeze({entry,identity:Object.freeze(identity)}))),check,checkFiles,recheck});
+  return use?await use(context):result;
+}
+
+export async function verifyWorkspaceBackup({directory,signal}={}){
+ try{return await withVerifiedWorkspaceBackup({directory,signal});}
+ catch(error){throw safeBackupError(error);}
 }

@@ -783,3 +783,24 @@ There is no MCP backup create/verify/restore tool or filesystem-path executor.
 For explicitly requested local backup creation, use the documented offline CLI
 in [the guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md) after normal backend shutdown.
 A verified package is not evidence that restoring or repeating old tasks is safe.
+
+
+## Restored-branch discovery and origin pin
+
+`workspace_restore_inspect` is an authenticated strict-empty read-only tool. It
+returns `{restored:false}` for ordinary workspaces; restored ones disclose safe
+origin/profile, source hashes, bounded held counts and explicit restrictions.
+There are no filesystem paths or added built-in Agent capabilities.
+
+For an explicitly chosen restored branch, launch MCP with `--workspace-origin`
+and its exact inspected UUID. The bridge pins this outer invocation context;
+ordinary tool input schemas and replay keys are unchanged. It never updates the
+pin on backend reconnect. Missing/foreign origins refuse fresh effects. Discovery
+does not approve execution, restore old tasks or give a model paid authority.
+
+Captured tasks/approvals/unknown requests remain held, including when callers
+supply a new outer origin or another key. Only supported new local edits/imports
+and previews/exports are enabled in restored v1; disabled calls return the same
+structured business refusal as UI/CLI. Do not interpret it as confirmed rollback.
+Offline restore/status has no MCP filesystem executor; use the explicitly
+requested local CLI described in [CLI.md](CLI.md#guarded-offline-restoration).

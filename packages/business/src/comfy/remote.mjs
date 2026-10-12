@@ -1,3 +1,5 @@
+import {getWorkspaceRestoreContext} from '../workspace-restore-schema.mjs';
+import {workspaceRestoreError} from '../workspace-restore-policy.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import {ownsStoreLock} from '../db.mjs';
@@ -22,6 +24,7 @@ const dtoObs=row=>{const dto=Object.fromEntries(['id','projectId','taskId','requ
  * network capability is the reviewed connector's single-job read/result fetch.
  * A retained generation UUID is correlation, never permission to repeat POST. */
 export function createComfyRemoteServices(store,{signal:parentSignal,owner,readTask,readReview,connector,stageResult,failTask,fault=()=>{}}){
+ if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const {db,tx}=store,controller=new AbortController(),signal=parentSignal?AbortSignal.any([parentSignal,controller.signal]):controller.signal;
  let closed=false;const active=new Set();
  const present=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_runs'").get());

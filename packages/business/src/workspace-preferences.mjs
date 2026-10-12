@@ -1,3 +1,6 @@
+import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
+import {withRestoreInvocation,freezeRestoreInput} from './workspace-restore-invocation.mjs';
+import {refuseRestoredOperation,assertWorkspaceRestoreOrigin} from './workspace-restore-policy.mjs';
 import {AppError, schemas} from '@mioon/contracts';
 
 // This is a renderer-only whitelist, deliberately separate from operation
@@ -116,13 +119,15 @@ export function createWorkspacePreferences(store) {
       requireProject(projectId);
       return result(projectId, current(projectId));
     },
-    put(projectId, input) {
+    put(projectId, input, context = {}) {
       id(projectId, ['projectId'], false);
       const payload = object(input, ['expectedRevision', 'state'], []);
       const expectedRevision = numeric(payload.expectedRevision, 0, Number.MAX_SAFE_INTEGER, ['expectedRevision'], true);
       const state = JSON.stringify(parseWorkspacePreferencesState(payload.state));
       if (Buffer.byteLength(state) > MAX_WORKSPACE_PREFERENCES_BYTES) invalid(['state'], 'Preferences are too large');
-      return tx(() => {
+      const identity=freezeRestoreInput({projectId,expectedRevision,state});
+      const apply=()=>tx(() => {
+        refuseRestoredOperation(store,'workspace.preferences.put',identity);
         requireProject(projectId);
         const previous = current(projectId), revision = previous?.revision ?? 0;
         // Only an exact retry of the most recent accepted write is replayable.
@@ -136,6 +141,9 @@ export function createWorkspacePreferences(store) {
         else db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, next.revision, state);
         return result(projectId, next);
       });
+      if(!getWorkspaceRestoreContext(store))return apply();
+      assertWorkspaceRestoreOrigin(store,context);
+      return withRestoreInvocation(store,'workspace.preferences.put',identity,{signal:context.signal},apply);
     },
   };
 }

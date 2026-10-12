@@ -1,5 +1,5 @@
 import {TIMELINE_OUTPUT_PRESETS,isTimelineExportDelivery} from '@mioon/contracts';
-import {run,runStreaming} from './media-runtime.mjs';
+import {run,runStreaming,checkMediaEffect,isMediaEffectRestriction} from './media-runtime.mjs';
 import {throwIfMediaAborted,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.mjs';
 
 // Explicit local-compute check, separate from read-only source preflight. This
@@ -74,8 +74,8 @@ function verifyProof(bytes,p){
  * published artifact continues to use the frozen +faststart MP4 render path.
  * Results are observations, never authority tokens for a later render.
  */
-export async function inspectTimelineExportCapability(delivery,{signal}={}){
- throwIfMediaAborted(signal);
+export async function inspectTimelineExportCapability(delivery,{signal,beforeEffect}={}){
+ checkMediaEffect(beforeEffect,signal);
  if(!validDelivery(delivery))return result('incomplete','EXPORT_CAPABILITY_CONFIGURATION');
  if(active)return result('incomplete','EXPORT_CAPABILITY_BUSY');
  const token={};active=token;
@@ -83,8 +83,8 @@ export async function inspectTimelineExportCapability(delivery,{signal}={}){
  const timeout=()=>{const left=Math.floor(deadline-performance.now());if(left<=0)throw error('MEDIA_TIMEOUT');return left;};
  let unconfirmed=false;
  try{
-  const listing=await run('ffmpeg',['-hide_banner','-encoders'],{signal,timeout:timeout(),maxStdoutBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.encoderListBytes,maxStderrBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stderrBytes});
-  throwIfMediaAborted(signal);
+  const listing=await run('ffmpeg',['-hide_banner','-encoders'],{signal,beforeEffect,timeout:timeout(),maxStdoutBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.encoderListBytes,maxStderrBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stderrBytes});
+  checkMediaEffect(beforeEffect,signal);
   const encoders=advertisedEncoders(listing);
   if(!encoders.has('libx264')||!encoders.has('aac'))return result('unavailable','EXPORT_CAPABILITY_UNSUPPORTED');
   const p=delivery.effective,chunks=[];
@@ -94,13 +94,15 @@ export async function inspectTimelineExportCapability(delivery,{signal}={}){
    '-map','[v]','-map','1:a:0',...timelineExportVideoArgs(delivery),'-frames:v',String(TIMELINE_EXPORT_CAPABILITY_LIMITS.frames),
    '-c:a',p.audioCodec,'-b:a',`${p.audioKbps}k`,'-ar',String(p.audioSampleRate),'-ac',String(p.audioChannels),'-t','0.1',
    '-movflags','+frag_keyframe+empty_moov+default_base_moof','-f','mp4','pipe:1'],
-   {signal,timeout:timeout(),maxStdoutBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stdoutBytes,maxStderrBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stderrBytes,onStdout:chunk=>{chunks.push(Buffer.from(chunk));}});
-  throwIfMediaAborted(signal);
+   {signal,beforeEffect,timeout:timeout(),maxStdoutBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stdoutBytes,maxStderrBytes:TIMELINE_EXPORT_CAPABILITY_LIMITS.stderrBytes,onStdout:chunk=>{chunks.push(Buffer.from(chunk));}});
+  checkMediaEffect(beforeEffect,signal);
   verifyProof(Buffer.concat(chunks,output.stdoutBytes),p);
   return result('available','EXPORT_CAPABILITY_AVAILABLE');
  }catch(failure){
   if(failure.terminationUnconfirmed){unconfirmed=true;throw failure;}
+  if(isMediaEffectRestriction(failure))throw failure;
   if(signal?.aborted||failure.code==='MEDIA_CANCELLED'){throwIfMediaAborted(signal);throw failure;}
+  checkMediaEffect(beforeEffect,signal);
   const codes={MEDIA_SPAWN_FAILED:['unavailable','EXPORT_CAPABILITY_TOOL_UNAVAILABLE'],MEDIA_INVALID_CONFIGURATION:['incomplete','EXPORT_CAPABILITY_CONFIGURATION'],
    MEDIA_TIMEOUT:['incomplete','EXPORT_CAPABILITY_TIMEOUT'],MEDIA_OUTPUT_LIMIT:['incomplete','EXPORT_CAPABILITY_OUTPUT_LIMIT']};
   return result(...(codes[failure.code]||['incomplete','EXPORT_CAPABILITY_FAILED']));
@@ -115,6 +117,7 @@ export async function inspectTimelineExportCapability(delivery,{signal}={}){
 
 export async function assertTimelineExportCapability(delivery,options){
  const capability=await inspectTimelineExportCapability(delivery,options);
+ checkMediaEffect(options?.beforeEffect,options?.signal);
  if(capability.status!=='available')throw error(capability.code);
  return capability;
 }

@@ -1,3 +1,4 @@
+import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
 import {randomUUID} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import {createReferenceRecoveryBoundary,readReferenceReceipt,rejectReferenceMutation,invalidReference} from './reference-recovery.mjs';
@@ -25,6 +26,7 @@ export function createReferenceServices(store,{check,hash,now}) {
    conflict('REFERENCE_CONNECTED','此镜头的首帧由画布连线控制；请先断开首帧连线，再修改参考图',{shotId:shot.id,edgeIds:edges.map(edge=>edge.id)});
  }
  function mutation(operation,input,apply) {
+  refuseRestoredOperation(store,operation,input);
   const state={receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
@@ -36,6 +38,7 @@ export function createReferenceServices(store,{check,hash,now}) {
      return createReferenceRecoveryBoundary(db,input).replay(operation,previous.response);
     }
     state.receiptAbsent=true;
+    refuseRestoredOperation(store,operation,input);
     const boundary=createReferenceRecoveryBoundary(db,input);boundary.project();
     const {response,save}=apply(boundary);
     boundary.validateResponse(operation,response);

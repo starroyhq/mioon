@@ -89,17 +89,47 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   const app = text('App.jsx'), start = app.indexOf('  const frameExtraction = useFrameExtraction('), end = app.indexOf('\n\n', start);
   assert.ok(start > 0 && end > start);
   const calls = [], controller = { capture: () => {} }, state = { visible: true }, refreshes = [];
-  const env = { data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: name => name === 'canvas', quickAssetId: sourceId, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: pid => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: input => { calls.push(input); return { controller, state }; } };
+  const env = { data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: name => name === 'canvas', quickAssetId: sourceId, restored: false, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: pid => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: input => { calls.push(input); return { controller, state }; } };
   const evaluate = () => Function(...Object.keys(env), `${app.slice(start, end)}; return frameExtraction;`)(...Object.values(env));
   assert.equal(evaluate().controller, controller); const configured = calls.at(-1);
-  assert.equal(configured.visible, true); assert.equal(configured.rpc, env.rpc); assert.equal(configured.sourceScope, sourceScope); assert.equal(configured.revealAsset, env.revealImageAsset);
+  assert.equal(configured.visible, true); assert.equal(configured.blocked, false); assert.equal(configured.rpc, env.rpc); assert.equal(configured.sourceScope, sourceScope); assert.equal(configured.revealAsset, env.revealImageAsset);
   configured.onResult(projectId); env.currentProject.current = id(9); configured.onResult(projectId); assert.deepEqual(refreshes, [projectId]);
   env.busy = { 'canvas:mutation': true }; evaluate(); assert.equal(calls.at(-1).blocked, true);
   env.panelVisible = name => name === 'inspector'; env.rightDockTab = 'properties'; evaluate(); assert.equal(calls.at(-1).visible, true, 'narrow Properties can read and recover with canvas hidden');
   env.rightDockTab = 'agent'; evaluate(); assert.equal(calls.at(-1).visible, false, 'all frame surfaces are hidden');
   env.panelVisible = () => false; env.rightDockTab = 'properties'; evaluate(); assert.equal(calls.at(-1).visible, false);
+  env.restored = true; env.busy = {}; env.panelVisible = name => name === 'canvas'; evaluate();
+  assert.equal(calls.at(-1).visible, true); assert.equal(calls.at(-1).blocked, true, 'a restored source remains blocked without other busy work');
+  const rpcCalls = [], h = hooksHarness(text('use-frame-extraction.js'), { './frame-extraction.js': frame }, 'useFrameExtraction');
+  h.render({ ...calls.at(-1), rpc: (operation, input) => { rpcCalls.push({ operation, input }); return page(); } }); await tick(); h.render();
+  assert.equal(await h.value.controller.capture({ sourceScope, sourceAssetId: sourceId, sourceHash: sha256, sourceFrame: 56 }), null);
+  await h.value.controller.refreshTasks(); await h.value.controller.refreshActive();
+  assert.equal(await h.value.controller.cancelQueued(task()), null);
+  assert.equal(await h.value.controller.recoverResult(task({ state: 'interrupted' })), null);
+  assert.deepEqual(rpcCalls, [], 'restored mode neither reads live frame history nor starts or controls a task');
+  assert.equal(h.value.controller.getSnapshot().pending, null); h.unmount();
   assert.match(app, /onCaptureFrame=\{frameExtraction\.controller\.capture\} captureBusy=\{frameCaptureBusy\(frameExtraction\.state\)\}/);
-  assert.match(app, /quickAssetId && sourceAsset \? <SourceRangeInspector[^>]+><FrameExtractionPanel controller=\{frameExtraction\.controller\} \/><\/SourceRangeInspector>/);
+  assert.match(app, /quickAssetId && sourceAsset \? <SourceRangeInspector[^>]+>\{restored \? <RestoredUnavailable[^>]+\/> : <FrameExtractionPanel controller=\{frameExtraction\.controller\} \/>\}<\/SourceRangeInspector>/);
+});
+
+test('actual App source inspector keeps the normal frame panel and replaces it with the restored hold notice', () => {
+  const app = text('App.jsx'), start = app.indexOf('<SourceRangeInspector '), end = app.indexOf('</SourceRangeInspector>', start) + '</SourceRangeInspector>'.length;
+  assert.ok(start > 0 && end > start);
+  const controller = {}, rangeState = { dirty: true, draft: { inFrame: 12, outFrame: 88 } }, rangeController = {};
+  for (const restored of [false, true]) {
+    const h = hooksHarness(`import React from 'react'; export default function Fixture() { return (${app.slice(start, end)}); }`, {}, 'default', {
+      SourceRangeInspector: 'SourceRangeInspector', FrameExtractionPanel: 'FrameExtractionPanel', RestoredUnavailable: 'RestoredUnavailable',
+      restored, sourceAsset, sourceRanges: { state: rangeState, controller: rangeController }, timeline: { projectId }, sourceRangeBlocked: false,
+      addSavedSourceRange() {}, frameExtraction: { controller },
+    });
+    const tree = h.render(), all = nodes(tree), panel = all.find(node => node.type === 'FrameExtractionPanel'), notice = all.find(node => node.type === 'RestoredUnavailable');
+    assert.equal(tree.type, 'SourceRangeInspector'); assert.equal(tree.props.asset, sourceAsset);
+    assert.equal(tree.props.state, rangeState); assert.equal(tree.props.controller, rangeController);
+    assert.equal(Boolean(panel), !restored); assert.equal(Boolean(notice), restored);
+    if (restored) assert.equal(notice.props.title, '抽帧任务保留，执行暂不可用');
+    else assert.equal(panel.props.controller, controller);
+    assert.deepEqual(rangeState, { dirty: true, draft: { inFrame: 12, outFrame: 88 } }); h.unmount();
+  }
 });
 
 test('actual source inspector children slot exposes frame history for video and image while preserving range draft controls', () => {

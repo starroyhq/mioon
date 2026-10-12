@@ -1,3 +1,6 @@
+import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
+import {refuseRestoredTask,safeWorkspaceRestoreError,assertWorkspaceRestoreOrigin,assertRestoreRequestVacant} from './workspace-restore-policy.mjs';
+import {withRestoreTaskInvocation} from './workspace-restore-invocation.mjs';
 import {randomUUID} from 'node:crypto';
 import {withTimelineFormatTaskDispatch} from './timeline-format-task-context.mjs';
 import {isProxy} from 'node:util/types';
@@ -18,20 +21,19 @@ const errors = Object.freeze({
  EDIT_TASK_STORAGE_LIMIT: [507, '编辑任务保留容量已满（最多 4096 个身份、64 MiB 逻辑预留）。已完成身份仍保留，不能自动清理；这不表示磁盘已满。'],
  EDIT_TASK_STORAGE_UNAVAILABLE: [503, '无法安全读取或保存编辑任务。'],
 });
-export const editTaskError = code => { const key = Object.hasOwn(errors, code) ? code : 'EDIT_TASK_STORAGE_UNAVAILABLE'; return new AppError(key, errors[key][1], errors[key][0]); };
+export const editTaskError = code => { const restore=safeWorkspaceRestoreError({code});if(restore)return restore;const key = Object.hasOwn(errors, code) ? code : 'EDIT_TASK_STORAGE_UNAVAILABLE'; return new AppError(key, errors[key][1], errors[key][0]); };
 export function safeEditTaskError(error) { const safe = editTaskError(error?.code); return {status: safe.status, code: safe.code, message: safe.message}; }
 const fail = code => { throw editTaskError(code); };
 const corrupt = () => fail('EDIT_TASK_STORAGE_UNAVAILABLE');
 const invalid = () => fail('EDIT_TASK_VALIDATION');
-const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
-const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const uuid = value => typeof value === 'string' && value.length===36 && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
+const digest = value => typeof value === 'string' && value.length===64 && /^[a-f0-9]{64}$/.test(value);
 const integer = value => Number.isSafeInteger(value) && value > 0;
 const timestamp = () => new Date().toISOString();
 const terminal = row => row.status === 'applied' || row.status === 'not_applied';
 const lifetimes = new WeakMap();
 const bounded = (column, bytes) => `CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${bytes} THEN ${column} END AS ${column}`;
 const columns = ['position','revision','acknowledged','bytes', ...Object.entries({id:36,projectId:36,operation:80,input:8192,requestId:800,digest:64,lane:32,origin:32,status:32,claim:36,claimInstance:36,receiptDigest:64,errorCode:80,createdAt:40,updatedAt:40}).map(([key,bytes]) => bounded(key,bytes))].join(',');
-const select = `SELECT ${columns} FROM edit_tasks`;
 
 // Inspect data properties before serialization. No getter, toJSON, proxy,
 // undefined omission, or lossy non-JSON number can alter the captured intent.
@@ -60,11 +62,13 @@ function fields(value, required, optional = []) {
  * service outside a coordinator transaction. No model/RPC capability is added. */
 export function createEditTasks({store, services, fault = () => {}, limits = {}}) {
  if (!store?.db || typeof store.tx !== 'function' || typeof services?.call !== 'function' || typeof fault !== 'function') corrupt();
+ const restored=getWorkspaceRestoreContext(store);
+ const select=`SELECT ${columns}${restored?',executionEpoch':''} FROM edit_tasks`;
  const {db} = store, bounds = {...EDIT_TASK_LIMITS,...limits};
  for (const key of Object.keys(EDIT_TASK_LIMITS)) if (!integer(bounds[key]) || bounds[key] > EDIT_TASK_LIMITS[key]) invalid();
  if (bounds.rowBytes !== EDIT_TASK_LIMITS.rowBytes || bounds.pageSize > bounds.maxPageSize) invalid();
  let life = lifetimes.get(db); if (!life) { life = {instanceId:randomUUID(), active:new Set()}; lifetimes.set(db,life); }
- const {instanceId} = life, active = new Set(); let closing = false;
+ const {instanceId} = life, active = new Set(), lifetime=new AbortController(); let closing = false;
  const open = () => { if (closing) corrupt(); };
  const owner = () => { if (!ownsStoreLock(store)) fail('EDIT_TASK_OWNER_REQUIRED'); };
  const inject = label => { const result = fault(label); if (result && typeof result.then === 'function') { result.catch?.(()=>{}); corrupt(); } };
@@ -96,6 +100,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
       (row.status==='applied')!==(row.receiptDigest!==null) || row.receiptDigest!==null&&!digest(row.receiptDigest) ||
       (row.status==='not_applied')!==(row.errorCode!==null) || row.status==='dispatching'&&row.claim===null ||
       row.status==='prepared'&&(row.origin!=='new'||row.claim!==null)) corrupt();
+  if(restored&&row.executionEpoch!=='captured'&&row.executionEpoch!==restored.workspaceOrigin)corrupt();
   if (row.status==='not_applied' && !hasRequestNotAppliedProof({code:row.errorCode,status:409,details:{mutationOutcome:'not_applied',operation:row.operation,projectId,requestId:row.requestId}},input,{operation:row.operation})) corrupt();
   return {row,task};
  }
@@ -145,7 +150,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   const result = receipt(value);
   if (value.row.status==='applied' && result===null || value.row.status==='not_applied' && result!==null) corrupt();
   if (result===null) ownership(value);
-  return {task:value.task,instanceId,...(includeResult&&value.row.status==='applied'?{result}: {})};
+  return {task:value.task,instanceId,...(restored?{restore:{workspaceOrigin:restored.workspaceOrigin,executionEpoch:value.row.executionEpoch,held:value.row.executionEpoch!==restored.workspaceOrigin}}:{}),...(includeResult&&value.row.status==='applied'?{result}: {})};
  }
  function action(input, extra = []) {
   const args=fields(input,['projectId','taskId','digest',...extra]);
@@ -186,10 +191,11 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   }
  }
  const methods = {
-  prepare(input) { return guarded(()=>{
+  prepare(input,context={}) { return guarded(()=>{
    open();owner();const args=fields(input,['projectId','operation','input','origin']);
    if(!['new','legacy_session'].includes(args.origin))invalid();
    const intent=parseIntent(args.operation,args.input,args.projectId);
+   if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);}
    const result=store.tx(()=>{
     owner();project(args.projectId);
     const prior=db.prepare(`${select} WHERE lane=? AND requestId=?`).get(intent.lane,intent.requestId);
@@ -197,13 +203,13 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
      if(prior.projectId!==args.projectId||prior.operation!==args.operation||prior.digest!==intent.digest)fail('EDIT_TASK_CONFLICT');
      return envelope(decode(prior,args.projectId));
     }
-    if(db.prepare('SELECT 1 FROM edit_tasks WHERE projectId=? AND lane=? AND acknowledged=0 LIMIT 1').get(args.projectId,intent.lane))fail('EDIT_TASK_CONFLICT');
+    if(db.prepare(`SELECT 1 FROM edit_tasks WHERE projectId=? AND lane=? AND acknowledged=0 ${restored?'AND executionEpoch=?':''} LIMIT 1`).get(args.projectId,intent.lane,...(restored?[restored.workspaceOrigin]:[])))fail('EDIT_TASK_CONFLICT');
     const quota=db.prepare('SELECT count(*) AS rows,coalesce(sum(bytes),0) AS bytes FROM edit_tasks').get();
     if(quota.rows>=bounds.rows||quota.bytes+EDIT_TASK_LIMITS.rowBytes>bounds.bytes)fail('EDIT_TASK_STORAGE_LIMIT');
     const now=timestamp(),id=randomUUID(),status=args.origin==='new'?'prepared':'unknown';
     inject('beforePreparePersist');
-    db.prepare('INSERT INTO edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes) VALUES(?,?,?,?,?,?,?,?,?,1,0,?,?,?)')
-     .run(id,args.projectId,args.operation,intent.text,intent.requestId,intent.digest,intent.lane,args.origin,status,now,now,EDIT_TASK_LIMITS.rowBytes);
+    db.prepare(`INSERT INTO edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes${restored?',executionEpoch':''}) VALUES(?,?,?,?,?,?,?,?,?,1,0,?,?,?${restored?',?':''})`)
+     .run(id,args.projectId,args.operation,intent.text,intent.requestId,intent.digest,intent.lane,args.origin,status,now,now,EDIT_TASK_LIMITS.rowBytes,...(restored?[restored.workspaceOrigin]:[]));
     return envelope(byId(args.projectId,id));
    });
    inject('afterPreparePersist');return result;
@@ -225,14 +231,19 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    }
    return readOnly(()=>{
     project(args.projectId);
-    const rows=db.prepare(`${select} WHERE projectId=? ${pendingOnly?'AND acknowledged=0':''} AND position<? ORDER BY position DESC LIMIT ?`).all(args.projectId,before,limit+1);
+    const rows=db.prepare(`${select} WHERE projectId=? ${pendingOnly?'AND acknowledged=0':''} ${pendingOnly&&restored?'AND executionEpoch=?':''} AND position<? ORDER BY position DESC LIMIT ?`).all(args.projectId,...(pendingOnly&&restored?[restored.workspaceOrigin]:[]),before,limit+1);
     const items=rows.slice(0,limit).map(row=>envelope(decode(row,args.projectId)).task);
-    return {items,nextCursor:rows.length>limit?Buffer.from(JSON.stringify([args.projectId,pendingOnly,rows[limit-1].position])).toString('base64url'):null,instanceId};
+    return {items,nextCursor:rows.length>limit?Buffer.from(JSON.stringify([args.projectId,pendingOnly,rows[limit-1].position])).toString('base64url'):null,instanceId,...(restored?{restore:{workspaceOrigin:restored.workspaceOrigin,tasks:rows.slice(0,limit).map(row=>({taskId:row.id,executionEpoch:row.executionEpoch,held:row.executionEpoch!==restored.workspaceOrigin}))}}:{})};
    });
   }); },
-  execute(input) {
+  execute(input,context={}) {
    const work=(async()=>{
-    open();owner();let claimed;
+    open();owner();if(restored){
+     const {args,value}=action(input,['instanceId']);
+     if(!uuid(args.instanceId))invalid();
+     if(value.row.executionEpoch!==restored.workspaceOrigin)refuseRestoredTask(store,value.row.id,value.row.projectId);
+     assertWorkspaceRestoreOrigin(store,context);
+    }let claimed;
     const initial=store.tx(()=>{
      owner();const {args,value}=action(input,['instanceId']);
      if(!uuid(args.instanceId))invalid();if(args.instanceId!==instanceId)fail('EDIT_TASK_STALE_INSTANCE');
@@ -245,7 +256,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
     try {
      inject('afterClaim');inject('beforeDispatch');owner();
      let dispatchError;
-     try { await dispatch(claimed.task.operation,structuredClone(claimed.task.input),claimed); }
+     try { await (restored?withRestoreTaskInvocation(store,claimed.row,{signal:lifetime.signal},()=>dispatch(claimed.task.operation,structuredClone(claimed.task.input),claimed)):dispatch(claimed.task.operation,structuredClone(claimed.task.input),claimed)); }
      catch(error){dispatchError=error;}
      inject('afterBusinessCommit');
      const finished=store.tx(()=>{
@@ -266,8 +277,8 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    })().catch(error=>{throw editTaskError(error?.code);});
    active.add(work);work.then(()=>active.delete(work),()=>active.delete(work));return work;
   },
-  reconcile(input) { return guarded(()=>{
-   open();owner();return store.tx(()=>{
+  reconcile(input,context={}) { return guarded(()=>{
+   open();owner();if(restored){const {value}=action(input);if(value.row.executionEpoch!==restored.workspaceOrigin)refuseRestoredTask(store,value.row.id,value.row.projectId);assertWorkspaceRestoreOrigin(store,context);}return store.tx(()=>{
     owner();const {value}=action(input);
     if(terminal(value.row))return envelope(value,true);
     const result=receipt(value);
@@ -277,8 +288,13 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
     return envelope(value);
    });
   }); },
-  acknowledge(input) { return guarded(()=>{
-   open();owner();return store.tx(()=>{
+  acknowledge(input,context={}) { return guarded(()=>{
+   open();owner();if(restored){
+    const {args,value}=action(input,['expectedRevision','status']);
+    if(!integer(args.expectedRevision)||!['applied','not_applied'].includes(args.status))invalid();
+    if(value.row.executionEpoch!==restored.workspaceOrigin)refuseRestoredTask(store,value.row.id,value.row.projectId);
+    assertWorkspaceRestoreOrigin(store,context);
+   }return store.tx(()=>{
     owner();const {args,value}=action(input,['expectedRevision','status']);
     if(!integer(args.expectedRevision)||!['applied','not_applied'].includes(args.status))invalid();
     if(!terminal(value.row)||value.row.status!==args.status||value.row.revision!==args.expectedRevision)fail('EDIT_TASK_CONFLICT');
@@ -291,7 +307,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    // The real exclusive owner may recover a previous lifetime only. A second
    // manager/reader cannot steal a live asynchronous claim.
    while(true){
-    const rows=db.prepare(`SELECT position,${bounded('id',36)},${bounded('projectId',36)} FROM edit_tasks WHERE status='dispatching' AND position>? ORDER BY position LIMIT 50`).all(position);
+    const rows=db.prepare(`SELECT position,${bounded('id',36)},${bounded('projectId',36)} FROM edit_tasks WHERE status='dispatching' ${restored?'AND executionEpoch=?':''} AND position>? ORDER BY position LIMIT 50`).all(...(restored?[restored.workspaceOrigin]:[]),position);
     if(!rows.length)break;
     for(const row of rows){position=row.position;try{store.tx(()=>{
      owner();const value=byId(row.projectId,row.id);
@@ -301,7 +317,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    }
    return {processed,unavailable};
   }); },
-  async drain() { closing=true;await Promise.allSettled([...active]); },
+  async drain() { closing=true;lifetime.abort();await Promise.allSettled([...active]); },
  };
  return methods;
 }

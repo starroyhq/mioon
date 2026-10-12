@@ -100,9 +100,9 @@ test('historical responses must identify the original project and target before 
 
 test('App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry\)/);
+  assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry, \{ replay \}\)/);
   assert.match(app, /mutation && replay \? null : result/);
-  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8'), /entry\.input, '原请求已恢复并确认', \{ replay: true \}/);
+  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8'), /entry\.input, '原请求已恢复并确认', restored \? \{ replay: true, pendingEntry: entry \} : \{ replay: true \}/);
   // Evaluate the actual App classifier rather than require its former inline
   // `timeline || isReferenceOperation(...)` spelling. Reference proof handling
   // must remain stricter than a generic definitive 4xx after the alias refactor.
