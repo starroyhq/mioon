@@ -233,12 +233,27 @@ test('mark controls are accessible and reject retained hidden, re-shown, project
 test('shared library keeps an excluded source editable and resets filters without touching source selection or range scope', () => {
   const source = readFileSync(new URL('../apps/web/src/AssetLibrary.jsx', import.meta.url), 'utf8');
   const code = transformSync(source, { loader: 'jsx', format: 'cjs' }).code, module = { exports: {} };
-  let local = { scope: `${projectId}:1`, value: 'favorite' }; const changes = [];
-  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useState: () => [local, value => { local = value; }] };
-  Function('require', 'module', 'exports', code)(id => id === 'react' ? { ...react, default: react } : id.endsWith('asset-disposition-state.js') ? { dispositionCounts, dispositionFilters, filterLibraryAssets } : id.endsWith('AssetDispositionControls.jsx') ? { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) } : id.endsWith('Timeline.jsx') ? { assetKind: () => 'video', dragAsset() {} } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  let local = { scope: `${projectId}:1`, value: 'favorite' }; const changes = [], slots = [], effects = new Map();
+  let cursor = 0;
+  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+    useState: initial => { const index = cursor++; if (!slots[index]) slots[index] = { value: index === 1 ? local : initial }; return [slots[index].value, value => { slots[index].value = value; if (index === 1) local = value; }]; },
+    useRef: initial => { const index = cursor++; return slots[index] ||= { current: initial }; },
+    useMemo: (fn, deps) => { const index = cursor++; if (!slots[index] || deps.some((value, i) => value !== slots[index].deps[i])) slots[index] = { value: fn(), deps }; return slots[index].value; },
+    useLayoutEffect: (fn, deps) => { const index = cursor++; if (!slots[index] || deps.some((value, i) => value !== slots[index].deps[i])) { slots[index] = { deps, cleanup: slots[index]?.cleanup }; effects.set(index, fn); } },
+    useId: () => `library-usage-${cursor++}`,
+  };
+  const usageModule = { exports: {} };
+  const usageCode = transformSync(readFileSync(new URL('../apps/web/src/AssetTimelineUsage.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
+  Function('require', 'module', 'exports', usageCode)(id => {
+    if (id === 'react') return { ...react, default: react };
+    if (id === '@mioon/ui/components/button') return { Button: 'Button' };
+    throw Error(`Unexpected usage control import: ${id}`);
+  }, usageModule, usageModule.exports);
+  Function('require', 'module', 'exports', code)(id => id === 'react' ? { ...react, default: react } : id.endsWith('AssetTimelineUsage.tsx') ? usageModule.exports : id.endsWith('asset-disposition-state.js') ? { dispositionCounts, dispositionFilters, filterLibraryAssets } : id.endsWith('AssetDispositionControls.jsx') ? { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) } : id.endsWith('Timeline.jsx') ? { assetKind: () => 'video', dragAsset() {} } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  const render = props => { cursor = 0; const result = module.exports.default(props); for (const [index, fn] of effects) { slots[index].cleanup?.(); slots[index].cleanup = fn(); } effects.clear(); return nodes(result); };
   const assets = [asset(1), asset(2)], state = { scope: local.scope, entries: { [assetId(1)]: { phase: 'ready', row: row(1, 1, 'favorite') }, [assetId(2)]: { phase: 'ready', row: row(2, 1, 'rejected') } } };
   const props = { assets, filter: 'all', search: '', onFilter: value => changes.push(['type', value]), onSearch: value => changes.push(['search', value]), busy: {}, project: { id: projectId }, selectedAsset: assets[1], dispositions: { state, controller: {} }, inUseAssetIds: new Set([assetId(2)]) };
-  const tree = nodes(module.exports.default(props));
+  const tree = render(props);
   assert.ok(tree.find(node => node.props?.['data-testid'] === 'asset-filter-selected-outside'));
   assert.ok(tree.find(node => node.type === 'AssetDispositionControls' && node.props.prefix === 'selected-asset'));
   assert.ok(tree.find(node => node.props?.['data-testid'] === 'asset-filter-hidden-used'));
@@ -252,7 +267,7 @@ test('shared library keeps an excluded source editable and resets filters withou
     assert.ok(fixed.find(node => node.props?.['data-testid'] === id));
     assert.equal(scrolled.some(node => node.props?.['data-testid'] === id), false, 'Refresh and reset stay accessible above the scroll');
   }
-  const ready = nodes(module.exports.default({ ...props, selectedAsset: null, inUseAssetIds: new Set() }));
+  const ready = render({ ...props, selectedAsset: null, inUseAssetIds: new Set() });
   assert.equal(ready.some(node => node.props?.['data-testid'] === 'asset-disposition-details'), false, 'A ready library has no verbose status block');
   tree.find(node => node.props?.['data-testid'] === 'asset-filter-show-selected').props.onClick();
   assert.equal(local.value, 'all'); assert.deepEqual(changes, [['type', 'all'], ['search', '']]);

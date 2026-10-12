@@ -12,9 +12,10 @@ import { Media } from './Nodes.jsx';
 import { assetKind, dragAsset } from './Timeline.jsx';
 import AssetDispositionControls, { useDispositionInteraction } from './AssetDispositionControls.jsx';
 import { dispositionCounts, dispositionFilters, filterLibraryAssets } from './asset-disposition-state.js';
+import AssetTimelineUsage, { AssetTimelineUsageFilters, useAssetTimelineUsageFilter } from './AssetTimelineUsage.tsx';
 
 const filters = [['all', '全部'], ['image', '图片'], ['video', '视频'], ['audio', '音频']];
-export default function AssetLibrary({ assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set(), onShowTasks, subjects, subjectBlocked, onInspectShot }) {
+export default function AssetLibrary({ assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set(), onShowTasks, subjects, subjectBlocked, onInspectShot, timelineUsage, onLocateTimelineUse }) {
   const editing = mode === 'editing';
   const [libraryTab, setLibraryTab] = useState({ scope: null, value: 'assets' });
   const libraryScope = project?.id;
@@ -24,13 +25,15 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
   const dispositionFilter = localFilter.scope === state?.scope ? localFilter.value : 'all';
   const interaction = useDispositionInteraction(state?.scope, controller);
   const chooseDispositionFilter = value => interaction.admit(() => setLocalFilter({ scope: state.scope, value }));
-  const resetFilters = () => interaction.admit(() => { setLocalFilter({ scope: state.scope, value: 'all' }); onFilter('all'); onSearch(''); });
-  const visible = filterLibraryAssets(assets, { type: filter, search, disposition: dispositionFilter, state });
+  const usageProps = { projectId: project?.id, scope: state?.scope || libraryScope, usage: timelineUsage, visible: interaction.visible && !collapsed && libraryView === 'assets' };
+  const usageFilter = useAssetTimelineUsageFilter({ ...usageProps, assets: filterLibraryAssets(assets, { type: filter, search, disposition: dispositionFilter, state }) });
+  const resetFilters = () => interaction.admit(() => { setLocalFilter({ scope: state.scope, value: 'all' }); usageFilter.reset(); onFilter('all'); onSearch(''); });
+  const visible = usageFilter.visibleAssets;
   const visibleIds = new Set(visible.map(asset => asset.id)), counts = dispositionCounts(state, assets);
   const failed = assets.filter(asset => state?.entries?.[asset.id]?.phase === 'error').length;
   const hiddenUsed = assets.filter(asset => inUseAssetIds.has(asset.id) && !visibleIds.has(asset.id)).length;
   const outsideSelected = selectedAsset && selectedAsset.projectId === project?.id && !visibleIds.has(selectedAsset.id) ? selectedAsset : null;
-  const filtered = dispositionFilter !== 'all' || filter !== 'all' || Boolean(search);
+  const filtered = dispositionFilter !== 'all' || filter !== 'all' || Boolean(search) || usageFilter.filter !== 'all';
 
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label="01 素材库" />} data-testid="asset-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); } }}>
     <div className="asset-panel-heading"><h2>素材库</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label="收起素材库" title="收起素材库" data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>
@@ -48,7 +51,9 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
       </div>
       <Tabs value={filter} onValueChange={onFilter} className="asset-filter-surface">
         <TabsList variant="line" className="asset-tabs" aria-label="素材类型">{filters.map(([value, label]) => <TabsTrigger key={value} value={value} className={filter === value ? 'active' : ''}>{label}</TabsTrigger>)}</TabsList>
-        <ScrollArea className="asset-scroll-area"><TabsContent value={filter} className="asset-list">
+        <ScrollArea className="asset-scroll-area">
+          <AssetTimelineUsageFilters {...usageProps} filter={usageFilter.filter} onFilter={usageFilter.choose} />
+          <TabsContent value={filter} className="asset-list">
           {(counts.unknown > 0 || failed > 0 || state?.mutationError || state?.uncertain || hiddenUsed > 0) && <div className="asset-disposition-details" data-testid="asset-disposition-details">
             {counts.unknown > 0 && <p data-testid="asset-disposition-unknown">{counts.unknown} 个状态未知，在标记筛选中仍显示。</p>}
             {failed > 0 && <p role="alert">{failed} 个素材标记读取失败，请重新读取。已确认的其他批次仍可使用。</p>}
@@ -62,6 +67,7 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
             <Button variant="ghost" className="asset-thumbnail" onClick={() => onPreview(asset)} aria-label={`预览 ${asset.name}`}><Media asset={asset} /><span className="asset-kind"><Icon name={kind === 'video' ? 'play' : kind === 'audio' ? 'music' : 'image'} size={11} />{kind === 'image' ? '图片' : `${kind === 'audio' ? '音频' : '视频'} · ${asset.duration ? Number(asset.duration).toFixed(1) + 's' : '—'}`}</span></Button>
             <div className="asset-card-meta"><div><strong title={asset.name}>{asset.name}</strong><span>{asset.width && asset.height ? `${asset.width} × ${asset.height}` : `${(asset.sizeBytes / 1024).toFixed(0)} KB`}</span>{version && <span className="asset-generated-badge" data-testid={`generated-badge-${asset.id}`} title={`${shot?.title || '生成镜头'} · 版本 ${version.number}`}><Icon name="sparkle" size={10} /><span>{shot?.title || '生成镜头'} · V{version.number}</span>{shot?.selectedVersionId === version.id && <b>已选用</b>}</span>}</div></div>
             <AssetDispositionControls asset={asset} state={state} controller={controller} blocked={dispositionBlocked} />
+            <AssetTimelineUsage {...usageProps} assetId={asset.id} assetName={asset.name} onLocate={onLocateTimelineUse} />
             <div className="asset-card-actions"><WorkbenchTooltip content="以独立节点加入画布"><Button variant="ghost" className={!editing ? 'mode-primary-action' : ''} data-testid={`asset-to-canvas-${asset.id}`} aria-label={`添加 ${asset.name} 到画布`} onClick={() => onCanvas(kind, asset)}><Icon name="grid" size={12} />加入画板</Button></WorkbenchTooltip><WorkbenchTooltip content="在首个兼容轨道末尾加入固定素材片段"><Button variant="ghost" className={editing ? 'mode-primary-action' : ''} aria-label={`添加 ${asset.name} 到时间线`} data-testid={`asset-to-timeline-${asset.id}`} disabled={!project || busy.timeline} onClick={() => onTimeline(asset.id)}><Icon name="plus" size={12} />加入剪辑</Button></WorkbenchTooltip></div>
           </div>; })}
           {!visible.length && <div className="asset-empty"><div className="dashed-icon"><Icon name="folder" size={25} /></div><h4>{filtered ? '没有匹配的素材' : '故事，从素材开始'}</h4><p>{filtered ? '试试其他筛选，或重置全部筛选。' : '拖入本地素材，或点击上方导入。'}</p><span>PNG · JPG · MP4 · WAV · MP3</span></div>}

@@ -499,3 +499,30 @@ test('late abandoned PUT completion cannot invalidate a newer explicit GET or at
   assert.equal(h.controller.getState().autosavePaused, true);
   assert.deepEqual(h.calls.map(([method]) => method), ['get', 'put', 'get']);
 });
+
+for (const change of ['target', 'new-input', 'owner', 'unknown-write']) test(`navigation discard held behind autosave preserves input when ${change} invalidates`, async t => {
+  const gate = deferred(); let permitted = true;
+  const h = harness(t, { hooks: { put: async (input, saved) => { await gate.promise; if (change === 'unknown-write') throw Error('Unknown response'); return { ...saved, revision: saved.revision + 1, draft: { baseRevision: input.baseRevision, source: input.source, raw: input.raw, updatedAt: stamp } }; } } });
+  await h.controller.load(); h.controller.edit('name', 'Keep this input');
+  const writing = h.controller.flush(), token = h.controller.capture();
+  const discarding = h.controller.discard(token, () => permitted);
+  if (change === 'target') permitted = false;
+  if (change === 'new-input') h.controller.edit('name', 'Newer input');
+  if (change === 'owner') h.controller.dispose();
+  gate.resolve(); await writing; assert.equal(await discarding, false);
+  assert.equal(h.calls.filter(call => call[0] === 'delete').length, 0);
+  assert.equal(h.controller.getState().dirty, true); assert.equal(h.controller.getState().raw.name, change === 'new-input' ? 'Newer input' : 'Keep this input');
+});
+test('a valid dispatched draft DELETE is acknowledged but cannot clear input after target invalidates', async t => {
+  const gate = deferred(); let permitted = true;
+  const h = harness(t, { hooks: { remove: async (input, saved) => { await gate.promise; const next = { ...saved, revision: saved.revision + 1, draft: null }; h.replace(next); return next; } } });
+  await h.controller.load(); h.controller.edit('name', 'Keep visible input'); await h.controller.flush();
+  const discarding = h.controller.discard(h.controller.capture(), () => permitted);
+  assert.equal(h.calls.filter(call => call[0] === 'delete').length, 1); permitted = false; gate.resolve();
+  assert.equal(await discarding, false); assert.equal(h.current().draft, null, 'The already dispatched exact DELETE was not cancelled');
+  assert.equal(h.controller.getState().dirty, true); assert.equal(h.controller.getState().raw.name, 'Keep visible input');
+});
+test('false navigation fence cannot clear a restored-workspace local form', async t => {
+  const h = harness(t, { ctx: { ...context(), restored: true } }); h.controller.edit('name', 'Keep restored input');
+  assert.equal(await h.controller.discard(h.controller.capture(), () => false), false); assert.equal(h.controller.getState().raw.name, 'Keep restored input'); assert.deepEqual(h.calls, []);
+});

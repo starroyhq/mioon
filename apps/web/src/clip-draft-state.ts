@@ -209,18 +209,20 @@ export function createClipDraftController({ context: initial, client, validateTi
       emit({ raw: copy(candidate.raw), baseRevision: candidate.baseRevision, source: copy(candidate.source), dirty: true, candidate: null,
         conflict: envelope.targetStatus !== 'matching' || context.timelineRevision !== candidate.baseRevision || !sameClipDraftValue(context.source, candidate.source), phase: 'saved', savedAt: candidate.updatedAt, error: state.autosavePaused ? state.error : '' }); return true;
     },
-    async discard(token: ClipDraftCapture): Promise<boolean> {
-      if (!isCurrent(token) || state.submitting) return false;
+    async discard(token: ClipDraftCapture, canDiscard: () => boolean = () => true): Promise<boolean> {
+      if (!isCurrent(token) || state.submitting || !canDiscard()) return false;
       if (timer) clearTimeout(timer); timer = undefined;
       const owner = generation;
       if (context.restored) { serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'unsupported', error: '' }); return true; }
       if (flight) await flight;
-      if (!isCurrent(token)) return false;
+      if (!isCurrent(token) || !canDiscard()) { schedule(); return false; }
       try {
         // Unknown writes cannot be forgotten merely because their response failed.
         if (!loaded || !envelope || state.autosavePaused || state.phase === 'error') { emit({ error: '本地草稿状态尚未确认。可选择“放弃当前输入，保留草稿记录”安全离开；这不会删除或取消原记录。' }); return false; }
         if (envelope.draft && !await clearRecord(copy(envelope), owner)) return false;
-        if (!isCurrent(token)) { schedule(); return false; }
+        // A DELETE already sent while the target was valid is not cancelled.
+        // Its exact ACK may update the local record, but never clear stale input.
+        if (!isCurrent(token) || !canDiscard()) { schedule(); return false; }
         serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'ready', error: '' }); return true;
       } catch (error) { if (belongs(owner)) pausePersistence(error); return false; }
     },

@@ -1,4 +1,6 @@
 import RestoredWorkspace, { RestoredUnavailable } from './RestoredWorkspace.jsx';
+import { deriveTimelineAssetUsage, retainTimelineAssetUsage } from './timeline-asset-usage.ts';
+import { locateTimelineAssetUse, matchesTimelineAssetUse, revealTimelineAssetUse } from './timeline-asset-navigation.ts';
 import { pinNewWorkspaceIntent, assertWorkspaceIntent, workspaceIntentDisposition, workspaceOriginScope, retainWorkspaceIdentity } from './workspace-origin.js';
 import { assertWorkspaceOperation, validateProjectWorkspace, RESTORE_DISABLED_REASON } from './restored-workspace.js';
 import { Badge } from '@mioon/ui/components/badge';
@@ -298,7 +300,7 @@ export default function App() {
     const shotController = shotTextRef.current, shotCapture = shotController?.capture(), shotUnsaved = shotController?.hasUnsaved();
     if ((dirtyRef.current || subtitleUnsaved || clipUnsaved || shotUnsaved || additionalDirty) && !await confirm(message)) return false;
     if (!isCurrent(captured) || !canDiscard() || shotController && (shotController !== shotTextRef.current || !shotController.isCurrent(shotCapture)) || subtitleController && (subtitleController !== subtitlesRef.current?.controller || subtitleController.getState() !== subtitleDraft) || clipController && (clipController !== clipDraftRef.current || !clipController.isCurrent(clipCapture))) return false;
-    if (clipUnsaved && !await clipController.discard(clipCapture)) return false;
+    if (clipUnsaved && !await clipController.discard(clipCapture, canDiscard)) return false;
     if (!isCurrent(captured) || !canDiscard() || shotController && (shotController !== shotTextRef.current || !shotController.isCurrent(shotCapture)) || clipController && clipController !== clipDraftRef.current || subtitleController && (subtitleController !== subtitlesRef.current?.controller || subtitleController.getState() !== subtitleDraft)) return false;
     if (shotController && !shotController.abandonCurrentInput(shotCapture)) return false;
     if (dirtyRef.current || subtitleUnsaved || clipUnsaved || shotUnsaved) { subtitleController?.discardDraft(); subjectsRef.current?.controller.discardDrafts(subjectsRef.current.state?.scope); dirtyRef.current = false; setShotDirty(false); setClipDirty(false); setSourceDirty(false); setSubjectDirty(false); setSubtitleDirty(false); setInspectorEpoch(value => value + 1); }
@@ -921,6 +923,34 @@ export default function App() {
   const timeline = data.timeline;
   const timelinePending = taskState.phase !== 'ready' || activeTasks.some(task => task.lane === 'timeline:mutation') || activePending.some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render');
   const timelineBusy = Boolean(busy['timeline:mutation'] || timelinePending);
+  const assetUsageAttempt = useRef(0), assetUsageAvailability = useRef(null), assetUsageSnapshot = useRef(null);
+  const assetUsageReady = online && auth === true && !loading && !timelineBusy && viewReady.current && data.project?.id === currentProject.current;
+  assetUsageAvailability.current = { ready: assetUsageReady };
+  const nextTimelineUsage = useMemo(() => deriveTimelineAssetUsage({ projectId: data.project?.id || '', assets: data.assets, timeline, ready: assetUsageReady }), [data.project?.id, data.assets, timeline, assetUsageReady]);
+  const timelineUsage = retainTimelineAssetUsage(assetUsageSnapshot.current, nextTimelineUsage);
+  assetUsageSnapshot.current = timelineUsage;
+  function readAssetUsageNavigation() {
+    const projectId = currentProject.current || '', snapshot = dataRef.current;
+    return { active: importSession.current.active && viewReady.current, projectId, projectEpoch: projectEpoch.current,
+      navigationEpoch: navigationEpoch.current, panelIntent: panelIntent.current, attempt: assetUsageAttempt.current, workspaceScope: workspaceOriginScope(workspaceRef.current),
+      usage: deriveTimelineAssetUsage({ projectId, assets: snapshot.assets, timeline: snapshot.timeline,
+        ready: assetUsageAvailability.current?.ready && snapshot.project?.id === projectId && !isBusy('timeline:mutation') }) };
+  }
+  async function locateAssetUse(use, isStillVisible = () => true) {
+    assetUsageAttempt.current++;
+    return locateTimelineAssetUse(use, { read: readAssetUsageNavigation, isVisible: isStillVisible,
+      confirm: canDiscard => guardNavigation('当前面板有未保存修改。放弃修改并定位此素材的时间线片段？', false, canDiscard),
+      reveal: target => {
+        setPropertiesPage('inspector'); setRightDockTab('properties'); navigationEpoch.current++;
+        updateView('editing', { selectedClipId: target.clipId, quickAssetId: null, playhead: target.startFrame, previewKind: 'source', timelineCollapsed: false });
+        updateView('activeMode', 'editing'); setPanelOpen('inspector', true, 'editing'); setMobilePanel(geometry.narrow ? 'timeline' : 'canvas');
+        const captured = context(), epoch = projectEpoch.current, panel = panelIntent.current, attempt = assetUsageAttempt.current;
+        revealTimelineAssetUse(target.clipId,
+          () => importSession.current.active && isCurrent(captured) && epoch === projectEpoch.current && panel === panelIntent.current && attempt === assetUsageAttempt.current
+            && viewRef.current.activeMode === 'editing' && viewRef.current.editing.selectedClipId === target.clipId && matchesTimelineAssetUse(readAssetUsageNavigation().usage, target),
+          () => document.querySelector('[data-testid="timeline-scroll"]'), callback => requestAnimationFrame(callback));
+      } });
+  }
   function timelineFormatContext() {
     const projectId = currentProject.current, snapshot = dataRef.current;
     return { scope: `${projectId}:${projectEpoch.current}`, projectId: snapshot.project?.id === projectId ? projectId : null,
@@ -1272,7 +1302,7 @@ export default function App() {
     <div className="workspace-surface" ref={panelSurface} data-testid="workspace-surface">
     {assetsCollapsed && <PanelRecall name="assets" label="素材库" icon="folder" onClick={() => setPanelOpen('assets', true)} />}
     <PanelBoundary name="assets" visible={panelVisible('assets')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('assets')}>
-    <AssetLibrary subjects={subjects} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onShowTasks={() => setShowJobs(true)} dispositions={dispositions} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed} onCollapse={() => setAssetsCollapsed(true)} project={data.project} />
+    <AssetLibrary timelineUsage={timelineUsage} onLocateTimelineUse={locateAssetUse} subjects={subjects} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onShowTasks={() => setShowJobs(true)} dispositions={dispositions} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed} onCollapse={() => setAssetsCollapsed(true)} project={data.project} />
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
     <section className="canvas-area" aria-label={workspaceMode === 'canvas' ? '画板工作区' : '剪辑工作区'} data-testid="active-workspace"><div className="canvas-heading"><div className="region-title"><h2>{workspaceMode === 'canvas' ? '画板' : '剪辑预览'}</h2></div>{workspaceMode === 'canvas' && <div className="canvas-tools"><Button variant="ghost" className="button small" data-testid="add-text-node" onClick={() => addNode('text')}><Icon name="text" size={14} /><span>文字</span></Button><Button variant="ghost" className="button small" data-testid="add-image-node" onClick={() => addNode('image')}><Icon name="image" size={14} /><span>图片</span></Button><Button variant="ghost" className="button small" data-testid="add-video-node" onClick={() => addNode('video')}><Icon name="film" size={14} /><span>视频</span></Button><Button variant="ghost" className="button small accent-outline" data-testid="add-shot" disabled={busy['shot-create']} onClick={addShot}><Icon name="plus" size={15} />添加镜头</Button></div>}</div>
