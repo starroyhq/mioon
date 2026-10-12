@@ -35,3 +35,11 @@
 .agent-workspace .agent-chat-scroll:has(.agent-edit-card){min-height:clamp(320px,50dvh,480px);flex-basis:clamp(320px,50dvh,480px);flex-shrink:0}
 .agent-edit-selected-details>p{font-size:9px;line-height:1.7;color:#b1bca9;overflow-wrap:anywhere;margin:4px 0}
 .agent-edit-selected-disclosure>.agent-chat-details-trigger{font-size:9px;line-height:1.7}
+
+.agent-timeline-diff .agent-edit-diff-side + .agent-edit-diff-side{margin-top:7px}
+.agent-timeline-diff .agent-edit-diff-side p{margin:2px 0;font-variant-numeric:tabular-nums;color:#d0d9cb}
+.agent-timeline-intervals{max-height:130px;overflow:auto;overscroll-behavior:contain;padding:5px 8px;background:#17201b;border-radius:4px;font-variant-numeric:tabular-nums}
+.agent-timeline-intervals ol{margin:0;padding-left:19px;columns:2;column-gap:16px}
+.agent-timeline-intervals li{font-size:9px;line-height:1.8;break-inside:avoid;color:#c1cdb7}
+.agent-timeline-selected [data-testid=agent-timeline-context-blocked],.agent-edit-card [data-testid=agent-timeline-approval-blocked]{color:#e1c08e}
+@media(max-width:420px){.agent-timeline-intervals ol{columns:1}}

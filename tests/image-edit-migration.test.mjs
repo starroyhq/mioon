@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {normalizeImageReviewObject} from './image-edit-migration-preservation.mjs';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
@@ -19,7 +20,24 @@ const policy={maxPostAttempts:1,automaticRetry:false,price:'usage-based-unknown'
 const insert=(db,table,value)=>{const keys=Object.keys(value);return db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value));};
 function database(file=':memory:'){const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(fixtureSql);return db;}
 function snapshot(db){const objects=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),rows={},foreignKeys={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();foreignKeys[name]=db.prepare(`PRAGMA foreign_key_list("${name}")`).all();}return {objects,rows,foreignKeys};}
-function sameOld(db,before){const after=snapshot(db),next=new Map(after.objects.map(value=>[value.name,value]));assert.equal(after.objects.length,before.objects.length);for(const old of before.objects){if(old.name==='image_reviews'){assert.deepEqual(normalizeImageReviewObject(next.get(old.name)),old,old.name);continue;}assert.deepEqual(next.get(old.name),old,old.name);}assert.deepEqual(after.foreignKeys,before.foreignKeys);for(const [name,rows] of Object.entries(before.rows))assert.deepEqual(name==='schema_version'?after.rows[name].filter(row=>row.version<=22n):after.rows[name],rows,name);}
+function sameOld(db,before,{startupMigrations=false}={}){
+ const after=snapshot(db),next=new Map(after.objects.map(value=>[value.name,value]));
+ assert.equal(after.objects.length,before.objects.length+(startupMigrations?1:0));
+ if(startupMigrations){
+  const added=after.objects.filter(value=>!before.objects.some(old=>old.type===value.type&&old.name===value.name));
+  assert.equal(added.length,1);assertAgentEditTargetTrigger(added);
+ }
+ for(const old of before.objects){
+  const current=next.get(old.name);
+  const normalized=old.name==='image_reviews'?normalizeImageReviewObject(current):startupMigrations&&old.type==='table'&&old.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
+  assert.deepEqual(normalized,old,old.name);
+ }
+ assert.deepEqual(after.foreignKeys,before.foreignKeys);
+ for(const [name,rows] of Object.entries(before.rows)){
+  const actual=name==='schema_version'?after.rows[name].filter(row=>row.version<=22n):startupMigrations&&name==='agent_edit_proposals'?legacyAgentEditProposalRows(after.rows[name]):after.rows[name];
+  assert.deepEqual(actual,rows,name);
+ }
+}
 function migrate(db,adapter=db){db.exec('PRAGMA foreign_keys=OFF');try{db.exec('BEGIN IMMEDIATE');migrateImageEditReviewSchema(adapter);db.exec('INSERT OR IGNORE INTO schema_version VALUES(23);COMMIT');}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}finally{db.exec('PRAGMA foreign_keys=ON');}}
 function seed(db){
  insert(db,'agent_chat_quota',{id:1,runs:0,bytes:0,reservedBytes:0});
@@ -113,7 +131,7 @@ test('schema23 admits only a bound official edit descriptor and rejects cross-br
 });
 
 test('fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes',()=>{
- for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,23);assert.equal(store.db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);if(before)sameOld(store.db,before);const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
+ for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,24);assert.equal(store.db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
 });
 
 test('startup marker failure preserves frozen database and enables a later successful retry',()=>{

@@ -88,6 +88,7 @@ const textSites = {
   "tests/frame-transports.test.mjs": 3,
   "tests/generation-input-transports.test.mjs": 4,
   "tests/helpers/agent-edit-wire-fixture.mjs": 1,
+  "tests/helpers/agent-timeline-wire-fixture.mjs": 2,
   "tests/helpers/edit-tasks-http-fixture.mjs": 1,
   "tests/http-file-shutdown.test.mjs": 2,
   "tests/image-activation-transports.test.mjs": 2,

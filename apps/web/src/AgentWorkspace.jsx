@@ -21,14 +21,14 @@ export function AgentDockPane({ visible, children, id, labelledBy, fallbackFocus
   </div></WorkspaceVisibilityProvider>;
 }
 
-export default function AgentWorkspace({ projectId, projectName, selectedShot, onApplied, page, onPage, onCollapse, onDraftChange }) {
+export default function AgentWorkspace({ projectId, projectName, selectedShot, selectedTimelineClip, timelineEditBlockedReason, onApplied, page, onPage, onCollapse, onDraftChange }) {
   // Settings are global. Keep their nonsecret draft even during project loading;
   // only chat is project-keyed. Keys stay in the input and clear when hidden.
   const settingsOpened = useRef(false);
   if (page === 'settings') settingsOpened.current = true;
   return <div className="agent-workspace" data-testid="agent-workspace" data-page={page}>
     <AgentDockPane id="agent-chat-pane" visible={page === 'chat'} fallbackFocus="[data-testid=right-dock-tab-agent]">
-      {projectId ? <AgentPanel key={projectId} projectId={projectId} projectName={projectName} selectedShot={selectedShot} onApplied={onApplied} onSettings={() => onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} /> : <div className="agent-chat-empty"><h3>选择一个项目开始对话</h3><p>聊天文字不会自动包含项目内容。</p></div>}
+      {projectId ? <AgentPanel key={projectId} projectId={projectId} projectName={projectName} selectedShot={selectedShot} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} onApplied={onApplied} onSettings={() => onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} /> : <div className="agent-chat-empty"><h3>选择一个项目开始对话</h3><p>聊天文字不会自动包含项目内容。</p></div>}
     </AgentDockPane>
     <AgentDockPane id="agent-settings-pane" visible={page === 'settings'} fallbackFocus="[data-testid=right-dock-tab-agent]">
       {settingsOpened.current && <AgentSettings onClose={() => onPage('chat')} />}

@@ -5,6 +5,10 @@ Date: 2026-10-09 (UTC). Baseline: `2ba58ee`.
 Status: implemented with local synthetic runtime acceptance; independent final
 aggregate/release review is pending. This is not live-provider verification.
 
+The later [selected-clip move mode](AGENT-TIMELINE-MOVE.md) has a separate
+catalog and discriminated timeline target; it does not expand the original
+selected-shot tool or rewrite its stored approvals.
+
 ## Scope and consent
 
 The only proposed business operation is `shot.update`, restricted to `title`

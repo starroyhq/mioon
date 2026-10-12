@@ -1,3 +1,4 @@
+import {createAgentTimelineMoveBoundary} from './agent/timeline-edit-domain.mjs';
 import {createSubtitleMutations} from './timeline-subtitles.mjs';
 import {randomUUID} from 'node:crypto';
 import {AppError,sourceFrameCount,isTimelineMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '@mioon/contracts';
@@ -149,6 +150,9 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    return saveResponse(operation,input,requestHash,timeline,boundary);
   },specialBoundary);
  }
+ function updateClip(input,boundary){
+  return mutate('timeline.clip.update',input,timeline=>{Object.assign(clip(timeline,input.clipId),input.patch);},boundary);
+ }
  function renderSnapshot(input,boundary,write,expectedTimelineId){
   // Custom settings cannot initialize a timeline. The old omitted path retains
   // exactly its historical lazy-initialization and frozen projection behavior.
@@ -217,9 +221,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(timeline),gain:input.gain??1,
     ...Object.fromEntries(['fadeInFrames','fadeOutFrames'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
-  'timeline.clip.update':input=>mutate('timeline.clip.update',input,timeline=>{
-   Object.assign(clip(timeline,input.clipId),input.patch);
-  }),
+  'timeline.clip.update':input=>updateClip(input),
   'timeline.clip.replaceSource':input=>{
    const boundary=createTimelineReplacementBoundary(db,input);
    return mutate('timeline.clip.replaceSource',input,boundary.apply,boundary);
@@ -273,5 +275,8 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    accept:admission=>render(input,admission),
   })
  };
- return {ensure,history,handlers};
+ // Fixed backend-only Agent scope. It uses precisely the existing update,
+ // history, revision and receipt transaction, with no second mutation engine.
+ const moveClipInProject=(input,target)=>updateClip(input,createAgentTimelineMoveBoundary(db,input,target));
+ return {ensure,history,handlers,moveClipInProject};
 }

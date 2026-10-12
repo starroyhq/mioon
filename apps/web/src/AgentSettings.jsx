@@ -65,7 +65,7 @@ export default function AgentSettings({ onClose }) {
       <header className="modal-header agent-settings-header">
         <div className="agent-settings-heading"><span className="agent-settings-symbol"><Icon name="sparkle" size={22} /></span><div>
           <div className="agent-settings-eyebrow">AGENT · CONNECTION</div><h2>Agent 连接设置</h2>
-          <p>连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查或选中镜头提议范围。</p>
+          <p>连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围。</p>
         </div></div>
         <Button type="button" variant="ghost" className="icon-button" aria-label="返回 Agent 对话" data-testid="agent-settings-back" disabled={!visible} onClick={dismiss}><Icon name="left" /></Button>
       </header>

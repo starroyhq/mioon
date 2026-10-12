@@ -560,11 +560,12 @@ If an actual downloaded live result differs from the requested ratio by more tha
 
 The authenticated `/api/agent/chat/:projectId` routes retain their snapshot,
 run, Stop, SSE, request-ID lookup and history semantics. Snapshot scope is now
-`chat_and_reviewed_shot_edits` when the reviewed-edit service is available
-(otherwise `chat_and_project_inspection`). Its `inspection` capability retains
+`chat_and_reviewed_timeline_edits` when the timeline reviewed-edit service is available
+(with legacy shot-only/inspection scopes retained for those injected services). Its `inspection` capability retains
 availability, schema version, catalog hash and the fixed
 two-model-request/one-read/8-KiB limits. The separate `edit` capability publishes
-the selected-shot schema/catalog and text/round limits described below.
+the selected-shot schema/catalog and text/round limits described below. A separate
+`timelineEdit` capability describes the selected-clip move catalog and limits.
 No view/lookup/history route starts inference or inspection.
 
 The existing send envelope remains strict: `requestId`, `instanceId`,
@@ -592,6 +593,17 @@ not apply it. Discovery is backend-persistent and independent of renderer
 session storage. Endpoint shapes, limits, states and current acceptance status:
 [reviewed selected-shot edits](AGENT-EDITS.md). These review endpoints are not
 business RPC operations or callable model tools.
+
+## Reviewed Agent selected-clip moves
+
+The separate `selected_timeline_clip_move` mode pins one saved clip and its
+timeline revision. Its only proposed patch is `{startFrame}` to the existing
+`timeline.clip.update` operation, after explicit human diff approval. Same-track
+non-overlap, source/duration/audio/geometry preservation and existing CAS/history
+apply. Proposal/recovery routes retain their existing authenticated shapes; no
+new public mutation or model approval endpoint is added. Full consent fields,
+bounded context, discriminated schema24 and historical receipt semantics:
+[reviewed timeline moves](AGENT-TIMELINE-MOVE.md).
 
 ## Saved source ranges
 

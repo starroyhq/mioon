@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {normalizeImageReviewObject} from './image-edit-migration-preservation.mjs';
 import {readFileSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
@@ -28,9 +29,9 @@ function capture(db){
  return {objects,rows,hashes:Object.fromEntries(Object.entries(rows).map(([name,values])=>[name,values.map(hash)]))};
 }
 function assertPreserved(db,before,{startupMigrations=false}={}){
- const after=capture(db);const retained=after.objects.filter(value=>before.objects.some(old=>old.name===value.name)).map(row=>{if(startupMigrations&&row.type==='table'&&row.name==='image_reviews')return normalizeImageReviewObject(row);if(!startupMigrations||row.type!=='table'||row.name!=='edit_tasks')return row;let sql=row.sql;for(const operation of ['timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']){const token=`,'${operation}'`;assert.equal(sql.split(token).length,2,`only the explicit later operation ${operation} changes historical SQL`);sql=sql.replace(token,'');}return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql});});assert.deepEqual(retained,before.objects);
+ const after=capture(db);if(startupMigrations)assertAgentEditTargetTrigger(after.objects);const retained=after.objects.filter(value=>before.objects.some(old=>old.name===value.name)).map(row=>{if(startupMigrations&&row.type==='table'&&row.name==='agent_edit_proposals')return normalizeAgentEditProposalObject(row);if(startupMigrations&&row.type==='table'&&row.name==='image_reviews')return normalizeImageReviewObject(row);if(!startupMigrations||row.type!=='table'||row.name!=='edit_tasks')return row;let sql=row.sql;for(const operation of ['timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']){const token=`,'${operation}'`;assert.equal(sql.split(token).length,2,`only the explicit later operation ${operation} changes historical SQL`);sql=sql.replace(token,'');}return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql});});assert.deepEqual(retained,before.objects);
  for(const [name,rows] of Object.entries(before.rows)){
-  const values=name==='schema_version'?after.rows[name].filter(value=>value.version<=19):after.rows[name];
+  const values=name==='schema_version'?after.rows[name].filter(value=>value.version<=19):startupMigrations&&name==='agent_edit_proposals'?legacyAgentEditProposalRows(after.rows[name]):after.rows[name];
   assert.deepEqual(values,rows,name);assert.deepEqual(values.map(hash),before.hashes[name],`${name} raw row hashes`);
  }
 }
@@ -216,7 +217,7 @@ test('real fresh and independently frozen schema19 workspace startup produce ide
   const frameObjects=db=>capture(db).objects.filter(value=>value.tbl_name.startsWith('frame_')||['reject_legacy_frame_asset_owner','reject_image_frame_asset_owner'].includes(value.name));
   assert.deepEqual(frameObjects(upgraded.db),frameObjects(fresh.db));
   for(const store of [fresh,upgraded]){
-   assert.equal(store.db.prepare('SELECT max(version) AS v FROM schema_version').get().v,23);
+   assert.equal(store.db.prepare('SELECT max(version) AS v FROM schema_version').get().v,24);
    assert.equal(store.db.prepare('SELECT count(*) AS n FROM frame_tasks').get().n,0);
    assert.equal(store.db.prepare('SELECT count(*) AS n FROM frame_requests').get().n,0);
    assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(),[]);

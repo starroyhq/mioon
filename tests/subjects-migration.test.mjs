@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync,existsSync} from 'node:fs';
@@ -112,17 +113,17 @@ function temporaryRoot(t) {
 function rawDatabase(root) {const db=new DatabaseSync(path.join(root,'workbench.sqlite'));db.exec('PRAGMA foreign_keys=ON');return db;}
 function openForTest(t,root) {const store=openStore(root);t.after(()=>store.close());return store;}
 
-// Temporary 15/16/17/18/19/20/21/22/23 markers gate later migrations while the unchanged
+// Temporary 15/16/17/18/19/20/21/22/23/24 markers gate later migrations while the unchanged
 // v1–14 IF NOT EXISTS bootstraps populate all other legacy tables. It is removed
 // before any fixture data or snapshot is made. The edit table comes solely from
 // the frozen SQL above; no v15 table is ever downgraded to manufacture a fixture.
 export function createSchema14Store(root) {
  let db=rawDatabase(root);
  db.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY); CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);');
- db.exec(LEGACY_EDIT_TASK_SCHEMA);db.prepare('INSERT INTO schema_version VALUES(?)').run(15);db.prepare('INSERT INTO schema_version VALUES(?)').run(16);db.prepare('INSERT INTO schema_version VALUES(?)').run(17);db.prepare('INSERT INTO schema_version VALUES(?)').run(18);db.prepare('INSERT INTO schema_version VALUES(?)').run(19);db.prepare('INSERT INTO schema_version VALUES(?)').run(20);db.prepare('INSERT INTO schema_version VALUES(?)').run(21);db.prepare('INSERT INTO schema_version VALUES(?)').run(22);db.prepare('INSERT INTO schema_version VALUES(?)').run(23);db.close();
+ db.exec(LEGACY_EDIT_TASK_SCHEMA);db.prepare('INSERT INTO schema_version VALUES(?)').run(15);db.prepare('INSERT INTO schema_version VALUES(?)').run(16);db.prepare('INSERT INTO schema_version VALUES(?)').run(17);db.prepare('INSERT INTO schema_version VALUES(?)').run(18);db.prepare('INSERT INTO schema_version VALUES(?)').run(19);db.prepare('INSERT INTO schema_version VALUES(?)').run(20);db.prepare('INSERT INTO schema_version VALUES(?)').run(21);db.prepare('INSERT INTO schema_version VALUES(?)').run(22);db.prepare('INSERT INTO schema_version VALUES(?)').run(23);db.prepare('INSERT INTO schema_version VALUES(?)').run(24);db.close();
  const store=openStore(root);
  assert.deepEqual(SUBJECT_TABLES.filter(name=>store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),[]);
- store.db.exec('DELETE FROM schema_version WHERE version IN (15,16,17,18,19,20,21,22,23)');
+ store.db.exec('DELETE FROM schema_version WHERE version IN (15,16,17,18,19,20,21,22,23,24)');
  assert.equal(store.db.prepare('SELECT max(version) n FROM schema_version').get().n,14);
  return store;
 }
@@ -205,20 +206,25 @@ export async function seedSchema14Fixture(store) {
 
 function assertLegacyPreserved(db,before) {
  const after=snapshotSchema14(db);
+ assertAgentEditTargetTrigger(after.schema);
+ after.records.agent_edit_proposals=legacyAgentEditProposalRows(after.records.agent_edit_proposals);
  assert.deepEqual(after.records,before.records,'all preexisting table records, including sequence rows, remain byte-for-byte equivalent');
  assert.deepEqual(after.editTasks,before.editTasks,'all task columns and positions survive without normalization or recovery');
  assert.deepEqual(after.inputBytes,before.inputBytes,'raw UTF-8 input bytes survive unchanged');
  assert.deepEqual(after.sequence,before.sequence,'AUTOINCREMENT high-water and row absence survive');
  assert.deepEqual(after.editObjects,before.editObjects,'all legacy indexes and triggers retain exact definitions');
- for(const object of before.schema.filter(row=>!(row.type==='table'&&row.name==='edit_tasks')))
-  assert.deepEqual(after.schema.find(row=>row.type===object.type&&row.name===object.name),object,`preexisting schema object ${object.name} remains unchanged`);
+ for(const object of before.schema.filter(row=>!(row.type==='table'&&row.name==='edit_tasks'))){
+  const current=after.schema.find(row=>row.type===object.type&&row.name===object.name);
+  const normalized=object.type==='table'&&object.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
+  assert.deepEqual(normalized,object,`preexisting schema object ${object.name} remains unchanged outside the pinned schema24 additions`);
+ }
  assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
 function assertNewSchema(db) {
  assert.deepEqual(SUBJECT_TABLES.filter(name=>db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),SUBJECT_TABLES);
  assert.equal(db.prepare('SELECT count(*) n FROM schema_version WHERE version=15').get().n,1);
- assert.equal(db.prepare('SELECT max(version) n FROM schema_version').get().n,23);
+ assert.equal(db.prepare('SELECT max(version) n FROM schema_version').get().n,24);
  for(const table of LATER_IMAGE_TABLES)assert.deepEqual(rows(db,table),[],'later image migration never manufactures image records');
  for(const table of LATER_FRAME_TABLES)assert.deepEqual(rows(db,table),[],'later frame migration never manufactures extraction records');
  assert.deepEqual(rows(db,'timeline_format_requests'),[],'later format migration never manufactures request provenance');

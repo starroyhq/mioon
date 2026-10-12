@@ -32,6 +32,7 @@ import {assertOperationEffectCoverage} from './operation-effects.mjs';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.mjs';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.mjs';
 export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.mjs';
+export * from './agent-timeline-move.mjs';
 export {LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse} from './local-mutations.mjs';
 export {SOURCE_RANGE_FPS, sourceFrameCount, isSourceRangeResponse, sourceRangeSchemas} from './source-range.mjs';
 export {ASSET_DISPOSITIONS, ASSET_DISPOSITION_BATCH_LIMIT, assetDispositionSchemas, isAssetDispositionResponse, isAssetDispositionListResponse} from './asset-disposition.mjs';

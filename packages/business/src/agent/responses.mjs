@@ -80,7 +80,7 @@ export function buildAgentResponsesBody({configuration, messages, selfPort, read
   if (!input.length || input.at(-1).role !== 'user') fail('AGENT_CHAT_VALIDATION');
   if (readTools?.phase === 'answer') {
     input.push(...responseToolContinuation(readTools, messageSnapshot, AGENT_RESPONSES_LIMITS.maxItems));
-    if (Buffer.byteLength(JSON.stringify(input)) + Buffer.byteLength(instructions) > (readTools.scope === 'selected_shot_edit' ? toolScope(readTools).limits.maxContinuationBytes : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
+    if (Buffer.byteLength(JSON.stringify(input)) + Buffer.byteLength(instructions) > (['selected_shot_edit', 'selected_timeline_clip_move'].includes(readTools.scope) ? toolScope(readTools).limits.maxContinuationBytes : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
   }
   const body = JSON.stringify({model: config.model, stream: true, store: false, max_output_tokens: AGENT_CHAT_LIMITS.maxOutputTokens,
     instructions, input, ...AGENT_RESPONSES_PROFILES[config.presetId].fields, ...readToolRequestFields(config, readTools)});

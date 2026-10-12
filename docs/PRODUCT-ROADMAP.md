@@ -1,6 +1,6 @@
 # Mioon approved product roadmap
 
-Updated: 2026-10-11 UTC. This is approved iteration scope, not a completion claim.
+Updated: 2026-10-12 UTC. This is approved iteration scope, not a completion claim.
 Baseline: `66a0193`. Verified deliverables remain in STATUS.md and their acceptance reports.
 
 ## Product direction
@@ -31,6 +31,11 @@ editable and carry documentation/mock/live verification status. Codex OAuth is d
 Acceptance: an agent can read only its selected project, propose a real edit, execute once,
 recover after interruption and surface a conflict without overwriting newer user work.
 Do not stop at a settings dialog or chat-only demonstration.
+
+Current bounded implementation: [reviewed selected-clip moves](AGENT-TIMELINE-MOVE.md),
+one saved clip start-frame patch through existing timeline history/replay after
+an immutable human review. This does not authorize arbitrary timeline tools,
+ripple edits, generation or paid actions; release status is recorded in that report.
 
 ### 2. Make selection and editing dependable
 

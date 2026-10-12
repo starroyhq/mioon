@@ -198,7 +198,7 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,23);
+ assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,24);
  assert.deepEqual(fullSchema(),completeFresh);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(fullSchema(),completeFresh);
 });

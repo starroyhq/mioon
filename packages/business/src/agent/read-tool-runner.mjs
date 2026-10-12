@@ -1,3 +1,4 @@
+import {AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE} from '@mioon/contracts';
 import {agentChatError} from './chat-errors.mjs';
 import {buildAgentRequest} from './agent-gateway.mjs';
 import {toolScope} from './tool-wire.mjs';
@@ -7,8 +8,10 @@ import {READ_TOOL_LIMITS, READ_TOOL_OPERATIONS} from './read-tool-policy.mjs';
  * branded inspection dispatcher; edits only create review proposals atomically.
  * Nothing here runs on startup, and no model output can apply a mutation. */
 export async function runReadToolWorkflow({runId, projectId, configuration, messages, provenance,
-  apiKey, gateway, selfPort, journal, inspection, editService, target, control}) {
-  const scopeOptions = target ? {scope: 'selected_shot_edit'} : {}, scope = toolScope(scopeOptions);
+  apiKey, gateway, selfPort, journal, inspection, editService, target, contextMode, control}) {
+  const timelineEdit = contextMode === AGENT_TIMELINE_MOVE_CONTEXT;
+  const scopeOptions = target ? {scope: timelineEdit ? AGENT_TIMELINE_MOVE_CONTEXT : 'selected_shot_edit'} : {}, scope = toolScope(scopeOptions);
+  if (timelineEdit && !target) throw agentChatError('AGENT_CHAT_VALIDATION');
   const committed = operation => {
     const saved = control.commit(operation);
     if (saved.events?.length) control.publish(saved.events);
@@ -50,7 +53,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
   const completed = await request(first, {phase: 'request', ...scopeOptions});
   if (!completed || !control.live() || completed.finishReason === 'stop') return;
   const call = completed.toolCall, parsed = scope.parse(call.name, call.argumentsJson);
-  const toolProvenance = {category: target ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, operation: parsed.operation};
+  const toolProvenance = {category: timelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : target ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, operation: parsed.operation};
   const intent = committed(() => journal.toolIntent(runId, first.id, {toolCall: call, provenance: toolProvenance}));
   if (!control.live()) return;
   // Context identity and its capabilities are created solely by the backend.
@@ -60,9 +63,11 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
     if (!control.live()) throw agentChatError('AGENT_CHAT_ABORTED');
     if (target) {
       const proposal = editService.createInside({projectId, runId, target, changes: parsed.arguments, toolCall: call});
-      const result = {kind: 'untrusted_shot_update_proposal', operation: 'shot.update', status: 'pending_review',
+      const result = {kind: timelineEdit ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal', operation: parsed.operation, status: 'pending_review',
         applied: false, proposalId: proposal.id, digest: proposal.digest};
-      return {result, resultJson: JSON.stringify(result), provenance: toolProvenance};
+      const resultJson = JSON.stringify(result);
+      if (Buffer.byteLength(resultJson) > scope.limits.maxResultBytes) throw agentChatError('AGENT_CHAT_LIMIT');
+      return {result, resultJson, provenance: toolProvenance};
     }
     let data;
     try { data = inspection.dispatch(inspectionScope, parsed.operation, parsed.dispatchArguments); }

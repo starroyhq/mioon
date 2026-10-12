@@ -1,5 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
-import {AppError} from '@mioon/contracts';
+import {AppError, isAgentTimelineMoveTarget, isAgentTimelineMoveArguments, agentTimelineMovePublicTarget, agentTimelineMoveDiff, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {timelineEditToolPolicy, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.mjs';
+import {pinAgentTimelineMoveTarget, assertAgentTimelineMoveOwnership, readAgentTimelineMoveReceipt, readAgentTimelineSnapshot} from './timeline-edit-domain.mjs';
 import {canonical} from '../services.mjs';
 import {validateImageConsumption} from '../image-consumption.mjs';
 import {editToolPolicy, parseEditToolArguments, validEditText} from './edit-tool-policy.mjs';
@@ -57,7 +59,7 @@ export function createAgentEditService({store, services, fault = () => {}, limit
   const {db} = store, bounds = {...AGENT_EDIT_LIMITS, ...limits};
   for (const key of ['rows', 'bytes', 'definitionBytes', 'rowBytes', 'pageSize', 'maxPageSize'])
     if (!integer(bounds[key]) || bounds[key] > AGENT_EDIT_LIMITS[key]) invalid();
-  const select = `SELECT position,id,projectId,runId,shotId,digest,status,approval,outcome,createdAt,updatedAt,bytes,
+  const select = `SELECT position,id,projectId,runId,shotId,targetKind,clipId,timelineId,digest,status,approval,outcome,createdAt,updatedAt,bytes,
     CASE WHEN length(CAST(definition AS BLOB))<=${AGENT_EDIT_LIMITS.definitionBytes} THEN definition ELSE NULL END AS definition FROM agent_edit_proposals`;
   function owned(table, recordId, projectId) {
     const project = table === 'projects';
@@ -99,15 +101,15 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     if (!row || row.projectId !== projectId) missing();
     const run = parse(row.data);
     if (!plain(run) || ['id', 'projectId', 'requestId', 'threadId', 'status'].some(key => run[key] !== row[key]) ||
-      !['running', 'completed', 'failed', 'stopped', 'interrupted'].includes(run.status) || run.contextMode !== 'selected_shot_edit' ||
-      !targetValid(run.editTarget) || run.editTarget.projectId !== projectId) corrupt();
+      !['running', 'completed', 'failed', 'stopped', 'interrupted'].includes(run.status) || !['selected_shot_edit','selected_timeline_clip_move'].includes(run.contextMode) ||
+      !(run.contextMode === 'selected_timeline_clip_move' ? isAgentTimelineMoveTarget(run.editTarget, {projectId}) : targetValid(run.editTarget)) || run.editTarget.projectId !== projectId) corrupt();
     const request = db.prepare(`SELECT runId,projectId,threadId,
       CASE WHEN length(CAST(acceptance AS BLOB))<=1048576 THEN acceptance ELSE NULL END AS acceptance FROM agent_chat_requests WHERE requestId=?`).get(run.requestId);
     const thread = db.prepare('SELECT projectId FROM agent_chat_threads WHERE id=?').get(run.threadId);
     if (!request || request.runId !== runId || request.projectId !== projectId || request.threadId !== run.threadId || thread?.projectId !== projectId) corrupt();
     const accepted = parse(request.acceptance);
     if (accepted.version !== 1 || accepted.execution?.version !== 1 || !same(accepted.execution.target, run.editTarget) ||
-      !same(accepted.execution.policy, editToolPolicy(projectId))) corrupt();
+      !same(accepted.execution.policy, run.contextMode === 'selected_timeline_clip_move' ? timelineEditToolPolicy(projectId) : editToolPolicy(projectId))) corrupt();
     return run;
   }
   function toolFor(run) {
@@ -120,6 +122,8 @@ export function createAgentEditService({store, services, fault = () => {}, limit
   }
   function read(row, projectId) {
     if (!row || row.projectId !== projectId) missing();
+    if (row.targetKind === 'timeline_clip') return readTimeline(row, projectId);
+    if (row.targetKind !== 'shot' || row.clipId !== null || row.timelineId !== null) corrupt();
     targetOwned(projectId, row.shotId);
     const run = runOwned(projectId, row.runId), definition = parse(row.definition, AGENT_EDIT_LIMITS.definitionBytes);
     if (!exact(definition, ['version', 'id', 'projectId', 'runId', 'operation', 'target', 'changes', 'patch', 'diff', 'provenance', 'input', 'createdAt']) ||
@@ -146,12 +150,63 @@ export function createAgentEditService({store, services, fault = () => {}, limit
       !exact(outcome, ['status', 'code']) || outcome.status !== 'not_applied' || !['NOT_FOUND', 'REVISION_CONFLICT', 'INVALID_ORDER', 'ASSET_REQUIRED', 'INVALID_NODE_ASSET', 'REFERENCE_CONNECTED'].includes(outcome.code))) corrupt();
     return {row, run, definition, approval, outcome};
   }
+  function readTimeline(row, projectId) {
+    const run = runOwned(projectId, row.runId), definition = parse(row.definition, AGENT_EDIT_LIMITS.definitionBytes);
+    if (!exact(definition, ['version', 'id', 'projectId', 'runId', 'operation', 'target', 'changes', 'patch', 'diff', 'provenance', 'input', 'createdAt']) ||
+      definition.version !== 2 || definition.operation !== 'timeline.clip.update' || run.contextMode !== 'selected_timeline_clip_move' ||
+      !uuid(definition.id) || !uuid(definition.runId) || ['id','projectId','runId','createdAt'].some(key => definition[key] !== row[key]) ||
+      !timestamp(row.createdAt) || !timestamp(row.updatedAt) || !isAgentTimelineMoveTarget(definition.target, {projectId}) ||
+      row.shotId !== null || row.timelineId !== definition.target.timelineId || row.clipId !== definition.target.clip.id ||
+      !same(definition.target, run.editTarget) || !isAgentTimelineMoveArguments(definition.changes) || !same(definition.patch, definition.changes) ||
+      !statuses.includes(row.status) || !integer(row.position) || !integer(row.bytes) || row.bytes > AGENT_EDIT_LIMITS.rowBytes || hash(definition) !== row.digest) corrupt();
+    const diff = agentTimelineMoveDiff(definition.target, definition.changes);
+    if (!diff || !same(definition.diff, diff) || !uuid(definition.input?.requestId) ||
+      !same(definition.input, {projectId, clipId: row.clipId, expectedRevision: definition.target.expectedRevision, patch: definition.patch, requestId: definition.input.requestId}) ||
+      !exact(definition.provenance, ['runId','toolCallId','toolName']) || definition.provenance.runId !== run.id ||
+      !callId(definition.provenance.toolCallId) || definition.provenance.toolName !== 'mioon_propose_timeline_clip_move') corrupt();
+    assertAgentTimelineMoveOwnership(db, definition.target);
+    const approval = row.approval === null ? null : parse(row.approval, 32768), outcome = row.outcome === null ? null : parse(row.outcome, 1024);
+    if ((['pending','rejected','cancelled'].includes(row.status)) !== (approval === null) || (['applied','failed'].includes(row.status)) !== (outcome !== null)) corrupt();
+    if (approval && (!exact(approval, ['approvedAt','proposalId','projectId','digest','operation','input']) || !timestamp(approval.approvedAt) ||
+      approval.proposalId !== row.id || approval.projectId !== projectId || approval.digest !== row.digest || approval.operation !== definition.operation || !same(approval.input, definition.input))) corrupt();
+    if (outcome && (row.status === 'applied' ? !same(outcome, {status: 'applied', timelineId: row.timelineId, clipId: row.clipId, revision: definition.target.expectedRevision + 1}) :
+      !exact(outcome, ['status','code']) || outcome.status !== 'not_applied' || !hasRequestNotAppliedProof({code: outcome.code, definitive: true,
+        details: {mutationOutcome: 'not_applied', requestId: definition.input.requestId}}, definition.input, {operation: definition.operation}))) corrupt();
+    return {row, run, definition, approval, outcome};
+  }
+  function createTimelineInside({projectId, runId, target, changes, toolCall}) {
+    if (!uuid(runId) || !isAgentTimelineMoveArguments(changes)) invalid();
+    assertAgentTimelineMoveOwnership(db, target);
+    const run = runOwned(projectId, runId), tool = toolFor(run);
+    if (run.contextMode !== 'selected_timeline_clip_move' || run.status !== 'running' || !same(run.editTarget, target) || tool.status !== 'dispatch_started' ||
+      !same(tool.intent?.toolCall, toolCall) || !callId(toolCall?.id) || toolCall?.name !== 'mioon_propose_timeline_clip_move' || !same(toolCall.arguments, changes) ||
+      !same(parse(toolCall.argumentsJson, 32768), changes) || !same(tool.intent.provenance,
+        {category: 'project_selected_timeline_timing', projectId, operation: 'timeline.clip.update'})) conflict();
+    try { parseTimelineEditToolArguments(toolCall.name, toolCall.argumentsJson); } catch { invalid(); }
+    const diff = agentTimelineMoveDiff(target, changes); if (!diff) invalid();
+    const existing = db.prepare(`${select} WHERE runId=?`).get(runId);
+    if (existing) {
+      const value = read(existing, projectId);
+      if (!same(value.definition.changes, changes) || value.definition.provenance.toolCallId !== toolCall.id || value.definition.provenance.toolName !== toolCall.name) conflict();
+      return dto(value);
+    }
+    const createdAt = now(), proposalId = randomUUID(), patch = structuredClone(changes);
+    const definition = {version: 2, id: proposalId, projectId, runId, operation: 'timeline.clip.update', target: structuredClone(target),
+      changes: structuredClone(changes), patch, diff, provenance: {runId, toolCallId: toolCall.id, toolName: toolCall.name},
+      input: {projectId, clipId: target.clip.id, expectedRevision: target.expectedRevision, patch, requestId: randomUUID()}, createdAt};
+    const encoded = JSON.stringify(definition), count = Buffer.byteLength(encoded) + 32768 + 2048;
+    const quota = db.prepare('SELECT count(*) AS rows,coalesce(sum(bytes),0) AS bytes FROM agent_edit_proposals').get();
+    if (Buffer.byteLength(encoded) > bounds.definitionBytes || count > bounds.rowBytes || quota.rows >= bounds.rows || quota.bytes + count > bounds.bytes) throw error('AGENT_EDIT_STORAGE_LIMIT');
+    db.prepare(`INSERT INTO agent_edit_proposals(id,projectId,runId,shotId,targetKind,clipId,timelineId,digest,definition,status,createdAt,updatedAt,bytes)
+      VALUES(?,?,?,NULL,'timeline_clip',?,?,?,?,'pending',?,?,?)`).run(proposalId, projectId, runId, target.clip.id, target.timelineId, hash(definition), encoded, createdAt, createdAt, count);
+    return dto(byId(projectId, proposalId));
+  }
   const byId = (projectId, proposalId) => read(db.prepare(`${select} WHERE id=?`).get(proposalId), projectId);
   function dto(value) {
     const {row, run, definition, approval, outcome} = value;
     if (row.status === 'applied' && !same(receipt(value), outcome)) corrupt();
     return structuredClone({id: row.id, projectId: row.projectId, runId: row.runId, runStatus: run.status, digest: row.digest, status: row.status,
-      operation: definition.operation, target: publicTarget(definition.target), patch: definition.patch, diff: definition.diff,
+      operation: definition.operation, target: definition.version === 2 ? agentTimelineMovePublicTarget(definition.target) : publicTarget(definition.target), patch: definition.patch, diff: definition.diff,
       provenance: definition.provenance, createdAt: row.createdAt, updatedAt: row.updatedAt,
       ...(approval ? {approval: {approvedAt: approval.approvedAt, requestId: approval.input.requestId}} : {}), ...(outcome ? {outcome} : {})});
   }
@@ -161,11 +216,19 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     const value = byId(input.projectId, input.proposalId); if (value.row.digest !== input.digest) conflict(); return value;
   }
   function update(value, status, {approval = value.approval, outcome = value.outcome} = {}) {
+    // Keep retained JSON bytes when only progress changes. Re-serializing an
+    // unchanged legacy approval would violate its immutable raw-byte trigger.
+    const approvalText = approval === value.approval ? value.row.approval : approval ? JSON.stringify(approval) : null;
+    const outcomeText = outcome === value.outcome ? value.row.outcome : outcome ? JSON.stringify(outcome) : null;
     db.prepare('UPDATE agent_edit_proposals SET status=?,approval=?,outcome=?,updatedAt=? WHERE id=?')
-      .run(status, approval ? JSON.stringify(approval) : null, outcome ? JSON.stringify(outcome) : null, now(), value.row.id);
+      .run(status, approvalText, outcomeText, now(), value.row.id);
     return byId(value.row.projectId, value.row.id);
   }
   function receipt(value) {
+    if (value.definition.version === 2) {
+      const reconcile = () => readAgentTimelineMoveReceipt(db, value.definition.input, value.definition.target);
+      return readAgentTimelineSnapshot(db, reconcile);
+    }
     // Read the shared atomic journal directly. Recovery must not invoke a mutation
     // just to ask whether it happened, nor trust an obsolete receipt's ownership.
     targetOwned(value.row.projectId, value.row.shotId);
@@ -189,8 +252,8 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     if (value.run.modelRequestState !== 'completed' || !Array.isArray(value.run.activity) || !plain(final) || ['id', 'runId', 'projectId', 'status'].some(key => final[key] !== finalRow[key]) ||
       final.kind !== 'model' || final.position !== 3 || final.ordinal !== 2 || final.status !== 'completed' || final.output?.type !== 'done' || final.output.finishReason !== 'stop' ||
       Object.hasOwn(final.output, 'toolCall') || !value.run.activity?.some(item => item.id === final.id && item.kind === 'model' && item.ordinal === 2 && item.status === 'completed') ||
-      tool.status !== 'completed' || result?.kind !== 'untrusted_shot_update_proposal' || result.proposalId !== value.row.id ||
-      result.digest !== value.row.digest || result.operation !== 'shot.update' || result.applied !== false || result.status !== 'pending_review' ||
+      tool.status !== 'completed' || result?.kind !== (value.definition.version === 2 ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal') || result.proposalId !== value.row.id ||
+      result.digest !== value.row.digest || result.operation !== value.definition.operation || result.applied !== false || result.status !== 'pending_review' ||
       !same(parse(tool.observation.resultJson, 8192), result) || tool.intent?.toolCall?.id !== value.definition.provenance.toolCallId ||
       tool.intent?.toolCall?.name !== value.definition.provenance.toolName || !same(tool.intent?.toolCall?.arguments, value.definition.changes) ||
       !Array.isArray(value.run.activity) || !value.run.activity.some(item => item.id === tool.id && item.kind === 'tool' && item.status === 'completed' && item.resultJson === tool.observation.resultJson)) corrupt();
@@ -213,8 +276,13 @@ export function createAgentEditService({store, services, fault = () => {}, limit
       // No await, callback or outer transaction between ownership validation and
       // the existing synchronous mutation. Project ownership is checked again
       // inside that handler's own transaction, including receipt replay.
-      targetOwned(input.projectId, started.value.row.shotId);
-      response = services.updateShotInProject(input.projectId, structuredClone(persisted.input));
+      if (started.value.definition.version === 2) {
+        if (typeof services.moveTimelineClipInProject !== 'function') corrupt();
+        response = services.moveTimelineClipInProject(input.projectId, structuredClone(persisted.input), structuredClone(started.value.definition.target));
+      } else {
+        targetOwned(input.projectId, started.value.row.shotId);
+        response = services.updateShotInProject(input.projectId, structuredClone(persisted.input));
+      }
     } catch (caught) { dispatchError = caught; }
     try { fault('afterDispatch'); } catch (caught) { response?.catch?.(() => {}); throw caught; }
     try { if (response !== undefined) await response; } catch (caught) { dispatchError = caught; }
@@ -223,7 +291,9 @@ export function createAgentEditService({store, services, fault = () => {}, limit
       if (['applied', 'failed'].includes(value.row.status)) return value;
       const outcome = receipt(value);
       if (outcome) return update(value, 'applied', {outcome});
-      if (dispatchError instanceof AppError && dispatchError.details?.mutationOutcome === 'not_applied' &&
+      if (value.definition.version === 2 && dispatchError instanceof AppError && hasRequestNotAppliedProof(dispatchError, persisted.input, {operation: 'timeline.clip.update'}))
+        return update(value, 'failed', {outcome: {status: 'not_applied', code: dispatchError.code}});
+      if (value.definition.version === 1 && dispatchError instanceof AppError && dispatchError.details?.mutationOutcome === 'not_applied' &&
         dispatchError.details.requestId === persisted.input.requestId &&
         ['NOT_FOUND', 'REVISION_CONFLICT', 'INVALID_ORDER', 'ASSET_REQUIRED', 'INVALID_NODE_ASSET', 'REFERENCE_CONNECTED'].includes(dispatchError.code))
         return update(value, 'failed', {outcome: {status: 'not_applied', code: dispatchError.code}});
@@ -233,6 +303,10 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     return dto(result);
   }
   return Object.freeze({
+    pinTimelineTarget(projectId, input) {
+      const pin = () => structuredClone(pinAgentTimelineMoveTarget(db, projectId, input));
+      return readAgentTimelineSnapshot(db, pin);
+    },
     pinTarget(projectId, input) {
       if (!id(projectId) || !exact(input, ['shotId', 'expectedRevision']) || !uuid(input.shotId) || !integer(input.expectedRevision)) invalid();
       const shot = targetOwned(projectId, input.shotId); if (shot.revision !== input.expectedRevision) conflict();
@@ -240,6 +314,7 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     },
     createInside({projectId, runId, target, changes, toolCall}) {
       if (!db.isTransaction) throw new TypeError('Agent edit proposals require the chat capture transaction');
+      if (isAgentTimelineMoveTarget(target, {projectId})) return createTimelineInside({projectId, runId, target, changes, toolCall});
       if (!id(projectId) || !uuid(runId) || !targetValid(target) || target.projectId !== projectId || !changesValid(changes)) invalid();
       targetOwned(projectId, target.shotId);
       const run = runOwned(projectId, runId), tool = toolFor(run);

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -11,7 +12,24 @@ const schema=db=>db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master OR
 const rows=(db,table)=>db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function capture(db){const objects=schema(db),tables=objects.filter(r=>r.type==='table').map(r=>r.name);return {objects,tables,rows:Object.fromEntries(tables.map(t=>[t,rows(db,t)])),hashes:Object.fromEntries(tables.map(t=>[t,rows(db,t).map(digest)]))};}
-function assertOld(db,before,{startupMigrations=false}={}){const retained=schema(db).filter(r=>before.objects.some(old=>old.name===r.name)).map(row=>{if(!startupMigrations||row.type!=='table'||row.name!=='edit_tasks')return row;let sql=row.sql;for(const operation of ['timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']){const token=`,'${operation}'`;assert.equal(sql.split(token).length,2,`only the explicit later operation ${operation} changes historical SQL`);sql=sql.replace(token,'');}return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql});});assert.deepEqual(retained,before.objects);for(const table of before.tables){const actual=rows(db,table),expected=before.rows[table];assert.deepEqual(table==='schema_version'?actual.filter(v=>v.version<=15):actual,expected,table);assert.deepEqual((table==='schema_version'?actual.filter(v=>v.version<=15):actual).map(digest),before.hashes[table],`${table} raw-row hashes`);}}
+function assertOld(db,before,{startupMigrations=false}={}){
+ const objects=schema(db);if(startupMigrations)assertAgentEditTargetTrigger(objects);
+ const retained=objects.filter(r=>before.objects.some(old=>old.name===r.name)).map(row=>{
+  if(startupMigrations&&row.type==='table'&&row.name==='agent_edit_proposals')return normalizeAgentEditProposalObject(row);
+  if(!startupMigrations||row.type!=='table'||row.name!=='edit_tasks')return row;
+  let sql=row.sql;
+  for(const operation of ['timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']){
+   const token=`,'${operation}'`;assert.equal(sql.split(token).length,2,`only the explicit later operation ${operation} changes historical SQL`);sql=sql.replace(token,'');
+  }
+  return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql});
+ });
+ assert.deepEqual(retained,before.objects);
+ for(const table of before.tables){
+  const actual=rows(db,table),expected=before.rows[table];
+  const retainedRows=table==='schema_version'?actual.filter(v=>v.version<=15):startupMigrations&&table==='agent_edit_proposals'?legacyAgentEditProposalRows(actual):actual;
+  assert.deepEqual(retainedRows,expected,table);assert.deepEqual(retainedRows.map(digest),before.hashes[table],`${table} raw-row hashes`);
+ }
+}
 function seed(db){
  const projectId=randomUUID(),assetId=randomUUID(),jobId=randomUUID(),shotId=randomUUID(),versionId=randomUUID(),timelineId=randomUUID();
  insert(db,'projects',{id:projectId,data:`{ "id": "${projectId}", "name":"旧项目 🌱", "revision":1 }`});
@@ -55,7 +73,7 @@ test('new image identities resist updates, delete and INSERT OR REPLACE and disp
 
 test('normal startup preserves schema15 rows through later migrations and the explicit format allowlist rebuild',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-image-migration-'));let db=legacyDatabase(path.join(root,'workbench.sqlite')),store;
- try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) v FROM schema_version').get().v,23);assertOld(store.db,before,{startupMigrations:true});const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
+ try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) v FROM schema_version').get().v,24);assertOld(store.db,before,{startupMigrations:true});const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 
 test('interruption and unknown results keep fences and permit only explicit local-result recovery',t=>{

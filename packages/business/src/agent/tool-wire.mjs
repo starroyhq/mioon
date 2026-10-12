@@ -2,6 +2,8 @@ import {exactObject} from './config.mjs';
 import {agentChatError} from './chat-errors.mjs';
 import {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 import {EDIT_TOOL_DEFINITIONS, EDIT_TOOL_LIMITS, EDIT_TOOL_SYSTEM_INSTRUCTION, parseEditToolArguments} from './edit-tool-policy.mjs';
+import {TIMELINE_EDIT_TOOL_DEFINITIONS, TIMELINE_EDIT_TOOL_LIMITS, TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.mjs';
+import {AGENT_TIMELINE_MOVE_CONTEXT} from '@mioon/contracts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_LIMITS, READ_TOOL_SYSTEM_INSTRUCTION, parseReadToolArguments} from './read-tool-policy.mjs';
 
 const fail = code => { throw agentChatError(code); };
@@ -40,7 +42,9 @@ export const AGENT_READ_TOOL_PROFILES = freeze({
 });
 // This selector is internal and closed: callers cannot supply schemas or operations.
 export function toolScope(readTools) {
-  if (readTools?.scope !== undefined && readTools.scope !== 'selected_shot_edit') fail('AGENT_CHAT_VALIDATION');
+  if (readTools?.scope !== undefined && !['selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(readTools.scope)) fail('AGENT_CHAT_VALIDATION');
+  if (readTools?.scope === AGENT_TIMELINE_MOVE_CONTEXT) return {definitions: TIMELINE_EDIT_TOOL_DEFINITIONS, limits: TIMELINE_EDIT_TOOL_LIMITS,
+    instruction: TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, parse: parseTimelineEditToolArguments};
   return readTools?.scope === 'selected_shot_edit' ? {definitions: EDIT_TOOL_DEFINITIONS, limits: EDIT_TOOL_LIMITS,
     instruction: EDIT_TOOL_SYSTEM_INSTRUCTION, parse: parseEditToolArguments} : {definitions: READ_TOOL_DEFINITIONS,
     limits: READ_TOOL_LIMITS, instruction: READ_TOOL_SYSTEM_INSTRUCTION, parse: parseReadToolArguments};

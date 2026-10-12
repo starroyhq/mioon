@@ -1,3 +1,5 @@
+import { safeAgentTimelineProposal, safeAgentTimelineTarget, agentTimelineApprovalIssue, agentTimelineFrameText } from './agent-timeline-context.js';
+export { agentTimelineApprovalIssue, agentTimelineFrameText };
 import { safeAgentEditTarget } from './agent-tool-state.js';
 
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -18,6 +20,7 @@ export const agentEditImmutableKey = proposal => JSON.stringify([proposal.id, pr
 
 // The model's response text is never evidence of approval or application.
 export function safeAgentEditProposal(value, projectId) {
+  if (value?.operation === 'timeline.clip.update') return safeAgentTimelineProposal(value, projectId);
   if (!value || !uuid(value.id) || value.projectId !== projectId || !uuid(value.runId) || !hash(value.digest) || !statuses.has(value.status) || !runStatuses.has(value.runStatus) || value.operation !== 'shot.update') invalid();
   const before = value.diff?.before, after = value.diff?.after;
   const target = safeAgentEditTarget({ ...value.target, ...before }, projectId);
@@ -122,24 +125,38 @@ export function createAgentEditsClient({ fetchImpl = (...args) => globalThis.fet
     },
   };
 }
-export const initialAgentEditsState = () => ({ phase: 'loading', instanceId: null, proposals: [], view: 'unresolved', cursor: null, nextCursor: null, trail: [], busy: null, uncertainIds: [], retryApprovalIds: [], message: '' });
+export const initialAgentEditsState = () => ({ phase: 'loading', instanceId: null, proposals: [], pinnedIds: [], view: 'unresolved', cursor: null, nextCursor: null, trail: [], busy: null, uncertainIds: [], retryApprovalIds: [], message: '' });
 
 // Durable edit identities live on the server. Recreating this controller performs
 // GETs only; it never reads sessionStorage, fabricates keys or replays approvals.
 export function createAgentEditsSession({ projectId, client = createAgentEditsClient(), onChange = () => {}, onApplied = () => {} } = {}) {
-  let active = true, visible = true, serial = 0, state = initialAgentEditsState();
+  let active = true, visible = true, serial = 0, state = initialAgentEditsState(), timelineContext = null;
   const reads = new Set(), notified = new Set(), retryProofs = new Map();
+  let pageRows = [], pins = new Map();
+  const terminal = proposal => ['applied', 'failed', 'rejected', 'cancelled'].includes(proposal.status);
+  const projection = () => ({ proposals: [...pageRows, ...[...pins.values()].filter(item => !pageRows.some(row => row.id === item.id))], pinnedIds: [...pins.values()].filter(item => !terminal(item)).map(item => item.id) });
+  const pinCapacityMessage = '已有 50 份原操作待核对。请先只读核对或恢复下方保留的原提议，再批准新的提议；原身份与请求不会被丢弃。';
   const publish = patch => { if (active) { state = { ...state, ...patch }; onChange(state); } };
   const valid = epoch => active && epoch === serial;
   const read = async work => { const controller = new AbortController(); reads.add(controller); try { return await work(controller.signal); } finally { reads.delete(controller); } };
   const compatible = (previous, next) => {
     if (!previous) return;
+    const progress = { pending: 0, approved: 1, dispatching: 2, unknown: 3, applied: 4, failed: 4, rejected: 4, cancelled: 4 };
+    if (progress[next.status] < progress[previous.status] && !(previous.status === 'unknown' && next.status === 'dispatching') || previous.runStatus !== 'running' && previous.runStatus !== next.runStatus) invalid();
     if (agentEditImmutableKey(previous) !== agentEditImmutableKey(next) || previous.approval && JSON.stringify(previous.approval) !== JSON.stringify(next.approval) || previous.outcome && JSON.stringify(previous.outcome) !== JSON.stringify(next.outcome) || ['applied', 'failed', 'rejected', 'cancelled'].includes(previous.status) && previous.status !== next.status) invalid();
   };
+  const preserveUnknown = (previous, next) => previous?.status === 'unknown' && next.status === 'dispatching' ? freeze({ ...next, status: 'unknown' }) : next;
   const merge = envelope => {
-    const proposal = envelope.proposal, previous = state.proposals.find(item => item.id === proposal.id);
-    compatible(previous, proposal);
-    publish({ instanceId: envelope.instanceId, proposals: previous ? state.proposals.map(item => item.id === proposal.id ? proposal : item) : [proposal, ...state.proposals].slice(0, 50), uncertainIds: proposal.status === 'pending' ? state.uncertainIds : state.uncertainIds.filter(id => id !== proposal.id) });
+    const previous = state.proposals.find(item => item.id === envelope.proposal.id);
+    compatible(previous, envelope.proposal);
+    const proposal = preserveUnknown(previous, envelope.proposal);
+    const onPage = pageRows.some(item => item.id === proposal.id);
+    if (onPage) pageRows = pageRows.map(item => item.id === proposal.id ? proposal : item);
+    if (pins.has(proposal.id) || !onPage) {
+      if (!pins.has(proposal.id) && pins.size >= 50) throw failure('LOCAL_PIN_LIMIT');
+      if (terminal(proposal) && onPage) pins.delete(proposal.id); else pins.set(proposal.id, proposal);
+    }
+    publish({ instanceId: envelope.instanceId, ...projection(), uncertainIds: proposal.status === 'pending' ? state.uncertainIds : state.uncertainIds.filter(id => id !== proposal.id) });
     return proposal;
   };
   const confirmApplied = proposal => {
@@ -147,28 +164,44 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
   };
   async function load({ view = state.view, cursor = state.cursor, trail = state.trail } = {}) {
     if (!active || !visible || state.busy) return false;
+    const samePage = view === state.view && cursor === state.cursor;
     const epoch = ++serial; retryProofs.clear(); publish({ phase: 'loading', retryApprovalIds: [], message: '' });
     try {
       const page = safeAgentEditPage(await read(signal => client.list(projectId, { view, cursor, signal })), projectId);
       if (!valid(epoch)) return false;
-      for (const item of page.proposals) { compatible(state.proposals.find(previous => previous.id === item.id), item); if (state.uncertainIds.includes(item.id)) confirmApplied(item); }
-      // A resolved approval can disappear from the unresolved page. Keep its
-      // original identity visible until a detail GET confirms its outcome.
-      const missing = state.proposals.filter(item => state.uncertainIds.includes(item.id) && !page.proposals.some(next => next.id === item.id));
-      const recovered = [];
-      for (const previous of missing) {
+      const nextPins = new Map([...pins].filter(([, item]) => !terminal(item)));
+      page.proposals = page.proposals.map(item => {
+        const previous = state.proposals.find(saved => saved.id === item.id); compatible(previous, item);
+        const next = preserveUnknown(previous, item);
+        if (nextPins.has(item.id)) { if (terminal(next)) nextPins.delete(item.id); else nextPins.set(item.id, next); }
+        if (state.uncertainIds.includes(item.id) || previous && agentEditCanRecover(previous)) confirmApplied(next);
+        return next;
+      });
+      // Only the same page's disappearance is reconciled. Older/newer/view
+      // navigation never pins ordinary saved unknown records from prior pages.
+      // Separate local pins retain an exact unresolved action even off-page.
+      const missing = new Map([...nextPins].filter(([id]) => !page.proposals.some(item => item.id === id)));
+      if (samePage) for (const item of pageRows) if (agentEditCanRecover(item) && !page.proposals.some(next => next.id === item.id)) missing.set(item.id, item);
+      const confirmed = [...page.proposals];
+      for (const previous of missing.values()) {
+        let next = previous;
         try {
           const detail = safeAgentEditEnvelope(await read(signal => client.get(projectId, previous.id, signal)), projectId, previous.id);
           if (!valid(epoch)) return false;
           if (detail.instanceId !== page.instanceId) invalid();
-          compatible(previous, detail.proposal); recovered.push(detail.proposal); confirmApplied(detail.proposal);
-        } catch { recovered.push(previous); }
+          compatible(previous, detail.proposal); next = preserveUnknown(previous, detail.proposal); confirmApplied(next);
+        } catch { /* Missing or failed reads cannot release an original intent. */ }
+        if (!valid(epoch)) return false;
+        if (!nextPins.has(previous.id) && nextPins.size >= 50) throw failure('LOCAL_PIN_LIMIT');
+        nextPins.set(previous.id, next); confirmed.push(next);
       }
       if (!valid(epoch)) return false;
-      const proposals = [...recovered, ...page.proposals].slice(0, 50);
-      publish({ ...page, proposals, view, cursor, trail, phase: 'ready', uncertainIds: state.uncertainIds.filter(id => !proposals.some(item => item.id === id && item.status !== 'pending')) });
+      // <=50 fetched rows plus <=50 independent pins: no fetched identity is
+      // truncated, and no unresolved local action is silently dropped.
+      pageRows = page.proposals; pins = nextPins;
+      publish({ ...page, ...projection(), view, cursor, trail, phase: 'ready', uncertainIds: state.uncertainIds.filter(id => !confirmed.some(item => item.id === id && item.status !== 'pending')) });
       return true;
-    } catch { if (valid(epoch)) publish({ phase: 'error', message: '暂时无法读取修改提议。已有差异保留；重新读取不会批准或应用修改。' }); return false; }
+    } catch (error) { if (valid(epoch)) publish({ phase: 'error', message: error.code === 'LOCAL_PIN_LIMIT' ? pinCapacityMessage : '暂时无法读取修改提议。已有差异保留；重新读取不会批准或应用修改。' }); return false; }
   }
   async function inspect(proposalId) {
     if (!active || !visible || state.busy) return false;
@@ -190,16 +223,20 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
     if (!proposal || proposal !== expected || !['approve', 'reject', 'recover', 'retry_approval'].includes(action) ||
         state.uncertainIds.includes(proposal.id) && !['recover', 'retry_approval'].includes(action) ||
         (action === 'recover' ? !agentEditCanRecover(proposal) : !agentEditCanApprove(proposal)) ||
+        ['approve', 'retry_approval'].includes(action) && Boolean(agentTimelineApprovalIssue(proposal, timelineContext || {})) ||
         retry && (!state.uncertainIds.includes(proposal.id) || !proof || proof.proposal !== proposal || proof.instanceId !== state.instanceId || proof.serial !== serial)) return false;
+    for (const [id, item] of pins) if (terminal(item)) pins.delete(id);
+    if (!pins.has(proposal.id) && pins.size >= 50) { publish({ ...projection(), message: pinCapacityMessage }); return false; }
+    pins.set(proposal.id, proposal);
     const epoch = ++serial, instanceId = state.instanceId; retryProofs.clear();
-    publish({ busy: proposal.id, retryApprovalIds: [], message: '', ...(['approve', 'retry_approval'].includes(action) ? { uncertainIds: [...new Set([...state.uncertainIds, proposal.id])] } : {}) });
+    publish({ ...projection(), busy: proposal.id, retryApprovalIds: [], message: '', ...(['approve', 'retry_approval'].includes(action) ? { uncertainIds: [...new Set([...state.uncertainIds, proposal.id])] } : {}) });
     try {
       const result = safeAgentEditEnvelope(await read(signal => client.act(projectId, proposal.id, retry ? 'approve' : action, { instanceId, digest: proposal.digest }, signal)), projectId, proposal.id);
       if (!valid(epoch)) return false;
       // A stale epoch acknowledgement cannot silently authorize a new service.
       if (result.instanceId !== instanceId) invalid();
       const updated = merge(result); confirmApplied(updated);
-      publish({ busy: null, phase: 'ready', message: updated.status === 'applied' ? '已确认应用此份不可修改的提议。属性面板中未保存的输入仍保留。' : '' }); return true;
+      publish({ busy: null, phase: 'ready', message: updated.status === 'applied' ? '已确认应用此份不可修改的提议。当前保存内容将单独读取，属性面板中未保存的输入仍保留。' : '' }); return true;
     } catch (error) {
       if (!valid(epoch)) return false;
       publish({ busy: null, phase: 'ready', uncertainIds: [...new Set([...state.uncertainIds, proposal.id])], message: error.definitive ? '本次操作被保存服务阻止，不能据此判断较早操作的结果。正在只读核对原提议；不会自动重试。' : '没有收到操作确认。这不代表已拒绝或未应用；正在只读核对原提议，不会自动重试。' });
@@ -208,6 +245,10 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
     }
   }
   return { getState: () => state, load, inspect, act,
+    setTimelineContext({ target, blockedReason = '', contextMode } = {}) {
+      let next = null; try { if (target) next = safeAgentTimelineTarget(target, projectId); } catch { /* Malformed or stale selection never approves. */ }
+      timelineContext = { target: next, blockedReason: typeof blockedReason === 'string' ? blockedReason : '请先核对当前时间线状态。', contextMode };
+    },
     chooseView(view) { if (!active || !visible || state.busy || !['unresolved', 'all'].includes(view)) return false; return load({ view, cursor: null, trail: [] }); },
     older() { return state.nextCursor && !state.trail.includes(state.nextCursor) ? load({ cursor: state.nextCursor, trail: [...state.trail, state.cursor].slice(-64) }) : false; },
     newer() { return state.trail.length ? load({ cursor: state.trail.at(-1), trail: state.trail.slice(0, -1) }) : false; },

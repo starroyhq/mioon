@@ -10,6 +10,7 @@ import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImag
 import {migrateComfyImageSchema} from './comfy-image-schema.mjs';
 import {migrateFrameSchema} from './frame-schema.mjs';
 import {migrateTimelineFormatSchema} from './timeline-format-schema.mjs';
+import {migrateAgentEditProposalSchema} from './agent/edit-proposal-schema.mjs';
 
 // Backend-only proof of the actual acquired workspace lock. Neither caller
 // options nor copied store properties can manufacture ownership. A replaced,
@@ -432,6 +433,11 @@ export function openStore(root,{lock=true}={}){
    db.exec('INSERT INTO schema_version VALUES(23);COMMIT;');
   }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
   finally{db.exec('PRAGMA foreign_keys=ON');}
+ }
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=24').get()){
+  db.exec('BEGIN IMMEDIATE');
+  try{migrateAgentEditProposalSchema(db);db.exec('INSERT INTO schema_version VALUES(24);COMMIT;');}
+  catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
  if(db.prepare('PRAGMA foreign_keys').get().foreign_keys!==1)throw new Error('Foreign-key enforcement must be enabled');
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);

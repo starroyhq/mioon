@@ -1,3 +1,4 @@
+import {AGENT_TIMELINE_MOVE_CONTEXT} from '@mioon/contracts';
 import {createHash, randomUUID} from 'node:crypto';
 import {agentChatError} from './chat-errors.mjs';
 import {exactObject, parseAgentConfiguration} from './config.mjs';
@@ -168,7 +169,7 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS, onRunTer
             event.run.modelRequestId !== current.modelRequestId || event.run.userText !== current.userText ||
             encode(event.run.configuration) !== encode(current.configuration) || event.run.contextMode !== current.contextMode ||
             encode(event.run.provenance) !== encode(current.provenance) || encode(event.run.editTarget) !== encode(current.editTarget)) throw unavailable();
-          if (['project_inspection', 'selected_shot_edit'].includes(current.contextMode) && event.run.activity.some((item, index) => {
+          if (['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(current.contextMode) && event.run.activity.some((item, index) => {
             const durable = current.activity[index];
             return !durable || ['id', 'kind', 'ordinal', 'name', 'operation'].some(key => item[key] !== durable[key]) ||
               Object.hasOwn(item, 'resultJson') && item.resultJson !== durable.resultJson;
@@ -215,7 +216,7 @@ export function createChatJournal({store, limits = CHAT_JOURNAL_LIMITS, onRunTer
     dispatch(runId) {
       return store.tx(() => {
         const previous = row(runId), run = read(previous);
-        if (!run || ['project_inspection', 'selected_shot_edit'].includes(run.contextMode) || run.status !== 'running' || run.modelRequestState !== 'not_started') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
+        if (!run || ['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(run.contextMode) || run.status !== 'running' || run.modelRequestState !== 'not_started') throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE');
         // Conservative local boundary BEFORE calling the gateway. This is not
         // evidence that a socket opened, the provider accepted, or billing began.
         run.modelRequestState = 'dispatch_started'; run.modelRequestStartedAt = now();

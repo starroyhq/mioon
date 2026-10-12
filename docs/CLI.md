@@ -426,6 +426,12 @@ The CLI never invents request IDs and never retries submissions automatically. A
 
 ## Standalone agent use
 
+Built-in Agent [selected-clip move proposals](AGENT-TIMELINE-MOVE.md) use the
+same `timeline.clip.update` CAS/replay/history service as this CLI. Their human
+approval/rejection/recovery routes are not CLI commands or new external-agent
+authority. An external caller still supplies its own explicitly authorized
+exact input and stable timeline request key.
+
 An agent with shell access can invoke the repository-local bin or the absolute Node entrypoint, with the same private-file environment. No installation into `~/.codex`, no global CLI installation, and no second database are needed. For tool-native integration use the [MCP setup examples](MCP.md), including standalone Codex and Claude Code configuration.
 
 Offline acceptance tests use actual CLI subprocesses, the official MCP SDK stdio client, isolated backends, mock generation, and real local FFmpeg output. No live provider credentials or paid calls are used:

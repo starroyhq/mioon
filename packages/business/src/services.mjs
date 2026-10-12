@@ -246,6 +246,12 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   if(typeof projectId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(projectId))throw new AppError('VALIDATION_ERROR','项目范围无效');
   return publicValue(await localMutations.updateShotInProject(projectId,parse('shot.update',input)));
  }
+ // Backend-only reviewed startFrame move; not part of handlers or discovery.
+ function moveTimelineClipInProject(projectId,input,target){
+  checkpoint(ownerSignal);
+  if(projectId!==input?.projectId||projectId!==target?.projectId)throw new AppError('VALIDATION_ERROR','项目范围无效');
+  return publicValue(timeline.moveClipInProject(parse('timeline.clip.update',input),target));
+ }
  // Only queued/new provider dispatch uses lifecycle validation. Paid task
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job){
@@ -272,5 +278,5 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    return saveJob(current,patch);
   });
  }
- return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
+ return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject,moveTimelineClipInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
 }
