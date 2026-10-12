@@ -167,8 +167,12 @@ test('official MCP discovery and calls cannot reach renderer workspace preferenc
   transport.stderr?.resume(); t.after(() => client.close());
   await client.connect(transport);
   const tools = (await client.listTools()).tools;
-  assert.ok(!tools.some(tool => /preference|workspace/.test(tool.name)));
-  for (const name of ['workspace_preferences_get', 'workspace_preferences_put']) {
+  assert.ok(!tools.some(tool => /preference/.test(tool.name)), 'renderer preferences remain outside public discovery');
+  assert.deepEqual(tools.filter(tool => /workspace/.test(tool.name)).map(tool => tool.name), ['workspace_backup_inspect'], 'only the explicit DB-only workspace inspection is public');
+  const backupInspection = tools.find(tool => tool.name === 'workspace_backup_inspect');
+  assert.equal(backupInspection.annotations.readOnlyHint, true);
+  assert.deepEqual(backupInspection.inputSchema.properties, {}); assert.equal(backupInspection.inputSchema.additionalProperties, false);
+  for (const name of ['workspace_preferences_get', 'workspace_preferences_put', 'workspace_backup_create', 'workspace_backup_verify', 'workspace_backup_restore']) {
     const result = await client.callTool({name, arguments: {projectId: randomUUID()}});
     assert.equal(result.isError, true); assert.equal(result.structuredContent.error.code, 'UNKNOWN_OPERATION');
   }

@@ -1,7 +1,8 @@
 import {DatabaseSync} from 'node:sqlite';
 import {isAsyncFunction,isPromise} from 'node:util/types';
 import path from 'node:path';
-import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import {acquireWorkspaceLock} from './workspace-lock.mjs';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
 import {bootstrapEditTaskSchema,migrateSubjectEditTasks,migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from './edit-task-schema.mjs';
 import {migrateSubjectSchema} from './subject-schema.mjs';
@@ -19,11 +20,7 @@ const exclusiveOwners=new WeakMap();
 export function ownsStoreLock(store){
  const db=store?.db,owner=db&&exclusiveOwners.get(db);
  if(!owner||!owner.active||store.root!==owner.root||db.isOpen!==true)return false;
- try{
-  const current=validateManagedFile(owner.lockPath,{root:owner.root,allowMissing:true,private:true,maxBytes:64});
-  if(current&&['dev','ino','size','mtimeMs','ctimeMs'].every(key=>current[key]===owner.identity[key])&&
-   readPrivateFile(owner.lockPath,{root:owner.root,private:true,maxBytes:64,encoding:'utf8'})===owner.token)return true;
- }catch{} // Loss of a verified lock is denial, never a repair or takeover.
+ if(owner.lease.isOwned())return true;
  owner.active=false;exclusiveOwners.delete(db);return false;
 }
 
@@ -55,30 +52,10 @@ export function openStore(root,{lock=true}={}){
  validateWorkspaceStorage(root);
  ensurePrivateDirectory(root,{create:true});
  validateWorkspaceStorage(root);
- const lockPath=path.join(root,'server.lock');
  let db,ownedLock;
- const releaseLock=()=>{
-  if(!ownedLock)return;
-  try{
-   const current=validateManagedFile(lockPath,{root,allowMissing:true,maxBytes:64});
-   if(current&&['dev','ino','size','mtimeMs','ctimeMs'].every(key=>current[key]===ownedLock[key])&&readPrivateFile(lockPath,{root,private:false,maxBytes:64,encoding:'utf8'})===String(process.pid)){
-    removePrivateFile(lockPath,{root,private:false,maxBytes:64});
-   }
-  }catch{} // Never delete a changed, linked or otherwise unsafe lock in cleanup.
-  ownedLock=undefined;
- };
+ const releaseLock=()=>{ownedLock?.release();ownedLock=undefined;};
  try{
-  if(lock){
-   const previous=readPrivateFile(lockPath,{root,allowMissing:true,private:false,maxBytes:64,encoding:'utf8'});
-   if(previous!==null){
-    const pid=Number(previous);let active=false;
-    if(Number.isSafeInteger(pid)&&pid>0){try{process.kill(pid,0);active=true;}catch(error){if(error.code!=='ESRCH')active=true;}}
-    if(active)throw Error('This data directory already has a running backend');
-    removePrivateFile(lockPath,{root,private:false,maxBytes:64});
-   }
-   writePrivateFileAtomic(lockPath,String(process.pid),{root,maxBytes:64,replace:false});
-   ownedLock=validateManagedFile(lockPath,{root,private:true,maxBytes:64});
-  }
+  if(lock)ownedLock=acquireWorkspaceLock(root,{allowStale:true});
   // Recheck immediately before SQLite's pathname-only open. Node has no SQLite
   // fd/NOFOLLOW API; a concurrent same-uid/root adversary is outside this policy.
   validateWorkspaceStorage(root);
@@ -463,7 +440,7 @@ export function openStore(root,{lock=true}={}){
  // Do not create media until the complete preflight and schema initialization
  // succeed. Existing safe legacy media permissions are deliberately preserved.
  if(!validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true}))ensurePrivateDirectory(path.join(root,'media'),{create:true});
- if(ownedLock)exclusiveOwners.set(db,{root,lockPath,identity:ownedLock,token:String(process.pid),active:true});
+ if(ownedLock)exclusiveOwners.set(db,{root,lease:ownedLock,active:true});
  let closed=false;
  const close=()=>{
   if(closed)return;

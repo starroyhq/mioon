@@ -769,3 +769,17 @@ changed versions conflict, and confirmed-failure retry uses its original source.
 Only a validated original acknowledgement/read settles the request. Mock proves
 workflow only; Ark real-face direct uploads are unsupported and no live call is
 approved by schema discovery. See [SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md).
+
+## Workspace backup status and offline boundary
+
+`workspace_backup_inspect` is an authenticated, strict-empty-input, read-only
+workspace DB summary. Null counts mean unknown or bounded inspection incomplete,
+not zero. It never checks/copies media, stops the backend, reads credentials or
+resumes work. The result always explains that a running backend must close
+before cold capture. This is an external discovery tool, not an added built-in
+Agent capability.
+
+There is no MCP backup create/verify/restore tool or filesystem-path executor.
+For explicitly requested local backup creation, use the documented offline CLI
+in [the guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md) after normal backend shutdown.
+A verified package is not evidence that restoring or repeating old tasks is safe.

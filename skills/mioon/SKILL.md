@@ -540,3 +540,18 @@ original snapshot. Ark direct-upload real-human-face references are unsupported;
 the local library does not establish platform portrait authorization. Mock only
 tests workflow, never subject likeness. This adds no paid permission or built-in
 Agent tool. Scope and status: ../../docs/SUBJECT-VIDEO-INPUTS.md.
+
+### Whole-workspace offline backup
+
+Use `workspace.backup.inspect` with exactly `{}` only for bounded current database
+counts. It is not project-scoped: the backup covers every project and the entire
+plain SQLite database, including chat/prompts and cache rows. Application
+credential/settings files are excluded, but user-entered text may contain
+secrets. Do not send the backup to a third party without the user's sharing intent.
+
+Actual creation requires normal shutdown of all backends using that workspace
+and the explicit local CLI in ../../docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md. No MCP
+or HTTP operation accepts arbitrary backup paths or restores data. Do not delete
+locks/WAL/journals, retry an unknown paid task, erase old request keys, or open a
+backup as an executable workspace. Successful verify checks the declared cold
+snapshot; restore and inherited execution authority are a later separate feature.

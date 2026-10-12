@@ -14,6 +14,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.mjs';
 import {openStore} from '../packages/business/src/db.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
+import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'timeline-fades-transports-synthetic-token';
@@ -80,7 +81,14 @@ test('fade CLI and official MCP schemas are optional, strict, offline and retain
   const tools = (await mcp.client.listTools()).tools;
   const timelineOperations = ['timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.format.get', 'timeline.format.set', 'timeline.get', 'timeline.inspect', 'timeline.history.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.undo', 'timeline.redo', 'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.render'];
   assert.deepEqual(catalog.operations.filter(item => item.operation.startsWith('timeline.')).map(item => item.operation).sort(), timelineOperations.sort(), 'timeline discovery includes the explicit replacement operation alongside existing fade fields');
-  assert.deepEqual(catalog.operations.filter(item => item.operation.endsWith('.inspect')).map(item => item.operation).sort(), ['asset.inspect', 'project.inspect', 'shot.inspect', 'timeline.inspect']);
+  // Public local inspection is broader than the explicitly consented Agent tool set.
+  assert.deepEqual(catalog.operations.filter(item => item.operation.endsWith('.inspect')).map(item => item.operation).sort(), ['asset.inspect', 'project.inspect', 'shot.inspect', 'timeline.inspect', 'workspace.backup.inspect']);
+  assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
+  const backupInspection = tools.find(tool => tool.name === 'workspace_backup_inspect');
+  assert.ok(backupInspection); assert.equal(backupInspection.annotations.readOnlyHint, true);
+  assert.deepEqual(backupInspection.inputSchema.properties, {}); assert.equal(backupInspection.inputSchema.additionalProperties, false);
+  const backupEffects = catalog.operations.find(item => item.operation === 'workspace.backup.inspect').effects;
+  for (const field of ['databaseWrite', 'fileWrite', 'externalIO', 'localProcess', 'paidGeneration']) assert.equal(backupEffects[field], false);
   for (const operation of ['timeline.clip.add', 'timeline.clip.update']) {
     const definition = await cli(['schema', operation]), tool = tools.find(item => item.name === toolName(operation));
     assert.ok(tool); assert.deepEqual(tool.inputSchema, definition.inputSchema);

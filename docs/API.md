@@ -1050,3 +1050,17 @@ requests. The renderer's full reviewed pin is session storage, not a new durable
 intent ledger. No operation, migration or Agent authority is added. See
 [SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md) for implementation status, exact
 wire mapping, real-face restrictions, immutable provenance and acceptance.
+
+## Offline workspace backup readiness
+
+`workspace.backup.inspect` accepts only `{}` and returns bounded workspace-wide
+DB counts with `captureReady:false`, `reason:"BACKEND_RUNNING"`, nullable unknown
+counts and fixed capacity limits. It requires the existing local authentication.
+It reads no media, paths or credentials and creates no task, directory, receipt,
+or project. A completed count inspection is not file validation or a cold backup.
+The built-in Agent tool allowlist is unchanged.
+
+Actual create/verify are explicit offline local CLI actions backed by shared Node
+business services. No HTTP RPC accepts backup paths or grants restore authority.
+See [scope and safeguards](WORKSPACE-BACKUP.md) and the
+[offline user guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md).

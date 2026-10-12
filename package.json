@@ -30,6 +30,7 @@
     "desktop:package:linux": "pnpm --filter @mioon/desktop package:linux",
     "test:desktop": "node --test tests/desktop*.test.mjs",
     "cli": "node apps/cli/src/index.mjs",
+    "backup": "node apps/cli/src/backup.mjs",
     "test:cli": "node --test tests/cli*.test.mjs",
     "test:providers": "node --test tests/providers*.test.mjs",
     "test:browser:providers": "python3 tests/browser_providers_v4.py",

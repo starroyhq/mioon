@@ -7,3 +7,5 @@ export {createRunwayProvider} from './providers/runway.mjs';
 export {createProviderRegistry,providerEnvironmentKeys} from './provider-registry.mjs';
 export {createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from './workspace-preferences.mjs';
 export {createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from './inspection.mjs';
+
+export {createWorkspaceBackup, verifyWorkspaceBackup} from './workspace-backup.mjs';

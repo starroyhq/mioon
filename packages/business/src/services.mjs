@@ -1,3 +1,4 @@
+import {inspectWorkspaceBackup} from './backup-readiness.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {writeFile,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
@@ -130,6 +131,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   return value;
  }
  const handlers={
+ 'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
  ...frames.handlers,
  ...images.handlers,
  ...preflight.handlers,

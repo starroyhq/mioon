@@ -14,6 +14,72 @@ node apps/cli/src/index.mjs --help
 
 `mioon` is the bin of `@mioon/cli`. These instructions do not install globally, edit your agent configuration, open accounts, or enable paid generation.
 
+## Offline whole-workspace backup
+
+`node apps/cli/src/backup.mjs` (also `pnpm backup`) is a separate local filesystem
+command. It never starts the
+backend, resolves a connection descriptor, reads token configuration, contacts a
+provider, or resumes a task. Node.js 24+ and the source workspace dependencies
+are required. Stop every backend/desktop instance using the selected workspace
+before capture, then use explicit canonical absolute paths:
+
+```sh
+node apps/cli/src/backup.mjs --help
+node apps/cli/src/backup.mjs --version
+node apps/cli/src/backup.mjs create --source /absolute/workspace --destination /absolute/new-backup
+node apps/cli/src/backup.mjs verify --directory /absolute/backup
+# Equivalent source-checkout launcher:
+pnpm backup --help
+```
+
+The destination must not exist, its direct parent must already exist, and source
+and destination must not overlap. Existing locks, uncheckpointed SQLite WAL or
+journal contents, unsafe permissions/links and unsupported storage privacy are
+refused without repair. Creation uses only its own temporary workspace lock and
+does not migrate or initialize the database. SIGINT/SIGTERM request cancellation
+and wait for local cleanup attempts; unconfirmed source lock release is reported
+explicitly. Incomplete files may remain in the new destination. There is no
+overwrite, automatic retry or destination deletion.
+
+This captures the whole workspace across all projects, including the database
+and supported managed media/staging payloads. The database includes chats,
+prompts, request/replay caches and other user text that may contain secrets.
+App credential, settings and connection files are excluded, but this is not a
+secret-redacted export. Backups are private plaintext, not encrypted. Keep them
+private, and do not upload or share one without reviewing its contents.
+
+Every invocation produces one JSON envelope on stdout, including offline help,
+version and errors. Successful capture/verification returns the shared backup
+result with `integrity:"verified"`, `restoration:"not_tested"`, payload counts and
+bounded inventory issues. Inspect `inventory.complete` and `inventory.issues`:
+verified bytes do not imply every referenced media item was present or that
+pending work is resolved. Verification does not repair, import or resume work.
+Restore is not implemented, and a verified backup has not been restore-tested.
+
+Errors contain only a safe code/message, allowlisted details and `retryable:false`;
+concise diagnostics go to stderr. Exit codes are 0 for success, 2 for invalid
+arguments/paths, 1 for operational refusal/failure, 130 for SIGINT cancellation,
+and 143 for SIGTERM cancellation. Flags must be exact and unique; no stdin,
+credential, destination-reuse, restore or server options are accepted. The
+ordinary authenticated `mioon workspace backup inspect` operation is a separate
+bounded read of running-backend metadata; it cannot select filesystem paths or
+create a backup.
+
+If source lock cleanup cannot be confirmed, a successfully published backup
+remains successful with `warnings:["SOURCE_LOCK_RELEASE_UNCONFIRMED"]`. A failed
+or cancelled operation keeps its original error code and adds only
+`details.sourceLockRelease:"unconfirmed"`. Preserve the reported outcome and
+inspect the source lock before starting another capture; release is not
+silently assumed, and no existing lock is automatically reclaimed. Always
+inspect result warnings and inventory alongside the exit status; exit 0 alone
+does not establish source lock cleanup or inventory completeness.
+
+`WORKSPACE_BACKUP_PUBLICATION_UNCONFIRMED` means final publication durability or
+rollback could not be confirmed: a complete marker may already exist. Preserve
+that destination and run the separate `verify` command. Marker presence alone
+is not proof of a complete backup;
+do not assume capture failed without publishing or overwrite/retry in place.
+
 ## Connect securely
 
 Choose one connection mode in the environment of the CLI process.
