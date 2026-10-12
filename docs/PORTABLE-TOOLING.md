@@ -9,6 +9,7 @@ Doctor can run before dependency installation using Node.js ≥24. Build/test re
 
 ```text
 node scripts/tooling.mjs doctor
+node scripts/tooling.mjs typecheck
 node scripts/tooling.mjs doctor --native-ready
 node scripts/tooling.mjs build --channel=development
 node scripts/tooling.mjs build --channel=production
@@ -97,3 +98,7 @@ Local evidence root: `evidence/q6-portable-tooling/`.
 - Parent independent full aggregate remains the release gate; no duplicate full aggregate was run by this worker.
 
 No signing, notarization, installers, publication, remote CI execution, actual credentials or live provider calls were part of this increment. No network packet capture was performed. Remaining Q6 includes native-specific lanes, OS/architecture package layouts and archive inspection, signed-release infrastructure and real Mac/Windows verification; this local runner deliberately does not invent those results.
+
+## 2026-10-12 mixed-TypeScript addition
+
+The dedicated `typecheck` command checks the two fixed projects with the exact local compiler and source-language policy, without doctor/build/media/workspace prerequisites. Shared build now checks types before Vite/Desktop, ordinary Web build does so before Vite, and direct Desktop build does so before staging replacement. Doctor retains its prerequisite meanings: buildReady does not certify source type correctness; the build itself may reject a missing/invalid compiler or type error. The detailed checked surface, exclusions, dependency pins and new-feature rule are in [TYPESCRIPT.md](TYPESCRIPT.md). Historical acceptance counts above are not a current rerun.

@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "strict": true,
+    "allowJs": true,
+    "checkJs": true,
+    "skipLibCheck": false,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "rootDir": "../.."
+  },
+  "files": [
+    "../../packages/contracts/src/agent-protocol.ts",
+    "../../packages/contracts/src/agent-protocol.mjs",
+    "./agent-protocol.consumer.mts"
+  ],
+  "include": [
+    "../../packages/*/src/**/*.ts",
+    "../../apps/*/src/**/*.ts"
+  ],
+  "exclude": [
+    "../../packages/ui/**",
+    "../../apps/web/**"
+  ]
+}

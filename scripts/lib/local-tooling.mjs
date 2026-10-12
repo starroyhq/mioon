@@ -2,7 +2,7 @@ import path from 'node:path';
 import {constants} from 'node:os';
 import {constants as fsConstants} from 'node:fs';
 import {createRequire} from 'node:module';
-import {access, readFile, realpath, readdir, stat} from 'node:fs/promises';
+import {access, readFile, realpath, readdir, stat, lstat} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import desktopIdentity from '../../apps/desktop/identity.cjs';
 import buildMetadata from '../../apps/desktop/build-metadata.cjs';
@@ -19,10 +19,12 @@ export const PORTABLE_TEST_FILES = Object.freeze([
   'agent-protocol.test.mjs', 'mutation-contracts.test.mjs',
   'workspace-layout.test.mjs', 'workspace-state.test.mjs', 'workspace-panel-intent.test.mjs',
   'desktop-build-metadata.test.mjs', 'local-tooling.test.mjs',
+  'typecheck-contract.test.mjs', 'typecheck-tooling.test.mjs',
 ]);
 export function parseArguments(args) {
   const [command, ...flags] = args;
-  if (!['doctor', 'build', 'test'].includes(command)) throw fail('TOOLING_USAGE', 'Usage: tooling.mjs doctor|build|test [documented options]');
+  if (!['doctor', 'build', 'test', 'typecheck'].includes(command)) throw fail('TOOLING_USAGE', 'Usage: tooling.mjs doctor|build|test|typecheck [documented options]');
+  if (command === 'typecheck' && flags.length) throw fail('TOOLING_USAGE', 'The typecheck command accepts no options or compiler arguments.');
   const result = {command, channel: 'development', concurrency: 1, suite: 'portable', files: [], nativeReady: false};
   const seen = new Set();
   for (const flag of flags) {
@@ -87,6 +89,97 @@ export async function installedPackages(root) {
     }
   }
   return result;
+}
+
+// Resolve only the explicitly declared classic JavaScript compiler in this
+// repository. Never consult PATH, global packages, package-manager shims or an
+// ancestor node_modules. Normal pnpm links into this local tree remain valid.
+export async function installedTypeScript(root) {
+  let repository, modules;
+  try {
+    repository = await realpath(root);
+    modules = await realpath(path.join(repository, 'node_modules'));
+  } catch {
+    throw fail('TYPECHECK_DEPENDENCY_MISSING', 'Repository-local TypeScript is missing. Prepare the reviewed lockfile dependencies explicitly before typechecking; no installation was attempted.');
+  }
+  try {
+    if (!isContainedPath(repository, modules) || !(await stat(modules)).isDirectory()) throw Error();
+    const rootManifest = path.join(repository, 'package.json');
+    if (await realpath(rootManifest) !== rootManifest || !(await stat(rootManifest)).isFile()) throw Error();
+    const declared = JSON.parse(await readFile(rootManifest, 'utf8'));
+    const expected = declared.devDependencies?.typescript;
+    buildMetadata.requireExactVersion(expected, 'Local TypeScript version');
+    const packageRoot = await realpath(path.join(modules, 'typescript'));
+    if (!isContainedPath(modules, packageRoot) || !(await stat(packageRoot)).isDirectory()) throw Error();
+    const packageFile = path.join(packageRoot, 'package.json');
+    if (await realpath(packageFile) !== packageFile || !(await stat(packageFile)).isFile()) throw Error();
+    const actual = JSON.parse(await readFile(packageFile, 'utf8'));
+    if (actual.name !== 'typescript' || actual.version !== expected || actual.bin?.tsc !== './bin/tsc') throw Error();
+    // These exact regular paths are the reviewed JS compiler layout. A symlink
+    // to another entry, including one elsewhere inside the package, is invalid.
+    for (const relative of ['bin/tsc', 'lib/tsc.js', 'lib/_tsc.js']) {
+      const entry = path.join(packageRoot, relative);
+      if (await realpath(entry) !== entry || !(await stat(entry)).isFile()) throw Error();
+    }
+    return {version: actual.version, entry: path.join(packageRoot, 'lib/tsc.js')};
+  } catch {
+    throw fail('TYPECHECK_DEPENDENCY_INVALID', 'Installed TypeScript must match the exact root devDependency pin, expected JavaScript compiler entries and repository-local paths. Restore the reviewed lockfile dependencies explicitly; no installation or repair was attempted.');
+  }
+}
+
+export async function typecheckCommands(root, execPath = process.execPath) {
+  await verifySourceLanguages(root);
+  const compiler = await installedTypeScript(root);
+  return ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json'].map(project => ({
+    command: execPath, args: [compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
+  }));
+}
+
+// Existing runtime JavaScript can migrate incrementally. New application
+// source paths must be TypeScript; this is a path policy, not a claim that
+// changes within grandfathered files have been migrated or typechecked.
+export async function verifySourceLanguages(root) {
+  let legacy;
+  try {
+    legacy = JSON.parse(await readFile(path.join(root, 'config/typecheck-legacy-sources.json'), 'utf8'));
+    if (!Array.isArray(legacy) || legacy.length > 20000 || new Set(legacy).size !== legacy.length ||
+      legacy.some(file => typeof file !== 'string' || !/^(?:apps|packages)\/[^/]+\/src\/(?:[^/]+\/)*[^/]+\.(?:js|jsx|mjs|cjs)$/.test(file) || file.split('/').some(part => ['.', '..'].includes(part)) || file.includes('\\'))) throw Error();
+  } catch {
+    throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'The reviewed legacy JavaScript source allowlist must be present and contain unique repository-relative runtime source paths.');
+  }
+  const allowed = new Set(legacy);
+  let examined = 0;
+  const visit = async relative => {
+    for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
+      if (++examined > 20000) throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'Runtime source traversal exceeded the reviewed 20000-entry bound.');
+      const file = `${relative}/${entry.name}`;
+      if (entry.isSymbolicLink()) throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'Runtime source symlinks are not followed by the language guard.');
+      if (entry.isDirectory()) await visit(file);
+      else if (entry.isFile() && /\.(?:js|jsx|mjs|cjs)$/.test(entry.name) && !allowed.has(file)) {
+        throw fail('TYPECHECK_NEW_JAVASCRIPT', `New application source must use .ts/.tsx: ${file}`);
+      } else if (entry.isFile() && /\.tsx$/.test(entry.name) && !/^(?:apps\/web|packages\/ui)\/src\//.test(file)) {
+        throw fail('TYPECHECK_UNSUPPORTED_TSX', `TSX source is only supported in the browser build: ${file}`);
+      } else if (entry.isFile() && /\.(?:mts|cts)$/.test(entry.name)) {
+        throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'Runtime TypeScript source must use the checked .ts/.tsx extensions.');
+      }
+    }
+  };
+  for (const group of ['apps', 'packages']) {
+    const directory = path.join(root, group);
+    const groupInfo = await lstat(directory).catch(error => {if (error.code === 'ENOENT') return null; throw error;});
+    if (!groupInfo) continue;
+    if (!groupInfo.isDirectory() || groupInfo.isSymbolicLink()) throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'Runtime source groups must be repository-local directories.');
+    for (const workspace of await readdir(directory, {withFileTypes: true})) {
+      if (++examined > 20000) throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'Runtime source traversal exceeded the reviewed 20000-entry bound.');
+      if (workspace.isSymbolicLink()) throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'Runtime workspace symlinks are not followed by the language guard.');
+      if (!workspace.isDirectory()) continue;
+      const relative = `${group}/${workspace.name}/src`;
+      const source = await lstat(path.join(root, relative)).catch(error => {if (error.code === 'ENOENT') return null; throw error;});
+      if (!source) continue;
+      if (!source.isDirectory() || source.isSymbolicLink()) throw fail('TYPECHECK_SOURCE_POLICY_INVALID', 'Runtime source roots must be repository-local directories.');
+      await visit(relative);
+    }
+  }
 }
 
 // Advisory only: running even `pnpm --version` can download the project's pinned

@@ -13,8 +13,10 @@ test('shared protocol labels and fixed suffixes are pure, closed and deeply froz
   assert.ok(Object.isFrozen(AGENT_PROTOCOLS));
   for (const entry of Object.values(AGENT_PROTOCOLS)) assert.ok(Object.isFrozen(entry));
   assert.throws(() => { AGENT_PROTOCOLS.responses.path = '/other'; }, TypeError);
-  const source = await readFile(new URL('../packages/contracts/src/agent-protocol.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /(?:import\s|require\(|\bfetch\(|\bBuffer\b|\bprocess\b)/);
+  for (const file of ['agent-protocol.mjs', 'agent-protocol.ts']) {
+    const source = await readFile(new URL(`../packages/contracts/src/${file}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /(?:import\s|require\(|\bfetch\(|\bBuffer\b|\bprocess\b)/);
+  }
 });
 
 test('endpoint derivation preserves complete canonical base path and accepts only two fixed protocol suffixes', () => {

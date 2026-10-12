@@ -1,18 +1,25 @@
 import {realpath} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
-import {parseArguments, preflight, discoverTests, buildCommands, testCommand, executeCommand, toolingEnvironment} from './lib/local-tooling.mjs';
+import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, toolingEnvironment} from './lib/local-tooling.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 export async function main(args = process.argv.slice(2)) {
   try {
     const options = parseArguments(args);
+    if (options.command === 'typecheck') {
+      for (const command of await typecheckCommands(root)) {
+        const result = await executeCommand(command, {env: toolingEnvironment()});
+        if (result.code !== 0) return result.code;
+      }
+      return 0;
+    }
     const {report, entries} = await preflight(root, {channel: options.channel, media: options.command === 'doctor'});
     if (options.command === 'doctor') {
       console.log(JSON.stringify(report, null, 2));
       return !report.prerequisitesReady ? 1 : options.nativeReady && !report.nativeReadiness.ready ? 2 : 0;
     }
     if (!report.buildReady) {console.error(JSON.stringify(report, null, 2)); return 1;}
-    const commands = options.command === 'build' ? buildCommands(root, entries, options.channel)
+    const commands = options.command === 'build' ? [...await typecheckCommands(root), ...buildCommands(root, entries, options.channel)]
       : [testCommand(root, await discoverTests(root, options), options.concurrency)];
     for (const command of commands) {
       const result = await executeCommand(command, {env: toolingEnvironment(process.env, {mediaPaths: options.command === 'test'})});

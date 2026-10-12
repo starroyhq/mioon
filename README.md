@@ -173,6 +173,10 @@ Web入口的业务数据在 `MIOON_DATA_DIR`（默认 `data/`）：SQLite WAL、
 For a prebuilt example, first copy the closed sample into a new private workspace using the commands in [examples/README.md](examples/README.md), then start that copy. A broadly readable sample directory is intentionally refused; existing data is never chmodded automatically. The delivered sample contains no login token or API key. See [private-storage recovery](docs/PRIVATE-STORAGE.md).
 
 
+## 新功能 TypeScript 约定
+
+新增业务逻辑使用 `.ts`，新增浏览器组件使用 `.tsx`；存量 JavaScript 修复和最小接线保持兼容，逐模块迁移。先运行 `node scripts/tooling.mjs typecheck`，再使用受检构建入口。类型检查不能替代运行时校验；当前覆盖范围与混合 Node/浏览器/Electron 路径见 [TypeScript 开发说明](docs/TYPESCRIPT.md)。
+
 ## Monorepo 和开发入口
 
 - apps/desktop：Electron 安全桌面壳和 utilityProcess 业务进程

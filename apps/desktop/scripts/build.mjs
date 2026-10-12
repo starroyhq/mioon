@@ -5,9 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import desktopIdentity from '../identity.cjs';
 import desktopBuildMetadata from '../build-metadata.cjs';
+import {main as checkTypes} from '../../../scripts/tooling.mjs';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
+// Every direct desktop/package entry checks real TS before replacing staging.
+if (await checkTypes(['typecheck']) !== 0) throw new Error('Type checking failed; desktop staging was not replaced.');
 const desktop = path.join(root, 'apps/desktop');
 const output = path.join(desktop, 'build');
 const web = path.join(root, 'apps/web/dist');

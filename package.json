@@ -35,17 +35,22 @@
     "test:providers": "node --test tests/providers*.test.mjs",
     "test:browser:providers": "python3 tests/browser_providers_v4.py",
     "desktop:build:production": "pnpm --filter @mioon/desktop build:production",
-    "desktop:package:linux:dev": "pnpm --filter @mioon/desktop package:linux:dev"
+    "desktop:package:linux:dev": "pnpm --filter @mioon/desktop package:linux:dev",
+    "typecheck": "node scripts/tooling.mjs typecheck"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.32.1",
     "@mioon/business": "workspace:*",
+    "@mioon/cli": "workspace:*",
+    "@mioon/client": "workspace:*",
     "@mioon/contracts": "workspace:*",
     "@mioon/server": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@types/node": "24.19.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
     "electron": "44.7.0",
     "electron-builder": "26.15.3",
     "esbuild": "0.27.7",
-    "@mioon/client": "workspace:*",
-    "@mioon/cli": "workspace:*"
+    "typescript": "6.0.3"
   }
 }
