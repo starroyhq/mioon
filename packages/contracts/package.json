@@ -7,7 +7,8 @@
     ".": "./src/index.mjs",
     "./private-storage": "./src/private-storage.mjs",
     "./timeline-delivery": "./src/timeline-delivery.ts",
-    "./local-drafts": "./src/local-drafts.ts"
+    "./local-drafts": "./src/local-drafts.ts",
+    "./last-project": "./src/last-project.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

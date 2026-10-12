@@ -1,0 +1,136 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {chooseInitialProject,retainLastProjectScope,createProjectBootGuard,preferenceCacheIdentity,assertLastProjectBootIdentity} from '../apps/web/src/last-project-navigation.ts';
+import {createWorkspacePreferences} from '../apps/web/src/workspace-preferences.js';
+import {defaultWorkspaceState,writeWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
+
+const id=n=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const scope='a'.repeat(64),otherScope='b'.repeat(64),stamp='2026-10-12T00:00:00.000Z';
+const envelope={supported:true,workspaceScope:scope,instanceId:id(9),revision:1,projectId:id(2),updatedAt:stamp,targetStatus:'matching'};
+const projects=[{id:id(1)},{id:id(2)}];
+const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
+const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
+function section(start,end){const a=app.indexOf(start),b=app.indexOf(end,a+start.length);assert.ok(a>=0&&b>a);assert.equal(app.indexOf(start,a+start.length),-1);return app.slice(a,b);}
+const selectSource=section('  async function selectProject(', '  async function reloadPreferences(');
+const bootSource=section('  async function boot() {','  useEffect(() => {\n    bootGuard.current.activate();');
+const compile=(code,name,env)=>Function(...Object.keys(env),`${code}\nreturn ${name};`)(...Object.values(env));
+
+test('initial choice uses valid explicit URL then valid locator then ordinary fallback without mutation',()=>{
+ const frozen=structuredClone(envelope);
+ assert.deepEqual(chooseInitialProject(projects,id(1),envelope),{projectId:id(1),source:'url',notice:null});
+ assert.equal(chooseInitialProject(projects,id(3),envelope).projectId,id(2));
+ assert.equal(chooseInitialProject(projects,null,envelope).source,'remembered');
+ assert.equal(chooseInitialProject(projects,null,{...envelope,targetStatus:'missing'}).projectId,id(1));
+ assert.match(chooseInitialProject(projects,null,{...envelope,targetStatus:'missing'}).notice,/不可用/);
+ assert.equal(chooseInitialProject([],null,null).source,'none');
+ assert.equal(chooseInitialProject(projects,null,{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'}).source,'fallback');
+ assert.deepEqual(envelope,frozen);
+});
+test('verified identity cannot change on reconnect and read failure preserves an established scope',()=>{
+ assert.equal(retainLastProjectScope(null,scope),scope);assert.equal(retainLastProjectScope(scope,null),scope);
+ assert.throws(()=>retainLastProjectScope(scope,otherScope),{code:'LAST_PROJECT_SCOPE_MISMATCH'});
+ assert.throws(()=>retainLastProjectScope(null,'normal'),{code:'LAST_PROJECT_SCOPE_MISMATCH'});
+});
+test('boot tickets reject later boots, project changes and StrictMode disposed lifetimes',()=>{
+ let epoch=0;const guard=createProjectBootGuard(()=>epoch);guard.activate();const a=guard.begin();assert.equal(guard.isCurrent(a),true);
+ const b=guard.begin();assert.equal(guard.isCurrent(a),false);epoch++;assert.equal(guard.isCurrent(b),false);
+ const c=guard.begin();guard.deactivate();guard.activate();assert.equal(guard.isCurrent(c),false);
+});
+
+function selectionHarness({refresh,confirm=true}={}){
+ const calls=[],currentProject={current:id(1)},projectEpoch={current:0},navigationEpoch={current:0};
+ const view={activeMode:'canvas',canvas:{selectedId:null,viewport:{zoom:1}}};
+ const env={notify:(...args)=>calls.push(['notice',...args]),readableError:e=>e.message,workspaceRef:{current:{restored:false}},loading:false,importSession:{current:{active:true}},currentProject,projectEpoch,navigationEpoch,
+  agentDraft:{current:false},imageDraft:{current:false},guardProjectNavigation:async()=>confirm,
+  lastProjectRef:{current:{invalidateNavigation:epoch=>calls.push(['invalidate',epoch]),rememberOpened:(projectId,epoch)=>calls.push(['remember',projectId,epoch])}},
+  requestCounter:{current:0},preferencesRef:{current:{flush:async()=>{},load:async()=>view,getStatus:()=>({phase:'saved'})}},
+  tasksRef:{current:{getState:()=>({phase:'idle'}),load:async()=>{}}},viewReady:{current:true},dataRef:{current:{project:{id:id(1)}}},
+  emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
+  refresh:refresh??(async projectId=>({project:{id:projectId},shots:[],nodes:[]})),updateView:()=>{},URL,
+  window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}}},
+  ...Object.fromEntries(['setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setShowJobs','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,value=>calls.push([name,value])])),
+ };
+ return {env,calls,select:compile(selectSource,'selectProject',env)};
+}
+test('actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view',async()=>{
+ const f=selectionHarness();assert.equal(await f.select(id(2)),true);assert.deepEqual(f.calls.filter(x=>x[0]==='remember'),[['remember',id(2),1]]);
+ for(const args of [[id(2),true],[id(2),false,true,true]]){const g=selectionHarness();assert.equal(await g.select(...args),true);assert.equal(g.calls.some(x=>x[0]==='remember'),false);}
+ const cancelled=selectionHarness({confirm:false});assert.equal(await cancelled.select(id(2)),false);assert.deepEqual(cancelled.calls,[]);
+});
+test('actual App rejects failed, foreign, unmounted or overtaken load without remembering it',async()=>{
+ for(const next of [null,{project:{id:id(3)},shots:[],nodes:[]}]){const f=selectionHarness({refresh:async()=>next});assert.equal(await f.select(id(2)),false);assert.equal(f.calls.some(x=>x[0]==='remember'),false);}
+ const gate=deferred(),f=selectionHarness({refresh:()=>gate.promise}),attempt=f.select(id(2));await new Promise(setImmediate);
+ f.env.projectEpoch.current++;f.env.currentProject.current=id(3);gate.resolve({project:{id:id(2)},shots:[],nodes:[]});assert.equal(await attempt,false);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
+ const g=selectionHarness();g.env.importSession.current.active=false;assert.equal(await g.select(id(2)),false);assert.equal(g.calls.some(x=>x[0]==='remember'),false);
+});
+test('actual same-project shortcut requires loaded project and a failed activation can be explicitly retried',async()=>{
+ const f=selectionHarness();assert.equal(await f.select(id(1)),true);assert.deepEqual(f.calls,[['remember',id(1),0]]);
+ const g=selectionHarness();g.env.dataRef.current={};assert.equal(await g.select(id(1)),true);assert.ok(g.calls.some(x=>x[0]==='invalidate'));assert.deepEqual(g.calls.filter(x=>x[0]==='remember'),[['remember',id(1),1]]);
+});
+test('actual preference-load setup rejection releases only its current loading owner and never remembers',async()=>{
+ const f=selectionHarness();f.env.preferencesRef.current.load=async()=>{throw Error('Preference identity rejected');};
+ assert.equal(await f.select(id(2)),false);assert.ok(f.calls.some(x=>x[0]==='notice'));assert.ok(f.calls.some(x=>x[0]==='setLoading'&&x[1]===false));assert.equal(f.calls.some(x=>x[0]==='remember'),false);
+ const gate=deferred(),g=selectionHarness();g.env.preferencesRef.current.load=()=>gate.promise;const pending=g.select(id(2));await new Promise(setImmediate);g.env.currentProject.current=id(3);g.env.projectEpoch.current++;gate.reject(Error('late'));
+ assert.equal(await pending,false);assert.equal(g.calls.some(x=>x[0]==='notice'||x[0]==='setLoading'&&x[1]===false),false);
+});
+
+function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope}),restored=false,explicit=null}={}){
+ const calls=[],epoch={current:0};const guard=createProjectBootGuard(()=>epoch.current);guard.activate();
+ const env={bootGuard:{current:guard},migrateBrowserStorage:()=>{},workspaceRef:{current:null},preferenceScope:{current:null},locatorIdentity:{current:null},
+  rpc:async op=>op==='workspace.restore.inspect'?{restored,...(restored?{workspaceOrigin:id(10)}:{})}:op==='project.list'?projects:[],
+  retainWorkspaceIdentity:(_current,observed)=>observed,setWorkspace:x=>calls.push(['workspace',x]),
+  lastProjectRef:{current:{getState:()=>({identityBlocked:false,revision:null}),discover:()=>{calls.push(['discover']);return discovery;}}},
+  setProjects:x=>calls.push(['projects',x]),setProviders:()=>{},setAuth:x=>calls.push(['auth',x]),setOnline:()=>{},
+  retainLastProjectScope,chooseInitialProject,assertLastProjectBootIdentity,URLSearchParams,window:{location:{search:explicit?'?project='+explicit:''}},
+  currentProject:{current:null},selectProject:async(projectId,initial)=>{calls.push(['select',projectId,initial]);env.currentProject.current=projectId;epoch.current++;return true;},
+  setData:()=>{},emptyData:{},notify:(...args)=>calls.push(['notice',...args]),readableError:e=>e.message,
+ };
+ return{env,epoch,calls,guard,boot:compile(bootSource,'boot',env)};
+}
+test('actual App startup chooses the remembered nonfirst project, with explicit URL precedence and no remember write',async()=>{
+ const f=bootHarness();await f.boot();assert.deepEqual(f.calls.filter(x=>x[0]==='select'),[['select',id(2),true]]);assert.equal(f.env.preferenceScope.current,scope);
+ const g=bootHarness({explicit:id(1)});await g.boot();assert.deepEqual(g.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);
+});
+test('actual App stale startup cannot replace newer selection, publish data after unmount or inspect restored locator',async()=>{
+ const gate=deferred(),f=bootHarness({discovery:gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;gate.resolve({envelope,workspaceScope:scope});await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
+ const held=deferred(),g=bootHarness({discovery:held.promise}),pending=g.boot();await new Promise(setImmediate);g.guard.deactivate();held.resolve({envelope,workspaceScope:scope});await pending;assert.equal(g.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
+ const restored=bootHarness({restored:true});await restored.boot();assert.equal(restored.calls.some(x=>x[0]==='discover'),false);assert.deepEqual(restored.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);
+});
+test('initial foreign locator permits uncached manual project fallback; changed established identity blocks startup',async()=>{
+ const first=bootHarness({discovery:Promise.resolve(null)});first.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision:null});await first.boot();
+ assert.deepEqual(first.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);assert.equal(first.env.preferenceScope.current,null);
+ for(const revision of [0,1]){
+  const changed=bootHarness({discovery:Promise.resolve(null)});changed.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision});await changed.boot();
+  assert.equal(changed.calls.some(x=>x[0]==='select'),false);assert.ok(changed.calls.some(x=>x[0]==='auth'&&x[1]==='error'));assert.equal(changed.env.preferenceScope.current,null);
+ }
+});
+
+function storage(){const map=new Map();return{getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k),map};}
+const response=data=>({ok:true,status:200,json:async()=>({ok:true,data})});
+test('App verified preference scope excludes foreign same-UUID and legacy bare-cache imports',async t=>{
+ const local=storage(),legacy=defaultWorkspaceState();legacy.activeMode='editing';legacy.editing.playhead=117;writeWorkspaceState(id(1),legacy,local);writeWorkspaceState(`normal:${otherScope}:${id(1)}`,legacy,local);
+ for(const verified of [null,scope]){
+  const writes=[];const prefs=createWorkspacePreferences({storage:local,getStorageScope:()=>verified,fetchImpl:async(_url,init)=>{writes.push(init.method);return response({projectId:id(1),revision:0,state:null});}});t.after(()=>prefs.dispose({flush:false}));
+  const loaded=await prefs.load(id(1));assert.equal(loaded.activeMode,'canvas');assert.equal(loaded.editing.playhead,0);await prefs.flush();assert.deepEqual(writes,['GET']);
+ }
+ assert.equal(preferenceCacheIdentity('normal',id(1),null).cacheId,null);assert.notEqual(preferenceCacheIdentity('normal',id(1),scope).entryScope,preferenceCacheIdentity('normal',id(1),otherScope).entryScope);
+});
+test('same verified workspace can reuse its bounded cache, while unverified offline fallback cannot',async t=>{
+ const local=storage(),saved=defaultWorkspaceState();saved.activeMode='editing';saved.editing.playhead=57;writeWorkspaceState(`normal:${scope}:${id(1)}`,saved,local);
+ for(const [verified,expected] of [[null,0],[scope,57]]){const prefs=createWorkspacePreferences({storage:local,getStorageScope:()=>verified,fetchImpl:async()=>{throw Error('offline');}});t.after(()=>prefs.dispose({flush:false}));assert.equal((await prefs.load(id(1))).editing.playhead,expected);assert.equal(prefs.getStatus(id(1)).phase,'local');}
+});
+test('a new boot without verified scope cannot flush queued previous-scope view edits into the new connection',async t=>{
+ let verified=scope;const requests=[];const prefs=createWorkspacePreferences({getStorageScope:()=>verified,delayMs:60_000,maxWaitMs:60_000,fetchImpl:async(_url,init)=>{requests.push(init.method);return response({projectId:id(1),revision:0,state:null});}});t.after(()=>prefs.dispose({flush:false}));
+ const state=await prefs.load(id(1));state.editing.playhead=80;prefs.update(id(1),state);verified=null;await prefs.flush();assert.deepEqual(requests,['GET']);
+ assert.equal((await prefs.load(id(1))).editing.playhead,0);await prefs.flush();assert.deepEqual(requests,['GET','GET']);
+});
+test('same-session locator mismatch disables previous workspace cache and queued preference writes immediately',async t=>{
+ let remote=structuredClone(envelope);const locator=createLastProjectController({client:{get:async()=>remote,put:async()=>{throw Error('Not authorized by this test');}}});t.after(()=>locator.dispose());await locator.discover();
+ const local=storage(),saved=defaultWorkspaceState();saved.activeMode='editing';saved.editing.playhead=57;writeWorkspaceState(`normal:${scope}:${id(1)}`,saved,local);
+ const requests=[];const prefs=createWorkspacePreferences({storage:local,getStorageScope:()=>locator.getState().identityBlocked?null:scope,delayMs:60_000,maxWaitMs:60_000,fetchImpl:async(_url,init)=>{requests.push(init.method);return response({projectId:id(1),revision:0,state:null});}});t.after(()=>prefs.dispose({flush:false}));
+ assert.equal((await prefs.load(id(1))).editing.playhead,57);
+ remote={...remote,workspaceScope:otherScope};await locator.recheck();assert.equal(locator.getState().identityBlocked,true);
+ await prefs.flush();assert.deepEqual(requests,['GET']);assert.equal((await prefs.load(id(1))).editing.playhead,0);await prefs.flush();assert.deepEqual(requests,['GET','GET']);
+});

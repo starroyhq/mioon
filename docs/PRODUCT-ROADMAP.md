@@ -59,7 +59,8 @@ and full cut using originals with matching timing and sound.
 The user confirmed this iteration on 2026-10-12. The first isolated implementation
 now covers [local clip-property drafts](LOCAL-CLIP-DRAFTS.md), verified by the final
 independent typecheck/full suite and a rebuilt Linux package crash/recovery/export run.
-Other draft forms and origin-independent last-project selection remain planned.
+Origin-independent [last-project selection](LAST-PROJECT.md) is the next isolated
+implementation under acceptance. Other draft forms remain planned.
 See the [bounded recovery plan](CRASH-RECOVERY-PLAN.zh-CN.md).
 
 - Persist explicitly supported unsent drafts locally, with bounded capacity, private

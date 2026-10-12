@@ -8,8 +8,10 @@ import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createLocalDrafts} from '@mioon/business/local-drafts';
+import {createLastProject,readLastProjectTarget} from '@mioon/business/last-project';
 import {createTimelineRecoveryBoundary} from '@mioon/business/timeline-recovery';
 import {createLocalDraftHttp} from './local-drafts-http.ts';
+import {createLastProjectHttp} from './last-project-http.ts';
 import {createChatHttp} from './chat-http.mjs';
 import {createEditTasksHttp} from './edit-tasks-http.mjs';
 import {createImageHttp} from './image-http.mjs';
@@ -132,6 +134,11 @@ export async function startServer({
         readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read(),
         readClipAsset:(projectId,clip)=>createTimelineRecoveryBoundary(store.db,{projectId}).clipSource(clip)}});
     const localDraftHttp = createLocalDraftHttp({drafts:localDrafts,signal:shutdown.signal});
+    const lastProject = createLastProject({root,channel:localDraftChannel,signal:shutdown.signal,
+      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+      guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+        readProject:projectId=>readLastProjectTarget(store.db,projectId)}});
+    const lastProjectHttp = createLastProjectHttp({lastProject,signal:shutdown.signal});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored){
@@ -191,6 +198,7 @@ export async function startServer({
         if (await chatHttp?.handle(req, res, url)) return;
         if (await editTasksHttp(req, res, url)) return;
         if (await localDraftHttp(req, res, url)) return;
+        if (await lastProjectHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {

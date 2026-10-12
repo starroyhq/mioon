@@ -1,3 +1,4 @@
+import { preferenceCacheIdentity } from './last-project-navigation.ts';
 import { workspaceOriginScope, assertWorkspaceIntent } from './workspace-origin.js';
 import { defaultWorkspaceState, normalizeWorkspaceState, readStoredWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 
@@ -49,7 +50,7 @@ const failure = (message, code = 'NETWORK', transient = true) => Object.assign(n
  * callbacks immediately while allowing that same final keepalive chain to finish.
  */
 export function createWorkspacePreferences({
-  fetchImpl = (...args) => globalThis.fetch(...args), storage, getWorkspace = () => ({ restored: false }),
+  fetchImpl = (...args) => globalThis.fetch(...args), storage, getWorkspace = () => ({ restored: false }), getStorageScope = () => undefined,
   onState = () => {}, onStatus = () => {},
   delayMs = 250, maxWaitMs = 1000, retryDelays = [500, 1500, 4000],
   requestTimeoutMs = 8000, now = () => Date.now(),
@@ -58,8 +59,9 @@ export function createWorkspacePreferences({
   const entries = new Map();
   let activeId = null, activation = 0, disposed = false, disposePromise;
 
-  const entryKey = projectId => JSON.stringify([workspaceOriginScope(getWorkspace()), projectId]);
-  function live(entry) { return entries.get(entry.key) === entry && !entry.retired; }
+  const cacheIdentity = projectId => preferenceCacheIdentity(workspaceOriginScope(getWorkspace()), projectId, getStorageScope());
+  const entryKey = projectId => JSON.stringify([cacheIdentity(projectId).entryScope, projectId]);
+  function live(entry) { return entries.get(entry.key) === entry && !entry.retired && entry.key === entryKey(entry.projectId); }
   function pending(entry) { return Boolean(entry.request) || entry.desiredKey !== entry.savedKey; }
   function snapshotStatus(entry) {
     return { phase: entry.phase, revision: entry.revision, pending: entry.ready && pending(entry),
@@ -84,7 +86,7 @@ export function createWorkspacePreferences({
   }
   function cache(entry) {
     // Keep an offline fallback without search text, unknown fields or credentials.
-    writeWorkspaceState(entry.cacheId, durableWorkspaceState(entry.state), storage);
+    if (entry.cacheId !== null) writeWorkspaceState(entry.cacheId, durableWorkspaceState(entry.state), storage);
   }
   function plan(entry, delay, retry = false) {
     clearTimer(entry);
@@ -183,8 +185,8 @@ export function createWorkspacePreferences({
   }
   function makeEntry(projectId) {
     const workspace = structuredClone(getWorkspace()), key = entryKey(projectId);
-    if (workspaceOriginScope(workspace) === null) throw failure('Workspace identity has not been verified.', 'WORKSPACE_ORIGIN_UNVERIFIED', false);
-    return { projectId, workspace, key, cacheId: workspace.restored ? `restore:${workspace.workspaceOrigin}:${projectId}` : projectId, state: defaultWorkspaceState(), revision: null, ready: false, retired: false,
+    if (cacheIdentity(projectId).entryScope === null) throw failure('Workspace identity has not been verified.', 'WORKSPACE_ORIGIN_UNVERIFIED', false);
+    return { projectId, workspace, key, cacheId: cacheIdentity(projectId).cacheId, state: defaultWorkspaceState(), revision: null, ready: false, retired: false,
       desired: null, desiredKey: null, savedKey: null, request: null, inFlight: null,
       loadPromise: null, timer: null, burstStart: null, due: false, force: false,
       failures: 0, blocked: false, phase: 'loading', error: null };
@@ -208,7 +210,7 @@ export function createWorkspacePreferences({
         // A reload cannot race an older request from this same controller.
         if (previousRequest) await previousRequest;
         if (disposed || !live(entry)) return;
-        const legacy = readStoredWorkspaceState(entry.cacheId, storage);
+        const legacy = entry.cacheId === null ? null : readStoredWorkspaceState(entry.cacheId, storage);
         try {
           const data = await request(entry, 'GET');
           if (disposed || !live(entry)) return;

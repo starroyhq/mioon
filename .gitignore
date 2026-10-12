@@ -77,3 +77,7 @@ Thumbs.db
 *.msi
 *.deb
 *.rpm
+
+# Private per-workspace navigation locator (not a backup artifact).
+last-project-v1.json
+.last-project-v1.json.*.tmp

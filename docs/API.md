@@ -14,6 +14,17 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these same schemas through tools/list.
 
+### Private last-project locator
+
+Authenticated `GET /api/last-project` and `PUT /api/last-project` share a fixed,
+bounded private navigation service. This is renderer-only discovery/storage,
+not an RPC/CLI/MCP/Agent operation. Reads are noncreating; writes require the
+verified workspace scope, current service instance, original expected revision,
+and existing project ID. Exact schemas and capacity/CAS/recovery limits are in
+[`last-project.ts`](../packages/contracts/src/last-project.ts) and
+[LAST-PROJECT.md](LAST-PROJECT.md). Restored workspaces return unsupported before
+accessing the companion file. Reopening a project never grants task execution.
+
 ### Private clip-property drafts
 
 The authenticated `/api/local-drafts/clip` GET/PUT/DELETE and
