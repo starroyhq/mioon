@@ -1,6 +1,6 @@
 import {readTimelineDeliveryDownload, timelineDeliveryResponseHeaders} from '@mioon/business/timeline-delivery-read';
 import {readOwnedTimelineAsset} from '@mioon/business/timeline-sources';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+import {isTimelineRenderRecord, isTimelineMutationResponse, hasRequestNotAppliedProof, schemas, publicValue, AppError} from '@mioon/contracts';
 import {getWorkspaceRestoreContext} from '@mioon/business/workspace-restore-schema';
 import {isUnavailableRestoredRoute,workspaceRestoreError} from '@mioon/business/workspace-restore-policy';
 import http from 'node:http';
@@ -9,9 +9,12 @@ import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createLocalDrafts} from '@mioon/business/local-drafts';
 import {createLastProject,readLastProjectTarget} from '@mioon/business/last-project';
-import {createTimelineRecoveryBoundary} from '@mioon/business/timeline-recovery';
+import {createLocalDelivery} from '@mioon/business/local-delivery';
+import {hash} from '@mioon/business/services';
+import {createTimelineRecoveryBoundary,readTimelineReceipt} from '@mioon/business/timeline-recovery';
 import {createLocalDraftHttp} from './local-drafts-http.ts';
 import {createLastProjectHttp} from './last-project-http.ts';
+import {createLocalDeliveryHttp} from './local-delivery-http.ts';
 import {createChatHttp} from './chat-http.mjs';
 import {createEditTasksHttp} from './edit-tasks-http.mjs';
 import {createImageHttp} from './image-http.mjs';
@@ -139,6 +142,21 @@ export async function startServer({
       guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
         readProject:projectId=>readLastProjectTarget(store.db,projectId)}});
     const lastProjectHttp = createLastProjectHttp({lastProject,signal:shutdown.signal});
+    const localDelivery = createLocalDelivery({root,channel:localDraftChannel,signal:shutdown.signal,
+      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+      guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+        readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false}),
+        isRenderInput:value=>schemas['timeline.render'].safeParse(value).success,
+        isRenderResponse:(input,value)=>isTimelineMutationResponse('timeline.render',input,value),
+        isNotApplied:(input,error)=>hasRequestNotAppliedProof(error,input,{operation:'timeline.render'}),
+        readReceipt:input=>{
+          const saved=readTimelineReceipt(store.db,input,'timeline.render');
+          if(!saved)return null;
+          if(saved.requestHash!==hash({operation:'timeline.render',input}))throw new AppError('IDEMPOTENCY_CONFLICT','原导出请求身份与内容不一致。',409);
+          return publicValue(createTimelineRecoveryBoundary(store.db,input).replay('timeline.render',saved.response));
+        },
+        render:input=>services.call('timeline.render',input)}});
+    const localDeliveryHttp = createLocalDeliveryHttp({delivery:localDelivery,signal:shutdown.signal});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored){
@@ -199,6 +217,7 @@ export async function startServer({
         if (await editTasksHttp(req, res, url)) return;
         if (await localDraftHttp(req, res, url)) return;
         if (await lastProjectHttp(req, res, url)) return;
+        if (await localDeliveryHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {

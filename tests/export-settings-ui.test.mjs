@@ -161,13 +161,15 @@ test('equivalent settings objects do not invalidate a checked binding or issue a
 
 const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 function appFunction(begin, end, scope) { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope)); }
-function appHarness(f) {
-  const calls = [], panels = [], notices = [], pending = []; let ids = 0;
-  const environment = { panelIntent: { current: 0 }, openExportHistory() {}, workspaceRef: { current: { restored: false } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
+function appHarness(f, { restored = false, localState = { baselineConflict: false, candidate: null } } = {}) {
+  const calls = [], panels = [], notices = [], pending = [], submitOptions = []; let ids = 0;
+  const environment = { panelIntent: { current: 0 }, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
     setRightDockTab: value => panels.push(value), setPanelOpen: (...args) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
     notify: (...args) => notices.push(args), setShowJobs() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
+    context: () => ({ scope: f.live.scope, projectId: environment.currentProject.current }), isCurrent: captured => captured.scope === f.live.scope && captured.projectId === environment.currentProject.current,
+    localDeliveryRef: { current: { controller: { getState: () => localState, canPrepare: () => true, submit: async (input, options) => { calls.push(['local-delivery.submit', input]); submitOptions.push(options); return { id: id(20) }; } } } },
     requestId: () => { ids++; return 'frozen-render-id'; }, run: async (...args) => { calls.push(args); return { id: id(20) }; } };
-  return { calls, panels, pending, ids: () => ids,
+  return { calls, panels, pending, submitOptions, ids: () => ids,
     open: appFunction('  function openTimelineExport(', '  const historyState', environment),
     check: appFunction('  function checkTimelineExport(', '  function openTimelineExport(', environment),
     render: appFunction('  async function renderTimeline(', '  async function previewSource(', environment) };
@@ -178,8 +180,25 @@ test('actual App open is passive, explicit Check performs both operations, and e
   h.open(); assert.deepEqual(h.panels, ['delivery', ['inspector', true]]); assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
   const waiting = h.check(); f.capabilities[0].resolve(capability(f.live.exportSettings)); await Promise.resolve(); f.reads[0].resolve(report(f.live.exportSettings)); await waiting;
   const binding = f.state().binding; await h.render('export', binding); await h.render('export', binding);
-  assert.equal(h.ids(), 1); assert.deepEqual(h.calls, [['timeline:render:export', 'timeline.render', { ...binding, requestId: 'frozen-render-id', purpose: 'export' }]]);
-  f.set({ exportSettings: settings(), settingsVersion: 2 }); assert.deepEqual(h.calls[0][2].exportSettings, binding.exportSettings);
+  assert.equal(h.ids(), 1); assert.deepEqual(h.calls, [['local-delivery.submit', { ...binding, requestId: 'frozen-render-id', purpose: 'export' }]]);
+  assert.equal(h.submitOptions[0].canExecute(), true); assert.equal(h.submitOptions[0].nameCapture, undefined);
+  f.set({ exportSettings: settings(), settingsVersion: 2 }); assert.deepEqual(h.calls[0][1].exportSettings, binding.exportSettings);
+});
+
+test('actual Check rejects unresolved local candidate and saved-baseline conflict before any preflight work', async () => {
+  for (const localState of [{ baselineConflict: true, candidate: null }, { baselineConflict: false, candidate: { raw: { deliveryName: 'Retained draft' } } }]) {
+    const f = fixture(), h = appHarness(f, { localState }), before = f.state();
+    assert.equal(await h.check(), null);
+    assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0); assert.equal(f.state(), before);
+    assert.equal(h.submitOptions.length, 0);
+  }
+});
+
+test('restored export retains exact checked settings on the original session runner', async () => {
+  const f = fixture(), h = appHarness(f, { restored: true }); await f.ready(); const binding = f.state().binding;
+  await h.render('export', binding);
+  assert.deepEqual(h.calls, [['timeline:render:export', 'timeline.render', { ...binding, requestId: 'frozen-render-id', purpose: 'export' }]]);
+  assert.equal(h.submitOptions.length, 0); assert.equal(h.ids(), 1);
 });
 
 test('actual App pending export cannot be replaced by settings or another confirmation; preview retains omission', async () => {

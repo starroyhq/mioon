@@ -5,6 +5,7 @@ import { transformSync } from 'esbuild';
 import * as exportSettings from '../apps/web/src/export-settings-state.js';
 import * as format from '../apps/web/src/timeline-format-state.js';
 import { createTimelineDeliveryNameController } from '../apps/web/src/export-delivery-state.ts';
+import { createLocalDeliveryController } from '../apps/web/src/local-delivery-state.ts';
 import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.js';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
@@ -223,11 +224,16 @@ test('actual inspector bounds follow landscape and square timelines and reject o
 });
 
 const app = read('App.jsx');
-const appFunction = (name, end, env) => Function(...Object.keys(env), `${app.slice(app.indexOf(`  ${name}`), app.indexOf(`  ${end}`, app.indexOf(`  ${name}`)))}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values(env));
+function appFunction(name, end, env) {
+  const start = app.indexOf(`  ${name}`), stop = app.indexOf(`  ${end}`, start);
+  assert.ok(start >= 0 && stop > start, 'Actual App callback boundaries must remain present');
+  assert.equal(app.indexOf(`  ${name}`, start + name.length + 2), -1, 'The extracted callback must have a unique owner');
+  return Function(...Object.keys(env), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values(env));
+}
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
   let approved = false; const checks = [];
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, guardNavigation: async (message, dirty) => { checks.push({ message, dirty }); return approved; } });
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation: async (message, dirty) => { checks.push({ message, dirty }); return approved; } });
   assert.equal(await guard('leave'), false); assert.equal(f.state().dirty, true); assert.equal(checks[0].dirty, true);
   approved = true; assert.equal(await guard('leave'), true); assert.equal(f.state().dirty, false);
   assert.match(app, /selectProject[\s\S]*?guardProjectNavigation\(draftMessage/);
@@ -245,7 +251,7 @@ test('actual navigation epoch guard prevents late confirmation from discarding a
     context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
     dirtyRef: { current: false }, confirm: () => confirmation.promise,
   });
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, guardNavigation });
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation });
   const leaving = guard('leave'); epoch++; f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_720');
   confirmation.resolve(true); assert.equal(await leaving, false); assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().dirty, true);
 });
@@ -257,19 +263,31 @@ function deliveryNameController() {
   return controller;
 }
 
-for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name changed back', 'replacement controller']) {
-  test(`actual project guard preserves combined format and delivery-name drafts unless confirmation is current: ${outcome}`, async () => {
+for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name changed back', 'replacement controller', 'replacement local controller', 'newer project epoch', 'newer format', 'replacement format controller']) {
+  test(`actual project guard preserves combined format and delivery-name drafts unless confirmation is current: ${outcome}`, async t => {
     const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_720'), true);
     const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
     const deliveryNameRef = { current: { controller: delivery } }, confirmation = deferred(), checks = [];
+    let epoch = 1;
+    const getLocalContext = () => ({ scope: `${projectId}:${epoch}`, projectId, timelineId, timelineRevision: 1,
+      restored: false, connected: true, visible: true, busy: false,
+      deliveryName: deliveryNameRef.current.controller.getName(context().scope),
+      nameVersion: deliveryNameRef.current.controller.getVersion(context().scope), dirty: deliveryNameRef.current.controller.hasUnsaved() });
+    const makeLocalController = () => {
+      const controller = createLocalDeliveryController({ context: getLocalContext(), getContext: getLocalContext,
+        isRenderInput: value => contracts.schemas['timeline.render'].safeParse(value).success,
+        validateResponse: (input, result) => contracts.isTimelineMutationResponse('timeline.render', input, result) });
+      t.after(() => controller.dispose()); return controller;
+    };
+    const local = makeLocalController(), localDeliveryRef = { current: { controller: local } }, timelineFormatRef = { current: f };
     const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
       clipDraftRef: { current: null },
-      context: () => ({ projectId, epoch: 1 }), isCurrent: captured => captured.projectId === projectId && captured.epoch === 1,
+      context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
       subtitlesRef: { current: null }, dirtyRef: { current: false },
       confirm: message => { checks.push(message); return confirmation.promise; },
     });
     const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', {
-      timelineFormatRef: { current: f }, deliveryNameRef, guardNavigation,
+      timelineFormatRef, deliveryNameRef, localDeliveryRef, guardNavigation,
     });
     const leaving = guard('Discard both drafts?');
     assert.deepEqual(checks, ['Discard both drafts?']);
@@ -284,6 +302,16 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
       assert.deepEqual(replacement.getState(), delivery.getState());
       deliveryNameRef.current = { controller: replacement };
     }
+    if (outcome === 'replacement local controller') localDeliveryRef.current = { controller: makeLocalController() };
+    if (outcome === 'newer project epoch') epoch++;
+    if (outcome === 'newer format') assert.equal(f.controller.choose('square_720'), true);
+    if (outcome === 'replacement format controller') {
+      const replacement = fixture(); await replacement.ready(); assert.equal(replacement.controller.choose('landscape_720'), true);
+      assert.deepEqual(replacement.state(), f.state()); timelineFormatRef.current = replacement;
+    }
+    localDeliveryRef.current.controller.setContext(getLocalContext());
+    const localDraft = local.getState(), currentLocal = localDeliveryRef.current.controller, currentLocalDraft = currentLocal.getState();
+    const currentFormat = timelineFormatRef.current, currentFormatDraft = currentFormat.state();
     const formatDraft = f.state(), originalNameDraft = delivery.getState(), currentDelivery = deliveryNameRef.current.controller, currentNameDraft = currentDelivery.getState();
     confirmation.resolve(outcome !== 'cancelled');
     const accepted = outcome === 'accepted unchanged';
@@ -292,14 +320,54 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     if (accepted) {
       assert.equal(f.state().dirty, false); assert.equal(f.state().draftPresetId, 'portrait_720');
       assert.equal(currentDelivery.getState().dirty, false); assert.equal(currentDelivery.getState().value, '');
+      assert.equal(currentLocal.getState().leaveWithoutSaving, true); assert.equal(currentLocal.getState().autosavePaused, true);
     } else {
       assert.equal(f.state(), formatDraft); assert.equal(f.state().dirty, true);
+      assert.equal(currentFormat.state(), currentFormatDraft); assert.equal(currentFormat.state().dirty, true);
       assert.equal(delivery.getState(), originalNameDraft); assert.equal(delivery.hasUnsaved(), true);
       assert.equal(currentDelivery.getState(), currentNameDraft); assert.equal(currentDelivery.getState().dirty, true);
+      assert.equal(local.getState().leaveWithoutSaving, localDraft.leaveWithoutSaving);
+      assert.equal(local.getState().autosavePaused, localDraft.autosavePaused);
+      assert.equal(currentLocal.getState().leaveWithoutSaving, currentLocalDraft.leaveWithoutSaving);
+      assert.equal(currentLocal.getState().autosavePaused, currentLocalDraft.autosavePaused);
+      assert.equal(currentLocal.getState().dirty, true);
     }
-    assert.equal(f.submits.length, 0);
+    assert.equal(f.submits.length, 0); assert.equal(currentFormat.submits.length, 0);
   });
 }
+
+test('newer delivery title during joint confirmation preserves dirty inspector, format and local draft together', async t => {
+  const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_720'), true);
+  const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
+  const getLocalContext = () => ({ scope: context().scope, projectId, timelineId, timelineRevision: 1,
+    restored: false, connected: true, visible: true, busy: false, deliveryName: delivery.getName(context().scope),
+    nameVersion: delivery.getVersion(context().scope), dirty: delivery.hasUnsaved() });
+  const local = createLocalDeliveryController({ context: getLocalContext(), getContext: getLocalContext,
+    isRenderInput: value => contracts.schemas['timeline.render'].safeParse(value).success,
+    validateResponse: (input, result) => contracts.isTimelineMutationResponse('timeline.render', input, result) });
+  t.after(() => local.dispose());
+  const confirmation = deferred(), dirtyRef = { current: true }, resets = [], prompts = [];
+  const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+    context: () => ({ projectId, epoch: 1 }), isCurrent: captured => captured.projectId === projectId && captured.epoch === 1,
+    clipDraftRef: { current: null }, subtitlesRef: { current: null }, dirtyRef,
+    subjectsRef: { current: { state: { scope: context().scope }, controller: { discardDrafts: () => resets.push('discard subjects') } } },
+    confirm: message => { prompts.push(message); return confirmation.promise; },
+    ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, () => resets.push(name)])),
+  });
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', {
+    timelineFormatRef: { current: f }, deliveryNameRef: { current: { controller: delivery } }, localDeliveryRef: { current: { controller: local } }, guardNavigation,
+  });
+  const leaving = guard('Discard all current drafts?'); assert.deepEqual(prompts, ['Discard all current drafts?']);
+  assert.equal(delivery.choose('Newer delivery', context().scope), true); local.setContext(getLocalContext());
+  const formatDraft = f.state(), nameDraft = delivery.getState(), localDraft = local.getState();
+  confirmation.resolve(true); assert.equal(await leaving, false);
+  assert.equal(dirtyRef.current, true); assert.deepEqual(resets, []);
+  assert.equal(f.state(), formatDraft); assert.equal(f.controller.hasUnsaved(), true);
+  assert.equal(delivery.getState(), nameDraft); assert.equal(delivery.hasUnsaved(), true);
+  assert.equal(local.getState(), localDraft); assert.equal(local.hasUnsaved(), true);
+  assert.equal(local.getState().leaveWithoutSaving, false); assert.equal(local.getState().autosavePaused, false);
+  assert.equal(f.submits.length, 0);
+});
 
 test('actual format save callback uses only the existing durable timeline lane and exact frozen input', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720'); const pending = f.controller.save(); const intent = f.submits[0];

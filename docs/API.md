@@ -38,6 +38,112 @@ Restored workspaces return an explicit unsupported result without reading or
 writing a companion file; their existing local editing remains available.
 Unconfirmed writes require read-only reconciliation before any new write.
 
+### Private delivery-name drafts and export intents
+
+The authenticated `/api/local-delivery` boundary is private first-party renderer
+storage and fixed-purpose local export recovery. It shares the existing
+Host/Origin/authentication gates and returns `Cache-Control: no-store`. It does
+not add an RPC, CLI/MCP tool, Agent capability, native bridge or arbitrary
+operation executor. The existing public `timeline.render` schema is unchanged.
+Implementation is under acceptance; see [scope and pending gates](DELIVERY-DRAFTS.md).
+
+Exact, unknown-field-rejecting schemas are in
+[`local-delivery.ts`](../packages/contracts/src/local-delivery.ts). IDs below are
+UUIDs except the existing render `requestId`; `workspaceScope` is a backend-derived
+SHA-256 scope and `instanceId` is the current service nonce. Each project's draft
+and latest intent have separate monotonic CAS revisions.
+
+- `GET /api/local-delivery?projectId=…`: exactly one query key; noncreating,
+  read-only discovery. No other route accepts query parameters.
+- `PUT /api/local-delivery/draft`: exactly `{workspaceScope,instanceId,projectId,
+  expectedDraftRevision,draftId,timelineId,baseRevision,raw:{deliveryName}}`.
+- `DELETE /api/local-delivery/draft`: exactly `{workspaceScope,instanceId,
+  projectId,expectedDraftRevision,draftId}`. Retains a revision tombstone; a repeated
+  DELETE without its deleted identity is a conflict, not a fabricated success.
+- `POST /api/local-delivery/prepare`: exactly `{workspaceScope,instanceId,
+  projectId,expectedIntentRevision,expectedIntentId,intentId,timelineId,
+  baseRevision,draft,input}`. The prior intent ID is null only at revision zero;
+  `draft` is null or `{draftId,revision,raw:{deliveryName}}`. `input` is the exact
+  canonical `timeline.render` input restricted to `purpose:'export'`, with
+  original project/revision/requestId and optional `deliveryName`,
+  `exportSettings`, `preflightSnapshotHash`. It preserves optional omission and
+  must match the captured name and baseline. Prepare durably reserves the intent
+  before any render dispatch; it never executes it.
+- `POST /api/local-delivery/execute` and `POST /api/local-delivery/recover`:
+  exactly `{workspaceScope,instanceId,projectId,intentId,expectedIntentRevision}`.
+  Neither accepts a replacement input, operation nor caller-declared outcome.
+  Explicit recovery may first execute a prepared-but-unsubmitted export; when
+  an original receipt exists, it returns that receipt without another dispatch.
+
+The raw draft holds only a valid-Unicode name of at most 512 UTF-16 units,
+including incomplete/invalid-for-render names. It is not an output-settings
+form draft. The immutable intent separately stores the complete original render
+input. Empty draft name means omitted render `deliveryName`; actual dispatch
+still uses the existing strict business name and closed profile validators.
+
+Successful draft/discovery/prepare data is `{supported:true,workspaceScope,
+instanceId,projectId,draftRevision,draft,intentRevision,intent,draftTargetStatus,
+intentTargetStatus}`. Target status is independently `unset`, `matching`,
+`changed` or `missing`. Each intent contains its ID, timeline/baseline, captured
+draft or null, exact input, creation time and outcome. Outcomes are `pending`,
+`accepted` with `exportId,responseSha256,resolvedAt`, or `not_applied` with
+`code,resolvedAt`. Execution data is `{envelope,response}`; response is the
+validated original queued acknowledgement only for accepted outcomes, otherwise
+null. Accepted is business acceptance, not completed or decoded media.
+
+Terminal acceptance requires the original hash-checked, ownership-validated
+shared receipt. Terminal `not_applied` requires the existing proof validator for
+the original input and rechecked receipt absence; generic errors or absent
+receipts alone are insufficient. A durable `not_applied` intent never executes
+again, even if current timeline/settings later become suitable. New preparation
+requires exact terminal intent CAS. Accepted settlement clears only its exactly
+captured draft, leaving later drafts intact.
+
+Mount, GET, reconnect, restoring the name and reopening never execute/retry an
+intent. Unknown prepare keeps the original request/CAS; an empty read cannot
+release it. Explicit reprepare may adopt only a verified same-workspace new
+instance nonce, not current draft/business revisions or a new request ID. If
+another window changed the draft while preparation remained unconfirmed and no
+exact saved intent is found, the original prepare remains a conflict. No automatic
+rebase or conflict escape is promised.
+
+Draft writes also pause after failure. An explicit retry of an unknown PUT
+retains its exact draft identity, expected revision, original baseline and raw
+name; a same-workspace read may update only the service nonce. Empty GET or a
+later refusal never settles that earlier unknown write. After confirming the
+original PUT, newer current input still requires explicit saving. Local input
+validation refuses before sending, so correction followed by explicit saving is
+available; confirmed service refusal likewise permits an explicit current-input
+retry, without silently replacing a newly discovered candidate or rebasing it.
+Read-only reconciliation alone never resumes these writes, and failed DELETE
+is not retried as PUT.
+
+Storage is the fixed private plaintext `local-delivery-v1.json`: at most 128
+retained project slots, 8192 serialized bytes/slot and 2 MiB/file, independent
+logical limits rather than disk quota. Tombstones count and are not evicted.
+There are no credential/path/media fields, but user-entered name text and its
+captured intent copy remain private user data. Existing backups exclude this
+companion. Restored workspaces return exactly
+`{supported:false,reason:"RESTORED_WORKSPACE_UNSUPPORTED"}` before touching it;
+their existing explicit local export route remains available.
+
+URLs are bounded to 2048 bytes, JSON request bodies to 12 KiB and ordinary data
+envelopes to 12 KiB. Original render responses retain their 4 MiB limit; execution
+data and the final HTTP success body are separately checked against 4 MiB + 12 KiB.
+The renderer also streams and bounds the complete HTTP response: 12 KiB for
+ordinary requests and 4 MiB + 12 KiB for execute/recover, with fatal UTF-8 decoding.
+Its default whole-transport deadline is 10 seconds for ordinary requests and
+35 seconds for execute/recover, including body reads. Timeout only aborts the
+transport; it does not cancel backend work or prove nonapplication. Oversized,
+malformed and timed-out responses leave the original result unknown.
+Unsupported methods return 405; errors expose empty
+`details` and `retryable:false`. Fixed codes map validation to 400, owner failure
+to 403, missing route/target to 404, CAS/scope/instance conflicts to 409, size to 413,
+capacity to 507 and storage/unconfirmed durability to 503. No error response can
+supply renderer-authored settlement proof. Corrupt, foreign or unreadable storage
+is never silently reset. See the scope document for exact durability and evidence
+limits.
+
 `provider.list` additionally returns exact `inputProfiles`, `inputProfileVersion`, `providerRegion`, `profileEvaluationDate` and `inputProfileEvaluations` for the production registry. They are read-only discovery, not request overrides or permission to spend. That original discovery increment left submit/retry schemas and historical replay unchanged; the later explicit subject-video input adds an optional `subjectVersionId` to submit, with historical replay preserved. See [model input limits](GENERATION-INPUT-LIMITS.md).
 
 ## Local source-frame extraction

@@ -8,6 +8,7 @@
     "./private-storage": "./src/private-storage.mjs",
     "./timeline-delivery": "./src/timeline-delivery.ts",
     "./local-drafts": "./src/local-drafts.ts",
+    "./local-delivery": "./src/local-delivery.ts",
     "./last-project": "./src/last-project.ts"
   },
   "dependencies": {

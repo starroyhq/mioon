@@ -124,11 +124,13 @@ function appFunction(begin, end, scope) {
   const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start);
   return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope));
 }
-function appHarness(f) {
-  const calls = [], notices = [], views = [], panels = [], pending = [], jobs = [], exports = [];
+function appHarness(f, { restored = false, localState = { baselineConflict: false, candidate: null } } = {}) {
+  const calls = [], notices = [], views = [], panels = [], pending = [], jobs = [], exports = [], submitOptions = [];
   const owner = context(), currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4, clips: [{ id: id(20) }] } } };
-  const env = { panelIntent: { current: 0 }, openExportHistory: () => exports.push(true), workspaceRef: { current: { restored: false } }, deliveryNameRef: { current: null }, dataRef, currentProject, exportPreflight: { controller: f.controller }, exportCheckContext: () => ({ ...owner, projectId: currentProject.current, timelineId: dataRef.current.timeline.id, revision: dataRef.current.timeline.revision }),
+  const env = { panelIntent: { current: 0 }, openExportHistory: () => exports.push(true), workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, dataRef, currentProject, exportPreflight: { controller: f.controller }, exportCheckContext: () => ({ ...owner, projectId: currentProject.current, timelineId: dataRef.current.timeline.id, revision: dataRef.current.timeline.revision }),
     isBusy: () => false, pendingForProject: () => pending, notify: (...args) => notices.push(args), setShowJobs: value => jobs.push(value), setShowExports: value => exports.push(value),
+    context: () => ({ projectId: currentProject.current, scope: owner.scope }), isCurrent: captured => captured.projectId === currentProject.current && captured.scope === owner.scope,
+    localDeliveryRef: { current: { controller: { getState: () => localState, canPrepare: () => true, submit: async (input, options) => { calls.push(['local-delivery.submit', input]); submitOptions.push(options); return { id: id(30), status: 'queued' }; } } } },
     run: async (...args) => { calls.push(args); return { id: id(30), status: 'queued' }; }, requestId: () => 'stable-test-request',
     updateView: (...args) => views.push(args), setPreviewKind: value => views.push(['previewKind', value]),
     setRightDockTab: value => panels.push(['tab', value]), setPanelOpen: (...args) => panels.push(args),
@@ -137,7 +139,7 @@ function appHarness(f) {
   const check = appFunction('  function checkTimelineExport(', '  function openTimelineExport(', env);
   const open = appFunction('  function openTimelineExport(', '  const historyState', { ...env, checkTimelineExport: check });
   const renderUnchecked = appFunction('  function renderUncheckedTimeline(', '  async function renderTimeline(', { renderTimeline: render });
-  return { calls, notices, views, panels, pending, jobs, exports, env, render, renderUnchecked, check, open };
+  return { calls, notices, views, panels, pending, jobs, exports, submitOptions, env, render, renderUnchecked, check, open };
 }
 
 test('actual topbar action opens the delivery dock without probing; explicit check reads once without rendering or changing drafts', async () => {
@@ -150,10 +152,27 @@ test('actual topbar action opens the delivery dock without probing; explicit che
 test('actual export path pins exact checked tuple and request once; preview path retains original input', async () => {
   const f = fixture(), binding = (await f.ready()).binding, h = appHarness(f);
   await h.render('export', binding); await h.render('export', binding);
-  assert.equal(h.calls.length, 1); assert.deepEqual(h.calls[0], ['timeline:render:export', 'timeline.render', { projectId, expectedRevision: 4, preflightSnapshotHash: hash, requestId: 'stable-test-request', purpose: 'export' }]);
+  assert.equal(h.calls.length, 1); assert.deepEqual(h.calls[0], ['local-delivery.submit', { projectId, expectedRevision: 4, preflightSnapshotHash: hash, requestId: 'stable-test-request', purpose: 'export' }]);
+  assert.equal(h.submitOptions[0].canExecute(), true); assert.equal(h.submitOptions[0].nameCapture, undefined);
   assert.deepEqual(h.exports, [true]); assert.equal(h.views.length, 0);
   await h.render('preview'); assert.deepEqual(h.calls[1], ['timeline:render:preview', 'timeline.render', { projectId, expectedRevision: 4, requestId: 'stable-test-request', purpose: 'preview' }]);
   assert.deepEqual(h.views, [['activeMode', 'editing'], ['previewKind', 'timeline']]);
+});
+
+test('actual Check rejects unresolved local candidate and saved-baseline conflict before any preflight work', async () => {
+  for (const localState of [{ baselineConflict: true, candidate: null }, { baselineConflict: false, candidate: { raw: { deliveryName: 'Retained draft' } } }]) {
+    const f = fixture(), h = appHarness(f, { localState }), before = f.state();
+    assert.equal(await h.check(), null);
+    assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0); assert.equal(f.state(), before);
+    assert.equal(h.submitOptions.length, 0);
+  }
+});
+
+test('restored export retains the original preflight-bound session runner', async () => {
+  const f = fixture(), binding = (await f.ready()).binding, h = appHarness(f, { restored: true });
+  await h.render('export', binding);
+  assert.deepEqual(h.calls, [['timeline:render:export', 'timeline.render', { projectId, expectedRevision: 4, preflightSnapshotHash: hash, requestId: 'stable-test-request', purpose: 'export' }]]);
+  assert.equal(h.submitOptions.length, 0); assert.deepEqual(h.exports, [true]);
 });
 
 test('actual export never auto-replays an unknown receipt or replaces an old binding with current revision', async () => {
@@ -176,6 +195,48 @@ function renderPanel(props) {
   Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : name.endsWith('export-preflight-state.js') ? { preflightIssueMessage } : name.endsWith('icons.jsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
   return module.exports.default({ canCheck: true, onCheck() {}, onExport() {}, ...props });
 }
+
+test('accessible topbar export action opens recovery even when a candidate, baseline conflict or invalid name blocks Check', () => {
+  const first = appSource.indexOf('  const canOpenExport ='), last = appSource.indexOf('  const pendingTimelineExport =', first);
+  assert.ok(first >= 0 && last > first, 'Opening and checking must have explicit independent gates');
+  const buttonSource = appSource.match(/<Button\b[^>]*data-testid="export-timeline"[^>]*>[\s\S]*?<\/Button>/)?.[0];
+  assert.ok(buttonSource); assert.match(buttonSource, /disabled=\{!canOpenExport\}/); assert.match(buttonSource, /onClick=\{openTimelineExport\}/);
+  const gate = patch => {
+    const env = { data: { project: { id: projectId } }, timeline: { id: timelineId, revision: 4 }, loading: false,
+      online: true, auth: true, deliveryName: { error: '' }, restored: false, localDelivery: { state: { candidate: null, baselineConflict: false } }, ...patch };
+    return Function(...Object.keys(env), `${appSource.slice(first, last)};return { canOpenExport, canCheckExport };`)(...Object.values(env));
+  };
+  for (const patch of [{ localDelivery: { state: { candidate: { raw: { deliveryName: 'Saved draft' } }, baselineConflict: false } } },
+    { localDelivery: { state: { candidate: null, baselineConflict: true } } }, { deliveryName: { error: 'Invalid name' } }, { online: false }]) {
+    const flags = gate(patch); assert.deepEqual(flags, { canOpenExport: true, canCheckExport: false });
+    const f = fixture(), h = appHarness(f), module = { exports: {} };
+    Function('module', 'React', 'Button', 'Icon', 'canOpenExport', 'openTimelineExport', transformSync(`module.exports = (${buttonSource});`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'Button', 'Icon', flags.canOpenExport, h.open);
+    const button = module.exports; assert.equal(button.type, 'Button'); assert.equal(button.props.disabled, false); assert.equal(textOf(button), '导出时间线');
+    button.props.onClick(); assert.deepEqual(h.panels, [['tab', 'delivery'], ['inspector', true]]); assert.deepEqual(h.exports, [false]);
+    assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
+  }
+  for (const patch of [{ data: { project: null } }, { timeline: null }, { loading: true }]) assert.equal(gate(patch).canOpenExport, false);
+});
+
+test('blocked Check retains accessible recovery controls and pending copy points to the original request entry', () => {
+  const recoverySource = readFileSync(new URL('../apps/web/src/DeliveryDraftRecovery.tsx', import.meta.url), 'utf8');
+  const module = { exports: {} }, react = { createElement: element }; react.default = react;
+  Function('module', 'exports', 'require', transformSync(recoverySource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : { Button: 'Button' });
+  const events = [], recovery = module.exports.default({ state: { phase: 'ready', busy: false,
+    candidate: { timelineId, baseRevision: 4, raw: { deliveryName: 'Saved draft' }, updatedAt: '2026-10-12T00:00:00.000Z' },
+    intent: { intentId: id(40), timelineId, baseRevision: 4, input: { requestId: 'original-request', deliveryName: 'Original delivery' }, outcome: { status: 'pending' } } },
+    controller: { restore: () => events.push('restore'), recover: () => events.push('recover') } });
+  const tree = renderPanel({ recovery, canCheck: false, deliveryNameError: 'Invalid name', pendingExport: true });
+  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'delivery-draft-recovery').props['aria-label'], '本地交付草稿与原导出请求');
+  const restore = nodes(tree).find(node => node.props['data-testid'] === 'restore-delivery-draft');
+  const recover = nodes(tree).find(node => node.props['data-testid'] === 'recover-original-delivery');
+  assert.equal(restore.type, 'Button'); assert.equal(restore.props.type, 'button'); assert.equal(restore.props.disabled, false);
+  assert.equal(recover.type, 'Button'); assert.equal(recover.props.type, 'button'); assert.equal(recover.props.disabled, false);
+  assert.equal(textOf(recover), '确认恢复同一原请求'); assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'preflight-check').props.disabled, true);
+  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'preflight-export').props.disabled, true);
+  assert.match(textOf(tree), /请使用原请求旁的恢复入口核对同一请求；重新检查不会重发导出/);
+  assert.doesNotMatch(textOf(tree), /请在任务面板恢复同一请求/); assert.deepEqual(events, []);
+});
 
 test('actual dock view names saved-only scope, excludes all drafts and never performs reads itself', async () => {
   const f = fixture(); await f.ready(); const tree = renderPanel({ state: f.state(), projectName: '片名', dirty: true });
@@ -305,7 +366,7 @@ test('actual unchecked export is explicit, uses current saved revision without h
   const button = nodes(tree).find(node => node.props['data-testid'] === 'preflight-export-unchecked');
   assert.match(textOf(button), /未完成快照核验，仍尝试导出/); button.props.onClick(); assert.deepEqual(calls, [intent]);
   await h.renderUnchecked(intent); await h.renderUnchecked(intent);
-  assert.deepEqual(h.calls, [['timeline:render:export', 'timeline.render', { projectId, expectedRevision: 4, requestId: 'stable-test-request', purpose: 'export' }]]);
+  assert.deepEqual(h.calls, [['local-delivery.submit', { projectId, expectedRevision: 4, requestId: 'stable-test-request', purpose: 'export' }]]);
   assert.equal(f.state().report.snapshotHash, null); assert.equal(f.state().binding, null);
 });
 

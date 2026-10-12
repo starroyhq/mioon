@@ -81,3 +81,7 @@ Thumbs.db
 # Private per-workspace navigation locator (not a backup artifact).
 last-project-v1.json
 .last-project-v1.json.*.tmp
+
+# Private export-name drafts and fixed local export recovery intents.
+local-delivery-v1.json
+.local-delivery-v1.json.*.tmp

@@ -11,7 +11,7 @@ const bytesLabel = bytes => bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} K
 
 // Presentation only: the parent owns the saved context, explicit read, and
 // durable render submission. Hidden tabs retain this view without starting work.
-export default function TimelineExportPreflight({ state, projectName, timeline, exportSettings, settingsDisabled, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport }) {
+export default function TimelineExportPreflight({ recovery, state, projectName, timeline, exportSettings, settingsDisabled, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport }) {
   const phase = state?.phase || 'idle', report = state?.report, summary = report?.summary;
   const oldReport = Boolean(report && ['checking', 'stale', 'error'].includes(phase));
   const canExport = Boolean(state?.binding && ['ready', 'incomplete'].includes(phase) && !exportBusy && !pendingExport && !state.attempted);
@@ -19,6 +19,7 @@ export default function TimelineExportPreflight({ state, projectName, timeline, 
   return <aside className="export-preflight" data-testid="export-preflight" data-phase={phase} aria-label="时间线交付检查">
     <header className="export-preflight-heading"><div><h2>交付检查</h2><p title={projectName}>{projectName || '请先选择项目'}</p></div><Icon name="info" size={15} /></header>
     <div className="export-preflight-body">
+      {recovery}
       <TimelineDeliveryName value={deliveryName} error={deliveryNameError} disabled={deliveryNameDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onDeliveryNameChange} />
       <TimelineExportSettings timeline={timeline} value={exportSettings} disabled={settingsDisabled || exportBusy || pendingExport} onChange={onSettingsChange} />
       {exportSettings && <div className={`export-capability-status is-${state?.capabilityPhase || 'idle'}`} data-testid="export-capability-status" data-status={state?.capabilityPhase || 'idle'} role="status" aria-live="polite"><strong>本机编码能力</strong><p>{exportCapabilityMessage(state?.capabilityPhase || 'idle')}</p></div>}
@@ -47,7 +48,7 @@ export default function TimelineExportPreflight({ state, projectName, timeline, 
 
       </div>}
       {phase === 'incomplete' && <p className="notice warning" data-testid="preflight-incomplete-warning">检查未完成，不代表通过。{state?.binding ? '仍尝试导出可能失败，渲染进程会重新验证素材与快照。' : state?.uncheckedIntent ? '尚未完成快照核验。仍尝试导出会使用当前已保存的时间线版本；渲染进程会重新验证素材。' : '尚未取得有效快照，暂时不能导出。'}</p>}
-      {pendingExport && <p className="notice warning">已有导出请求结果待确认。请在任务面板恢复同一请求；重新检查不会重发导出。</p>}
+      {pendingExport && <p className="notice warning">已有导出请求结果待确认。请使用原请求旁的恢复入口核对同一请求；重新检查不会重发导出。</p>}
       {state?.attempted && <p className="export-preflight-note" role="status">已发起一次导出提交。请在任务或导出记录查看结果；此报告不代表导出已完成。</p>}
       <p className="export-preflight-note">本机编码检查会进行有限额的短时合成编码与 MP4 封装，测试输出仅留在内存中；后续素材预检为只读。均不创建成片任务。</p>
       <p className="export-preflight-note">上限：100 个片段、12 条轨道、18000 帧。实际导出仍会重新验证；检查报告不是导出成功凭据。</p>

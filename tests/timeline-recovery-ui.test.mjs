@@ -12,7 +12,7 @@ import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
 
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const runSource = source.slice(source.indexOf('async function runSession('), source.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
-const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function selectProject('));
+const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function revealImageAsset('));
 const id = n => `82000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProjectId = id(2), trackId = id(3), clipId = id(4), assetId = id(5);
 const operations = ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove',

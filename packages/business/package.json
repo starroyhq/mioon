@@ -8,7 +8,8 @@
     "./*": "./src/*.mjs",
     "./timeline-delivery-read": "./src/timeline-delivery-read.ts",
     "./local-drafts": "./src/local-drafts.ts",
-    "./last-project": "./src/last-project.ts"
+    "./last-project": "./src/last-project.ts",
+    "./local-delivery": "./src/local-delivery.ts"
   },
   "dependencies": {
     "@mioon/contracts": "workspace:*"
