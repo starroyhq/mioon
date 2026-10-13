@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as logic from '../apps/web/src/agent-settings.js';
 
 const { agentBindingChanged, agentSettingsCanSave, agentSettingsIssue, createAgentSettingsClient, createAgentSettingsSession, safeAgentSettings } = logic;
@@ -199,6 +200,7 @@ function uiHarness(client) {
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   Function('module', 'exports', 'require', transformed)(module, module.exports, id => {
     if (id === 'react') return react;
+    if (id === './settings-navigation-state.ts') return navigation;
     if (id === './agent-settings.js') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
     if (id === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.jsx') return { default: 'Icon' };

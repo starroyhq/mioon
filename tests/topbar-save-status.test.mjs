@@ -8,6 +8,8 @@ import path from 'node:path';
 import { buildSync, transformSync } from 'esbuild';
 import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/src/workspace-preferences.js';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
+import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
+import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -136,6 +138,8 @@ function section(start, end) {
 }
 const statusSource = section('    onStatus: (projectId, status) =>', '\n  });').trim().slice('onStatus: '.length);
 const contextSource = section('  const context = () =>', '  taskWorkspaceState.current =');
+const settingsDepartureSource = section('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
+const sessionReadySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const selectSource = section('  async function selectProject(', '  async function reloadPreferences(');
 const reloadSource = section('  async function reloadPreferences() {', '  async function boot() {');
 const callsite = section('<TopbarSaveStatus ', '<LastProjectStatus ');
@@ -223,7 +227,8 @@ test('App owns the one busy projection, original dirty scope, late-bound Retry a
     if (!await confirm('载入已保存视图会替换当前的工作区、选择和位置。继续？')) return;
     if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
   }`);
-  assert.match(selectSource, /if \(!restored \|\| !importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch\) return false;/);
+  assert.match(selectSource, /if \(!importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch \|\| workspaceOriginScope\(workspaceRef\.current\) !== attempt\.workspaceScope\) return false;/);
+  assert.match(selectSource, /if \(!restored\) throw Object\.assign\(new Error\([^;]+PROJECT_VIEW_UNAVAILABLE/);
   const source = readFileSync(componentPath, 'utf8');
   assert.doesNotMatch(source, /useState|useEffect|useLayoutEffect|useRef|useMemo|\bmemo\s*\(|\bfetch\s*\(|\brpc\s*\(|setTimeout|setInterval|localStorage|sessionStorage|preferencesRef|currentProject|navigationEpoch|realConfirm|generationReview|Agent/);
   assert.doesNotMatch(source, /:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck|\.jsx['"]/);
@@ -267,16 +272,18 @@ function harness(t) {
     paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties' };
   const calls = [], currentProject = { current: null }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 };
   const env = { currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } }, workspaceOriginScope,
-    loading: false, importSession: { current: { active: true } }, agentDraft: { current: false }, imageDraft: { current: false },
-    guardProjectNavigation: async () => true, confirm: async () => true,
+    projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
+    openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
+    loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },
+    guardProjectNavigation: async (_message, _dirty, canLeave) => canLeave(), confirm: async () => true,
     lastProjectRef: { current: { invalidateNavigation() {}, rememberOpened() {} } },
     requestCounter: { current: 0 }, preferencesRef: { current: null }, tasksRef: { current: { getState: () => ({}), load: async () => {} } },
     viewReady: { current: true }, viewRef: { current: state.view }, dataRef: { current: {} }, emptyData: {}, dragging: { current: false },
     pendingForProject: () => [], updateView: () => assert.fail('Selected fixtures must not trigger passive first-item selection'),
     notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message, URL,
     window: { location: { href: 'http://127.0.0.1:4318/' }, history: { pushState() {}, replaceState() {} } },
-    refresh: async id => { env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; },
-    ...Object.fromEntries(['setPropertiesPage', 'setTaskState', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading',
+    refresh: async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; },
+    ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading',
       'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab',
       'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setZoom']
       .map(name => [name, value => calls.push([name, value])])),
@@ -291,7 +298,7 @@ function harness(t) {
     delayMs: 60_000, maxWaitMs: 60_000, retryDelays: [], getWorkspace: () => env.workspaceRef.current, onStatus });
   env.preferencesRef.current = controller;
   t.after(() => controller.dispose({ flush: false }));
-  const actions = compile(`${contextSource}\n${selectSource}\n${reloadSource}`, '{ selectProject, reloadPreferences }', env);
+  const actions = compile(`${contextSource}\n${settingsDepartureSource}\n${sessionReadySource}\n${selectSource}\n${reloadSource}`, '{ selectProject, reloadPreferences }', env);
   const display = () => appElement({ online: true, busy: {}, inspectorDirty: state.inspectorDirty, formatDirty: state.formatDirty,
     lastSync: null, preferenceStatus: state.preferenceStatus, preferencesRef: env.preferencesRef, currentProject, reloadPreferences: actions.reloadPreferences });
   return { server, controller, state, calls, env, ...actions, display,
@@ -321,7 +328,7 @@ test('actual Reload waits for confirmation and rejects newer project, navigation
     const h = harness(t), confirmation = deferred(), prompts = [];
     // The real App function captures its supplied confirmation function once.
     h.env.confirm = message => { prompts.push(message); return confirmation.promise; };
-    const actions = compile(`${contextSource}\n${selectSource}\n${reloadSource}`, '{ selectProject, reloadPreferences }', h.env);
+    const actions = compile(`${contextSource}\n${settingsDepartureSource}\n${sessionReadySource}\n${selectSource}\n${reloadSource}`, '{ selectProject, reloadPreferences }', h.env);
     await actions.selectProject(A, true);
     const element = appElement({ online: true, busy: {}, inspectorDirty: false, formatDirty: false, lastSync: null,
       preferenceStatus: { phase: 'conflict', pending: true }, preferencesRef: h.env.preferencesRef,

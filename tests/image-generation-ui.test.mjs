@@ -212,7 +212,7 @@ const depsEqual = (left, right) => Boolean(left && right && left.length === righ
 function renderer(f, options = {}) {
   const slots = []; let index = 0, effects = [], visible = true, tree, currentProject = projectId, dirty = false;
   const react = {
-    createElement: element,
+    createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children),
     useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; },
     useRef(initial) { return slots[index++] ||= { current: initial }; },
     useMemo(callback, deps) { const slot = index++; if (!slots[slot] || !depsEqual(deps, slots[slot].deps)) slots[slot] = { value: callback(), deps }; return slots[slot].value; },
@@ -227,6 +227,8 @@ function renderer(f, options = {}) {
     if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
     if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
     if (name === './comfy-image-settings.js') return { createComfyImageSettingsClient: () => ({ read: async () => null }) };
+    // This element-tree harness adapts only the status wrapper; owner semantics have dedicated tests.
+    if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
     if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
     if (name === './image-settings.js') return { createImageSettingsClient: options => options?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
     if (name === './icons.jsx') return { default: 'Icon' };

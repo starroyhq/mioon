@@ -20,7 +20,7 @@ function nameFixture(context={scope:`${id}:1`,projectId:id,enabled:true}){
 }
 function projectGuard(f,confirmation=async()=>true){
  const reference={current:{controller:f.controller}},events=[],formatState={};
- const guard=actual('  async function guardProjectNavigation(','  async function changeMode(',{
+ const guard=actual('  async function guardProjectNavigation(','  async function prepareSettingsDeparture(',{
   localDeliveryRef:{current:null},deliveryNameRef:reference,timelineFormatRef:{current:{controller:{getState:()=>formatState,hasUnsaved:()=>false,discardDraft:()=>events.push('discard-format')}}},
   guardNavigation:async(message,dirty)=>{events.push({message,dirty});return confirmation();},
  });
@@ -71,7 +71,7 @@ function exportReceipt(input){
    assets:[{id:assetId,sha256:'b'.repeat(64),mimeType:'image/png',duration:0,width:1,height:1}],deliveryName:input.deliveryName},
   status:'queued',assetId:null,url:null,error:null,createdAt:stamp,updatedAt:stamp};
 }
-async function coordinatedRenderHarness(t,{preparation,execution,refreshing}={}){
+async function coordinatedRenderHarness(t,{preparation,execution,refreshing,projectReady=true}={}){
  const f=nameFixture();f.choose('版本 A');const h=renderHarness(f),transportCalls=[],refreshes=[];
  h.environment.dataRef.current={project:{id},timeline:exportReceipt({...h.binding,requestId:'named-app-key-0001'}).snapshot.timeline};
  let stored={supported:true,workspaceScope:'c'.repeat(64),instanceId:fixtureId(7),projectId:id,draftRevision:0,draft:null,intentRevision:0,intent:null,draftTargetStatus:'unset',intentTargetStatus:'unset'},sequence=100;
@@ -86,7 +86,7 @@ async function coordinatedRenderHarness(t,{preparation,execution,refreshing}={})
   async recover(){assert.fail('Fresh export must not replay through recovery');},
  };
  const rangeController=createExportRangeController();rangeController.setContext({scope:f.live.scope,projectId:id,timelineId:h.environment.dataRef.current.timeline.id,revision:7,durationFrames:30,enabled:true});
- const localEnvironment={...h.environment,projectEpoch:{current:1},navigationEpoch:{current:0},exportSettings:{controller:{getVersion:()=>1}},exportRange:{controller:rangeController},online:true,auth:true,loading:false,rightDockTab:'delivery',showExports:false,panelVisible:()=>true,deliveryName:{controller:f.controller}};
+ const localEnvironment={...h.environment,projectSessionReady:()=>projectReady,workbenchReady:projectReady,projectEpoch:{current:1},navigationEpoch:{current:0},exportSettings:{controller:{getVersion:()=>1}},exportRange:{controller:rangeController},online:true,auth:true,loading:false,rightDockTab:'delivery',showExports:false,panelVisible:()=>true,deliveryName:{controller:f.controller}};
  let contextCallback=actual('  function localDeliveryContext(','  const localDelivery = useLocalDelivery(',localEnvironment);
  const localDeliveryContext=()=>contextCallback();
  const setDeliveryView=patch=>{Object.assign(localEnvironment,patch);contextCallback=actual('  function localDeliveryContext(','  const localDelivery = useLocalDelivery(',localEnvironment);};
@@ -111,6 +111,15 @@ test('actual App options and real coordinator preserve the exact original render
  assert.deepEqual(h.refreshes,[id]);assert.equal(h.calls.some(row=>row[0]==='run'),false);
  assert.equal(h.local.controller.getState().intent.outcome.status,'accepted');assert.equal(h.f.controller.hasUnsaved(),false);
  assert.equal(h.f.controller.getName(h.f.live.scope),'版本 A');assert.ok(h.calls.some(row=>row[0]==='history'));
+});
+
+test('actual named-delivery coordinator cannot read or submit before project opening is accepted',async t=>{
+ const h=await coordinatedRenderHarness(t,{projectReady:false}),context=h.localContext();
+ assert.equal(context.projectId,null);assert.equal(context.connected,false);assert.equal(context.visible,false);
+ await h.render('export',h.binding);
+ assert.deepEqual(h.transportCalls,[]);assert.deepEqual(h.refreshes,[]);
+ assert.equal(h.calls.some(row=>row[0]==='submit'||row[0]==='run'||row[0]==='history'),false);
+ assert.equal(h.f.controller.getName(h.f.live.scope),'版本 A');assert.equal(h.f.controller.hasUnsaved(),true);
 });
 
 for(const transition of ['panel hide/show','history/compose'])test(`real App execution epoch blocks prepared export after ${transition} returns to the same view`,async t=>{
@@ -243,7 +252,7 @@ test('actual history opener only changes the shared dock, and compose reopen kee
 });
 
 test('delivery pages retain both forms with inherited visibility and never submit on open/hide',()=>{
- assert.match(source,/visible: rightDockTab === 'delivery' && !showExports && panelVisible\('inspector'\)/);
+ assert.match(source,/visible: workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible\('inspector'\)/);
  assert.match(source,/<AgentDockPane id="delivery-compose-pane"[^>]*visible=\{!showExports\}/);
  assert.match(source,/<AgentDockPane id="delivery-history-pane"[^>]*visible=\{showExports\}/);
  assert.match(source,/onPage=\{page => \{ markPanelIntent\(\); setShowExports\(page === 'history'\); \}\}/);

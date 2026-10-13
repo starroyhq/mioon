@@ -6,6 +6,7 @@ import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect, WorkbenchTooltip } from './WorkspaceControls.jsx';
 import Icon from './icons.jsx';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
+import { closeSettingsAfterPermission, createSettingsNavigationReporter } from './settings-navigation-state.ts';
 import { AGENT_PROTOCOLS, agentEndpointPreview, agentBindingChanged, agentSettingsBusy, agentSettingsCanSave, agentSettingsDirty, agentSettingsEditable,
   createAgentSettingsSession, initialAgentSettingsState } from './agent-settings.js';
 
@@ -16,29 +17,42 @@ const storageReason = storage => ({
   OS_SECRET_STORE_UNAVAILABLE: '系统安全存储不可用，不能持久保存；可选择仅本次运行。',
 }[storage?.reasonCode] || (storage?.persistentAvailable ? '系统安全存储可用；持久密钥经系统加密保存在项目数据之外。' : '当前无法持久保存密钥；仅本次运行可用。'));
 
-export default function AgentSettings({ onClose }) {
+export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavigationStateChange }) {
   const [state, setState] = useState(initialAgentSettingsState);
   const [hasKey, setHasKey] = useState(false);
   const [keyNotice, setKeyNotice] = useState('');
   const visible = useWorkspaceVisibility();
   const interaction = useMemo(() => ({ visible }), [visible]), interactionRef = useRef(interaction);
-  const keyInput = useRef(null), session = useRef(null), dismissed = useRef(false);
+  const keyInput = useRef(null), session = useRef(null), dismissed = useRef(false), navigation = useRef(null);
+  if (!navigation.current) navigation.current = createSettingsNavigationReporter();
+  const navigationInput = next => ({ dirty: agentSettingsDirty(next) || Boolean(keyInput.current?.value), phase: next.phase, recovery: next.recovery });
+  const reportNavigation = next => navigation.current.update(navigationInput(next));
+  useLayoutEffect(() => {
+    const owner = navigation.current.connect(onNavigationStateChange, navigationInput(session.current?.getState() || state));
+    return () => navigation.current.disconnect(owner);
+  }, [onNavigationStateChange]);
   // The password lives only in the mounted input, never in a saved React state,
   // snapshot, browser store, project, or recovery payload.
-  const clearKey = () => { if (keyInput.current) keyInput.current.value = ''; setHasKey(false); };
+  const clearKey = () => { if (keyInput.current) keyInput.current.value = ''; setHasKey(false); reportNavigation(session.current?.getState() || state); };
   useLayoutEffect(() => {
     dismissed.current = false;
-    const current = createAgentSettingsSession({ onChange: next => { if (!dismissed.current) setState(next); } });
+    const current = createAgentSettingsSession({ onChange: next => { if (!dismissed.current) { reportNavigation(next); setState(next); } } });
     session.current = current;
     void current.load();
     return () => { dismissed.current = true; if (keyInput.current) keyInput.current.value = ''; current.dispose(); if (session.current === current) session.current = null; };
   }, []);
   useLayoutEffect(() => {
-    interactionRef.current = interaction; session.current?.setVisible(visible);
+    interactionRef.current = interaction; session.current?.setVisible(visible); reportNavigation(session.current?.getState() || state);
     if (!visible && keyInput.current?.value) { clearKey(); setKeyNotice('隐藏设置时已清空新输入的密钥；连接草稿仍保留。需要替换密钥时请重新输入。'); }
   }, [interaction]);
   const usable = () => !dismissed.current && visible && interactionRef.current === interaction;
-  const dismiss = () => { if (!usable()) return; if (keyInput.current?.value) setKeyNotice('离开设置时已清空新输入的密钥；连接草稿仍保留。'); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onClose(); };
+  const dismiss = () => {
+    if (!usable()) return;
+    const captured = interactionRef.current, version = navigation.current.getState().version;
+    return closeSettingsAfterPermission(beforeClose, () => usable() && interactionRef.current === captured && navigation.current.getState().version === version, () => {
+      if (keyInput.current?.value) setKeyNotice('离开设置时已清空新输入的密钥；连接草稿仍保留。'); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onClose();
+    });
+  };
   const withClearKey = action => { if (!usable()) return; clearKey(); action(); };
   const changeBinding = patch => withClearKey(() => session.current?.edit(patch));
   function submit(event) {
@@ -67,7 +81,7 @@ export default function AgentSettings({ onClose }) {
           <div className="agent-settings-eyebrow">AGENT · CONNECTION</div><h2>Agent 连接设置</h2>
           <p>连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围。</p>
         </div></div>
-        <Button type="button" variant="ghost" className="icon-button" aria-label="返回 Agent 对话" data-testid="agent-settings-back" disabled={!visible} onClick={dismiss}><Icon name="left" /></Button>
+        <Button type="button" variant="ghost" className="icon-button" aria-label={closeLabel ?? '返回 Agent 对话'} data-testid="agent-settings-back" disabled={!visible} onClick={dismiss}><Icon name="left" /></Button>
       </header>
       <form noValidate autoComplete="off" onSubmit={submit} className="agent-settings-form">
         <div className="agent-settings-body">
@@ -107,7 +121,7 @@ export default function AgentSettings({ onClose }) {
             <section className="agent-settings-secret-section" aria-labelledby="agent-secret-heading">
               <div className="agent-settings-section-title"><h3 id="agent-secret-heading"><Icon name="lock" size={14} />API 密钥</h3><span data-testid="agent-settings-secret-status" data-configured={snapshot.secret.configured} data-storage={snapshot.secret.storage}>{snapshot.secret.configured ? `服务器已保存 · ${storageLabel(snapshot.secret.storage)}` : '服务器未保存密钥'}</span></div>
               <div className="agent-settings-field"><Label className="sr-only" htmlFor="agent-key">{snapshot.secret.configured ? '替换 API 密钥' : '输入 API 密钥'}</Label>
-                <Input ref={keyInput} id="agent-key" data-testid="agent-settings-key" type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!editable || state.secretAction === 'remove'} placeholder={state.secretAction === 'remove' ? '保存时将移除已有密钥' : snapshot.secret.configured && !changedBinding ? '留空保留已有密钥；输入新密钥以替换' : '输入新密钥（可留空，仅保存连接参数）'} maxLength={8192} onChange={event => { if (usable()) { setHasKey(Boolean(event.target.value)); setKeyNotice(''); } }} aria-describedby="agent-key-help" />
+                <Input ref={keyInput} id="agent-key" data-testid="agent-settings-key" type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!editable || state.secretAction === 'remove'} placeholder={state.secretAction === 'remove' ? '保存时将移除已有密钥' : snapshot.secret.configured && !changedBinding ? '留空保留已有密钥；输入新密钥以替换' : '输入新密钥（可留空，仅保存连接参数）'} maxLength={8192} onChange={event => { if (usable()) { setHasKey(Boolean(event.target.value)); reportNavigation(session.current?.getState() || state); setKeyNotice(''); } }} aria-describedby="agent-key-help" />
                 <p id="agent-key-help" className="agent-settings-help">已保存的密钥不会回填。新输入仅临时保留，提交或关闭后清空；不会写入浏览器存储。</p>
               </div>
               {keyNotice && <p className="agent-settings-binding-warning" role="status" data-testid="agent-settings-key-cleared">{keyNotice}</p>}
@@ -126,7 +140,7 @@ export default function AgentSettings({ onClose }) {
             </>}</div></div>}
           </>}
         </div>
-        <footer className="agent-settings-footer"><span>{phase === 'saving' ? '返回对话不会撤回已提交的保存。' : dirty ? '有尚未保存的更改' : '当前仅管理一个连接配置'}</span><div><Button type="button" variant="ghost" className="button" data-testid="agent-settings-cancel" disabled={!visible} onClick={dismiss}>返回对话</Button><Button type="submit" variant="ghost" className="button primary" data-testid="agent-settings-save" disabled={!visible || !agentSettingsCanSave(state) || !dirty}>{phase === 'saving' ? <span className="spinner" /> : <Icon name="check" size={15} />}{phase === 'saving' ? '保存中…' : '保存设置'}</Button></div></footer>
+        <footer className="agent-settings-footer"><span>{phase === 'saving' ? `${closeLabel ?? '返回对话'}不会撤回已提交的保存。` : dirty ? '有尚未保存的更改' : '当前仅管理一个连接配置'}</span><div><Button type="button" variant="ghost" className="button" data-testid="agent-settings-cancel" disabled={!visible} onClick={dismiss}>{closeLabel ?? '返回对话'}</Button><Button type="submit" variant="ghost" className="button primary" data-testid="agent-settings-save" disabled={!visible || !agentSettingsCanSave(state) || !dirty}>{phase === 'saving' ? <span className="spinner" /> : <Icon name="check" size={15} />}{phase === 'saving' ? '保存中…' : '保存设置'}</Button></div></footer>
       </form>
   </section>;
 }

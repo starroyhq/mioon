@@ -12,9 +12,9 @@ const make=(code,deps,names)=>Function(...Object.keys(deps),`${code}\nreturn {${
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 const projectId='11111111-1111-4111-8111-111111111111',shotId='22222222-2222-4222-8222-222222222222',jobId='33333333-3333-4333-8333-333333333333';
 function harness() {
- const state={dock:'tasks',page:'subtitle',mode:'editing',confirm:[],reveal:[],notice:[],auth:[],refresh:[],ack:[],busy:[],draft:{name:'unsaved',startFrame:7}};
+ const state={projectReady:true,dock:'tasks',page:'subtitle',mode:'editing',confirm:[],reveal:[],notice:[],auth:[],refresh:[],ack:[],busy:[],draft:{name:'unsaved',startFrame:7}};
  const refs={importSession:{current:{active:true}},viewReady:{current:true},taskWorkspaceState:{current:{visible:true,connected:true}},currentProject:{current:projectId},projectEpoch:{current:2},navigationEpoch:{current:3},panelIntent:{current:4},workspaceRef:{current:{id:'original'}},taskShotAttempt:{current:0},dataRef:{current:{project:{id:projectId},jobs:[{id:jobId,shotId,projectId,status:'succeeded'}],shots:[{id:shotId,projectId}],timelineHistory:{revision:1}}}};
- const deps={...refs,captureTaskWorkspaceIntent,navigateTaskShot,workspaceOriginScope:w=>w.id,
+ const deps={...refs,projectSessionReady:()=>state.projectReady,captureTaskWorkspaceIntent,navigateTaskShot,workspaceOriginScope:w=>w.id,
   guardNavigation:async(message,extra,canDiscard)=>{state.confirm.push({message,extra,canDiscard});return canDiscard();},
   setRightDockTab:value=>{state.dock=typeof value==='function'?value(state.dock):value;},setPropertiesPage:value=>{state.page=value;},
   setPanelOpen:(...args)=>{state.reveal.push(args);refs.panelIntent.current++;},updateView:(section,value)=>{state.reveal.push([section,value]);if(section==='activeMode')state.mode=value;},
@@ -125,4 +125,9 @@ test('actual App keeps all five shared panes mounted and routes every old task o
  for(const page of ['properties','agent','image','delivery','tasks'])assert.match(app,new RegExp(`id="right-dock-${page}"`));
  assert.match(app,/onReload=\{\(\) => tasksRef\.current\.load\(currentProject\.current\)\}/);
  assert.doesNotMatch(bridge,/\.execute\(|\.recover\(|\.acknowledge\(|\.load\(|\brpc\(|setInterval|setTimeout/);
+});
+
+
+test('home or a failed opening grants neither task observation nor delayed reveal authority',()=>{
+ const h=harness();h.state.projectReady=false;assert.equal(h.readTaskRevealContext().active,false);assert.equal(h.captureTaskView(),null);assert.equal(captureTaskWorkspaceIntent(h.readTaskRevealContext),null);assert.equal(h.state.ack.length,0);assert.equal(h.state.reveal.length,0);
 });

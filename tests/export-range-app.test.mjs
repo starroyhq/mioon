@@ -54,7 +54,7 @@ function preflight(input, saved) {
 
 // Only the React hook shell is replaced. Every App context/options/callback is
 // extracted verbatim, and each adapter uses its real production controller.
-async function harness(t, {restored = false, gates = {}} = {}) {
+async function harness(t, {restored = false, gates = {}, projectReady = true} = {}) {
   const transportCalls = [], reads = [], direct = [], history = [], notices = [], refreshes = [], panels = [];
   const saved = timeline(), dataRef = {current: {project: {id: projectId}, timeline: saved}};
   let visible = true, requestCount = 0, sequence = 100;
@@ -92,6 +92,9 @@ async function harness(t, {restored = false, gates = {}} = {}) {
     dataRef, currentProject: {current: projectId}, projectEpoch: {current: 1}, navigationEpoch: {current: 0}, panelIntent: {current: 0},
     workspaceRef: {current: restored ? {restored: true, workspaceOrigin: id(8)} : {restored: false}},
     deliveryNameRef: {current: null}, localDeliveryRef: {current: null}, online: true, auth: true, loading: false,
+    // Existing export cases start inside an already opened workbench. Exercise
+    // the opposite App readiness boundary separately without faking its reads.
+    projectSessionReady: () => projectReady, workbenchReady: projectReady,
     rightDockTab: 'delivery', showExports: false, panelVisible: () => visible,
     isBusy: () => false, pendingForProject: () => [], setAuth() { assert.fail('Fixture cannot cause authentication loss'); },
     async refresh(value) { refreshes.push(value); if (gates.refresh) await gates.refresh.promise; },
@@ -167,6 +170,15 @@ test('actual App hook/context wiring carries one exact selected range through pr
   assert.equal(h.localDelivery.controller.getState().intent.outcome.status, 'accepted');
   assert.deepEqual(h.history, [true]); assert.deepEqual(h.refreshes, [projectId]); assert.deepEqual(h.direct, []);
   assert.equal(JSON.stringify(h.saved), savedBytes);
+});
+
+test('actual export contexts remain inactive until project opening has been accepted', async t => {
+  const h = await harness(t, {projectReady: false});
+  assert.equal(h.exportRangeContext().projectId, null); assert.equal(h.exportRangeContext().enabled, false);
+  assert.equal(h.localDeliveryContext().projectId, null); assert.equal(h.localDeliveryContext().connected, false); assert.equal(h.localDeliveryContext().visible, false);
+  assert.equal(h.exportCheckContext().projectId, null); assert.equal(h.exportCheckContext().connected, false);
+  assert.equal(h.attemptRange(), false); await h.check(h.exportCheckContext()); await h.render('export');
+  assert.deepEqual(h.reads, []); assert.deepEqual(h.transportCalls, []); assert.deepEqual(h.direct, []); assert.equal(h.requestCount(), 0);
 });
 
 test('actual App uses range version for Check and both live contexts, including A to B to A', async t => {

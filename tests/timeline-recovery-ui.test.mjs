@@ -7,6 +7,7 @@ import * as submissions from '../apps/web/src/submissions.js';
 import * as mutations from '../apps/web/src/mutation-submissions.js';
 import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
 import { isReferenceOperation } from '../apps/web/src/reference-connections.js';
 
@@ -85,7 +86,7 @@ function acknowledged(operation, input) {
     status: 'queued', assetId: null, url: null, error: null, createdAt: value.createdAt, updatedAt: value.updatedAt };
 }
 function harness(dispatch, { projectSnapshot, workspace = { restored: false } } = {}) {
-  const state = { epoch: 0, calls: [], reads: [], notices: [], refreshes: [], pending: submissions.pendingForProject(projectId), jobs: false, auth: true, online: null, providers: null };
+  const state = { projectReady: true, epoch: 0, calls: [], reads: [], notices: [], refreshes: [], pending: submissions.pendingForProject(projectId), jobs: false, auth: true, online: null, providers: null };
   const currentProject = { current: projectId }, workspaceRef = { current: workspace }, busy = new Set();
   const dataRef = { current: { project: { id: projectId }, timeline: timeline(7), timelineHistory: { revision: 7 } } };
   const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
@@ -103,7 +104,7 @@ function harness(dispatch, { projectSnapshot, workspace = { restored: false } } 
     },
   };
   if (projectSnapshot) {
-    const refreshScope = { ...scope, useCallback: callback => callback, emptyData: {}, projectEpoch: { current: 1 },
+    const refreshScope = { ...scope, ...projectOpening, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch: { current: 1 },
       setProviders: value => { state.providers = value; }, setLastSync() {}, setOnline: value => { state.online = value; }, reconcileWorkspaceState,
       viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false }, setView() {}, preferencesRef: { current: {} } };
     delete refreshScope.refresh;
@@ -484,4 +485,12 @@ test('reference attach and detach retain ordinary 4xx without proof and unrelate
     assert.ok(h.state.calls.every(call => JSON.stringify(call.input) === JSON.stringify(input))); assert.equal(h.state.jobs, true);
     submissions.clearPending(projectId, key);
   }
+});
+
+
+test('a project that has not opened cannot publish a recovery refresh', async t => {
+  storage(t);
+  let reads = 0; const h = harness(() => assert.fail('No mutation'), { projectSnapshot: () => { reads++; return { project: { id: projectId } }; } });
+  h.state.projectReady = false; const before = structuredClone(h.dataRef.current);
+  assert.equal(await h.refresh(projectId), null); assert.equal(reads, 0); assert.deepEqual(h.dataRef.current, before);
 });

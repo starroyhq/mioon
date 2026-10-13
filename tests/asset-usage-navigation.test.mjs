@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { projectOpenAttempt, canPublishProjectOpen } from '../apps/web/src/project-open-state.ts';
 import { deriveTimelineAssetUsage } from '../apps/web/src/timeline-asset-usage.ts';
 import { locateTimelineAssetUse, matchesTimelineAssetUse, revealTimelineAssetUse } from '../apps/web/src/timeline-asset-navigation.ts';
 
@@ -69,13 +70,15 @@ test('viewport reveal is bounded to its exact child and both layout callbacks re
 
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const section = (start, end) => { const a = source.indexOf(start), b = source.indexOf(end, a); assert.ok(a >= 0 && b > a); return source.slice(a, b); };
+const readySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const bridge = section('  function readAssetUsageNavigation()', '  function timelineFormatContext()');
 function appHarness() {
   const f = fixture(), calls = [], gate = held(); let predicate;
-  const env = { deriveTimelineAssetUsage, locateTimelineAssetUse, matchesTimelineAssetUse,
+  const env = { deriveTimelineAssetUsage, locateTimelineAssetUse, matchesTimelineAssetUse, canPublishProjectOpen,
+    openedProject: { current: projectOpenAttempt(f.state.projectId, f.state.projectEpoch, f.state.workspaceScope) },
     revealTimelineAssetUse: (...args) => calls.push(['scroll', ...args]),
     currentProject: { current: f.state.projectId }, dataRef: { current: { project: { id: f.state.projectId }, timeline: f.timeline, assets: f.assets } },
-    importSession: { current: { active: true } }, viewReady: { current: true }, projectEpoch: { current: 1 }, navigationEpoch: { current: 2 }, panelIntent: { current: 3 }, assetUsageAttempt: { current: 0 },
+    importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, projectEpoch: { current: 1 }, navigationEpoch: { current: 2 }, panelIntent: { current: 3 }, assetUsageAttempt: { current: 0 },
     workspaceRef: { current: { restored: false } }, workspaceOriginScope: value => value.restored ? 'restored:' + value.workspaceOrigin : 'normal', assetUsageAvailability: { current: { ready: true } }, isBusy: () => false,
     guardNavigation: (message, dirty, current) => { assert.match(message, /定位此素材/); assert.equal(dirty, false); predicate = current; return gate.promise; },
     setPropertiesPage: value => calls.push(['properties', value]), setRightDockTab: value => calls.push(['dock', value]),
@@ -85,7 +88,7 @@ function appHarness() {
     context: () => ({ epoch: env.navigationEpoch.current }), isCurrent: captured => captured.epoch === env.navigationEpoch.current,
     document: {}, requestAnimationFrame: () => assert.fail('Scheduled by dedicated helper'),
   };
-  const api = Function(...Object.keys(env), `${bridge}; return {readAssetUsageNavigation,locateAssetUse};`)(...Object.values(env));
+  const api = Function(...Object.keys(env), `${readySource}\n${bridge}; return {readAssetUsageNavigation,locateAssetUse};`)(...Object.values(env));
   return { f, env, api, calls, gate, predicate: () => predicate };
 }
 test('actual App bridge opens the chosen clip in Properties and saved timeline without business calls', async () => {
@@ -98,6 +101,21 @@ test('actual App bridge opens the chosen clip in Properties and saved timeline w
 for (const key of ['projectEpoch', 'navigationEpoch', 'panelIntent', 'assetUsageAttempt']) test(`actual App bridge checks live ${key} after dirty confirmation`, async () => {
   const h = appHarness(), pending = h.api.locateAssetUse(h.f.use, () => true); h.env[key].current++; assert.equal(h.predicate()(), false); h.gate.resolve(true);
   assert.equal(await pending, false); assert.deepEqual(h.calls, []);
+});
+test('actual App bridge refuses an unaccepted home session before or during discard confirmation', async () => {
+  for (const timing of ['before', 'during']) {
+    const h = appHarness();
+    if (timing === 'before') h.env.openedProject.current = null;
+    const pending = h.api.locateAssetUse(h.f.use, () => true);
+    if (timing === 'during') {
+      assert.equal(h.predicate()(), true);
+      h.env.openedProject.current = null;
+      assert.equal(h.predicate()(), false);
+    } else assert.equal(h.predicate(), undefined, 'Home cannot even ask to discard a project draft');
+    h.gate.resolve(true);
+    assert.equal(await pending, false); assert.deepEqual(h.calls, []);
+    assert.equal(h.api.readAssetUsageNavigation().active, false);
+  }
 });
 test('App passes the target fence through the actual clip discard boundary', async () => {
   const guard = section('  async function guardNavigation(', '  async function guardProjectNavigation(');

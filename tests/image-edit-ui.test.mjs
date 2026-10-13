@@ -122,11 +122,14 @@ test('private edit approval body contains only bound review identity and verifie
 // string/source matching substitutes for these stale-callback assertions.
 const component = readFileSync(new URL('../apps/web/src/ImageGeneration.jsx', import.meta.url), 'utf8');
 const element = (type, props = {}, ...children) => ({ type, props: { ...props, children } });
+// This legacy consumer does not supply a navigation registry. The actual Slot
+// transparency/handler contract is exercised in settings-navigation-slot.test.
+const renderElement = (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children);
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 function renderer(f) {
   const slots = []; let index = 0, effects = [], visible = true, tree, owner = projectId, dirty = false;
   const same = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
-  const react = { createElement: element, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(fn, deps) { const slot = index++; if (!slots[slot] || !same(slots[slot].deps, deps)) slots[slot] = { value: fn(), deps }; return slots[slot].value; }, useLayoutEffect(fn, deps) { const slot = index++, previous = slots[slot]; if (previous && same(previous.deps, deps)) return; slots[slot] = { fn, deps, cleanup: previous?.cleanup }; effects.push(slot); } }; react.default = react;
+  const react = { createElement: renderElement, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(fn, deps) { const slot = index++; if (!slots[slot] || !same(slots[slot].deps, deps)) slots[slot] = { value: fn(), deps }; return slots[slot].value; }, useLayoutEffect(fn, deps) { const slot = index++, previous = slots[slot]; if (previous && same(previous.deps, deps)) return; slots[slot] = { fn, deps, cleanup: previous?.cleanup }; effects.push(slot); } }; react.default = react;
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   const require = name => {
     if (name === 'react') return react;
@@ -134,6 +137,7 @@ function renderer(f) {
     if (name === './image-generation.js') return { ...logic, createImageGenerationSession: value => logic.createImageGenerationSession({ ...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (name === './ImageSettings.jsx' || name === './ComfyImageSettings.jsx') return { __esModule: true, default: name };
+    if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
     if (name === './ComfyImageDetails.jsx') return primitive;
     if (name === './image-settings.js') return { createImageSettingsClient: value => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
     if (name === './comfy-image-settings.js') return { createComfyImageSettingsClient: () => ({ read: async () => { throw Error('Not configured'); } }) };

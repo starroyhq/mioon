@@ -48,3 +48,25 @@ type TopbarPropsMustNotBeAny = Assert<IsAny<TopbarSaveStatusProps> extends false
 type TopbarPreferenceMustNotBeAny = Assert<IsAny<TopbarSaveStatusProps['preferenceStatus']> extends false ? true : false>;
 type TopbarElementMustNotBeAny = Assert<IsAny<ReturnType<typeof TopbarSaveStatus>> extends false ? true : false>;
 export type { TopbarPropsMustNotBeAny, TopbarPreferenceMustNotBeAny, TopbarElementMustNotBeAny };
+
+import ProjectHome, { type ProjectHomeProps } from '../../apps/web/src/ProjectHome.tsx';
+import ProjectHomeConnections, { type HomeConnectionSlot } from '../../apps/web/src/ProjectHomeConnections.tsx';
+import { projectOpenAttempt, canPublishProjectOpen, type ProjectOpenObservation } from '../../apps/web/src/project-open-state.ts';
+function checkProjectHomeContracts(props: ProjectHomeProps, observed: ProjectOpenObservation): void {
+  const valid = <ProjectHome {...props} phase="opening" />;
+  // @ts-expect-error Creating a project must return its accepted boolean result.
+  const uncheckedCreation = <ProjectHome {...props} onCreate={() => {}} />;
+  // @ts-expect-error A global setting page is not an arbitrary business action.
+  const unsafePage = <ProjectHome {...props} page="generate" />;
+  // @ts-expect-error Opening state is explicitly discriminated.
+  const inventedPhase = <ProjectHome {...props} phase="paid" />;
+  const attempt = projectOpenAttempt('77000000-0000-4000-8000-000000000001', 1, 'normal');
+  const ready: boolean = canPublishProjectOpen(attempt, observed);
+  // @ts-expect-error A verified project identity is not an untyped object.
+  canPublishProjectOpen(attempt, { ...observed, dataProjectId: {} });
+  // @ts-expect-error There is no arbitrary third-party connector slot.
+  const unknownSlot: HomeConnectionSlot = 'external';
+  const settings = <ProjectHomeConnections selected="agent" onSelect={() => {}} panes={{ agent: null, official: null, custom: null, comfy: null }} />;
+  void valid; void uncheckedCreation; void unsafePage; void inventedPhase; void ready; void unknownSlot; void settings;
+}
+void checkProjectHomeContracts;

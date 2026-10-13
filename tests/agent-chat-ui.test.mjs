@@ -6,6 +6,9 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
+import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
+import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import * as logic from '../apps/web/src/agent-chat.js';
 import * as toolLogic from '../apps/web/src/agent-tool-state.js';
 
@@ -237,7 +240,7 @@ test('actual project change makes all previous close, submit, edit and terminal 
 
 test('integration preserves settings entry, the shared right dock, bounded history and app-local controls', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(app, /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace projectId={data.project\?\.id}/);
+  assert.match(app, /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
   assert.match(source, /inspecting \? '新消息范围：当前项目只读检查'/); assert.match(source, /新消息范围：仅文字聊天/); assert.match(source, /不会发送/); assert.match(source, /保存在本地应用数据库/); assert.match(source, /并非密钥保险库加密/); assert.match(source, /请勿输入密钥或其他秘密/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML|<a\s|<img\s|<iframe|fetch\(|rpc\(|localStorage|sessionStorage/);
@@ -377,32 +380,41 @@ test('inline hidden POST acknowledgement preserves original response without att
 const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const actualFunction = (begin, end) => { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return appSource.slice(start, stop).trim(); };
 const guardSource = actualFunction('  async function guardNavigation(', '  async function guardProjectNavigation(');
-const projectGuardSource = actualFunction('  async function guardProjectNavigation(', '  async function changeMode(');
+const projectGuardSource = actualFunction('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
+const settingsDepartureSource = actualFunction('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
+const sessionReadySource = actualFunction('  function projectSessionReady()', '  const workbenchReady =');
 const projectSource = actualFunction('  async function selectProject(', '  async function reloadPreferences(');
+const navigationProjectId = '77000000-0000-4000-8000-000000000001', navigationNextId = '77000000-0000-4000-8000-000000000002', navigationLaterId = '77000000-0000-4000-8000-000000000003';
 function projectNavigation({ draft = true, imageDraft = false, dirty = false, confirmation = true } = {}) {
-  const calls = [], currentProject = { current: projectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty }, formatState = {};
-  const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current });
-  const guardEnv = { localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef: { current: null }, deliveryNameRef: { current: null }, subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft: () => calls.push(['discardSubtitles']) } } }, setSubtitleDirty: value => calls.push(['subtitleDirty', value]), context, dirtyRef, timelineFormatRef: { current: { controller: { getState: () => formatState, hasUnsaved: () => false, discardDraft: () => calls.push(['discardFormat']) } } }, confirm: async message => { calls.push(['confirm', message]); return confirmation; }, isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current,
+  const calls = [], currentProject = { current: navigationProjectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty }, formatState = {}, workspaceRef = { current: { restored: false } };
+  const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
+  const guardEnv = { localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef: { current: null }, deliveryNameRef: { current: null }, subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft: () => calls.push(['discardSubtitles']) } } }, setSubtitleDirty: value => calls.push(['subtitleDirty', value]), context, dirtyRef, timelineFormatRef: { current: { controller: { getState: () => formatState, hasUnsaved: () => false, discardDraft: () => calls.push(['discardFormat']) } } }, confirm: async message => { calls.push(['confirm', message]); return confirmation; }, isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOriginScope(captured.workspace) === workspaceOriginScope(workspaceRef.current),
     setShotDirty: value => calls.push(['shotDirty', value]), setClipDirty: value => calls.push(['clipDirty', value]), setSourceDirty: value => calls.push(['sourceDirty', value]), setSubjectDirty: value => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: scope => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
   const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${guardSource}\n${projectGuardSource}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
-  const env = { workspaceRef: { current: { restored: false } }, loading: false, importSession: { current: { active: true } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: {} }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, refresh: async id => ({ project: { id }, shots: [], nodes: [] }), updateView: () => {}, URL,
-    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
+  const env = { workspaceRef, workspaceOriginScope, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
+    context, isCurrent: guardEnv.isCurrent, confirm: guardEnv.confirm, notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message,
+    openedProject: { current: projectOpenAttempt(navigationProjectId, 0, 'normal') }, settingsNavigation: { current: createSettingsNavigationRegistry() },
+    loading: false, importSession: { current: { active: true, selection: 0 } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: { project: { id: navigationProjectId } } }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, updateView: () => {}, URL,
+    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
+  env.refresh = async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; };
+  env.prepareSettingsDeparture = () => Function(...Object.keys(env), `${settingsDepartureSource}\nreturn prepareSettingsDeparture();`)(...Object.values(env));
+  env.projectSessionReady = () => Function(...Object.keys(env), `${sessionReadySource}\nreturn projectSessionReady();`)(...Object.values(env));
   const selectProject = Function(...Object.keys(env), `return (${projectSource});`)(...Object.values(env));
   return { selectProject, guardNavigation, calls, currentProject, navigationEpoch, env };
 }
 
 test('actual App project guard Cancel retains unsent chat and current project without clearing any panel', async () => {
-  const f = projectNavigation({ confirmation: false }); assert.equal(await f.selectProject('project-two'), false);
-  assert.equal(f.currentProject.current, projectId); assert.equal(f.env.agentDraft.current, true);
+  const f = projectNavigation({ confirmation: false }); assert.equal(await f.selectProject(navigationNextId), false);
+  assert.equal(f.currentProject.current, navigationProjectId); assert.equal(f.env.agentDraft.current, true);
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0][0], 'confirm'); assert.match(f.calls[0][1], /未发送的草稿/); assert.match(f.calls[0][1], /已发送的回复可能继续/);
 });
 
 test('actual App project guard Confirm permits project-key isolation; no draft or merely running reply needs no prompt', async () => {
-  const f = projectNavigation(); assert.equal(await f.selectProject('project-two'), true); assert.equal(f.currentProject.current, 'project-two');
+  const f = projectNavigation(); assert.equal(await f.selectProject(navigationNextId), true); assert.equal(f.currentProject.current, navigationNextId); assert.equal(f.env.projectSessionReady(), true);
   assert.equal(f.calls.filter(call => call[0] === 'confirm').length, 1); assert.equal(f.calls.filter(call => call[0] === 'setData').length, 1);
   assert.deepEqual(f.calls.filter(call => call[0] === 'setSourceDirty'), [['setSourceDirty', false]]);
-  const g = projectNavigation({ draft: false }); assert.equal(await g.selectProject('project-two'), true); assert.equal(g.calls.some(call => call[0] === 'confirm'), false);
+  const g = projectNavigation({ draft: false }); assert.equal(await g.selectProject(navigationNextId), true); assert.equal(g.calls.some(call => call[0] === 'confirm'), false);
   assert.doesNotMatch(projectSource, /activeAgentChatRun|\.stop\(|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   const resetTab = f.calls.find(call => call[0] === 'setRightDockTab')[1];
   assert.equal(resetTab('agent'), 'agent'); assert.equal(resetTab('tasks'), 'properties');
@@ -410,10 +422,10 @@ test('actual App project guard Confirm permits project-key isolation; no draft o
 
 test('actual App image draft guard Cancel preserves project and Confirm changes it without stopping accepted work', async () => {
   const cancelled = projectNavigation({ draft: false, imageDraft: true, confirmation: false });
-  assert.equal(await cancelled.selectProject('project-two'), false); assert.equal(cancelled.currentProject.current, projectId); assert.equal(cancelled.env.imageDraft.current, true);
+  assert.equal(await cancelled.selectProject(navigationNextId), false); assert.equal(cancelled.currentProject.current, navigationProjectId); assert.equal(cancelled.env.imageDraft.current, true);
   assert.equal(cancelled.calls.length, 1); assert.match(cancelled.calls[0][1], /图像工坊有未发送的草稿/);
-  const confirmed = projectNavigation({ draft: false, imageDraft: true }); assert.equal(await confirmed.selectProject('project-two'), true); assert.equal(confirmed.currentProject.current, 'project-two'); assert.equal(confirmed.calls.filter(call => call[0] === 'confirm').length, 1);
-  const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject('project-two'); assert.match(both.calls[0][1], /Agent 和图像工坊都有未发送的草稿/);
+  const confirmed = projectNavigation({ draft: false, imageDraft: true }); assert.equal(await confirmed.selectProject(navigationNextId), true); assert.equal(confirmed.currentProject.current, navigationNextId); assert.equal(confirmed.calls.filter(call => call[0] === 'confirm').length, 1);
+  const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject(navigationNextId); assert.match(both.calls[0][1], /Agent 和图像工坊都有未发送的草稿/);
   assert.doesNotMatch(projectSource, /image\.task\.|image\.generate|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   assert.equal(confirmed.calls.find(call => call[0] === 'setRightDockTab')[1]('image'), 'image');
 });
@@ -432,8 +444,9 @@ test('actual App dirty-panel guard retains source drafts on Cancel and clears di
 });
 
 test('actual App navigation rejects late discard confirmation after a newer project and mode switches ignore chat draft', async () => {
-  const held = deferred(), f = projectNavigation({ confirmation: held.promise }); const pending = f.selectProject('project-two');
-  f.currentProject.current = 'project-newer'; f.navigationEpoch.current++; held.resolve(true); assert.equal(await pending, false); assert.equal(f.currentProject.current, 'project-newer'); assert.equal(f.calls.length, 1);
+  const held = deferred(), f = projectNavigation({ confirmation: held.promise }); const pending = f.selectProject(navigationNextId);
+  await flush(); assert.equal(f.calls.length, 1); assert.equal(f.calls[0][0], 'confirm');
+  f.currentProject.current = navigationLaterId; f.navigationEpoch.current++; held.resolve(true); assert.equal(await pending, false); assert.equal(f.currentProject.current, navigationLaterId); assert.equal(f.calls.length, 1);
   const g = projectNavigation(); assert.equal(await g.guardNavigation(), true); assert.equal(g.calls.length, 0, 'Mode navigation only consults existing Inspector dirty state');
   const mode = actualFunction('  async function changeMode(', '  function revealCanvas('); assert.match(mode, /await guardNavigation\(\)/); assert.doesNotMatch(mode, /agentDraft|setRightDockTab|setAgentPage/);
 });
@@ -441,9 +454,9 @@ test('actual App navigation rejects late discard confirmation after a newer proj
 const workspaceSource = readFileSync(new URL('../apps/web/src/AgentWorkspace.jsx', import.meta.url), 'utf8');
 function workspaceHarness(exportName = 'default') {
   const slots = []; let cursor = 0, effects = [], visible = true;
-  const react = { createElement: element, useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;
+  const react = { createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children), useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, id => id === 'react' ? react : id === './AgentPanel.jsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.jsx' ? { __esModule: true, default: 'AgentSettings' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' });
+  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, id => id === 'react' ? react : id === './AgentPanel.jsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.jsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' });
   return { render(props) { cursor = 0; effects = []; const tree = module.exports[exportName](props); for (const i of effects) slots[i].callback(); return tree; }, setAncestorVisible(value) { visible = value; } };
 }
 

@@ -89,10 +89,17 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   const app = text('App.jsx'), start = app.indexOf('  const frameExtraction = useFrameExtraction('), end = app.indexOf('\n\n', start);
   assert.ok(start > 0 && end > start);
   const calls = [], controller = { capture: () => {} }, state = { visible: true }, refreshes = [];
-  const env = { data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: name => name === 'canvas', quickAssetId: sourceId, restored: false, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: pid => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: input => { calls.push(input); return { controller, state }; } };
+  const env = { workbenchReady: true, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: name => name === 'canvas', quickAssetId: sourceId, restored: false, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: pid => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: input => { calls.push(input); return { controller, state }; } };
   const evaluate = () => Function(...Object.keys(env), `${app.slice(start, end)}; return frameExtraction;`)(...Object.values(env));
   assert.equal(evaluate().controller, controller); const configured = calls.at(-1);
   assert.equal(configured.visible, true); assert.equal(configured.blocked, false); assert.equal(configured.rpc, env.rpc); assert.equal(configured.sourceScope, sourceScope); assert.equal(configured.revealAsset, env.revealImageAsset);
+  env.workbenchReady = false; evaluate();
+  const homeConfig = calls.at(-1); assert.equal(homeConfig.projectId, null); assert.equal(homeConfig.visible, false);
+  const homeCalls = [], home = hooksHarness(text('use-frame-extraction.js'), { './frame-extraction.js': frame }, 'useFrameExtraction');
+  home.render({ ...homeConfig, rpc: (...args) => { homeCalls.push(args); return page(); } }); await tick(); home.render();
+  await home.value.controller.refreshTasks(); await home.value.controller.refreshActive();
+  assert.deepEqual(homeCalls, [], 'Retained source metadata on home must not start project frame observation'); home.unmount();
+  env.workbenchReady = true;
   configured.onResult(projectId); env.currentProject.current = id(9); configured.onResult(projectId); assert.deepEqual(refreshes, [projectId]);
   env.busy = { 'canvas:mutation': true }; evaluate(); assert.equal(calls.at(-1).blocked, true);
   env.panelVisible = name => name === 'inspector'; env.rightDockTab = 'properties'; evaluate(); assert.equal(calls.at(-1).visible, true, 'narrow Properties can read and recover with canvas hidden');

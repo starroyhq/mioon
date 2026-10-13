@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { projectOpenAttempt, canPublishProjectOpen } from '../apps/web/src/project-open-state.ts';
+import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
 import * as replacement from '../apps/web/src/clip-source-replacement.js';
 import * as submissions from '../apps/web/src/submissions.js';
 import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
@@ -238,11 +240,12 @@ function sessionFixture(t) {
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { get length() { return values.size; }, key: index => [...values.keys()][index], getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } });
   t.after(() => { if (previous) Object.defineProperty(globalThis, 'sessionStorage', previous); else delete globalThis.sessionStorage; }); return values;
 }
-function parentHarness() {
+function parentHarness({ ready = true } = {}) {
   const c = context(), calls = [], dataRef = { current: { project: { id: projectId }, ...c } }, viewRef = { current: { activeMode: 'editing', editing: { selectedClipId: clipId, quickAssetId: null } } };
-  const deps = { ...replacement, workspaceRef: { current: { restored: false } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
+  const deps = { ...replacement, canPublishProjectOpen, workspaceOriginScope,
+    openedProject: { current: ready ? projectOpenAttempt(projectId, 1, 'normal') : null }, importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, workspaceRef: { current: { restored: false } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
     tasksRef: { current: { blocked: () => false } }, pendingForProject: () => [], online: true, auth: true, loading: false, mutateTimeline: async (...args) => { calls.push(args); return acknowledged(args[3].review || replacement.createClipReplacementReview(c, `asset:${newAssetId}`)); } };
-  const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function clipReplacementContext()', 'function exportSettingsContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps);
+  const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function projectSessionReady()', '  const panelSurface =')} ${extract('function clipReplacementContext()', 'function exportSettingsContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps);
   return { ...compiled, deps, calls, c };
 }
 
@@ -254,6 +257,13 @@ test('actual parent guard rechecks current project, selection, scope, revision, 
   const h = parentHarness(), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`);
   assert.equal((await h.replaceTimelineClipSource(review)).status, 'applied'); assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0][0], 'timeline.clip.replaceSource'); assert.equal(h.calls[0][1], review.input); assert.equal(h.calls[0][2], 7);
+});
+
+test('actual parent replacement cannot use retained project metadata before session acceptance', async () => {
+  const h = parentHarness({ ready: false }), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`);
+  const live = h.clipReplacementContext();
+  assert.equal(live.projectId, null); assert.equal(live.visible, false); assert.equal(live.connected, false);
+  assert.equal((await h.replaceTimelineClipSource(review)).status, 'rejected'); assert.deepEqual(h.calls, []);
 });
 
 function runHarness(rpc) {

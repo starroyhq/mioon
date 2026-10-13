@@ -238,11 +238,11 @@ test('actual App saved selection and review fences include connection, dirty for
   const build = (patch = {}) => {
     const env = { workspaceMode: 'editing', propertiesPage: 'inspector', quickAssetId: null, makeAgentTimelineGainSelection: timing.makeAgentTimelineGainSelection,
       timeline: savedTimeline(), selectedClipId: clipId, data: { project: { id: projectId }, assets: [savedAsset()] }, agentTimelineGainBlockedReason: gainContext.agentTimelineGainBlockedReason,
-      online: true, auth: true, loading: false, inspectorDirty: false, formatDirty: false, agentClipDraftBlocked: false, clipDraftRef: { current: { hasUnsaved: () => false, getState: () => ({ candidate: null }) } }, timelineBusy: false, ...patch };
+      workbenchReady: true, online: true, auth: true, loading: false, inspectorDirty: false, formatDirty: false, agentClipDraftBlocked: false, clipDraftRef: { current: { hasUnsaved: () => false, getState: () => ({ candidate: null }) } }, timelineBusy: false, ...patch };
     return Function(...Object.keys(env), `${expression}; return { selection: agentTimelineGainSelection, reason: gainBlockedReason };`)(...Object.values(env));
   };
   assert.deepEqual(build(), { selection: selected, reason: '' });
-  for (const patch of [{ online: false }, { auth: false }, { loading: true }, { inspectorDirty: true }, { formatDirty: true }, { timelineBusy: true }, { agentClipDraftBlocked: true }, { clipDraftRef: { current: { hasUnsaved: () => true, getState: () => ({ candidate: null }) } } }, { clipDraftRef: { current: { hasUnsaved: () => false, getState: () => ({ candidate: {} }) } } }]) assert.notEqual(build(patch).reason, '');
+  for (const patch of [{ workbenchReady: false }, { online: false }, { auth: false }, { loading: true }, { inspectorDirty: true }, { formatDirty: true }, { timelineBusy: true }, { agentClipDraftBlocked: true }, { clipDraftRef: { current: { hasUnsaved: () => true, getState: () => ({ candidate: null }) } } }, { clipDraftRef: { current: { hasUnsaved: () => false, getState: () => ({ candidate: {} }) } } }]) assert.notEqual(build(patch).reason, '');
   for (const patch of [{ workspaceMode: 'canvas' }, { propertiesPage: 'subtitle' }, { quickAssetId: id(99) }, { data: { project: { id: projectId }, assets: [savedAsset({ hasAudio: false })] } }]) assert.equal(build(patch).selection, null);
   assert.match(source, /selectedTimelineGainClip=\{agentTimelineGainSelection\} timelineGainBlockedReason=\{gainBlockedReason\}/);
   assert.match(source, /onDraftController=\{registerClipDraft\} onReviewBlockedChange=\{setAgentClipDraftBlocked\}/);

@@ -152,6 +152,7 @@ function actualAppFunction(start, end, env) {
 test('actual App range context rejects hidden, offline, busy and pending retained callbacks but preserves restored direct export', () => {
   let base = { scope: 'project:1', enabled: true }, local = { scope: 'project:1', busy: false, pending: false };
   const env = { exportSettingsContext: () => base, localDeliveryRef: { current: { controller: { getState: () => local } } },
+    projectSessionReady: () => true,
     rightDockTab: 'delivery', showExports: false, panelVisible: () => true,
     dataRef: { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4, durationFrames: 120 } } }, currentProject: { current: projectId } };
   const getContext = () => actualAppFunction('  function exportRangeContext(', '  const exportRange = useExportRange(', env)();
@@ -167,11 +168,15 @@ test('actual App range context rejects hidden, offline, busy and pending retaine
   local = { scope: 'other-project:1', busy: true, pending: true }; assert.equal(getContext().enabled, true, 'another project coordinator cannot block this scope');
   local = { scope: 'project:1', busy: false, pending: false, phase: 'unsupported' }; assert.equal(getContext().enabled, true, 'restored unsupported sidecar does not disable explicit export');
   assert.equal(choose(draft('0', '1')), true);
+  env.projectSessionReady = () => false; base = { ...base, enabled: false };
+  assert.equal(getContext().projectId, null, 'Unaccepted project data cannot identify an export range');
+  assert.equal(choose(draft('0', '2')), false);
 });
 
 test('actual local-delivery execution epoch includes range version even after changing back to the original endpoints', () => {
   const f = rangeFixture(); f.choose(draft());
   const env = { currentProject: { current: projectId }, projectEpoch: { current: 1 }, dataRef: { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 } } }, workspaceRef: { current: { restored: false } },
+    projectSessionReady: () => true, workbenchReady: true,
     online: true, auth: true, loading: false, rightDockTab: 'delivery', showExports: false, panelVisible: () => true, isBusy: () => false,
     navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, exportSettings: { controller: { getVersion: () => 1 } }, exportRange: { controller: { getVersion: () => f.controller.getVersion('project:1') } },
     deliveryName: { controller: { getName: () => '', getVersion: () => 1, hasUnsaved: () => false } } };
@@ -179,6 +184,8 @@ test('actual local-delivery execution epoch includes range version even after ch
   const before = getContext(); f.choose(draft('0', '1')); f.choose(draft()); const after = getContext();
   assert.deepEqual(f.controller.getRange('project:1'), range); assert.notEqual(after.executionEpoch, before.executionEpoch);
   assert.deepEqual({ ...after, executionEpoch: before.executionEpoch }, before);
+  env.projectSessionReady = () => false; env.workbenchReady = false;
+  const unopened = getContext(); assert.equal(unopened.projectId, null); assert.equal(unopened.connected, false); assert.equal(unopened.visible, false);
 });
 
 

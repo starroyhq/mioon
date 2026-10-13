@@ -1,0 +1,86 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { transformSync } from 'esbuild';
+import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+
+const source = readFileSync(new URL('../apps/web/src/SettingsNavigationSlot.tsx', import.meta.url), 'utf8');
+const state = (version, patch = {}) => ({ dirty: false, busy: false, blocked: false, version, ...patch });
+// Execute the real component with an explicit insertion-before-layout cleanup
+// schedule. This is a component lifecycle contract, not a browser/native test.
+function fixture() {
+  const hooks = []; let cursor = 0, insertion = [], layouts = [], report, output;
+  function memo(factory, deps) { const i = cursor++, old = hooks[i]; if (!old || deps.some((x, j) => x !== old.deps[j])) hooks[i] = { value: factory(), deps }; return hooks[i].value; }
+  function effect(queue, callback, deps) { const i = cursor++, old = hooks[i]; if (!old || deps.some((x, j) => x !== old.deps[j])) { queue.push(() => { old?.cleanup?.(); hooks[i] = { deps, cleanup: callback() }; }); } }
+  const react = { createElement: (_type, _props, ...children) => children, Fragment: 'fragment', useMemo: memo,
+    useCallback: (callback, deps) => memo(() => callback, deps),
+    useInsertionEffect: (callback, deps) => effect(insertion, callback, deps),
+    useLayoutEffect: (callback, deps) => effect(layouts, callback, deps),
+  };
+  const module = { exports: {} };
+  Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
+    if (name === 'react') return react;
+    if (name === './settings-navigation-state.ts') return { createSettingsNavigationRegistry };
+    assert.fail(`Unexpected dependency: ${name}`);
+  }, module, module.exports);
+  return {
+    render(registry, slot = 'home:agent', child = null) { cursor = 0; insertion = []; layouts = []; output = module.exports.default({ registry, slot, children: next => { report = next; return child; } }); for (const fn of insertion) fn(); for (const fn of layouts) fn(); return report; },
+    get output() { return output; },
+    retireBeforeChildCleanup(childCleanup) { for (const item of hooks) item.cleanup?.(); childCleanup(); },
+  };
+}
+
+test('settings slot owns monotonic metadata and never clears an unchanged mounted form', () => {
+  const f = fixture(), registry = createSettingsNavigationRegistry(), report = f.render(registry);
+  report(state(1, { dirty: true })); const captured = registry.capture();
+  assert.equal(registry.needsConfirmation(captured), true); assert.equal(registry.canLeave(captured), true);
+  assert.equal(f.render(registry), report); assert.deepEqual(registry.capture(), captured);
+  report(state(2, { busy: true })); assert.equal(registry.canLeave(captured), false); assert.equal(registry.canLeave(registry.capture()), false);
+});
+
+test('insertion cleanup retires report before a descendant cleanup or late ACK can register again', () => {
+  const f = fixture(), registry = createSettingsNavigationRegistry(), report = f.render(registry);
+  report(state(1, { dirty: true }));
+  f.retireBeforeChildCleanup(() => report(state(2)));
+  report(state(3, { busy: true }));
+  assert.deepEqual(registry.capture(), []); assert.equal(registry.canLeave(registry.capture()), true);
+  assert.match(source, /useInsertionEffect\(\(\) =>/);
+});
+
+test('registry or slot replacement retires the old callback without erasing the new owner', () => {
+  const f = fixture(), first = createSettingsNavigationRegistry(), second = createSettingsNavigationRegistry();
+  const oldReport = f.render(first); oldReport(state(1, { dirty: true }));
+  const nextReport = f.render(second, 'home:custom'); nextReport(state(1, { dirty: true }));
+  oldReport(state(2)); assert.deepEqual(first.capture(), []);
+  const current = second.capture(); assert.equal(current.length, 1); assert.equal(current[0].slot, 'home:custom'); assert.equal(current[0].dirty, true);
+});
+
+test('retired owner cannot release or overwrite a replacement using the same registry slot', () => {
+  const old = fixture(), next = fixture(), registry = createSettingsNavigationRegistry();
+  const oldReport = old.render(registry); oldReport(state(1, { dirty: true }));
+  const nextReport = next.render(registry); nextReport(state(1, { busy: true }));
+  old.retireBeforeChildCleanup(() => oldReport(state(2)));
+  assert.equal(registry.capture().length, 1); assert.equal(registry.capture()[0].busy, true);
+  nextReport(state(2)); assert.equal(registry.canLeave(registry.capture()), true);
+});
+
+test('an omitted registry preserves legacy optional-consumer behavior', () => {
+  const f = fixture(), report = f.render(undefined); assert.doesNotThrow(() => report(state(1, { dirty: true })));
+  assert.doesNotThrow(() => f.retireBeforeChildCleanup(() => report(state(2))));
+});
+
+test('actual slot without a registry retains the exact child, input value and explicit handler', () => {
+  const f = fixture(), calls = [];
+  const click = () => { calls.push('explicit click'); };
+  const child = { type: 'Settings', props: { value: 'retained input', onClick: click } };
+  const report = f.render(undefined, 'workbench:official', child);
+  assert.deepEqual(f.output, [child]); assert.equal(f.output[0], child);
+  assert.equal(f.output[0].props.value, 'retained input');
+  assert.equal(f.output[0].props.onClick, click); assert.deepEqual(calls, []);
+  report(state(1, { dirty: true, busy: true }));
+  assert.equal(f.render(undefined, 'workbench:official', child), report);
+  assert.equal(f.output[0], child); assert.deepEqual(calls, []);
+  f.output[0].props.onClick(); assert.deepEqual(calls, ['explicit click']);
+  f.retireBeforeChildCleanup(() => report(state(2)));
+  assert.deepEqual(calls, ['explicit click']);
+});

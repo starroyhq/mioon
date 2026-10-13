@@ -104,6 +104,7 @@ test('actual App context uses current refs, transport option shape, and frozen r
   const workspaceRef = { current: { restored: false } }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
   let controller;
   const environment = { workspaceOriginScope, pinNewWorkspaceIntent, workspaceRef, currentProject, projectEpoch, navigationEpoch, panelIntent, viewRef, dataRef,
+    projectSessionReady: () => true, workbenchReady: true,
     online: true, auth: true, loading: false, rightDockTab: 'delivery', showExports: true, panelVisible: () => true, isTimelineRenderRecord,
     setAuth() { assert.fail('unexpected auth mutation'); }, async rpc(operation, input, options) { calls.push({ operation, input, options }); return report(controller.getState().targets.find(target => target.exportId === input.exportId)); },
     useExportSamplePeak(options) { controller = createExportSamplePeakController(options); controller.setContext(options.context); return { state: controller.getState(), controller }; } };
@@ -112,6 +113,13 @@ test('actual App context uses current refs, transport option shape, and frozen r
   const target = controller.getState().targets[1]; await controller.check(target, controller.getState().scope);
   assert.equal(calls[0].operation, 'timeline.export.samplePeak'); assert.deepEqual(calls[0].input, { projectId, exportId: target.exportId }); assert.deepEqual(Object.keys(calls[0].options), ['signal']);
   assert.equal(controller.getState().report.artifact.deliveryName, '冻结的成片 <v1>');
+  const contextBlock = block.slice(0, block.indexOf('  const exportSamplePeak ='));
+  const unopenedEnvironment = { ...environment, projectSessionReady: () => false, workbenchReady: false };
+  const unopened = Function(...Object.keys(unopenedEnvironment), `${contextBlock};return exportSamplePeakContext();`)(...Object.values(unopenedEnvironment));
+  assert.equal(unopened.projectId, null); assert.equal(unopened.connected, false); assert.equal(unopened.visible, false);
+  const blocked = createExportSamplePeakController({ getContext: () => unopened, isRenderRecord: isTimelineRenderRecord,
+    read() { assert.fail('Unaccepted project data cannot start historical-file observation'); } });
+  blocked.setContext(unopened); await blocked.check(target, unopened.scope); assert.equal(calls.length, 1);
   projectEpoch.current++; controller.setContext(actual.exportSamplePeakContext()); assert.equal(controller.getState().report, null);
   workspaceRef.current = { restored: true, workspaceOrigin: id(88) }; controller.setContext(actual.exportSamplePeakContext());
   await controller.check(controller.getState().targets[0], controller.getState().scope); assert.equal(calls.length, 1);

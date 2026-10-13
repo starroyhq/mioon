@@ -7,6 +7,7 @@ import * as submissions from '../apps/web/src/submissions.js';
 import * as mutations from '../apps/web/src/mutation-submissions.js';
 import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
 
 const taskIntentModule = { exports: {} };
@@ -50,7 +51,7 @@ function save(operation, input = inputFor(operation)) {
   return submissions.prepareSubmission({ projectId, key, operation, input, createdAt: timestamp });
 }
 function harness(dispatch, { projectSnapshot } = {}) {
-  const state = { epoch: 0, calls: [], refreshes: [], notices: [], pending: submissions.pendingForProject(projectId), pendingUpdates: [],
+  const state = { projectReady: true, epoch: 0, calls: [], refreshes: [], notices: [], pending: submissions.pendingForProject(projectId), pendingUpdates: [],
     jobs: false, auth: true, dataWrites: [], preferenceWrites: [], draft: { prompt: 'A newer unsaved inspector draft' } };
   const currentProject = { current: projectId }, projectEpoch = { current: 1 }, busy = new Set();
   const dataRef = { current: snapshot() }, viewRef = { current: defaultWorkspaceState() };
@@ -73,14 +74,14 @@ function harness(dispatch, { projectSnapshot } = {}) {
     },
   };
   if (projectSnapshot) {
-    const refreshScope = { ...scope, useCallback: callback => callback, emptyData: {}, projectEpoch,
+    const refreshScope = { ...scope, ...projectOpening, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch,
       setProviders() {}, setLastSync() {}, setOnline() {}, reconcileWorkspaceState, viewRef, viewReady: { current: true },
       setView: value => { viewRef.current = value; }, preferencesRef: { current: { update: (...args) => state.preferenceWrites.push(args) } } };
     delete refreshScope.refresh;
     scope.refresh = Function(...Object.keys(refreshScope), `${refreshSource}; return refresh;`)(...Object.values(refreshScope));
   }
   Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
-  return { state, currentProject, projectEpoch, dataRef, viewRef, busy, run: Function(...Object.keys(scope), `${runSource}; return run;`)(...Object.values(scope)) };
+  return { state, currentProject, projectEpoch, dataRef, viewRef, busy, refresh: scope.refresh, run: Function(...Object.keys(scope), `${runSource}; return run;`)(...Object.values(scope)) };
 }
 const failure = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic reference rejection'), { code, details, definitive });
 const proofFor = (operation, input) => ({ mutationOutcome: 'not_applied', operation, projectId: input.projectId, requestId: input.requestId });
@@ -307,4 +308,12 @@ test('unavailable session storage prevents reference dispatch and never creates 
   for (const operation of operations) assert.equal(await h.run(key, operation, inputFor(operation)), null);
   assert.equal(values.size, 0); assert.equal(h.state.calls.length, 0); assert.deepEqual(h.state.refreshes, []); assert.equal(h.busy.size, 0);
   assert.ok(h.state.notices.every(notice => /无法保存请求恢复记录/.test(notice.message)));
+});
+
+
+test('a project that has not opened cannot publish a recovery refresh', async t => {
+  storage(t);
+  let reads = 0; const h = harness(() => assert.fail('No mutation'), { projectSnapshot: () => { reads++; return { project: { id: projectId } }; } });
+  h.state.projectReady = false; const before = structuredClone(h.dataRef.current);
+  assert.equal(await h.refresh(projectId), null); assert.equal(reads, 0); assert.deepEqual(h.dataRef.current, before);
 });

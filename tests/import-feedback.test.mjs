@@ -7,6 +7,7 @@ import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
+import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { rpc as realRpc } from '../apps/web/src/api.js';
 import * as feedback from '../apps/web/src/import-feedback.js';
 
@@ -22,7 +23,7 @@ const defer = () => { let resolve, reject; const promise = new Promise((yes, no)
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 const lifecycleSource = appSource.slice(appSource.indexOf('  const importSession ='), appSource.indexOf('  const currentProject ='));
 const refreshSource = appSource.slice(appSource.indexOf('  const refresh = useCallback('), appSource.indexOf('  async function revealImageAsset('));
-function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false, workspace = { restored: false } } = {}) {
+function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false, workspace = { restored: false }, projectReady = true } = {}) {
   const notifications = [], requests = [], refreshes = [], busyWrites = [], stateWrites = [], busy = new Set(), input = { value: 'selected-files' };
   const currentProject = { current: projectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, requestCounter = { current: 0 };
   const data = { project: { id: projectId }, assets: [] }, dataRef = { current: data };
@@ -45,7 +46,7 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
   let effect, cleanup;
   const importSession = Function('useRef', 'useEffect', 'requestCounter', `${lifecycleSource}\nreturn importSession;`)(
     value => ({ current: value }), fn => { effect = fn; cleanup = fn(); }, requestCounter);
-  const scope = { ...workspaceOrigin, ...restoredWorkspace, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
+  const scope = { ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
     setShowCreate: value => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOrigin.workspaceOriginScope(captured.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: key => busy.has(`${currentProject.current}:${key}`), markBusy: (owner, key, value) => { busyWrites.push({ owner, key, value }); if (value) busy.add(`${owner}:${key}`); else busy.delete(`${owner}:${key}`); },
@@ -168,20 +169,20 @@ test('large batches and hostile Unicode/HTML labels stay bounded plain text with
 
 test('project switch during FileReader stops before POST and does not clear a new input', async () => {
   let reader; const h = harness({ readerImpl: value => { reader = value; } });
-  const running = h.importFiles([file('a.png'), file('b.png')]); h.switchProject('project-b'); h.input.value = 'project-b-selection';
+  const running = h.importFiles([file('a.png'), file('b.png')]); h.switchProject('00000000-0000-4000-8000-000000000002'); h.input.value = 'project-b-selection';
   reader.result = 'data:image/png;base64,YWJjZA=='; reader.onload(); await running;
   assert.equal(imports(h).length, 0); assert.equal(h.notifications.length, 0); assert.equal(h.refreshes.length, 0); assert.equal(h.input.value, 'project-b-selection'); assert.equal(h.busy.size, 0);
 });
 
 test('project switch during POST cannot continue the old batch or overwrite the new project', async () => {
   const held = defer(), h = harness({ fetchImpl: async () => held.promise });
-  const running = h.importFiles([file('a.png'), file('b.png')]); await flush(); h.switchProject('project-b'); h.scope.notify('new project'); h.input.value = 'new selection';
+  const running = h.importFiles([file('a.png'), file('b.png')]); await flush(); h.switchProject('00000000-0000-4000-8000-000000000002'); h.scope.notify('new project'); h.input.value = 'new selection';
   held.resolve(Response.json({ ok: true, data: ack(imports(h)[0].input) })); await running;
   assert.equal(imports(h).length, 1); assert.equal(notice(h), 'new project'); assert.equal(h.refreshes.length, 0); assert.equal(h.input.value, 'new selection'); assert.equal(h.busy.size, 0);
 });
 
 test('A to B to A and mode navigation each invalidate old responses despite matching project ID', async () => {
-  for (const change of [h => { h.switchProject('project-b'); h.switchProject(projectId); }, h => { h.scope.navigationEpoch.current++; }]) {
+  for (const change of [h => { h.switchProject('00000000-0000-4000-8000-000000000002'); h.switchProject(projectId); }, h => { h.scope.navigationEpoch.current++; }]) {
     const held = defer(), h = harness({ fetchImpl: async () => held.promise }); const running = h.importFiles([file('a.png'), file('b.png')]); await flush(); change(h);
     h.scope.notify('new view'); held.resolve(rejected()); await running;
     assert.equal(notice(h), 'new view'); assert.equal(imports(h).length, 1); assert.equal(h.refreshes.length, 0); assert.equal(h.input.value, 'selected-files'); assert.equal(h.busy.size, 0);
@@ -201,9 +202,9 @@ test('new selection while busy is explicitly not started and fences old success,
 
 test('late old-project cleanup cannot release a newer project batch busy lock', async () => {
   const old = defer(), next = defer(); const h = harness({ fetchImpl: async (_url, _options, body) => body.input.projectId === projectId ? old.promise : next.promise });
-  const oldRun = h.importFiles([file('old.png')]); await flush(); h.switchProject('project-b');
+  const oldRun = h.importFiles([file('old.png')]); await flush(); h.switchProject('00000000-0000-4000-8000-000000000002');
   const newRun = h.importFiles([file('new.png')]); await flush(); assert.equal(h.busy.size, 2);
-  old.resolve(rejected()); await oldRun; assert.equal(h.busy.has('project-b:import'), true); assert.equal(h.notifications.length, 0);
+  old.resolve(rejected()); await oldRun; assert.equal(h.busy.has('00000000-0000-4000-8000-000000000002:import'), true); assert.equal(h.notifications.length, 0);
   next.resolve(Response.json({ ok: true, data: ack(imports(h)[1].input) })); await newRun; assert.equal(h.busy.size, 0); assert.match(notice(h), /已确认导入 1 个：「new.png」/);
 });
 
@@ -235,7 +236,7 @@ test('cleanup refresh failure still releases busy and clears only the current in
 });
 
 test('actual App refresh cannot apply a late snapshot after newer selection, project switch or unmount', async () => {
-  for (const change of [async h => { h.input.value = 'new-files'; await h.importFiles([file('new.png')]); }, async h => h.switchProject('project-b'), async h => h.unmount()]) {
+  for (const change of [async h => { h.input.value = 'new-files'; await h.importFiles([file('new.png')]); }, async h => h.switchProject('00000000-0000-4000-8000-000000000002'), async h => h.unmount()]) {
     const held = defer(), h = harness({ actualRefresh: true, fetchImpl: async (_url, _options, body) => {
       if (body.operation === 'asset.import') return Response.json({ ok: true, data: ack(body.input) });
       if (body.operation === 'project.get') return held.promise;
@@ -288,27 +289,27 @@ test('real loopback HTTP and imported rpc: socket loss after observed POST stays
   });
 });
 
-// Execute the unchanged App polling effect. Only browser scheduling/event
+// Execute the actual App polling effect including the H1 loaded-project gate. Only browser scheduling/event
 // plumbing is controlled; callbacks call the actual App refresh implementation.
-const pollSource = appSource.slice(appSource.indexOf('  useEffect(() => {\n    if (!auth || !data.project?.id) return;'), appSource.indexOf('  async function run(key,'));
-assert.ok(pollSource.startsWith('  useEffect(() => {\n    if (!auth || !data.project?.id) return;'));
-function mountActualPolling(h) {
+const pollSource = appSource.slice(appSource.indexOf('  useEffect(() => {\n    if (!auth || !workbenchReady || !data.project?.id) return;'), appSource.indexOf('  async function run(key,'));
+assert.ok(pollSource.startsWith('  useEffect(() => {\n    if (!auth || !workbenchReady || !data.project?.id) return;'));
+function mountActualPolling(h, workbenchReady = true) {
   let timer, cleanup, cleared = false;
   const listeners = new Map(), document = { visibilityState: 'visible',
     addEventListener: (name, fn) => listeners.set(name, fn),
     removeEventListener: (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); },
   };
   const dragging = { current: false };
-  const environment = { ...h.scope, auth: true, dragging, document,
+  const environment = { ...h.scope, auth: true, workbenchReady, dragging, document,
     useEffect: fn => { cleanup = fn(); },
     setInterval: (fn, delay) => { assert.equal(delay, 2500); timer = fn; return 'poll-timer'; },
     clearInterval: id => { assert.equal(id, 'poll-timer'); cleared = true; },
   };
   Function(...Object.keys(environment), pollSource)(...Object.values(environment));
   return { dragging, document, listeners,
-    async tick() { if (!cleared) timer(); await flush(); },
+    async tick() { if (!cleared) timer?.(); await flush(); },
     async visibility(state) { document.visibilityState = state; listeners.get('visibilitychange')?.(); await flush(); },
-    cleanup: () => cleanup(),
+    cleanup: () => cleanup?.(),
     get cleared() { return cleared; },
   };
 }
@@ -348,16 +349,16 @@ for (const outcome of ['success', 'unknown']) {
   });
 
   test(`actual App poll after superseded POST ${outcome} cannot apply an old project snapshot after newer project refresh`, async () => {
-    const oldSnapshot = defer(), newAsset = { ...ack({ projectId: 'project-b', name: 'project-b.png', mimeType: 'image/png' }), id: '00000000-0000-4000-8000-000000000011' };
-    const { h, saved } = await supersededBatch(outcome, { projectRead: owner => owner === projectId ? oldSnapshot.promise : Response.json({ ok: true, data: { project: { id: 'project-b' }, assets: [newAsset] } }) });
+    const oldSnapshot = defer(), newAsset = { ...ack({ projectId: '00000000-0000-4000-8000-000000000002', name: 'project-b.png', mimeType: 'image/png' }), id: '00000000-0000-4000-8000-000000000011' };
+    const { h, saved } = await supersededBatch(outcome, { projectRead: owner => owner === projectId ? oldSnapshot.promise : Response.json({ ok: true, data: { project: { id: '00000000-0000-4000-8000-000000000002' }, assets: [newAsset] } }) });
     const oldPoll = mountActualPolling(h); await oldPoll.tick();
     assert.equal(h.requests.filter(call => call.operation === 'project.get').length, 1); assert.equal(h.stateWrites.length, 0);
-    oldPoll.cleanup(); h.switchProject('project-b'); h.scope.notify('new project notice'); h.input.value = 'new project input';
+    oldPoll.cleanup(); h.switchProject('00000000-0000-4000-8000-000000000002'); h.scope.notify('new project notice'); h.input.value = 'new project input';
     const newPoll = mountActualPolling(h);
     try {
       await newPoll.tick(); assert.deepEqual(h.scope.dataRef.current.assets, [newAsset]); const writes = h.stateWrites.length;
       oldSnapshot.resolve(Response.json({ ok: true, data: { project: { id: projectId }, assets: [saved] } })); await flush();
-      assert.equal(h.stateWrites.length, writes); assert.equal(h.scope.dataRef.current.project.id, 'project-b'); assert.deepEqual(h.scope.dataRef.current.assets, [newAsset]);
+      assert.equal(h.stateWrites.length, writes); assert.equal(h.scope.dataRef.current.project.id, '00000000-0000-4000-8000-000000000002'); assert.deepEqual(h.scope.dataRef.current.assets, [newAsset]);
       assert.equal(notice(h), 'new project notice'); assert.equal(h.input.value, 'new project input'); assert.equal(imports(h).length, 1); assert.equal(h.busy.size, 0);
     } finally { newPoll.cleanup(); }
   });
@@ -390,4 +391,12 @@ test('restored import pins the first gesture and treats origin refusal as unknow
   delayed.scope.workspaceRef.current = { ...workspace, workspaceOrigin: '96000000-0000-4000-8000-000000000002' };
   reader.result = 'data:image/png;base64,YWJjZA=='; reader.onload(); await running;
   assert.equal(delayed.requests.length, 0, 'A changed origin after file reading cannot submit using a newly adopted pin');
+});
+
+
+test('home presentation never starts project polling or performs the loaded-project refresh', async () => {
+  const h = harness({ actualRefresh: true, projectReady: false });
+  const poll = mountActualPolling(h, false); await poll.tick(); await poll.visibility('visible');
+  await h.scope.refresh(projectId);
+  assert.deepEqual(h.requests, []); assert.deepEqual(h.stateWrites, []); assert.equal(poll.listeners.size, 0); poll.cleanup();
 });

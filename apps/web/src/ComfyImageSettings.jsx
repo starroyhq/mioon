@@ -5,6 +5,7 @@ import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
+import { closeSettingsAfterPermission, createSettingsNavigationReporter } from './settings-navigation-state.ts';
 import { createComfyImageSettingsSession, initialComfyImageSettingsState, comfyImageSettingsEditable, comfyImageSettingsCanSave, comfyImageSettingsDirty, comfyImageDestination, comfyImageCheckLabel } from './comfy-image-settings.js';
 import Icon from './icons.jsx';
 import './image-settings.css';
@@ -12,33 +13,44 @@ import './comfy-image-settings.css';
 
 const noop = () => {};
 /** Independent local profile. Viewing and saving never check or start the runtime. */
-export default function ComfyImageSettings({ active = false, contextKey, client, onSelectSlot = noop, onClose = noop, onSnapshot = noop, onDirtyChange = noop }) {
+export default function ComfyImageSettings({ active = false, contextKey, client, onSelectSlot = noop, onClose = noop, onSnapshot = noop, onDirtyChange = noop, beforeClose, closeLabel, onNavigationStateChange }) {
   const [state, setState] = useState(initialComfyImageSettingsState);
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
   const ancestorVisible = useWorkspaceVisibility(), visible = ancestorVisible && active && pageVisible;
-  const session = useRef(null), lifetime = useRef(null), callbacks = useRef({ onSnapshot, onDirtyChange });
+  const session = useRef(null), lifetime = useRef(null), callbacks = useRef({ onSnapshot, onDirtyChange }), navigation = useRef(null);
   const interaction = useMemo(() => ({ visible, contextKey }), [visible, contextKey]), interactionRef = useRef(interaction);
+  if (!navigation.current) navigation.current = createSettingsNavigationReporter();
+  const navigationInput = next => ({ dirty: comfyImageSettingsDirty(next), phase: next.phase, recovery: next.recovery });
+  const reportNavigation = next => navigation.current.update(navigationInput(next));
+  useLayoutEffect(() => {
+    const owner = navigation.current.connect(onNavigationStateChange, navigationInput(session.current?.getState() || state));
+    return () => navigation.current.disconnect(owner);
+  }, [onNavigationStateChange]);
   useLayoutEffect(() => { callbacks.current = { onSnapshot, onDirtyChange }; });
   useLayoutEffect(() => {
     const owner = { closed: false }; lifetime.current = owner;
-    const current = createComfyImageSettingsSession({ client, onChange: next => { if (!owner.closed && lifetime.current === owner) setState(next); }, onSnapshot: next => { if (!owner.closed && lifetime.current === owner) callbacks.current.onSnapshot(next); } });
+    const current = createComfyImageSettingsSession({ client, onChange: next => { if (!owner.closed && lifetime.current === owner) { reportNavigation(next); setState(next); } }, onSnapshot: next => { if (!owner.closed && lifetime.current === owner) callbacks.current.onSnapshot(next); } });
     session.current = current; void current.load();
     return () => { owner.closed = true; current.dispose(); if (session.current === current) session.current = null; callbacks.current.onDirtyChange(false); };
   }, [client]);
-  useLayoutEffect(() => { interactionRef.current = interaction; session.current?.setVisible(visible); }, [interaction]);
+  useLayoutEffect(() => { interactionRef.current = interaction; session.current?.setVisible(visible); reportNavigation(session.current?.getState() || state); }, [interaction]);
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
-    const changed = () => { const shown = document.visibilityState !== 'hidden'; if (!shown) { interactionRef.current = null; session.current?.setVisible(false); } setPageVisible(shown); };
+    const changed = () => { const shown = document.visibilityState !== 'hidden'; if (!shown) { interactionRef.current = null; session.current?.setVisible(false); reportNavigation(session.current?.getState() || state); } setPageVisible(shown); };
     document.addEventListener('visibilitychange', changed); return () => document.removeEventListener('visibilitychange', changed);
   }, []);
   useLayoutEffect(() => { callbacks.current.onDirtyChange(comfyImageSettingsDirty(state)); }, [state.snapshot, state.draft]);
   const owner = lifetime.current;
   const usable = () => Boolean(visible && interactionRef.current === interaction && owner && !owner.closed && lifetime.current === owner && (typeof document === 'undefined' || document.visibilityState !== 'hidden'));
-  const leave = action => { if (usable()) { interactionRef.current = null; session.current?.setVisible(false); action(); } };
+  const leave = (action, permission) => {
+    if (!usable()) return;
+    const captured = interactionRef.current, version = navigation.current.getState().version;
+    return closeSettingsAfterPermission(permission, () => usable() && interactionRef.current === captured && navigation.current.getState().version === version, () => { interactionRef.current = null; session.current?.setVisible(false); action(); });
+  };
   const { snapshot, draft, check } = state, editable = visible && comfyImageSettingsEditable(state);
   const checkedModels = check?.checkpoints || [], hasSavedModel = draft?.model && !checkedModels.includes(draft.model);
   return <section className="image-settings-page comfy-image-settings-page" data-testid="comfy-image-settings-page" data-phase={state.phase} hidden={!visible} inert={!visible} aria-label="本地 ComfyUI 图像设置">
-    <header className="image-generation-heading"><div><span className="image-generation-eyebrow">IMAGE · LOCAL CONNECTION</span><h2>图像设置</h2><p>本地 ComfyUI · 逐次准备并审批</p></div><Button type="button" variant="ghost" className="button quiet" data-testid="comfy-image-settings-back" disabled={!visible} onClick={() => leave(onClose)}><Icon name="left" size={14} />返回</Button></header>
+    <header className="image-generation-heading"><div><span className="image-generation-eyebrow">IMAGE · LOCAL CONNECTION</span><h2>图像设置</h2><p>本地 ComfyUI · 逐次准备并审批</p></div><Button type="button" variant="ghost" className="button quiet" data-testid="comfy-image-settings-back" aria-label={closeLabel} disabled={!visible} onClick={() => leave(onClose, beforeClose)}><Icon name="left" size={14} />{closeLabel ?? '返回'}</Button></header>
     <div className="image-settings-slots" role="group" aria-label="图像连接槽位">{[['official', 'OpenAI 官方'], ['custom', '自定义兼容连接'], ['comfy', '本地 ComfyUI']].map(([slot, label]) => <Button key={slot} type="button" variant="ghost" className="button" data-testid={`comfy-image-settings-slot-${slot}`} aria-pressed={slot === 'comfy'} disabled={!visible} onClick={() => { if (slot !== 'comfy') leave(() => onSelectSlot(slot)); }}>{label}</Button>)}</div>
     <form className="image-settings-form" noValidate autoComplete="off" onSubmit={event => { event.preventDefault(); if (usable()) void session.current?.save(); }}>
       <p className="image-settings-help">仅连接你已安装并启动的 ComfyUI v0.39.0。不会安装或启动运行时，不会下载模型或自定义节点。打开设置和保存均不探测服务。</p>

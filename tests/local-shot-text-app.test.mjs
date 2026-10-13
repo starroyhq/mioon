@@ -35,7 +35,7 @@ test('actual App cancelled navigation leaves shot draft untouched',async()=>{con
 test('actual App live context preserves nontext pending fences and does not clear receipts',()=>{
   let entries=[],failed=false;const busy=new Set();const currentProject={current:'project-a'},projectEpoch={current:2},navigationEpoch={current:7},panelIntent={current:1};
   const context=appFunction('function shotTextContext()', 'async function saveShot(',{
-    currentProject,projectEpoch,navigationEpoch,panelIntent,inspectorEpoch:4,workspaceRef:{current:{restored:false}},online:true,auth:true,loading:false,
+    currentProject,projectEpoch,navigationEpoch,panelIntent,inspectorEpoch:4,workbenchReady:true,workspaceRef:{current:{restored:false}},online:true,auth:true,loading:false,
     pendingForProject:()=>{if(failed)throw Error('unreadable');return entries;},isMutationOperation:op=>op==='shot.update'||op==='node.update',REFERENCE_MUTATION_OPERATIONS:['reference.attach','reference.detach'],
     isBusy:key=>busy.has(key),tasksRef:{current:{blocked:()=>false}},
   });
