@@ -25,10 +25,29 @@ async function managedDestination(root, destination, signal) {
   return absolute;
 }
 
+// The simulated renderer burns a visible "SIMULATED MOCK" label with drawtext, which needs an FFmpeg built with
+// libfreetype (Homebrew's plain `ffmpeg` is not). When a render fails, say so instead of the generic message and stop
+// retrying: only a filter list that positively lacks drawtext changes the outcome, so an unreadable or unrecognised
+// listing keeps the previous behaviour.
+const DRAWTEXT_MESSAGE = '当前 FFmpeg 缺少 drawtext 滤镜（需要 libfreetype），无法生成模拟视频。请换用包含该滤镜的构建（例如 Homebrew 的 ffmpeg-full），再重新选择 ffmpeg 与 ffprobe。';
+const drawtextByTool = new Map();
+async function lacksDrawtext(signal) {
+  const tool = process.env.MIOON_FFMPEG_PATH ?? '';
+  if (!drawtextByTool.has(tool)) {
+    let listing = '';
+    try { listing = String(await run('ffmpeg', ['-hide_banner', '-filters'], { timeout: 15_000, signal }) ?? ''); }
+    catch (cause) { if (cause?.code === 'MEDIA_CANCELLED') throw cause; return false; }
+    if (!/^\s*[TSC.]{2,3}\s+scale\s/m.test(listing)) return false;
+    drawtextByTool.set(tool, /^\s*[TSC.]{2,3}\s+drawtext\s/m.test(listing));
+  }
+  return !drawtextByTool.get(tool);
+}
+
 async function runFfmpeg(args, signal) {
   try { await run('ffmpeg', args, { timeout: 60_000, signal }); }
   catch (cause) {
     if (cause.code === 'MEDIA_CANCELLED') throw cause;
+    if (cause.code !== 'MEDIA_INVALID_CONFIGURATION' && cause.code !== 'MEDIA_SPAWN_FAILED' && await lacksDrawtext(signal)) throw error('MOCK_RENDERER_UNSUPPORTED', DRAWTEXT_MESSAGE, { retryable: false });
     const message = cause.code === 'MEDIA_INVALID_CONFIGURATION' ? 'Configured renderer must be an absolute executable path.'
       : cause.code === 'MEDIA_SPAWN_FAILED' ? 'Could not start the simulated video renderer.' : 'Simulated video rendering failed.';
     throw error('MOCK_RENDER_FAILED', message, { retryable: true, ...(cause.terminationUnconfirmed ? { terminationUnconfirmed: true } : {}) });
@@ -144,7 +163,10 @@ export function createMockProvider({ db, root, now = Date.now }) {
       throwIfMediaAborted(context.signal);
       get(providerJobId);
       db.prepare('UPDATE mock_provider_tasks SET poll_count = poll_count + 1 WHERE provider_job_id = ?').run(providerJobId);
-      return statusOf(get(providerJobId));
+      const status = statusOf(get(providerJobId));
+      // A render that cannot succeed on this FFmpeg ends the job now instead of retrying the download for ever.
+      if (status.status === 'succeeded' && await lacksDrawtext(context.signal)) return { status: 'failed', progress: 1, error: { code: 'MOCK_RENDERER_UNSUPPORTED', message: DRAWTEXT_MESSAGE, retryable: false } };
+      return status;
     },
     async reconcile(requestId, context = {}) {
       throwIfMediaAborted(context.signal);

@@ -1,5 +1,6 @@
 import { sourceFrameCount } from '@mioon/contracts';
 import { clipAudioIssue } from './clip-audio-state.js';
+import { clipVersionOf } from './timeline-source-freshness.ts';
 
 const kind = asset => /^(video|audio|image)\//.exec(asset?.mimeType || '')?.[1] || null;
 const canonical = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
@@ -104,6 +105,16 @@ export function clipReplacementAcknowledged(review, timeline) {
 }
 
 const initialState = () => ({ phase: 'idle', selectedKey: '', review: null, error: '' });
+// The candidate that moves a clip to the version its shot currently selects, when that version can replace the clip's
+// source. Offering it only pre-fills the usual choose -> review -> approve flow; nothing is applied without approval.
+export function clipSelectedVersionCandidate(context) {
+  const clip = selectedClip(context), origin = clip && clipVersionOf(clip, context.versions || []);
+  if (!origin) return null;
+  const shot = context.shots?.find(item => item.id === origin.shotId);
+  if (!shot?.selectedVersionId || shot.selectedVersionId === origin.versionId) return null;
+  return clipReplacementCandidates(context).find(candidate => candidate.key === `version:${shot.selectedVersionId}`) ?? null;
+}
+
 export function createClipReplacementController({ submit, getContext, onChange = () => {} }) {
   let state = initialState(), context = null, epoch = 0, disposed = false;
   const emit = patch => { state = { ...state, ...patch }; onChange(state); return state; };

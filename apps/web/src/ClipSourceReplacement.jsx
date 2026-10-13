@@ -3,7 +3,7 @@ import { Button } from '@mioon/ui/components/button';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
-import { clipReplacementBlockedReason, clipReplacementCandidates, clipReplacementReviewIssue, createClipReplacementController } from './clip-source-replacement.js';
+import { clipReplacementBlockedReason, clipReplacementCandidates, clipReplacementReviewIssue, clipSelectedVersionCandidate, createClipReplacementController } from './clip-source-replacement.js';
 
 const durationLabel = asset => asset.mimeType?.startsWith('image/') ? '静态图片' : Number.isFinite(asset.duration) ? `${asset.duration.toFixed(2)} 秒` : '时长未知';
 
@@ -22,6 +22,7 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
   const current = getContext(), blocked = clipReplacementBlockedReason(current);
   const phase = state?.phase || 'idle', review = state?.review;
   const candidates = clipReplacementCandidates(current);
+  const suggested = phase === 'idle' && !blocked ? clipSelectedVersionCandidate(current) : null;
   const issue = phase === 'stale' ? state.error : review && phase === 'review' ? clipReplacementReviewIssue(review, current) : '';
   const sending = phase === 'sending';
   const selected = candidates.some(candidate => candidate.key === state?.selectedKey);
@@ -29,6 +30,7 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
     <h3 id="clip-replacement-title">替换片段来源</h3>
     <p className="clip-replacement-note">只更新这个片段的来源。名称、位置、时长、入点、画面、音量及淡入/淡出保持原值。</p>
     {blocked && <p id="clip-replacement-blocked" className="clip-replacement-warning" role="status">{blocked}</p>}
+    {suggested && <Button size="sm" type="button" data-testid="review-selected-version-replacement" onClick={() => { if (controller.begin() && controller.choose(suggested.key)) controller.review(); }}>核对改用镜头当前选用的 V{suggested.version.number}</Button>}
     {phase === 'idle' && <Button variant="outline" size="sm" type="button" data-testid="begin-clip-replacement" disabled={Boolean(blocked)} aria-describedby={blocked ? 'clip-replacement-blocked' : undefined} onClick={() => controller.begin(state)}>选择替换来源</Button>}
     {phase === 'choosing' && <>
       <Label className="field-label" htmlFor="clip-replacement-candidate">当前项目的兼容素材或版本</Label>

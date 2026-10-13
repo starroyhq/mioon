@@ -30,6 +30,7 @@ export default function TimelineExportPreflight({ recovery, state, projectName, 
       {dirty && <p className="export-preflight-draft" data-testid="preflight-unsaved">有未保存修改，本次不包含；保存后请重新检查。</p>}
       <div className={`export-preflight-status is-${phase}`} role="status" aria-live="polite"><span>{phase === 'checking' && <span className="spinner" />}{phaseLabels[phase]}</span>{report && <small>{oldReport ? '上次检查' : '检查快照'} · rev {report.timelineRevision ?? '未知'}</small>}</div>
       {state?.error && <p className="notice error" role="alert">{state.error}</p>}
+      {Array.isArray(timeline?.clips) && timeline.clips.length === 0 && <p className="notice warning" data-testid="preflight-empty-timeline">已保存的时间线还没有片段，暂时无法导出。请先在剪辑里“从分镜建立时间线”，或把素材加入时间线。</p>}
       {phase === 'idle' && <p className="export-preflight-empty">点击“检查本次设置”，先验证本机编码能力，再检查已保存的素材与时间线。打开面板不会开始检查。</p>}
       {phase === 'stale' && <p className="notice warning">项目、时间线、成片名称、导出范围、成片设置或连接状态已变化。此报告不能用于导出，请重新检查。</p>}
       {oldReport && <p className="export-preflight-note">下方保留上次报告供参考，不能作为当前导出依据。</p>}
