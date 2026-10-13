@@ -9,7 +9,8 @@ import { stopBackendForQuit } from './shutdown.mjs';
 import { createDesktopStartup } from './startup.mjs';
 import { createDesktopAgentSettings } from './secret-store.mjs';
 import { createDesktopImageSecretCodec } from './image-secret-store.mjs';
-import { QuitCoordinator, installUnsavedGuard, installPreferencesCloseDrain } from './lifecycle.mjs';
+import { QuitCoordinator } from './lifecycle.mjs';
+import { installNativeCloseAdmission } from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.mjs';
 import { windowChromeOptions } from './window-chrome.ts';
 
@@ -30,6 +31,7 @@ let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let startupOperation;
 let windowContext;
+const windowAdmissions = new WeakMap();
 const cancelledStartupErrors = new WeakSet();
 let quitFailureNotice;
 let smokeDiscardDecision;
@@ -148,24 +150,21 @@ async function openWindow(context = windowContext) {
     autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(), webPreferences: secureWebPreferences(context.session) });
   win = window;
   installWindowPolicy(window, context.ready.url);
-  installPreferencesCloseDrain(window, {
-    // The fixed function can only perform the renderer's normal same-origin HTTP.
-    // It receives no native capabilities, paths, token, or arguments from main.
-    flush: () => ownsWindow(window, context) && isAllowedNavigation(window.webContents.getURL(), context.ready.url)
-      ? window.webContents.executeJavaScript("typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : true")
-      : true,
-    confirmClose: () => !ownsWindow(window, context) || smokeOutput || dialog.showMessageBoxSync(window, { type: 'warning', title: '本地草稿或视图尚未确认保存',
-      message: '部分本地草稿或视图位置尚未确认保存，仍要退出？',
-      detail: '可以继续编辑并核对保存状态。直接退出可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。',
-      buttons: ['仍然退出', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0,
-    onCancel: () => { if (ownsWindow(window, context)) quitCoordinator.cancel(); }
-  });
-  installUnsavedGuard(window, {
-    confirmDiscard: () => !ownsWindow(window, context) || (smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBoxSync(window, { type: 'question', title: '尚有未保存的修改',
-      message: '放弃未保存的修改？', detail: '选择继续编辑会保持当前窗口和本地服务运行。',
-      buttons: ['放弃修改', '继续编辑'], defaultId: 1, cancelId: 1 }) === 0),
-    onCancel: () => { if (ownsWindow(window, context)) quitCoordinator.cancel(); }
-  });
+  windowAdmissions.set(window, installNativeCloseAdmission(window, {
+    isCurrent: () => ownsWindow(window, context) && isAllowedNavigation(window.webContents.getURL(), context.ready.url),
+    confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox(window, { type: 'warning', title: '本地草稿或视图尚未确认保存',
+      message: `部分本地草稿或视图位置尚未确认保存，仍要${action === 'reload' ? '重新载入' : '退出'}？`,
+      detail: `${action === 'reload' ? '重新载入' : '直接退出'}可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。可以继续编辑并核对保存状态。`,
+      buttons: [action === 'reload' ? '仍然重新载入' : '仍然退出', '继续编辑'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+    confirmDiscard: action => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBox(window, { type: 'question', title: '尚有未保存的修改',
+      message: `放弃未保存的修改和未发送的输入并${action === 'reload' ? '重新载入' : '退出'}？`, detail: `包括 Agent、图像工坊和连接设置中的未保存输入。${action === 'reload' ? '重新载入' : '退出'}不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行。`,
+      buttons: ['放弃修改', '继续编辑'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+    onBlocked: reason => smokeOutput ? undefined : dialog.showMessageBox(window, { type: 'warning', title: '暂时无法安全离开',
+      message: reason === 'blocked' ? '还有读取、保存、发送或待核对的状态，请先在原面板处理。' : reason === 'changed' ? '确认期间的输入或状态已变化，本次操作已取消。' : '暂时无法确认当前输入的保存状态，本次操作已取消。',
+      detail: '当前操作未继续，窗口和本地服务仍保留。不会放弃输入、保存连接设置或自动重试请求。', buttons: ['继续编辑'], defaultId: 0, cancelId: 0 }),
+    onCancel: () => { if (ownsWindow(window, context)) quitCoordinator.cancel(); },
+    requestQuit: () => ownsWindow(window, context) ? quitCoordinator.request().catch(quitFailed) : false
+  }));
   window.on('closed', () => { if (win === window) win = null; });
   window.once('ready-to-show', () => { if (ownsWindow(window, context)) window.show(); });
   const onRendererFailure = () => {
@@ -216,20 +215,26 @@ async function backendFailed() {
 let rendererErrorOwner = null;
 async function rendererFailed(window, context) {
   if (!ownsWindow(window, context) || (rendererErrorOwner?.window === window && rendererErrorOwner.context === context)) return;
+  const recovery = windowAdmissions.get(window)?.captureRecoveryDecision();
+  if (!recovery?.claimPrompt()) return;
   const owner = rendererErrorOwner = { window, context };
   try {
     const { response } = await dialog.showMessageBox({ type: 'warning', title: '界面需要重新载入',
       message: '工作区界面没有响应。后台任务仍由本地服务管理。',
-      buttons: ['重新载入界面', '退出'], defaultId: 0, cancelId: 1 });
+      detail: '如果界面进程已经崩溃，未保存的输入可能已经丢失。重新载入只恢复当前界面，不会重新提交任务或生成请求。',
+      buttons: ['重新载入界面', '退出', '保留窗口'], defaultId: 0, cancelId: 2 });
     if (!ownsWindow(window, context)) return;
-    if (response === 0) await loadOwnedWindow(window, context);
-    else app.quit();
+    if (response === 0) await recovery?.reload();
+    else if (response === 1) await recovery?.exit();
   } catch (error) {
     if (ownsWindow(window, context)) throw error;
   } finally {
     // A pending old-window dialog must neither block a replacement's recovery
     // prompt nor release that replacement's duplicate-event guard when it ends.
-    if (rendererErrorOwner === owner) rendererErrorOwner = null;
+    if (rendererErrorOwner === owner) {
+      rendererErrorOwner = null;
+      if (recovery.takePendingIncident()) await rendererFailed(window, context);
+    }
   }
 }
 
@@ -251,7 +256,7 @@ function installMenu() {
   if (process.platform === 'darwin') template.push({ role: 'appMenu' });
   template.push({ label: '应用', submenu: [
     { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => {
-      if (ownsWindow(win, windowContext)) void loadOwnedWindow(win, windowContext).catch(fatal);
+      if (ownsWindow(win, windowContext)) void windowAdmissions.get(win)?.captureRecoveryDecision().reload().catch(fatal);
     } },
     { label: '重启本地服务', click: async () => {
       const { response } = await dialog.showMessageBox({ type: 'question', message: '重启本地服务？',

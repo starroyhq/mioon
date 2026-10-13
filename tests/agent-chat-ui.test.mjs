@@ -1,3 +1,4 @@
+import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as timing from '../apps/web/src/agent-timeline-context.js';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
@@ -191,6 +192,7 @@ function uiHarness(client, receipts = memoryReceipts()) {
     if (id === './agent-timeline-context.js') return timing;
     if (id === './agent-timeline-gain-context.ts') return gainContext;
     if (id === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
+    if (id === './native-close-sources.ts') return nativeCloseSources;
     if (id === 'react') return react;
     if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
     if (id === './agent-tool-state.js') return toolLogic;
@@ -240,7 +242,7 @@ test('actual project change makes all previous close, submit, edit and terminal 
 
 test('integration preserves settings entry, the shared right dock, bounded history and app-local controls', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(app, /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
+  assert.match(app, /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace nativeCloseRegistry={nativeCloseRegistry\.current} navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
   assert.match(source, /inspecting \? '新消息范围：当前项目只读检查'/); assert.match(source, /新消息范围：仅文字聊天/); assert.match(source, /不会发送/); assert.match(source, /保存在本地应用数据库/); assert.match(source, /并非密钥保险库加密/); assert.match(source, /请勿输入密钥或其他秘密/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML|<a\s|<img\s|<iframe|fetch\(|rpc\(|localStorage|sessionStorage/);

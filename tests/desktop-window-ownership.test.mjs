@@ -8,7 +8,8 @@ import vm from 'node:vm';
 import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
-import * as lifecycle from '../apps/desktop/src/lifecycle.mjs';
+import { QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import * as security from '../apps/desktop/src/security.mjs';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
 
@@ -66,9 +67,24 @@ async function harness(t, options = {}) {
       super(); this.config = config; this.destroyed = false; this.closedDelivered = false;
       this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0;
       this.index = r.windows.length;
+      let closeToken = null, closeSerial = 0;
+      // Run the actual native admission scripts against a clean renderer v1
+      // surface. Only the legacy preference flush counts as a flush or waits on
+      // the original fixture gate; inspecting and committing are separate calls.
+      const renderer = vm.createContext({
+        __mioonNativeCloseAdmission: {
+          inspect: () => ({ version: 1, token: closeToken = `window-${this.index}-${++closeSerial}`, disposition: 'clean' }),
+          commit: (token, admission) => typeof token === 'string' && token === closeToken &&
+            admission?.discardDirty === false && typeof admission.allowDrainFailure === 'boolean' &&
+            Number.isSafeInteger(admission.expiresAt) && admission.expiresAt > Date.now() && admission.expiresAt <= Date.now() + 1500,
+          cancel: token => { if (token !== closeToken) return false; closeToken = null; return true; }
+        },
+        __mioonFlushWorkspacePreferences: async () => { this.flushes++; return await options.flush?.(this.index) ?? true; }
+      });
       this.webContents = Object.assign(new EventEmitter(), {
         getURL: () => this.urls.at(-1),
-        executeJavaScript: async () => { this.flushes++; return await options.flush?.(this.index) ?? true; },
+        loadURL: url => this.loadURL(url),
+        executeJavaScript: async script => vm.runInContext(script, renderer),
         setWindowOpenHandler: fn => { this.popupPolicy = fn; }
       });
       r.windows.push(this);
@@ -130,7 +146,7 @@ async function harness(t, options = {}) {
       });
       r.sessions.push(value); return value;
     } },
-    ...security, ...lifecycle, stopBackendForQuit,
+    ...security, QuitCoordinator, installNativeCloseAdmission, stopBackendForQuit,
     writeConnection: async (_, value) => {
       const index = r.connectionWrites.length;
       r.connectionWrites.push(value); await options.connection?.(index); r.connections.push(value);
@@ -138,7 +154,7 @@ async function harness(t, options = {}) {
     removeConnectionOnShutdown: async () => { r.removals++; await options.remove?.(r.removals); },
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } },
     dialog: {
-      showMessageBox: async value => { r.dialogs.push(value); return await options.dialog?.(value) ?? { response: 0 }; },
+      showMessageBox: async (parentOrValue, modalValue) => { const value = modalValue ?? parentOrValue; r.dialogs.push(value); return await options.dialog?.(value) ?? { response: 0 }; },
       showMessageBoxSync: (window, value) => { r.syncDialogs.push({ window, value }); return options.syncDialog?.(window, value) ?? 0; }
     },
     storageFailureDialog: error => ({ title: 'Storage failure', detail: error.message })
@@ -310,11 +326,15 @@ for (const response of [0, 1, 'reject']) {
 
 for (const oldResponse of [0, 1, 'reject']) {
   test(`pending old renderer dialog ${oldResponse} cannot block or release replacement dialog ownership`, async t => {
-    const oldGate = deferred(), currentGate = deferred(); let rendererDialogs = 0;
+    const oldGate = deferred(), currentGate = deferred(), freshGate = deferred(); let rendererDialogs = 0;
     const f = await harness(t, {
-      dialog: value => value.title === '界面需要重新载入'
-        ? (++rendererDialogs === 1 ? oldGate.promise : currentGate.promise) : { response: 0 },
-      release: () => { oldGate.resolve({ response: 0 }); currentGate.resolve({ response: 0 }); }
+      dialog: value => {
+        if (value.title !== '界面需要重新载入') return { response: 0 };
+        const gate = [oldGate, currentGate, freshGate][rendererDialogs++];
+        assert.ok(gate, 'Duplicate renderer incidents must not create another prompt');
+        return gate.promise;
+      },
+      release: () => { oldGate.resolve({ response: 0 }); currentGate.resolve({ response: 0 }); freshGate.resolve({ response: 0 }); }
     });
     await f.initial(); const oldWindow = f.get('win');
     oldWindow.webContents.emit('unresponsive'); oldWindow.webContents.emit('render-process-gone');
@@ -334,7 +354,18 @@ for (const oldResponse of [0, 1, 'reject']) {
     oldWindow.webContents.emit('unresponsive'); await tick();
     assert.equal(f.rendererDialogs().length, 2);
     currentGate.resolve({ response: 0 });
+    // The replacement's original unresponsive prompt predates its gone
+    // incident. Its old choice must stay inert until a fresh prompt is answered.
+    await until(() => f.rendererDialogs().length === 3);
+    const freshOwner = f.get('rendererErrorOwner');
+    assert.notEqual(freshOwner, currentOwner); assert.equal(freshOwner.window, replacement);
+    assert.equal(replacement.urls.length, 1); f.assertCurrent(1);
+    await tick();
+    assert.equal(f.get('rendererErrorOwner'), freshOwner);
+    assert.equal(replacement.urls.length, 1);
+    freshGate.resolve({ response: 0 });
     await until(() => f.get('rendererErrorOwner') === null);
+    assert.equal(f.rendererDialogs().length, 3);
     assert.equal(replacement.urls.length, 2); f.assertCurrent(1);
   });
 }

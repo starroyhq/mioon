@@ -70,3 +70,36 @@ function checkProjectHomeContracts(props: ProjectHomeProps, observed: ProjectOpe
   void valid; void uncheckedCreation; void unsafePage; void inventedPhase; void ready; void unknownSlot; void settings;
 }
 void checkProjectHomeContracts;
+
+import { createNativeCloseAdmission, createNativeCloseRegistry, installNativeCloseAdmission } from '../../apps/web/src/native-close-state.ts';
+import { createSettingsNavigationRegistry } from '../../apps/web/src/settings-navigation-state.ts';
+function checkNativeCloseContracts(page: Window): void {
+  const options = { registry: createNativeCloseRegistry(), settings: createSettingsNavigationRegistry(), readScope: () => 'scope', readLegacyDirty: () => false };
+  const admission = createNativeCloseAdmission(options), inspected = admission.inspect();
+  const allowed: boolean = admission.commit(inspected.token, { discardDirty: true, allowDrainFailure: false, expiresAt: Date.now() + 1000 });
+  const cleanup: () => void = installNativeCloseAdmission(page, options);
+  // @ts-expect-error A generic object cannot replace exact boolean/counter metadata.
+  options.registry.register('agent-chat').update({ phase: 'saved' });
+  // @ts-expect-error The renderer commit requires an explicit bounded expiry.
+  admission.commit(inspected.token, { discardDirty: true, allowDrainFailure: false });
+  // @ts-expect-error Prompts are not in native inspection results.
+  const prompt: string = inspected.prompt;
+  void allowed; void cleanup; void prompt;
+}
+void checkNativeCloseContracts;
+
+import { readNativeLegacyClose } from '../../apps/web/src/native-close-legacy.ts';
+import { createLocalShotTextController } from '../../apps/web/src/local-shot-text-state.ts';
+import { createClipDraftController } from '../../apps/web/src/clip-draft-state.ts';
+import { createTimelineDeliveryNameController } from '../../apps/web/src/export-delivery-state.ts';
+function nativeLegacyConsumer(shot: ReturnType<typeof createLocalShotTextController>, clip: ReturnType<typeof createClipDraftController>, delivery: ReturnType<typeof createTimelineDeliveryNameController>): void {
+  const snapshot = readNativeLegacyClose({ shot, clip, delivery, inspectorDirty: false });
+  const dirty: boolean = snapshot.dirty;
+  const localOnlyIdentity: readonly unknown[] = snapshot.identity;
+  // @ts-expect-error A syncing hasUnsaved function is not a close-only shot getter.
+  readNativeLegacyClose({ shot: { hasUnsaved: () => true } });
+  // @ts-expect-error A formatted string is not a valid dirty status.
+  readNativeLegacyClose({ inspectorDirty: 'dirty' });
+  void dirty; void localOnlyIdentity;
+}
+void nativeLegacyConsumer;

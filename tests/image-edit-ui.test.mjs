@@ -1,3 +1,4 @@
+import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -132,6 +133,7 @@ function renderer(f) {
   const react = { createElement: renderElement, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(fn, deps) { const slot = index++; if (!slots[slot] || !same(slots[slot].deps, deps)) slots[slot] = { value: fn(), deps }; return slots[slot].value; }, useLayoutEffect(fn, deps) { const slot = index++, previous = slots[slot]; if (previous && same(previous.deps, deps)) return; slots[slot] = { fn, deps, cleanup: previous?.cleanup }; effects.push(slot); } }; react.default = react;
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   const require = name => {
+    if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return contracts;
     if (name === './image-generation.js') return { ...logic, createImageGenerationSession: value => logic.createImageGenerationSession({ ...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };

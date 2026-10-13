@@ -1,3 +1,4 @@
+import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -184,9 +185,7 @@ test('actual App registration cleanup releases only its still-registered control
 test('actual beforeunload reads synchronous clip state and follows registration ownership', async t => {
   const f = draftFixture(t); await f.controller.load();
   const clipDraftRef = { current: f.controller }, dirtyRef = { current: false };
-  const warnSource = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)?.[0];
-  assert.ok(warnSource, 'Extract the actual beforeunload warning');
-  const warn = compile(warnSource, 'warn', { shotTextRef: { current: null }, dirtyRef, clipDraftRef, timelineFormatRef: { current: null }, deliveryNameRef: { current: null } });
+  const warn = actualAppCloseWarning(app, { shotTextRef: { current: null }, dirtyRef, clipDraftRef, timelineFormatRef: { current: null }, deliveryNameRef: { current: null } });
   const check = expected => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; warn(event); assert.equal(event.prevented, expected); assert.equal(event.returnValue, expected ? '' : undefined); };
   check(false); f.controller.edit('name', 'Same-tick input'); check(true);
   assert.equal(dirtyRef.current, false);

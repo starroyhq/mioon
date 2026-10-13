@@ -109,7 +109,7 @@ export default function Inspector({ generationUnavailableReason = '', subjects, 
       if (accepted) { draftRef.current = accepted.draft; baseline.current = accepted.baseline; baseRevisionRef.current = accepted.baseRevision; dirtyRef.current = accepted.dirty; setDraft(accepted.draft); setBaseRevision(accepted.baseRevision); setDirty(accepted.dirty); setConflict(false); }
       onShotTextAccepted?.(result); return Boolean(accepted);
     } });
-  useLayoutEffect(() => { if (!shot || !onShotTextController) return; const unregister = onShotTextController(shotText.controller); return typeof unregister === 'function' ? unregister : undefined; }, [shotText.controller, onShotTextController, shot?.id]);
+  useLayoutEffect(() => { if (!shot || !onShotTextController) return; const unregister = onShotTextController(shotText.controller, () => ({ mounted: mounted.current, formSerial: editSerial.current, textVersion: textVersion.current, dirty: dirtyRef.current, draft: draftRef.current, baseline: baseline.current, baseRevision: baseRevisionRef.current ?? null })); return typeof unregister === 'function' ? unregister : undefined; }, [shotText.controller, onShotTextController, shot?.id]);
   const textBlocksLegacy = Boolean(shot && shotTextContext && shotText.controller.blocksLegacy(shot.id));
   useEffect(() => {
     if (!record) return;

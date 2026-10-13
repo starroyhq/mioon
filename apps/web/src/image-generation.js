@@ -1,5 +1,6 @@
 import { ApiError, rpc, requestId as newRequestId } from './api.js';
-import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_EDIT_LIMITS, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
+import { createImageRejectionCloseLatch } from './native-close-sources.ts';
+import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_REVIEW_LIMITS, IMAGE_EDIT_LIMITS, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
 import { safeImageSettings } from './image-settings.js';
 import { safeComfyImageSettings } from './comfy-image-settings.js';
 import { createComfyObservationSession, comfyObservationActive, comfyCanObserve } from './comfy-image-observation.js';
@@ -143,6 +144,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       ...(groupChanged || pageChanged ? { versions: [], nextVersionCursor: null, historyPhase: 'loading' } : {}), ...patch };
     onChange(copy(state));
   };
+  const rejectionClose = createImageRejectionCloseLatch({ limit: IMAGE_REVIEW_LIMITS.reviewsPerProject, identityBytes: IMAGE_REVIEW_LIMITS.rowBytes }, () => emit({}));
   const observations = createComfyObservationSession({ projectId, call, storage, requestId, onChange: emit });
   state = { ...state, ...observations.snapshot() };
   const stopTimer = () => { if (timer !== null) clearTimer(timer); timer = null; };
@@ -345,6 +347,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     const previous = state.reviews.find(item => item.id === review.id);
     if (previous && (reviewIdentity(previous) !== reviewIdentity(review) || previous.revision === review.revision && canonicalImageInput(previous) !== canonicalImageInput(review))) throw problem('INVALID_RESPONSE');
     const next = previous?.revision > review.revision ? previous : copy(review);
+    rejectionClose.reconcile(next.id, next.revision, next.state, reviewIdentity(next));
     if (next.input.purpose === 'edit' && state.pending?.input.requestId === next.requestId && imageEditReviewMatchesDraft(state, next)) emit({ sourcePreview: copy(next.sourceImage) });
     emit({ reviews: [next, ...state.reviews.filter(item => item.id !== next.id)].slice(0, IMAGE_LIMITS.maxPageSize) }); return next;
   }
@@ -441,7 +444,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     emit({ mode: 'edit', providerId: review.input.providerId, draft: { name: review.input.name, prompt: review.input.prompt }, inputImage: copy(review.input.inputImage), sourcePreview: copy(review.sourceImage), target: review.input.groupId ? { groupId: review.input.groupId, expectedRevision: review.input.expectedRevision } : null, targetRequest: null, ...(review.input.groupId ? { selectedGroupId: review.input.groupId } : {}), message: '已载入这份固定编辑请求。请核对源图、描述与发送目标，再单独批准。' }); if (review.input.groupId) void load(); return true;
   }
   return {
-    getState: () => copy(state), load, generatePaid, prepareComfy,
+    getState: () => copy(state), getNativeCloseState: rejectionClose.getState, load, generatePaid, prepareComfy,
     setSettings(value) { if (disposed) return false; const settings = safeImageSettings(value); if (canonicalImageInput(state.settings) !== canonicalImageInput(settings)) interactionEpoch++; emit({ settings }); return true; },
     setCustomSettings(value) { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom'); if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
     setComfySettings(value) { if (disposed) return false; const comfySettings = safeComfyImageSettings(value); if (canonicalImageInput(state.comfySettings) !== canonicalImageInput(comfySettings)) interactionEpoch++; emit({ comfySettings }); return true; },
@@ -468,6 +471,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     },
     async rejectReview(review) {
       if (disposed || !visible || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || review.state !== 'pending' || !state.reviews.some(item => item.id === review.id && canonicalImageInput(item) === canonicalImageInput(review))) return false;
+      rejectionClose.begin(review.id, review.revision, reviewIdentity(review));
       stopTimer(); readEpoch++; reading = false; emit({ reviewActionId: review.id });
       try {
         const result = await reviewClient.reject(copy(review));
@@ -512,6 +516,6 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     async pageVersions(older) { if (!visible || state.remotePending || state.remoteActionTaskId || reading || (older ? !state.nextVersionCursor : !state.versionTrail.length)) return false; const trail = [...state.versionTrail], cursor = older ? state.nextVersionCursor : trail.pop(); if (older) trail.push(state.versionCursor); emit({ versionCursor: cursor, versionTrail: trail }); return load(); },
     async pageReviews(older) { if (!visible || reading || state.reviewActionId || (older ? !state.nextReviewCursor : !state.reviewTrail.length)) return false; const trail = [...state.reviewTrail], cursor = older ? state.nextReviewCursor : trail.pop(); if (older) trail.push(state.reviewCursor); emit({ reviewCursor: cursor, reviewTrail: trail }); return load(); },
     setVisible(value) { if (disposed) return; const changed = visible !== Boolean(value); visible = Boolean(value); observations.setVisible(visible); if (changed) interactionEpoch++; if (!visible) { stopTimer(); selectionEpoch++; if (state.phase === 'targeting') emit({ phase: 'ready' }); } else if (changed) { polls = 0; void load(); } },
-    dispose() { observations.dispose(); disposed = true; readEpoch++; selectionEpoch++; interactionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
+    dispose() { rejectionClose.dispose(); observations.dispose(); disposed = true; readEpoch++; selectionEpoch++; interactionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
   };
 }

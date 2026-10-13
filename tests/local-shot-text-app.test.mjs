@@ -1,3 +1,4 @@
+import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -54,9 +55,8 @@ test('actual App shot fence blocks reference/generation work before touching leg
 });
 
 test('actual App beforeunload reads synchronous shot state independently of legacy dirty flag',()=>{
-  const from=app.indexOf('const warn = e =>'),to=app.indexOf("; window.addEventListener('beforeunload', warn)",from);assert.ok(from>=0&&to>from);
   let dirty=true,prevented=0;
-  const warn=Function('dirtyRef','shotTextRef','clipDraftRef','timelineFormatRef','deliveryNameRef',`return (${app.slice(from+'const warn = '.length,to)});`)({current:false},{current:{hasUnsaved:()=>dirty}},{current:null},{current:null},{current:null});
+  const warn=actualAppCloseWarning(app,{dirtyRef:{current:false},shotTextRef:{current:{getNativeCloseSnapshot:()=>({dirty,identity:[]})}},clipDraftRef:{current:null},timelineFormatRef:{current:null},deliveryNameRef:{current:null}});
   const event={preventDefault:()=>prevented++};warn(event);assert.equal(prevented,1);assert.equal(event.returnValue,'');dirty=false;warn(event);assert.equal(prevented,1);
 });
 

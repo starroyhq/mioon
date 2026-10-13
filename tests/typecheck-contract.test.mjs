@@ -94,6 +94,7 @@ test('foundation configuration strictly checks the real contract and automatical
     './agent-timeline-gain.consumer.mts',
     './export-sample-peak.consumer.mts',
     './float-checked-export.consumer.mts',
+    './native-close.consumer.mts',
   ]);
   assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
@@ -174,13 +175,17 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
   for (const name of [sourceName, shimName, consumerName,
     'tests/typecheck/agent-timeline-gain.consumer.mts', 'tests/typecheck/export-sample-peak.consumer.mts',
     'tests/typecheck/float-checked-export.consumer.mts', 'packages/contracts/src/timeline-export-float.ts',
+    'tests/typecheck/native-close.consumer.mts', 'apps/desktop/src/native-close.ts',
     'packages/contracts/src/agent-timeline-gain.ts', 'packages/contracts/src/export-sample-peak.ts',
     'packages/contracts/src/timeline-delivery.ts', 'packages/contracts/src/timeline-export-range.ts',
+    'packages/contracts/src/local-delivery.ts',
     configName, 'packages/contracts/package.json']) {
     const destination = path.join(directory, name);
     await mkdir(path.dirname(destination), {recursive: true});
     await writeFile(destination, await readFile(path.join(root, name)));
   }
+  // Like @types/node, the desktop consumer resolves the real repository-local
+  // Electron declarations. Its relative native-close import uses this copy.
   // The sample-peak consumer checks the public package subpath. Resolve it to
   // these real copied sources, never the ancestor working-tree workspace link.
   // Copy the installed Zod dependency unchanged so its genuine declarations are

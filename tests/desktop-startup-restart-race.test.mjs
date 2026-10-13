@@ -8,7 +8,8 @@ import vm from 'node:vm';
 import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
-import { QuitCoordinator, installUnsavedGuard, installPreferencesCloseDrain } from '../apps/desktop/src/lifecycle.mjs';
+import { QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 
 const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -71,7 +72,24 @@ async function harness(t, options = {}) {
   class Window extends EventEmitter {
     constructor(config) {
       super(); this.config = config; this.destroyed = false; this.urls = [];
-      this.webContents = Object.assign(new EventEmitter(), { getURL: () => this.urls.at(-1), executeJavaScript: async () => true });
+      let closeToken = null, closeSerial = 0;
+      const windowIndex = records.windows.length;
+      // This synthetic renderer speaks the real v1 protocol. The preference
+      // flush and token-bound commit return booleans; inspection returns data.
+      const renderer = vm.createContext({
+        __mioonNativeCloseAdmission: {
+          inspect: () => ({ version: 1, token: closeToken = `window-${windowIndex}-${++closeSerial}`, disposition: 'clean' }),
+          commit: (token, admission) => typeof token === 'string' && token === closeToken &&
+            admission?.discardDirty === false && typeof admission.allowDrainFailure === 'boolean' &&
+            Number.isSafeInteger(admission.expiresAt) && admission.expiresAt > Date.now() && admission.expiresAt <= Date.now() + 1500,
+          cancel: token => { if (token !== closeToken) return false; closeToken = null; return true; }
+        },
+        __mioonFlushWorkspacePreferences: async () => true
+      });
+      this.webContents = Object.assign(new EventEmitter(), {
+        getURL: () => this.urls.at(-1), loadURL: url => this.loadURL(url),
+        executeJavaScript: async script => vm.runInContext(script, renderer)
+      });
       records.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
@@ -109,9 +127,9 @@ async function harness(t, options = {}) {
     installSessionPolicy() {}, installWindowPolicy() {}, isAllowedNavigation: () => true,
     writeConnection: async (_, value) => { records.connections.push(value); },
     removeConnectionOnShutdown: async () => { records.removals++; await options.remove?.(records.removals); },
-    QuitCoordinator, installUnsavedGuard, installPreferencesCloseDrain, stopBackendForQuit,
+    QuitCoordinator, installNativeCloseAdmission, stopBackendForQuit,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } },
-    dialog: { showMessageBox: async value => { records.dialogs.push(value); return { response: 0 }; }, showMessageBoxSync: () => 0 },
+    dialog: { showMessageBox: async (parentOrValue, modalValue) => { const value = modalValue ?? parentOrValue; records.dialogs.push(value); return { response: 0 }; }, showMessageBoxSync: () => 0 },
     storageFailureDialog: error => ({ title: 'Storage failure', detail: error.message }),
     observeStart: result => records.starts.push(result)
   });

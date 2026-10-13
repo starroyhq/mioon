@@ -63,5 +63,5 @@ test('new logic is typed and isolated from broad RPC, renderer storage, modal an
     const source = readFileSync(path.join(root,'apps/web/src',file),'utf8'); assert.doesNotMatch(source, /from ['"]@mioon\/contracts['"]|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck|localStorage|sessionStorage|workbench-confirm|rpc\(/);
   }
   const inspector = readFileSync(path.join(root,'apps/web/src/Inspector.jsx'),'utf8'); assert.equal((inspector.match(/id="shot-title"/g) || []).length, 2); assert.equal((inspector.match(/id="shot-prompt"/g) || []).length, 2);
-  assert.match(inspector, /完整“保存修改”不会跳过文字修改/); assert.match(inspector, /mergeFreshShotTextAck/); assert.match(inspector, /onShotTextController\(shotText.controller\)/);
+  assert.match(inspector, /完整“保存修改”不会跳过文字修改/); assert.match(inspector, /mergeFreshShotTextAck/); assert.match(inspector, /onShotTextController\(shotText.controller, \(\) => \(\{ mounted: mounted.current,/);
 });

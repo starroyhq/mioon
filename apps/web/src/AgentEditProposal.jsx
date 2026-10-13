@@ -1,3 +1,4 @@
+import { createAgentEditsCloseReporter } from './native-close-sources.ts';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible';
@@ -37,7 +38,7 @@ export function AgentTimelineMoveDiff({ proposal, visible = true }) {
 
 // This review surface shares the right dock. Model prose has no action authority;
 // only the independently loaded, persisted proposal controls these buttons.
-export default function AgentEditProposal({ projectId, refreshKey, blockedRunIds = [], selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', contextMode, onApplied = () => {} }) {
+export default function AgentEditProposal({ nativeCloseRegistry, projectId, refreshKey, blockedRunIds = [], selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', contextMode, onApplied = () => {} }) {
   const visible = useWorkspaceVisibility(), [state, setState] = useState(initialAgentEditsState);
   const session = useRef(null), lifetime = useRef(null), visibleRef = useRef(visible), appliedRef = useRef(onApplied);
   const selectedTarget = contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? selectedTimelineGainClip : selectedTimelineClip;
@@ -47,16 +48,17 @@ export default function AgentEditProposal({ projectId, refreshKey, blockedRunIds
   appliedRef.current = onApplied;
   useLayoutEffect(() => {
     const owner = { projectId, closed: false }; lifetime.current = owner;
+    const closeReport = createAgentEditsCloseReporter(nativeCloseRegistry);
     const current = createAgentEditsSession({ projectId,
-      onChange: next => { if (!owner.closed && lifetime.current === owner) setState(next); },
+      onChange: next => { if (!owner.closed && lifetime.current === owner) { closeReport.publish(next); setState(next); } },
       onApplied: (id, proposal) => { if (!owner.closed && lifetime.current === owner && id === owner.projectId) appliedRef.current(id, proposal); },
     });
-    session.current = current; setState(initialAgentEditsState());
+    session.current = current; closeReport.publish(current.getState()); setState(initialAgentEditsState());
     const page = typeof document === 'undefined' ? null : document;
     const updateVisibility = () => current.setVisible(visibleRef.current && page?.visibilityState !== 'hidden');
     page?.addEventListener('visibilitychange', updateVisibility); updateVisibility(); void current.load();
-    return () => { owner.closed = true; current.dispose(); page?.removeEventListener('visibilitychange', updateVisibility); if (session.current === current) session.current = null; };
-  }, [projectId]);
+    return () => { owner.closed = true; closeReport.release(); current.dispose(); page?.removeEventListener('visibilitychange', updateVisibility); if (session.current === current) session.current = null; };
+  }, [projectId, nativeCloseRegistry]);
   useLayoutEffect(() => { interactionRef.current = interaction; visibleRef.current = visible; session.current?.setVisible(visible && (typeof document === 'undefined' || document.visibilityState !== 'hidden')); }, [interaction]);
   useLayoutEffect(() => { session.current?.setTimelineContext({ target: selectedTarget, blockedReason, contextMode }); }, [projectId, timelineKey]);
   const lastRefresh = useRef(null);

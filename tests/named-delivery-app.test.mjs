@@ -5,6 +5,7 @@ import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof} from '@mio
 import {createLocalDeliveryController} from '../apps/web/src/local-delivery-state.ts';
 import {createTimelineDeliveryNameController} from '../apps/web/src/export-delivery-state.ts';
 import {createExportRangeController} from '../apps/web/src/export-range-state.ts';
+import {readNativeLegacyClose} from '../apps/web/src/native-close-legacy.ts';
 
 const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
 function actual(start,end,environment){
@@ -223,9 +224,31 @@ test('App wires name scope, validation, view identity, disclosure and independen
  assert.match(source,/deliveryNameVersion: deliveryName\.controller\.getVersion/);
  assert.match(source,/settingsVersion', 'deliveryNameVersion', 'rangeVersion'\]\.some/);
  assert.match(source,/!deliveryName\.error/);
- assert.match(source,/!deliveryNameRef\.current\?\.controller\.hasUnsaved\(\)/);
+ assert.match(source,/readLegacySnapshot: \(\) => readNativeLegacyClose\(\{[\s\S]*?delivery: deliveryNameRef\.current\?\.controller/);
  assert.match(source,/deliveryName=\{deliveryName\.value\}/);
  assert.match(source,/deliveryNameError=\{deliveryName\.error\}/);
+});
+
+test('actual App pure close read preserves an unacknowledged name and follows only its matching ACK',()=>{
+ const f=nameFixture();
+ // The actual App callback must read the real controller state without calling
+ // context-synchronizing captures, acknowledgements, or other controller APIs.
+ const delivery=new Proxy(f.controller,{get(target,key){assert.equal(key,'getState','Close must use only the pure delivery state getter');return target.getState;}});
+ const read=actual('() => readNativeLegacyClose({ inspectorDirty:',',\n  }), []);',{
+  readNativeLegacyClose,dirtyRef:{current:false},shotTextRef:{current:null},shotCloseRef:{current:null},
+  clipDraftRef:{current:null},timelineFormatRef:{current:null},deliveryNameRef:{current:{controller:delivery}},
+  subtitlesRef:{current:null},subjectsRef:{current:null},
+ });
+ assert.equal(read().dirty,false);
+ f.choose('版本 A');const captured=f.controller.capture(),before=f.controller.getState(),first=read();
+ assert.equal(first.dirty,true);assert.equal(f.controller.getState(),before);
+ assert.equal(f.controller.getName(f.live.scope),'版本 A');assert.deepEqual(read().identity,first.identity);
+ f.choose('更新的草稿');const changed=read();
+ assert.equal(changed.dirty,true);assert.notDeepEqual(changed.identity,first.identity);
+ assert.equal(f.controller.acknowledge(captured,accepted()),false);assert.equal(read().dirty,true);
+ const current=f.controller.capture();
+ assert.equal(f.controller.acknowledge(current,{...accepted(),snapshot:{deliveryName:'更新的草稿'}}),true);
+ assert.equal(read().dirty,false);assert.equal(f.controller.getName(f.live.scope),'更新的草稿');
 });
 
 test('late accepted render cannot reopen delivery history after a newer panel or project choice',async()=>{

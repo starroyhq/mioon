@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/c
 import { agentTimelineFrameText } from './agent-tool-state.js';
 import AgentRunActivity from './AgentRunActivity.jsx';
 import AgentEditProposal from './AgentEditProposal.jsx';
+import { createAgentChatCloseReporter } from './native-close-sources.ts';
 import { AgentTimelineGainSelection, AGENT_GAIN_SEND_CONTEXT, AGENT_GAIN_SEND_CONSENT } from './AgentTimelineGain.tsx';
 import { WorkbenchTooltip } from './WorkspaceControls.jsx';
 import Icon from './icons.jsx';
@@ -32,7 +33,7 @@ function renderRun(run, kind = 'recent', visible = true) {
         </article>;
 }
 
-export default function AgentPanel({ projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', onApplied, onClose, onSettings, onDraftChange = () => {} }) {
+export default function AgentPanel({ nativeCloseRegistry, projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', onApplied, onClose, onSettings, onDraftChange = () => {} }) {
   const [state, setState] = useState(initialAgentChatState);
   const [disclosure, setDisclosure] = useState({ key: null, expanded: true, reviewed: false });
   const disclosureIdentity = useRef(null);
@@ -43,16 +44,18 @@ export default function AgentPanel({ projectId, projectName, selectedShot = null
   const session = useRef(null), lifetime = useRef(null), composer = useRef(null), scroll = useRef(null), archiveScroll = useRef(null), follow = useRef(true);
   useLayoutEffect(() => {
     const owner = { projectId, closed: false }; lifetime.current = owner;
+    const closeReport = createAgentChatCloseReporter(nativeCloseRegistry);
     setState(initialAgentChatState()); follow.current = true;
-    const current = createAgentChatSession({ projectId, onChange: next => { if (lifetime.current === owner && !owner.closed) setState(next); } });
+    const current = createAgentChatSession({ projectId, onChange: next => { if (lifetime.current === owner && !owner.closed) { closeReport.publish(next); setState(next); } } });
     session.current = current;
+    closeReport.publish(current.getState());
     const page = typeof document === 'undefined' ? null : document;
     const visibilityChanged = () => current.setVisible(visibilityRef.current && page?.visibilityState !== 'hidden');
     page?.addEventListener('visibilitychange', visibilityChanged);
     visibilityChanged();
     void current.load();
-    return () => { page?.removeEventListener('visibilitychange', visibilityChanged); owner.closed = true; current.dispose(); if (session.current === current) session.current = null; if (lifetime.current === owner) lifetime.current = null; };
-  }, [projectId]);
+    return () => { page?.removeEventListener('visibilitychange', visibilityChanged); owner.closed = true; closeReport.release(); current.dispose(); if (session.current === current) session.current = null; if (lifetime.current === owner) lifetime.current = null; };
+  }, [projectId, nativeCloseRegistry]);
   useLayoutEffect(() => {
     interactionRef.current = interaction; visibilityRef.current = visible;
     session.current?.setVisible(visible && (typeof document === 'undefined' || document.visibilityState !== 'hidden'));
@@ -157,7 +160,7 @@ export default function AgentPanel({ projectId, projectName, selectedShot = null
             </>}
           </div>}
         </div>}
-        <AgentEditProposal projectId={projectId} refreshKey={proposalRefresh} blockedRunIds={blockedRunIds} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} contextMode={state.contextMode} onApplied={onApplied} />
+        <AgentEditProposal nativeCloseRegistry={nativeCloseRegistry} projectId={projectId} refreshKey={proposalRefresh} blockedRunIds={blockedRunIds} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} contextMode={state.contextMode} onApplied={onApplied} />
         {state.message && <div className={`agent-chat-notice ${['unknown', 'load_error', 'detached'].includes(phase) ? 'is-warning' : ''}`} role="status" data-testid="agent-chat-notice">{state.message}</div>}
       </div>
       <form className="agent-chat-composer" onSubmit={submit} noValidate>

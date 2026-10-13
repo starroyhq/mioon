@@ -1,3 +1,4 @@
+import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -239,7 +240,7 @@ test('actual project-leave guard checks the independent draft and only discards 
   assert.match(app, /selectProject[\s\S]*?guardProjectNavigation\(draftMessage/);
   assert.match(app, /async function createProject[\s\S]*?guardProjectNavigation\(/);
   assert.match(app, /onPop = async[\s\S]*?selectProject\(id, false, true\)/);
-  assert.match(app, /beforeunload[\s\S]*?timelineFormatRef\.current\?\.controller\.hasUnsaved\(\)/);
+  assert.match(app, /readLegacySnapshot:[\s\S]*format: timelineFormatRef\.current\?\.controller/);
 });
 
 test('actual navigation epoch guard prevents late confirmation from discarding a newer project draft', async () => {
@@ -406,8 +407,7 @@ test('actual dock pane retains child identity while hidden and removes it from f
 
 test('actual unload callback sees synchronous format edits and in-flight saves through its independent owner', async () => {
   const f = fixture(); await f.ready();
-  const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
-  const dirtyRef = { current: false }, warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', 'shotTextRef', `${source}; return warn;`)(dirtyRef, { current: f }, { current: null }, { current: null }, { current: null });
+  const dirtyRef = { current: false }, warn = actualAppCloseWarning(app, { dirtyRef, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null } });
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   let e = event(); warn(e); assert.equal(e.prevented, false);
   f.controller.choose('landscape_720'); e = event(); warn(e); assert.equal(e.prevented, true); assert.equal(e.returnValue, '');
@@ -419,8 +419,7 @@ test('actual unload callback sees synchronous format edits and in-flight saves t
 test('actual unload callback observes either current format or delivery-name controller without retaining replaced owners', async () => {
   const f = fixture(); await f.ready(); const delivery = deliveryNameController();
   const timelineFormatRef = { current: f }, deliveryNameRef = { current: { controller: delivery } };
-  const source = app.match(/const warn = e => \{ if \(!dirtyRef\.current[\s\S]*?e\.returnValue = ''; \};/)[0];
-  const warn = Function('dirtyRef', 'timelineFormatRef', 'deliveryNameRef', 'clipDraftRef', 'shotTextRef', `${source}; return warn;`)({ current: false }, timelineFormatRef, deliveryNameRef, { current: null }, { current: null });
+  const warn = actualAppCloseWarning(app, { dirtyRef: { current: false }, timelineFormatRef, deliveryNameRef, clipDraftRef: { current: null }, shotTextRef: { current: null } });
   const check = expected => {
     const event = { prevented: false, preventDefault() { this.prevented = true; } }; warn(event);
     assert.equal(event.prevented, expected); assert.equal(event.returnValue, expected ? '' : undefined);

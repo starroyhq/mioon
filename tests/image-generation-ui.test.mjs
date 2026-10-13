@@ -1,3 +1,4 @@
+import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -220,6 +221,7 @@ function renderer(f, options = {}) {
   }; react.default = react;
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
   const require = name => {
+    if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return { IMAGE_LIMITS };
     if (name === './image-generation.js') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };

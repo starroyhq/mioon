@@ -10,6 +10,7 @@ import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 import { IMAGE_MODELS, createImageGenerationSession, imageCanGenerate, imageDraftDirty, imageInputIssue, imageEditSourceIssue, imageEditDraftIssue, imageEditReviewMatchesDraft, imageTaskLabel, imageTaskMessage, imageTaskConnectionMessage, imageSelectedSettings, imagePaidAuthorization, imageReviewCanApprove, imageTaskReview, comfyCanObserve, initialImageGenerationState } from './image-generation.js';
 import ImageSettings from './ImageSettings.jsx';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
+import { createImageGenerationCloseReporter } from './native-close-sources.ts';
 import ComfyImageSettings from './ComfyImageSettings.jsx';
 import { ComfyImageReviewDetails, ComfyImageTaskDetails } from './ComfyImageDetails.jsx';
 import { createComfyImageSettingsClient } from './comfy-image-settings.js';
@@ -23,7 +24,7 @@ const shortDate = value => new Date(value).toLocaleString('zh-CN', { month: '2-d
 const sourceDetails = (source, visible, title) => <div className="image-generation-source-preview" data-testid="image-source-preview"><img src={visible ? `/media/${encodeURIComponent(source.assetId || source.id)}` : undefined} alt={`${title}：${source.name}`} width={source.width} height={source.height} loading="lazy" decoding="async" /><div><strong>{title} · {source.name}</strong><span>{source.width} × {source.height} · PNG · {Math.ceil((source.byteLength || source.sizeBytes) / 1024)} KB</span>{source.origin && <span>来源：{{ 'user-import': '导入素材', generated: '生成图像', 'synthetic-mock': 'Mock 测试图像', 'extracted-frame': '视频提取帧' }[source.origin.kind]}</span>}<details><summary>固定源图身份</summary><span className="image-generation-id">素材 {source.assetId || source.id}</span><span className="image-generation-id">SHA-256 {source.sha256}</span></details></div></div>;
 
 /** Kept mounted by AgentDockPane. Hiding stops reads and media, never resets a draft. */
-export default function ImageGeneration({ navigationRegistry, projectId, projectName, projectAssets = [], api, storage, settingsClient, customSettingsClient, comfySettingsClient, reviewClient, onDirtyChange = noop, onGenerated = noop, onRevealAsset }) {
+export default function ImageGeneration({ nativeCloseRegistry, navigationRegistry, projectId, projectName, projectAssets = [], api, storage, settingsClient, customSettingsClient, comfySettingsClient, reviewClient, onDirtyChange = noop, onGenerated = noop, onRevealAsset }) {
   const [state, setState] = useState(initialImageGenerationState), [page, setPage] = useState('compose'), [settingsSlot, setSettingsSlot] = useState('official');
   const imageSettingsClient = useMemo(() => settingsClient || createImageSettingsClient(), [settingsClient]);
   const customImageSettingsClient = useMemo(() => customSettingsClient || createImageSettingsClient({ slot: 'custom' }), [customSettingsClient]);
@@ -38,16 +39,18 @@ export default function ImageGeneration({ navigationRegistry, projectId, project
     const owner = { projectId, closed: false }; lifetime.current = owner;
     setState(initialImageGenerationState());
     if (!projectId) return () => { owner.closed = true; callbacks.current.onDirtyChange(false); };
+    const closeReport = createImageGenerationCloseReporter(nativeCloseRegistry);
     const current = createImageGenerationSession({ projectId, api, storage, reviewClient, settings: settingsSnapshot.current, settingsReader: () => imageSettingsClient.read(), customSettings: customSettingsSnapshot.current, customSettingsReader: () => customImageSettingsClient.read(), comfySettings: comfySettingsSnapshot.current, comfySettingsReader: () => localImageSettingsClient.read(),
-      onChange: value => { if (!owner.closed && lifetime.current === owner) setState(value); },
+      onChange: value => { if (!owner.closed && lifetime.current === owner) { closeReport.publish({ state: value, dirty: imageDraftDirty(value), rejectionBlocked: current.getNativeCloseState().rejectionBlocked }); setState(value); } },
       onGenerated: (id, task) => { if (!owner.closed && lifetime.current === owner) callbacks.current.onGenerated(id, task); },
     });
     session.current = current;
+    closeReport.publish({ state: current.getState(), dirty: imageDraftDirty(current.getState()), rejectionBlocked: current.getNativeCloseState().rejectionBlocked });
     const page = typeof document === 'undefined' ? null : document;
     const visibilityChanged = () => current.setVisible(visibilityRef.current && page?.visibilityState !== 'hidden');
     page?.addEventListener('visibilitychange', visibilityChanged); visibilityChanged(); void current.load();
-    return () => { owner.closed = true; page?.removeEventListener('visibilitychange', visibilityChanged); current.dispose(); if (session.current === current) session.current = null; callbacks.current.onDirtyChange(false); };
-  }, [projectId, api, storage, reviewClient, imageSettingsClient, customImageSettingsClient, localImageSettingsClient]);
+    return () => { owner.closed = true; closeReport.release(); page?.removeEventListener('visibilitychange', visibilityChanged); current.dispose(); if (session.current === current) session.current = null; callbacks.current.onDirtyChange(false); };
+  }, [projectId, api, storage, reviewClient, imageSettingsClient, customImageSettingsClient, localImageSettingsClient, nativeCloseRegistry]);
   useLayoutEffect(() => {
     interactionRef.current = interaction; visibilityRef.current = composerVisible;
     session.current?.setVisible(composerVisible && (typeof document === 'undefined' || document.visibilityState !== 'hidden'));

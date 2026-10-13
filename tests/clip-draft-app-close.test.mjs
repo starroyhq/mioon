@@ -116,11 +116,11 @@ test('actual lifecycle cleanup retains a newer registered global close handler',
 
 test('desktop close warning describes unconfirmed local drafts and view without promising cancellation', () => {
   const main = readFileSync(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const at = main.indexOf("confirmClose: () => !ownsWindow(window, context) || smokeOutput || dialog.showMessageBoxSync");
+  const at = main.indexOf("confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox");
   const until = main.indexOf('onCancel:', at);
   assert.ok(at >= 0 && until > at);
   const warning = main.slice(at, until);
   assert.match(warning, /本地草稿/); assert.match(warning, /视图/);
   assert.match(warning, /未确认/); assert.match(warning, /不会取消/);
-  assert.match(warning, /buttons: \['仍然退出', '继续编辑'\], defaultId: 1, cancelId: 1/);
+  assert.match(warning, /buttons: \[action === 'reload' \? '仍然重新载入' : '仍然退出', '继续编辑'\], defaultId: 1, cancelId: 1/);
 });

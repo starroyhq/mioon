@@ -28,7 +28,8 @@
     "./agent-protocol.consumer.mts",
     "./agent-timeline-gain.consumer.mts",
     "./export-sample-peak.consumer.mts",
-    "./float-checked-export.consumer.mts"
+    "./float-checked-export.consumer.mts",
+    "./native-close.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

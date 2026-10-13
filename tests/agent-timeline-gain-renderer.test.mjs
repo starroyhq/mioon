@@ -1,3 +1,4 @@
+import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -62,6 +63,7 @@ function harness(file, options = {}) {
     if (name === './agent-timeline-context.js') return timing;
     if (name === './agent-timeline-gain-context.ts') return gainContext;
     if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
+    if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === 'react') return react;
     if (name === './agent-edits.js') return { ...edits, createAgentEditsSession: input => edits.createAgentEditsSession({ ...input, client: options.client }) };
     if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => chat.createAgentChatSession({ ...input, client: options.chatClient, receipts: options.receipts, requestId: () => requestId }) };
