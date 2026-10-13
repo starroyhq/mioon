@@ -1,4 +1,54 @@
-# Status — 2026-10-09 — V4.1 with incremental editing work
+# Current checkpoint — 2026-10-13
+
+Current committed application code: `dc3bbe8cf664017f4c1a3d0dbb56d3ece5e1e374`
+(0.4.1). The limited local Linux engineering trial remains usable. This index
+update changes documentation only; it does not rerun tests, build packages or
+certify another platform. See the [current six-direction queue](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-13)
+and [startup guide](docs/CORE-TRIAL.zh-CN.md). The guide's `ccfaab5` test and Git
+statements retain their dated checkpoint attribution; use this index for the
+newer code and synchronization boundary.
+
+- **User UI integrated, `48586426d4a5e52a2a4daf7ef84fbd5f5c26e02b`.** This merge
+  preserves both `140fa882` cloud history and the user's `08890b7` UI history.
+  User layout and the existing cloud sample-peak controls were retained; the
+  single CSS conflict preserved both appended blocks. Independent typecheck and
+  serial full suite passed: **5,974 total / 5,972 passed / 0 failed / 0 cancelled /
+  2 existing skips**, actual exit 0, 1,126,423.963517 ms. Fresh production Linux
+  package and actual default/minimum-width layout, draft, read-only peak check,
+  normal exit/reopen and media-preservation checks passed. macOS window controls
+  were checked by source/contract only. [Evidence and exact boundaries](docs/USER-UI-INTEGRATION.md).
+- **Backend opt-in float-checked export, `dc3bbe8`.** Shared HTTP/CLI/MCP accepts
+  `mp4_h264_float_checked_v2`; there is no new UI selector. It preserves float
+  intermediates and rejects publication when the complete pre-AAC sample peak
+  exceeds one. It does not limit, normalize or change clip gain. Omitted settings
+  and v1 preserve old bytes/behavior. The integrated namespace/row-identity fix
+  preserves legal storyboard/timeline same-key receipts without admitting corrupt
+  v2 records. Independent typecheck and serial full suite passed: **6,055 total /
+  6,053 passed / 0 failed / 0 cancelled / 2 existing skips**, actual exit 0,
+  1,214,997.495407 ms. Actual server/CLI/worker rejection, explicit gain change and
+  new-key success, MP4 decode/reopen, ten old-path golden comparisons and fresh
+  production Linux package inspection passed. This backend gate has no new GUI,
+  Mac/Windows or live-provider claim. A passing sample check does not establish
+  true-peak/loudness or AAC playback safety. [Contract and baseline-separated evidence](docs/FLOAT-CHECKED-EXPORT.md).
+
+**Git and platform boundary.** At the last independently verified observations,
+GitHub main was `ccfaab52728b6ca1639b2490d4edc9db4db63ec7` and the user's Mac main
+was `08890b7583f3dd6cf7a13c36e98adc1c9ccf4791`; neither is rechecked by this
+local documentation update. Cloud main is `dc3bbe8` at the start of this slice.
+The UI merge, backend commit and this documentation slice are not claimed pushed.
+The user maintains the UI. Native Mac/Windows completion and live-provider
+configuration/material/budget approval remain separate gates; do not count an
+unmerged Windows candidate or a synthetic adapter test as a release result.
+
+## Historical checkpoint log
+
+The entries below retain their original baseline, test counts and scope. Their
+then-open limitations are historical, not a current to-do list: recent-project
+selection, broader bounded draft recovery, Task Center's right-dock move and
+other later increments have their own entries. Do not repeat completed work or
+rewrite the old counts. Current pointers above take precedence for delivery status.
+
+## Status — 2026-10-09 — V4.1 with incremental editing work
 
 Current source/desktop is 0.4.1: production `app.starroy.mioon`, development `app.starroy.mioon.dev`. Build-time channel metadata is fixed in the application; packaged development stays `.dev`. Data/discovery and package output paths are isolated, and legacy data is preserved for explicit copy-only migration. Active product/CLI/npm/configuration names are Mioon, mioon, @mioon and MIOON_*; the former names are removed from active interfaces. Local renderer preference and pending-request keys have a one-time migration. See [migration notes](docs/MIOON-MIGRATION.md).
 

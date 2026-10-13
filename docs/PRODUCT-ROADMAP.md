@@ -2,9 +2,69 @@
 
 Updated: 2026-10-13 UTC. This is approved iteration scope, not a completion claim.
 Original roadmap baseline: `66a0193`; current status wording was checked against
-committed code `ccfaab52728b6ca1639b2490d4edc9db4db63ec7`. Verified deliverables
+committed code `dc3bbe8cf664017f4c1a3d0dbb56d3ece5e1e374`. Verified deliverables
 and historical test totals remain in STATUS.md and their dated acceptance reports.
 The documentation check itself does not rerun product or platform acceptance.
+
+## Current delivery and remaining work (2026-10-13)
+
+The core local Linux engineering trial is available; it does not wait for every
+item below. [STATUS](../STATUS.md) records the user-UI merge `4858642` and
+backend-only float-checked export `dc3bbe8`, their distinct actual gates, and the
+last verified Git boundary. This is a current index over the historical approvals
+below, not new implementation, authorization or a fixed number of commits.
+
+1. **Editing experience.** Delivered: managed media, source ranges, favorite/reject,
+   current-timeline usage/filter/location, raw-source waveforms, clip fades,
+   three 30fps canvas presets and bounded draft/restart recovery. Next eligible
+   work: a demonstrated persistence/performance defect, then scoped proxy/preview
+   performance, tags/notes or a separately reviewed audio/color slice. Broader
+   ducking/crossfades and color/HDR workflows remain open. No new UI work is started
+   while the user maintains the interface.
+2. **Export extensions.** Delivered: preflight, MP4/H.264 settings, frozen named
+   history, selected-range export, explicit final-file decoded sample peaks and
+   backend opt-in float-checked pre-AAC rejection. These are distinct features;
+   neither peak operation is loudness/true-peak certification. Further work:
+   additional codec/container and hardware capabilities, plus one bounded editable
+   interchange format. Each needs actual encoder/NLE/platform verification; no
+   silent fallback or universal compatibility promise.
+3. **Creation and versions.** Delivered: immutable generated versions, explicit
+   timeline source replacement, managed frame extraction, versioned subject
+   library, fixed/compatible Images and single-PNG editing, first/last-frame and
+   explicitly selected subject-version video inputs. Local Mock and protocol
+   tests do not verify real generation quality. Open: richer comparison,
+   motion/style references, reviewed multistage generation and multiple editable
+   delivery sequences. Named exports from one timeline are not multiple sequences.
+4. **Agent extensions.** Delivered: bounded project reads, reviewed shot text,
+   selected-clip move and gain proposals with shared business/history/replay.
+   Further actions must be selected individually with immutable review, exact
+   target/revision and approval; do not expose the whole CLI or infer payment
+   authority. Real model connectivity/quality remains separately unverified.
+5. **Extension ecosystem.** Delivered: one fixed local ComfyUI T2I connector and
+   explicit result observation/recovery, tested against a synthetic service.
+   The real Comfy/GPU/workflow gate remains open. Next architectural milestone:
+   only the bounded broker/SDK and second extension class described in
+   [EXTENSIONS-ARCHITECTURE.md](EXTENSIONS-ARCHITECTURE.md), when prioritized.
+   General external result/version return, third-party distribution/store and
+   optional Blender stay later; installation/execution has separate permission
+   boundaries. Codex OAuth is an independent deferred integration, not a required
+   plugin dependency.
+6. **Delivery and engineering.** Delivered: shared contracts/services, Linux
+   packaging freshness, backup creation/verification and restricted safe restore,
+   crash/replay boundaries, mixed JS/TS tooling and the current Linux checkpoints.
+   Next local work should fix a reproduced reliability gap or remove a concrete
+   duplicate safety boundary with characterization tests. Legacy TS migration is
+   incremental. Mac/Windows native storage/vault/installer/signing, real-provider
+   configuration/material/budget approval and later publication remain external
+   gates. A source-only Windows candidate is not merged runtime support.
+
+Some next items can be implemented locally without paid calls; their exact slices
+still need compatibility and acceptance boundaries. Platform/security changes,
+third-party installation, credentials, live calls, signing and publication retain
+their applicable approvals. Future work is not a new spending or push authorization.
+The last verified remote main `ccfaab5` and Mac main `08890b7` are historical
+observations, not live checks by this documentation update. Completed subfeatures
+must not be reopened merely because a broader heading or old checkpoint says open.
 
 ## Product direction
 

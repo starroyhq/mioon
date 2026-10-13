@@ -1,3 +1,34 @@
+# Current execution index — 2026-10-13
+
+The M0–M3 and V2–V4.1 checklists below are historical delivery records, not the
+remaining product queue. Current committed code is `dc3bbe8cf664017f4c1a3d0dbb56d3ece5e1e374`:
+user UI merge `4858642` and backend-only opt-in float-checked exports are verified
+in [STATUS](STATUS.md), with separately attributed full-suite and runtime evidence.
+This documentation-only update does not repeat those tests.
+
+The limited local Linux trial is available. Follow the [source startup guide](docs/CORE-TRIAL.zh-CN.md)
+for commands and [STATUS](STATUS.md) for the newer code/Git boundary. To identify
+this checkout and the accepted UI merge history without running the application:
+
+```sh
+git rev-parse HEAD
+git show --format='%H%n%P%n%s' --no-patch 48586426d4a5e52a2a4daf7ef84fbd5f5c26e02b
+```
+
+Prioritize stability and useful bounded slices within the [six remaining directions](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-13).
+They are feature directions, not six commits or a promised completion date.
+New backend work must preserve the user's UI, existing shared contracts, original
+media and historical receipts. New logic uses TS; gradual legacy migration must
+not become a whole-repository rewrite. Do not start another feature solely to
+keep a queue busy or treat distant roadmap completion as a prerequisite for trial.
+
+Mac/Windows native acceptance and real-provider work remain separate, specifically
+scoped gates. The last verified GitHub `ccfaab5` / Mac `08890b7` observations were
+not refreshed here; later local commits are not implicitly approved for push.
+No platform candidate, ordinary source build or Mock result establishes those gates.
+
+## Historical M0–M3 / V2–V4.1 records
+
 # Video Workbench M0 → M3
 
 - [x] Read full HANDOFF; inspect authorized own-cloud workspace/runtime and applicable project rules
