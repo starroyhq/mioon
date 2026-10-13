@@ -1,7 +1,10 @@
 # Mioon approved product roadmap
 
-Updated: 2026-10-12 UTC. This is approved iteration scope, not a completion claim.
-Baseline: `66a0193`. Verified deliverables remain in STATUS.md and their acceptance reports.
+Updated: 2026-10-13 UTC. This is approved iteration scope, not a completion claim.
+Original roadmap baseline: `66a0193`; current status wording was checked against
+committed code `ccfaab52728b6ca1639b2490d4edc9db4db63ec7`. Verified deliverables
+and historical test totals remain in STATUS.md and their dated acceptance reports.
+The documentation check itself does not rerun product or platform acceptance.
 
 ## Product direction
 
@@ -16,8 +19,10 @@ to established finishing tools in scope rather than duplicating an entire profes
 - Electron monorepo, shadcn/Base UI, durable local assets/jobs/versions and real FFmpeg export.
 - Shared UI/API/MCP/CLI business services; split, snapping and durable timeline undo/redo.
 - Independent collapsible/resizable Canvas and Editing layouts, with draft/media lifecycle guards.
-- Agent provider presets and write-only connection settings. Chat and tool execution are NOT
-  delivered by the settings commit. Real provider connectivity is NOT certified.
+- Agent provider presets, write-only connection settings, bounded chat/project inspection
+  and explicitly reviewed shot-text/clip-move/clip-gain edits. Each was delivered in
+  a separate stage; the original settings-only commit did not include chat/tools.
+  Real provider connectivity is NOT certified.
 
 ## Ordered delivery groups
 
@@ -37,13 +42,13 @@ one saved clip start-frame patch through existing timeline history/replay after
 an immutable human review. This does not authorize arbitrary timeline tools,
 ripple edits, generation or paid actions; release status is recorded in that report.
 
-The next bounded increment, [reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md),
-is implemented and undergoing acceptance as of 2026-10-13. It proposes only one
+The bounded [reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md) increment
+is implemented and accepted at local checkpoint `c3c1031` (2026-10-13). It proposes only one
 saved known-audio clip's 0–2 linear gain, then uses the existing timeline mutation
 and undo/redo after a separate immutable review. It does not measure loudness,
 normalize, unmute, render automatically or expand the older Agent catalogs.
-Focused checkpoints are recorded there; final aggregate/native/media gates
-remain pending.
+Its dated report records the passed final aggregate, synthetic-provider native
+and real local media gates. That evidence does not establish a live-model result.
 
 ### 2. Make selection and editing dependable
 
@@ -67,8 +72,12 @@ and full cut using originals with matching timing and sound.
 The user confirmed this iteration on 2026-10-12. The first isolated implementation
 now covers [local clip-property drafts](LOCAL-CLIP-DRAFTS.md), verified by the final
 independent typecheck/full suite and a rebuilt Linux package crash/recovery/export run.
-Origin-independent [last-project selection](LAST-PROJECT.md) is the next isolated
-implementation under acceptance. Other draft forms remain planned.
+Origin-independent [last-project selection](LAST-PROJECT.md),
+[delivery-name drafts and exact export intent](DELIVERY-DRAFTS.md), and
+[shot title/prompt drafts](SHOT-TEXT-DRAFTS.md) have also passed their independent
+acceptance stages. The [domain-by-domain scope](RECOVERY-STORAGE-SCOPE.md) records
+capacity, plain-local privacy, backup exclusion and unsupported fields; it is not
+a claim that all forms or every final keystroke are recoverable.
 See the [bounded recovery plan](CRASH-RECOVERY-PLAN.zh-CN.md).
 
 - Persist explicitly supported unsent drafts locally, with bounded capacity, private
@@ -92,8 +101,8 @@ native checks and live-provider verification retain their separate gates.
 
 #### Export configuration, after manual subtitles (approved 2026-10-11)
 
-Approval: user message `Sentinel_0efcc39df20081918255c0a750075fb8`.
-This is the next delivery slice after manual subtitles, not an expansion of the
+The user approved this iteration on 2026-10-11.
+It followed manual subtitles as a separate delivery slice; it did not expand the
 subtitle implementation. The current compatible default remains MP4, H.264
 (`libx264`, CRF 23), AAC 128 kb/s, 48 kHz stereo and 30 fps.
 
@@ -186,8 +195,8 @@ providers remain unverified. Continued iteration does not block that limited tri
 
 Implemented separately: [saved first/last video frames](VIDEO-FRAME-PAIRS.md),
 limited to Ark Seedance 2.5 and Mock. The current
-[one explicit subject-version video input](SUBJECT-VIDEO-INPUTS.md) candidate
-adds a mutually exclusive per-submit choice for those same adapters. It does not
+[one explicit subject-version video input](SUBJECT-VIDEO-INPUTS.md) accepted
+increment adds a mutually exclusive per-submit choice for those same adapters. It does not
 consume planning bindings automatically. Style/motion consumption and automated
 two-stage workflows remain future work; real-provider verification is separate.
 
@@ -382,10 +391,11 @@ range into a new timeline clip. Verification and limitations are tracked in
 remains open; one saved range is not a favorites/tags, proxy, waveform, or
 native-timebase implementation.
 
-The next bounded selection increment is independent favorite/拒选/neutral asset
-metadata and explicit local library filtering. Its current implementation and
-verification status is in [ASSET-DISPOSITIONS.md](ASSET-DISPOSITIONS.md). Tags,
-notes, unused filters and jump-to-usage remain open.
+Independent favorite/拒选/neutral asset metadata and explicit local library
+filtering were delivered separately; evidence is in [ASSET-DISPOSITIONS.md](ASSET-DISPOSITIONS.md).
+The later [current-timeline asset usage](TIMELINE-ASSET-USAGE.md) increment adds
+read-derived counts, explicit clip location and an unused-in-this-saved-timeline
+filter. It does not count every project or unsaved draft. Tags and notes remain open.
 
 ## Audio editing delivery checkpoint (2026-10-10)
 
@@ -393,8 +403,10 @@ The first bounded audio edit is optional clip-local fade-in/fade-out using the
 existing timeline revision, replay and history contracts. Right Properties
 controls target audio files or embedded video audio, with matching local rendered
 preview/export. Source playback remains dry. Current validation and limits are in
-[AUDIO-FADES.md](AUDIO-FADES.md); waveform/cache work, crossfades, ducking,
-roles, loudness checks and project-format expansion remain open.
+[AUDIO-FADES.md](AUDIO-FADES.md). The later waveform and three-preset 30fps
+[canvas-specification](TIMELINE-OUTPUT-FORMATS.md) increments have separate evidence.
+Crossfades, ducking, roles, postmix/loudness checks and arbitrary frame-rate or
+resolution expansion remain open.
 
 The bounded audio/performance waveform increment is implemented with opt-in
 local raw-source visualization and bounded, disposable derived cache work. Local
@@ -411,11 +423,11 @@ decoding. Scope and acceptance are tracked in [EXPORT-PREFLIGHT.md](EXPORT-PREFL
 
 ## Fixed-source version workflow checkpoint (2026-10-10)
 
-The next bounded version-workflow increment is explicit timeline clip source
+The delivered bounded version-workflow increment is explicit timeline clip source
 replacement with preserved timing, layout and audio fades. It uses the existing
 revision/replay/history service, with inline source review in Right Properties.
-Implementation and local focused/browser/native/media checks are complete; the
-independent release gate remains pending. [CLIP-SOURCE-REPLACEMENT.md](CLIP-SOURCE-REPLACEMENT.md)
+Implementation, local focused/browser/native/media checks and the independent
+release gate passed as recorded in [STATUS](../STATUS.md). [CLIP-SOURCE-REPLACEMENT.md](CLIP-SOURCE-REPLACEMENT.md)
 tracks scope, acceptance and retained limitations. Visual A/B comparison, automatic propagation and
 generation/spending remain outside this increment.
 
