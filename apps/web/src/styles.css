@@ -600,3 +600,7 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 .track-label .subtitle-add::after { content: ""; position: absolute; inset: -2px -4px; }
 /* Provider choices wrap at their separator instead of splitting a Chinese word in two. */
 .image-generation-provider-tabs > button { word-break: keep-all; }
+
+/* A clip whose shot has since selected another version keeps its frozen source; mark it on the timeline and in the inspector. */
+.timeline-clip .clip-stale-mark { position: absolute; top: 3px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: #e0b450; box-shadow: 0 0 0 2px #1b222a; pointer-events: none; }
+.clip-form .clip-source > p.clip-source-stale { color: #e0c27a; }

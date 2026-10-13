@@ -237,7 +237,8 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
     // restart resumes that task; it never creates a replacement generation.
     if(error.terminationUnconfirmed)persistMediaPause('jobs',j.id);
     return;
-   } else if(['running','downloading','submission_unknown'].includes(j.status))services.saveJob(latest,{error:safeError(error,j.status==='downloading'?'DOWNLOAD_FAILED':'POLL_ERROR'),nextPollAt:Date.now()+1000});
+   } else if(j.providerId==='mock'&&j.status==='downloading'&&error.code==='MOCK_RENDERER_UNSUPPORTED')services.saveJob(latest,{status:'failed',phase:'provider_failed',error:{...safeError(error),retryable:false},nextPollAt:0});
+   else if(['running','downloading','submission_unknown'].includes(j.status))services.saveJob(latest,{error:safeError(error,j.status==='downloading'?'DOWNLOAD_FAILED':'POLL_ERROR'),nextPollAt:Date.now()+1000});
    else services.saveGenerationGuarded(guardJob,{status:'failed',error:safeError(error)});
   }
  }

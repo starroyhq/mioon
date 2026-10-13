@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {throwIfMediaAborted} from '../media-processes.mjs';
 import {run} from '../media-runtime.mjs';
+import {createMockRendererCapability, DRAWTEXT_MESSAGE} from './mock-renderer-capability.ts';
 import { mkdir, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
@@ -25,10 +26,14 @@ async function managedDestination(root, destination, signal) {
   return absolute;
 }
 
+// Unknown capability preserves the existing retryable render path.
+const lacksDrawtext = createMockRendererCapability({run, throwIfMediaAborted});
+
 async function runFfmpeg(args, signal) {
   try { await run('ffmpeg', args, { timeout: 60_000, signal }); }
   catch (cause) {
-    if (cause.code === 'MEDIA_CANCELLED') throw cause;
+    if (cause.code === 'MEDIA_CANCELLED' || cause.terminationUnconfirmed) throw cause;
+    if (cause.code !== 'MEDIA_INVALID_CONFIGURATION' && cause.code !== 'MEDIA_SPAWN_FAILED' && await lacksDrawtext(signal)) throw error('MOCK_RENDERER_UNSUPPORTED', DRAWTEXT_MESSAGE, { retryable: false });
     const message = cause.code === 'MEDIA_INVALID_CONFIGURATION' ? 'Configured renderer must be an absolute executable path.'
       : cause.code === 'MEDIA_SPAWN_FAILED' ? 'Could not start the simulated video renderer.' : 'Simulated video rendering failed.';
     throw error('MOCK_RENDER_FAILED', message, { retryable: true, ...(cause.terminationUnconfirmed ? { terminationUnconfirmed: true } : {}) });
@@ -144,7 +149,10 @@ export function createMockProvider({ db, root, now = Date.now }) {
       throwIfMediaAborted(context.signal);
       get(providerJobId);
       db.prepare('UPDATE mock_provider_tasks SET poll_count = poll_count + 1 WHERE provider_job_id = ?').run(providerJobId);
-      return statusOf(get(providerJobId));
+      const status = statusOf(get(providerJobId));
+      // A render that cannot succeed on this FFmpeg ends the job now instead of retrying the download for ever.
+      if (status.status === 'succeeded' && await lacksDrawtext(context.signal)) return { status: 'failed', progress: 1, error: { code: 'MOCK_RENDERER_UNSUPPORTED', message: DRAWTEXT_MESSAGE, retryable: false } };
+      return status;
     },
     async reconcile(requestId, context = {}) {
       throwIfMediaAborted(context.signal);
