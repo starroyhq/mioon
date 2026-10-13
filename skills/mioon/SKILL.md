@@ -579,3 +579,10 @@ reexecutes or proves an earlier fsync. See ../../docs/WORKSPACE-RESTORE.md.
 
 When the user wants a named timeline export, discover the shared render/preflight schemas and use the same optional `deliveryName` in both. A blank UI draft means omitted name; API text must be nonblank. Preserve the exact original request/name/settings/key after ambiguity. Renaming the project does not rename a named historical export. Capabilities and previews do not accept a name. Download filenames are server-derived; any local destination still needs the existing explicit user-selected path.
 See [scope and acceptance](../../docs/NAMED-DELIVERIES.md).
+
+
+## Selected-range timeline test export
+
+When explicitly asked to export a time interval, discover the shared render/preflight schemas. Convert the agreed interval to the fixed30fps composition clock and confirm inclusive start/exclusive end; do not infer a source-native frame clock. Send identical optional `exportRange:{startFrame,endFrame}` to source preflight and `timeline.render` with `purpose:'export'`, the saved revision and one retained key. Omit the field for the original full-timeline behavior. Capabilities and previews do not accept a range.
+
+Do not edit, trim or rebase timeline clips/cues to export an interval. Fade and subtitle timing stays global. Full source validation still applies outside the interval. On unknown acceptance, preserve the complete original range/name/settings/input/key and explicitly reconcile the same request, rather than choosing a new key or automatically exporting the full timeline. Read `export.get` for the frozen range and resulting artifact. See [scope and acceptance](../../docs/SELECTED-RANGE-EXPORT.md).

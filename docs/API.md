@@ -66,7 +66,7 @@ and latest intent have separate monotonic CAS revisions.
   `draft` is null or `{draftId,revision,raw:{deliveryName}}`. `input` is the exact
   canonical `timeline.render` input restricted to `purpose:'export'`, with
   original project/revision/requestId and optional `deliveryName`,
-  `exportSettings`, `preflightSnapshotHash`. It preserves optional omission and
+  `exportSettings`, `exportRange`, `preflightSnapshotHash`. It preserves optional omission and
   must match the captured name and baseline. Prepare durably reserves the intent
   before any render dispatch; it never executes it.
 - `POST /api/local-delivery/execute` and `POST /api/local-delivery/recover`:
@@ -549,7 +549,7 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | `timeline.clip.remove` | `clipId` |
 | `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
-| `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256), optional export-only `exportSettings` (closed MP4/H.264 profile), optional export-only `deliveryName` |
+| `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256), optional export-only `exportSettings` (closed MP4/H.264 profile), optional export-only `deliveryName` and `exportRange:{startFrame,endFrame}` |
 
 Mutations return the whole timeline and increment its revision once. Rendering
 returns a queued `exports` record with `mode:'timeline'`, a frozen snapshot and
@@ -1232,3 +1232,12 @@ Named download links bind `/media/{assetId}?download=1&exportId={exportId}`. The
 ### 私有镜头文字草稿与保存恢复
 
 普通工作区的右侧镜头表单使用 authenticated `/api/local-shot-text` 私有接口保存 title/prompt 草稿及原 `shot.update` 精确意图；不是公共 RPC/CLI/MCP/Agent 操作。GET 必须携带 projectId 与 shotId，只读且不创建记录；草稿与意图使用独立 CAS、后端工作区/实例身份。公开 shot.update 输入与响应仍兼容。文字请求的 prepare/execute/recover、容量/隐私/备份排除及 restored unsupported 合同见 [SHOT-TEXT-DRAFTS.md](SHOT-TEXT-DRAFTS.md)。读取或恢复表单不自动执行业务。
+
+
+## Selected-range timeline exports
+
+`timeline.render` (only `purpose:'export'`) and `timeline.export.preflight` accept optional strict `exportRange:{startFrame,endFrame}`. Both fields are integer composition frames at30fps, `0 <= startFrame < endFrame <=18000`; fresh acceptance also requires end no later than the saved duration. End is exclusive. Omission preserves the old full-export snapshot/ACK bytes, while explicit full-span is a different request. A preview cannot accept range. `timeline.export.capabilities` remains range-free.
+
+The complete original snapshot remains frozen; only optional `snapshot.exportRange` identifies the output interval. Preflight `summary.durationFrames` and counts still describe the full saved timeline; optional `summary.exportRange` gives the selected interval. All referenced sources are checked. The digest, original request key, strict ACK and existing local-delivery exact intent bind the identical range. Changed/removed range conflicts under that key. Fresh `EXPORT_RANGE_BOUNDS` is a request-bound not-applied rejection only after the existing pre-write rollback proof; stale or unknown receipts never become a fresh retry automatically.
+
+No new operation or schema migration. Historical exact replay precedes current revision/range-length checks and does not requeue an old export. See [selected-range behavior and acceptance](SELECTED-RANGE-EXPORT.md).

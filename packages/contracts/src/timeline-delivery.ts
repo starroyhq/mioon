@@ -1,3 +1,5 @@
+import {timelineExportRangeFields} from './timeline-export-range.ts';
+import type {TimelineExportRangeInput} from './timeline-export-range.ts';
 import {z} from 'zod';
 
 const encoder = new TextEncoder();
@@ -37,9 +39,9 @@ export function isTimelineDeliveryNameSnapshot(snapshot: unknown, options: {purp
 
 // Receipt reconstruction must preserve own-property presence independently for
 // the display title and the opt-in encoding profile. Never synthesize undefined.
-export function timelineRenderDeliveryFields(snapshot: unknown): TimelineDeliveryNameInput & {exportSettings?: unknown} {
+export function timelineRenderDeliveryFields(snapshot: unknown): TimelineDeliveryNameInput & TimelineExportRangeInput & {exportSettings?: unknown} {
   if (!object(snapshot)) invalid();
-  const result: TimelineDeliveryNameInput & {exportSettings?: unknown} = timelineDeliveryNameFields(snapshot);
+  const result: TimelineDeliveryNameInput & TimelineExportRangeInput & {exportSettings?: unknown} = {...timelineDeliveryNameFields(snapshot), ...timelineExportRangeFields(snapshot)};
   if (own(snapshot, 'delivery')) {
     if (!object(snapshot.delivery) || !own(snapshot.delivery, 'exportSettings')) invalid();
     result.exportSettings = snapshot.delivery.exportSettings;
@@ -49,12 +51,12 @@ export function timelineRenderDeliveryFields(snapshot: unknown): TimelineDeliver
 
 export function hasTimelineDeliveryIdentity(record: unknown): boolean {
   return object(record) && object(record.snapshot) &&
-    (own(record.snapshot, 'delivery') || own(record.snapshot, 'deliveryName'));
+    (own(record.snapshot, 'delivery') || own(record.snapshot, 'deliveryName') || own(record.snapshot, 'exportRange'));
 }
 
-// SQL only reports whether a bounded original receipt contains either optional
+// SQL only reports whether a bounded original receipt contains an optional
 // immutable field. It never extracts or trusts that receipt's metadata here.
-export const TIMELINE_DELIVERY_RECEIPT_SQL = "COALESCE(json_type(response,'$.snapshot.delivery'),json_type(response,'$.snapshot.deliveryName'))";
+export const TIMELINE_DELIVERY_RECEIPT_SQL = "COALESCE(json_type(response,'$.snapshot.delivery'),json_type(response,'$.snapshot.deliveryName'),json_type(response,'$.snapshot.exportRange'))";
 
 function boundedText(value: string, maxUnits: number, maxBytes: number): string {
   let result = '';

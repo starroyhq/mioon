@@ -5,6 +5,7 @@ import { transformSync } from 'esbuild';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
 import * as settingsState from '../apps/web/src/export-settings-state.js';
 import * as deliveryState from '../apps/web/src/export-delivery-state.ts';
+import * as rangeState from '../apps/web/src/export-range-state.ts';
 import * as preflightState from '../apps/web/src/export-preflight-state.js';
 import { prepareSubmission, prepareRequestReplay, readPending, reconcilePending } from '../apps/web/src/submissions.js';
 import { isDurableEditOperation } from '../apps/web/src/edit-task-client.js';
@@ -226,7 +227,7 @@ const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree &&
 function component(file, extra = {}) {
   const module = { exports: {} }, react = { createElement: element, useRef: current => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: value => [value, () => {}] }; react.default = react;
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : name === './export-settings-state.js' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-preflight-state.js' ? preflightState : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' });
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : name === './export-settings-state.js' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.js' ? preflightState : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' });
   return module.exports.default;
 }
 
@@ -279,7 +280,7 @@ test('actual playback keeps the produced artifact URL and shows its frozen dimen
 
 
 test('actual Check control fences the viewed project, saved revision and settings version before capability work', async () => {
-  for (const patch of [{ scope: 'new-epoch' }, { projectId: id(99) }, { timelineId: id(98) }, { revision: 5 }, { settingsVersion: 2 }]) {
+  for (const patch of [{ scope: 'new-epoch' }, { projectId: id(99) }, { timelineId: id(98) }, { revision: 5 }, { settingsVersion: 2 }, { rangeVersion: 2 }]) {
     const f = fixture(), h = appHarness(f), viewed = { ...f.live }; f.set(patch, false);
     await h.check(viewed); assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
   }

@@ -1,3 +1,4 @@
+import type {TimelineExportRange} from './timeline-export-range.ts';
 import {z} from 'zod';
 
 // Private, local export-title recovery only. Nothing in this companion format
@@ -53,7 +54,7 @@ export type LocalDeliveryExportSettings={
 };
 export type LocalDeliveryRenderInput={
   projectId:string;expectedRevision:number;requestId:string;purpose:'export';
-  deliveryName?:string;exportSettings?:LocalDeliveryExportSettings;preflightSnapshotHash?:string;
+  deliveryName?:string;exportSettings?:LocalDeliveryExportSettings;preflightSnapshotHash?:string;exportRange?:TimelineExportRange;
 };
 export type LocalDeliveryInputValidator=(value:unknown)=>boolean;
 export type LocalDeliveryDraftRaw=z.infer<typeof localDeliveryDraftRawSchema>;
@@ -65,7 +66,7 @@ export type LocalDeliveryExecute=z.infer<typeof localDeliveryExecuteSchema>;
 export type LocalDeliveryOutcome=z.infer<typeof localDeliveryOutcomeSchema>;
 
 const requiredInput=['projectId','expectedRevision','requestId','purpose'] as const;
-const optionalInput=['deliveryName','exportSettings','preflightSnapshotHash'] as const;
+const optionalInput=['deliveryName','exportSettings','preflightSnapshotHash','exportRange'] as const;
 function exactRenderInput(value:unknown,validate:LocalDeliveryInputValidator):value is LocalDeliveryRenderInput {
   if(!object(value)||!requiredInput.every(key=>own(value,key))||
     Object.keys(value).some(key=>![...requiredInput,...optionalInput].includes(key as typeof requiredInput[number]|typeof optionalInput[number]))||

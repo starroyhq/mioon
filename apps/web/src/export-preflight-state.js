@@ -1,10 +1,12 @@
 import { isExportPreflightResponse, isTimelineExportCapabilitiesResponse } from '@mioon/contracts';
+import { exportRangeContextFields, sameExportRangeContext, rangeFields } from './export-range-state.ts';
 import { exportSettingsKey, freezeExportSettings } from './export-settings-state.js';
 import { deliveryNameContextFields, sameDeliveryNameContext, deliveryNameRequestFields } from './export-delivery-state.ts';
 
-const initialState = () => ({ ...deliveryNameContextFields(null), scope: null, projectId: null, timelineId: null, revision: null, connected: false, exportSettings: undefined, settingsKey: 'legacy', settingsVersion: 0, capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null, binding: null, uncheckedIntent: null, error: '', attempted: false });
+const initialState = () => ({ ...exportRangeContextFields(null), ...deliveryNameContextFields(null), scope: null, projectId: null, timelineId: null, revision: null, connected: false, exportSettings: undefined, settingsKey: 'legacy', settingsVersion: 0, capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null, binding: null, uncheckedIntent: null, error: '', attempted: false });
 const hasRevision = value => Number.isSafeInteger(value) && value > 0;
 const issueMessages = Object.freeze({
+  EXPORT_RANGE_BOUNDS: '导出范围超出已保存时间线，请重新选择范围并检查。',
   TIMELINE_MISSING: '项目还没有已保存的时间线，请先编排并保存片段。',
   EMPTY_TIMELINE: '已保存的时间线中没有可导出的片段。',
   INVALID_TIMELINE_SNAPSHOT: '已保存的时间线包含无效或暂不支持的设置。',
@@ -71,15 +73,15 @@ export function createExportPreflightController({ read, readCapabilities, getCon
     // App refs can change before React commits its next layout effect. Re-read
     // that live owner before publishing a response or acting on an auth error.
     if (getContext) controller.setContext(getContext());
-    return captured.generation === generation && captured.scope === state.scope && captured.projectId === state.projectId && captured.timelineId === state.timelineId && captured.revision === state.revision && captured.settingsKey === state.settingsKey && captured.settingsVersion === state.settingsVersion && sameDeliveryNameContext(captured, state) && state.connected;
+    return captured.generation === generation && captured.scope === state.scope && captured.projectId === state.projectId && captured.timelineId === state.timelineId && captured.revision === state.revision && captured.settingsKey === state.settingsKey && captured.settingsVersion === state.settingsVersion && sameDeliveryNameContext(captured, state) && sameExportRangeContext(captured, state) && state.connected;
   };
   const capabilityAllows = () => state.exportSettings === undefined || state.capability?.status === 'available';
   const controller = {
     getState: () => state,
     setContext(context) {
       const settingsKey = exportSettingsKey(context?.exportSettings);
-      const next = context ? { ...deliveryNameContextFields(context), scope: context.scope, projectId: context.projectId || null, timelineId: context.timelineId || null, revision: hasRevision(context.revision) ? context.revision : null, connected: Boolean(context.connected), settingsVersion: context.settingsVersion ?? 0, settingsKey, exportSettings: settingsKey === null ? undefined : freezeExportSettings(context.exportSettings) } : initialState();
-      if (['scope', 'projectId', 'timelineId', 'revision', 'connected', 'settingsKey', 'settingsVersion', 'deliveryNameKey', 'deliveryNameVersion'].every(key => state[key] === next[key])) return;
+      const next = context ? { ...exportRangeContextFields(context), ...deliveryNameContextFields(context), scope: context.scope, projectId: context.projectId || null, timelineId: context.timelineId || null, revision: hasRevision(context.revision) ? context.revision : null, connected: Boolean(context.connected), settingsVersion: context.settingsVersion ?? 0, settingsKey, exportSettings: settingsKey === null ? undefined : freezeExportSettings(context.exportSettings) } : initialState();
+      if (['scope', 'projectId', 'timelineId', 'revision', 'connected', 'settingsKey', 'settingsVersion', 'deliveryNameKey', 'deliveryNameVersion', 'exportRangeKey', 'rangeVersion'].every(key => state[key] === next[key])) return;
       invalidate();
       const changedProject = next.scope !== state.scope || next.projectId !== state.projectId;
       if (changedProject) state = initialState();
@@ -94,13 +96,13 @@ export function createExportPreflightController({ read, readCapabilities, getCon
     },
     async check() {
       if (getContext) controller.setContext(getContext());
-      if (state.deliveryNameKey === null || state.settingsKey === null || !state.projectId || !state.timelineId || !hasRevision(state.revision) || !state.connected) return null;
+      if (state.exportRangeKey === null || state.deliveryNameKey === null || state.settingsKey === null || !state.projectId || !state.timelineId || !hasRevision(state.revision) || !state.connected) return null;
       invalidate();
-      const captured = { ...deliveryNameContextFields(state), scope: state.scope, projectId: state.projectId, timelineId: state.timelineId, revision: state.revision, settingsKey: state.settingsKey, settingsVersion: state.settingsVersion, exportSettings: state.exportSettings, generation };
+      const captured = { ...exportRangeContextFields(state), ...deliveryNameContextFields(state), scope: state.scope, projectId: state.projectId, timelineId: state.timelineId, revision: state.revision, settingsKey: state.settingsKey, settingsVersion: state.settingsVersion, exportSettings: state.exportSettings, generation };
       const invocation = Object.freeze({ ...getInvocation() });
       const abort = new AbortController(); activeRead = abort;
       const capabilityInput = { projectId: captured.projectId, expectedRevision: captured.revision, ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) };
-      const input = { ...capabilityInput, ...deliveryNameRequestFields(captured) };
+      const input = { ...capabilityInput, ...deliveryNameRequestFields(captured), ...rangeFields(captured) };
       emit({ phase: 'checking', checkingStep: captured.exportSettings === undefined ? 'media' : 'capability', capability: null, capabilityPhase: captured.exportSettings === undefined ? 'idle' : 'checking', binding: null, uncheckedIntent: null, error: '', attempted: false });
       try {
         // The explicit capability operation may perform a bounded local synthetic
@@ -131,10 +133,10 @@ export function createExportPreflightController({ read, readCapabilities, getCon
           (result.timelineRevision !== null && result.timelineRevision !== captured.revision))) throw protocolError();
         if (result.status === 'ready' && !canBind(result, captured)) throw protocolError();
         const report = structuredClone(result);
-        const binding = canBind(report, captured) ? Object.freeze({ projectId: report.projectId, expectedRevision: report.expectedRevision, preflightSnapshotHash: report.snapshotHash, ...deliveryNameRequestFields(captured), ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) }) : null;
+        const binding = canBind(report, captured) ? Object.freeze({ projectId: report.projectId, expectedRevision: report.expectedRevision, preflightSnapshotHash: report.snapshotHash, ...deliveryNameRequestFields(captured), ...rangeFields(captured), ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) }) : null;
         // This is a separate, explicitly unreviewed intent for the current saved
         // revision. It must never masquerade as a checked snapshot binding.
-        const uncheckedIntent = canOfferUnchecked(report, state) ? Object.freeze({ projectId: state.projectId, expectedRevision: state.revision, ...deliveryNameRequestFields(captured), ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) }) : null;
+        const uncheckedIntent = canOfferUnchecked(report, state) ? Object.freeze({ projectId: state.projectId, expectedRevision: state.revision, ...deliveryNameRequestFields(captured), ...rangeFields(captured), ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) }) : null;
         emit({ report, binding, uncheckedIntent, phase: report.status, checkingStep: null, error: '' });
         return report;
       } catch (error) {
@@ -148,14 +150,14 @@ export function createExportPreflightController({ read, readCapabilities, getCon
     // revision/hash. Taking it once prevents double-clicks and automatic retries.
     takeExportBinding(binding) {
       if (getContext) controller.setContext(getContext());
-      if (!capabilityAllows() || !state.connected || !binding || binding !== state.binding || state.attempted || !canBind(state.report, state) || !['ready', 'incomplete'].includes(state.phase)) return null;
+      if (!visible || !capabilityAllows() || !state.connected || !binding || binding !== state.binding || state.attempted || !canBind(state.report, state) || !['ready', 'incomplete'].includes(state.phase)) return null;
       emit({ binding: null, uncheckedIntent: null, attempted: true });
       return binding;
     },
     takeUncheckedExportIntent(intent) {
       if (!intent || intent !== state.uncheckedIntent) return null;
       if (getContext) controller.setContext(getContext());
-      if (!capabilityAllows() || !intent || intent !== state.uncheckedIntent || state.binding || state.attempted || state.phase !== 'incomplete' || !canOfferUnchecked(state.report, state)) return null;
+      if (!visible || !capabilityAllows() || !intent || intent !== state.uncheckedIntent || state.binding || state.attempted || state.phase !== 'incomplete' || !canOfferUnchecked(state.report, state)) return null;
       emit({ uncheckedIntent: null, attempted: true });
       return intent;
     },

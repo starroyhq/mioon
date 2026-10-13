@@ -1,3 +1,4 @@
+import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVERY_RECEIPT_SQL} from '@mioon/contracts/timeline-delivery';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {matchesRestoredExport,restoreExportIdentity} from './workspace-restore-exports.mjs';
@@ -52,7 +53,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
  // Custom delivery adds an awaited capability step. Preserve the complete
  // immutable acceptance identity across every existing async/publication fence;
  // a replaced snapshot must never be restored by publishing an older copy.
- const customExport=e=>Object.hasOwn(e?.snapshot??{},'delivery');
+ const customExport=requiresPreparedTimelineExportIdentity;
  const exportIdentity=e=>JSON.stringify(Object.fromEntries(['id','projectId','requestId','mode','purpose','timelineRevision','snapshot','createdAt'].map(key=>[key,e[key]])));
  // A removed delivery field must not disguise an accepted custom export as
  // a historical legacy job before the worker's first observation. The bounded
@@ -245,19 +246,20 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(!e)return;
   // Fresh non-overwriting publication also preserves a prior successful output.
   const relativePath=`media/export-${e.id}-${randomUUID()}.mp4`,file=path.join(root,relativePath),part=file+'.part.mp4';
+  const fencedAttempt=restored||hasSelectedTimelineExportRange(e.snapshot),effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
   let preparedAssets,linkedOutput=false,publicationAccepted=false,outputIdentity,outputHandle,claimLive=true,validateSources;
-  const beforeEffect=restored?()=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw workspaceRestoreError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw workspaceRestoreError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw workspaceRestoreError();}}:undefined;
+  const beforeEffect=fencedAttempt?()=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}}:undefined;
   const checkCustomSources=()=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});};
   try {
    beforeEffect?.();
-   if(restored){outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect();}
+   if(fencedAttempt){outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect();}
    if(e.mode==='timeline') {
     if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     const assets=await prepareTimelineInputs(e.snapshot,{root,projectId:e.projectId,signal,
      beforeEffect,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id);},validateLinks:timeline=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
     if(customExport(e)||restored)preparedAssets=assets;
-    if(restored)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});
+    if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});
     await renderTimeline(e.snapshot,assets,part,{signal,beforeEffect,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
    } else {
     const files=[];
@@ -285,7 +287,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    // cleanup if source ownership changes before the database commit.
    if(customExport(e)||restored){
     const actual=await lstat(part);checkpoint(signal);beforeEffect?.();
-    if(restored&&(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino))throw workspaceRestoreError();
+    if(fencedAttempt&&(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino))throw effectError();
     outputIdentity=actual;
     if(!outputIdentity.isFile()||outputIdentity.nlink!==1)throw Object.assign(Error('The local export output cannot be verified safely.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     if(currentOwnedExport(e)?.status!=='running')return;
@@ -294,7 +296,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    // link is an atomic, non-overwriting publication on the managed filesystem.
    beforeEffect?.();
    await link(part,file);linkedOutput=true;checkpoint(signal);beforeEffect?.();
-   if(restored){const actual=await lstat(part);beforeEffect();if(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw workspaceRestoreError();}
+   if(fencedAttempt){const actual=await lstat(part);beforeEffect();if(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}
    await unlink(part);checkpoint(signal);beforeEffect?.();
    tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();const ratio=e.mode==='timeline'?(e.snapshot.timeline.width===e.snapshot.timeline.height?'1x1':e.snapshot.timeline.width>e.snapshot.timeline.height?'16x9':'9x16'):null;const a={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:'分镜拼接-9x16.mp4',mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now()};a.url=`/media/${a.id}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,updatedAt:now()});});
    publicationAccepted=true;
@@ -308,7 +310,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    tx(fail);
   } finally {
    claimLive=false;
-   if(!restored)await unlink(part).catch(()=>{});
+   if(!fencedAttempt)await unlink(part).catch(()=>{});
    else if(outputIdentity){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&currentOwnedExport(e))await unlink(part).catch(()=>{});}catch{}}
    // An uncertain commit, hostile replacement, foreign export, changed inode,
    // or failed cleanup never licenses removing an unknown/published output.

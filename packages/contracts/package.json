@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.mjs",
     "./private-storage": "./src/private-storage.mjs",
+    "./timeline-export-range": "./src/timeline-export-range.ts",
     "./timeline-delivery": "./src/timeline-delivery.ts",
     "./local-drafts": "./src/local-drafts.ts",
     "./local-delivery": "./src/local-delivery.ts",

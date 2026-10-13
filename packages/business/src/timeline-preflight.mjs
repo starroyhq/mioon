@@ -1,3 +1,5 @@
+import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mioon/contracts/timeline-export-range';
+import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {restoreEffectFence} from './workspace-restore-invocation.mjs';
 import {refuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.mjs';
@@ -10,6 +12,7 @@ import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
 
 const messages=Object.freeze({
+ EXPORT_RANGE_BOUNDS:'The export range must fit inside the saved timeline and contain at least one 30fps frame; the end is exclusive.',
  SUBTITLE_RESOURCE_UNAVAILABLE:'The bundled subtitle font is missing or does not match this rendering profile.',
  TIMELINE_MISSING:'This project has no saved timeline. Add clips and save the timeline before exporting.',
  EMPTY_TIMELINE:'The saved timeline has no clips to export.',
@@ -30,8 +33,8 @@ const canonical=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArra
 export const timelineSnapshotHash=snapshot=>createHash('sha256').update(canonical(snapshot)).digest('hex');
 function summary(snapshot,verified){
  const t=snapshot.timeline,assets=verified??new Map(snapshot.assets.map(a=>[a.id,a])),tracks=new Map(t.tracks.map(lane=>[lane.id,lane]));
- if(!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
- return {...timelineDeliveryNameFields(snapshot),...(Object.hasOwn(snapshot,'delivery')?{delivery:snapshot.delivery}:{}),fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
+ if(!isTimelineExportRangeWithinDuration(snapshot,t.durationFrames)||!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
+ return {...timelineDeliveryNameFields(snapshot),...timelineExportRangeFields(snapshot),...(Object.hasOwn(snapshot,'delivery')?{delivery:snapshot.delivery}:{}),fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
   visualClipCount:t.clips.filter(c=>tracks.get(c.trackId)?.kind==='video'&&!tracks.get(c.trackId).hidden).length,
   audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId).muted&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
@@ -69,7 +72,10 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;report.snapshotHash=timelineSnapshotHash(initial.snapshot);
   report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;
+  const rangeIssue=timelineExportRangeBoundsIssue(input,initial.timeline.durationFrames);
+  if(rangeIssue){report.snapshotHash=null;report.summary=null;}
   if(initial.timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
+  if(rangeIssue){report.issues=[issue('EXPORT_RANGE_BOUNDS')];return report;}
   if(!initial.timeline.clips.length){report.issues=[issue('EMPTY_TIMELINE')];return report;}
   // Early structural check shares the renderer validator. Actual stream flags
   // and durations below replace these saved values and are validated again.

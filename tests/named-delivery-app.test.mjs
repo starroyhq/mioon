@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof} from '@mioon/contracts';
 import {createLocalDeliveryController} from '../apps/web/src/local-delivery-state.ts';
 import {createTimelineDeliveryNameController} from '../apps/web/src/export-delivery-state.ts';
+import {createExportRangeController} from '../apps/web/src/export-range-state.ts';
 
 const source=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');
 function actual(start,end,environment){
@@ -84,7 +85,8 @@ async function coordinatedRenderHarness(t,{preparation,execution,refreshing}={})
   async discard(){assert.fail('Export acknowledgement must not discard through the draft API');},
   async recover(){assert.fail('Fresh export must not replay through recovery');},
  };
- const localEnvironment={...h.environment,projectEpoch:{current:1},navigationEpoch:{current:0},exportSettings:{controller:{getVersion:()=>1}},online:true,auth:true,loading:false,rightDockTab:'delivery',showExports:false,panelVisible:()=>true,deliveryName:{controller:f.controller}};
+ const rangeController=createExportRangeController();rangeController.setContext({scope:f.live.scope,projectId:id,timelineId:h.environment.dataRef.current.timeline.id,revision:7,durationFrames:30,enabled:true});
+ const localEnvironment={...h.environment,projectEpoch:{current:1},navigationEpoch:{current:0},exportSettings:{controller:{getVersion:()=>1}},exportRange:{controller:rangeController},online:true,auth:true,loading:false,rightDockTab:'delivery',showExports:false,panelVisible:()=>true,deliveryName:{controller:f.controller}};
  let contextCallback=actual('  function localDeliveryContext(','  const localDelivery = useLocalDelivery(',localEnvironment);
  const localDeliveryContext=()=>contextCallback();
  const setDeliveryView=patch=>{Object.assign(localEnvironment,patch);contextCallback=actual('  function localDeliveryContext(','  const localDelivery = useLocalDelivery(',localEnvironment);};
@@ -210,7 +212,7 @@ test('App wires name scope, validation, view identity, disclosure and independen
  assert.match(source,/deliveryNameRef\.current = deliveryName/);
  assert.match(source,/deliveryName: deliveryName\.controller\.getName/);
  assert.match(source,/deliveryNameVersion: deliveryName\.controller\.getVersion/);
- assert.match(source,/settingsVersion', 'deliveryNameVersion'\]\.some/);
+ assert.match(source,/settingsVersion', 'deliveryNameVersion', 'rangeVersion'\]\.some/);
  assert.match(source,/!deliveryName\.error/);
  assert.match(source,/!deliveryNameRef\.current\?\.controller\.hasUnsaved\(\)/);
  assert.match(source,/deliveryName=\{deliveryName\.value\}/);

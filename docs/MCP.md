@@ -810,3 +810,8 @@ requested local CLI described in [CLI.md](CLI.md#guarded-offline-restoration).
 
 `timeline_render` (export only) and `timeline_export_preflight` expose optional `deliveryName` through shared strict discovery. Preserve its exact presence/value and all quality settings when replaying an unknown original request. `timeline_export_capabilities` still excludes display names. Read `export_get` for accepted historical metadata. This adds no built-in Agent tool or generation permission.
 See [scope and acceptance](NAMED-DELIVERIES.md).
+
+
+## Selected-range timeline test export
+
+`timeline_render` (export only) and `timeline_export_preflight` expose optional strict `exportRange:{startFrame,endFrame}` through shared discovery. Use integer30fps composition frames, start included/end excluded, at least one frame inside the saved duration. Preserve the exact optional range, name, settings, revision and request key after uncertainty. Do not pass range to `timeline_export_capabilities` or preview. The full original snapshot is retained; preflight still checks all referenced media. This adds no built-in Agent tool, generic executor or generation permission. See [behavior and acceptance](SELECTED-RANGE-EXPORT.md).

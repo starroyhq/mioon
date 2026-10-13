@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { createExportPreflightController, preflightErrorMessage, preflightIssueMessage } from '../apps/web/src/export-preflight-state.js';
 import { rpc } from '../apps/web/src/api.js';
+import * as rangeState from '../apps/web/src/export-range-state.ts';
+import * as rangeContracts from '@mioon/contracts/timeline-export-range';
 
 const id = n => `70000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);
@@ -15,7 +17,7 @@ const deferred = () => { let resolve, reject; const promise = new Promise((yes, 
 function fixture() {
   const calls = [], reads = [], changes = [], auth = [];
   const controller = createExportPreflightController({ read: (input, options) => { calls.push({ input, options }); const read = deferred(); reads.push(read); return read.promise; }, onChange: state => changes.push(state), onUnauthorized: () => auth.push(false) });
-  controller.setContext(context());
+  controller.setContext(context()); controller.setVisible(true); // This fixture models an open delivery pane.
   return { controller, calls, reads, changes, auth, state: () => controller.getState(), async ready(value = report()) { const waiting = controller.check(); reads.at(-1).resolve(value); await waiting; return controller.getState(); } };
 }
 
@@ -203,11 +205,11 @@ test('accessible topbar export action opens recovery even when a candidate, base
   assert.ok(buttonSource); assert.match(buttonSource, /disabled=\{!canOpenExport\}/); assert.match(buttonSource, /onClick=\{openTimelineExport\}/);
   const gate = patch => {
     const env = { data: { project: { id: projectId } }, timeline: { id: timelineId, revision: 4 }, loading: false,
-      online: true, auth: true, deliveryName: { error: '' }, restored: false, localDelivery: { state: { candidate: null, baselineConflict: false } }, ...patch };
+      online: true, auth: true, deliveryName: { error: '' }, exportRange: { error: '' }, restored: false, localDelivery: { state: { candidate: null, baselineConflict: false } }, ...patch };
     return Function(...Object.keys(env), `${appSource.slice(first, last)};return { canOpenExport, canCheckExport };`)(...Object.values(env));
   };
   for (const patch of [{ localDelivery: { state: { candidate: { raw: { deliveryName: 'Saved draft' } }, baselineConflict: false } } },
-    { localDelivery: { state: { candidate: null, baselineConflict: true } } }, { deliveryName: { error: 'Invalid name' } }, { online: false }]) {
+    { localDelivery: { state: { candidate: null, baselineConflict: true } } }, { deliveryName: { error: 'Invalid name' } }, { exportRange: { error: 'Invalid range' } }, { online: false }]) {
     const flags = gate(patch); assert.deepEqual(flags, { canOpenExport: true, canCheckExport: false });
     const f = fixture(), h = appHarness(f), module = { exports: {} };
     Function('module', 'React', 'Button', 'Icon', 'canOpenExport', 'openTimelineExport', transformSync(`module.exports = (${buttonSource});`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'Button', 'Icon', flags.canOpenExport, h.open);
@@ -220,14 +222,20 @@ test('accessible topbar export action opens recovery even when a candidate, base
 
 test('blocked Check retains accessible recovery controls and pending copy points to the original request entry', () => {
   const recoverySource = readFileSync(new URL('../apps/web/src/DeliveryDraftRecovery.tsx', import.meta.url), 'utf8');
-  const module = { exports: {} }, disclosure = { exports: {} };
-  const react = { createElement: (type, props, ...children) => type === disclosure.exports.default ? type({ ...props, children }) : element(type, props, ...children) }; react.default = react;
+  const module = { exports: {} }, disclosure = { exports: {} }, rangeSummary = { exports: {} };
+  const react = { createElement: (type, props, ...children) => [disclosure.exports.default, rangeSummary.exports.default].includes(type) ? type({ ...props, children }) : element(type, props, ...children) }; react.default = react;
   Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(disclosure, disclosure.exports, name => {
     assert.equal(name, 'react'); return react;
+  });
+  Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/ExportRangeSummary.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(rangeSummary, rangeSummary.exports, name => {
+    if (name === 'react') return react;
+    if (name === '@mioon/contracts/timeline-export-range') return rangeContracts;
+    assert.equal(name, './export-range-state.ts'); return rangeState;
   });
   Function('module', 'exports', 'require', transformSync(recoverySource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => {
     if (name === 'react') return react;
     if (name === './RecoveryStorageDetails.tsx') return disclosure.exports;
+    if (name === './ExportRangeSummary.tsx') return rangeSummary.exports;
     assert.equal(name, '@mioon/ui/components/button'); return { Button: 'Button' };
   });
   const events = [], recovery = module.exports.default({ state: { phase: 'ready', busy: false,

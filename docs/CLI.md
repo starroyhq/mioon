@@ -914,3 +914,10 @@ real-human-face uploads are unsupported. See [the scope and validation status](S
 
 Discover `mioon schema timeline.render` and `mioon schema timeline.export.preflight`. Include the identical optional `deliveryName` in preflight and a separately intended export request. Do not pass it to `timeline export capabilities` or a preview. Read `export get` for the frozen name/settings. Existing `export download` keeps its explicitly selected local destination; a display title never grants filesystem authority.
 See [scope and acceptance](NAMED-DELIVERIES.md).
+
+
+## Selected-range timeline test export
+
+Discover `mioon schema timeline.render` and `mioon schema timeline.export.preflight`. For a separately authorized export, pass identical `exportRange:{startFrame:15,endFrame:75}` to source preflight and render alongside the saved revision, optional name/settings and stable request key. This means60 composition frames at30fps; frame75 is excluded. Keep the report's exact digest or clearly use the existing unchecked path. Do not send range to capabilities or preview.
+
+On a lost response, retain the original complete JSON and key; do not rebuild it from a newer range or timeline. `export get` exposes the frozen full snapshot plus selected range. The CLI's explicit output destination is unchanged. See [limits and acceptance](SELECTED-RANGE-EXPORT.md).

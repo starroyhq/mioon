@@ -1,3 +1,4 @@
+import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {bindRestoredExport} from './workspace-restore-exports.mjs';
 import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
 import {createAgentTimelineMoveBoundary} from './agent/timeline-edit-domain.mjs';
@@ -159,14 +160,16 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   return mutate('timeline.clip.update',input,timeline=>{Object.assign(clip(timeline,input.clipId),input.patch);},boundary);
  }
  function renderSnapshot(input,boundary,write,expectedTimelineId){
-  // Custom settings cannot initialize a timeline. The old omitted path retains
+  // Explicit settings/ranges cannot initialize a timeline. The omitted path retains
   // exactly its historical lazy-initialization and frozen projection behavior.
-  const timeline=input.exportSettings===undefined?currentOrEnsure(input,boundary,write,{sourceSemantics:false}):boundary.read({legacyMissingProject:true,sourceSemantics:false});
+  const timeline=input.exportSettings===undefined&&!hasSelectedTimelineExportRange(input)?currentOrEnsure(input,boundary,write,{sourceSemantics:false}):boundary.read({legacyMissingProject:true,sourceSemantics:false});
   if(expectedTimelineId!==undefined&&timeline?.id!==expectedTimelineId)throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);
   if(!timeline)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
   check(timeline,input.expectedRevision);
   boundary.validate(clone(timeline));
   if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
+  const rangeIssue=timelineExportRangeBoundsIssue(input,timeline.durationFrames);
+  if(rangeIssue)throw new AppError(rangeIssue.code,rangeIssue.message,rangeIssue.status);
   const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
   if(input.preflightSnapshotHash!==undefined){
    let current;

@@ -1,3 +1,5 @@
+import {timelineExportRangeSchema,isTimelineExportRangeInput} from './timeline-export-range.ts';
+export * from './timeline-export-range.ts';
 import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput} from './timeline-delivery.ts';
 export * from './timeline-delivery.ts';
 import {workspaceBackupSchemas} from './workspace-backup.mjs';
@@ -116,7 +118,7 @@ export const schemas={
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
 'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),
 'timeline.seed':z.object(timelineMutation).strict(),
-'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),deliveryName:timelineDeliveryNameSchema.optional(),exportSettings:timelineExportSettingsSchema.optional(),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict().refine(value=>value.exportSettings===undefined||value.purpose==='export',{message:'Export settings are available only for export renders',path:['exportSettings']}).refine(value=>isTimelineDeliveryNameInput(value,value.purpose),{message:'Delivery names are available only for export renders and must be explicitly valid',path:['deliveryName']})
+'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),exportRange:timelineExportRangeSchema.optional().describe('Optional export-only half-open [startFrame,endFrame) interval at the saved 30fps clock; at least one frame, bounded by the saved timeline. The full frozen snapshot remains unchanged. Omission preserves full export and historical bytes.'),deliveryName:timelineDeliveryNameSchema.optional(),exportSettings:timelineExportSettingsSchema.optional(),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict().refine(value=>value.exportSettings===undefined||value.purpose==='export',{message:'Export settings are available only for export renders',path:['exportSettings']}).refine(value=>isTimelineDeliveryNameInput(value,value.purpose),{message:'Delivery names are available only for export renders and must be explicitly valid',path:['deliveryName']}).refine(value=>isTimelineExportRangeInput(value,value.purpose),{message:'Export ranges are available only for export renders and must be explicitly valid',path:['exportRange']})
 };
 // A new operation must receive an audited effect descriptor before discovery
 // or dispatch can initialize; never infer safety from an operation-name suffix.
@@ -189,7 +191,7 @@ Object.assign(descriptions,{
  'timeline.clip.remove':'按时间线版本移除指定片段',
  'timeline.clip.split':'在所选片段内部的整数时间线帧原子分割；左段保留ID，右段固定新ID；保留素材和源范围，不移动其他片段，可一次撤销，使用稳定requestId',
  'timeline.seed':'仅向空时间线按镜头顺序复制当前所选版本，之后独立编辑',
- 'timeline.render':'冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；通过export_get查询'
+ 'timeline.render':'冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询'
 });
 export class AppError extends Error {constructor(code,message,status=400,details={}){super(message);this.code=code;this.status=status;this.details=details;}}
 export function parse(op,input){if(!schemas[op])throw new AppError('UNKNOWN_OPERATION','未知操作',404);const r=schemas[op].safeParse(input);if(!r.success)throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:r.error.issues.map(x=>({path:x.path,message:x.message}))});return r.data;}

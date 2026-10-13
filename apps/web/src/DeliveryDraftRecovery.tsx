@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '@mioon/ui/components/button';
+import ExportRangeSummary from './ExportRangeSummary.tsx';
 import RecoveryStorageDetails from './RecoveryStorageDetails.tsx';
 import type { LocalDeliveryRenderInput } from '@mioon/contracts/local-delivery';
 import type { LocalDeliveryController, LocalDeliveryState } from './local-delivery-state.ts';
@@ -32,11 +33,14 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
             : state.phase === 'saved' ? `本地名称已保存${savedTime ? ` · ${savedTime}` : ''}`
               : state.phase === 'error' ? '本地名称未确认保存'
                 : state.dirty ? '名称尚未确认保存到本地' : '本次名称可保存为本地草稿';
-  const original = state.intent;
+  // Recovery prioritizes an unconfirmed newer preparation over an older row.
+  // Display all identity fields from that same target, without changing either.
+  const original = unconfirmedPreparation ? null : state.intent;
   const retained = state.retainedPreparation;
-  const originalInput = original?.input ?? retained?.input;
-  const originalTimelineId = original?.timelineId ?? retained?.timelineId;
-  const originalRevision = original?.baseRevision ?? retained?.baseRevision;
+  const displayed = unconfirmedPreparation ? retained : original ?? retained;
+  const originalInput = displayed?.input;
+  const originalTimelineId = displayed?.timelineId;
+  const originalRevision = displayed?.baseRevision;
   const intentLabel = state.intentPhase === 'preparing' ? '正在保存原导出请求，尚未确认可以提交'
     : state.intentPhase === 'executing' ? '正在核对并执行原导出请求…'
       : state.intentUncertain ? '原导出请求的保存结果待确认，新导出已暂停'
@@ -75,8 +79,9 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
       {originalInput && <>
         <p>原请求名称：<strong style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{title(originalInput.deliveryName ?? '')}</strong></p>
         <p className="input-hint">原时间线 rev {originalRevision} · {frozenProfile(originalInput)}</p>
+        <ExportRangeSummary input={originalInput} label="原请求范围" showWhole testId="delivery-original-range" />
         <details data-testid="delivery-intent-provenance"><summary>查看原请求与完整参数</summary><p style={{ overflowWrap: 'anywhere' }}>请求 {originalInput.requestId} · 原时间线 {originalTimelineId}</p><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 'inherit' }}>{JSON.stringify(originalInput, null, 2)}</pre></details>
-        {(original?.outcome.status === 'pending' || state.intentUncertain) && <p className="input-hint">恢复只使用上方原编号、名称与已保存参数，可能首次执行之前尚未提交的导出。不会改用当前名称或输出规格。</p>}
+        {(original?.outcome.status === 'pending' || state.intentUncertain) && <p className="input-hint">恢复只使用上方原编号、名称、范围与已保存参数，可能首次执行之前尚未提交的导出。不会改用当前名称或输出规格，也不会改用当前范围。</p>}
         {original?.outcome.status === 'accepted' && !state.intentUncertain && <p className="input-hint">原请求回执已确认接受。是否完成渲染，请查看导出记录。</p>}
         {original?.outcome.status === 'not_applied' && !state.intentUncertain && <p className="input-hint">原请求已确认未应用，不会再次重试同一请求。请核对当前名称后重新检查。</p>}
         {(original?.outcome.status === 'pending' || state.intentUncertain) && <Button type="button" size="sm" variant="outline" data-testid="recover-original-delivery" disabled={blocked} onClick={() => { void controller.recover(); }}>确认恢复同一原请求</Button>}

@@ -4,6 +4,8 @@ import Icon from './icons.jsx';
 import { statusText } from './api.js';
 import { exportHistoryDelivery } from './export-settings-state.js';
 import { hasNamedTimelineDelivery } from './export-delivery-state.ts';
+import { hasInvalidExportRangeHistory } from './export-range-state.ts';
+import ExportRangeSummary from './ExportRangeSummary.tsx';
 import TimelineDeliveryHistory from './TimelineDeliveryHistory.tsx';
 
 /** Presentation only. App owns ordering, project identity, right-dock lifetime and
@@ -11,7 +13,7 @@ import TimelineDeliveryHistory from './TimelineDeliveryHistory.tsx';
 export default function ExportHistoryList({ orderedExports, projectName, timelineRevision, heldExportIds = [] }) {
   return <div className="export-list">
     {orderedExports.length ? orderedExports.map(item => {
-      const delivery = exportHistoryDelivery(item), held = heldExportIds.includes(item.id);
+      const delivery = exportHistoryDelivery(item), held = heldExportIds.includes(item.id), invalidRange = hasInvalidExportRangeHistory(item);
       if (hasNamedTimelineDelivery(item)) return <TimelineDeliveryHistory key={item.id} item={item} frozenDelivery={delivery} timelineRevision={timelineRevision} statusLabel={statusText(item.status)} held={held} filmIcon={<Icon name="film" size={24} />} downloadIcon={<Icon name="download" size={15} />} />;
       return <div className="export-card" key={item.id}>
         <div className="export-icon"><Icon name="film" size={24} /></div>
@@ -23,9 +25,11 @@ export default function ExportHistoryList({ orderedExports, projectName, timelin
           <small>{item.mode === 'timeline'
             ? `${item.purpose === 'preview' ? '时间线预览' : '时间线导出'} · rev ${item.timelineRevision}${item.timelineRevision !== timelineRevision ? ' · 旧快照' : ' · 当前'}`
             : `分镜顺序导出 · ${item.orderedVersionIds?.length || 0} 个镜头`}</small>
+          {item.mode === 'timeline' && item.purpose === 'export' && <ExportRangeSummary input={item.snapshot} snapshot testId="export-history-range" />}
+          {invalidRange && <p className="notice warning" data-testid="export-history-range-invalid">范围记录不完整，暂时不能下载。</p>}
           {delivery && <small className="export-frozen-settings" data-testid="export-history-settings">成片 · {delivery.dimensions} · {delivery.fps} fps · {delivery.rate}{delivery.upscale ? ' · 放大输出，不增加细节' : ''} · AAC 128 kb/s</small>}
         </div>
-        {(item.url || item.assetId) && ['succeeded', 'completed', 'ready'].includes(item.status)
+        {invalidRange ? <Badge className="small-badge warn">范围不可用</Badge> : (item.url || item.assetId) && ['succeeded', 'completed', 'ready'].includes(item.status)
           ? <a className="button primary small" href={item.url || `/media/${item.assetId}`}
               download={`${projectName || 'film'}.mp4`} data-testid="download-export">
               <Icon name="download" size={15} />下载
