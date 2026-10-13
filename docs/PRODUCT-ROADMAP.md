@@ -2,8 +2,10 @@
 
 Updated: 2026-10-13 UTC. This is approved iteration scope, not a completion claim.
 Original roadmap baseline: `66a0193`; current status wording was checked against
-committed code `dc3bbe8cf664017f4c1a3d0dbb56d3ece5e1e374`. Verified deliverables
-and historical test totals remain in STATUS.md and their dated acceptance reports.
+committed code `56de9fd`. Verified deliverables and historical test totals remain
+in STATUS.md and their dated acceptance reports. The latest committed full gate
+is [the empty-workspace slice](EMPTY-WORKSPACE-MODE.md): 6,210 total / 6,208 passed /
+0 failed / 0 cancelled / 2 existing skips. Older feature gates retain their own baselines.
 The documentation check itself does not rerun product or platform acceptance.
 
 ## Current delivery and remaining work (2026-10-13)
@@ -11,20 +13,28 @@ The documentation check itself does not rerun product or platform acceptance.
 The core local Linux engineering trial is available; it does not wait for every
 item below. [STATUS](../STATUS.md) records the user-UI merge `4858642` and
 backend-only float-checked export `dc3bbe8`, their distinct actual gates, and the
-last verified Git boundary. This is a current index over the historical approvals
-below, not new implementation, authorization or a fixed number of commits.
+historical Git boundary. Later [user-flow integration](USER-FLOW-INTEGRATION.md)
+and [empty-workspace clarification](EMPTY-WORKSPACE-MODE.md) have their own
+committed evidence. This is a current index over the historical approvals below,
+not new implementation, external-service authority or a fixed number of commits.
 
 1. **Editing experience.** Delivered: managed media, source ranges, favorite/reject,
    current-timeline usage/filter/location, raw-source waveforms, clip fades,
-   three 30fps canvas presets and bounded draft/restart recovery. Next eligible
-   work: a demonstrated persistence/performance defect, then scoped proxy/preview
-   performance, tags/notes or a separately reviewed audio/color slice. Broader
-   ducking/crossfades and color/HDR workflows remain open. No new UI work is started
-   while the user maintains the interface.
+   three 30fps canvas presets and bounded draft/restart recovery. The newly approved
+   order is project home first, then real-time timeline audio preview and loudness
+   matching/targeting, followed by the bounded audio/effects stages below. Existing
+   UI is user-maintained and must be preserved; this planning update starts no UI
+   implementation. Reproduced reliability defects remain actionable; scoped proxy
+   performance and tags/notes remain separate open work. Ducking/crossfades,
+   color/HDR and later effects are not made complete by their inclusion in the plan.
 2. **Export extensions.** Delivered: preflight, MP4/H.264 settings, frozen named
    history, selected-range export, explicit final-file decoded sample peaks and
    backend opt-in float-checked pre-AAC rejection. These are distinct features;
-   neither peak operation is loudness/true-peak certification. Further work:
+   neither peak operation is loudness/true-peak certification. The approved
+   [loudness plan](AUDIO-EFFECTS-PLAN.md) separates read-only analysis, per-clip
+   matching and explicit whole-mix target application. Float-v2 already exists
+   backend-only; UI selection and default/compatibility choices remain separate.
+   Further work:
    additional codec/container and hardware capabilities, plus one bounded editable
    interchange format. Each needs actual encoder/NLE/platform verification; no
    silent fallback or universal compatibility promise.
@@ -62,9 +72,49 @@ Some next items can be implemented locally without paid calls; their exact slice
 still need compatibility and acceptance boundaries. Platform/security changes,
 third-party installation, credentials, live calls, signing and publication retain
 their applicable approvals. Future work is not a new spending or push authorization.
-The last verified remote main `ccfaab5` and Mac main `08890b7` are historical
-observations, not live checks by this documentation update. Completed subfeatures
+The latest read-only Mac observation, completed at 14:20 UTC on 2026-10-13,
+confirmed main `6f6bba78abed27cf75766d1a787e0479dedab738`. Remote main `ccfaab5`
+remains the earlier last verified observation and was not rechecked this time.
+Historical reports retain their original Git observations. Completed subfeatures
 must not be reopened merely because a broader heading or old checkpoint says open.
+
+## Audio, loudness and effects sequence (approved 2026-10-13)
+
+The user approved adding the proposed audio/effects stages to the iteration queue
+and explicitly added unified loudness. [AUDIO-EFFECTS-PLAN.md](AUDIO-EFFECTS-PLAN.md)
+defines current capabilities, remaining work, dependency order and acceptance.
+[Project home](PROJECT-HOME-PLAN.zh-CN.md) comes first, then real-time audio preview
+and loudness. Both linked plans are new planning documents in this update; their
+planned features are not implemented. This is design and sequencing only; no implementation, installation,
+live call or release is performed by this documentation change.
+
+1. **Audible and reviewable audio.** Real-time timeline mixing must implement saved
+   gain/mute/fades/source ranges and overlap, with the same versioned effects,
+   clock and snapshot semantics as offline rendering. Implementations may differ;
+   source HTML playback does not establish mixed-preview parity. Add local
+   loudness/true-peak analysis, then separately reviewed clip/dialogue matching
+   and whole-program or selected-range loudness targeting. Do not impose an
+   unverified universal LUFS target, equate loudness with peak normalization,
+   apply one gain to every source, or silently insert dynamics processing.
+2. **Everyday audio and picture controls.** Voice/music/effects roles, volume
+   keyframes, crossfades and editable ducking; explicit limiter, basic EQ/noise
+   reduction. For pictures, position/scale/opacity animation and fades/dissolves
+   precede crop/rotation/exposure/contrast/saturation/blur. Existing static layout,
+   gain, fades, waveforms, sample-peak checks and manual subtitles are reused.
+3. **Later creation and compositing.** TTS, recording and sound-effect generation
+   with replaceable providers and managed immutable results; text motion,
+   masks/tracking, keying and advanced compositing. None is delivered now.
+   Each external input, permission, installation or paid execution keeps its
+   own approval boundary; adding it to the queue does not authorize a live run.
+
+Analysis and application are separate operations. Bind reports and candidates to
+source hashes, effect stage, timeline revision, exact range and snapshot; provide
+per-item batch review/A-B preview before explicit atomic application. Preserve
+originals, undo/redo, exact-key replay and interruption recovery across shared
+UI/API/CLI/MCP. Silence, short/invalid media, large boosts and loudness/peak
+conflicts need explicit unsupported/risk states, never hidden gain changes or a
+false pass. Real PCM, seek, overlap/mute/fade and output measurements are required;
+existing Linux gates do not certify these planned features or other platforms.
 
 ## Product direction
 
