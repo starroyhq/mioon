@@ -52,7 +52,7 @@ export function secureWebPreferences(session) {
     navigateOnDragDrop: false,
     spellcheck: false,
     devTools: false
-    // No preload and no renderer IPC bridge: the shared UI uses only same-origin HTTP.
+    // Main may add its fixed window-only preload; business services remain same-origin HTTP.
   };
 }
 

@@ -8,7 +8,10 @@ import vm from 'node:vm';
 import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
-import { QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
+import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
+import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
+import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import * as security from '../apps/desktop/src/security.mjs';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
@@ -28,7 +31,7 @@ async function until(predicate) {
 // Deferred gates expose causality; they do not claim native event timing.
 async function harness(t, options = {}) {
   const r = { scopes: [], validations: [], backends: [], children: [], sessions: [], windows: [],
-    connections: [], connectionWrites: [], dialogs: [], syncDialogs: [], drains: 0, removals: 0,
+    connections: [], connectionWrites: [], dialogs: [], dialogParents: [], syncDialogs: [], nativeChecks: [], drains: 0, removals: 0,
     quits: 0, finished: 0, exits: [], settingsCloses: 0 };
   let menu, initial;
   const app = new EventEmitter();
@@ -63,26 +66,35 @@ async function harness(t, options = {}) {
     r.children.push(child); return child;
   }
   class Window extends EventEmitter {
+    static getFocusedWindow() { return options.focusedWindow ? options.focusedWindow(r.windows) : r.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config) {
       super(); this.config = config; this.destroyed = false; this.closedDelivered = false;
       this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0;
       this.index = r.windows.length;
-      let closeToken = null, closeSerial = 0;
+      this.disposition = options.disposition?.(this.index) ?? 'clean';
+      let closeToken = null, closeSerial = 0, capturedDisposition = null;
       // Run the actual native admission scripts against a clean renderer v1
       // surface. Only the legacy preference flush counts as a flush or waits on
       // the original fixture gate; inspecting and committing are separate calls.
       const renderer = vm.createContext({
         __mioonNativeCloseAdmission: {
-          inspect: () => ({ version: 1, token: closeToken = `window-${this.index}-${++closeSerial}`, disposition: 'clean' }),
+          inspect: () => {
+            r.nativeChecks.push(this);
+            return { version: 1, token: closeToken = `window-${this.index}-${++closeSerial}`, disposition: capturedDisposition = this.disposition };
+          },
           commit: (token, admission) => typeof token === 'string' && token === closeToken &&
-            admission?.discardDirty === false && typeof admission.allowDrainFailure === 'boolean' &&
+            capturedDisposition === this.disposition && admission?.discardDirty === ['dirty', 'unknown-dirty'].includes(capturedDisposition) &&
+            (!['unknown', 'unknown-dirty'].includes(capturedDisposition) || admission.allowUnknown === true && admission.allowDrainFailure === false) &&
+            typeof admission.allowDrainFailure === 'boolean' &&
             Number.isSafeInteger(admission.expiresAt) && admission.expiresAt > Date.now() && admission.expiresAt <= Date.now() + 1500,
           cancel: token => { if (token !== closeToken) return false; closeToken = null; return true; }
         },
         __mioonFlushWorkspacePreferences: async () => { this.flushes++; return await options.flush?.(this.index) ?? true; }
       });
       this.webContents = Object.assign(new EventEmitter(), {
-        getURL: () => this.urls.at(-1),
+        mainFrame: { url: 'about:blank' },
+        getURL: () => this.webContents.mainFrame.url,
+        send() {},
         loadURL: url => this.loadURL(url),
         executeJavaScript: async script => vm.runInContext(script, renderer),
         setWindowOpenHandler: fn => { this.popupPolicy = fn; }
@@ -105,10 +117,14 @@ async function harness(t, options = {}) {
       if (!prevented) this.destroy();
     }
     show() { this.shows++; }
+    showInactive() { this.shows++; }
     hide() {}
     focus() { this.focuses++; }
     async loadURL(url) {
+      this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
       this.urls.push(url);
+      this.webContents.mainFrame = { url };
+      this.webContents.emit('did-navigate', {}, url);
       await options.load?.(this.index, this.urls.length, url);
     }
   }
@@ -146,7 +162,10 @@ async function harness(t, options = {}) {
       });
       r.sessions.push(value); return value;
     } },
-    ...security, QuitCoordinator, installNativeCloseAdmission, stopBackendForQuit,
+    ...security, createProjectWindowHost, MultiWindowQuitCoordinator, MultiWindowRestartCoordinator,
+    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL,
+    ipcMain: { handle(channel, handler) { assert.equal(channel, PROJECT_WINDOW_CHANNEL); r.bridge = handler; } },
+    installNativeCloseAdmission, stopBackendForQuit,
     writeConnection: async (_, value) => {
       const index = r.connectionWrites.length;
       r.connectionWrites.push(value); await options.connection?.(index); r.connections.push(value);
@@ -154,7 +173,10 @@ async function harness(t, options = {}) {
     removeConnectionOnShutdown: async () => { r.removals++; await options.remove?.(r.removals); },
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } },
     dialog: {
-      showMessageBox: async (parentOrValue, modalValue) => { const value = modalValue ?? parentOrValue; r.dialogs.push(value); return await options.dialog?.(value) ?? { response: 0 }; },
+      showMessageBox: async (parentOrValue, modalValue) => {
+        const value = modalValue ?? parentOrValue, parent = modalValue ? parentOrValue : null;
+        r.dialogs.push(value); r.dialogParents.push(parent); return await options.dialog?.(value, parent) ?? { response: 0 };
+      },
       showMessageBoxSync: (window, value) => { r.syncDialogs.push({ window, value }); return options.syncDialog?.(window, value) ?? 0; }
     },
     storageFailureDialog: error => ({ title: 'Storage failure', detail: error.message })
@@ -271,9 +293,15 @@ test('normal activate reopens only the existing authenticated backend session', 
 
 test('old closed, ready-to-show and renderer events cannot affect a replacement', async t => {
   const f = await harness(t, { holdClosed: i => i === 0 }); await f.initial();
-  const old = f.get('win'); await f.restart();
+  const old = f.get('win'), restarting = f.restart();
+  await until(() => old.destroyed);
+  assert.equal(old.closedDelivered, false);
+  assert.equal(f.r.windows.length, 1, 'restart cannot replace before the actual closed event');
+  assert.equal(f.get('restartCoordinator.state'), 'requesting');
+  old.emit('ready-to-show'); old.deliverClosed();
+  await restarting;
   const replacement = f.get('win');
-  assert.notEqual(old, replacement); assert.equal(old.destroyed, true); assert.equal(old.closedDelivered, false);
+  assert.notEqual(old, replacement); assert.equal(old.destroyed, true); assert.equal(old.closedDelivered, true);
   old.emit('ready-to-show'); old.deliverClosed();
   old.webContents.emit('render-process-gone'); old.webContents.emit('unresponsive'); await tick();
   assert.equal(replacement.shows, 0); assert.equal(old.shows, 0); assert.equal(f.rendererDialogs().length, 0);
@@ -399,9 +427,9 @@ test('quit wins over activate and replacement during the owned restart drain', a
   const gate = deferred();
   const f = await harness(t, { drain: i => i === 0 ? gate.promise : [], release: () => gate.resolve([]) });
   await f.initial(); const restarting = f.restart(); await until(() => f.r.drains === 1);
-  f.app.quit(); await until(() => f.get('quitting') === true);
+  f.app.quit(); assert.equal(f.get('quitRouter.isPending'), true);
   f.activate(); await tick(); assert.equal(f.r.windows.length, 1);
-  gate.resolve([]); await restarting; await f.get('quitCoordinator.pending');
+  gate.resolve([]); await restarting; await f.get('quitRouter.pending');
   assert.equal(f.r.finished, 1); assert.equal(f.r.backends.length, 1); assert.equal(f.r.windows.length, 1);
   assert.equal(f.get('ready'), null); assert.equal(f.get('activeSession'), null);
   assert.equal(f.fatals().length, 0); assert.equal(f.r.settingsCloses, 1);
@@ -412,6 +440,82 @@ test('activate between accepted window close and quit continuation cannot replac
   f.get('win').on('closed', () => f.activate());
   f.app.quit(); await until(() => f.r.finished === 1);
   assert.equal(f.r.windows.length, 1); assert.equal(f.r.backends.length, 1);
+});
+
+async function openOwnedEditor(f) {
+  const launcher = f.r.windows[0], projectId = '79000000-0000-4000-8000-000000000001';
+  const host = f.get('windowHost');
+  const opened = f.r.bridge({ sender: launcher.webContents, senderFrame: launcher.webContents.mainFrame },
+    { action: 'open', contextId: host.contextFor(launcher).contextId, projectId });
+  assert.equal(opened.ok, true);
+  const editor = f.r.windows.at(-1); await host.loadFor(editor);
+  assert.equal(f.r.bridge({ sender: editor.webContents, senderFrame: editor.webContents.mainFrame },
+    { action: 'editor-status', contextId: host.contextFor(editor).contextId, projectId, phase: 'ready' }), true);
+  return { launcher, editor };
+}
+
+for (const disposition of ['dirty', 'unknown']) {
+  test(`actual before-quit inspects focused editor ${disposition} first and cancellation retains both owners and backend`, async t => {
+    const f = await harness(t, { disposition: index => index === 1 ? disposition : 'clean', dialog: () => ({ response: 1 }) });
+    await f.initial(); const { launcher, editor } = await openOwnedEditor(f);
+    f.app.quit(); assert.equal(await f.get('quitRouter.pending'), false);
+    assert.deepEqual(f.r.nativeChecks, [editor], 'focused source must be admitted before any unrelated owner');
+    assert.equal(f.r.dialogParents[0], editor);
+    assert.equal(f.r.dialogs[0].title, disposition === 'dirty' ? '尚有未保存的修改' : '此窗口还有结果未知的操作');
+    assert.equal(launcher.destroyed, false); assert.equal(editor.destroyed, false);
+    assert.equal(f.r.drains, 0); assert.equal(f.r.children[0].messages.includes('stop'), false);
+    assert.equal(f.r.settingsCloses, 0); assert.equal(f.r.finished, 0);
+    assert.equal(f.get('quitCoordinator.state'), 'idle'); assert.equal(f.get('quitRouter.isPending'), false);
+  });
+}
+
+for (const focus of ['none', 'untrusted']) {
+  test(`actual before-quit with ${focus} focus falls back to the complete owned window set`, async t => {
+    const unrelated = { isDestroyed: () => false, close() { assert.fail('An unrelated window must not be closed'); } };
+    const f = await harness(t, { focusedWindow: () => focus === 'none' ? null : unrelated });
+    await f.initial(); const { launcher, editor } = await openOwnedEditor(f);
+    f.app.quit(); assert.equal(await f.get('quitRouter.pending'), true);
+    assert.deepEqual(f.r.nativeChecks, [launcher, editor]);
+    assert.equal(launcher.closedDelivered, true); assert.equal(editor.closedDelivered, true);
+    assert.equal(f.r.children[0].messages.filter(type => type === 'stop').length, 1);
+    assert.equal(f.r.finished, 1);
+  });
+}
+
+for (const frame of ['replaced', 'uncommitted']) {
+  test(`actual before-quit with focused owned ${frame} frame falls back without skipping either owner`, async t => {
+    const f = await harness(t); await f.initial();
+    const { launcher, editor } = await openOwnedEditor(f), host = f.get('windowHost');
+    const url = editor.webContents.getURL();
+    if (frame === 'replaced') editor.webContents.mainFrame = { url };
+    else editor.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
+    assert.equal(host.owns(editor), true, 'native lifetime alone remains current');
+    f.app.quit(); assert.equal(await f.get('quitRouter.pending'), true);
+    assert.deepEqual(f.r.nativeChecks, [launcher, editor], 'a stale document cannot gain focused-source priority');
+    assert.equal(launcher.closedDelivered, true); assert.equal(editor.closedDelivered, true);
+    assert.equal(f.r.children[0].messages.filter(type => type === 'stop').length, 1);
+    assert.equal(f.r.finished, 1);
+  });
+}
+
+test('actual focused editor close reaches later launcher dirty prompt; cancelling partial quit retains its backend', async t => {
+  const gate = deferred(); let decision = gate.promise;
+  const f = await harness(t, { disposition: index => index === 0 ? 'dirty' : 'clean',
+    dialog: value => value.title === '尚有未保存的修改' ? decision : { response: 0 }, release: () => gate.resolve({ response: 1 }) });
+  await f.initial(); const { launcher, editor } = await openOwnedEditor(f);
+  f.app.quit(); const pending = f.get('quitRouter.pending');
+  await until(() => f.r.dialogs.some(value => value.title === '尚有未保存的修改'));
+  assert.deepEqual(f.r.nativeChecks, [editor, launcher]);
+  assert.equal(editor.closedDelivered, true, 'later owner is prompted only after actual focused editor closure');
+  assert.equal(launcher.destroyed, false); assert.equal(f.r.dialogParents.at(-1), launcher);
+  assert.equal(f.r.drains, 0); assert.equal(f.r.children[0].messages.includes('stop'), false);
+  gate.resolve({ response: 1 }); assert.equal(await pending, false);
+  assert.equal(launcher.destroyed, false); assert.equal(editor.destroyed, true);
+  assert.equal(f.r.settingsCloses, 0); assert.equal(f.r.finished, 0);
+  assert.equal(f.get('quitCoordinator.state'), 'idle'); assert.equal(f.get('quitRouter.isPending'), false);
+  decision = Promise.resolve({ response: 0 }); f.app.quit(); assert.equal(await f.get('quitRouter.pending'), true);
+  assert.equal(launcher.closedDelivered, true); assert.equal(f.r.finished, 1);
+  assert.equal(f.r.children[0].messages.filter(type => type === 'stop').length, 1);
 });
 
 for (const stage of ['drain', 'remove', 'clear', 'backend-stop', 'unconfirmed-media']) {

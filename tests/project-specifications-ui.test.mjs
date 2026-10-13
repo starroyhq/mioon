@@ -234,7 +234,7 @@ function appFunction(name, end, env) {
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
   let approved = false; const checks = [];
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation: async (message, dirty) => { checks.push({ message, dirty }); return approved; } });
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation: async (message, dirty) => { checks.push({ message, dirty }); return approved; } });
   assert.equal(await guard('leave'), false); assert.equal(f.state().dirty, true); assert.equal(checks[0].dirty, true);
   approved = true; assert.equal(await guard('leave'), true); assert.equal(f.state().dirty, false);
   assert.match(app, /selectProject[\s\S]*?guardProjectNavigation\(draftMessage/);
@@ -246,13 +246,13 @@ test('actual project-leave guard checks the independent draft and only discards 
 test('actual navigation epoch guard prevents late confirmation from discarding a newer project draft', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');
   let epoch = 1; const confirmation = deferred();
-  const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+  const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', { nativeWindow: null,
     shotTextRef: { current: null }, clipDraftRef: { current: null },
     subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft() { assert.fail('Late confirmation must not discard subtitle drafts'); } } } }, setSubtitleDirty() { assert.fail('Late confirmation must not clear subtitle state'); },
     context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
     dirtyRef: { current: false }, confirm: () => confirmation.promise,
   });
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation });
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation });
   const leaving = guard('leave'); epoch++; f.set({ scope: `${projectId}:2` }); await f.ready(); f.controller.choose('square_720');
   confirmation.resolve(true); assert.equal(await leaving, false); assert.equal(f.state().draftPresetId, 'square_720'); assert.equal(f.state().dirty, true);
 });
@@ -281,13 +281,13 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
       t.after(() => controller.dispose()); return controller;
     };
     const local = makeLocalController(), localDeliveryRef = { current: { controller: local } }, timelineFormatRef = { current: f };
-    const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+    const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', { nativeWindow: null,
       shotTextRef: { current: null }, clipDraftRef: { current: null },
       context: () => ({ projectId, epoch }), isCurrent: captured => captured.projectId === projectId && captured.epoch === epoch,
       subtitlesRef: { current: null }, dirtyRef: { current: false },
       confirm: message => { checks.push(message); return confirmation.promise; },
     });
-    const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', {
+    const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null,
       timelineFormatRef, deliveryNameRef, localDeliveryRef, guardNavigation,
     });
     const leaving = guard('Discard both drafts?');
@@ -348,14 +348,14 @@ test('newer delivery title during joint confirmation preserves dirty inspector, 
     validateResponse: (input, result) => contracts.isTimelineMutationResponse('timeline.render', input, result) });
   t.after(() => local.dispose());
   const confirmation = deferred(), dirtyRef = { current: true }, resets = [], prompts = [];
-  const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', {
+  const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', { nativeWindow: null,
     context: () => ({ projectId, epoch: 1 }), isCurrent: captured => captured.projectId === projectId && captured.epoch === 1,
     shotTextRef: { current: null }, clipDraftRef: { current: null }, subtitlesRef: { current: null }, dirtyRef,
     subjectsRef: { current: { state: { scope: context().scope }, controller: { discardDrafts: () => resets.push('discard subjects') } } },
     confirm: message => { prompts.push(message); return confirmation.promise; },
     ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, () => resets.push(name)])),
   });
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', {
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null,
     timelineFormatRef: { current: f }, deliveryNameRef: { current: { controller: delivery } }, localDeliveryRef: { current: { controller: local } }, guardNavigation,
   });
   const leaving = guard('Discard all current drafts?'); assert.deepEqual(prompts, ['Discard all current drafts?']);

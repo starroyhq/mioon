@@ -10,6 +10,7 @@ import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { rpc as realRpc } from '../apps/web/src/api.js';
 import * as feedback from '../apps/web/src/import-feedback.js';
+import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.ts';
 
 const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../apps/web/src/api.js', import.meta.url), 'utf8');
@@ -46,7 +47,7 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
   let effect, cleanup;
   const importSession = Function('useRef', 'useEffect', 'requestCounter', `${lifecycleSource}\nreturn importSession;`)(
     value => ({ current: value }), fn => { effect = fn; cleanup = fn(); }, requestCounter);
-  const scope = { ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
+  const scope = { nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
     setShowCreate: value => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOrigin.workspaceOriginScope(captured.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: key => busy.has(`${currentProject.current}:${key}`), markBusy: (owner, key, value) => { busyWrites.push({ owner, key, value }); if (value) busy.add(`${owner}:${key}`); else busy.delete(`${owner}:${key}`); },

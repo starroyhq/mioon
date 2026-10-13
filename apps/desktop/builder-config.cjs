@@ -13,7 +13,7 @@ module.exports = function builderConfig(channel) {
     executableName: identity.executableName,
     electronVersion,
     directories: { app: 'build', output: `../../release/desktop/${channel}` },
-    files: ['main.cjs', 'backend.cjs', 'package.json', 'web/**/*', 'licenses/**/*', '!node_modules/**/*'],
+    files: ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'licenses/**/*', '!node_modules/**/*'],
     asar: true,
     // External FFmpeg cannot read ASAR members. Only this pinned resource bundle
     // is copied outside ASAR; existing archive scanner limits stay unchanged.

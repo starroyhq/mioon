@@ -3,6 +3,8 @@ import { createLocalDeliverySchemas, localDeliveryDraftPutSchema, LOCAL_DELIVERY
 import type { LocalDeliveryDraftPut, LocalDeliveryDraftValue, LocalDeliveryEnvelope, LocalDeliveryIntent, LocalDeliveryPrepare, LocalDeliveryRenderInput } from '@mioon/contracts/local-delivery';
 import { createLocalDeliveryClient, LocalDeliveryRequestError, localDeliveryFailure, localDeliveryProtocolError } from './local-delivery-client.ts';
 import type { LocalDeliveryClient, LocalDeliveryFailure } from './local-delivery-client.ts';
+import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
+import { readEditorRetentionIdentity } from './editor-window-close.ts';
 
 export interface LocalDeliveryContext {
   scope: string; projectId: string | null; timelineId: string | null; timelineRevision: number | null;
@@ -184,6 +186,14 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
   }
   const controller = {
     getState: () => state, capture, isCurrent, load, flush, canPrepare,
+    getEditorCloseSnapshot: (): EditorCloseOwnerSnapshot => Object.freeze({
+      dirty: state.dirty && !state.leaveWithoutSaving,
+      inflight: Boolean(saving || operation || draftRetryFlight),
+      unknown: uncertain.size > 0 || uncertainDraftWrites.size > 0 || state.intentUncertain || pendingIntent(state.intent) ||
+        (state.draftFailure?.kind === 'unknown' && state.draftRetry === null),
+      identity: Object.freeze([serial, generation, context.scope, context.projectId, context.timelineId, context.timelineRevision,
+        context.nameVersion, context.executionEpoch, state.leaveWithoutSaving, ...readEditorRetentionIdentity(uncertain, uncertainDraftWrites)]),
+    }),
     hasUnsaved: () => { sync(); return ((state.dirty || state.retainedDraftWrite !== null) && !state.leaveWithoutSaving && (state.retainedDraftWrite !== null || !draftMatches(envelope?.draft ?? null))) || draftRetryFlight !== null || state.phase === 'saving' || state.intentPhase === 'preparing' || state.intentPhase === 'executing'; },
     setContext(next: LocalDeliveryContext) {
       if (!active || sameLocalDeliveryValue(context, next)) return;

@@ -37,7 +37,7 @@ test('downloads are only UUID managed media on the current backend', () => {
     `${origin}/assets/app.js`, `https://example.com/media/${id}`, `file:///media/${id}`]) assert.equal(isAllowedDownload(url, origin), false);
 });
 
-test('renderer preferences expose neither Node nor an IPC preload', () => {
+test('base renderer preferences expose no Node or implicit preload; main owns the fixed window bridge', () => {
   const session = {}, prefs = secureWebPreferences(session);
   assert.equal(prefs.session, session);
   for (const key of ['sandbox', 'contextIsolation', 'webSecurity']) assert.equal(prefs[key], true);
@@ -114,5 +114,8 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.ok(main.includes('app.enableSandbox()'));
   assert.ok(!main.includes('no-sandbox'));
   assert.ok(!main.includes('shell.openExternal'));
-  assert.ok(!main.includes('ipcMain'));
+  assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
+  assert.equal((main.match(/ipcMain\.handle\(/g) || []).length, 1);
+  assert.match(main, /return windowHost\.dispatch\(event, request\)/);
+  assert.match(main, /preload: path\.join\(app\.getAppPath\(\), 'preload\.cjs'\)/);
 });

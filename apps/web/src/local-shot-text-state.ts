@@ -3,6 +3,8 @@ import { createLocalShotTextSchemas, localShotTextDraftPutSchema, isLocalShotTex
 import type { LocalShotTextDraftPut, LocalShotTextDraftDelete, LocalShotTextDraftRaw, LocalShotTextDraftValue, LocalShotTextEnvelope, LocalShotTextIntent, LocalShotTextPrepare, LocalShotTextUpdateInput } from '@mioon/contracts/local-shot-text';
 import { createLocalShotTextClient, LocalShotTextRequestError, localShotTextFailure, localShotTextProtocolError } from './local-shot-text-client.ts';
 import type { LocalShotTextClient, LocalShotTextFailure } from './local-shot-text-client.ts';
+import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
+import { readEditorRetentionIdentity } from './editor-window-close.ts';
 
 export interface LocalShotTextContext {
   scope: string; projectId: string | null; shotId: string | null; revision: number | null;
@@ -191,6 +193,15 @@ export function createLocalShotTextController({ context: initial, getContext, cl
   }
   const controller = {
     getState: () => state, capture, isCurrent, load, flush, canPrepare,
+    getEditorCloseSnapshot: (): EditorCloseOwnerSnapshot => Object.freeze({
+      dirty: !abandoned && (context.formDirty || state.dirty && !state.leaveWithoutSaving),
+      inflight: Boolean(saving || operation || retrying),
+      unknown: uncertain.size > 0 || uncertainWrites.size > 0 || uncertainDeletions.size > 0 || state.intentUncertain ||
+        pendingIntent(state.intent) || Boolean(state.projectPendingIntent),
+      identity: Object.freeze([serial, generation, context.scope, context.projectId, context.shotId, context.revision,
+        context.baseRevision, context.formSerial, context.textVersion, context.executionEpoch, abandoned,
+        ...readEditorRetentionIdentity(uncertain, uncertainWrites, uncertainDeletions)]),
+    }),
     blocksLegacy: (targetShotId?: string) => { sync(); return !context.restored && state.phase !== 'unsupported' && Boolean(!loaded || targetShotId && targetShotId !== context.shotId || state.dirty || state.candidate || state.baselineConflict || state.pending || state.retainedDraftWrite || state.retainedDeletion || state.busy); },
     hasUnsaved: () => { sync(); return hasUnsavedInput(); },
     getNativeCloseSnapshot: (): LocalShotTextCloseSnapshot => Object.freeze({ dirty: hasUnsavedInput(), serial, generation,

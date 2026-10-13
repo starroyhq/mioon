@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync, transformSync } from 'esbuild';
 import * as opening from '../apps/web/src/project-open-state.ts';
+import { editorInitialSelection, revealNativeProjects } from '../apps/web/src/editor-native-window.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { workspaceOriginScope, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.js';
 import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.js';
@@ -32,6 +33,11 @@ function environment(options = {}) {
   const calls = [], registry = createSettingsNavigationRegistry();
   const env = {
     ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace,
+    editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
+    // The hook is a fixed integration boundary here. Its actual arguments are
+    // recorded; readiness and selection still execute the real App functions.
+    useEditorWindowStatus: (...args) => calls.push(['editorWindowStatus', ...args]),
+    useEditorSettingsScope: binding => { calls.push(['editorSettingsScope', binding]); return undefined; },
     chooseInitialProject, retainLastProjectScope, assertLastProjectBootIdentity, URL, URLSearchParams,
     useCallback: callback => callback, emptyData, loading: false, auth: true, online: true,
     data: emptyData, projects, projectOpening: { phase: 'home', projectId: null, error: '' },
@@ -304,6 +310,43 @@ test('actual empty startup chooses home while explicit startup succeeds without 
   assert.equal(callsOf(selected, 'replaceState').length, 1);
 });
 
+
+function nativeEditor(projectId) {
+  return { context: { version: 1, role: 'editor', contextId: id(8), backendId: id(9), initialProjectId: projectId,
+    autoOpen: false, editorProjectId: projectId, editorPhase: 'opening', settingsSlot: null, settingsVersion: 0, quitting: false },
+    bridge: { editorStatus: async () => true, showProjects: async () => true } };
+}
+
+test('native startup opens only the host-assigned UUID, regardless of URL, remembered target or first project', async () => {
+  const binding = nativeEditor(id(3));
+  const h = harness({ nativeWindow: binding, discovery: Promise.resolve({ workspaceScope: 'a'.repeat(64), envelope: {
+    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1, projectId: id(2),
+    updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
+  } }) });
+  h.env.window.location.search = `?project=${id(1)}`;
+  await h.boot();
+  assert.equal(h.env.auth, true); assert.equal(h.env.data.project.id, id(3)); assert.equal(h.eligible(), true);
+  assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get').map(call => call[2].projectId), [id(3)]);
+  assert.deepEqual(callsOf(h, 'preferences').map(call => call[1]), [id(3)]);
+  assert.deepEqual(callsOf(h, 'remember'), []);
+});
+
+test('native assigned-project failure stays on that UUID and never falls through to another project', async () => {
+  const h = harness({ nativeWindow: nativeEditor(id(3)), get: async () => { throw failure('NOT_FOUND'); } });
+  h.env.window.location.search = `?project=${id(1)}`; await h.boot();
+  assert.equal(h.env.projectOpening.phase, 'error'); assert.equal(h.env.projectOpening.projectId, id(3));
+  assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
+  assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get').map(call => call[2].projectId), [id(3)]);
+  assert.deepEqual(callsOf(h, 'remember'), []); assert.deepEqual(callsOf(h, 'tasks.load'), []);
+});
+
+test('native invalid assignment cannot borrow a valid Web fallback', async () => {
+  const h = harness({ nativeWindow: nativeEditor('invalid-project-id') });
+  h.env.window.location.search = `?project=${id(1)}`; await h.boot();
+  assert.equal(h.env.auth, 'error'); assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
+  assert.deepEqual(callsOf(h, 'preferences'), []); assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
+});
+
 test('late boot discovery cannot select over a newer project or publish after unmount', async () => {
   for (const unmount of [false, true]) {
     const held = deferred(), h = harness({ discovery: held.promise }), pending = h.boot(); await tick();
@@ -330,10 +373,11 @@ function boundaryRenderer() {
     import { renderToStaticMarkup } from 'react-dom/server';
     import ProjectHome from './src/ProjectHome.tsx';
     import ProjectHomeConnections from './src/ProjectHomeConnections.tsx';
+    import EditorWindowOpening from './src/EditorWindowOpening.tsx';
     import SettingsNavigationSlot from './src/SettingsNavigationSlot.tsx';
     import LastProjectStatus from './src/LastProjectStatus.tsx';
     import { Button } from '@mioon/ui/components/button';
-    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, SettingsNavigationSlot, LastProjectStatus, Button };`;
+    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, Button };`;
   const result = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
     write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} }; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
@@ -414,4 +458,37 @@ test('actual App shares authenticated settled project readiness between workbenc
     assert.equal(observations[0][4], expected, `${label}: geometry must use the full opening gate`);
     assert.equal(render(h).html.includes('data-testid="workbench"'), expected, `${label}: display and observation readiness must agree`);
   }
+});
+
+
+test('native pending/error render never mounts launcher home or settings in the editor owner', () => {
+  const render = boundaryRenderer(), h = harness({ nativeWindow: nativeEditor(id(3)) });
+  h.env.homePage = 'settings';
+  for (const phase of ['opening', 'error']) {
+    h.env.currentProject.current = id(3); h.env.projectOpening = { phase, projectId: id(3), error: phase === 'error' ? '读取失败' : '' };
+    const result = render(h);
+    assert.match(result.html, /data-testid="editor-window-opening"/);
+    assert.doesNotMatch(result.html, /data-testid="project-home"|data-testid="workbench"/);
+    assert.equal(result.mounted.includes('AgentSettings'), false); assert.equal(result.mounted.includes('ImageSettings'), false);
+    const report = callsOf(h, 'editorWindowStatus').at(-1);
+    assert.deepEqual(report.slice(0, 5), ['editorWindowStatus', h.env.nativeWindow, id(3), phase, false]);
+    assert.equal(report.length, 6); assert.equal(typeof report[5], 'function');
+    report[5](id(3));
+    assert.deepEqual(callsOf(h, 'remember'), [], 'opening/error cannot persist a locator');
+  }
+});
+
+
+test('native remember callback rechecks the real current project readiness and restored scope', async () => {
+  const render = boundaryRenderer(), h = harness({ nativeWindow: nativeEditor(id(3)) });
+  assert.equal(await h.selectProject(id(3), true), true);
+  render(h); const remember = callsOf(h, 'editorWindowStatus').at(-1)[5];
+  remember(id(3));
+  assert.deepEqual(callsOf(h, 'remember'), [['remember', id(3), h.env.projectEpoch.current]]);
+  const count = callsOf(h, 'remember').length;
+  remember(id(1));
+  h.env.workspaceRef.current = { restored: true }; remember(id(3));
+  h.env.workspaceRef.current = { restored: false }; h.env.importSession.current.active = false; remember(id(3));
+  h.env.importSession.current.active = true; h.env.viewReady.current = false; remember(id(3));
+  assert.equal(callsOf(h, 'remember').length, count, 'wrong target, restored, unmounted, and unready cannot write');
 });

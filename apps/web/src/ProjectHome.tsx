@@ -12,6 +12,12 @@ export interface ProjectHomeProject {
   updatedAt: string;
 }
 
+export interface ProjectHomeCreateState {
+  readonly dirty: boolean;
+  readonly busy: boolean;
+  readonly version: number;
+}
+
 export interface ProjectHomeProps {
   projects: readonly ProjectHomeProject[];
   phase: 'home' | 'opening' | 'error';
@@ -29,6 +35,8 @@ export interface ProjectHomeProps {
   onCreate: (name: string, description: string) => Promise<boolean>;
   settings: ReactNode;
   status?: ReactNode;
+  createDisabledReason?: string;
+  onCreateStateChange?: (state: ProjectHomeCreateState) => void;
 }
 
 function ProjectSymbol({ size = 20 }: { size?: number }) {
@@ -48,7 +56,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, createDisabledReason = '', onCreateStateChange }: ProjectHomeProps) {
   const prefix = useId();
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
@@ -56,15 +64,25 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const submissionPending = useRef(false);
-  const current = useRef({ page, phase, busy, listBusy, createOpen });
-  current.current = { page, phase, busy, listBusy, createOpen };
+  const current = useRef({ page, phase, busy, listBusy, createOpen, createDisabledReason });
+  current.current = { page, phase, busy, listBusy, createOpen, createDisabledReason };
+  const createMetadata = useRef({ name: '', description: '', busy: false, version: 0, callback: onCreateStateChange });
+  const publishCreate = (patch: Partial<{ name: string; description: string; busy: boolean }> = {}) => {
+    Object.assign(createMetadata.current, patch);
+    const state = createMetadata.current;
+    onCreateStateChange?.(Object.freeze({ dirty: Boolean(state.name || state.description), busy: state.busy, version: ++state.version }));
+  };
+  if (createMetadata.current.version === 0 || createMetadata.current.callback !== onCreateStateChange) {
+    createMetadata.current.callback = onCreateStateChange;
+    publishCreate({ name, description, busy: submissionPending.current });
+  }
   const locked = busy || submitting || phase === 'opening';
   const empty = !projects.length && !listBusy && !listError;
   const canAct = () => current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening';
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canAct() || !current.current.createOpen) return;
+    if (!canAct() || !current.current.createOpen || current.current.createDisabledReason) return;
     const trimmedName = name.trim(), trimmedDescription = description.trim();
     if (!trimmedName) { setFormError('请填写项目名称。'); return; }
     if (trimmedName.length > 150 || trimmedDescription.length > 2000) {
@@ -73,16 +91,18 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
     }
     // This local latch closes the gap before the parent's busy prop rerenders.
     submissionPending.current = true;
+    publishCreate({ busy: true });
     setSubmitting(true);
     setFormError('');
     try {
       const accepted = await onCreate(trimmedName, trimmedDescription);
-      if (accepted === true) { setName(''); setDescription(''); setCreateOpen(false); }
+      if (accepted === true) { publishCreate({ name: '', description: '' }); setName(''); setDescription(''); setCreateOpen(false); }
       else setFormError('输入已保留。请先刷新项目列表核对，再决定是否重新创建。');
     } catch {
       setFormError('新建结果未确认，输入已保留。请先刷新项目列表核对，避免重复创建。');
     } finally {
       submissionPending.current = false;
+      publishCreate({ busy: false });
       setSubmitting(false);
     }
   }
@@ -116,25 +136,26 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
         </section> : <>
           <header className="project-home-heading">
             <div><div className="project-home-eyebrow">当前工作区</div><h1 id={`${prefix}-heading`}>项目列表</h1><p>选择一个项目继续创作，或开始一个新故事。</p></div>
-            <Button type="button" data-testid="project-home-create-toggle" disabled={locked} aria-expanded={createOpen} aria-controls={`${prefix}-create`}
-              onClick={() => { if (canAct()) setCreateOpen(value => !value); }}>{empty ? '创建第一个项目' : '新建项目'}</Button>
+            <Button type="button" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`}
+              onClick={() => { if (canAct() && !current.current.createDisabledReason) { publishCreate(); setCreateOpen(value => !value); } }}>{empty ? '创建第一个项目' : '新建项目'}</Button>
           </header>
+          {createDisabledReason && <p className="project-home-notice" role="status" data-testid="project-home-create-disabled">{createDisabledReason}</p>}
           {createOpen && <form id={`${prefix}-create`} className="project-home-create" data-testid="project-home-create-form" onSubmit={create} aria-labelledby={`${prefix}-create-heading`} aria-busy={busy || submitting}>
             <h2 id={`${prefix}-create-heading`}>开始一个新故事</h2>
             <p className="project-home-create-intro">为这次创作命名，创建成功后进入项目。</p>
             <div className="project-home-field"><Label htmlFor={`${prefix}-name`}>项目名称</Label>
-              <Input id={`${prefix}-name`} data-testid="project-home-name" value={name} maxLength={150} required autoFocus disabled={locked}
+              <Input id={`${prefix}-name`} data-testid="project-home-name" value={name} maxLength={150} required autoFocus disabled={locked || Boolean(createDisabledReason)}
                 placeholder="例如：山野之间 · 秋日短片" aria-invalid={Boolean(formError) && !name.trim()} aria-describedby={formError ? `${prefix}-form-error` : undefined}
-                onChange={event => { if (canAct()) { setName(event.target.value); setFormError(''); } }} />
+                onChange={event => { if (canAct() && !current.current.createDisabledReason) { publishCreate({ name: event.target.value }); setName(event.target.value); setFormError(''); } }} />
             </div>
             <div className="project-home-field"><Label htmlFor={`${prefix}-description`}>创作方向 <span>可选</span></Label>
-              <Textarea id={`${prefix}-description`} data-testid="project-home-description" value={description} rows={3} maxLength={2000} disabled={locked}
-                placeholder="关于这个故事，你最想表达什么？" onChange={event => { if (canAct()) { setDescription(event.target.value); setFormError(''); } }} />
+              <Textarea id={`${prefix}-description`} data-testid="project-home-description" value={description} rows={3} maxLength={2000} disabled={locked || Boolean(createDisabledReason)}
+                placeholder="关于这个故事，你最想表达什么？" onChange={event => { if (canAct() && !current.current.createDisabledReason) { publishCreate({ description: event.target.value }); setDescription(event.target.value); setFormError(''); } }} />
             </div>
             {formError && <p id={`${prefix}-form-error`} className="project-home-form-error" role="alert">{formError}</p>}
             <div className="project-home-form-actions">
               <Button type="button" variant="ghost" data-testid="project-home-create-cancel" disabled={locked} onClick={() => { if (canAct()) setCreateOpen(false); }}>取消</Button>
-              <Button type="submit" data-testid="project-home-create-submit" disabled={locked || !name.trim()}>{busy || submitting ? '正在创建…' : '创建并打开'}</Button>
+              <Button type="submit" data-testid="project-home-create-submit" disabled={locked || Boolean(createDisabledReason) || !name.trim()}>{busy || submitting ? '正在创建…' : '创建并打开'}</Button>
             </div>
           </form>}
           <section aria-labelledby={`${prefix}-list-heading`} aria-busy={listBusy}>

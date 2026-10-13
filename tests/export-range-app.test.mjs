@@ -91,6 +91,7 @@ async function harness(t, {restored = false, gates = {}, projectReady = true} = 
   const environment = {schemas, isTimelineMutationResponse, hasRequestNotAppliedProof, pinNewWorkspaceIntent,
     dataRef, currentProject: {current: projectId}, projectEpoch: {current: 1}, navigationEpoch: {current: 0}, panelIntent: {current: 0},
     workspaceRef: {current: restored ? {restored: true, workspaceOrigin: id(8)} : {restored: false}},
+    exportSettingsRef: {current: null}, exportRangeRef: {current: null},
     deliveryNameRef: {current: null}, localDeliveryRef: {current: null}, online: true, auth: true, loading: false,
     // Existing export cases start inside an already opened workbench. Exercise
     // the opposite App readiness boundary separately without faking its reads.

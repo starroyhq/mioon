@@ -64,6 +64,7 @@ function appHarness(controller, { confirm = async () => true, dirty = false } = 
   const clipDraftRef = { current: controller }, dirtyRef = { current: dirty };
   const subtitleState = { text: 'Separate subtitle draft' };
   const scope = {
+    nativeWindow: null,
     shotTextRef: { current: null }, clipDraftRef, dirtyRef, context: () => ({ ...owner }),
     isCurrent: captured => captured.projectId === owner.projectId && captured.epoch === owner.epoch,
     confirm: message => { events.push(['confirm', message]); return confirm(message); },

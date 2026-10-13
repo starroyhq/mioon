@@ -24,6 +24,10 @@ for (const name of ['main', 'backend']) {
     banner: { js: 'const __mioon_import_meta_url = require("node:url").pathToFileURL(__filename).href;' },
     sourcemap: false, legalComments: 'eof', logLevel: 'info' });
 }
+// A sandboxed preload has only Electron's fixed bridge API, never Node imports.
+await build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path.join(output, 'preload.cjs'),
+  bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
+  sourcemap: false, legalComments: 'eof', logLevel: 'info' });
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
 const subtitleSource=path.join(root,'packages/business/resources/subtitles');
 const {verifySubtitleResources,SUBTITLE_RESOURCE_FILES}=createRequire(import.meta.url)('../subtitle-resources.cjs');

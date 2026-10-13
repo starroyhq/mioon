@@ -222,6 +222,12 @@ function renderer(f, options = {}) {
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
   const require = name => {
     if (name === './native-close-sources.ts') return nativeCloseSources;
+    if (name === './editor-settings-scope.ts') {
+      const settingsModule = { exports: {} };
+      const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code;
+      Function('module', 'exports', 'require', code)(settingsModule, settingsModule.exports, dependency => { assert.equal(dependency, 'react'); return react; });
+      return settingsModule.exports;
+    }
     if (name === 'react') return react;
     if (name === '@mioon/contracts') return { IMAGE_LIMITS };
     if (name === './image-generation.js') return { ...imageLogic, createImageGenerationSession: options => createImageGenerationSession({ ...options, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) };

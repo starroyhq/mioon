@@ -10,6 +10,7 @@ import { workspaceOriginScope } from '../apps/web/src/workspace-origin.js';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.js';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+import { editorInitialSelection } from '../apps/web/src/editor-native-window.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -103,7 +104,7 @@ function assertDisabled(html, expected) {
 
 function harness({ projectId = null, mode = 'canvas', loading = false, ready = Boolean(projectId), restored = false } = {}) {
   const calls = [], view = defaultWorkspaceState(); view.activeMode = mode;
-  const env = { emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 },
+  const env = { nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 },
     viewRef: { current: view }, viewReady: { current: ready }, dataRef: { current: projectId ? { ...emptyData, project: { id: projectId } } : emptyData },
     workspaceRef: { current: { restored, ...(restored ? { workspaceOrigin: B } : {}) } }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
     dirtyRef: { current: false }, subtitlesRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null }, subjectsRef: { current: null }, agentDraft: { current: false }, imageDraft: { current: false },

@@ -10,6 +10,8 @@ import { BackendSupervisor, BACKEND_STOP_BUDGET } from '../apps/desktop/src/supe
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
 import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
 import { QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
+import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
 import { validateTools } from '../apps/desktop/src/config.mjs';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -302,8 +304,10 @@ test('native quit cleans only after confirmed failure and surfaces the failure w
   assert.equal(cleanups, 1);
   assert.equal(finishes, 0);
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /quitCoordinator\.request\(\)\.catch\(quitFailed\)/);
-  assert.doesNotMatch(main, /quitCoordinator\.request\(\)\.catch\(fatal\)/);
+  assert.match(main, /function requestApplicationQuit\(source\) \{ return quitRouter\.request\(source\)\.catch\(quitFailed\); \}/);
+  assert.match(main, /const focused = BrowserWindow\.getFocusedWindow\(\);/);
+  assert.match(main, /void requestApplicationQuit\(ownsWindow\(focused, windowContext\) && windowHost\.isTrustedDocument\(focused\) \? focused : undefined\);/);
+  assert.doesNotMatch(main, /(?:quitCoordinator|quitRouter)\.request\([^)]*\)\.catch\(fatal\)/);
   assert.doesNotMatch(main, /finally\s*\{\s*await agentSettings\?\.close\(\)/);
 });
 
@@ -448,7 +452,9 @@ async function mainStartupHarness({ validate, settings } = {}) {
     validateTools: validate ?? (async () => ({ ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe' })),
     createDesktopAgentSettings: async () => { counts.settings++; return settings ? settings() : { close() {} }; }, safeStorage: {},
     BackendSupervisor: class { constructor() { counts.forks++; } },
-    QuitCoordinator, stopBackendForQuit, removeConnectionOnShutdown: async () => { counts.cleanup++; },
+    MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter, PROJECT_WINDOW_CHANNEL,
+    ipcMain: { handle: (channel, handler) => { assert.equal(channel, PROJECT_WINDOW_CHANNEL); assert.equal(typeof handler, 'function'); } },
+    stopBackendForQuit, removeConnectionOnShutdown: async () => { counts.cleanup++; },
     dialog: { showMessageBox: async message => { counts.notices.push(message); return { response: 0 }; } }
   });
   vm.runInContext(source, context, { filename: 'main-startup-fixture.mjs' });

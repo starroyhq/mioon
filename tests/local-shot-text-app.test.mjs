@@ -16,7 +16,7 @@ function navigation(){
   const controller={capture:()=>serial,isCurrent:value=>value===serial,hasUnsaved:()=>dirty,abandonCurrentInput:value=>{if(value!==serial)return false;abandoned++;return true;}};
   const shotTextRef={current:controller};
   const guard=appFunction('async function guardNavigation(', 'async function guardProjectNavigation(',{
-    context:()=>({projectId:'p'}),isCurrent:()=>current,shotTextRef,subtitlesRef:{current:null},clipDraftRef:{current:null},subjectsRef:{current:null},dirtyRef:{current:false},confirm:()=>held.promise,
+    nativeWindow:null,context:()=>({projectId:'p'}),isCurrent:()=>current,shotTextRef,subtitlesRef:{current:null},clipDraftRef:{current:null},subjectsRef:{current:null},dirtyRef:{current:false},confirm:()=>held.promise,
     setShotDirty:()=>resets++,setClipDirty:()=>{},setSourceDirty:()=>{},setSubjectDirty:()=>{},setSubtitleDirty:()=>{},setInspectorEpoch:()=>{},
   });
   return{guard,held,shotTextRef,controller,newEdit:()=>serial++,leave:()=>current=false,clean:()=>dirty=false,counts:()=>({abandoned,resets})};

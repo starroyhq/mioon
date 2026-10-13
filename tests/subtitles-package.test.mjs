@@ -76,6 +76,18 @@ test('gzip verifier streams >10MiB font, detects corruption/missing files, and r
 
 test('package inspector retains legacy ASAR ceiling and validates external delivered resources',async()=>{
  const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.mjs',import.meta.url),'utf8');
- assert.match(source,/maxBuffer: 10 \* 1024 \* 1024/);assert.match(source,/new Set\(\['main\.cjs', 'backend\.cjs', 'package\.json', 'web', 'licenses'\]\)/);
+ assert.match(source,/maxBuffer: 10 \* 1024 \* 1024/);assert.match(source,/new Set\(\['main\.cjs', 'backend\.cjs', \.\.\.\(!historicalV3 \? \['preload\.cjs'\] : \[\]\), 'package\.json', 'web', 'licenses'\]\)/);
  assert.match(source,/historicalV3\?null:await verifySubtitleResourceTarball\(tarball,artifactBase\)/);assert.match(source,/archivedSubtitleResourcesMatchNativePackage:true/);
+});
+
+test('actual ASAR root allowlist adds only the fixed current preload and preserves historical v3 exclusions',async()=>{
+ const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.mjs',import.meta.url),'utf8');
+ const match=source.match(/^const allowed = (new Set\([^\n]+\));$/m);assert.ok(match,'one bounded root allowlist expression');
+ const inspect=Function('historicalV3',`return ${match[1]};`);
+ const legacy=['main.cjs','backend.cjs','package.json','web','licenses'];
+ assert.deepEqual([...inspect(true)],legacy);
+ assert.deepEqual([...inspect(false)],['main.cjs','backend.cjs','preload.cjs','package.json','web','licenses']);
+ assert.equal(inspect(true).has('preload.cjs'),false);
+ for(const historical of [true,false])for(const extra of ['preload.js','preload-other.cjs','node_modules','data','subtitles','access-token','mcp-connection.json'])assert.equal(inspect(historical).has(extra),false,`${extra} must remain excluded`);
+ assert.match(source,/assert\.ok\(allowed\.has\(file\.split\('\/'\)\[1\]\), `Unexpected ASAR entry: \$\{file\}`\)/);
 });

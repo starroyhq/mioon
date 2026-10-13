@@ -9,6 +9,7 @@ import {workspaceOriginScope} from '../apps/web/src/workspace-origin.js';
 import {projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind} from '../apps/web/src/project-open-state.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
+import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
 
 const id=n=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const scope='a'.repeat(64),otherScope='b'.repeat(64),stamp='2026-10-12T00:00:00.000Z';
@@ -51,7 +52,7 @@ test('boot tickets reject later boots, project changes and StrictMode disposed l
 function selectionHarness({refresh,confirm=true}={}){
  const calls=[],currentProject={current:id(1)},projectEpoch={current:0},navigationEpoch={current:0};
  const view=defaultWorkspaceState();
- const env={notify:(...args)=>calls.push(['notice',...args]),readableError:e=>e.message,workspaceRef:{current:{restored:false}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
+ const env={nativeWindow:null,editorInitialSelection,notify:(...args)=>calls.push(['notice',...args]),readableError:e=>e.message,workspaceRef:{current:{restored:false}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},

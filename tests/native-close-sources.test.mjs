@@ -101,6 +101,17 @@ function renderer(filename, fixture, options = {}) {
   const module = { exports: {} }, primitives = new Proxy({}, { get: (_, name) => String(name) });
   const require = name => {
     if (name === 'react') return react;
+    if (name === './editor-settings-scope.ts') {
+      // Run the real optional native-activity hook against this renderer's hook
+      // scheduler. No native scope is passed by the existing Web close cases.
+      const activity = { exports: {} };
+      const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code;
+      Function('module', 'exports', 'require', code)(activity, activity.exports, dependency => {
+        assert.equal(dependency, 'react', 'Native activity may depend only on this exact React fixture');
+        return react;
+      });
+      return activity.exports;
+    }
     if (name === './native-close-sources.ts') return sources;
     if (name === '@mioon/contracts') return contracts;
     if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => session = chat.createAgentChatSession({ ...input, client: fixture.client, receipts: fixture.receipts, requestId: () => requestId }) };

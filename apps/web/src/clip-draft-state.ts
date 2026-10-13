@@ -1,5 +1,6 @@
 import { clipDraftFailure } from './clip-draft-client.ts';
 import type { ClipDraftFailure } from './clip-draft-client.ts';
+import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
 import type { ClipDraftKey, ClipDraftSource, ClipDraftRaw, ClipDraftValue, ClipDraftWrite, ClipDraftDelete, ClipDraftEnvelope as WireEnvelope } from '../../../packages/contracts/src/local-drafts.ts';
 export type { ClipDraftKey, ClipDraftSource, ClipDraftRaw, ClipDraftWrite, ClipDraftDelete } from '../../../packages/contracts/src/local-drafts.ts';
 /** Unsent local form state. None of these methods executes a business request. */
@@ -175,6 +176,16 @@ export function createClipDraftController({ context: initial, client, validateTi
   }
   const controller = {
     getState: () => state, getDirty: () => state.dirty, hasUnsaved: () => state.dirty || state.submitting, hasUnpersisted,
+    getEditorCloseSnapshot: (): EditorCloseOwnerSnapshot => Object.freeze({
+      dirty: state.dirty,
+      inflight: Boolean(flight || deleting || state.submitting || state.businessPending),
+      // Abandoning raw input does not acknowledge an uncertain PUT or DELETE.
+      // A failed GET with no input/record alone is not a mutation owner.
+      unknown: state.failure?.kind === 'unknown' && (state.retainedRecord || state.dirty || state.candidate !== null),
+      identity: Object.freeze([serial, generation, context.scope, context.projectId, context.timelineId, context.clipId,
+        state.baseRevision, state.retainedRecord, context.timelineRevision, context.source.assetId, context.source.assetSha256,
+        context.source.versionId, context.source.shotId, context.source.jobId]),
+    }),
     capture, isCurrent,
     canAbandon(token?: ClipDraftCapture) { return (!token || isCurrent(token)) && active && context.visible && !context.busy && !state.businessPending && !deleting && state.dirty; },
     abandonCurrentInput(token: ClipDraftCapture): boolean {

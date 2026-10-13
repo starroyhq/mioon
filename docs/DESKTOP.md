@@ -86,7 +86,7 @@ node apps/desktop/scripts/migrate-data.mjs --source=/absolute/old/data --destina
 
 - 全局 `app.enableSandbox()`，窗口明确启用 `sandbox`、`contextIsolation`、`webSecurity`
 - 禁用 Node integration（含子 frame 和 worker）、WebView、实验性特性及不安全混合内容
-- 没有 preload，也没有 renderer IPC bridge；页面拿不到 Electron、`fs`、shell、任意本地路径或 bearer token
+- 沙箱 preload 仅提供固定的项目窗口桥：查询非秘密窗口身份、打开当前工作区项目、显示首页/指定设置页、报告编辑器加载状态。主进程逐次验证发送窗口、主 frame、当前 URL 与文档 generation；没有任意 IPC/URL/路径/业务执行接口。页面拿不到 Electron、`fs`、shell 或 bearer token
 - 主进程为每次服务启动生成随机令牌，只经主进程→utilityProcess 消息传递；在加载 UI 前安装 `Secure; HttpOnly; SameSite=Strict` 的 session cookie
 - HTTP 只绑定 `127.0.0.1` 的随机端口。cookie 利用 Chromium 对 loopback 的可信来源处理；这不是公网 TLS 服务，不应暴露、转发到公网或宣称可抵抗同一 OS 用户权限下的恶意进程
 - 浏览器请求只允许当前本地服务 origin 和同源 blob；外部链接、跳转、弹窗、子 frame、WebView 全部阻止。没有任意 `shell.openExternal`
@@ -101,11 +101,11 @@ Loopback token 与 OS 账户权限共同构成本地单用户信任边界。本�
 
 ## 窗口外观
 
-macOS 隐藏原生标题栏（`titleBarStyle: 'hidden'`），三枚窗口按钮由系统绘制在工作台顶栏左侧，关闭窗口仍走同一套关窗、未保存确认与退出流程。顶栏同时是窗口拖动区，其中的按钮、标签和输入框、以及对话框与菜单显式排除拖动。窗口选项见 `apps/desktop/src/window-chrome.ts`，页面按 user agent 识别该外壳并在 `<html>` 上标记 `data-desktop-frame="mac-inset"`，顶栏左侧留白见 `apps/web/src/styles.css`。Windows 和 Linux 保留原生标题栏，页面不做调整；渲染进程仍没有 preload、IPC 或原生接口。
+macOS 隐藏原生标题栏（`titleBarStyle: 'hidden'`），三枚窗口按钮由系统绘制在工作台顶栏左侧，关闭窗口仍走同一套关窗、未保存确认与退出流程。顶栏同时是窗口拖动区，其中的按钮、标签和输入框、以及对话框与菜单显式排除拖动。窗口选项见 `apps/desktop/src/window-chrome.ts`，页面按 user agent 识别该外壳并在 `<html>` 上标记 `data-desktop-frame="mac-inset"`，顶栏左侧留白见 `apps/web/src/styles.css`。Windows 和 Linux 保留原生标题栏；固定窗口桥与窗口外观独立，不扩展文件、凭据或业务权限。macOS 外观仍是源码契约覆盖，不能替代实机验证。
 
 ## 启动、退出与恢复
 
-主进程等待 utilityProcess 就绪、验证它返回的 loopback origin，再创建已认证窗口。启动超时或服务失败会显示本地错误，不会留下永远等待的空白窗口。正常关窗先通过一个固定、无特权的页面函数排空视图偏好的同源 HTTP 保存，最多等待 1.5 秒。失败或超时会询问“仍然退出 / 继续编辑”；选择继续编辑会保持窗口和后端运行。此函数不暴露 IPC、Electron、文件系统或令牌。随后仍执行原有未保存属性草稿确认，窗口真正关闭后才停止服务。
+主进程等待 utilityProcess、认证 cookie 与连接发现就绪，才创建项目入口窗口。桌面最多一个入口窗口、一个编辑窗口，共享同一后台；Web 保留单页。首次入口保留原项目选择优先级，编辑窗口只打开指定项目。关闭编辑器须通过原生关闭准入，之后显示项目首页并保持后台，已接受任务继续按原规则处理。显示首页不会自动关闭或隐藏编辑器。明确退出/重启服务会逐窗取得准入并等待真正关闭，再停止后台；请求阶段即禁止复活窗口。窗口隐藏、销毁标记、busy=false 或一次 toast 均不是保存证明。完整边界见 [独立项目窗口](DESKTOP-PROJECT-WINDOWS.md) 与 [原生关闭准入](NATIVE-CLOSE-ADMISSION.md)。
 
 正常停止先中断操作，再等待已持有句柄的本地媒体进程退出，随后关闭 worker、HTTP、SQLite 并清理 discovery。媒体停止尝试最多 3 秒，worker/server 最多 5 秒，utility 停止尝试最多 13 秒；未确认退出时返回明确失败，不能把发送信号当作回收成功。仍有准确句柄时应用继续等待实际退出，不承诺整个应用一定在 13 秒内关闭。utility 意外退出后，记录的数字 PID 不足以证明进程归属，因此不会据此杀进程；媒体清理不明时阻止该应用内自动替换/重启，并提供明确的“退出应用”警告。退出后的新应用生命周期无法证明旧媒体进程已结束，再次工作前可能需要用户在系统任务管理器中检查。
 
@@ -117,7 +117,7 @@ macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开
 
 ## 项目视图记忆
 
-画板/剪辑模式、选择、缩放、播放头、滚动与面板状态保存在当前渠道的 `workspace/` 数据库独立表中。重新打开同一项目可恢复，包括正常完全退出后重启；这不保存全局最后打开的项目。浏览器与桌面连接同一个后端时共享该项目的本地单用户视图，并以独立版本防止旧窗口覆盖。认证 cookie 和 Chromium session 仍不持久化，没有增加 preload 或 renderer 到原生的桥接。
+画板/剪辑模式、选择、缩放、播放头、滚动与面板状态保存在当前渠道的 `workspace/` 数据库独立表中。重新打开同一项目可恢复，包括正常完全退出后重启；这不保存全局最后打开的项目。浏览器与桌面连接同一个后端时共享该项目的本地单用户视图，并以独立版本防止旧窗口覆盖。认证 cookie 和 Chromium session 仍不持久化；固定原生窗口桥不保存项目、草稿或偏好。
 
 草稿、搜索文本、任务、媒体和凭据均不属于视图偏好。强杀、崩溃、后端不可用或明确选择退出未保存视图时，最后未确认的视图变化仍可能丢失。详见[工作区偏好契约](WORKSPACE-PREFERENCES.md)。
 
@@ -157,7 +157,7 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm --fil
 
 Q3 当前媒体环境/退出验收与原生限制见 [MEDIA-RUNTIME.md](MEDIA-RUNTIME.md)。以下 V4 记录属于历史基线，不能当作当前异常媒体清理能力；旧的活动渲染崩溃回收项在 smoke 报告中已改为明确 skippedChecks。
 
-单元测试覆盖 origin/导航/下载白名单、无 Node/IPC 窗口设置、cookie 属性、权限拒绝、私有 discovery、环境隔离、启动超时、异常退出、媒体子进程所有权和取消未保存退出。
+单元测试覆盖 origin/导航/下载白名单、无 Node 权限与固定窗口 IPC 白名单、cookie 属性、权限拒绝、私有 discovery、环境隔离、启动超时、异常退出、媒体子进程所有权和取消未保存退出。
 
 固定 Electron smoke 在隔离临时 userData 中检查真实 utility Node/SQLite、真实沙箱 renderer、Secure cookie 自动认证、匿名请求拒绝、网络/窗口/权限阻断、项目持久化、普通重启与 SIGKILL 恢复，并写本地 JSON 报告及实际窗口截图。不会调用真实供应商。受限 shell 的一次 headless 探测被宿主 `socket() Operation not permitted` 阻止；没有绕过任何沙箱。图形会话验证及最终结果见 `STATUS.md` 与相应验收证据。
 

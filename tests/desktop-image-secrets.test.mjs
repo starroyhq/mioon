@@ -303,8 +303,15 @@ test('desktop wiring adds no renderer capability and leaves settings ownership i
   assert.doesNotMatch(main, /createImageSettings\(/);
   assert.match(backend, /createImageSecretClient\(\{ port: process\.parentPort \}\)/);
   assert.match(backend, /startServer\(\{ dataDir: data\.dataDir, port: 0, distDir: data\.distDir, token: data\.token, agentSettings, imageSecretCodec, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ \}\)/);
-  for (const source of [main, backend, broker]) {
+  for (const source of [backend, broker]) {
     assert.doesNotMatch(source, /ipcMain|ipcRenderer|contextBridge|preload\s*:/);
     assert.doesNotMatch(source, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   }
+  assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
+  assert.equal((main.match(/ipcMain\.handle\(/g) || []).length, 1);
+  assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
+  const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
+  const bridge = await readFile(new URL('../apps/desktop/src/project-window-preload.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(preload + bridge, /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
+  assert.match(preload, /exposeInMainWorld\('__mioonProjectWindow'/);
 });

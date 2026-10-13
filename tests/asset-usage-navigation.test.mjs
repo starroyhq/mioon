@@ -120,7 +120,7 @@ test('actual App bridge refuses an unaccepted home session before or during disc
 test('App passes the target fence through the actual clip discard boundary', async () => {
   const guard = section('  async function guardNavigation(', '  async function guardProjectNavigation(');
   let passed, dirty = true;
-  const env = { context: () => 'owner', isCurrent: () => true, subtitlesRef: { current: null }, shotTextRef: { current: null },
+  const env = { nativeWindow: null, context: () => 'owner', isCurrent: () => true, subtitlesRef: { current: null }, shotTextRef: { current: null },
     clipDraftRef: { current: { capture: () => 'token', hasUnsaved: () => true, isCurrent: () => true, discard: async (token, fence) => { assert.equal(token, 'token'); passed = fence; return false; } } },
     dirtyRef: { current: true }, confirm: async () => true, subjectsRef: { current: null },
     setShotDirty: () => assert.fail('No clear'), setClipDirty: () => { dirty = false; }, setSourceDirty: () => assert.fail('No clear'), setSubjectDirty: () => assert.fail('No clear'), setSubtitleDirty: () => assert.fail('No clear'), setInspectorEpoch: () => assert.fail('No clear') };

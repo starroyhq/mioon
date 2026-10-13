@@ -22,7 +22,7 @@ function nameFixture(context={scope:`${id}:1`,projectId:id,enabled:true}){
 function projectGuard(f,confirmation=async()=>true){
  const reference={current:{controller:f.controller}},events=[],formatState={};
  const guard=actual('  async function guardProjectNavigation(','  async function prepareSettingsDeparture(',{
-  localDeliveryRef:{current:null},deliveryNameRef:reference,timelineFormatRef:{current:{controller:{getState:()=>formatState,hasUnsaved:()=>false,discardDraft:()=>events.push('discard-format')}}},
+  nativeWindow:null,localDeliveryRef:{current:null},deliveryNameRef:reference,timelineFormatRef:{current:{controller:{getState:()=>formatState,hasUnsaved:()=>false,discardDraft:()=>events.push('discard-format')}}},
   guardNavigation:async(message,dirty)=>{events.push({message,dirty});return confirmation();},
  });
  return {guard,reference,events};

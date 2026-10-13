@@ -9,7 +9,7 @@ const app = readFileSync(process.env.MIOON_NATIVE_CLOSE_APP_SOURCE || new URL('.
 function harness() {
   const events = new Map(), registry = createNativeCloseRegistry(), settings = createSettingsNavigationRegistry();
   const window = { location: { href: 'http://127.0.0.1:8123/?project=a' }, addEventListener: (name, callback) => events.set(name, callback), removeEventListener: (name, callback) => { if (events.get(name) === callback) events.delete(name); } };
-  const env = { window, installNativeCloseAdmission, readNativeLegacyClose, subtitlesRef: { current: null }, subjectsRef: { current: null }, nativeCloseRegistry: { current: registry }, settingsNavigation: { current: settings },
+  const env = { nativeWindow: null, window, installNativeCloseAdmission, readNativeLegacyClose, subtitlesRef: { current: null }, subjectsRef: { current: null }, nativeCloseRegistry: { current: registry }, settingsNavigation: { current: settings },
     dirtyRef: { current: false }, shotTextRef: { current: null }, shotCloseRef: { current: null }, clipDraftRef: { current: null }, timelineFormatRef: { current: null }, deliveryNameRef: { current: null },
     agentDraft: { current: false }, imageDraft: { current: false }, importSession: { current: { active: true } },
     currentProject: { current: 'project-a' }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 }, workspaceRef: { current: { restored: false } }, workspaceOriginScope: () => 'normal',

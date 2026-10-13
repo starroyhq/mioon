@@ -32,7 +32,7 @@ Important gaps found in the review:
 
 1. `services.call(operation, input)` currently has no caller/project authorization context. ID-only reads and writes can resolve records outside an Agent's selected project.
 2. Timeline/reference requests already have exact durable replay. Several shot/node/selection/order operations lack stable request IDs. A chat-only journal cannot make those operations exactly-once across a crash.
-3. Electron has no preload or renderer IPC bridge. Keep that boundary rather than giving the renderer general native APIs.
+3. At this Agent review baseline, Electron had no preload or renderer IPC bridge. The later [desktop project-window bridge](DESKTOP-PROJECT-WINDOWS.md) is limited to fixed window actions and non-secret identity; Agent still receives no general native APIs or file authority.
 4. Server shutdown drains HTTP requests before closing SQLite. New long-lived SSE connections must end during shutdown or desktop restart/quit can hang.
 5. Existing live-generation gates cover backend enablement, local generation counts and approved reference hashes. They do not provide a reliable monetary quote or enforce a currency budget.
 6. Existing `project.get` and `timeline.get` can lazily create a missing timeline. A genuinely read-only Agent mode must use a shared non-creating inspection path, rather than mislabel these initialization side effects as read-only. Preserve existing public behavior for older clients.

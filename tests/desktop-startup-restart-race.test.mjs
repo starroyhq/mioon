@@ -8,7 +8,10 @@ import vm from 'node:vm';
 import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
-import { QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
+import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
+import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
+import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
+import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 
 const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
@@ -70,6 +73,7 @@ async function harness(t, options = {}) {
     return child;
   }
   class Window extends EventEmitter {
+    static getFocusedWindow() { return records.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config) {
       super(); this.config = config; this.destroyed = false; this.urls = [];
       let closeToken = null, closeSerial = 0;
@@ -87,16 +91,24 @@ async function harness(t, options = {}) {
         __mioonFlushWorkspacePreferences: async () => true
       });
       this.webContents = Object.assign(new EventEmitter(), {
-        getURL: () => this.urls.at(-1), loadURL: url => this.loadURL(url),
+        mainFrame: { url: 'about:blank' }, send() {},
+        getURL: () => this.webContents.mainFrame.url, loadURL: url => this.loadURL(url),
         executeJavaScript: async script => vm.runInContext(script, renderer)
       });
       records.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
+    isMinimized() { return false; }
+    restore() {}
     destroy() { if (!this.destroyed) { this.destroyed = true; this.emit('closed'); } }
     close() { let prevented = false; this.emit('close', { preventDefault() { prevented = true; } }); if (!prevented) this.destroy(); }
-    show() {} hide() {} focus() {}
-    async loadURL(url) { this.urls.push(url); await options.load?.(records.windows.indexOf(this)); }
+    show() {} showInactive() {} hide() {} focus() {}
+    async loadURL(url) {
+      this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
+      this.urls.push(url); this.webContents.mainFrame = { url };
+      this.webContents.emit('did-navigate', {}, url);
+      await options.load?.(records.windows.indexOf(this));
+    }
   }
   const context = vm.createContext({ app, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
@@ -127,7 +139,19 @@ async function harness(t, options = {}) {
     installSessionPolicy() {}, installWindowPolicy() {}, isAllowedNavigation: () => true,
     writeConnection: async (_, value) => { records.connections.push(value); },
     removeConnectionOnShutdown: async () => { records.removals++; await options.remove?.(records.removals); },
-    QuitCoordinator, installNativeCloseAdmission, stopBackendForQuit,
+    createProjectWindowHost, MultiWindowQuitCoordinator,
+    // Restart captures its start callback at construction time. Observe that
+    // real callback's result too; do not replace its body or lifecycle policy.
+    MultiWindowRestartCoordinator: class extends MultiWindowRestartCoordinator {
+      constructor(config) {
+        super({ ...config, start: (...args) => config.start(...args).then(
+          report => { records.starts.push({ report }); return report; },
+          error => { records.starts.push({ error }); throw error; }) });
+      }
+    },
+    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL,
+    ipcMain: { handle(channel, handler) { assert.equal(channel, PROJECT_WINDOW_CHANNEL); records.bridge = handler; } },
+    installNativeCloseAdmission, stopBackendForQuit,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } },
     dialog: { showMessageBox: async (parentOrValue, modalValue) => { const value = modalValue ?? parentOrValue; records.dialogs.push(value); return { response: 0 }; }, showMessageBoxSync: () => 0 },
     storageFailureDialog: error => ({ title: 'Storage failure', detail: error.message }),
@@ -292,8 +316,9 @@ test('quit during restart drain shares quit work and prevents replacement startu
   await until(() => r.validations.length === 1);
   const restarting = runtime.restart();
   await until(() => r.drains === 1);
-  runtime.app.quit(); const pending = runtime.get('quitCoordinator.pending');
-  runtime.app.quit(); assert.equal(runtime.get('quitCoordinator.pending'), pending);
+  runtime.app.quit(); const pending = runtime.get('quitRouter.pending');
+  runtime.app.quit(); assert.equal(runtime.get('quitRouter.pending'), pending);
+  assert.equal(runtime.get('quitRouter.isPending'), true);
   old.reject(failure('LATE_VALIDATION_FAILURE')); await runtime.initial();
   drain.resolve([]); await restarting; await pending;
   assert.equal(r.drains, 1); assert.equal(r.finished, 1);

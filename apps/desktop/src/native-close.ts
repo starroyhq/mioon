@@ -3,7 +3,7 @@
 export interface NativeCloseInspection {
   readonly version: 1;
   readonly token: string;
-  readonly disposition: 'clean' | 'dirty' | 'blocked';
+  readonly disposition: 'clean' | 'dirty' | 'blocked' | 'unknown' | 'unknown-dirty';
 }
 export type NativeCloseBlockReason = 'blocked' | 'unavailable' | 'changed';
 export type NativeCloseAction = 'close' | 'reload';
@@ -26,6 +26,9 @@ interface NativeCloseOptions {
   isCurrent(): boolean;
   confirmDiscard(action: NativeCloseAction): boolean | Promise<boolean>;
   confirmClose(action: NativeCloseAction): boolean | Promise<boolean>;
+  /** A separate, default-cancel risk decision. Never substitutes for ordinary
+   * dirty confirmation and never permits reload or changes business state. */
+  confirmUnknown?(): boolean | Promise<boolean>;
   onBlocked(reason: NativeCloseBlockReason, action: NativeCloseAction): unknown;
   /** Must ignore a replaced window/backend. Also called when an initial close
    * is rejected before the current document has an allowed application URL. */
@@ -71,7 +74,7 @@ function inspection(value: unknown): NativeCloseInspection | null {
   if (Object.keys(record).length !== 3 || !['version', 'token', 'disposition'].every(key => Object.hasOwn(record, key)) ||
       record.version !== 1 || typeof record.token !== 'string' ||
       !/^[A-Za-z0-9_.:-]{1,128}$/.test(record.token) ||
-      (record.disposition !== 'clean' && record.disposition !== 'dirty' && record.disposition !== 'blocked')) return null;
+      !['clean', 'dirty', 'blocked', 'unknown', 'unknown-dirty'].includes(record.disposition as string)) return null;
   return { version: 1, token: record.token, disposition: record.disposition as NativeCloseInspection['disposition'] };
 }
 
@@ -196,16 +199,29 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       attempt.token = captured.token;
       if (captured.disposition === 'blocked') { cancel(attempt, 'blocked'); return; }
 
-      const drained = await bounded(() => win.webContents.executeJavaScript(flushScript), attempt.abort.signal, Date.now() + timeoutMs);
-      if (!current(attempt)) { cancel(attempt); return; }
-      const saved = drained.ok && drained.value === true;
-      if (!saved) {
-        const accepted = await options.confirmClose(attempt.action);
+      const unknown = captured.disposition === 'unknown' || captured.disposition === 'unknown-dirty';
+      let saved = true;
+      if (unknown) {
+        if (attempt.action !== 'close') { cancel(attempt, 'blocked'); return; }
+        if (!options.confirmUnknown) { cancel(attempt, 'unavailable'); return; }
+        const accepted = await options.confirmUnknown();
         if (!current(attempt)) { cancel(attempt); return; }
         if (accepted !== true) { cancel(attempt); return; }
+        // Explicit unknown-result exit performs zero drains/writes/retries.
+        // The renderer must revalidate the exact owner/version/operation both
+        // before arming and during its final synchronous beforeunload.
+      } else {
+        const drained = await bounded(() => win.webContents.executeJavaScript(flushScript), attempt.abort.signal, Date.now() + timeoutMs);
+        if (!current(attempt)) { cancel(attempt); return; }
+        saved = drained.ok && drained.value === true;
+        if (!saved) {
+          const accepted = await options.confirmClose(attempt.action);
+          if (!current(attempt)) { cancel(attempt); return; }
+          if (accepted !== true) { cancel(attempt); return; }
+        }
       }
       let discardDirty = false;
-      if (captured.disposition === 'dirty') {
+      if (captured.disposition === 'dirty' || captured.disposition === 'unknown-dirty') {
         // This decision covers only the renderer capture, never later input.
         discardDirty = await options.confirmDiscard(attempt.action) === true;
         if (!current(attempt)) { cancel(attempt); return; }
@@ -214,7 +230,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       if (!current(attempt)) { cancel(attempt); return; }
       const expiresAt = Date.now() + timeoutMs;
       const token = JSON.stringify(captured.token);
-      const commitScript = `typeof globalThis.__mioonNativeCloseAdmission?.commit === 'function' ? globalThis.__mioonNativeCloseAdmission.commit(${token}, {discardDirty:${discardDirty},allowDrainFailure:${!saved},expiresAt:${expiresAt},action:${JSON.stringify(attempt.action)},targetUrl:${JSON.stringify(attempt.targetUrl)}}) : false`;
+      const commitScript = `typeof globalThis.__mioonNativeCloseAdmission?.commit === 'function' ? globalThis.__mioonNativeCloseAdmission.commit(${token}, {discardDirty:${discardDirty},allowDrainFailure:${!saved},${unknown ? 'allowUnknown:true,' : ''}expiresAt:${expiresAt},action:${JSON.stringify(attempt.action)},targetUrl:${JSON.stringify(attempt.targetUrl)}}) : false`;
       const committed = await bounded(() => win.webContents.executeJavaScript(commitScript), attempt.abort.signal, expiresAt);
       if (!current(attempt)) { cancel(attempt); return; }
       if (!committed.ok || committed.value !== true || Date.now() >= expiresAt) { cancel(attempt, 'changed'); return; }

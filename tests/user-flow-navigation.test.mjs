@@ -34,6 +34,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     canvas: { selectedId: selectedShotId, inspectorTab: 'settings', highlightedVersionId: null },
     editing: { selectedClipId: key.clipId, quickAssetId, playhead: 12, previewKind: 'timeline' } } };
   const env = {
+    nativeWindow: null,
     selectedId: selectedShotId, selectedClipId: key.clipId, workspaceMode: mode, quickAssetId,
     currentProject: { current: key.projectId }, navigationEpoch: { current: 5 }, panelIntent: { current: 2 },
     workspaceRef: { current: { restored: false } }, workspaceOriginScope,

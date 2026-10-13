@@ -260,10 +260,17 @@ test('desktop source keeps the renderer sandbox and native secret channel privat
   assert.match(main, /app\.enableSandbox\(\)/);
   assert.match(main, /app\.getPath\('userData'\)/);
   assert.match(backend, /createAgentSettingsClient\(\{ port: process\.parentPort \}\)/);
-  for (const source of [main, backend, broker]) {
+  for (const source of [backend, broker]) {
     assert.doesNotMatch(source, /ipcMain|ipcRenderer|contextBridge|preload\s*:/);
     assert.doesNotMatch(source, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   }
+  assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
+  assert.equal((main.match(/ipcMain\.handle\(/g) || []).length, 1);
+  assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
+  const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
+  const bridge = await readFile(new URL('../apps/desktop/src/project-window-preload.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(preload + bridge, /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
+  assert.match(preload, /exposeInMainWorld\('__mioonProjectWindow'/);
 });
 
 for (const platform of ['linux', 'darwin']) test('desktop settings persist ciphertext outside project data with owner-only files (' + platform + ')', async () => {

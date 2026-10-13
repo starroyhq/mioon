@@ -1,3 +1,4 @@
+import { useNativeSettingsActivity } from './editor-settings-scope.ts';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
 import { Button } from '@mioon/ui/components/button';
@@ -33,11 +34,14 @@ function renderRun(run, kind = 'recent', visible = true) {
         </article>;
 }
 
-export default function AgentPanel({ nativeCloseRegistry, projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', onApplied, onClose, onSettings, onDraftChange = () => {} }) {
+export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', onApplied, onClose, onSettings, onDraftChange = () => {} }) {
   const [state, setState] = useState(initialAgentChatState);
   const [disclosure, setDisclosure] = useState({ key: null, expanded: true, reviewed: false });
   const disclosureIdentity = useRef(null);
-  const visible = useWorkspaceVisibility();
+  const paneVisible = useWorkspaceVisibility();
+  const nativeSession = useRef(null);
+  const nativeActive = useNativeSettingsActivity(nativeSettingsScope, active => nativeSession.current?.setVisible(active && paneVisible && document.visibilityState !== 'hidden'));
+  const visible = paneVisible && nativeActive;
   const selectedKey = JSON.stringify([selectedShot ? [selectedShot.id, selectedShot.revision, selectedShot.title, selectedShot.prompt] : null, selectedTimelineClip, timelineEditBlockedReason, selectedTimelineGainClip, timelineGainBlockedReason]);
   const policyKey = JSON.stringify([state.contextMode, state.snapshot?.instanceId, state.snapshot?.revision, state.snapshot?.settings, state.snapshot?.timelineEdit, state.snapshot?.timelineGainEdit]);
   const interaction = useMemo(() => ({ visible, selectedKey, policyKey }), [visible, selectedKey, policyKey]), interactionRef = useRef(interaction), visibilityRef = useRef(visible);
@@ -47,7 +51,7 @@ export default function AgentPanel({ nativeCloseRegistry, projectId, projectName
     const closeReport = createAgentChatCloseReporter(nativeCloseRegistry);
     setState(initialAgentChatState()); follow.current = true;
     const current = createAgentChatSession({ projectId, onChange: next => { if (lifetime.current === owner && !owner.closed) { closeReport.publish(next); setState(next); } } });
-    session.current = current;
+    session.current = current; nativeSession.current = current;
     closeReport.publish(current.getState());
     const page = typeof document === 'undefined' ? null : document;
     const visibilityChanged = () => current.setVisible(visibilityRef.current && page?.visibilityState !== 'hidden');
@@ -70,6 +74,7 @@ export default function AgentPanel({ nativeCloseRegistry, projectId, projectName
   const usable = () => Boolean(visible && interactionRef.current === interaction && owner && !owner.closed && lifetime.current === owner && owner.projectId === projectId);
   const dismiss = settings => {
     if (!usable()) return;
+    if (settings && nativeSettingsScope) { void nativeSettingsScope.open('agent'); return; }
     interactionRef.current = null; session.current?.setVisible(false);
     if (settings) onSettings(); else onClose();
   };

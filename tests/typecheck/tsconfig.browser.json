@@ -29,7 +29,8 @@
     "../../apps/web/src/**/*.ts",
     "../../apps/web/src/**/*.tsx",
     "browser.consumer.tsx",
-    "export-sample-peak.consumer.tsx"
+    "export-sample-peak.consumer.tsx",
+    "desktop-launcher.consumer.tsx"
   ],
   "exclude": [
     "../../packages/ui/src/components/badge.tsx",

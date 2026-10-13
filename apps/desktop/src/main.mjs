@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage } from 'electron';
+import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage, ipcMain } from 'electron';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -9,7 +9,10 @@ import { stopBackendForQuit } from './shutdown.mjs';
 import { createDesktopStartup } from './startup.mjs';
 import { createDesktopAgentSettings } from './secret-store.mjs';
 import { createDesktopImageSecretCodec } from './image-secret-store.mjs';
-import { QuitCoordinator } from './lifecycle.mjs';
+import { createProjectWindowHost } from './project-window-host.ts';
+import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from './project-window-quit.ts';
+import { confirmOwnedWindowRestart } from './project-window-confirmation.ts';
+import { PROJECT_WINDOW_CHANNEL } from './project-window-protocol.ts';
 import { installNativeCloseAdmission } from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.mjs';
 import { windowChromeOptions } from './window-chrome.ts';
@@ -30,7 +33,7 @@ catch (error) { startupStorageError = error; }
 let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let startupOperation;
-let windowContext;
+let windowContext, windowHost;
 const windowAdmissions = new WeakMap();
 const cancelledStartupErrors = new WeakSet();
 let quitFailureNotice;
@@ -106,7 +109,7 @@ async function start() {
     startup.checkpoint();
     ready = started;
     activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
-    installSessionPolicy(activeSession, ready.url, () => win, { downloadsDirectory: app.getPath('downloads') });
+    installSessionPolicy(activeSession, ready.url, () => windowHost?.windows().find(window => windowHost.contextFor(window)?.role === 'editor'), { downloadsDirectory: app.getPath('downloads') });
     await activeSession.cookies.set(sessionCookie(ready.url, token));
     startup.checkpoint();
     await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
@@ -114,6 +117,17 @@ async function start() {
     // A backend handshake alone is not permission to open a window. Publish its
     // context only after this start owns a prepared session and discovery file.
     const context = windowContext = { startup, ready: started, session: activeSession };
+    windowHost = createProjectWindowHost({
+      backendId: randomUUID(), launcherUrl: `${started.url}/`, editorUrl: projectId => `${started.url}/?project=${projectId}`,
+      isCurrent: () => ownsWindowContext(context),
+      canInteract: () => quitRouter.allowsWindows,
+      createWindow: () => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
+        minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
+        autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(),
+        webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
+      prepareWindow: window => prepareOwnedWindow(window, context),
+      onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void rendererFailed(window, context).catch(fatal); },
+    });
     await openWindow(context);
     startup.checkpoint();
     return { identity, runtime: ready.runtime, tools: tools.versions };
@@ -131,23 +145,16 @@ function ownsWindowContext(context) {
 }
 
 function ownsWindow(window, context) {
-  return Boolean(window && win === window && !window.isDestroyed() && ownsWindowContext(context));
-}
-
-async function loadOwnedWindow(window, context) {
-  try { await window.loadURL(`${context.ready.url}/`); }
-  catch (error) {
-    // A destroyed/superseded window can reject its outstanding navigation. This
-    // exemption belongs only to that navigation, never startup or stop cleanup.
-    if (ownsWindow(window, context)) throw error;
-  }
+  return Boolean(window && windowHost?.owns(window) && !window.isDestroyed() && ownsWindowContext(context));
 }
 
 async function openWindow(context = windowContext) {
-  if (!ownsWindowContext(context) || (win && !win.isDestroyed())) return;
-  const window = new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
-    minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
-    autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(), webPreferences: secureWebPreferences(context.session) });
+  if (!ownsWindowContext(context)) return;
+  const window = windowHost?.ensureLauncher();
+  if (window) await windowHost.loadFor(window);
+}
+
+function prepareOwnedWindow(window, context) {
   win = window;
   installWindowPolicy(window, context.ready.url);
   windowAdmissions.set(window, installNativeCloseAdmission(window, {
@@ -156,26 +163,29 @@ async function openWindow(context = windowContext) {
       message: `部分本地草稿或视图位置尚未确认保存，仍要${action === 'reload' ? '重新载入' : '退出'}？`,
       detail: `${action === 'reload' ? '重新载入' : '直接退出'}可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。可以继续编辑并核对保存状态。`,
       buttons: [action === 'reload' ? '仍然重新载入' : '仍然退出', '继续编辑'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+    confirmUnknown: () => dialog.showMessageBox(window, { type: 'warning', title: '此窗口还有结果未知的操作',
+      message: '了解风险并关闭此窗口？',
+      detail: '操作可能已经在后台完成。关闭只放弃本窗口的未确认线索，不代表失败或取消，不会删除已保存数据或重发请求。重新导入可能产生重复素材。建议保留窗口，先核对原项目与记录；本次选择仅用于这一次关闭。',
+      buttons: ['了解风险并关闭', '保留窗口'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
     confirmDiscard: action => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBox(window, { type: 'question', title: '尚有未保存的修改',
       message: `放弃未保存的修改和未发送的输入并${action === 'reload' ? '重新载入' : '退出'}？`, detail: `包括 Agent、图像工坊和连接设置中的未保存输入。${action === 'reload' ? '重新载入' : '退出'}不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行。`,
       buttons: ['放弃修改', '继续编辑'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
     onBlocked: reason => smokeOutput ? undefined : dialog.showMessageBox(window, { type: 'warning', title: '暂时无法安全离开',
       message: reason === 'blocked' ? '还有读取、保存、发送或待核对的状态，请先在原面板处理。' : reason === 'changed' ? '确认期间的输入或状态已变化，本次操作已取消。' : '暂时无法确认当前输入的保存状态，本次操作已取消。',
       detail: '当前操作未继续，窗口和本地服务仍保留。不会放弃输入、保存连接设置或自动重试请求。', buttons: ['继续编辑'], defaultId: 0, cancelId: 0 }),
-    onCancel: () => { if (ownsWindow(window, context)) quitCoordinator.cancel(); },
-    requestQuit: () => ownsWindow(window, context) ? quitCoordinator.request().catch(quitFailed) : false
+    onCancel: () => { if (ownsWindow(window, context)) { quitCoordinator.cancel(window); restartCoordinator.cancel(window); } },
+    requestQuit: () => ownsWindow(window, context) ? requestApplicationQuit(window) : false
   }));
   window.on('closed', () => { if (win === window) win = null; });
-  window.once('ready-to-show', () => { if (ownsWindow(window, context)) window.show(); });
   const onRendererFailure = () => {
     if (ownsWindow(window, context) && !smokeOutput) void rendererFailed(window, context).catch(fatal);
   };
   window.webContents.on('render-process-gone', onRendererFailure);
   window.webContents.on('unresponsive', onRendererFailure);
-  await loadOwnedWindow(window, context);
 }
 
 async function stop() {
+  windowHost?.dispose(); windowHost = null;
   windowContext = null;
   await startupOperation?.abort();
   await backend?.stop();
@@ -190,24 +200,18 @@ async function cleanupStoppedBackend() {
 }
 
 async function restart() {
-  if (restarting || quitting) return;
-  restarting = true;
-  windowContext = null;
-  try {
-    if (win && !win.isDestroyed()) win.destroy();
-    await stop();
-    return await start();
-  } finally { restarting = false; }
+  return restartCoordinator.request();
 }
 
 async function backendFailed() {
   if (restarting || quitting) return;
-  if (win && !win.isDestroyed()) win.hide();
+  const failedBackend = backend, failedContext = windowContext;
   if (backend?.hasUnconfirmedMedia) return quitFailed({ code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
   const { response } = await dialog.showMessageBox({ type: 'error', title: '本地服务已停止',
     message: '本地服务意外退出。已保存的数据会在重启时恢复。',
     detail: '未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
     buttons: ['重启本地服务', '退出'], defaultId: 0, cancelId: 1 });
+  if (backend !== failedBackend || windowContext !== failedContext || quitting) return;
   if (response === 0) { try { await restart(); } catch (error) { await fatal(error); } }
   else app.quit();
 }
@@ -255,23 +259,28 @@ function installMenu() {
   const template = [];
   if (process.platform === 'darwin') template.push({ role: 'appMenu' });
   template.push({ label: '应用', submenu: [
+    { label: '项目首页', click: () => windowHost?.showProjects() },
     { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => {
-      if (ownsWindow(win, windowContext)) void windowAdmissions.get(win)?.captureRecoveryDecision().reload().catch(fatal);
+      const window = BrowserWindow.getFocusedWindow() || win;
+      if (ownsWindow(window, windowContext)) void windowAdmissions.get(window)?.captureRecoveryDecision().reload().catch(fatal);
     } },
-    { label: '重启本地服务', click: async () => {
-      const { response } = await dialog.showMessageBox({ type: 'question', message: '重启本地服务？',
-        detail: '已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
-        buttons: ['重启', '取消'], defaultId: 1, cancelId: 1 });
-      if (response === 0) { try { await restart(); } catch (error) { await fatal(error); } }
-    } },
+    { label: '重启本地服务', click: () => confirmOwnedWindowRestart({
+      getOwner: () => windowContext || startupOperation, canRequest: () => quitRouter.allowsWindows && !restarting,
+      confirm: () => dialog.showMessageBox({ type: 'question', message: '重启本地服务？',
+        detail: '所有窗口都需通过关闭检查后才停止服务。已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
+        buttons: ['重启', '取消'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+      restart,
+    }).catch(fatal) },
     { type: 'separator' }, { role: 'quit', label: '退出' }
   ] }, { role: 'editMenu', label: '编辑' }, { role: 'windowMenu', label: '窗口' });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-const quitCoordinator = new QuitCoordinator({ getWindow: () => win,
+const quitCoordinator = new MultiWindowQuitCoordinator({ getWindows: () => windowHost?.windows() || [],
+  onStateChange: () => windowHost?.refresh(),
   stop: async () => {
     quitting = true;
+    windowHost?.dispose(); windowHost = null;
     windowContext = null;
     const onUnconfirmed = () => smokeOutput ? undefined : dialog.showMessageBox({ type: 'error', title: '正在等待本地进程退出',
       message: '本地进程尚未确认退出，应用将继续等待。',
@@ -289,6 +298,19 @@ const quitCoordinator = new QuitCoordinator({ getWindow: () => win,
       }
     });
   }, finish: () => app.quit() });
+
+const restartCoordinator = new MultiWindowRestartCoordinator({
+  getWindows: () => windowHost?.windows() || [],
+  canRequest: () => quitCoordinator.state === 'idle' && !quitting && !quitRouter.isPending,
+  onStateChange: state => { restarting = state !== 'idle'; windowHost?.refresh(); },
+  stop, start,
+});
+const quitRouter = createProjectWindowQuitRouter({ quit: quitCoordinator, restart: restartCoordinator, onPendingChange: () => windowHost?.refresh() });
+function requestApplicationQuit(source) { return quitRouter.request(source).catch(quitFailed); }
+ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
+  if (!windowHost) throw new Error('Native windows are not available.');
+  return windowHost.dispatch(event, request);
+});
 
 async function quitFailed(error) {
   return quitFailureNotice ??= (async () => {
@@ -309,8 +331,7 @@ if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStor
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => {
-    const window = win;
-    if (ownsWindow(window, windowContext)) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); }
+    if (quitCoordinator.state === 'idle' && !restarting) windowHost?.showProjects();
   });
   app.on('activate', () => {
     if (!restarting && !quitting && quitCoordinator.state === 'idle' && ownsWindowContext(windowContext)) void openWindow().catch(fatal);
@@ -319,7 +340,8 @@ else {
   app.on('before-quit', event => {
     if (quitCoordinator.state === 'finished') return;
     event.preventDefault();
-    void quitCoordinator.request().catch(quitFailed);
+    const focused = BrowserWindow.getFocusedWindow();
+    void requestApplicationQuit(ownsWindow(focused, windowContext) && windowHost.isTrustedDocument(focused) ? focused : undefined);
   });
   process.on('SIGTERM', () => app.quit());
   process.on('SIGINT', () => app.quit());

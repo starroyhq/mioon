@@ -294,13 +294,23 @@ test('timed-out drain preserves the original explicit close decision and ignores
 });
 
 test('late commit execution cannot arm after deadline even if cancel transport fails', async t => {
-  const gate = deferred();
-  const f = fixture(t, { dirty: true, timeoutMs: 20, execute: (kind, execute) => {
-    if (kind === 'commit') return gate.promise.then(execute);
+  const gate = deferred(); let expiresAt = null;
+  const f = fixture(t, { dirty: true, timeoutMs: 20, execute: (kind, execute, code) => {
+    if (kind === 'commit') {
+      expiresAt = Number(code.match(/expiresAt:(\d+)/u)?.[1]);
+      return gate.promise.then(execute);
+    }
     if (kind === 'cancel') throw Error('Renderer cleanup unavailable');
     return execute();
   } });
   assert.equal(await f.coordinator.request(), false);
+  assert.ok(Number.isSafeInteger(expiresAt));
+  // A timer callback may wake just before its wall-clock lease. This test
+  // releases the delayed script only after the actual captured deadline,
+  // rather than treating timer completion as proof that Date.now crossed it.
+  assert.equal(f.commits.length, 0);
+  while (Date.now() < expiresAt) await sleep(Math.max(1, expiresAt - Date.now()));
+  assert.ok(Date.now() >= expiresAt);
   gate.resolve(); await tick(); await tick();
   assert.equal(f.commits.length, 1); assert.equal(f.armed, null);
   assert.equal(f.win.closeCalls, 1); assert.deepEqual(f.notices, ['changed']);
@@ -545,18 +555,19 @@ test('real renderer binds reload to the exact current document URL and action', 
 
 test('main routes only user reload paths through admission; startup load failures remain fatal', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /windowAdmissions\.get\(win\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
+  assert.match(main, /windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
   assert.match(main, /const recovery = windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   assert.match(main, /if \(response === 0\) await recovery\?\.reload\(\)/);
-  const start = main.indexOf('async function loadOwnedWindow('), end = main.indexOf('\nasync function openWindow(', start);
+  const start = main.indexOf('async function openWindow('), end = main.indexOf('\nfunction prepareOwnedWindow(', start);
   const source = main.slice(start, end);
-  assert.match(source, /await window\.loadURL/);
+  assert.match(source, /await windowHost\.loadFor\(window\)/);
   assert.doesNotMatch(source, /requestReload/);
-  const context = vm.createContext({ ownsWindow: () => true });
+  const window = {}, startupError = Object.assign(Error('Startup failed'), { code: 'ERR_ABORTED' });
+  const context = vm.createContext({ ownsWindowContext: () => true,
+    windowHost: { ensureLauncher: () => window, loadFor: async target => { assert.equal(target, window); throw startupError; } } });
   vm.runInContext(source, context);
-  context.window = { loadURL: async () => { throw Object.assign(Error('Startup failed'), { code: 'ERR_ABORTED' }); } };
   context.context = { ready: { url: 'http://127.0.0.1:45000' } };
-  await assert.rejects(vm.runInContext('loadOwnedWindow(window, context)', context), { code: 'ERR_ABORTED' });
+  await assert.rejects(vm.runInContext('openWindow(context)', context), { code: 'ERR_ABORTED' });
 });
 
 test('both native dialogs receive the typed close or reload action for precise wording', async t => {
@@ -925,7 +936,7 @@ async function reloadMenuHarness(f, isCurrent = () => true) {
   const from = main.indexOf('function installMenu()'), to = main.indexOf('\nconst quitCoordinator', from);
   let menu;
   const errors = [];
-  const context = vm.createContext({ process: { platform: 'linux' }, windowContext: {}, win: f.win,
+  const context = vm.createContext({ process: { platform: 'linux' }, windowContext: {}, win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } }, fatal: error => errors.push(error) });
   vm.runInContext(main.slice(from, to) + '\ninstallMenu();', context);
@@ -972,7 +983,7 @@ async function actualMainAdmissionCallbacks(dialog, window = {}, owner = () => t
   return callbacks;
 }
 
-for (const kind of ['confirmClose', 'confirmDiscard', 'onBlocked']) {
+for (const kind of ['confirmClose', 'confirmDiscard', 'confirmUnknown', 'onBlocked']) {
   test(`actual main ${kind} leaves utility heartbeat schedulable while the native dialog awaits its response`, async () => {
     const gate = deferred(), window = {};
     let heartbeat = 0, settled = false, presented;

@@ -243,6 +243,10 @@ function sessionFixture(t) {
 function parentHarness({ ready = true } = {}) {
   const c = context(), calls = [], dataRef = { current: { project: { id: projectId }, ...c } }, viewRef = { current: { activeMode: 'editing', editing: { selectedClipId: clipId, quickAssetId: null } } };
   const deps = { ...replacement, canPublishProjectOpen, workspaceOriginScope,
+    nativeWindow: null, projectOpening: { phase: ready ? 'ready' : 'loading' },
+    // This extracted App slice reaches the passive native status hook. Web has
+    // no native binding; preserve that exact boundary without any host action.
+    useEditorWindowStatus: binding => assert.equal(binding, null),
     openedProject: { current: ready ? projectOpenAttempt(projectId, 1, 'normal') : null }, importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, workspaceRef: { current: { restored: false } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
     tasksRef: { current: { blocked: () => false } }, pendingForProject: () => [], online: true, auth: true, loading: false, mutateTimeline: async (...args) => { calls.push(args); return acknowledged(args[3].review || replacement.createClipReplacementReview(c, `asset:${newAssetId}`)); } };
   const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function projectSessionReady()', '  const panelSurface =')} ${extract('function clipReplacementContext()', 'function exportSettingsContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps);
