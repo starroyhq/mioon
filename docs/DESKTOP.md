@@ -99,6 +99,10 @@ node apps/desktop/scripts/migrate-data.mjs --source=/absolute/old/data --destina
 
 Loopback token 与 OS 账户权限共同构成本地单用户信任边界。本应用不是多用户隔离服务器，也不是针对恶意系统管理员的沙箱。
 
+## 窗口外观
+
+macOS 隐藏原生标题栏（`titleBarStyle: 'hidden'`），三枚窗口按钮由系统绘制在工作台顶栏左侧，关闭窗口仍走同一套关窗、未保存确认与退出流程。顶栏同时是窗口拖动区，其中的按钮、标签和输入框、以及对话框与菜单显式排除拖动。窗口选项见 `apps/desktop/src/window-chrome.ts`，页面按 user agent 识别该外壳并在 `<html>` 上标记 `data-desktop-frame="mac-inset"`，顶栏左侧留白见 `apps/web/src/styles.css`。Windows 和 Linux 保留原生标题栏，页面不做调整；渲染进程仍没有 preload、IPC 或原生接口。
+
 ## 启动、退出与恢复
 
 主进程等待 utilityProcess 就绪、验证它返回的 loopback origin，再创建已认证窗口。启动超时或服务失败会显示本地错误，不会留下永远等待的空白窗口。正常关窗先通过一个固定、无特权的页面函数排空视图偏好的同源 HTTP 保存，最多等待 1.5 秒。失败或超时会询问“仍然退出 / 继续编辑”；选择继续编辑会保持窗口和后端运行。此函数不暴露 IPC、Electron、文件系统或令牌。随后仍执行原有未保存属性草稿确认，窗口真正关闭后才停止服务。

@@ -9,7 +9,7 @@
 .task-workspace-body>[data-testid="recovery-task-storage-disclosure"]{margin:10px 0 14px}
 .task-workspace-body>[data-testid="recovery-task-storage-disclosure"] summary{cursor:pointer}
 .task-workspace-body>[data-testid="recovery-task-storage-disclosure"] ul{padding-left:18px}
-.task-workspace-note{flex:none;min-width:0;padding:9px 12px;border-top:1px solid #30373c;color:#89969c;font-size:9px;line-height:1.7;overflow-wrap:anywhere}
+.task-workspace-note{flex:none;min-width:0;padding:9px 12px;border-top:1px solid #30373c;color:#89969c;font-size:10px;line-height:1.7;overflow-wrap:anywhere}
 .task-workspace .job-card{min-width:0;padding:11px;margin-bottom:11px;border-radius:7px}
 .task-workspace .job-title{min-width:0;flex-wrap:wrap;gap:6px}
 .task-workspace .job-title strong{min-width:0;flex:1 1 90px;white-space:normal;overflow-wrap:anywhere;line-height:1.6}

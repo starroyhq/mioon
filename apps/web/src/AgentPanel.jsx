@@ -161,6 +161,7 @@ export default function AgentPanel({ projectId, projectName, selectedShot = null
         {state.message && <div className={`agent-chat-notice ${['unknown', 'load_error', 'detached'].includes(phase) ? 'is-warning' : ''}`} role="status" data-testid="agent-chat-notice">{state.message}</div>}
       </div>
       <form className="agent-chat-composer" onSubmit={submit} noValidate>
+        <div className="agent-chat-composer-options">
         <fieldset className="agent-chat-context-mode" disabled={!ready || pending} data-testid="agent-chat-context-mode">
           <legend>本次发送的范围</legend>
           <Label htmlFor="agent-chat-mode-typed"><Input id="agent-chat-mode-typed" data-testid="agent-chat-mode-typed" type="radio" name="agent-chat-context-mode" value={AGENT_TYPED_CONTEXT} checked={state.contextMode === AGENT_TYPED_CONTEXT} disabled={!ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TYPED_CONTEXT); }} /><span>仅文字聊天</span></Label>
@@ -213,6 +214,8 @@ export default function AgentPanel({ projectId, projectName, selectedShot = null
         </section>}
         {gaining && <AgentTimelineGainSelection target={state.timelineGainTarget} policy={snapshot?.timelineGainEdit} blockedReason={timelineGainBlockedReason} visible={visible} />}
         {configuration && <div className="agent-chat-destination" data-testid="agent-chat-destination"><div><span>发送目标</span><strong>{configuration.model || '未填写模型'}</strong><span data-testid="agent-chat-protocol">{AGENT_PROTOCOLS[configuration.protocol].label}</span></div><p>{configuration.baseUrl ? deriveAgentEndpoint(configuration) : '未填写服务地址'}</p><p className="agent-chat-context" data-testid="agent-chat-context">{gaining ? AGENT_GAIN_SEND_CONTEXT : moving ? '发送本条输入、范围内已完成的纯聊天文字，以及上方明确展示的已保存片段与同轨数值时间范围。不含其他轨道、媒体、路径、ID、源身份或未保存草稿；最多 2 次模型请求、1 次仅 startFrame 的提议工具调用、8 KiB 结果。续接关闭工具，提议不会自动应用。' : editing ? '发送本条输入、范围内已完成的纯聊天文字，以及上方一个镜头的完整已保存标题和画面描述。仅允许 shot.update 的 title、prompt 提议，不发送其他镜头、媒体、未保存草稿或项目读取及修改提议轮次。最多 2 次模型请求、1 次提议工具调用、8 KiB 结果；续接关闭工具，提议不会自动应用。' : inspecting ? `发送本条输入、范围内的已完成对话，以及上方项目“${projectName || projectId}”的一次已保存文字与元数据读取结果。最多 2 次模型请求、1 次只读工具调用、8 KiB 结果；仅一次续接，续接时关闭工具。` : '仅发送本条输入及范围内的已完成纯聊天文字。不含项目名称、ID、记录、媒体或项目读取轮次。'}</p></div>}
+        </div>
+        <div className="agent-chat-composer-input">
         <Label className="agent-chat-consent" htmlFor="agent-chat-consent"><Input id="agent-chat-consent" data-testid="agent-chat-consent" type="checkbox" checked={Boolean(snapshot && state.consent !== null && state.consent === agentChatConsentKey(snapshot, state.contextMode, selectedTarget))} disabled={!ready || pending || (editing && !state.editTarget) || (moving && (!state.timelineTarget || Boolean(timelineEditBlockedReason))) || (gaining && (!state.timelineGainTarget || Boolean(timelineGainBlockedReason)))} onChange={event => { if (usable()) session.current?.approve(event.target.checked); }} /><span>{gaining ? AGENT_GAIN_SEND_CONSENT : moving ? '我授权按以上项目、片段、保存版本、所展示的片段及同轨数值时间范围、协议、地址、模型和限额发送本条输入与纯聊天上下文，并保存记录；最多 2 次模型请求可能计费。这里只允许提出移动差异，应用仍需我另行明确批准。' : editing ? '我授权按以上项目、镜头、已保存版本、完整文字、协议、地址、模型和工具限额发送本条输入、范围内纯聊天上下文及镜头文字，并保存本次记录；最多 2 次模型请求可能计费。此授权只允许提出差异，应用还需我另行明确批准。' : inspecting ? '我授权本次按以上协议、地址、模型和项目范围发送数据并保存记录；允许一次读取及关闭工具后的有限续接，不逐次询问。最多 2 次模型请求可能计费。' : '我确认按以上协议、地址和模型发送本条输入及纯聊天上下文，并保存记录。一次模型请求可能计费。'}隐藏面板、页签或切换项目后，已接受的运行仍可能继续。</span></Label>
         <Label className="sr-only" htmlFor="agent-chat-prompt">给 Agent 的消息</Label>
         <Textarea id="agent-chat-prompt" ref={composer} data-testid="agent-chat-prompt" value={state.draft} rows={3} maxLength={AGENT_CHAT_PROMPT_BYTES} disabled={!visible || pending || ['submitting', 'stopping'].includes(phase)} placeholder="输入想讨论的内容…" aria-describedby="agent-chat-input-help" onChange={event => { if (usable()) session.current?.edit(event.target.value); }} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent?.isComposing) { event.preventDefault(); void send(); } }} />
@@ -221,6 +224,7 @@ export default function AgentPanel({ projectId, projectName, selectedShot = null
           {running && <Button type="button" variant="ghost" className="button agent-chat-stop" data-testid="agent-chat-stop" disabled={!visible || ['stopping', 'loading', 'submitting'].includes(phase)} onClick={() => { if (usable()) void session.current?.stop(); }}>停止后续步骤</Button>}
           {!running && <Button type="submit" variant="ghost" className="button primary" data-testid="agent-chat-send" disabled={!canSend}>{phase === 'submitting' ? <span className="spinner" /> : <Icon name="arrow" size={14} />}发送</Button>}
         </div></div>
+        </div>
         <p className="agent-chat-stop-note">停止阻止后续步骤，保留已有文字与结果；无法撤回已发生的费用。重启不会自动续接。</p>
       </form>
   </section>;

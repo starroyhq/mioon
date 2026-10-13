@@ -6,6 +6,7 @@ import { PANEL_BOUNDS, effectiveWorkspaceLayout } from './workspace-layout.js';
 import Icon from './icons.jsx';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Math.round(value)));
+const CENTER_COMFORT_HEIGHT = 300, TIMELINE_FLOOR_HEIGHT = 220;
 
 export function usePanelGeometry(surface, preferred, mode, scope, ready = true) {
   const [size, setSize] = useState({ width: typeof window === 'undefined' ? 1200 : window.innerWidth, height: typeof window === 'undefined' ? 700 : window.innerHeight - 60 });
@@ -24,11 +25,13 @@ export function usePanelGeometry(surface, preferred, mode, scope, ready = true) 
   useLayoutEffect(() => { setLive(null); }, [scope]);
   const narrow = size.width <= 800 || size.height < 460;
   const current = live?.scope === scope ? { ...preferred, [live.field]: live.value } : preferred;
-  const effective = effectiveWorkspaceLayout(current, { width: Math.max(0, size.width - 48), height: Math.max(0, size.height - 36), centerMinWidth: 300, centerMinHeight: 180, collapsedWidth: 28, separatorSize: 0 });
+  // The preview needs room for its header, footer and a watchable frame, so it keeps CENTER_COMFORT_HEIGHT
+  // while the timeline can still show TIMELINE_FLOOR_HEIGHT (header, toolbar, ruler and one track).
+  const effective = effectiveWorkspaceLayout(current, { width: Math.max(0, size.width - 48), height: Math.max(0, size.height - 36), centerMinWidth: 300, centerMinHeight: 180, centerComfortHeight: CENTER_COMFORT_HEIGHT, timelineFloorHeight: TIMELINE_FLOOR_HEIGHT, collapsedWidth: 28, separatorSize: 0 });
   const maxima = {
     assetsWidth: Math.max(PANEL_BOUNDS.assetsWidth.min, Math.min(PANEL_BOUNDS.assetsWidth.max, size.width - 48 - 300 - (preferred.inspectorCollapsed ? 28 : effective.inspectorWidth))),
     inspectorWidth: Math.max(PANEL_BOUNDS.inspectorWidth.min, Math.min(PANEL_BOUNDS.inspectorWidth.max, size.width - 48 - 300 - (preferred.assetsCollapsed ? 28 : effective.assetsWidth))),
-    timelineHeight: Math.max(PANEL_BOUNDS.timelineHeight.min, Math.min(PANEL_BOUNDS.timelineHeight.max, size.height - 36 - 180)),
+    timelineHeight: Math.max(PANEL_BOUNDS.timelineHeight.min, Math.min(PANEL_BOUNDS.timelineHeight.max, effective.timelineMaxHeight)),
   };
   return { narrow, size, effective, maxima, preview: (field, value) => setLive(value === null ? null : { scope, field, value }),
     style: { '--dock-assets': `${effective.assetsWidth}px`, '--dock-inspector': `${effective.inspectorWidth}px`, '--dock-timeline': `${mode === 'editing' ? effective.timelineHeight : 0}px` } };

@@ -60,6 +60,20 @@ test('effective geometry preserves center space and never changes durable prefer
   assert.deepEqual(effectiveWorkspaceLayout(preferred, { ...options, width: 1800, height: 1200 }), large);
 });
 
+test('the center keeps a comfortable height while the timeline can still keep its floor, then yields to the hard minimum', () => {
+  const preferred = defaultWorkspaceLayout().editing, before = structuredClone(preferred);
+  const options = { width: 1800, centerMinWidth: 300, centerMinHeight: 180, centerComfortHeight: 300, timelineFloorHeight: 220, separatorSize: 0, collapsedWidth: 28 };
+  const at = height => effectiveWorkspaceLayout(preferred, { ...options, height });
+  assert.equal(at(900).timelineHeight, 320);
+  assert.equal(at(584).timelineHeight, 284); assert.equal(at(584).timelineMaxHeight, 284);
+  assert.equal(at(434).timelineHeight, 220); assert.equal(at(434).timelineMaxHeight, 220);
+  assert.equal(at(380).timelineHeight, 200); assert.equal(at(380).timelineMaxHeight, 200);
+  for (const height of [0, 100, 300]) { const result = at(height); assert.ok(Number.isFinite(result.timelineHeight) && result.timelineHeight >= 0); assert.ok(result.timelineHeight <= height); }
+  assert.deepEqual(preferred, before);
+  // Callers that do not ask for a comfortable height keep the plain hard minimum.
+  assert.equal(effectiveWorkspaceLayout(preferred, { ...options, centerComfortHeight: undefined, timelineFloorHeight: undefined, height: 584 }).timelineMaxHeight, 404);
+});
+
 test('effective collapsed and extremely narrow layouts stay finite and preserve saved visibility', () => {
   const preferred = { ...defaultWorkspaceLayout().editing, assetsCollapsed: true };
   const wide = effectiveWorkspaceLayout(preferred, { width: 1200, height: 900, collapsedWidth: 28, separatorSize: 0 });

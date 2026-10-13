@@ -282,6 +282,20 @@ test('geometry previews are local, viewport-derived sizes never mutate preferenc
   h.unmount(); assert.equal(h.observerCount(), 0);
 });
 
+test('the preview keeps a comfortable height while the timeline keeps one track, and the resize maximum matches the effective cap', () => {
+  const h = harness('usePanelGeometry'), preferred = layout.defaultWorkspaceLayout().editing;
+  const surface = { current: { clientWidth: 1400, clientHeight: 620 } }, props = { surface, preferred, mode: 'editing', scope: 'project-one:editing' };
+  h.render(props); let geometry = h.render(props);
+  // 620px minus 36px of padding and gap leaves 584px: a 300px preview and a 284px timeline. The preferred 320px is untouched.
+  assert.equal(geometry.effective.timelineHeight, 284); assert.equal(geometry.maxima.timelineHeight, 284); assert.equal(preferred.timelineHeight, 320);
+  surface.current.clientHeight = 900; h.resize(); geometry = h.render(props);
+  assert.equal(geometry.effective.timelineHeight, 320); assert.equal(geometry.maxima.timelineHeight, 564);
+  // A short window lets the preview give way before the timeline drops below one track.
+  surface.current.clientHeight = 470; h.resize(); geometry = h.render(props);
+  assert.equal(geometry.narrow, false); assert.equal(geometry.effective.timelineHeight, 220); assert.equal(geometry.maxima.timelineHeight, 220);
+  h.unmount();
+});
+
 test('double-click restores the durable default even when the viewport maximum is smaller, while keyboard sizing stays constrained', () => {
   for (const name of ['assets', 'inspector', 'timeline']) {
     const field = { assets: 'assetsWidth', inspector: 'inspectorWidth', timeline: 'timelineHeight' }[name], bounds = layout.PANEL_BOUNDS[field];

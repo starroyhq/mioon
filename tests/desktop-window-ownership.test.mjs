@@ -10,6 +10,7 @@ import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
 import * as lifecycle from '../apps/desktop/src/lifecycle.mjs';
 import * as security from '../apps/desktop/src/security.mjs';
+import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
 
 const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -114,7 +115,7 @@ async function harness(t, options = {}) {
         r.backends.push(this);
       }
     },
-    BrowserWindow: Window,
+    BrowserWindow: Window, windowChromeOptions: () => windowChromeOptions('darwin'),
     session: { fromPartition() {
       const index = r.sessions.length;
       const value = Object.assign(new EventEmitter(), {
@@ -184,6 +185,8 @@ async function harness(t, options = {}) {
         assert.equal(window.config.webPreferences.sandbox, true);
         assert.equal(window.config.webPreferences.contextIsolation, true);
         assert.equal(window.config.webPreferences.nodeIntegration, false);
+        assert.equal(window.config.titleBarStyle, 'hidden');
+        assert.deepEqual(window.config.trafficLightPosition, MAC_TRAFFIC_LIGHT_POSITION);
         assert.equal(window.popupPolicy().action, 'deny');
       }
     }
