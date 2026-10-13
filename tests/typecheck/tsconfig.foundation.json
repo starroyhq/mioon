@@ -27,7 +27,8 @@
     "../../packages/contracts/src/agent-protocol.mjs",
     "./agent-protocol.consumer.mts",
     "./agent-timeline-gain.consumer.mts",
-    "./export-sample-peak.consumer.mts"
+    "./export-sample-peak.consumer.mts",
+    "./float-checked-export.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

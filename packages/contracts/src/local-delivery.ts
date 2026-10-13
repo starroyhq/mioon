@@ -1,4 +1,5 @@
 import type {TimelineExportRange} from './timeline-export-range.ts';
+import type {TimelineExportSettings} from './timeline-export-float.ts';
 import {z} from 'zod';
 
 // Private, local export-title recovery only. Nothing in this companion format
@@ -48,10 +49,7 @@ const targetStatus=z.enum(['unset','matching','changed','missing']);
 
 // Type-only spelling of the existing closed profile. The injected canonical
 // timeline.render validator, rather than a second schema, is runtime authority.
-export type LocalDeliveryExportSettings={
-  profileId:'mp4_h264_v1';resolution:'native'|'short_360'|'short_1080';
-  rateControl:{mode:'crf';quality:'compact'|'standard'|'high'}|{mode:'bitrate';targetKbps:2000|4000|8000};
-};
+export type LocalDeliveryExportSettings=TimelineExportSettings;
 export type LocalDeliveryRenderInput={
   projectId:string;expectedRevision:number;requestId:string;purpose:'export';
   deliveryName?:string;exportSettings?:LocalDeliveryExportSettings;preflightSnapshotHash?:string;exportRange?:TimelineExportRange;

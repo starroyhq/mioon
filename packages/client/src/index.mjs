@@ -1,3 +1,5 @@
+import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
+import {isTimelineRenderRecord} from '@mioon/contracts';
 import {parseExpectedWorkspaceOrigin, isWorkspaceRestoreInspection} from '@mioon/contracts';
 import {isWorkspaceBackupInspection} from '@mioon/contracts';
 import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
@@ -233,6 +235,8 @@ export function createClient(clientOptions = {}) {
       :operation==='image.request.get'?isImageRequestResponse(result)&&(result===null||result.projectId===parsed.projectId&&result.requestId===parsed.requestId)
       :['image.task.list','image.group.list','image.version.list'].includes(operation)?isImageListResponse(operation,parsed,result):true;
     if(!imageReadValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid image record.');
+    if (operation === 'export.get' && !isTimelineExportFloatReadResponse(result, parsed.exportId, isTimelineRenderRecord))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid float export report.');
     if (operation === 'timeline.format.get' && !isTimelineFormatReadResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))

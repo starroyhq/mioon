@@ -5,6 +5,8 @@ import {EventEmitter} from 'node:events';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.mjs';
+import {schemas, operationEffect} from '@mioon/contracts';
+import {readFile} from 'node:fs/promises';
 
 const deferred = () => { let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve}; };
 async function fixture(t, operation) {
@@ -100,4 +102,35 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
   res.writableFinished = false; res.emit('close'); req.emit('aborted');
   assert.equal(signal.aborted, false);
   assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
+});
+
+
+test('only three explicit advisory operations observe disconnect; private capability files do not become business cancellation', async () => {
+  const observed = new Set(['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak']);
+  assert.equal(operationEffect('timeline.export.capabilities').fileWrite, true, 'the real temporary-file effect must remain disclosed');
+  for (const operation of Object.keys(schemas)) {
+    const req = new EventEmitter(), res = new EventEmitter(); let received;
+    await callObservedRpc(req, res, {call: async (_, __, options) => {received = options.signal; return null;}}, operation, {});
+    assert.equal(received instanceof AbortSignal, observed.has(operation), operation);
+    assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
+  }
+});
+
+test('observer policy rejects every other file writer and future business/network/paid capability effects', async () => {
+  const source = await readFile(new URL('../apps/server/src/rpc-observation.mjs', import.meta.url), 'utf8');
+  const importLine = "import {operationEffect} from '@mioon/contracts';";
+  assert.equal(source.split(importLine).length, 2, 'one exact metadata dependency, actual observer function remains intact');
+  const cases = [
+    ...['timeline.export.preflight', 'timeline.export.samplePeak'].map(operation => ({operation, patch:{fileWrite:true}})),
+    ...[{readOnly:false}, {databaseWrite:true}, {externalIO:true}, {paidGeneration:true}, {destructive:true}, {openWorld:true}]
+      .map(patch => ({operation:'timeline.export.capabilities', patch})),
+  ];
+  for (const {operation, patch} of cases) {
+    const effects = {...operationEffect(operation), ...patch};
+    const module = await import('data:text/javascript;base64,' + Buffer.from(source.replace(importLine, `const operationEffect = () => (${JSON.stringify(effects)});`)).toString('base64'));
+    const req = new EventEmitter(), res = new EventEmitter(); res.destroyed = true; let received;
+    await module.callObservedRpc(req, res, {call:async (_, __, options) => {received=options.signal; return null;}}, operation, {});
+    assert.equal(received, undefined, operation + JSON.stringify(patch));
+    assert.equal(req.listenerCount('aborted'),0); assert.equal(res.listenerCount('close'),0);
+  }
 });

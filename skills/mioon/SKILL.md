@@ -593,3 +593,28 @@ Do not edit, trim or rebase timeline clips/cues to export an interval. Fade and 
 When the user requests an audio peak check of an existing final timeline export, discover `timeline export samplePeak` / `timeline_export_samplePeak` and supply only its owned project and succeeded export IDs. Use this resource-intensive local read explicitly; never run it automatically while listing, after rendering, at startup or after response loss. It does not create or retry a render. Cancellation ends only the check. Restored-v1 workspaces refuse it.
 
 Present it as **已导出文件解码样本峰值** with the returned artifact hash, checked time and frozen revision/name/range. Ready includes actual complete supported stereo decode and two hash passes; non-ready has no measurement. Explain that sample peak is not true peak/LUFS and cannot certify the original mix avoided clipping. Do not normalize, rerender, or send the audio/report to a model unless separately authorized. Existing export/download remains available after an incomplete check. See [limits and acceptance](../../docs/EXPORT-SAMPLE-PEAK.md).
+
+## Explicit float-checked final export
+
+Only when the user explicitly chooses this policy, supply
+`exportSettings.profileId: "mp4_h264_float_checked_v2"` through the existing
+`timeline.render` export operation, with the same closed resolution and
+rateControl fields as v1. Discover the current shared schema and perform the
+bounded local capability check first. V2's capability proof creates and cleans
+private temporary synthetic files; it does not render user media or authorize a
+later export. Source preflight is separate and does not measure audio peaks.
+
+Explain before selection: float intermediate audio avoids the demonstrated
+signed-16-bit intermediate clipping, but any complete pre-encode sample peak
+strictly above one fails without publishing an asset. No gain is changed
+automatically. This is not true-peak/loudness/AAC safety certification.
+On `EXPORT_AUDIO_OVER_RANGE`, retain the original task/request and its report.
+Explicitly edit saved gains if requested, then use a new reviewed request key.
+Never retry the old failed export as a new key automatically or treat its original
+queued replay as newly queued work. Never supply `renderAttemptId`, `audioCheck`,
+measurement, output hash or a private path as caller authority.
+
+V2 is currently available through shared backend/CLI/MCP input, without a new UI
+selector. Do not tell the user to find a mode control that this slice does not
+provide. Existing omitted/v1 requests keep their exact default behavior.
+See [profile, report and limits](../../docs/FLOAT-CHECKED-EXPORT.md).

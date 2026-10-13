@@ -8,10 +8,17 @@ import {prepareTimelineSubtitles,timelineSubtitleFilters} from './subtitle-media
 import {validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
 import {isTimelineExportSnapshot} from '@mioon/contracts';
 import {assertTimelineExportCapability,timelineExportVideoArgs} from './timeline-export-capabilities.mjs';
-import {checkMediaEffect} from './media-runtime.mjs';
+import {checkMediaEffect,runStreaming} from './media-runtime.mjs';
+import {withProbePermit} from './media-probe.mjs';
+import {waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.mjs';
+import {createTimelineFloatAudioChecker,assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure} from './timeline-float-audio-check.ts';
+import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export-float';
+import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
+import {createTimelineFloatStaging} from './timeline-float-staging.ts';
 import {planTimelineExportRange,validateTimelineExportRangeOutputStart} from './timeline-export-range-plan.ts';
 
 const FPS=30,SAMPLES_PER_FRAME=1600;
+const checkFloatAudio=createTimelineFloatAudioChecker({run,runStreaming,withProbePermit,checkMediaEffect,terminationMs:MEDIA_TERMINATION_POLICY.graceMs+MEDIA_TERMINATION_POLICY.reapMs});
 const seconds=frames=>(frames/FPS).toFixed(9);
 const sameInode=(a,b)=>a.dev===b.dev&&a.ino===b.ino;
 const changedWork=()=>Object.assign(Error('The local render staging files changed.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
@@ -73,22 +80,24 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
  validateSubtitleSnapshotProfile(snapshot);
  if(!isTimelineExportSnapshot(snapshot))throw Object.assign(Error('The saved export delivery profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
- const delivery=snapshot.delivery,plan=planTimelineExportRange(snapshot);
+ const delivery=snapshot.delivery,plan=planTimelineExportRange(snapshot),floatChecked=delivery?.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID;
  // Never trust an earlier capability report as an admission token. Legacy and
  // omitted-settings snapshots keep their original no-probe rendering path.
- if(delivery){await assertTimelineExportCapability(delivery,{signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
+ if(delivery){await assertTimelineExportCapability(delivery,{signal,beforeEffect,...(floatChecked?{capabilityWorkRoot:path.dirname(destination)}:{})});checkMediaEffect(beforeEffect,signal);}
  if(delivery||plan.selected)beforeEncode?.();
  checkMediaEffect(beforeEffect,signal);
  // The validated frozen snapshot owns output geometry. Keep the editing and
  // audio timebase fixed while portrait, landscape and square share this path.
  const {width,height}=timeline;
- const owned=beforeEffect===undefined?null:ownedTimelineWork(destination,beforeEffect,signal);
+ const owned=floatChecked?createTimelineFloatStaging(destination,{signal,beforeEffect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory})
+  :beforeEffect===undefined?null:ownedTimelineWork(destination,beforeEffect,signal);
  const work=owned?.work??await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
  const effect=owned?.effect??beforeEffect;
+ let unconfirmed=false,audioCheck,primaryFailure;
  try{
   checkMediaEffect(effect,signal);
   const subtitles=await prepareTimelineSubtitles(snapshot,work,{signal,beforeEffect:effect,...(owned?{openOwnedFile:owned.openOwnedFile,writeOwnedFile:owned.writeOwnedFile}:{})});checkMediaEffect(effect,signal);
-  const entries=[];
+  const entries=[],ownedSegments=[];
   for(let segment=0;segment<plan.segments.length;segment++){
    checkMediaEffect(effect,signal);
    const selected=plan.segments[segment],begin=selected.beginFrame,end=selected.endFrame,frames=end-begin,samples=frames*SAMPLES_PER_FRAME;
@@ -131,18 +140,20 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
    const filterArgs=['-filter_complex',filters.join(';')];
    if(subtitles){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-filter_complex_script',script);}
    const videoArgs=delivery?timelineExportVideoArgs(delivery):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
-   args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,'-c:a','pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
+   args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);
    await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal,beforeEffect:effect});
    checkMediaEffect(effect,signal);
+   if(floatChecked)ownedSegments.push({file:segmentFile,outputFrames:selected.outputFrames});
    entries.push(`file '${segmentFile.replaceAll("'","'\\''")}'\nduration ${seconds(selected.outputFrames)}`);
   }
   checkMediaEffect(effect,signal);
   const list=path.join(work,'segments.txt');await (owned?owned.writeOwnedFile(list,entries.join('\n')+'\n'):writeFile(list,entries.join('\n')+'\n'));
   checkMediaEffect(effect,signal);
+  if(floatChecked){audioCheck=await checkFloatAudio(list,plan.outputFrames,{signal,beforeEffect:effect,ownedSegments});checkMediaEffect(effect,signal);assertTimelineFloatAudioAllowed(audioCheck);}
   // The fenced worker reserves and retains the destination inode and checks
   // it in beforeEffect. Only that owned empty output may be overwritten.
-  await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy','-video_track_timescale','30000','-af',`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
+  await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy','-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
   checkMediaEffect(effect,signal);
   const result=await probe(destination,{signal,beforeEffect:effect}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
   checkMediaEffect(effect,signal);
@@ -153,6 +164,11 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
    ||!Number.isFinite(Number(a?.duration))||Math.abs(Number(a.duration)-plan.outputFrames/FPS)>0.025
    ||!String(result.probe.format?.format_name).split(',').includes('mp4')))throw Error('Rendered timeline failed delivery-profile verification');
   validateTimelineExportRangeOutputStart(plan,result.probe);
-  return result;
- }finally{if(owned)owned.cleanup();else await rm(work,{recursive:true,force:true});}
+  return floatChecked?{...result,audioCheck}:result;
+ }catch(error){primaryFailure=error;unconfirmed=floatChecked&&error?.terminationUnconfirmed===true;if(floatChecked&&audioCheck&&!signal?.aborted)rememberTimelineFloatAudioFailure(error,audioCheck);throw error;}
+ finally{
+  if(unconfirmed&&owned)void waitForMediaProcesses({signal}).then(()=>owned.cleanup());
+  else if(owned){const cleaned=owned.cleanup();if(floatChecked&&!cleaned&&!primaryFailure){const failure=Object.assign(Error('The float export staging cleanup could not be confirmed.'),{code:'EXPORT_AUDIO_STAGING_CHANGED'});if(!signal?.aborted)rememberTimelineFloatAudioFailure(failure,audioCheck??null);throw failure;}}
+  else await rm(work,{recursive:true,force:true});
+ }
 }

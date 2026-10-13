@@ -36,7 +36,7 @@ export function createTimelineExportAdmissionServices(store,{signal:ownerSignal,
   if(store.db.isTransaction)throw new AppError('EXPORT_CAPABILITY_CONFIGURATION',messages.EXPORT_CAPABILITY_CONFIGURATION,409);
   const controller=new AbortController(),signal=external?AbortSignal.any([external,controller.signal]):controller.signal;
   const entry={controller,task:null};active.add(entry);
-  const task=Promise.resolve().then(()=>{beforeEffect?.();return inspect(delivery,{signal,beforeEffect});});
+  const task=Promise.resolve().then(()=>{beforeEffect?.();return inspect(delivery,{signal,beforeEffect,capabilityWorkRoot:store.root});});
   entry.task=task.catch(error=>{if(error.terminationUnconfirmed)shutdownFailure=error;}).finally(()=>active.delete(entry));
   try{
    const value=await awaitProvider(()=>task,signal);checkpoint(signal);beforeEffect?.();

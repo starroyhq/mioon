@@ -1,0 +1,218 @@
+{
+  "sourceCommit": "140fa88279259cd05cda914b57e1e5441956f5a9",
+  "scope": "Produced by pristine git-archived baseline sources using synthetic SQLite-only queued renders. No media subprocess, provider, worker or network. Raw rows, immutable responses and explicit omission preserved.",
+  "sourceHashes": {
+    "packages/contracts/src/timeline-export-profile.mjs": "3632a6a0166c0fb1219c006100a5c4fe1d005beaf2bafa53039552029494380d",
+    "packages/contracts/src/timeline-acknowledgement.mjs": "e1a35468ce23103007352f1aedb6f89cfc61ec6ca16c464d416e07c295eca35e",
+    "packages/business/src/timeline.mjs": "c0a504873580d4ba047c19c53320542c7d272410db3354998e80a51b1f1ae9f9",
+    "packages/business/src/timeline-recovery.mjs": "ea181aa7a099448c88e71788a42223ef80d30cd59aeb510a8d4e0ac225bec7ce",
+    "packages/business/src/db.mjs": "84af099e2b1422574fcabf27d9f3984c0c9c1f045d00860f20f16d247707544f"
+  },
+  "projectId": "350a6580-4611-4108-9b5b-6f40194cd985",
+  "timelineId": "0a959433-bc00-4d78-8fd2-89b8a906cfe0",
+  "renders": [
+    {
+      "inputJson": "{\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"expectedRevision\":2,\"requestId\":\"82efc918-1c4f-4fcc-8083-348dff34dec6\",\"purpose\":\"export\"}",
+      "responseJson": "{\"id\":\"545bed59-d700-4558-9191-6bc2762c8018\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"requestId\":\"82efc918-1c4f-4fcc-8083-348dff34dec6\",\"mode\":\"timeline\",\"purpose\":\"export\",\"timelineRevision\":2,\"snapshot\":{\"timeline\":{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"},\"assets\":[{\"id\":\"80af2372-e535-406f-a954-039029d35a5b\",\"sha256\":\"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca\",\"mimeType\":\"image/png\",\"duration\":0,\"width\":720,\"height\":1280,\"hasAudio\":false}]},\"status\":\"queued\",\"assetId\":null,\"url\":null,\"error\":null,\"createdAt\":\"2026-10-13T07:40:54.225Z\",\"updatedAt\":\"2026-10-13T07:40:54.225Z\"}",
+      "exportId": "545bed59-d700-4558-9191-6bc2762c8018",
+      "requestId": "82efc918-1c4f-4fcc-8083-348dff34dec6"
+    },
+    {
+      "inputJson": "{\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"expectedRevision\":2,\"requestId\":\"316564e5-8ff4-4edc-873b-59aa940b5a60\",\"purpose\":\"export\",\"exportSettings\":{\"profileId\":\"mp4_h264_v1\",\"resolution\":\"short_360\",\"rateControl\":{\"mode\":\"crf\",\"quality\":\"standard\"}}}",
+      "responseJson": "{\"id\":\"663614fa-35ff-4b0e-8817-f8d665ff75a9\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"requestId\":\"316564e5-8ff4-4edc-873b-59aa940b5a60\",\"mode\":\"timeline\",\"purpose\":\"export\",\"timelineRevision\":2,\"snapshot\":{\"timeline\":{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"},\"delivery\":{\"exportSettings\":{\"profileId\":\"mp4_h264_v1\",\"resolution\":\"short_360\",\"rateControl\":{\"mode\":\"crf\",\"quality\":\"standard\"}},\"effective\":{\"profileId\":\"mp4_h264_v1\",\"container\":\"mp4\",\"width\":360,\"height\":640,\"fps\":30,\"videoCodec\":\"libx264\",\"pixelFormat\":\"yuv420p\",\"preset\":\"veryfast\",\"rateControl\":{\"mode\":\"crf\",\"crf\":23},\"bFrames\":0,\"gopFrames\":60,\"videoTrackTimescale\":30000,\"scaling\":\"lanczos\",\"audioCodec\":\"aac\",\"audioKbps\":128,\"audioSampleRate\":48000,\"audioChannels\":2,\"movflags\":\"faststart\"}},\"assets\":[{\"id\":\"80af2372-e535-406f-a954-039029d35a5b\",\"sha256\":\"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca\",\"mimeType\":\"image/png\",\"duration\":0,\"width\":720,\"height\":1280,\"hasAudio\":false}]},\"status\":\"queued\",\"assetId\":null,\"url\":null,\"error\":null,\"createdAt\":\"2026-10-13T07:40:54.236Z\",\"updatedAt\":\"2026-10-13T07:40:54.236Z\"}",
+      "exportId": "663614fa-35ff-4b0e-8817-f8d665ff75a9",
+      "requestId": "316564e5-8ff4-4edc-873b-59aa940b5a60"
+    }
+  ],
+  "media": {
+    "relativePath": "media/frozen-source.png",
+    "base64": "U3ludGhldGljIDE0MGZhODgyIHNvdXJjZSBieXRlcy4gUXVldWVkLW9ubHkgZml4dHVyZTsgbmV2ZXIgZGVjb2RlZC4=",
+    "sha256": "07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca"
+  },
+  "tables": {
+    "agent_chat_quota": [
+      {
+        "__rowid__": 1,
+        "id": 1,
+        "runs": 0,
+        "bytes": 0,
+        "reservedBytes": 0
+      }
+    ],
+    "assets": [
+      {
+        "__rowid__": 1,
+        "id": "80af2372-e535-406f-a954-039029d35a5b",
+        "projectId": "350a6580-4611-4108-9b5b-6f40194cd985",
+        "data": "{\"id\":\"80af2372-e535-406f-a954-039029d35a5b\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"name\":\"Golden source\",\"mimeType\":\"image/png\",\"sha256\":\"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca\",\"relativePath\":\"media/frozen-source.png\",\"width\":720,\"height\":1280,\"duration\":0,\"hasAudio\":false,\"sizeBytes\":68,\"createdAt\":\"2026-10-13T07:40:54.202Z\"}"
+      }
+    ],
+    "exports": [
+      {
+        "__rowid__": 1,
+        "id": "545bed59-d700-4558-9191-6bc2762c8018",
+        "projectId": "350a6580-4611-4108-9b5b-6f40194cd985",
+        "data": "{\"id\":\"545bed59-d700-4558-9191-6bc2762c8018\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"requestId\":\"82efc918-1c4f-4fcc-8083-348dff34dec6\",\"mode\":\"timeline\",\"purpose\":\"export\",\"timelineRevision\":2,\"snapshot\":{\"timeline\":{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"},\"assets\":[{\"id\":\"80af2372-e535-406f-a954-039029d35a5b\",\"sha256\":\"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca\",\"mimeType\":\"image/png\",\"duration\":0,\"width\":720,\"height\":1280,\"hasAudio\":false,\"relativePath\":\"media/frozen-source.png\"}]},\"status\":\"queued\",\"assetId\":null,\"url\":null,\"error\":null,\"createdAt\":\"2026-10-13T07:40:54.225Z\",\"updatedAt\":\"2026-10-13T07:40:54.225Z\"}"
+      },
+      {
+        "__rowid__": 2,
+        "id": "663614fa-35ff-4b0e-8817-f8d665ff75a9",
+        "projectId": "350a6580-4611-4108-9b5b-6f40194cd985",
+        "data": "{\"id\":\"663614fa-35ff-4b0e-8817-f8d665ff75a9\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"requestId\":\"316564e5-8ff4-4edc-873b-59aa940b5a60\",\"mode\":\"timeline\",\"purpose\":\"export\",\"timelineRevision\":2,\"snapshot\":{\"timeline\":{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"},\"delivery\":{\"exportSettings\":{\"profileId\":\"mp4_h264_v1\",\"resolution\":\"short_360\",\"rateControl\":{\"mode\":\"crf\",\"quality\":\"standard\"}},\"effective\":{\"profileId\":\"mp4_h264_v1\",\"container\":\"mp4\",\"width\":360,\"height\":640,\"fps\":30,\"videoCodec\":\"libx264\",\"pixelFormat\":\"yuv420p\",\"preset\":\"veryfast\",\"rateControl\":{\"mode\":\"crf\",\"crf\":23},\"bFrames\":0,\"gopFrames\":60,\"videoTrackTimescale\":30000,\"scaling\":\"lanczos\",\"audioCodec\":\"aac\",\"audioKbps\":128,\"audioSampleRate\":48000,\"audioChannels\":2,\"movflags\":\"faststart\"}},\"assets\":[{\"id\":\"80af2372-e535-406f-a954-039029d35a5b\",\"sha256\":\"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca\",\"mimeType\":\"image/png\",\"duration\":0,\"width\":720,\"height\":1280,\"hasAudio\":false,\"relativePath\":\"media/frozen-source.png\"}]},\"status\":\"queued\",\"assetId\":null,\"url\":null,\"error\":null,\"createdAt\":\"2026-10-13T07:40:54.236Z\",\"updatedAt\":\"2026-10-13T07:40:54.236Z\"}"
+      }
+    ],
+    "projects": [
+      {
+        "__rowid__": 1,
+        "id": "350a6580-4611-4108-9b5b-6f40194cd985",
+        "data": "{\"id\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"name\":\"Pristine legacy export bytes 🎬\",\"description\":\"\",\"revision\":1,\"createdAt\":\"2026-10-13T07:40:54.199Z\",\"updatedAt\":\"2026-10-13T07:40:54.200Z\"}"
+      }
+    ],
+    "schema_version": [
+      {
+        "__rowid__": 1,
+        "version": 1
+      },
+      {
+        "__rowid__": 2,
+        "version": 2
+      },
+      {
+        "__rowid__": 3,
+        "version": 3
+      },
+      {
+        "__rowid__": 4,
+        "version": 4
+      },
+      {
+        "__rowid__": 5,
+        "version": 5
+      },
+      {
+        "__rowid__": 6,
+        "version": 6
+      },
+      {
+        "__rowid__": 7,
+        "version": 7
+      },
+      {
+        "__rowid__": 8,
+        "version": 8
+      },
+      {
+        "__rowid__": 9,
+        "version": 9
+      },
+      {
+        "__rowid__": 10,
+        "version": 10
+      },
+      {
+        "__rowid__": 11,
+        "version": 11
+      },
+      {
+        "__rowid__": 12,
+        "version": 12
+      },
+      {
+        "__rowid__": 13,
+        "version": 13
+      },
+      {
+        "__rowid__": 14,
+        "version": 14
+      },
+      {
+        "__rowid__": 15,
+        "version": 15
+      },
+      {
+        "__rowid__": 16,
+        "version": 16
+      },
+      {
+        "__rowid__": 17,
+        "version": 17
+      },
+      {
+        "__rowid__": 18,
+        "version": 18
+      },
+      {
+        "__rowid__": 19,
+        "version": 19
+      },
+      {
+        "__rowid__": 20,
+        "version": 20
+      },
+      {
+        "__rowid__": 21,
+        "version": 21
+      },
+      {
+        "__rowid__": 22,
+        "version": 22
+      },
+      {
+        "__rowid__": 23,
+        "version": 23
+      },
+      {
+        "__rowid__": 24,
+        "version": 24
+      }
+    ],
+    "timeline_history": [
+      {
+        "__rowid__": 1,
+        "id": "0cdaa2bf-c600-4191-860d-9bd531182e88",
+        "projectId": "350a6580-4611-4108-9b5b-6f40194cd985",
+        "position": 1,
+        "operation": "timeline.clip.add",
+        "createdAt": "2026-10-13T07:40:54.217Z",
+        "beforeSnapshot": "{\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[],\"durationFrames\":0}",
+        "afterSnapshot": "{\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30}"
+      }
+    ],
+    "timeline_history_cursors": [
+      {
+        "__rowid__": 1,
+        "projectId": "350a6580-4611-4108-9b5b-6f40194cd985",
+        "position": 1
+      }
+    ],
+    "timeline_requests": [
+      {
+        "__rowid__": 1,
+        "requestId": "0173c441-10c4-4f1a-9f83-1c4848c352b2",
+        "requestHash": "1fd39850ca0fc6d74dc6f925d7d57d45906f5cbd76e446a7528732b7ba83059c",
+        "response": "{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"}"
+      },
+      {
+        "__rowid__": 2,
+        "requestId": "82efc918-1c4f-4fcc-8083-348dff34dec6",
+        "requestHash": "d55ecd1d10ca6aeb3ef9eeeab3aa884ec4c334a177fccf3aa36276f800120e5d",
+        "response": "{\"id\":\"545bed59-d700-4558-9191-6bc2762c8018\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"requestId\":\"82efc918-1c4f-4fcc-8083-348dff34dec6\",\"mode\":\"timeline\",\"purpose\":\"export\",\"timelineRevision\":2,\"snapshot\":{\"timeline\":{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"},\"assets\":[{\"id\":\"80af2372-e535-406f-a954-039029d35a5b\",\"sha256\":\"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca\",\"mimeType\":\"image/png\",\"duration\":0,\"width\":720,\"height\":1280,\"hasAudio\":false,\"relativePath\":\"media/frozen-source.png\"}]},\"status\":\"queued\",\"assetId\":null,\"url\":null,\"error\":null,\"createdAt\":\"2026-10-13T07:40:54.225Z\",\"updatedAt\":\"2026-10-13T07:40:54.225Z\"}"
+      },
+      {
+        "__rowid__": 3,
+        "requestId": "316564e5-8ff4-4edc-873b-59aa940b5a60",
+        "requestHash": "c25d168d078b0de346fcb3999e6a9b91ab97c6949c133c1f6d825b3a07e9eefa",
+        "response": "{\"id\":\"663614fa-35ff-4b0e-8817-f8d665ff75a9\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"requestId\":\"316564e5-8ff4-4edc-873b-59aa940b5a60\",\"mode\":\"timeline\",\"purpose\":\"export\",\"timelineRevision\":2,\"snapshot\":{\"timeline\":{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"},\"delivery\":{\"exportSettings\":{\"profileId\":\"mp4_h264_v1\",\"resolution\":\"short_360\",\"rateControl\":{\"mode\":\"crf\",\"quality\":\"standard\"}},\"effective\":{\"profileId\":\"mp4_h264_v1\",\"container\":\"mp4\",\"width\":360,\"height\":640,\"fps\":30,\"videoCodec\":\"libx264\",\"pixelFormat\":\"yuv420p\",\"preset\":\"veryfast\",\"rateControl\":{\"mode\":\"crf\",\"crf\":23},\"bFrames\":0,\"gopFrames\":60,\"videoTrackTimescale\":30000,\"scaling\":\"lanczos\",\"audioCodec\":\"aac\",\"audioKbps\":128,\"audioSampleRate\":48000,\"audioChannels\":2,\"movflags\":\"faststart\"}},\"assets\":[{\"id\":\"80af2372-e535-406f-a954-039029d35a5b\",\"sha256\":\"07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca\",\"mimeType\":\"image/png\",\"duration\":0,\"width\":720,\"height\":1280,\"hasAudio\":false,\"relativePath\":\"media/frozen-source.png\"}]},\"status\":\"queued\",\"assetId\":null,\"url\":null,\"error\":null,\"createdAt\":\"2026-10-13T07:40:54.236Z\",\"updatedAt\":\"2026-10-13T07:40:54.236Z\"}"
+      }
+    ],
+    "timelines": [
+      {
+        "__rowid__": 1,
+        "id": "0a959433-bc00-4d78-8fd2-89b8a906cfe0",
+        "projectId": "350a6580-4611-4108-9b5b-6f40194cd985",
+        "data": "{\"id\":\"0a959433-bc00-4d78-8fd2-89b8a906cfe0\",\"projectId\":\"350a6580-4611-4108-9b5b-6f40194cd985\",\"revision\":2,\"fps\":30,\"width\":720,\"height\":1280,\"tracks\":[{\"id\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"name\":\"Video 1\",\"kind\":\"video\",\"orderIndex\":0,\"hidden\":false,\"muted\":false},{\"id\":\"e745cc7a-2967-4b09-856e-227562465de0\",\"name\":\"Video 2\",\"kind\":\"video\",\"orderIndex\":1,\"hidden\":false,\"muted\":false},{\"id\":\"42a3928b-b296-4121-8aa0-0f522b81f81e\",\"name\":\"Audio 1\",\"kind\":\"audio\",\"orderIndex\":2,\"hidden\":false,\"muted\":false}],\"clips\":[{\"id\":\"35d25f58-ef6b-472c-a698-283d9cb575b8\",\"trackId\":\"7142b606-31e1-4f01-b1d5-8e75ecd0484b\",\"assetId\":\"80af2372-e535-406f-a954-039029d35a5b\",\"name\":\"Golden source\",\"startFrame\":0,\"durationFrames\":30,\"sourceInFrame\":0,\"rect\":{\"x\":0,\"y\":0,\"width\":720,\"height\":1280},\"gain\":1}],\"durationFrames\":30,\"createdAt\":\"2026-10-13T07:40:54.201Z\",\"updatedAt\":\"2026-10-13T07:40:54.217Z\"}"
+      }
+    ]
+  },
+  "sequence": []
+}

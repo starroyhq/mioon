@@ -60,8 +60,10 @@ function legacyFixture(t){
 // This is a frozen validator harness, not a packaged old binary. Whole old
 // modules are retained verbatim in the fixed fixture. Only import specifiers
 // are redirected. canonical remains an exact frozen exported snippet; the
-// historical contracts barrel, effects catalog and restore policy are whole
-// frozen modules. Other direct dependencies must match their baseline hashes.
+// historical contracts barrel, effects catalog, restore policy, export profile
+// and render acknowledgement are whole frozen modules. The previously pinned
+// local-delivery type source is preserved too, without evaluating it as a JS
+// data URL. Other direct dependencies must match their baseline hashes.
 // Unchanged current business helpers still load their own transitive imports;
 // this is deliberately not a fully frozen application dependency graph.
 let frozen;
@@ -85,7 +87,7 @@ async function frozenValidators(){
     else if(Object.hasOwn(baseline.sources,resolved))destination=url(resolved);
     else{assert.ok(Object.hasOwn(baseline.dependencyHashes,resolved),`Unpinned frozen-validator import: ${file} -> ${resolved}`);destination=absolute(resolved);}
    }
-   else if(specifier==='zod'&&file==='packages/contracts/src/index.mjs')destination=pathToFileURL(requireContracts.resolve('zod')).href;
+   else if(specifier==='zod'&&['packages/contracts/src/index.mjs','packages/contracts/src/timeline-export-profile.mjs'].includes(file))destination=pathToFileURL(requireContracts.resolve('zod')).href;
    else assert.ok(['node:crypto','node:net'].includes(specifier),`Unexpected frozen-validator import: ${file} -> ${specifier}`);
    return prefix+JSON.stringify(destination);
   });
@@ -126,6 +128,9 @@ test('frozen c3a0a57 restore policy and effects use the exact old catalog despit
   ['packages/business/src/workspace-restore-policy.mjs','2be61a06ccfaf1ef37837ca3111ebd16c8ef1f872489728770bf6c2470ca4b05'],
   ['packages/contracts/src/operation-effects.mjs','c34dad9256d6a24820679add3497c10ce114b28da9b1c8257a958e8b0c9cec10'],
   ['packages/contracts/src/index.mjs','b9e200c6ae0bc43dc20c8b2febedad81be6442b0e0049dc12ee0c7eee88a2104'],
+  ['packages/contracts/src/local-delivery.ts','da3793397e7d9ad222965751a85520405610c9e9cd00f8fd991ed5dbb31030d2'],
+  ['packages/contracts/src/timeline-acknowledgement.mjs','e1a35468ce23103007352f1aedb6f89cfc61ec6ca16c464d416e07c295eca35e'],
+  ['packages/contracts/src/timeline-export-profile.mjs','3632a6a0166c0fb1219c006100a5c4fe1d005beaf2bafa53039552029494380d'],
  ])assert.equal(sha(baseline.sources[file].text),expected,file);
  const old=await frozenValidators();
  assert.equal(old.restorePolicy.RESTORE_DENIED_OPERATIONS.includes('timeline.export.samplePeak'),false);
@@ -133,6 +138,7 @@ test('frozen c3a0a57 restore policy and effects use the exact old catalog despit
  assert.equal(Object.hasOwn(old.contracts.operationEffects,'timeline.export.samplePeak'),false);
  assert.throws(()=>old.contracts.operationEffect('timeline.export.samplePeak'),/Operation effects are not defined/);
  assert.throws(()=>old.contracts.parse('timeline.export.samplePeak',{}),code('UNKNOWN_OPERATION'));
+ assert.throws(()=>old.contracts.parse('timeline.render',{projectId:randomUUID(),expectedRevision:1,requestId:randomUUID(),purpose:'export',exportSettings:{profileId:'mp4_h264_float_checked_v2',resolution:'native',rateControl:{mode:'crf',quality:'standard'}}}),code('VALIDATION_ERROR'));
  assert.doesNotThrow(()=>old.contracts.assertOperationEffectCoverage(old.contracts.schemas));
  assert.equal(old.restorePolicy.workspaceRestoreError().constructor,old.contracts.AppError);
 });

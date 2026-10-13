@@ -21,7 +21,7 @@ test('export settings syntax is fully strict, required at every nested level, ex
  const cap={projectId:legacy.projectId,expectedRevision:1,exportSettings:settings()};assert.deepEqual(parse('timeline.export.capabilities',cap),cap);
  for(const patch of [{requestId:legacy.requestId},{argv:[]},{token:'secret'},{expectedRevision:0},{exportSettings:undefined}])assert.throws(()=>parse('timeline.export.capabilities',{...cap,...patch}));
  assert.ok(!DURABLE_EDIT_OPERATIONS.includes('timeline.render'));assert.ok(!DURABLE_EDIT_OPERATIONS.includes('timeline.export.capabilities'));
- const effects=operationEffect('timeline.export.capabilities');assert.equal(effects.localProcess,true);for(const field of ['databaseWrite','fileWrite','externalIO','paidGeneration'])assert.equal(effects[field],false);
+ const effects=operationEffect('timeline.export.capabilities');assert.equal(effects.localProcess,true);assert.equal(effects.fileWrite,true,'opt-in float proof uses owned temporary files');for(const field of ['databaseWrite','externalIO','paidGeneration'])assert.equal(effects[field],false);
 });
 
 test('every fixed output size, CRF mapping and bitrate resolves without mutating composition or input',()=>{

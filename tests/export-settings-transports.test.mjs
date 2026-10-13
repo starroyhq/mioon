@@ -136,7 +136,8 @@ test('export settings offline CLI and official MCP expose identical strict schem
  }
  const definition=discoverSchema({operation});assert.equal(definition.requiresRequestId,false);
  for(const key of ['readOnly','idempotent','localProcess'])assert.equal(definition.effects[key],true);
- for(const key of ['databaseWrite','fileWrite','externalIO','paidGeneration','openWorld','destructive'])assert.equal(definition.effects[key],false);
+ assert.equal(definition.effects.fileWrite,true,'v2 capability can create bounded owned proof staging');
+ for(const key of ['databaseWrite','externalIO','paidGeneration','openWorld','destructive'])assert.equal(definition.effects[key],false);
  const render=discoverSchema({operation:'timeline.render'});assert.equal(render.requiresRequestId,true);assert.equal(render.effects.databaseWrite,true);assert.equal(render.effects.fileWrite,true);assert.equal(render.effects.localProcess,true);assert.equal(render.effects.paidGeneration,false);
  assert.ok(!JSON.stringify(READ_TOOL_DEFINITIONS).includes('timeline.export.capabilities'));assert.ok(!JSON.stringify(EDIT_TOOL_DEFINITIONS).includes('timeline.export.capabilities'));
 });

@@ -1,6 +1,10 @@
 import {TIMELINE_OUTPUT_PRESETS,isTimelineExportDelivery} from '@mioon/contracts';
 import {run,runStreaming,checkMediaEffect,isMediaEffectRestriction} from './media-runtime.mjs';
 import {throwIfMediaAborted,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.mjs';
+import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
+import {withProbePermit} from './media-probe.mjs';
+import {proveTimelineFloatCapability} from './timeline-float-capability.ts';
+import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export-float';
 
 // Explicit local-compute check, separate from read-only source preflight. This
 // intentionally has one active check per Node process, no wait queue or cache.
@@ -68,13 +72,14 @@ function verifyProof(bytes,p){
  if(new Set(types).size!==2)throw error('EXPORT_CAPABILITY_FAILED');
 }
 
-/** Actual selected-profile encode/options/MP4-mux proof, without user media,
- * private scratch files, shell argv, providers, network, or encoder fallbacks.
+/** Actual selected-profile encode/options/MP4-mux proof without user media,
+ * providers, network, or encoder fallbacks. Legacy/v1 keeps its original pipe
+ * proof; v2 also proves float headroom through private inode-owned MOV files.
  * Fragmented MP4 is required only for the nonseekable bounded proof pipe; the
  * published artifact continues to use the frozen +faststart MP4 render path.
  * Results are observations, never authority tokens for a later render.
  */
-export async function inspectTimelineExportCapability(delivery,{signal,beforeEffect}={}){
+export async function inspectTimelineExportCapability(delivery,{signal,beforeEffect,capabilityWorkRoot}={}){
  checkMediaEffect(beforeEffect,signal);
  if(!validDelivery(delivery))return result('incomplete','EXPORT_CAPABILITY_CONFIGURATION');
  if(active)return result('incomplete','EXPORT_CAPABILITY_BUSY');
@@ -87,7 +92,14 @@ export async function inspectTimelineExportCapability(delivery,{signal,beforeEff
   checkMediaEffect(beforeEffect,signal);
   const encoders=advertisedEncoders(listing);
   if(!encoders.has('libx264')||!encoders.has('aac'))return result('unavailable','EXPORT_CAPABILITY_UNSUPPORTED');
-  const p=delivery.effective,chunks=[];
+  const p=delivery.effective;
+  if(delivery.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID){
+   await proveTimelineFloatCapability({run,runStreaming,withProbePermit,checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,waitForMediaProcesses,
+    terminationMs:MEDIA_TERMINATION_POLICY.graceMs+MEDIA_TERMINATION_POLICY.reapMs,videoArgs:()=>timelineExportVideoArgs(delivery),verifyProof:bytes=>verifyProof(bytes,p)},
+    p,{signal,beforeEffect,workRoot:capabilityWorkRoot,remainingMs:timeout});
+   checkMediaEffect(beforeEffect,signal);return result('available','EXPORT_CAPABILITY_AVAILABLE');
+  }
+  const chunks=[];
   const output=await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-filter_complex_threads','1',
    '-f','lavfi','-i','color=c=black:s=64x64:r=30:d=0.1','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=0.1',
    '-filter_complex',`[0:v]scale=${p.width}:${p.height}:flags=${p.scaling},setsar=1,format=${p.pixelFormat}[v]`,

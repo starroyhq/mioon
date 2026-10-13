@@ -93,6 +93,7 @@ test('foundation configuration strictly checks the real contract and automatical
     './agent-protocol.consumer.mts',
     './agent-timeline-gain.consumer.mts',
     './export-sample-peak.consumer.mts',
+    './float-checked-export.consumer.mts',
   ]);
   assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
@@ -172,6 +173,7 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
   t.after(() => rm(directory, {recursive: true, force: true}));
   for (const name of [sourceName, shimName, consumerName,
     'tests/typecheck/agent-timeline-gain.consumer.mts', 'tests/typecheck/export-sample-peak.consumer.mts',
+    'tests/typecheck/float-checked-export.consumer.mts', 'packages/contracts/src/timeline-export-float.ts',
     'packages/contracts/src/agent-timeline-gain.ts', 'packages/contracts/src/export-sample-peak.ts',
     'packages/contracts/src/timeline-delivery.ts', 'packages/contracts/src/timeline-export-range.ts',
     configName, 'packages/contracts/package.json']) {

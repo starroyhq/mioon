@@ -1,3 +1,4 @@
+import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {lstatSync} from 'node:fs';
 import {bindRestoredExport} from './workspace-restore-exports.mjs';
 import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,assertWorkspaceRestoreOrigin,refuseRestoredOperation,safeWorkspaceRestoreError,workspaceRestoreError} from './workspace-restore-policy.mjs';
@@ -143,7 +144,8 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const frames=restored?inactive():createFrameServices(store,{...frameOptions,signal:ownerSignal});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
- function subjectDisclosure(table,value,projectId){
+ function subjectDisclosure(table,value,projectId,exportId){
+  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord,readOwnedAsset:(owner,id)=>readOwnedTimelineAsset(db,owner,id)});
   if(table==='jobs'&&hasSubjectGeneration(value.snapshot)){
    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','任务的项目归属已改变',409);
    validateSubjectGenerationOwnership(db,value);
@@ -158,6 +160,10 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   }
   return value;
  }
+ // Retain the source row identity when disclosing exports; a decoded body
+ // must not borrow another export's valid request receipt. No write/normalization.
+ const exportValues=projectId=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
+  .map(row=>subjectDisclosure('exports',JSON.parse(row.data),row.projectId,row.id));
  const handlers={
  'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
  'workspace.restore.inspect':()=>({restored:false}),
@@ -176,7 +182,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...localMutations.handlers,
  'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
- 'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,list(t,i.projectId).map(value=>subjectDisclosure(t,value,i.projectId)).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
+ 'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(i.projectId):list(t,i.projectId).map(value=>subjectDisclosure(t,value,i.projectId))).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
  'asset.import':async (i,{signal=ownerSignal}={})=>{
   const invocationFence=restoreEffectFence(store);
   checkpoint(signal);invocationFence?.();
@@ -256,7 +262,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  },
  'version.list':i=>{const s=required('shots',i.shotId);return list('versions',s.projectId).filter(v=>v.shotId===s.id).map(value=>subjectDisclosure('versions',value,s.projectId)).sort((a,b)=>a.number-b.number);},
  'export.create':i=>tx(()=>{const h=hash(i),prior=dedupe('export',i.requestId,h,'exports');if(prior)return prior;required('projects',i.projectId);const shots=list('shots',i.projectId).sort((a,b)=>a.orderIndex-b.orderIndex);if(!shots.length||shots.some(s=>!s.selectedVersionId))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map(s=>{const version=required('versions',s.selectedVersionId);if(restored){const graph=createOwnedMediaGraphReader(db,i.projectId),owned=graph.version(version.id,s.id,version.assetId),asset=graph.asset(owned.assetId);if(typeof owned.sha256!=='string'||owned.sha256!==asset.sha256)throw workspaceRestoreError();return owned;}return version;});const e={id:randomUUID(),projectId:i.projectId,requestId:i.requestId,status:'queued',orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);idem('export',i.requestId,h,e.id);bindRestoredExport(store,'export.create',i,e,h);return e;}),
- 'export.get':i=>required('exports',i.exportId)
+ 'export.get':i=>subjectDisclosure('exports',required('exports',i.exportId),undefined,i.exportId)
  };
  // Public handlers are the same invocation boundary as RPC. Raw internal
  // mutation closures remain protected at their shared transaction precondition.

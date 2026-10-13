@@ -68,6 +68,9 @@ test('actual full shared catalog survives the reproduced version-list descriptio
 // the same file are counted separately. SDK-owned stdout has no such listener:
 // the SDK concatenates its protocol Buffers before decoding complete messages.
 const textSites = {
+  'tests/float-capability-http-cancel.test.mjs': 1,
+  // CLI stdout/stderr loop and official SDK stderr only; SDK stdout stays protocol-owned.
+  'tests/float-checked-export-transports.test.mjs': 2,
   // CLI JSON/stdout, CLI stderr and SDK stderr; each has continuous decoding before data.
   'tests/export-sample-peak-transports.test.mjs': 3,
   // One explicit loop listener covers stdout JSON and stderr text, both decoded before data.

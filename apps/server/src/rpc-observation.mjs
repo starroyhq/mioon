@@ -6,9 +6,13 @@ export async function callObservedRpc(req, res, services, operation, input, cont
   if (!['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak'].includes(operation)) return services.call(operation, input, context);
   const effect = operationEffect(operation);
   // Explicit opt-in plus semantic guards: a later effect change cannot silently
-  // attach client cancellation to writes or external/paid work. An annotation
-  // alone never adds other operations to this narrow observation policy.
-  if (!effect.readOnly || effect.databaseWrite || effect.fileWrite || effect.externalIO || effect.paidGeneration)
+  // attach client cancellation to business writes or external/paid work. Only
+  // this fixed capability proof may write its owned temporary synthetic files;
+  // it has no persistent task or source/project mutation to cancel. Keep that
+  // fileWrite effect truthful without granting arbitrary file writers a signal.
+  const privateCapabilityFiles = operation === 'timeline.export.capabilities';
+  if (!effect.readOnly || effect.databaseWrite || (effect.fileWrite && !privateCapabilityFiles) ||
+      effect.externalIO || effect.paidGeneration || effect.destructive || effect.openWorld)
     return services.call(operation, input, context);
   const observer = new AbortController();
   const disconnected = () => { if (!res.writableFinished) observer.abort(); };

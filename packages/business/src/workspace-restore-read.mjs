@@ -1,3 +1,6 @@
+import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
+import {isTimelineRenderRecord} from '@mioon/contracts';
+import {readOwnedTimelineAsset} from './timeline-sources.mjs';
 import {createWaveformHistoryReaders} from './waveforms-history.mjs';
 import {createImageHistoryReaders} from './images/history.mjs';
 import {createFrameHistoryReaders} from './frames-history.mjs';
@@ -38,7 +41,8 @@ export function createRestoredReadServices(store,{signal}={}) {
  const locals=createLocalMutationServices(store,{check:denied,canonical,now,references,readOnly:true});
  const localReaders={...locals.handlers,...ranges.handlers,...dispositions.handlers,...subjects.handlers};
  const findTimeline=projectId=>{required('projects',projectId);return createTimelineRecoveryBoundary(db,{projectId}).read({legacyMissingProject:true,sourceSemantics:false});};
- function disclose(table,value,projectId) {
+ function disclose(table,value,projectId,exportId) {
+  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord,readOwnedAsset:(owner,id)=>readOwnedTimelineAsset(db,owner,id)});
   if(table==='jobs'&&hasSubjectGeneration(value.snapshot)){
    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','任务的项目归属已改变',409);
    validateSubjectGenerationOwnership(db,value);
@@ -52,6 +56,9 @@ export function createRestoredReadServices(store,{signal}={}) {
   }
   return value;
  }
+ // Keep the actual source row identity in this read-only restored composition.
+ const exportValues=projectId=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
+  .map(row=>disclose('exports',JSON.parse(row.data),row.projectId,row.id));
  const readers={
   ...createWaveformHistoryReaders(store).handlers,
   ...createImageHistoryReaders(store).handlers,
@@ -66,12 +73,12 @@ export function createRestoredReadServices(store,{signal}={}) {
   ...inspection.handlers,
   'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
   'project.get':input=>({restore:{workspaceOrigin:restored.workspaceOrigin,heldExportIds:list('exports',input.projectId).filter(value=>isRestoredRecordHeld(store,'exports',value.id)).map(value=>value.id)},project:required('projects',input.projectId),timeline:findTimeline(input.projectId),timelineHistory:timeline.history(input.projectId),
-   ...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(table=>[table,list(table,input.projectId).map(value=>disclose(table,value,input.projectId)).sort(table==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))}),
+   ...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(table=>[table,(table==='exports'?exportValues(input.projectId):list(table,input.projectId).map(value=>disclose(table,value,input.projectId))).sort(table==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))}),
   'asset.list':input=>{required('projects',input.projectId);return list('assets',input.projectId);},
   'job.get':input=>disclose('jobs',required('jobs',input.jobId)),
   'job.list':input=>{required('projects',input.projectId);return list('jobs',input.projectId).map(value=>disclose('jobs',value,input.projectId));},
   'version.list':input=>{const shot=required('shots',input.shotId);return list('versions',shot.projectId).filter(value=>value.shotId===shot.id).map(value=>disclose('versions',value,shot.projectId)).sort((a,b)=>a.number-b.number);},
-  'export.get':input=>required('exports',input.exportId),
+  'export.get':input=>disclose('exports',required('exports',input.exportId),undefined,input.exportId),
   'timeline.get':input=>findTimeline(input.projectId),
   'timeline.history.get':input=>timeline.history(input.projectId),
   'timeline.format.get':timeline.handlers['timeline.format.get'],

@@ -1151,11 +1151,14 @@ measurement and can reject overflow. See [scope and acceptance](MANUAL-SUBTITLES
 ## Timeline delivery profile and local encoder capability
 
 Optional export-only `timeline.render.exportSettings` and optional
-`timeline.export.preflight.exportSettings` use the closed `mp4_h264_v1` profile.
+`timeline.export.preflight.exportSettings` use a closed profile union: unchanged
+`mp4_h264_v1`, or explicitly selected `mp4_h264_float_checked_v2`.
 `timeline.export.capabilities` accepts exactly
 `{projectId,expectedRevision,exportSettings}` and performs an explicit bounded
-local synthetic encode. It creates no timeline/export and writes no DB/cache or
-files. Its read-only/localProcess effect is distinct from media preflight.
+local synthetic encode. It creates no timeline/export and writes no DB/cache.
+V1 retains its in-memory proof; v2 creates and cleans fixed private synthetic
+MOV/concat/AAC proof files, so advisory `fileWrite` is true. Its read-only business
+semantics and localProcess effect remain distinct from source preflight.
 Read [EXPORT-SETTINGS.md](EXPORT-SETTINGS.md) for all settings, caps, safe report
 statuses, exact frozen delivery fields, cancellation and replay semantics.
 Omitted settings preserve legacy requests/receipts; preview rejects settings.
@@ -1266,3 +1269,25 @@ No new operation or schema migration. Historical exact replay precedes current r
 `timeline.export.samplePeak` accepts exactly `{projectId,exportId}` for one owned succeeded timeline export. It explicitly reads, hashes and decodes the existing delivered MP4; it does not render, create a task/report/cache, edit state or call providers. It is read-only and resource-intensive (`localProcess:true`), with cancellation scoped only to the check. It is unavailable in restored-v1 workspaces and absent from the built-in Agent tool catalog.
 
 The strict report binds original export/output/hash/revision and optional frozen name/range. `ready` includes finite stereo sample peaks, full decoded duration/count and both hash passes; `unsupported`, `incomplete` and `stale` contain no measurement. A value at or below 0 dBFS does not establish no earlier clipping, true peak or loudness compliance. Explicit user recheck is allowed; no automatic retry or exact-receipt promise applies. See [scope, budgets and acceptance](EXPORT-SAMPLE-PEAK.md).
+
+## Opt-in float intermediate and pre-encode sample gate
+
+`mp4_h264_float_checked_v2` retains the existing strict resolution/rateControl
+choices but uses float32 MOV intermediate audio. It measures the complete exact
+pre-encode stream; a sample peak strictly above one fails with
+`EXPORT_AUDIO_OVER_RANGE`, a same-attempt `audioCheck`, and no published asset.
+There is no limiter, normalization, implicit gain change or silent fallback.
+A passing pre-encode check is not an AAC-decoded, true-peak or loudness guarantee.
+The existing final-file `timeline.export.samplePeak` is separate.
+
+New v2 current export rows carry a server-created `renderAttemptId` after claim.
+Only terminal outcomes may include a bounded `audioCheck`; successful reports
+bind the output asset/hash. None of these fields are accepted as operation input,
+frozen snapshot metadata or immutable queued-ACK additions. Same-key exact replay
+remains the original queued response, including after a failed worker attempt.
+Cancellation/restart remeasure under a fresh attempt; stale callbacks cannot
+attach old evidence. Inherited restored records remain held.
+
+This increment is backend/HTTP/CLI/MCP opt-in only. It does not add a UI selector
+or change existing UI defaults. See [FLOAT-CHECKED-EXPORT.md](FLOAT-CHECKED-EXPORT.md)
+for report identity, caps, temporary-file ownership and acceptance status.

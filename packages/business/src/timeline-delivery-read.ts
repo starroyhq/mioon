@@ -1,3 +1,5 @@
+import {isTimelineExportAudioOutcome,isTimelineExportFloatSnapshot} from '@mioon/contracts/timeline-export-float';
+import {floatSnapshotSha256} from './timeline-float-outcome.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {timelineDeliveryContentDisposition, timelineRenderDeliveryFields} from '@mioon/contracts/timeline-delivery';
@@ -115,6 +117,8 @@ function readTimelineExportOutputCore(
     if (!object(asset) || asset.id !== assetId || asset.projectId !== projectId ||
         asset.mimeType !== 'video/mp4' || asset.provenance !== 'export' || asset.url !== record.url ||
         !ownsPublishedOutputPath(asset.relativePath, requested.exportId)) return null;
+    if (isTimelineExportFloatSnapshot(record.snapshot) && (typeof asset.sha256 !== 'string' ||
+        !isTimelineExportAudioOutcome(record, {snapshotSha256: floatSnapshotSha256(record.snapshot), assetSha256: asset.sha256}))) return null;
     // Keep this exact byte calculation for existing named-download fences.
     const identityDigest = createHash('sha256').update(JSON.stringify([row.data, receiptRow.requestHash, receiptRow.response, asset])).digest('hex');
     return Object.freeze({exportId: requested.exportId, assetId, projectId,

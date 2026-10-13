@@ -1,0 +1,84 @@
+# Explicit float-checked export profile
+
+Backend-only integration candidate, 2026-10-13, based on the reviewed user-UI merge `48586426d4a5e52a2a4daf7ef84fbd5f5c26e02b`. Its 42-file backend candidate originated on `140fa88279259cd05cda914b57e1e5441956f5a9`; all application preimages were checked before the exact transfer. The original candidate and its historical evidence remain preserved. No user UI path is changed by this backend integration. New-baseline verification is recorded separately below; the older 6,025-test gate must not be treated as a gate for this merged baseline.
+
+## Scope and explicit use
+
+`mp4_h264_float_checked_v2` is an opt-in backend export profile using the existing `timeline.render`, preflight and capability operations. It is available through the shared HTTP/CLI/MCP contract. This slice provides no new UI selector, component, state or renderer wiring. The user is maintaining the interface; existing interface calls continue using their original profile/default.
+
+Supply the usual exact project ID, saved timeline revision and stable request ID, plus this settings object:
+
+```json
+{"profileId":"mp4_h264_float_checked_v2","resolution":"native","rateControl":{"mode":"crf","quality":"standard"}}
+```
+
+`native`, `short_360`, `short_1080`, CRF quality and the fixed bitrate choices retain the existing video semantics. The short-1080 output upscales the 720-short-edge composition; it does not reconstruct source detail. V2 is export-only. Preview remains unchanged. Use the existing `timeline export preflight`, `timeline export capabilities`, `timeline render` and `export get` CLI commands with explicit JSON input. Discover exact current input schemas before invocation. No new task operation, provider authority or embedded Agent tool is added.
+
+## What changes, and what the check means
+
+The old pipeline can lose mixed-signal peaks while writing signed-16-bit intermediate audio. V2 renders the same composition once into H264/MOV segments with 48 kHz stereo `pcm_f32le` audio. It reads those exact owned segments to natural EOF, without changing gain, normalizing, trimming, padding or rerendering the source mix. Each segment's codec, sample format, channels, rate and exact sample-frame count are checked before the complete concatenated stream is measured.
+
+If any pre-encode float sample is strictly above an absolute value of one, the attempt fails with `EXPORT_AUDIO_OVER_RANGE`. It publishes no output asset. Its complete report remains bound to that exact attempt and frozen snapshot. Adjust the saved clip gains explicitly, then make a new request with a new key. Replaying the old key keeps returning its original immutable queued acknowledgement; it does not retry a failed job. Equality to one passes this particular check.
+
+A passing result proves only that the complete measured pre-encode stream stayed within this sample threshold. It does not certify true peak, loudness, downstream playback, AAC reconstructed samples or absence of clipping already present in a source. AAC decoding can exceed one even after this check. The separate existing “已导出文件解码样本峰值” operation continues to inspect the final output and remains a different observation.
+
+There is no automatic limiter, normalization, gain adjustment, silent fallback, automatic retry or new approval state. Omitted settings and `mp4_h264_v1` retain their existing signed-16-bit path, byte identities and behavior. Older binaries do not gain permission to execute a profile they do not recognize.
+
+## Identity, reports and interruption
+
+The original `timeline.render` input, preflight digest, frozen delivery snapshot, durable export intent and request-key conflict rules bind the entire selected profile, name and optional selected range. Exact replay occurs before fresh capability/revision checks. The enqueue acknowledgement never gains an audio report or an attempt token.
+
+Storyboard `export.create` and `timeline.render` retain separate request-key namespaces. They may legally use the same key for different exports. The v2 read guard excludes such an unrelated timeline receipt only when the existing storyboard receipt independently proves `scope=export`, request/resource identity, its project-bound input hash, matching relational/JSON export ownership and the exact persisted value (ignoring JSON whitespace). Normal and restored get/project-list readers retain the actual SQL row identity before this check, so even a byte-identical copied body cannot borrow another row’s receipt. A mismatch alone is not permission to bypass a genuine stripped or corrupt v2 record. No receipt or key namespace is rewritten.
+
+Only v2's current export outcome contains the server-created `renderAttemptId` and optional `audioCheck`. The queued-to-running transaction creates a fresh attempt ID. All effect/publication fences match that attempt as well as the project, original receipt, frozen snapshot and owned sources. A legitimate interrupted requeue removes that attempt's report/token and measures again; stale callbacks cannot publish or downgrade another attempt.
+
+A report includes fixed profile/policy/stage, project/export/attempt identity, canonical SHA-256 of the private frozen snapshot, exact output frame count, checked time, finite per-channel sample peaks/counts, and a complete or incomplete status. The snapshot digest uses the same canonical convention as source preflight and includes backend-only frozen paths. Public DTOs omit those paths, so backend read/publication checks are authoritative. No raw samples, process stderr, paths, credentials or caller-supplied report authority enter the report.
+
+Only successful final publication attaches the owned output asset ID and SHA-256, in the same database transaction. A later AAC/probe/publication failure can retain a complete within-limit report with no output. An incomplete measurement cannot be a pass. Cancellation or unconfirmed child termination cannot publish a completed report. Existing failed/queued/succeeded semantics remain; no schema migration or generic journal is introduced.
+
+Restored workspaces retain their existing restrictions. Inherited records remain held with original bytes; a newly explicit, properly origin-bound local export can use v2. This does not enable inherited tasks, new model work, or the separately restricted final-file analysis operation.
+
+## Resources and ownership
+
+- Maximum measured interval: 18,000 timeline frames at 30 fps, or 600 seconds.
+- Exact audio length: 1,600 stereo sample frames per output frame, up to 28,800,000 stereo frames / 230,400,000 streamed PCM bytes.
+- Measurement budget: 120 seconds including the existing direct-child termination allowance. Queue admission, probes, chunk processing and completion consume the same measurement budget. This is not a 120-second promise for the complete video render.
+- Resident PCM storage: less than one stereo-frame remainder plus bounded counters/peaks. Report size: at most 8 KiB. Extra tail, short EOF, nonfinite samples, format mismatch, timeout or missing confirmed child completion fail closed.
+- Capability proof: the existing single-active, no-queue, 15-second local check; v2 uses fixed private synthetic MOV/concat/AAC files and proves above-one float headroom. No source media, network or provider calls. Discovery truthfully advertises possible temporary file writes. HTTP/CLI disconnection still cancels this bounded advisory work and reaps its owned child/files; the exception is exclusive to this fixed capability operation, with no DB/business/network/paid effects. It never cancels an accepted render. It is an observation, never a reusable authorization token.
+- Float audio doubles the raw intermediate PCM payload from at most 115.2 MB to 230.4 MB. Video/container data and the final output are additional, so this is not a total-disk-size guarantee. No persistent cache is added.
+
+Only generated fixed-leaf files and directories whose retained inode identity still matches may be cleaned. No recursive deletion of unknown children. A media child whose close is unconfirmed keeps the shared media admission fence and its owned staging; a timeout does not release that ownership. No numeric-PID cleanup or process-tree management is added.
+
+## Historical evidence on the original 140fa882 candidate
+
+The actual preimplementation capability gate retained float peaks above one through MOV and concat, then decoded the final AAC. Five synthetic cases compared ten actual omitted/v1 MP4 outputs with the earlier diagnostic golden files byte-for-byte. A genuine pristine-baseline SQLite fixture separately preserves original receipt, snapshot, history, row and sequence bytes. These are distinct proofs.
+
+Original-candidate focused acceptance in the cloud Linux environment:
+
+- Broad affected tests: 249/249 passed. Final delta: 51/51 passed, including v2 malformed-request rejection and actual cold backup/verify/restore preservation. These are separate targeted runs, not a whole-repository result.
+- Actual float-media tests: 5/5 passed. Selected-range pre-AAC PCM equals the corresponding whole-render sample window byte-for-byte across segment/fade boundaries; subtitle frame timing and decoded AAC RMS windows were checked. Float intermediates retained measured headroom about 1.4; their raw audio occupied exactly twice the signed-16-bit audio bytes. Ten final omitted/v1 MP4s still matched the pristine-path golden bytes.
+- Real standalone server/worker and CLI acceptance imported a synthetic 440 Hz float WAV. Gain 2 produced a failed over-range attempt without an output asset. An explicit saved gain change to 0.5 and a new request produced a 15-frame, 360×640, 30 fps H264/AAC file, fully decoded successfully. The 11,315-byte file has SHA-256 `7522c0b7035730f8137cd9dcef25caab1b94bec67c206201b59e70b50809e4e0`. After two normal server exits and one reopen, both exact request keys returned their original queued ACKs, both terminal reports remained unchanged, and there were still exactly two exports. This process-restart case is distinct from focused interrupted-worker/cancellation tests; it is not a GUI or forced-crash claim.
+- Strict typecheck and fresh production web/desktop staging build passed. Independent final-source review found no remaining blocker. The actual production Linux tar/ASAR build and inspection also passed: packaged main/backend/web bytes match staging, fixed font/license resources and Electron fuses are verified, and no workspace data or node_modules enter ASAR. This is packaging evidence, not a fresh packaged GUI run.
+
+Retained red evidence explains the narrow corrections: a recovery test observed the auto-started worker after its queued transition, the extracted v2 staging helper initially masked one closed failure code, an old effect assertion overlooked capability temporary-file writes, and a restore test initially expected historical read-only ACK replay to be blocked. These were fixed with causal/precise assertions and the staging error-class correction. A standalone acceptance helper also initially supplied an unsupported name field to capability checking; the existing strict rejection was preserved and only that helper input changed. No timeout/limit was widened and no business assertion was skipped.
+
+The first parent full suite completed with 6,021 tests: 6,015 passed, 3 failed, 1 cancelled and 2 skipped (1,198,939.243081 ms). The failures were a real observation bridge regression: reporting capability temporary-file writes truthfully caused the old blanket file-write guard to stop forwarding the HTTP observer signal. The fix retains the truthful effect, permits only this fixed private capability proof, and keeps all other file writers/business/network/paid effects outside observer cancellation. Existing HTTP/CLI assertions remain intact; additional whole-catalog and future-effect negatives passed in the 55/55 focused run. The original full log and red policy reproduction are retained. Post-fix revalidation passed: 67/67 affected cases, including two real v2 HTTP/CLI cancellation cases through the actual service/admission/child runner, confirmed child close and owned staging cleanup, unchanged DB/managed files, and a fresh explicit installed-FFmpeg probe. These cases use a synthetic loopback listener around the real bridge/services, not a packaged GUI. Strict typecheck, a new production Linux package/inspection, the standalone full-server/CLI export/reopen acceptance, and all ten old MP4 golden comparisons were repeated successfully. The final parent typecheck passed and its full-suite process exited 0: **6,025 tests / 6,023 passed / 0 failed / 0 cancelled / 2 skipped**, 1,174,861.70436 ms. The first failed gate remains preserved. No main-branch integration, new commit or push is part of this candidate acceptance; the user’s independently modified UI requires its own reviewed integration and regression checks.
+
+No new UI selector or GUI acceptance, Mac/Windows, live provider, true-peak or loudness certification is claimed.
+
+## Revalidation on the 4858642 user-UI baseline
+
+The user’s 31 UI-branch paths remain byte-identical to the merge baseline. The opt-in profile still has no UI selector; only shared HTTP/CLI/MCP callers can request it explicitly. Locked offline dependency installation succeeded without lockfile changes.
+
+The initial affected run passed 259/259, but an independent service reproduction found an inherited candidate defect: a legal same-key storyboard request could be mistaken for a float export. Four deterministic red cases preserve both creation orders and same/different-project collisions. The correction adds the narrowly bound legacy-namespace proof described above, retaining strict rejection for genuine stripped v2/changed-owner/stale-attempt records. Regression coverage includes queued/succeeded/failed legacy reads, both original replay semantics, restart, worker recovery/dispatch, unchanged receipts, and corrupt legacy-proof negatives. A first new test-fixture run also exposed existing lazy timeline creation and the generic store helper’s unchanged relational columns; those fixtures were corrected without changing production behavior, and that failure log is retained.
+
+The follow-on corruption regression also reproduced attempted borrowing of a real storyboard row, including an exact copied payload and the separate restored reader path. Those red logs remain preserved. The final correction carries actual SQL row identity through normal and restored `export.get` / `project.get`, and checks the complete persisted legacy value without returning a second large payload or introducing a new size limit for old storyboard records. It changes no DTO, receipt, permission or UI.
+
+Final new-baseline checks:
+
+- Strict typecheck passed. The 28-file affected run passed **269/269**, then the final restored-reader delta passed **171/171** across six read/recovery/backup/restore/preflight/inspection files, with zero failures or skips. These overlapping focused runs are not added together.
+- The actual standalone server/worker and real CLI repeated over-range rejection, explicit saved-gain change/new-key success, download, full decode, two normal exits/reopen, exact queued ACK replay and unchanged reports. It retained exactly two exports. The 15-frame, 360×640 H264/AAC output again has the same 11,315 bytes and SHA-256 `7522c0b7035730f8137cd9dcef25caab1b94bec67c206201b59e70b50809e4e0`.
+- Five synthetic scenarios again matched **ten** omitted/v1 full MP4 outputs to their earlier golden bytes. Actual MOV/concat preserved above-one float samples; the separate diagnostic AAC decode can still exceed one, as disclosed above.
+- Fresh production Linux x64 packaging and inspection both exited 0 against the corrected source. ASAR SHA-256 is `a0d9e7ec6a1622e1d520fc767c7a2d4ec0908349f4fef74e36b65c2df4c1b579`; the 133,450,338-byte tarball is `accb06ae537d538296b6984891a19c474e214cdc1b04d4997a8fe1188caa2f96`. Packaged files match verified staging, required notices/font resources and fuses passed inspection, and no workspace data or credentials are included. The independent parent typecheck passed and its full-suite process exited 0 on this merged baseline: **6,055 tests / 6,053 passed / 0 failed / 0 cancelled / 2 existing skips**, 1,214,997.495407 ms. The final full log has SHA-256 `badd4b132be86ce051f0da4e3ba60a8b38bd5ba2c90e1320bcfa9f1b10f89684`. Historical counts above remain attributed to their original baseline. No production or test code changed after this gate; only this external factual document was updated.
+
+All user-UI source paths remain unchanged. Shared contract changes can legitimately change bundled renderer JavaScript; source preservation does not imply that every bundle byte is identical. No fresh GUI/Mac/Windows or live-provider run is claimed for this backend-only integration.

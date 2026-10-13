@@ -2,19 +2,22 @@ import {isTimelineExportRangeSnapshot} from './timeline-export-range.ts';
 import {isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {z} from 'zod';
 import {timelineOutputPreset} from './timeline-format.mjs';
+import {TIMELINE_EXPORT_FLOAT_PROFILE_ID,timelineExportFloatSettingsSchema,timelineExportFloatDeliverySchema,resolveTimelineExportFloatDelivery} from './timeline-export-float.ts';
+export * from './timeline-export-float.ts';
 
 // Immutable, closed delivery profile. Editing geometry and the 30fps clock are
 // independent. Omission remains the old render path; no parser inserts defaults.
 export const TIMELINE_EXPORT_PROFILE_ID='mp4_h264_v1';
 export const TIMELINE_EXPORT_DEFAULT_SETTINGS=Object.freeze({profileId:TIMELINE_EXPORT_PROFILE_ID,resolution:'native',rateControl:Object.freeze({mode:'crf',quality:'standard'})});
 const bitrate=z.union([z.literal(2000),z.literal(4000),z.literal(8000)]);
-export const timelineExportSettingsSchema=z.object({
+const timelineExportV1SettingsSchema=z.object({
  profileId:z.literal(TIMELINE_EXPORT_PROFILE_ID),resolution:z.enum(['native','short_360','short_1080']),
  rateControl:z.discriminatedUnion('mode',[
   z.object({mode:z.literal('crf'),quality:z.enum(['compact','standard','high'])}).strict(),
   z.object({mode:z.literal('bitrate'),targetKbps:bitrate}).strict(),
  ]),
 }).strict();
+export const timelineExportSettingsSchema=z.discriminatedUnion('profileId',[timelineExportV1SettingsSchema,timelineExportFloatSettingsSchema]);
 const effectiveSchema=z.object({
  profileId:z.literal(TIMELINE_EXPORT_PROFILE_ID),container:z.literal('mp4'),
  width:z.number().int().min(2).max(1920).multipleOf(2),height:z.number().int().min(2).max(1920).multipleOf(2),fps:z.literal(30),
@@ -31,6 +34,7 @@ const same=(a,b)=>object(a)&&object(b)?Object.keys(a).length===Object.keys(b).le
 const invalid=()=>{throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});};
 export function resolveTimelineExportDelivery(timeline,exportSettings){
  if(!timelineOutputPreset(timeline)||!timelineExportSettingsSchema.safeParse(exportSettings).success)invalid();
+ if(exportSettings.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID)return resolveTimelineExportFloatDelivery(timeline,exportSettings);
  const short=exportSettings.resolution==='native'?720:exportSettings.resolution==='short_360'?360:1080;
  const rate=exportSettings.rateControl;
  return {exportSettings:JSON.parse(JSON.stringify(exportSettings)),effective:{
@@ -40,7 +44,7 @@ export function resolveTimelineExportDelivery(timeline,exportSettings){
   bFrames:0,gopFrames:60,videoTrackTimescale:30000,scaling:'lanczos',audioCodec:'aac',audioKbps:128,audioSampleRate:48000,audioChannels:2,movflags:'faststart',
  }};
 }
-export const timelineExportDeliverySchema=z.object({exportSettings:timelineExportSettingsSchema,effective:effectiveSchema}).strict();
+export const timelineExportDeliverySchema=z.union([z.object({exportSettings:timelineExportV1SettingsSchema,effective:effectiveSchema}).strict(),timelineExportFloatDeliverySchema]);
 export function isTimelineExportDelivery(delivery,timeline,exportSettings){
  if(!timelineExportDeliverySchema.safeParse(delivery).success||!timelineOutputPreset(timeline))return false;
  if(exportSettings!==undefined&&!same(delivery.exportSettings,exportSettings))return false;

@@ -150,3 +150,14 @@ all original guard assertions retained; the four affected UI suites then passed
 3,852 total / 3,850 passed / 0 failed / 2 skipped, 898,271.860107ms, actual exit0
 (parent session23068, 2026-10-11). Both aggregate logs and the focused red/green
 correction remain in the synthetic acceptance archive.
+
+
+## Later opt-in backend float profile
+
+The original profile, default UI controls and acceptance above remain v1. The
+additive backend-only `mp4_h264_float_checked_v2` profile is documented in
+[FLOAT-CHECKED-EXPORT.md](FLOAT-CHECKED-EXPORT.md), with its own current gate
+status. It creates bounded private capability-proof files, unlike v1's in-memory
+proof. The shared capability effect therefore advertises possible temporary file
+writes. No new UI selector is included in that increment. Legacy/omitted exports
+keep their original signed-16-bit behavior; no automatic conversion is made.

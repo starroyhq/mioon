@@ -86,8 +86,12 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
     assert.equal(annotations.openWorldHint, effect.openWorld);
     if (effect.readOnly) {
       assert.equal(effect.idempotent, true);
-      for (const field of ['databaseWrite', 'fileWrite', 'externalIO', 'paidGeneration', 'destructive', 'openWorld'])
+      for (const field of ['databaseWrite', 'externalIO', 'paidGeneration', 'destructive', 'openWorld'])
         assert.equal(effect[field], false, `${operation}: ${field}`);
+      // Only the explicit v2 capability observation may create bounded, owned
+      // synthetic scratch files. Read-only business semantics do not imply zero
+      // temporary filesystem effects; no other read receives this exception.
+      assert.equal(effect.fileWrite, operation === 'timeline.export.capabilities', `${operation}: fileWrite`);
       assert.equal(effect.localProcess, ['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak'].includes(operation), `${operation}: localProcess`);
     }
   }

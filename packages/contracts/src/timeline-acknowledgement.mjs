@@ -1,4 +1,5 @@
 import {isTimelineExportRangeInput,isTimelineExportRangeProofInput,hasTimelineExportRangeBoundsProof} from './timeline-export-range.ts';
+import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
 import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
 import {isTimelineExportSnapshot,timelineExportSettingsSchema,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES} from './timeline-export-profile.mjs';
 import {TIMELINE_SUBTITLE_OPERATIONS,timelineSubtitleSchemas,isTimelineSubtitleSnapshotProfile} from './timeline-subtitles.mjs';
@@ -106,7 +107,7 @@ export function isTimelineRenderRecord(value, input) {
   if (!baseInput(input) || !['preview', 'export'].includes(input.purpose) || !isTimelineDeliveryNameInput(input,input.purpose) || !isTimelineExportRangeInput(input,input.purpose) ||
       (input.preflightSnapshotHash !== undefined && !digest(input.preflightSnapshotHash)) ||
       (input.exportSettings !== undefined && (input.purpose!=='export'||!timelineExportSettingsSchema.safeParse(input.exportSettings).success)) ||
-      !fields(value, renderFields) || !uuid(value.id) || value.projectId !== input.projectId || value.requestId !== input.requestId ||
+      !fields(value, renderFields, ['renderAttemptId','audioCheck']) || !isTimelineExportAudioOutcome(value) || !uuid(value.id) || value.projectId !== input.projectId || value.requestId !== input.requestId ||
       value.mode !== 'timeline' || value.purpose !== input.purpose || value.timelineRevision !== input.expectedRevision ||
       (input.exportId !== undefined && value.id !== input.exportId) ||
       !['queued', 'running', 'succeeded', 'failed'].includes(value.status) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
