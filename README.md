@@ -197,7 +197,7 @@ pnpm desktop:package:linux
 pnpm test:desktop
 ```
 
-Linux 打包为本地未签名 tar.gz，发布被关闭。构建输出及准确验证边界以 docs/ACCEPTANCE-V3.md 为准；原 v1/v2 交付包保持原样。
+Linux 的归档和目录打包入口会先重新构建 Web，再构建同一渠道的桌面暂存，前置失败不会继续打包。生产/开发渠道共用生成目录，请串行运行；无需手动提前生成 Web dist。当前入口、源码新鲜度与产物检查见 [PACKAGE-ENTRYPOINTS.md](docs/PACKAGE-ENTRYPOINTS.md)。Linux 归档仍是未签名 tar.gz，发布被关闭；[ACCEPTANCE-V3.md](docs/ACCEPTANCE-V3.md) 和原 v1/v2 交付包只保留各自历史验收归属。
 
 当前源码版本为 0.4.1（V4.1 应用 ID 补丁）。V4.1 的构建渠道、独立数据目录和旧数据复制说明见 [DESKTOP.md](docs/DESKTOP.md)，本轮验收见 [ACCEPTANCE-V4.1.md](docs/ACCEPTANCE-V4.1.md)。保留的 `video-workbench-0.3.0-linux-x64.tar.gz` 是历史 V3 包，不含 V4 新服务商与 CLI。V4 本次交付以源码和可复用 Skill 为准，桌面源码构建与运行验证单独记录；不把历史二进制称为已更新。
 
