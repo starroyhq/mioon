@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {constants,openSync,closeSync,fsyncSync} from 'node:fs';
+import {constants,openSync,closeSync,fsyncSync,fstatSync} from 'node:fs';
 import {isProxy} from 'node:util/types';
 import path from 'node:path';
 import {LOCAL_DRAFT_LIMITS,clipDraftKeySchema,clipDraftSourceSchema,clipDraftWriteSchema,clipDraftDeleteSchema,clipDraftProjectSchema,clipDraftDiskSchema} from '@mioon/contracts/local-drafts';
@@ -78,12 +78,16 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
     if(!guards.ownsLock())fail('LOCAL_DRAFT_OWNER_REQUIRED');
     return true;
   }
+  function owned():void{if(!active())fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');}
   function identity():string{
     const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
     if(!directory||!db)fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
     const current=createHash('sha256').update(JSON.stringify([channel,path.resolve(root),String(directory.dev),String(directory.ino),String(db.dev),String(db.ino),db.birthtimeMs??null])).digest('hex');
     if(scope!==undefined&&scope!==current)fail('LOCAL_DRAFT_SCOPE_MISMATCH');
     scope=current;return current;
+  }
+  function checkpoint():string{
+    owned();const current=identity();owned();return current;
   }
   function read():Disk{
     const workspaceScope=identity(),contents=storage.readPrivateFile(file,{root,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
@@ -134,27 +138,37 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
     if(input.instanceId!==instanceId)fail('LOCAL_DRAFT_STALE_INSTANCE');
   }
   function confirmPublished():void{
-    if(!guards.ownsLock())fail('LOCAL_DRAFT_OWNER_REQUIRED');identity();
     try{
-      fault('beforeDirectorySync');
+      checkpoint();fault('beforeDirectorySync');checkpoint();
+      const expected=storage.validatePrivateDirectory(root);if(!expected)fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
       const fd=openSync(root,constants.O_RDONLY|constants.O_NOFOLLOW);
-      try{fsyncSync(fd);}finally{closeSync(fd);}
-      fault('afterDirectorySync');
+      try{
+        const actual=fstatSync(fd);
+        if(!actual.isDirectory()||actual.dev!==expected.dev||actual.ino!==expected.ino||actual.uid!==process.getuid?.()||(actual.mode&0o077))fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
+        checkpoint();fsyncSync(fd);
+      }finally{closeSync(fd);}
+      fault('afterDirectorySync');checkpoint();
+    }catch{fail('LOCAL_DRAFT_SAVE_UNCERTAIN');}
+  }
+  // Both fresh publication and recognized exact replay need a complete saved
+  // ACK. A response-read failure cannot retroactively prove the write absent.
+  function savedResponse(key:ClipDraftKey,row:Slot,current:Record<string,unknown>|null):ClipDraftEnvelope{
+    try{
+      confirmPublished();const result=response(key,row,current);checkpoint();return result;
     }catch{fail('LOCAL_DRAFT_SAVE_UNCERTAIN');}
   }
   function persist(disk:Disk):void{
-    if(!guards.ownsLock())fail('LOCAL_DRAFT_OWNER_REQUIRED');
-    if(disk.workspaceScope!==identity())fail('LOCAL_DRAFT_SCOPE_MISMATCH');
+    if(disk.workspaceScope!==checkpoint())fail('LOCAL_DRAFT_SCOPE_MISMATCH');
     const contents=JSON.stringify(disk)+'\n';
     if(disk.entries.length>LOCAL_DRAFT_LIMITS.slots||Buffer.byteLength(contents)>LOCAL_DRAFT_LIMITS.envelopeBytes)fail('LOCAL_DRAFT_CAPACITY');
     fault('beforePersist');
+    if(disk.workspaceScope!==checkpoint())fail('LOCAL_DRAFT_SCOPE_MISMATCH');
     let published=false;
     try{
       storage.writePrivateFileAtomic(file,contents,{root,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});published=true;
       fault('afterPersist');
-      // The existing settings helper treats directory fsync as best effort.
-      // A draft ACK additionally requires this explicit directory checkpoint.
-      confirmPublished();
+      // The atomic helper's parent sync is best effort. savedResponse performs
+      // the mandatory directory/ownership checkpoint before returning an ACK.
     }catch(error){if(published)fail('LOCAL_DRAFT_SAVE_UNCERTAIN');throw error;}
   }
   return {
@@ -171,23 +185,23 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
       const current=timeline(args.projectId),disk=read(),index=disk.entries.findIndex(row=>keyOf(row)===keyOf(args)),previous=disk.entries[index];
       historical(previous);
       const value={baseRevision:args.baseRevision,source:args.source,raw:args.raw};
-      if(previous&&previous.revision===args.expectedRevision+1&&previous.draft&&same(value,{baseRevision:previous.draft.baseRevision,source:previous.draft.source,raw:previous.draft.raw})){confirmPublished();return response(args,previous,current);}
+      if(previous&&previous.revision===args.expectedRevision+1&&previous.draft&&same(value,{baseRevision:previous.draft.baseRevision,source:previous.draft.source,raw:previous.draft.raw}))return savedResponse(args,previous,current);
       if((previous?.revision??0)!==args.expectedRevision||args.expectedRevision===Number.MAX_SAFE_INTEGER)fail('LOCAL_DRAFT_CONFLICT');
       if(previous?.draft){if(previous.draft.baseRevision!==args.baseRevision||!same(previous.draft.source,args.source))fail('LOCAL_DRAFT_CONFLICT');}
       else if(status(args,value,current)!=='matching')fail('LOCAL_DRAFT_CONFLICT');
       const row:Slot={...keyOnly(args),revision:args.expectedRevision+1,draft:{...value,updatedAt:new Date().toISOString()}};
       if(Buffer.byteLength(JSON.stringify(row))>LOCAL_DRAFT_LIMITS.rowBytes)fail('LOCAL_DRAFT_LIMIT');
       if(index<0)disk.entries.push(row);else disk.entries[index]=row;
-      persist(disk);return response(args,row,current);
+      persist(disk);return savedResponse(args,row,current);
     });},
     discard(input:unknown):ClipDraftEnvelope{return guarded(()=>{
       if(!active())return unsupported;const args=parsed(clipDraftDeleteSchema,input);writable(args);
       const current=timeline(args.projectId),disk=read(),index=disk.entries.findIndex(row=>keyOf(row)===keyOf(args)),previous=disk.entries[index];
       historical(previous);
-      if(previous&&previous.revision===args.expectedRevision+1&&previous.draft===null){confirmPublished();return response(args,previous,current);}
+      if(previous&&previous.revision===args.expectedRevision+1&&previous.draft===null)return savedResponse(args,previous,current);
       if(!previous||previous.draft===null||previous.revision!==args.expectedRevision||args.expectedRevision===Number.MAX_SAFE_INTEGER)fail('LOCAL_DRAFT_CONFLICT');
       const row:Slot={...keyOnly(args),revision:previous.revision+1,draft:null};disk.entries[index]=row;
-      persist(disk);return response(args,row,current);
+      persist(disk);return savedResponse(args,row,current);
     });},
   };
 }
