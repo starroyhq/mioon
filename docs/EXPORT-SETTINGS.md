@@ -59,8 +59,10 @@ local path, executable, secret or user-media bytes are returned.
 
 HTTP RPC, CLI `timeline export capabilities` and MCP
 `timeline_export_capabilities` use this same service. Discover the exact schema
-first. The public effect descriptor is read-only with `localProcess:true`:
-it consumes bounded local CPU, without DB/cache/file writes or external I/O.
+first. The shared effect descriptor is business-read-only with `localProcess:true`
+and `fileWrite:true`: v1's proof has no file writes, while float-v2 creates and
+cleans bounded private synthetic files. Neither path writes the project,
+database or cache, decodes user media, or performs external I/O.
 It is distinct from source preflight and does not grant export authority.
 Built-in Agent tools and automatic model context are unchanged.
 
