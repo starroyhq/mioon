@@ -1,5 +1,6 @@
 // Never reflect provider bodies, headers, URLs, keys, socket errors or causes.
 const errors = Object.freeze({
+  AGENT_CHAT_CONTEXT_CHANGED: [409, '所选片段的已保存内容或归属已改变，本轮没有继续发送模型请求。此前已发送的请求仍可能计费。'],
   AGENT_CHAT_STORAGE_LIMIT: [507, '本地聊天存储已达容量上限；原始请求和记录已保留，未重新发送。'],
   AGENT_CHAT_STORAGE_UNAVAILABLE: [503, '本地聊天记录无法安全写入；已停止发送，请修复存储后重新打开。'],
   AGENT_CHAT_NOT_FOUND: [404, '项目或这次对话不存在。'],

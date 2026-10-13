@@ -1,3 +1,5 @@
+import * as timing from '../apps/web/src/agent-timeline-context.js';
+import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -47,6 +49,9 @@ function harness(client) {
     useLayoutEffect(fn, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { fn, deps, cleanup: old?.cleanup }; effects.push(i); },
   }; react.default = react;
   const resolve = name => {
+    if (name === './agent-timeline-context.js') return timing;
+    if (name === './agent-timeline-gain-context.ts') return gainContext;
+    if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
     if (name === 'react') return react;
     if (name === './agent-chat.js') return { ...logic, createAgentChatSession: input => logic.createAgentChatSession({ ...input, client, receipts: localReceipts, requestId: () => requestId }) };
     if (name === './agent-tool-state.js') return tools;

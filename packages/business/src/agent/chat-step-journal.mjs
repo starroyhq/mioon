@@ -1,11 +1,12 @@
 import {createHash, randomUUID} from 'node:crypto';
-import {types} from 'node:util';
+import {types, isDeepStrictEqual} from 'node:util';
 import {agentChatError} from './chat-errors.mjs';
 import {exactObject} from './config.mjs';
 import {EDIT_TOOL_LIMITS, EDIT_CAPABILITY_FIELDS, editToolPolicy, validEditText, selectedShotMessage, parseEditToolArguments} from './edit-tool-policy.mjs';
-import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE, isAgentTimelineMoveTarget} from '@mioon/contracts';
+import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE, isAgentTimelineMoveTarget, AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_PROVENANCE, isAgentTimelineGainTarget, agentTimelineGainReviewTarget, agentTimelineGainModelContext} from '@mioon/contracts';
 import {TIMELINE_EDIT_TOOL_LIMITS, TIMELINE_EDIT_CAPABILITY_FIELDS, timelineEditToolPolicy, selectedTimelineClipMessage, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.mjs';
 import {buildAgentRequest} from './agent-gateway.mjs';
+import {TIMELINE_GAIN_EDIT_TOOL_LIMITS, timelineGainEditToolPolicy, selectedTimelineGainMessage, parseTimelineGainEditToolArguments, parseTimelineGainConsent, timelineGainConsentMatches} from './timeline-gain-tool-policy.ts';
 
 // This module persists evidence, never acquires authority or dispatches a tool.
 // Only captureTool's trusted synchronous callback may perform the shared read.
@@ -13,9 +14,9 @@ const MAX_STEP_BYTES = 1024 * 1024;
 const MAX_BODY_BYTES = 128 * 1024;
 const MAX_OUTPUT_BYTES = 256 * 1024;
 const OPERATIONS = ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect', 'shot.update', 'timeline.clip.update'];
-const isProposal = mode => ['selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(mode);
+const isProposal = mode => ['selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(mode);
 const operationMatches = (operation, mode) => (operation === 'shot.update') === (mode === 'selected_shot_edit') &&
-  (operation === 'timeline.clip.update') === (mode === AGENT_TIMELINE_MOVE_CONTEXT);
+  (operation === 'timeline.clip.update') === ([AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(mode));
 const STATUSES = ['not_started', 'intent', 'dispatch_started', 'completed', 'unknown'];
 const bad = () => { throw agentChatError('AGENT_CHAT_STORAGE_UNAVAILABLE'); };
 const full = () => { throw agentChatError('AGENT_CHAT_STORAGE_LIMIT'); };
@@ -64,9 +65,9 @@ function parse(value, maximum) {
 }
 function provenance(value, projectId, observation = false) {
   if (!exactObject(value, observation ? ['category', 'projectId', 'operation'] : ['category', 'projectId', 'sourceRunIds']) ||
-    !['project_saved_text_metadata', 'project_selected_shot_text', AGENT_TIMELINE_MOVE_PROVENANCE].includes(value.category) || value.projectId !== projectId) bad();
+    !['project_saved_text_metadata', 'project_selected_shot_text', AGENT_TIMELINE_MOVE_PROVENANCE, AGENT_TIMELINE_GAIN_PROVENANCE].includes(value.category) || value.projectId !== projectId) bad();
   if (observation && ((value.category === 'project_selected_shot_text') !== (value.operation === 'shot.update') ||
-    (value.category === AGENT_TIMELINE_MOVE_PROVENANCE) !== (value.operation === 'timeline.clip.update'))) bad();
+    ([AGENT_TIMELINE_MOVE_PROVENANCE, AGENT_TIMELINE_GAIN_PROVENANCE].includes(value.category)) !== (value.operation === 'timeline.clip.update'))) bad();
   if (observation ? !OPERATIONS.includes(value.operation) : !Array.isArray(value.sourceRunIds) || value.sourceRunIds.length > 12 ||
     value.sourceRunIds.some(id => !uuid(id)) || new Set(value.sourceRunIds).size !== value.sourceRunIds.length) bad();
 }
@@ -90,7 +91,7 @@ function request(value, run, round) {
 function toolCall(value, mode) {
   if (!keys(value, ['id', 'name', 'arguments', 'argumentsJson'], ['itemId']) || !text(value.id, 256, 1) || /[\x00-\x20\x7f]/u.test(value.id) ||
     !text(value.name, 100, 1) || Object.hasOwn(value, 'itemId') && (!text(value.itemId, 256, 1) || /[\x00-\x20\x7f]/u.test(value.itemId)) ||
-    !object(value.arguments) || !same(parse(value.argumentsJson, mode === AGENT_TIMELINE_MOVE_CONTEXT ? TIMELINE_EDIT_TOOL_LIMITS.maxArgumentsBytes : mode === 'selected_shot_edit' ? EDIT_TOOL_LIMITS.maxArgumentsBytes : 2048), value.arguments)) bad();
+    !object(value.arguments) || !same(parse(value.argumentsJson, mode === AGENT_TIMELINE_GAIN_CONTEXT ? TIMELINE_GAIN_EDIT_TOOL_LIMITS.maxArgumentsBytes : mode === AGENT_TIMELINE_MOVE_CONTEXT ? TIMELINE_EDIT_TOOL_LIMITS.maxArgumentsBytes : mode === 'selected_shot_edit' ? EDIT_TOOL_LIMITS.maxArgumentsBytes : 2048), value.arguments)) bad();
 }
 function output(value, protocol, mode) {
   if (!keys(value, ['type', 'finishReason'], ['toolCall', 'providerOutput', 'usage']) || value.type !== 'done' || !['stop', 'tool_calls'].includes(value.finishReason)) bad();
@@ -100,7 +101,7 @@ function output(value, protocol, mode) {
     value.usage.completion_tokens > 2048)) bad();
   if (value.finishReason === 'tool_calls') {
     toolCall(value.toolCall, mode);
-    if (isProposal(mode)) { try { (mode === AGENT_TIMELINE_MOVE_CONTEXT ? parseTimelineEditToolArguments : parseEditToolArguments)(value.toolCall.name, value.toolCall.argumentsJson); } catch { bad(); } }
+    if (isProposal(mode)) { try { (mode === AGENT_TIMELINE_GAIN_CONTEXT ? parseTimelineGainEditToolArguments : mode === AGENT_TIMELINE_MOVE_CONTEXT ? parseTimelineEditToolArguments : parseEditToolArguments)(value.toolCall.name, value.toolCall.argumentsJson); } catch { bad(); } }
     if ((protocol === 'responses') !== Object.hasOwn(value.toolCall, 'itemId')) bad();
     if (protocol === 'chat_completions') {
       const message = value.providerOutput;
@@ -154,14 +155,15 @@ function continuation(requestValue, run, steps) {
     if (!same(body.input, expected)) bad();
   }
   for (const key of Object.keys(first)) if (!['messages', 'input', 'tools', 'tool_choice', 'parallel_tool_calls'].includes(key) && !same(body[key], first[key])) bad();
-  if (run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT) {
+  if ([AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(run.contextMode)) {
     let expected;
-    try { expected = buildAgentRequest({configuration: run.configuration, messages: requestValue.context, readTools: {phase: 'answer', scope: AGENT_TIMELINE_MOVE_CONTEXT,
+    try { expected = buildAgentRequest({configuration: run.configuration, messages: requestValue.context, readTools: {phase: 'answer', scope: run.contextMode,
       toolCall: tool.intent.toolCall, providerOutput: steps[0].output.providerOutput, result: tool.observation.resultJson}}).body; } catch { bad(); }
     if (requestValue.body !== expected) bad();
   }
 }
 function validateTarget(target, projectId, mode) {
+  if (mode === AGENT_TIMELINE_GAIN_CONTEXT) { if (!isAgentTimelineGainTarget(target, {projectId})) bad(); return; }
   if (mode === AGENT_TIMELINE_MOVE_CONTEXT) { if (!isAgentTimelineMoveTarget(target, {projectId})) bad(); return; }
   if (!exactObject(target, ['projectId', 'shotId', 'expectedRevision', 'title', 'prompt']) || target.projectId !== projectId ||
     !uuid(target.shotId) || !Number.isSafeInteger(target.expectedRevision) || target.expectedRevision < 0 ||
@@ -170,12 +172,12 @@ function validateTarget(target, projectId, mode) {
 export function validateInspectionRunFields(run) {
   const has = ['contextMode', 'provenance', 'activity', 'editTarget'].some(key => Object.hasOwn(run, key));
   if (!has) return false;
-  if (!['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(run.contextMode) || !Array.isArray(run.activity) || run.activity.length < 1 || run.activity.length > 3) bad();
+  if (!['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(run.contextMode) || !Array.isArray(run.activity) || run.activity.length < 1 || run.activity.length > 3) bad();
   provenance(run.provenance, run.projectId);
-  const edit = run.contextMode === 'selected_shot_edit', timelineEdit = run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT;
-  if ((run.provenance.category === 'project_selected_shot_text') !== edit || (run.provenance.category === AGENT_TIMELINE_MOVE_PROVENANCE) !== timelineEdit ||
-    Object.hasOwn(run, 'editTarget') !== (edit || timelineEdit)) bad();
-  if (edit || timelineEdit) validateTarget(run.editTarget, run.projectId, run.contextMode);
+  const edit = run.contextMode === 'selected_shot_edit', timelineEdit = run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT, timelineGain = run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT;
+  if ((run.provenance.category === 'project_selected_shot_text') !== edit || (run.provenance.category === AGENT_TIMELINE_MOVE_PROVENANCE) !== timelineEdit || (run.provenance.category === AGENT_TIMELINE_GAIN_PROVENANCE) !== timelineGain ||
+    Object.hasOwn(run, 'editTarget') !== (edit || timelineEdit || timelineGain)) bad();
+  if (edit || timelineEdit || timelineGain) validateTarget(run.editTarget, run.projectId, run.contextMode);
   let models = 0, tools = 0;
   for (const item of run.activity) {
     if (!keys(item, ['id', 'kind', 'ordinal', 'status'], item?.kind === 'tool' ? ['name', 'operation', 'resultJson'] : []) ||
@@ -213,32 +215,36 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
       !same(value.configuration, run.configuration) || !same(value.messages, value.execution.request.context)) bad();
     validateExecution(value.execution, run);
     const consent = value.consent, policy = value.execution.policy;
-    const edit = run.contextMode === 'selected_shot_edit', timelineEdit = run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT;
+    const edit = run.contextMode === 'selected_shot_edit', timelineEdit = run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT, timelineGain = run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT;
     const consentFields = ['destination', 'protocol', 'model', 'context', 'projectId', ...(timelineEdit ? [...TIMELINE_EDIT_CAPABILITY_FIELDS, 'timelineId', 'clipId', 'expectedRevision'] : edit ? [...EDIT_CAPABILITY_FIELDS, 'shotId', 'expectedRevision'] : ['schemaVersion', 'catalogHash', 'maxModelRequests', 'maxToolCalls', 'maxResultBytes'])];
-    if (!exactObject(consent, consentFields) || consent.destination !== deriveAgentEndpoint(run.configuration) ||
+    if (timelineGain) {
+      try { parseTimelineGainConsent(consent); } catch { bad(); }
+      if (consent.destination !== deriveAgentEndpoint(run.configuration) || consent.protocol !== run.configuration.protocol || consent.model !== run.configuration.model ||
+        !timelineGainConsentMatches(consent, run.projectId, true) || !isDeepStrictEqual(consent.reviewTarget, agentTimelineGainReviewTarget(value.execution.target))) bad();
+    } else if (!exactObject(consent, consentFields) || consent.destination !== deriveAgentEndpoint(run.configuration) ||
       consent.protocol !== run.configuration.protocol || consent.model !== run.configuration.model ||
       consentFields.slice(3).some(key => consent[key] !== (timelineEdit && key === 'clipId' ? value.execution.target.clip.id : ['shotId', 'timelineId', 'expectedRevision'].includes(key) ? value.execution.target[key] : policy[key]))) bad();
     const messages = value.messages;
     if (messages.length !== 2 * run.provenance.sourceRunIds.length + 2 ||
       messages.some((message, index) => !exactObject(message, ['role', 'content']) || !text(message.content, 32768) ||
-        message.role !== (index === 0 ? 'system' : index % 2 ? 'user' : 'assistant')) || messages.at(-1).content !== (timelineEdit ? selectedTimelineClipMessage(run.userText, run.editTarget) : edit ? selectedShotMessage(run.userText, run.editTarget) : run.userText)) bad();
+        message.role !== (index === 0 ? 'system' : index % 2 ? 'user' : 'assistant')) || messages.at(-1).content !== (timelineGain ? selectedTimelineGainMessage(run.userText, run.editTarget, agentTimelineGainModelContext) : timelineEdit ? selectedTimelineClipMessage(run.userText, run.editTarget) : edit ? selectedShotMessage(run.userText, run.editTarget) : run.userText)) bad();
     const body = parse(value.execution.request.body, MAX_BODY_BYTES);
     if (value.execution.request.protocol === 'chat_completions' ? !same(body.messages, messages) :
       body.instructions !== messages[0].content || !same(body.input, messages.slice(1))) bad();
-    if (timelineEdit) {
+    if (timelineEdit || timelineGain) {
       let expected;
-      try { expected = buildAgentRequest({configuration: run.configuration, messages, readTools: {phase: 'request', scope: AGENT_TIMELINE_MOVE_CONTEXT}}).body; } catch { bad(); }
+      try { expected = buildAgentRequest({configuration: run.configuration, messages, readTools: {phase: 'request', scope: run.contextMode}}).body; } catch { bad(); }
       if (value.execution.request.body !== expected) bad();
     }
   }
   function validateExecution(execution, run) {
-    const edit = run.contextMode === 'selected_shot_edit', timelineEdit = run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT;
-    if (!exactObject(execution, ['version', 'policy', 'request', ...(edit || timelineEdit ? ['target'] : [])]) || execution.version !== 1) bad();
+    const edit = run.contextMode === 'selected_shot_edit', timelineEdit = run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT, timelineGain = run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT;
+    if (!exactObject(execution, ['version', 'policy', 'request', ...(edit || timelineEdit || timelineGain ? ['target'] : [])]) || execution.version !== 1) bad();
     const policy = execution.policy;
-    if (timelineEdit !== (run.provenance.category === AGENT_TIMELINE_MOVE_PROVENANCE)) bad();
-    if (edit || timelineEdit) {
+    if (timelineEdit !== (run.provenance.category === AGENT_TIMELINE_MOVE_PROVENANCE) || timelineGain !== (run.provenance.category === AGENT_TIMELINE_GAIN_PROVENANCE)) bad();
+    if (edit || timelineEdit || timelineGain) {
       validateTarget(execution.target, run.projectId, run.contextMode);
-      if (!same(execution.target, run.editTarget) || !same(policy, (timelineEdit ? timelineEditToolPolicy : editToolPolicy)(run.projectId))) bad();
+      if (!same(execution.target, run.editTarget) || !same(policy, (timelineGain ? timelineGainEditToolPolicy : timelineEdit ? timelineEditToolPolicy : editToolPolicy)(run.projectId))) bad();
     } else if (!exactObject(policy, ['schemaVersion', 'projectId', 'context', 'maxModelRequests', 'maxToolCalls', 'maxResultBytes', 'catalog', 'catalogHash']) ||
       policy.schemaVersion !== 1 || policy.projectId !== run.projectId || policy.context !== 'project_inspection' ||
       policy.maxModelRequests !== 2 || policy.maxToolCalls !== 1 || policy.maxResultBytes !== 8192 ||
@@ -248,7 +254,7 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
     for (const [index, id] of run.provenance.sourceRunIds.entries()) {
       const source = db.prepare('SELECT projectId,status FROM agent_chat_runs WHERE id=?').get(id);
       if (!source || source.projectId !== run.projectId || source.status !== 'completed' || id === run.id) bad();
-      if (timelineEdit) {
+      if (timelineEdit || timelineGain) {
         const sourceData = parse(row(id)?.data, MAX_STEP_BYTES);
         if (['contextMode', 'provenance', 'activity', 'editTarget'].some(key => Object.hasOwn(sourceData, key)) ||
           sourceData.projectId !== run.projectId || sourceData.id !== id ||
@@ -321,7 +327,7 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
   }
   function inside(runId, stepId, operation) {
     const previous = row(runId), run = readRun(previous);
-    if (!run || !['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(run.contextMode)) bad();
+    if (!run || !['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(run.contextMode)) bad();
     const steps = readSteps(run), step = steps.find(item => item.id === stepId);
     if (!step) bad();
     return operation(previous, run, steps, step);
@@ -407,7 +413,7 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
       const next = json(supplied);
       return store.tx(() => {
         const previous = row(runId), run = readRun(previous);
-        if (!run || !['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(run.contextMode)) bad();
+        if (!run || !['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(run.contextMode)) bad();
         const steps = readSteps(run); request(next, run, 2);
         if (steps[2]) { if (!same(steps[2].request, next)) bad(); return replay(run, steps[2]); }
         running(run); if (steps.length !== 2 || steps[1].status !== 'completed') bad();

@@ -1,3 +1,4 @@
+import {invokeAgentSubmissionFence} from './gain-context-fence.ts';
 import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '@mioon/contracts';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {isIP} from 'node:net';
@@ -105,7 +106,7 @@ function limitsFor(overrides = {}) {
  * cookie jar, global pooled agent, arbitrary header input or second lookup. */
 export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRequestDefault, httpRequest = httpRequestDefault, limits: overrides} = {}) {
   const limits = limitsFor(overrides);
-  return async function openAgentStream({configuration, apiKey, body, signal, selfPort}) {
+  return async function openAgentStream({configuration, apiKey, body, signal, selfPort, beforeSubmit}) {
     const controller = new AbortController();
     let request, response, failed = null, rejectPending, closed = false;
     const fail = code => {
@@ -128,8 +129,10 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
       request?.destroy(); response?.destroy();
     };
     try {
+      invokeAgentSubmissionFence(beforeSubmit);
       const destination = await resolveAgentDestination(configuration, {selfPort, lookup, signal: controller.signal, maxDnsAnswers: limits.maxDnsAnswers});
       if (failed || controller.signal.aborted) throw failed || abortError(controller.signal);
+      invokeAgentSubmissionFence(beforeSubmit);
       const headers = {'Content-Type': 'application/json', Accept: 'text/event-stream', 'Accept-Encoding': 'identity', 'Content-Length': String(Buffer.byteLength(body)), Connection: 'close'};
       // apiKey must be acquired by the host for this exact configuration binding.
       // Local Ollama needs no key by default, but an explicitly bound local key
@@ -164,7 +167,7 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
         request.once('socket', socket => {
           socket.once(destination.secure ? 'secureConnect' : 'connect', () => {
             if (failed || controller.signal.aborted || closed) { socket.destroy(); return; }
-            try { assertPinnedAgentSocket(socket, destination); }
+            try { assertPinnedAgentSocket(socket, destination); invokeAgentSubmissionFence(beforeSubmit); }
             catch (error) { fail(error.code); return; }
             clearTimeout(connectTimer);
             // Wait until the pinned peer and, for HTTPS, authenticated TLS are

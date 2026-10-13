@@ -1,9 +1,11 @@
 import {getWorkspaceRestoreContext} from '../workspace-restore-schema.mjs';
 import {workspaceRestoreError} from '../workspace-restore-policy.mjs';
 import {createHash, randomUUID} from 'node:crypto';
-import {AppError, isAgentTimelineMoveTarget, isAgentTimelineMoveArguments, agentTimelineMovePublicTarget, agentTimelineMoveDiff, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {AppError, isAgentTimelineMoveTarget, isAgentTimelineMoveArguments, agentTimelineMovePublicTarget, agentTimelineMoveDiff, hasRequestNotAppliedProof, AGENT_TIMELINE_GAIN_CONTEXT, isAgentTimelineGainTarget, agentTimelineGainPublicTarget, agentTimelineGainDiff, isAgentTimelineGainProposal, agentTimelineGainReviewTarget} from '@mioon/contracts';
+import {timelineGainEditToolPolicy} from './timeline-gain-tool-policy.ts';
+import {createAgentTimelineGainProposals} from './timeline-gain-proposals.ts';
 import {timelineEditToolPolicy, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.mjs';
-import {pinAgentTimelineMoveTarget, assertAgentTimelineMoveOwnership, readAgentTimelineMoveReceipt, readAgentTimelineSnapshot} from './timeline-edit-domain.mjs';
+import {pinAgentTimelineMoveTarget, assertAgentTimelineMoveOwnership, readAgentTimelineMoveReceipt, readAgentTimelineSnapshot, pinAgentTimelineGainTarget, assertAgentTimelineGainOwnership, assertAgentTimelineGainTarget, readAgentTimelineGainReceipt} from './timeline-edit-domain.mjs';
 import {canonical} from '../services.mjs';
 import {validateImageConsumption} from '../image-consumption.mjs';
 import {editToolPolicy, parseEditToolArguments, validEditText} from './edit-tool-policy.mjs';
@@ -104,15 +106,16 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     if (!row || row.projectId !== projectId) missing();
     const run = parse(row.data);
     if (!plain(run) || ['id', 'projectId', 'requestId', 'threadId', 'status'].some(key => run[key] !== row[key]) ||
-      !['running', 'completed', 'failed', 'stopped', 'interrupted'].includes(run.status) || !['selected_shot_edit','selected_timeline_clip_move'].includes(run.contextMode) ||
-      !(run.contextMode === 'selected_timeline_clip_move' ? isAgentTimelineMoveTarget(run.editTarget, {projectId}) : targetValid(run.editTarget)) || run.editTarget.projectId !== projectId) corrupt();
+      !['running', 'completed', 'failed', 'stopped', 'interrupted'].includes(run.status) || !['selected_shot_edit','selected_timeline_clip_move',AGENT_TIMELINE_GAIN_CONTEXT].includes(run.contextMode) ||
+      !(run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? isAgentTimelineGainTarget(run.editTarget, {projectId}) : run.contextMode === 'selected_timeline_clip_move' ? isAgentTimelineMoveTarget(run.editTarget, {projectId}) : targetValid(run.editTarget)) || run.editTarget.projectId !== projectId) corrupt();
     const request = db.prepare(`SELECT runId,projectId,threadId,
       CASE WHEN length(CAST(acceptance AS BLOB))<=1048576 THEN acceptance ELSE NULL END AS acceptance FROM agent_chat_requests WHERE requestId=?`).get(run.requestId);
     const thread = db.prepare('SELECT projectId FROM agent_chat_threads WHERE id=?').get(run.threadId);
     if (!request || request.runId !== runId || request.projectId !== projectId || request.threadId !== run.threadId || thread?.projectId !== projectId) corrupt();
     const accepted = parse(request.acceptance);
     if (accepted.version !== 1 || accepted.execution?.version !== 1 || !same(accepted.execution.target, run.editTarget) ||
-      !same(accepted.execution.policy, run.contextMode === 'selected_timeline_clip_move' ? timelineEditToolPolicy(projectId) : editToolPolicy(projectId))) corrupt();
+      !same(accepted.execution.policy, run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? timelineGainEditToolPolicy(projectId) : run.contextMode === 'selected_timeline_clip_move' ? timelineEditToolPolicy(projectId) : editToolPolicy(projectId))) corrupt();
+    if (run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT) gainProposals.validateRun(run, accepted);
     return run;
   }
   function toolFor(run) {
@@ -155,6 +158,7 @@ export function createAgentEditService({store, services, fault = () => {}, limit
   }
   function readTimeline(row, projectId) {
     const run = runOwned(projectId, row.runId), definition = parse(row.definition, AGENT_EDIT_LIMITS.definitionBytes);
+    if (definition.version === 3) return gainProposals.read(row, projectId, run, definition);
     if (!exact(definition, ['version', 'id', 'projectId', 'runId', 'operation', 'target', 'changes', 'patch', 'diff', 'provenance', 'input', 'createdAt']) ||
       definition.version !== 2 || definition.operation !== 'timeline.clip.update' || run.contextMode !== 'selected_timeline_clip_move' ||
       !uuid(definition.id) || !uuid(definition.runId) || ['id','projectId','runId','createdAt'].some(key => definition[key] !== row[key]) ||
@@ -208,10 +212,11 @@ export function createAgentEditService({store, services, fault = () => {}, limit
   function dto(value) {
     const {row, run, definition, approval, outcome} = value;
     if (row.status === 'applied' && !same(receipt(value), outcome)) corrupt();
-    return structuredClone({id: row.id, projectId: row.projectId, runId: row.runId, runStatus: run.status, digest: row.digest, status: row.status,
-      operation: definition.operation, target: definition.version === 2 ? agentTimelineMovePublicTarget(definition.target) : publicTarget(definition.target), patch: definition.patch, diff: definition.diff,
+    const result = structuredClone({id: row.id, projectId: row.projectId, runId: row.runId, runStatus: run.status, digest: row.digest, status: row.status,
+      operation: definition.operation, target: definition.version === 3 ? agentTimelineGainPublicTarget(definition.target) : definition.version === 2 ? agentTimelineMovePublicTarget(definition.target) : publicTarget(definition.target), patch: definition.patch, diff: definition.diff,
       provenance: definition.provenance, createdAt: row.createdAt, updatedAt: row.updatedAt,
       ...(approval ? {approval: {approvedAt: approval.approvedAt, requestId: approval.input.requestId}} : {}), ...(outcome ? {outcome} : {})});
+    return definition.version === 3 ? gainProposals.publicResult(result) : result;
   }
   function action(input) {
     if (!exact(input, ['projectId', 'proposalId', 'digest']) || !id(input.projectId) || !uuid(input.proposalId) ||
@@ -228,6 +233,9 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     return byId(value.row.projectId, value.row.id);
   }
   function receipt(value) {
+    if (value.definition.version === 3) {
+      return readAgentTimelineSnapshot(db, () => readAgentTimelineGainReceipt(db, value.definition.input, value.definition.target));
+    }
     if (value.definition.version === 2) {
       const reconcile = () => readAgentTimelineMoveReceipt(db, value.definition.input, value.definition.target);
       return readAgentTimelineSnapshot(db, reconcile);
@@ -255,7 +263,7 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     if (value.run.modelRequestState !== 'completed' || !Array.isArray(value.run.activity) || !plain(final) || ['id', 'runId', 'projectId', 'status'].some(key => final[key] !== finalRow[key]) ||
       final.kind !== 'model' || final.position !== 3 || final.ordinal !== 2 || final.status !== 'completed' || final.output?.type !== 'done' || final.output.finishReason !== 'stop' ||
       Object.hasOwn(final.output, 'toolCall') || !value.run.activity?.some(item => item.id === final.id && item.kind === 'model' && item.ordinal === 2 && item.status === 'completed') ||
-      tool.status !== 'completed' || result?.kind !== (value.definition.version === 2 ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal') || result.proposalId !== value.row.id ||
+      tool.status !== 'completed' || result?.kind !== (value.definition.version === 3 ? 'untrusted_timeline_clip_gain_proposal' : value.definition.version === 2 ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal') || result.proposalId !== value.row.id ||
       result.digest !== value.row.digest || result.operation !== value.definition.operation || result.applied !== false || result.status !== 'pending_review' ||
       !same(parse(tool.observation.resultJson, 8192), result) || tool.intent?.toolCall?.id !== value.definition.provenance.toolCallId ||
       tool.intent?.toolCall?.name !== value.definition.provenance.toolName || !same(tool.intent?.toolCall?.arguments, value.definition.changes) ||
@@ -279,7 +287,10 @@ export function createAgentEditService({store, services, fault = () => {}, limit
       // No await, callback or outer transaction between ownership validation and
       // the existing synchronous mutation. Project ownership is checked again
       // inside that handler's own transaction, including receipt replay.
-      if (started.value.definition.version === 2) {
+      if (started.value.definition.version === 3) {
+        if (typeof services.setTimelineClipGainInProject !== 'function') corrupt();
+        response = services.setTimelineClipGainInProject(input.projectId, structuredClone(persisted.input), structuredClone(started.value.definition.target));
+      } else if (started.value.definition.version === 2) {
         if (typeof services.moveTimelineClipInProject !== 'function') corrupt();
         response = services.moveTimelineClipInProject(input.projectId, structuredClone(persisted.input), structuredClone(started.value.definition.target));
       } else {
@@ -294,7 +305,7 @@ export function createAgentEditService({store, services, fault = () => {}, limit
       if (['applied', 'failed'].includes(value.row.status)) return value;
       const outcome = receipt(value);
       if (outcome) return update(value, 'applied', {outcome});
-      if (value.definition.version === 2 && dispatchError instanceof AppError && hasRequestNotAppliedProof(dispatchError, persisted.input, {operation: 'timeline.clip.update'}))
+      if ([2, 3].includes(value.definition.version) && dispatchError instanceof AppError && hasRequestNotAppliedProof(dispatchError, persisted.input, {operation: 'timeline.clip.update'}))
         return update(value, 'failed', {outcome: {status: 'not_applied', code: dispatchError.code}});
       if (value.definition.version === 1 && dispatchError instanceof AppError && dispatchError.details?.mutationOutcome === 'not_applied' &&
         dispatchError.details.requestId === persisted.input.requestId &&
@@ -305,7 +316,12 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     fault('afterOutcome'); fault('beforeAcknowledgement');
     return dto(result);
   }
+  const gainProposals = createAgentTimelineGainProposals({db, bounds, same, hash, parse, runOwned, toolFor, isTarget: isAgentTimelineGainTarget, isProposal: isAgentTimelineGainProposal, reviewTarget: agentTimelineGainReviewTarget,
+    diff: agentTimelineGainDiff, ownership: assertAgentTimelineGainOwnership, hasNotAppliedProof: hasRequestNotAppliedProof,
+    readById: byId, dto, invalid, corrupt, conflict, storageLimit() { throw error('AGENT_EDIT_STORAGE_LIMIT'); }});
   return Object.freeze({
+    pinTimelineGainTarget(projectId, input) { return readAgentTimelineSnapshot(db, () => structuredClone(pinAgentTimelineGainTarget(db, projectId, input))); },
+    assertTimelineGainTarget(target) { readAgentTimelineSnapshot(db, () => assertAgentTimelineGainTarget(db, target)); },
     pinTimelineTarget(projectId, input) {
       const pin = () => structuredClone(pinAgentTimelineMoveTarget(db, projectId, input));
       return readAgentTimelineSnapshot(db, pin);
@@ -317,6 +333,7 @@ export function createAgentEditService({store, services, fault = () => {}, limit
     },
     createInside({projectId, runId, target, changes, toolCall}) {
       if (!db.isTransaction) throw new TypeError('Agent edit proposals require the chat capture transaction');
+      if (isAgentTimelineGainTarget(target, {projectId})) return gainProposals.createInside({projectId, runId, target, changes, toolCall});
       if (isAgentTimelineMoveTarget(target, {projectId})) return createTimelineInside({projectId, runId, target, changes, toolCall});
       if (!id(projectId) || !uuid(runId) || !targetValid(target) || target.projectId !== projectId || !changesValid(changes)) invalid();
       targetOwned(projectId, target.shotId);

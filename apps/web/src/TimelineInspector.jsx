@@ -19,14 +19,14 @@ import { useClipDraft } from './clip-draft-hook.ts';
 import { clipDraftRaw, clipDraftSource, clipDraftPatch } from './clip-draft-state.ts';
 import ClipDraftRecovery from './ClipDraftRecovery.tsx';
 
-export default function TimelineInspector({ clip, timeline, asset, onSave, onRemove, onDirtyChange, busy, onPreview, onReturnToSource, sourceDescription, replacementContext, onReplaceSource, onOpenRequests, draftContext, draftConnected = true, onDraftController }) {
+export default function TimelineInspector({ clip, timeline, asset, onSave, onRemove, onDirtyChange, busy, onPreview, onReturnToSource, sourceDescription, replacementContext, onReplaceSource, onOpenRequests, draftContext, draftConnected = true, onDraftController, onReviewBlockedChange }) {
   const confirm = useConfirmation();
   const visible = useWorkspaceVisibility();
   const { state, controller } = useClipDraft({ context: {
     scope: draftContext?.scope || `${timeline.projectId}:${clip.id}`, projectId: draftContext?.projectId || timeline.projectId,
     timelineId: timeline.id, clipId: clip.id, restored: Boolean(draftContext?.restored), connected: draftConnected, busy: Boolean(busy), visible,
     timelineRevision: timeline.revision, source: clipDraftSource(clip, asset), saved: clipDraftRaw(clip),
-  }, onDirtyChange, onDraftController, validateTimeline: (value, projectId) => isTimelineRecord(value, { projectId }) });
+  }, onDirtyChange, onDraftController, onReviewBlockedChange, validateTimeline: (value, projectId) => isTimelineRecord(value, { projectId }) });
   const draft = state.raw, dirty = state.dirty, conflict = state.conflict;
   const dirtyRef = useRef(false); dirtyRef.current = dirty;
   const mounted = useRef(false);

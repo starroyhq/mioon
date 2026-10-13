@@ -696,6 +696,8 @@ availability, schema version, catalog hash and the fixed
 two-model-request/one-read/8-KiB limits. The separate `edit` capability publishes
 the selected-shot schema/catalog and text/round limits described below. A separate
 `timelineEdit` capability describes the selected-clip move catalog and limits.
+The independent `timelineGainEdit` capability describes the selected-clip gain
+catalog and 0–2 range; it does not expand either earlier catalog.
 No view/lookup/history route starts inference or inspection.
 
 The existing send envelope remains strict: `requestId`, `instanceId`,
@@ -734,6 +736,22 @@ apply. Proposal/recovery routes retain their existing authenticated shapes; no
 new public mutation or model approval endpoint is added. Full consent fields,
 bounded context, discriminated schema24 and historical receipt semantics:
 [reviewed timeline moves](AGENT-TIMELINE-MOVE.md).
+
+## Reviewed Agent selected-clip gain
+
+The separate `selected_timeline_clip_gain` mode permits one finite `{gain}`
+proposal in 0–2 for one saved owned clip with known audio. Consent pins the
+independent `timelineGainEdit` capability, target revision and exact displayed
+`reviewTarget`, including saved gain and track mute. The model receives only
+clip name/gain, track name/kind/mute, known audio presence and gain limits as
+project data. Its one proposal tool cannot choose IDs, approve or execute.
+
+Explicit human approval uses the existing authenticated review routes and exact
+`timeline.clip.update` gain patch, stable key, CAS and undo/redo. Definition v3
+adds no SQL migration or new public API/MCP/CLI authority. Fresh target checks,
+the actual pre-POST fence, 30 KiB complete first request/64 KiB continuation
+bounds, historical acknowledgement, restored holds and pending acceptance:
+[reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md).
 
 ## Saved source ranges
 

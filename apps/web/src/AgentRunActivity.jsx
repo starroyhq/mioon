@@ -1,6 +1,8 @@
 import React from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible';
-import { AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, agentTimelineFrameText, agentRunContextMode } from './agent-tool-state.js';
+import { AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineFrameText, agentRunContextMode } from './agent-tool-state.js';
+
+import { AgentTimelineGainActivity } from './AgentTimelineGain.tsx';
 
 const statusLabel = (step, stopped, editing) => ({
   not_started: stopped ? '未发起 · 不会自动继续' : '尚未发起',
@@ -13,10 +15,10 @@ const statusLabel = (step, stopped, editing) => ({
 // All model/tool strings stay React text. Results have no links, HTML, fetches,
 // navigation, or action buttons, even when their contents look like commands.
 export default function AgentRunActivity({ run, visible = true }) {
-  const inspected = agentRunContextMode(run) === AGENT_PROJECT_CONTEXT, moving = agentRunContextMode(run) === AGENT_TIMELINE_CONTEXT, editing = moving || agentRunContextMode(run) === AGENT_EDIT_CONTEXT;
+  const inspected = agentRunContextMode(run) === AGENT_PROJECT_CONTEXT, moving = agentRunContextMode(run) === AGENT_TIMELINE_CONTEXT, gaining = agentRunContextMode(run) === AGENT_TIMELINE_GAIN_CONTEXT, editing = gaining || moving || agentRunContextMode(run) === AGENT_EDIT_CONTEXT;
   const stopped = run.status !== 'running';
   return <div className="agent-run-inspection" data-testid="agent-run-inspection" data-context-mode={agentRunContextMode(run)}>
-    {moving ? <Collapsible className="agent-run-provenance" data-testid="agent-run-provenance">
+    {gaining ? <AgentTimelineGainActivity target={run.editTarget} sourceCount={run.provenance.sourceRunIds.length} /> : moving ? <Collapsible className="agent-run-provenance" data-testid="agent-run-provenance">
       <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>片段移动提议 · {run.editTarget.clipName} · 保存版本 {run.editTarget.expectedRevision}</CollapsibleTrigger>
       <CollapsibleContent><p>本轮授权：{run.editTarget.trackName}上的“{run.editTarget.clipName}”，{agentTimelineFrameText(run.editTarget.startFrame)} → {agentTimelineFrameText(run.editTarget.endFrame)}，以及 {run.editTarget.occupiedIntervals.length} 个同轨其他片段数值区间。{run.provenance.sourceRunIds.length ? `另包含 ${run.provenance.sourceRunIds.length} 轮已完成纯聊天文字。` : ''}</p><p>不含媒体、源身份、其他轨道或未保存编辑；只提出 startFrame 差异，不代表已应用。本轮文字不加入纯聊天上下文，应用状态请查看独立审阅区。</p></CollapsibleContent>
     </Collapsible> : editing ? <p className="agent-run-provenance" data-testid="agent-run-provenance">本轮授权：项目 {run.provenance.projectId} 的镜头 {run.editTarget.shotId}、保存版本 {run.editTarget.expectedRevision} 的完整标题和画面描述。{run.provenance.sourceRunIds.length ? `另包含 ${run.provenance.sourceRunIds.length} 轮已完成纯聊天文字。` : ''}不包含未保存编辑；本轮文字不加入纯聊天上下文。工具只提议，不代表已应用，请查看独立审阅区的保存状态。</p> : inspected ? <Collapsible className="agent-run-provenance" data-testid="agent-run-provenance">
@@ -26,7 +28,7 @@ export default function AgentRunActivity({ run, visible = true }) {
     {run.activity?.length > 0 && <ol className="agent-run-activity" data-testid="agent-run-activity" aria-label="本轮运行活动">
       {run.activity.map(step => <li key={step.id} data-step-id={step.id} data-kind={step.kind} data-status={step.status}>
         <div className="agent-run-step-heading"><strong>{step.kind === 'model' ? `模型请求 ${step.ordinal} / 2${step.ordinal === 2 ? ' · 工具已关闭' : ''}` : step.operation}</strong><span role="status">{statusLabel(step, stopped, editing)}</span></div>
-        {step.kind === 'tool' && <p className="agent-run-tool-name">{step.name} · {moving ? '仅所选片段的同轨移动提议，尚需明确批准' : editing ? '仅所选镜头的修改提议，尚需明确批准' : '本轮项目范围内只读'}</p>}
+        {step.kind === 'tool' && <p className="agent-run-tool-name">{step.name} · {gaining ? '仅所选片段的音量提议，尚需明确批准' : moving ? '仅所选片段的同轨移动提议，尚需明确批准' : editing ? '仅所选镜头的修改提议，尚需明确批准' : '本轮项目范围内只读'}</p>}
         {step.resultJson !== undefined && <Collapsible className="agent-run-result">
           <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible} data-testid="agent-tool-result-toggle">{editing ? '查看已保存的提议回执' : '查看已保存的读取结果'}</CollapsibleTrigger>
           <CollapsibleContent><pre data-testid="agent-tool-result">{step.resultJson}</pre></CollapsibleContent>

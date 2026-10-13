@@ -37,6 +37,14 @@ one saved clip start-frame patch through existing timeline history/replay after
 an immutable human review. This does not authorize arbitrary timeline tools,
 ripple edits, generation or paid actions; release status is recorded in that report.
 
+The next bounded increment, [reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md),
+is implemented and undergoing acceptance as of 2026-10-13. It proposes only one
+saved known-audio clip's 0–2 linear gain, then uses the existing timeline mutation
+and undo/redo after a separate immutable review. It does not measure loudness,
+normalize, unmute, render automatically or expand the older Agent catalogs.
+Focused checkpoints are recorded there; final aggregate/native/media gates
+remain pending.
+
 ### 2. Make selection and editing dependable
 
 - Source in/out ranges, favorite/reject states, notes/tags, unused filters and jump-to-usage.

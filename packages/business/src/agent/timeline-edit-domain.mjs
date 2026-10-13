@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {AppError, isAgentTimelineMoveTarget, isAgentTimelineMoveArguments, agentTimelineMoveTargetFromTimeline, agentTimelineMoveDiff} from '@mioon/contracts';
+import {AppError, isAgentTimelineMoveTarget, isAgentTimelineMoveArguments, agentTimelineMoveTargetFromTimeline, agentTimelineMoveDiff, isAgentTimelineGainTarget, isAgentTimelineGainArguments, agentTimelineGainTargetFromTimeline, agentTimelineGainDiff, isTimelineMutationResponse} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary, readTimelineReceipt, invalidTimeline} from '../timeline-recovery.mjs';
 
 const operation = 'timeline.clip.update';
@@ -86,3 +86,12 @@ export function readAgentTimelineSnapshot(db, read) {
   try { const value = read(); db.exec('COMMIT'); return value; }
   catch (error) { if (db.isTransaction) db.exec('ROLLBACK'); throw error; }
 }
+
+// Fixed additive gain binding; the existing move catalog and boundary are unchanged.
+import {createAgentTimelineGainDomain} from './timeline-gain-domain.ts';
+export const {pinAgentTimelineGainTarget, assertAgentTimelineGainOwnership, assertAgentTimelineGainTarget, createAgentTimelineGainBoundary, readAgentTimelineGainReceipt} = createAgentTimelineGainDomain({
+  createBoundary: createTimelineRecoveryBoundary, readReceipt: readTimelineReceipt,
+  isTarget: isAgentTimelineGainTarget, isArguments: isAgentTimelineGainArguments,
+  targetFromTimeline: agentTimelineGainTargetFromTimeline, diff: agentTimelineGainDiff, isMutationResponse: isTimelineMutationResponse,
+  fail(code) { throw new AppError(code, '已选择的音量提案或关联素材无法安全验证。', code === 'AGENT_EDIT_VALIDATION' ? 400 : code === 'TIMELINE_SOURCE_UNAVAILABLE' ? 404 : 409); },
+});

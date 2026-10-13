@@ -1,3 +1,5 @@
+import * as timing from '../apps/web/src/agent-timeline-context.js';
+import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -183,6 +185,9 @@ function uiHarness(client, receipts = memoryReceipts()) {
   }; react.default = react;
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   const resolve = id => {
+    if (id === './agent-timeline-context.js') return timing;
+    if (id === './agent-timeline-gain-context.ts') return gainContext;
+    if (id === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
     if (id === 'react') return react;
     if (id === './agent-chat.js') return { ...logic, createAgentChatSession: options => logic.createAgentChatSession({ ...options, client, receipts, requestId: () => requestId }) };
     if (id === './agent-tool-state.js') return toolLogic;

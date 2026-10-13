@@ -91,6 +91,7 @@ test('foundation configuration strictly checks the real contract and automatical
     '../../packages/contracts/src/agent-protocol.ts',
     '../../packages/contracts/src/agent-protocol.mjs',
     './agent-protocol.consumer.mts',
+    './agent-timeline-gain.consumer.mts',
   ]);
   assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
@@ -168,7 +169,7 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
   await mkdir(temporaryParent, {recursive: true, mode: 0o700});
   const directory = await mkdtemp(path.join(temporaryParent, 'typecheck-test-中-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  for (const name of [sourceName, shimName, consumerName, configName, 'packages/contracts/package.json']) {
+  for (const name of [sourceName, shimName, consumerName, 'tests/typecheck/agent-timeline-gain.consumer.mts', 'packages/contracts/src/agent-timeline-gain.ts', configName, 'packages/contracts/package.json']) {
     const destination = path.join(directory, name);
     await mkdir(path.dirname(destination), {recursive: true});
     await writeFile(destination, await readFile(path.join(root, name)));

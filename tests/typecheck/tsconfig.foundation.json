@@ -25,7 +25,8 @@
   "files": [
     "../../packages/contracts/src/agent-protocol.ts",
     "../../packages/contracts/src/agent-protocol.mjs",
-    "./agent-protocol.consumer.mts"
+    "./agent-protocol.consumer.mts",
+    "./agent-timeline-gain.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

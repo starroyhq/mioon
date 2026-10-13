@@ -1,3 +1,4 @@
+import {assertAgentGainRequestBudget} from './gain-context-fence.ts';
 import {AGENT_CHAT_LIMITS} from './chat-policy.mjs';
 export {CHAT_SYSTEM_INSTRUCTION, AGENT_CHAT_LIMITS} from './chat-policy.mjs';
 import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.mjs';
@@ -78,6 +79,7 @@ export function buildAgentChatBody({configuration, messages, selfPort, readTools
   }
   const body = JSON.stringify({model: config.model, messages: safeMessages, stream: true, [profile.tokenField]: AGENT_CHAT_LIMITS.maxOutputTokens, ...profile.fields, ...readToolRequestFields(config, readTools)});
   if (Buffer.byteLength(body) > AGENT_CHAT_LIMITS.maxRequestBytes) fail('AGENT_CHAT_LIMIT');
+  assertAgentGainRequestBudget(body, readTools);
   return {configuration: config, body};
 }
 
@@ -86,12 +88,12 @@ export function buildAgentChatBody({configuration, messages, selfPort, readTools
  * and a clean framed end; partial text remains partial on every failure. */
 export function createChatCompletionGateway(dependencies = {}) {
   const open = createAgentTransport(dependencies);
-  return async function* streamChatCompletion({configuration, apiKey, messages, signal, selfPort, readTools}) {
+  return async function* streamChatCompletion({configuration, apiKey, messages, signal, selfPort, readTools, beforeSubmit}) {
     if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
     const request = buildAgentChatRequest({configuration, apiKey, messages, selfPort, readTools});
     let stream;
     try {
-      stream = await open({...request, apiKey, signal, selfPort});
+      stream = await open({...request, apiKey, signal, selfPort, beforeSubmit});
       let finishReason = null, done = false, outputBytes = 0, usage, content = '', refusal = '';
       const tools = chatToolAccumulator(readTools), allowToolCalls = readTools?.phase === 'request';
       for await (const frame of parseAgentSse(stream.body, {...AGENT_SSE_LIMITS, signal})) {

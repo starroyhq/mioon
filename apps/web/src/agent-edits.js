@@ -1,4 +1,4 @@
-import { safeAgentTimelineProposal, safeAgentTimelineTarget, agentTimelineApprovalIssue, agentTimelineFrameText } from './agent-timeline-context.js';
+import { safeAgentTimelineProposal, safeAgentTimelineTarget, safeAgentTimelineGainProposal, safeAgentTimelineGainTarget, isAgentTimelineGainProposal, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineApprovalIssue, agentTimelineFrameText } from './agent-timeline-context.js';
 export { agentTimelineApprovalIssue, agentTimelineFrameText };
 import { safeAgentEditTarget } from './agent-tool-state.js';
 
@@ -20,6 +20,7 @@ export const agentEditImmutableKey = proposal => JSON.stringify([proposal.id, pr
 
 // The model's response text is never evidence of approval or application.
 export function safeAgentEditProposal(value, projectId) {
+  if (isAgentTimelineGainProposal(value, { projectId })) return safeAgentTimelineGainProposal(value, projectId);
   if (value?.operation === 'timeline.clip.update') return safeAgentTimelineProposal(value, projectId);
   if (!value || !uuid(value.id) || value.projectId !== projectId || !uuid(value.runId) || !hash(value.digest) || !statuses.has(value.status) || !runStatuses.has(value.runStatus) || value.operation !== 'shot.update') invalid();
   const before = value.diff?.before, after = value.diff?.after;
@@ -246,7 +247,7 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
   }
   return { getState: () => state, load, inspect, act,
     setTimelineContext({ target, blockedReason = '', contextMode } = {}) {
-      let next = null; try { if (target) next = safeAgentTimelineTarget(target, projectId); } catch { /* Malformed or stale selection never approves. */ }
+      let next = null; try { if (target) next = contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? safeAgentTimelineGainTarget(target, projectId) : safeAgentTimelineTarget(target, projectId); } catch { /* Malformed or stale selection never approves. */ }
       timelineContext = { target: next, blockedReason: typeof blockedReason === 'string' ? blockedReason : '请先核对当前时间线状态。', contextMode };
     },
     chooseView(view) { if (!active || !visible || state.busy || !['unresolved', 'all'].includes(view)) return false; return load({ view, cursor: null, trail: [] }); },

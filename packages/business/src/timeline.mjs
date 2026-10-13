@@ -1,7 +1,7 @@
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {bindRestoredExport} from './workspace-restore-exports.mjs';
 import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
-import {createAgentTimelineMoveBoundary} from './agent/timeline-edit-domain.mjs';
+import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.mjs';
 import {createSubtitleMutations} from './timeline-subtitles.mjs';
 import {randomUUID} from 'node:crypto';
 import {AppError,sourceFrameCount,isTimelineMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '@mioon/contracts';
@@ -290,5 +290,6 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
  // Fixed backend-only Agent scope. It uses precisely the existing update,
  // history, revision and receipt transaction, with no second mutation engine.
  const moveClipInProject=(input,target)=>updateClip(input,createAgentTimelineMoveBoundary(db,input,target));
- return {ensure,history,handlers,moveClipInProject};
+ const setClipGainInProject=(input,target)=>updateClip(input,createAgentTimelineGainBoundary(db,input,target));
+ return {ensure,history,handlers,moveClipInProject,setClipGainInProject};
 }

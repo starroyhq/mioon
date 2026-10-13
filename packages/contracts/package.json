@@ -11,7 +11,8 @@
     "./local-drafts": "./src/local-drafts.ts",
     "./local-delivery": "./src/local-delivery.ts",
     "./local-shot-text": "./src/local-shot-text.ts",
-    "./last-project": "./src/last-project.ts"
+    "./last-project": "./src/last-project.ts",
+    "./agent-timeline-gain": "./src/agent-timeline-gain.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

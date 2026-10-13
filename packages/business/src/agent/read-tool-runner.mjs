@@ -1,4 +1,4 @@
-import {AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE} from '@mioon/contracts';
+import {AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE, AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_PROVENANCE} from '@mioon/contracts';
 import {agentChatError} from './chat-errors.mjs';
 import {buildAgentRequest} from './agent-gateway.mjs';
 import {toolScope} from './tool-wire.mjs';
@@ -9,9 +9,9 @@ import {READ_TOOL_LIMITS, READ_TOOL_OPERATIONS} from './read-tool-policy.mjs';
  * Nothing here runs on startup, and no model output can apply a mutation. */
 export async function runReadToolWorkflow({runId, projectId, configuration, messages, provenance,
   apiKey, gateway, selfPort, journal, inspection, editService, target, contextMode, control}) {
-  const timelineEdit = contextMode === AGENT_TIMELINE_MOVE_CONTEXT;
-  const scopeOptions = target ? {scope: timelineEdit ? AGENT_TIMELINE_MOVE_CONTEXT : 'selected_shot_edit'} : {}, scope = toolScope(scopeOptions);
-  if (timelineEdit && !target) throw agentChatError('AGENT_CHAT_VALIDATION');
+  const timelineEdit = contextMode === AGENT_TIMELINE_MOVE_CONTEXT, timelineGain = contextMode === AGENT_TIMELINE_GAIN_CONTEXT;
+  const scopeOptions = target ? {scope: timelineGain ? AGENT_TIMELINE_GAIN_CONTEXT : timelineEdit ? AGENT_TIMELINE_MOVE_CONTEXT : 'selected_shot_edit'} : {}, scope = toolScope(scopeOptions);
+  if ((timelineEdit || timelineGain) && !target) throw agentChatError('AGENT_CHAT_VALIDATION');
   const committed = operation => {
     const saved = control.commit(operation);
     if (saved.events?.length) control.publish(saved.events);
@@ -21,11 +21,12 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
   if (!first || !control.live()) return;
   async function request(step, readTools) {
     if (!control.live()) return null;
+    control.beforeSubmit?.();
     committed(() => journal.modelDispatch(runId, step.id));
     if (!control.live()) return null;
     let terminal = null;
     for await (const item of gateway({configuration: {...configuration}, apiKey, messages: structuredClone(messages),
-      readTools: structuredClone(readTools), signal: control.signal, selfPort})) {
+      readTools: structuredClone(readTools), signal: control.signal, selfPort, ...(control.beforeSubmit ? {beforeSubmit: control.beforeSubmit} : {})})) {
       if (!control.live()) return null;
       if (terminal) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
       if (item?.type === 'delta' && typeof item.text === 'string' && item.text.isWellFormed()) control.text(item.text);
@@ -53,7 +54,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
   const completed = await request(first, {phase: 'request', ...scopeOptions});
   if (!completed || !control.live() || completed.finishReason === 'stop') return;
   const call = completed.toolCall, parsed = scope.parse(call.name, call.argumentsJson);
-  const toolProvenance = {category: timelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : target ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, operation: parsed.operation};
+  const toolProvenance = {category: timelineGain ? AGENT_TIMELINE_GAIN_PROVENANCE : timelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : target ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, operation: parsed.operation};
   const intent = committed(() => journal.toolIntent(runId, first.id, {toolCall: call, provenance: toolProvenance}));
   if (!control.live()) return;
   // Context identity and its capabilities are created solely by the backend.
@@ -63,7 +64,7 @@ export async function runReadToolWorkflow({runId, projectId, configuration, mess
     if (!control.live()) throw agentChatError('AGENT_CHAT_ABORTED');
     if (target) {
       const proposal = editService.createInside({projectId, runId, target, changes: parsed.arguments, toolCall: call});
-      const result = {kind: timelineEdit ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal', operation: parsed.operation, status: 'pending_review',
+      const result = {kind: timelineGain ? 'untrusted_timeline_clip_gain_proposal' : timelineEdit ? 'untrusted_timeline_clip_move_proposal' : 'untrusted_shot_update_proposal', operation: parsed.operation, status: 'pending_review',
         applied: false, proposalId: proposal.id, digest: proposal.digest};
       const resultJson = JSON.stringify(result);
       if (Buffer.byteLength(resultJson) > scope.limits.maxResultBytes) throw agentChatError('AGENT_CHAT_LIMIT');

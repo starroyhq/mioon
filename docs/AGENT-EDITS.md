@@ -9,6 +9,13 @@ The later [selected-clip move mode](AGENT-TIMELINE-MOVE.md) has a separate
 catalog and discriminated timeline target; it does not expand the original
 selected-shot tool or rewrite its stored approvals.
 
+The later [selected-clip gain mode](AGENT-TIMELINE-GAIN.md) is a separate
+gain-only catalog and definition-v3 alternative, currently undergoing
+acceptance. It reuses the authenticated review routes below and existing
+timeline mutation/history, without changing the version-1 shot contract,
+version-2 move contract or SQL schema. Its stricter audio eligibility, consent
+projection and historical replay limits are documented separately.
+
 ## Scope and consent
 
 The only proposed business operation is `shot.update`, restricted to `title`

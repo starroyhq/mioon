@@ -1,5 +1,6 @@
+import {parseTimelineGainConsent, timelineGainConsentMatches, selectedTimelineGainMessage, TIMELINE_GAIN_EDIT_TOOL_SYSTEM_INSTRUCTION, TIMELINE_GAIN_EDIT_TOOL_LIMITS} from './timeline-gain-tool-policy.ts';
 import {exactObject} from './config.mjs';
-import {AGENT_PROTOCOLS, AGENT_TIMELINE_MOVE_CONTEXT} from '@mioon/contracts';
+import {AGENT_PROTOCOLS, AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainModelContext} from '@mioon/contracts';
 import {agentChatError} from './chat-errors.mjs';
 import {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 import {EDIT_CAPABILITY_FIELDS, EDIT_TOOL_SYSTEM_INSTRUCTION, EDIT_TOOL_LIMITS, editToolCapability, selectedShotMessage} from './edit-tool-policy.mjs';
@@ -10,6 +11,7 @@ import {TIMELINE_EDIT_CAPABILITY_FIELDS, TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, 
 const baseFields = ['destination', 'protocol', 'model', 'context'];
 const inspectionFields = ['projectId', 'schemaVersion', 'catalogHash', 'maxModelRequests', 'maxToolCalls', 'maxResultBytes'];
 export function parseChatConsent(value) {
+  if (value?.context === AGENT_TIMELINE_GAIN_CONTEXT) return parseTimelineGainConsent(value);
   const mode = value?.context, fields = mode === AGENT_TIMELINE_MOVE_CONTEXT ? ['projectId', ...TIMELINE_EDIT_CAPABILITY_FIELDS, 'timelineId', 'clipId', 'expectedRevision'] : mode === 'selected_shot_edit' ? ['projectId', ...EDIT_CAPABILITY_FIELDS, 'shotId', 'expectedRevision'] : mode === 'project_inspection' ? inspectionFields : [];
   if (!['typed_chat_only', 'project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(mode) ||
       !exactObject(value, [...baseFields, ...fields]) ||
@@ -38,13 +40,15 @@ export function timelineEditConsentMatches(consent, projectId, available) {
   const capability = timelineEditToolCapability(available);
   return capability.available && consent.projectId === projectId && TIMELINE_EDIT_CAPABILITY_FIELDS.every(key => consent[key] === capability[key]);
 }
+export {timelineGainConsentMatches};
 /** Provenance filtering precedes text selection. Viewing history never adds it. */
 export function selectChatContext(runs, message, mode, limits, target) {
-  const inspection = mode === 'project_inspection', edit = mode === 'selected_shot_edit', timelineEdit = mode === AGENT_TIMELINE_MOVE_CONTEXT;
+  const inspection = mode === 'project_inspection', edit = mode === 'selected_shot_edit', timelineEdit = mode === AGENT_TIMELINE_MOVE_CONTEXT, timelineGain = mode === AGENT_TIMELINE_GAIN_CONTEXT;
   if (edit) message = selectedShotMessage(message, target);
   if (timelineEdit) message = selectedTimelineClipMessage(message, target);
-  const instruction = timelineEdit ? TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION : edit ? EDIT_TOOL_SYSTEM_INSTRUCTION : inspection ? READ_TOOL_SYSTEM_INSTRUCTION : CHAT_SYSTEM_INSTRUCTION;
-  const maximum = timelineEdit ? TIMELINE_EDIT_TOOL_LIMITS.maxContextBytes : edit ? EDIT_TOOL_LIMITS.maxContextBytes : inspection ? READ_TOOL_LIMITS.maxContextBytes : limits.contextBytes;
+  if (timelineGain) message = selectedTimelineGainMessage(message, target, agentTimelineGainModelContext);
+  const instruction = timelineGain ? TIMELINE_GAIN_EDIT_TOOL_SYSTEM_INSTRUCTION : timelineEdit ? TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION : edit ? EDIT_TOOL_SYSTEM_INSTRUCTION : inspection ? READ_TOOL_SYSTEM_INSTRUCTION : CHAT_SYSTEM_INSTRUCTION;
+  const maximum = timelineGain ? TIMELINE_GAIN_EDIT_TOOL_LIMITS.maxContextBytes : timelineEdit ? TIMELINE_EDIT_TOOL_LIMITS.maxContextBytes : edit ? EDIT_TOOL_LIMITS.maxContextBytes : inspection ? READ_TOOL_LIMITS.maxContextBytes : limits.contextBytes;
   const selected = [];
   let size = Buffer.byteLength(instruction) + Buffer.byteLength(message);
   if (size > maximum) throw agentChatError('AGENT_CHAT_LIMIT');
@@ -54,7 +58,7 @@ export function selectChatContext(runs, message, mode, limits, target) {
     // Journal validation distinguishes genuine legacy typed runs from corrupt
     // project-data rows that lost their immutable provenance. Edit data is never
     // eligible for inspection context, and selected edits use typed history only.
-    if (run.contextMode === 'selected_shot_edit' || run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT || !inspection && (run.contextMode || run.provenance)) continue;
+    if (run.contextMode === 'selected_shot_edit' || run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT || run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT || !inspection && (run.contextMode || run.provenance)) continue;
     if (target && run.projectId !== target.projectId) continue;
     const pairBytes = Buffer.byteLength(run.userText) + Buffer.byteLength(run.assistantText);
     if (selected.length >= limits.historyRuns || size + pairBytes > maximum) break;

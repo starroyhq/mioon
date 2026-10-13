@@ -1,9 +1,11 @@
 import {getWorkspaceRestoreContext} from '../workspace-restore-schema.mjs';
 import {workspaceRestoreError} from '../workspace-restore-policy.mjs';
 import {createHash, randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
+import {createAgentGainContextFence} from './gain-context-fence.ts';
 import {exactObject, parseAgentConfiguration} from './config.mjs';
 import {AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentCredentialResult, sanitizeAgentSettingsResult} from './settings.mjs';
-import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE, agentTimelineMoveReviewTarget} from '@mioon/contracts';
+import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE, agentTimelineMoveReviewTarget, AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_PROVENANCE, agentTimelineGainReviewTarget} from '@mioon/contracts';
 import {streamAgentResponse, validateAgentGatewayConfiguration, buildAgentRequest} from './agent-gateway.mjs';
 import {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 export {CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
@@ -13,6 +15,7 @@ import {createInspectionServices} from '../inspection.mjs';
 import {readToolCapability, readToolPolicy} from './read-tool-policy.mjs';
 import {editToolCapability, editToolPolicy} from './edit-tool-policy.mjs';
 import {timelineEditToolCapability, timelineEditToolPolicy} from './timeline-edit-tool-policy.mjs';
+import {timelineGainEditToolCapability, timelineGainEditToolPolicy, timelineGainConsentMatches} from './timeline-gain-tool-policy.ts';
 import {parseChatConsent, inspectionConsentMatches, editConsentMatches, timelineEditConsentMatches, selectChatContext} from './chat-context.mjs';
 import {runReadToolWorkflow} from './read-tool-runner.mjs';
 
@@ -127,12 +130,13 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       baseUrl: run.configuration.baseUrl, model: run.configuration.model, protocol: run.configuration.protocol},
     createdAt: run.createdAt, updatedAt: run.updatedAt, lastEventId: run.lastEventId,
     modelRequestId: run.modelRequestId, modelRequestState: run.modelRequestState,
-    ...(['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(run.contextMode) ? {contextMode: run.contextMode,
+    ...(['project_inspection', 'selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(run.contextMode) ? {contextMode: run.contextMode,
       provenance: {category: run.provenance.category, projectId: run.provenance.projectId, sourceRunIds: [...run.provenance.sourceRunIds]},
       activity: run.activity.map(item => ({id: item.id, kind: item.kind, ordinal: item.ordinal, status: item.status,
         ...(item.kind === 'tool' ? {name: item.name, operation: item.operation, ...(item.resultJson !== undefined ? {resultJson: item.resultJson} : {})} : {})}))} : {}),
     ...(run.contextMode === 'selected_shot_edit' ? {editTarget: structuredClone(run.editTarget)} : {}),
     ...(run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT ? {editTarget: agentTimelineMoveReviewTarget(run.editTarget)} : {}),
+    ...(run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? {editTarget: agentTimelineGainReviewTarget(run.editTarget)} : {}),
     ...(run.modelRequestStartedAt ? {modelRequestStartedAt: run.modelRequestStartedAt} : {}),
     ...(run.error ? {error: publicError(run.error)} : {})});
   const publicEvent = event => ({id: event.id, type: event.type, instanceId, threadId: event.threadId,
@@ -215,17 +219,28 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
     try { validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), readTools: {phase: 'request', scope: AGENT_TIMELINE_MOVE_CONTEXT}}); return true; }
     catch { return false; }
   }
+  function timelineGainAvailable(projectId, configuration) {
+    if (!editService?.pinTimelineGainTarget || !editService?.assertTimelineGainTarget || !uuid(projectId)) return false;
+    try { validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), readTools: {phase: 'request', scope: AGENT_TIMELINE_GAIN_CONTEXT}}); return true; }
+    catch { return false; }
+  }
   async function execute(state, configuration, messages, expectedSettingsRevision) {
     let apiKey = null;
+    const beforeSubmit = state.execution?.policy.context === AGENT_TIMELINE_GAIN_CONTEXT ? createAgentGainContextFence({
+      live: () => live(state), checkTarget: () => editService.assertTimelineGainTarget(state.execution.target)}) : undefined;
     try {
       validateAgentGatewayConfiguration(configuration, {selfPort: selfPort(), ...(state.execution ? {readTools: {phase: 'request', ...(state.execution.target ? {scope: state.execution.policy.context} : {})}} : {})});
       const expected = {expectedRevision: expectedSettingsRevision, configuration};
       let credential;
       try {
         if (typeof agentSettings[AGENT_CREDENTIAL_ACQUIRE] !== 'function') throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE');
-        credential = sanitizeAgentCredentialResult(await bounded(() => agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected,
-          {selfPort: selfPort(), signal: state.controller.signal}), state.controller.signal), expected);
+        credential = sanitizeAgentCredentialResult(await bounded(() => {
+          beforeSubmit?.();
+          return agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected, {selfPort: selfPort(), signal: state.controller.signal});
+        }, state.controller.signal), expected);
+        beforeSubmit?.();
       } catch (error) {
+        if (beforeSubmit && ['AGENT_CHAT_CONTEXT_CHANGED', 'AGENT_CHAT_ABORTED'].includes(error?.code)) throw error;
         if (error?.code === 'AGENT_SETTINGS_CONFLICT') throw chatRuntimeError('AGENT_CHAT_SETTINGS_CONFLICT');
         throw chatRuntimeError('AGENT_CHAT_CREDENTIAL_UNAVAILABLE');
       }
@@ -235,7 +250,7 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       if (state.execution) {
         await runReadToolWorkflow({runId: state.id, projectId: state.projectId, configuration, messages,
           provenance: state.execution.request.provenance, apiKey, gateway, selfPort: selfPort(), journal, inspection, editService, target: state.execution.target, contextMode: state.execution.policy.context,
-          control: {signal: state.controller.signal, live: () => live(state), commit: access, publish,
+          control: {signal: state.controller.signal, live: () => live(state), commit: access, publish, ...(beforeSubmit ? {beforeSubmit} : {}),
             flush: () => flush(state), text: text => {
               const bytes = Buffer.byteLength(text);
               if (state.receivedBytes + bytes > CHAT_LIMITS.responseBytes) throw agentChatError('AGENT_CHAT_LIMIT');
@@ -304,7 +319,8 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       return {...page, scope: editService?.pinTimelineTarget ? 'chat_and_reviewed_timeline_edits' : editService ? 'chat_and_reviewed_shot_edits' : 'chat_and_project_inspection', persistence: 'local_database', mode: modeName, settings,
         inspection: readToolCapability(inspectionAvailable(projectId, settings.configuration)),
         edit: editToolCapability(editAvailable(projectId, settings.configuration)),
-        timelineEdit: timelineEditToolCapability(timelineEditAvailable(projectId, settings.configuration))};
+        timelineEdit: timelineEditToolCapability(timelineEditAvailable(projectId, settings.configuration)),
+        timelineGainEdit: timelineGainEditToolCapability(timelineGainAvailable(projectId, settings.configuration))};
     },
     send(projectId, value) {
       let input;
@@ -332,17 +348,19 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
         const configuration = parseAgentConfiguration(settings.configuration, {selfPort: selfPort()});
         if (input.consent.destination !== deriveAgentEndpoint(configuration) || input.consent.protocol !== configuration.protocol || input.consent.model !== configuration.model) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
         const useInspection = input.consent.context === 'project_inspection', useEdit = input.consent.context === 'selected_shot_edit',
-          useTimelineEdit = input.consent.context === AGENT_TIMELINE_MOVE_CONTEXT;
-        const useProposal = useEdit || useTimelineEdit;
+          useTimelineEdit = input.consent.context === AGENT_TIMELINE_MOVE_CONTEXT, useTimelineGain = input.consent.context === AGENT_TIMELINE_GAIN_CONTEXT;
+        const useProposal = useEdit || useTimelineEdit || useTimelineGain;
         if (useInspection && !inspectionConsentMatches(input.consent, projectId, inspectionAvailable(projectId, configuration))) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
         if (useEdit && !editConsentMatches(input.consent, projectId, editAvailable(projectId, configuration))) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
         if (useTimelineEdit && !timelineEditConsentMatches(input.consent, projectId, timelineEditAvailable(projectId, configuration))) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
-        const target = useTimelineEdit ? editService.pinTimelineTarget(projectId, {timelineId: input.consent.timelineId, clipId: input.consent.clipId, expectedRevision: input.consent.expectedRevision}) :
+        if (useTimelineGain && !timelineGainConsentMatches(input.consent, projectId, timelineGainAvailable(projectId, configuration))) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
+        const target = useTimelineGain ? editService.pinTimelineGainTarget(projectId, {timelineId: input.consent.timelineId, clipId: input.consent.clipId, expectedRevision: input.consent.expectedRevision}) : useTimelineEdit ? editService.pinTimelineTarget(projectId, {timelineId: input.consent.timelineId, clipId: input.consent.clipId, expectedRevision: input.consent.expectedRevision}) :
           useEdit ? editService.pinTarget(projectId, {shotId: input.consent.shotId, expectedRevision: input.consent.expectedRevision}) : undefined;
+        if (useTimelineGain && !isDeepStrictEqual(input.consent.reviewTarget, agentTimelineGainReviewTarget(target))) throw chatRuntimeError('AGENT_CHAT_CONSENT_REQUIRED');
         const {messages, sourceRunIds} = selectChatContext(access(() => journal.page(projectId)).runs, input.message, input.consent.context, CHAT_LIMITS, target);
-        const execution = useInspection || useProposal ? {version: 1, policy: useTimelineEdit ? timelineEditToolPolicy(projectId) : useEdit ? editToolPolicy(projectId) : readToolPolicy(projectId), ...(useProposal ? {target} : {}), request: {protocol: configuration.protocol,
+        const execution = useInspection || useProposal ? {version: 1, policy: useTimelineGain ? timelineGainEditToolPolicy(projectId) : useTimelineEdit ? timelineEditToolPolicy(projectId) : useEdit ? editToolPolicy(projectId) : readToolPolicy(projectId), ...(useProposal ? {target} : {}), request: {protocol: configuration.protocol,
           body: buildAgentRequest({configuration, messages, readTools: {phase: 'request', ...(useProposal ? {scope: input.consent.context} : {})}, selfPort: selfPort()}).body,
-          context: messages, provenance: {category: useTimelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : useEdit ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, sourceRunIds}}} : undefined;
+          context: messages, provenance: {category: useTimelineGain ? AGENT_TIMELINE_GAIN_PROVENANCE : useTimelineEdit ? AGENT_TIMELINE_MOVE_PROVENANCE : useEdit ? 'project_selected_shot_text' : 'project_saved_text_metadata', projectId, sourceRunIds}}} : undefined;
         const saved = access(() => journal.accept({projectId, requestId: input.requestId, fingerprint, instanceId, configuration, messages, consent: input.consent, input, ...(execution ? {execution} : {})}));
         const state = {id: saved.run.id, projectId, controller: new AbortController(), fenced: false,
           pending: '', pendingBytes: 0, receivedBytes: 0, timer: null, flushTimer: null, execution};
@@ -384,7 +402,7 @@ export function createChatRuntime({store, agentSettings, gateway = streamAgentRe
       const run = getRun(projectId, runId, input.instanceId);
       terminal(active.get(run.id), 'stopped');
       // An explicit Stop racing with completion still withdraws its unapproved proposal.
-      if (['selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT].includes(run.contextMode)) access(() => editService?.cancelRun(run.id));
+      if (['selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(run.contextMode)) access(() => editService?.cancelRun(run.id));
       checkOpen();
       return runResponse(access(() => journal.get(projectId, runId)));
     },

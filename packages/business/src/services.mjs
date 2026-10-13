@@ -293,6 +293,12 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   if(projectId!==input?.projectId||projectId!==target?.projectId)throw new AppError('VALIDATION_ERROR','项目范围无效');
   return publicValue(timeline.moveClipInProject(parse('timeline.clip.update',input),target));
  }
+ // Backend-only reviewed gain. The fixed boundary reuses the same clip update transaction.
+ function setTimelineClipGainInProject(projectId,input,target){
+  checkpoint(ownerSignal);
+  if(projectId!==input?.projectId||projectId!==target?.projectId)throw new AppError('VALIDATION_ERROR','项目范围无效');
+  return publicValue(timeline.setClipGainInProject(parse('timeline.clip.update',input),target));
+ }
  // Only queued/new provider dispatch uses lifecycle validation. Paid task
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job){
@@ -321,5 +327,5 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    return saveJob(current,patch);
   });
  }
- return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
+ return {call,drain,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed,imageRejection:images.rejectReview};
 }

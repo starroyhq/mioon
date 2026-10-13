@@ -1,4 +1,9 @@
-import { isAgentTimelineMoveReviewTarget, isAgentTimelineMoveProposal, agentTimelineMoveTargetFromTimeline, agentTimelineMoveReviewTarget } from '@mioon/contracts';
+import { isAgentTimelineMoveReviewTarget, isAgentTimelineMoveProposal, agentTimelineMoveTargetFromTimeline, agentTimelineMoveReviewTarget, isAgentTimelineGainProposal, agentTimelineGainTargetFromTimeline, agentTimelineGainReviewTarget } from '@mioon/contracts';
+
+import { createAgentTimelineGainBrowser, agentTimelineGainApprovalIssue } from './agent-timeline-gain-context.ts';
+export { AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_POLICY, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineGainOutboundConsent, agentTimelineGainBlockedReason } from './agent-timeline-gain-context.ts';
+export { isAgentTimelineMoveProposal, isAgentTimelineGainProposal };
+export const { safeAgentTimelineGainProposal, makeAgentTimelineGainSelection } = createAgentTimelineGainBrowser({ isAgentTimelineGainProposal, agentTimelineGainTargetFromTimeline, agentTimelineGainReviewTarget });
 
 // Browser projections contain only the exact consent/review metadata. The full
 // frozen source identity belongs exclusively to the server's accepted intent.
@@ -32,6 +37,8 @@ export function safeAgentTimelineProposal(value, projectId) {
 }
 export function agentTimelineApprovalIssue(proposal, { target, blockedReason = '', contextMode } = {}) {
   if (proposal?.operation !== 'timeline.clip.update') return '';
+  if (isAgentTimelineGainProposal(proposal)) return agentTimelineGainApprovalIssue(proposal, { target, blockedReason, contextMode });
+  if (!isAgentTimelineMoveProposal(proposal)) return '片段提议的类型或固定差异无效，不能批准。';
   if (blockedReason) return blockedReason;
   if (contextMode !== AGENT_TIMELINE_CONTEXT) return '请先选择“选中片段移动提议”范围，再核对这份固定差异。';
   if (!target) return '请先选中这份提议对应的已保存时间线片段。';

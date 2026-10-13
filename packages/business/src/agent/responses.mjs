@@ -1,3 +1,4 @@
+import {assertAgentGainRequestBudget} from './gain-context-fence.ts';
 import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.mjs';
 import {AGENT_CHAT_LIMITS, CHAT_SYSTEM_INSTRUCTION} from './chat-policy.mjs';
 import {agentChatError} from './chat-errors.mjs';
@@ -80,11 +81,12 @@ export function buildAgentResponsesBody({configuration, messages, selfPort, read
   if (!input.length || input.at(-1).role !== 'user') fail('AGENT_CHAT_VALIDATION');
   if (readTools?.phase === 'answer') {
     input.push(...responseToolContinuation(readTools, messageSnapshot, AGENT_RESPONSES_LIMITS.maxItems));
-    if (Buffer.byteLength(JSON.stringify(input)) + Buffer.byteLength(instructions) > (['selected_shot_edit', 'selected_timeline_clip_move'].includes(readTools.scope) ? toolScope(readTools).limits.maxContinuationBytes : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
+    if (Buffer.byteLength(JSON.stringify(input)) + Buffer.byteLength(instructions) > (['selected_shot_edit', 'selected_timeline_clip_move', 'selected_timeline_clip_gain'].includes(readTools.scope) ? toolScope(readTools).limits.maxContinuationBytes : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
   }
   const body = JSON.stringify({model: config.model, stream: true, store: false, max_output_tokens: AGENT_CHAT_LIMITS.maxOutputTokens,
     instructions, input, ...AGENT_RESPONSES_PROFILES[config.presetId].fields, ...readToolRequestFields(config, readTools)});
   if (Buffer.byteLength(body) > AGENT_CHAT_LIMITS.maxRequestBytes) fail('AGENT_CHAT_LIMIT');
+  assertAgentGainRequestBudget(body, readTools);
   return {configuration: config, body};
 }
 function safeUsage(value) {
@@ -136,12 +138,12 @@ function samePart(actual, expected) { if (actual.type !== expected.type || actua
  * derive success from [DONE], a completed part, or a convenience output_text. */
 export function createResponsesGateway(dependencies = {}) {
   const open = createAgentTransport(dependencies);
-  return async function* streamResponses({configuration, apiKey, messages, signal, selfPort, readTools}) {
+  return async function* streamResponses({configuration, apiKey, messages, signal, selfPort, readTools, beforeSubmit}) {
     if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
     const request = buildAgentResponsesRequest({configuration, apiKey, messages, selfPort, readTools});
     let stream;
     try {
-      stream = await open({...request, apiKey, signal, selfPort});
+      stream = await open({...request, apiKey, signal, selfPort, beforeSubmit});
       let responseId = null, sequence = -1, completed = false, inProgress = false, outputBytes = 0, partCount = 0, usage, toolCount = 0, providerOutput;
       const allowToolCalls = readTools?.phase === 'request';
       const items = [], itemIds = new Set();

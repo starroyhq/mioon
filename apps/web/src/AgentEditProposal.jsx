@@ -3,6 +3,8 @@ import { Button } from '@mioon/ui/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 import { agentEditCanApprove, agentEditCanRecover, agentEditStatusText, agentTimelineApprovalIssue, agentTimelineFrameText, createAgentEditsSession, initialAgentEditsState } from './agent-edits.js';
+import { isAgentTimelineGainProposal, isAgentTimelineMoveProposal, AGENT_TIMELINE_GAIN_CONTEXT } from './agent-timeline-context.js';
+import { AgentTimelineGainDiff } from './AgentTimelineGain.tsx';
 import './agent-edits.css';
 
 export function AgentEditDiff({ proposal }) {
@@ -35,10 +37,12 @@ export function AgentTimelineMoveDiff({ proposal, visible = true }) {
 
 // This review surface shares the right dock. Model prose has no action authority;
 // only the independently loaded, persisted proposal controls these buttons.
-export default function AgentEditProposal({ projectId, refreshKey, blockedRunIds = [], selectedTimelineClip = null, timelineEditBlockedReason = '', contextMode, onApplied = () => {} }) {
+export default function AgentEditProposal({ projectId, refreshKey, blockedRunIds = [], selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', contextMode, onApplied = () => {} }) {
   const visible = useWorkspaceVisibility(), [state, setState] = useState(initialAgentEditsState);
   const session = useRef(null), lifetime = useRef(null), visibleRef = useRef(visible), appliedRef = useRef(onApplied);
-  const timelineKey = JSON.stringify([selectedTimelineClip, timelineEditBlockedReason, contextMode]);
+  const selectedTarget = contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? selectedTimelineGainClip : selectedTimelineClip;
+  const blockedReason = contextMode === AGENT_TIMELINE_GAIN_CONTEXT ? timelineGainBlockedReason : timelineEditBlockedReason;
+  const timelineKey = JSON.stringify([selectedTarget, blockedReason, contextMode]);
   const interaction = useMemo(() => ({ visible, projectId, blocked: blockedRunIds.join('|'), timelineKey }), [visible, projectId, blockedRunIds.join('|'), timelineKey]), interactionRef = useRef(interaction);
   appliedRef.current = onApplied;
   useLayoutEffect(() => {
@@ -54,7 +58,7 @@ export default function AgentEditProposal({ projectId, refreshKey, blockedRunIds
     return () => { owner.closed = true; current.dispose(); page?.removeEventListener('visibilitychange', updateVisibility); if (session.current === current) session.current = null; };
   }, [projectId]);
   useLayoutEffect(() => { interactionRef.current = interaction; visibleRef.current = visible; session.current?.setVisible(visible && (typeof document === 'undefined' || document.visibilityState !== 'hidden')); }, [interaction]);
-  useLayoutEffect(() => { session.current?.setTimelineContext({ target: selectedTimelineClip, blockedReason: timelineEditBlockedReason, contextMode }); }, [projectId, timelineKey]);
+  useLayoutEffect(() => { session.current?.setTimelineContext({ target: selectedTarget, blockedReason, contextMode }); }, [projectId, timelineKey]);
   const lastRefresh = useRef(null);
   useLayoutEffect(() => { if (lastRefresh.current !== null && lastRefresh.current !== refreshKey) void session.current?.load(); lastRefresh.current = refreshKey; }, [refreshKey]);
   const owner = lifetime.current;
@@ -73,21 +77,21 @@ export default function AgentEditProposal({ projectId, refreshKey, blockedRunIds
     {!state.proposals.length && <p role="status">{state.phase === 'loading' ? '正在读取保存的提议…' : state.phase === 'error' ? '提议状态暂不可用。' : state.view === 'unresolved' ? '没有待处理的提议。已应用、拒绝或失效的提议可在全部记录中查看。' : '还没有保存的修改提议。'}</p>}
     {state.proposals.map(proposal => {
       const uncertain = state.uncertainIds.includes(proposal.id), retryable = state.retryApprovalIds.includes(proposal.id), blocked = blockedRunIds.includes(proposal.runId);
-      const timelineMove = proposal.operation === 'timeline.clip.update';
-      const selectionIssue = agentTimelineApprovalIssue(proposal, { target: selectedTimelineClip, blockedReason: timelineEditBlockedReason, contextMode });
+      const timelineGain = isAgentTimelineGainProposal(proposal), timelineMove = isAgentTimelineMoveProposal(proposal), timelineEdit = timelineGain || timelineMove;
+      const selectionIssue = agentTimelineApprovalIssue(proposal, { target: selectedTarget, blockedReason, contextMode });
       const atPinLimit = state.pinnedIds.length >= 50 && !state.pinnedIds.includes(proposal.id);
       const reviewable = !blocked && agentEditCanApprove(proposal), approvable = reviewable && !selectionIssue && !atPinLimit, recoverable = agentEditCanRecover(proposal);
       return <article className="agent-edit-card" key={proposal.id} data-testid="agent-edit-proposal" data-proposal-id={proposal.id} data-status={proposal.status}>
         {state.pinnedIds.includes(proposal.id) && <p role="status" data-testid="agent-edit-pinned">原操作待核对 · 保留显示</p>}
-        <h4>{timelineMove ? '移动一个时间线片段' : 'shot.update'} <span>基准版本 {proposal.target.expectedRevision}</span></h4>
+        <h4>{timelineGain ? '调整一个片段的音量' : timelineMove ? '移动一个时间线片段' : 'shot.update'} <span>基准版本 {proposal.target.expectedRevision}</span></h4>
         <div className="agent-edit-status" data-testid="agent-edit-status" role="status">{uncertain && proposal.status === 'pending' ? '操作结果待确认，不能认定未应用' : agentEditStatusText(proposal.status)}</div>
-        <p className="agent-edit-target">{timelineMove ? `${proposal.target.clipName} · ${proposal.target.trackName}（${proposal.target.trackKind === 'audio' ? '音频轨道' : '视频轨道'}）` : `镜头 ${proposal.target.shotId}`}</p>
-        {timelineMove ? <AgentTimelineMoveDiff proposal={proposal} visible={visible} /> : <AgentEditDiff proposal={proposal} />}
-        <Collapsible className="agent-edit-identity"><CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>查看提议身份与批准记录</CollapsibleTrigger><CollapsibleContent><p>操作 {proposal.operation}</p>{timelineMove && <><p>时间线 {proposal.target.timelineId}</p><p>片段 {proposal.target.clipId} · 轨道 {proposal.target.trackId}</p></>}<p>提议 {proposal.id}</p><p>校验摘要 {proposal.digest}</p><p>来源运行 {proposal.runId} · {proposal.runStatus}</p>{proposal.approval && <p data-testid="agent-edit-approval-id">已保存的原请求 {proposal.approval.requestId}</p>}</CollapsibleContent></Collapsible>
+        <p className="agent-edit-target">{timelineEdit ? `${proposal.target.clipName} · ${proposal.target.trackName}（${proposal.target.trackKind === 'audio' ? '音频轨道' : '视频轨道'}）` : `镜头 ${proposal.target.shotId}`}</p>
+        {timelineGain ? <AgentTimelineGainDiff proposal={proposal} visible={visible} /> : timelineMove ? <AgentTimelineMoveDiff proposal={proposal} visible={visible} /> : <AgentEditDiff proposal={proposal} />}
+        <Collapsible className="agent-edit-identity"><CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>查看提议身份与批准记录</CollapsibleTrigger><CollapsibleContent><p>操作 {proposal.operation}</p>{timelineEdit && <><p>时间线 {proposal.target.timelineId}</p><p>片段 {proposal.target.clipId} · 轨道 {proposal.target.trackId}</p></>}<p>提议 {proposal.id}</p><p>校验摘要 {proposal.digest}</p><p>来源运行 {proposal.runId} · {proposal.runStatus}</p>{proposal.approval && <p data-testid="agent-edit-approval-id">已保存的原请求 {proposal.approval.requestId}</p>}</CollapsibleContent></Collapsible>
         {proposal.status === 'pending' && !reviewable && <p>只有本轮成功完成后才能批准或拒绝。停止、失败或中断的运行不能批准；停止会使尚未批准的提议失效。</p>}
         {proposal.status === 'pending' && reviewable && selectionIssue && <p role="status" data-testid="agent-timeline-approval-blocked">{selectionIssue}</p>}
         {proposal.status === 'failed' && <p data-testid="agent-edit-failed">保存服务已确认未应用{proposal.outcome?.code === 'REVISION_CONFLICT' || proposal.outcome?.code === 'CONFLICT' ? '：已保存内容已变化，请核对最新版本。旧提议不会自动重新基于新版本修改。' : '。请核对提议和当前保存内容。'}</p>}
-        {proposal.status === 'applied' && <p data-testid="agent-edit-applied">保存服务已确认应用，{timelineMove ? '时间线' : '镜头'}版本 {proposal.outcome.revision}。这是一条历史回执；当前内容会单独读取，不会覆盖更新的时间线或把未保存草稿标记为已保存。</p>}
+        {proposal.status === 'applied' && <p data-testid="agent-edit-applied">保存服务已确认应用，{timelineEdit ? '时间线' : '镜头'}版本 {proposal.outcome.revision}。这是一条历史回执；当前内容会单独读取，不会覆盖更新的时间线或把未保存草稿标记为已保存。</p>}
         {uncertain && retryable && <p>较早的批准请求可能已被接受。重试只提交同一提议、同一摘要的批准，复用服务端已保存的原请求；不会创建新差异或新请求 ID。</p>}
         {recoverable && <p>仅恢复上方已批准并保存的原请求，使用同一请求 ID 和差异。结果可能仍未知，不会创建新请求或再次调用模型。</p>}
         <div className="agent-edit-controls">
