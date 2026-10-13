@@ -1,10 +1,14 @@
 import test from 'node:test';
+import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { prepareMutation, isMutationOperation, assertMutationOwner, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.js';
 import { prepareSubmission, readPending, clearPending, pendingForProject } from '../apps/web/src/submissions.js';
 import { ApiError } from '../apps/web/src/api.js';
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
 const runSource = section('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(');
@@ -28,9 +32,10 @@ function harness(t, dispatch) {
     isReferenceOperation: () => false, setPending: value => { state.pending = value; },
     rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return dispatch(operation, input, state); },
     refresh: async id => { state.refreshes.push(id); }, notify: (message, type) => state.notices.push({ message, type }),
-    setShowJobs: value => { state.jobs = value; }, setAuth: value => { state.auth = value; }, readableError: error => error.message,
+    openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; }, readableError: error => error.message,
     requestCounter: { current: 0 }, dataRef: { current: { project: { id: 'project-a' }, shots: [{ id: 'shot-a', projectId: 'project-a' }], nodes: [] } }, setData: () => {},
   };
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   return { state, currentProject, busy, dataRef: scope.dataRef, run: compile(runSource, 'run', scope) };
 }
 const input = { shotId: 'shot-a', expectedRevision: 3, patch: { prompt: 'Original draft' } };

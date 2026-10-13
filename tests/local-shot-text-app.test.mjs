@@ -48,7 +48,7 @@ test('actual App live context preserves nontext pending fences and does not clea
 test('actual App shot fence blocks reference/generation work before touching legacy receipts',()=>{
   let checked=0,blocked=true;const notices=[];
   const guard=appFunction('function referenceWorkBlocked()', 'async function attachReference(',{
-    shotTextRef:{current:{blocksLegacy:()=>blocked}},notify:(...args)=>notices.push(args),tasksRef:{current:{blocked:()=>{checked++;return false;}}},currentProject:{current:'p'},workspaceRef:{current:null},pendingForProject:()=>[],isMutationOperation:()=>false,isBusy:()=>false,hasPendingReference:()=>false,setShowJobs:()=>{},
+    shotTextRef:{current:{blocksLegacy:()=>blocked}},notify:(...args)=>notices.push(args),tasksRef:{current:{blocked:()=>{checked++;return false;}}},currentProject:{current:'p'},workspaceRef:{current:null},pendingForProject:()=>[],isMutationOperation:()=>false,isBusy:()=>false,hasPendingReference:()=>false,openTasks:()=>{},
   });
   assert.equal(guard(),true);assert.equal(checked,0);assert.match(notices[0][0],/文字/);blocked=false;assert.equal(guard(),false);assert.equal(checked,1);
 });
@@ -95,7 +95,7 @@ function generationAdmission({restored=false,controller=true,target='shot-a',loa
   const notices=[],sideEffects=[];
   const guard=appFunction('function checkGeneration(', 'const submitGeneration =',{
     generationUnavailableReason:'',workspaceRef:{current:{restored}},shotTextRef:{current:controller?{blocksLegacy:id=>loading||pending||Boolean(id&&id!==target)}:null},notify:message=>notices.push(message),referenceWorkBlocked:()=>false,
-    generationInputIssue:()=>{sideEffects.push('input');return null;},providerAvailabilityIssue:()=>null,dataRef:{current:{assets:[],shots:[],jobs:[]}},referenceForShot:()=>null,setShowJobs:()=>{},
+    generationInputIssue:()=>{sideEffects.push('input');return null;},providerAvailabilityIssue:()=>null,dataRef:{current:{assets:[],shots:[],jobs:[]}},referenceForShot:()=>null,openTasks:()=>{},
   });
   return{guard:(id='shot-b',frozen=false)=>guard({id}, {mock:true},'mock','text',frozen),notices,sideEffects};
 }

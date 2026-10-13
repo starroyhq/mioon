@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { transformSync } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
@@ -8,6 +9,9 @@ import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.js';
 
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const runSource = source.slice(source.indexOf('async function runSession('), source.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
 const refreshSource = source.slice(source.indexOf('const refresh = useCallback('), source.indexOf('async function selectProject('));
@@ -59,7 +63,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
     markBusy: (owner, name, value) => value ? busy.add(`${owner}:${name}`) : busy.delete(`${owner}:${name}`),
     requestCounter: { current: 0 }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; state.dataWrites.push(clone(dataRef.current)); },
     setPending: entries => { state.pending = entries; state.pendingUpdates.push(clone(entries)); },
-    setShowJobs: value => { state.jobs = value; }, setAuth: value => { state.auth = value; },
+    openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; },
     readableError: error => error.message, clipReplacementErrorMessage: error => error.message,
     notify: (message, type) => state.notices.push({ message, type }), refresh: async owner => { state.refreshes.push(owner); },
     rpc: async (operation, input) => {
@@ -75,6 +79,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
     delete refreshScope.refresh;
     scope.refresh = Function(...Object.keys(refreshScope), `${refreshSource}; return refresh;`)(...Object.values(refreshScope));
   }
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   return { state, currentProject, projectEpoch, dataRef, viewRef, busy, run: Function(...Object.keys(scope), `${runSource}; return run;`)(...Object.values(scope)) };
 }
 const failure = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic reference rejection'), { code, details, definitive });

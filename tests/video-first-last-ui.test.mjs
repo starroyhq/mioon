@@ -12,6 +12,9 @@ import * as mutations from '../apps/web/src/mutation-submissions.js';
 import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.js';
 import { referenceForShot } from '../apps/web/src/reference-connections.js';
 
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), shotId = id(2), firstId = id(3), tailId = id(4), otherId = id(5);
 const asset = (assetId, name) => ({ id: assetId, projectId, name, mimeType: 'image/png', sha256: String(assetId === firstId ? 'a' : assetId === tailId ? 'b' : 'c').repeat(64), width: 720, height: 1280, sizeBytes: 100, relativePath: `assets/${assetId}.png` });
@@ -290,8 +293,9 @@ function mutationRunner(t, result) {
     context: () => ({ projectId, epoch: 1 }), isCurrent: () => true,
     isBusy: key => locks.has(key), markBusy: (_, key, busy) => busy ? locks.add(key) : locks.delete(key),
     setPending: value => { state.pending = value; }, rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return state.result; },
-    refresh: async () => {}, notify: message => state.notices.push(message), setShowJobs() {}, setAuth() {}, readableError: error => error.message,
+    refresh: async () => {}, notify: message => state.notices.push(message), openTasks() {}, setAuth() {}, readableError: error => error.message,
   };
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   return { state, scope, values, run: Function(...Object.keys(scope), `${code}; return runSession;`)(...Object.values(scope)) };
 }
 

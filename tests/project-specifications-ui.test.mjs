@@ -382,7 +382,8 @@ test('actual format save callback uses only the existing durable timeline lane a
 test('App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic', () => {
   transformSync(app, { loader: 'jsx', format: 'esm' });
   for (const id of ['properties-inspector-pane', 'properties-format-pane', 'properties-subtitle-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
-  assert.equal((app.match(/data-testid="right-dock-tab-/g) || []).length, 4);
+  assert.equal((app.match(/data-testid="right-dock-tab-/g) || []).length, 5);
+  assert.match(app, /data-testid="right-dock-tab-tasks"/);
   assert.match(app, /const inspectorDirty = shotDirty \|\| clipDirty \|\| sourceDirty \|\| subjectDirty \|\| subtitleDirty;/);
   assert.match(app, /visible=\{propertiesPage === 'inspector' \|\| propertiesPage === 'subtitle' && workspaceMode === 'canvas'\}/); assert.match(app, /visible=\{propertiesPage === 'format'\}/);
   const open = app.slice(app.indexOf('  function openTimelineFormat()'), app.indexOf('  function subtitleContext()'));

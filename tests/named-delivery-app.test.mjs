@@ -49,7 +49,7 @@ function renderHarness(f,{pending=false,submit,run,restored=false,canPrepare=tru
  const binding={projectId:id,expectedRevision:7,preflightSnapshotHash:'a'.repeat(64),deliveryName:'版本 A'};
  const environment={panelIntent:{current:0},openExportHistory:()=>calls.push(['history',true]),deliveryNameRef:{current:{controller:f.controller}},workspaceRef:{current:{restored}},dataRef,currentProject:{current:id},
   exportCheckContext:()=>({scope:f.live.scope,projectId:id}),exportPreflight:{controller:{setContext(){},takeExportBinding(value){return value===binding?binding:null;},takeUncheckedExportIntent(){return null;}}},
-  isBusy:()=>false,pendingForProject:()=>pending?[{key:'timeline:render:export'}]:[],notify:(...args)=>calls.push(['notify',...args]),setShowJobs:value=>calls.push(['jobs',value]),
+  isBusy:()=>false,pendingForProject:()=>pending?[{key:'timeline:render:export'}]:[],notify:(...args)=>calls.push(['notify',...args]),openTasks:(canReveal=()=>true)=>{if(canReveal())calls.push(['jobs',true]);},
   localDeliveryRef:{current:{controller:{canPrepare:()=>canPrepare,submit:async(...args)=>{calls.push(['submit',...args]);return submit?.(...args);}}}},
   context:()=>({scope:f.live.scope,projectId:environment.currentProject.current}),isCurrent:captured=>captured.scope===f.live.scope&&captured.projectId===environment.currentProject.current,
   requestId:()=> 'named-app-key-0001',run:async(...args)=>{calls.push(['run',...args]);return run?.(...args);},updateView(){},setPreviewKind(){},setShowExports:value=>calls.push(['history',value]),

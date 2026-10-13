@@ -382,7 +382,7 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
   const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${guardSource}\n${projectGuardSource}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
   const env = { workspaceRef: { current: { restored: false } }, loading: false, importSession: { current: { active: true } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: {} }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, refresh: async id => ({ project: { id }, shots: [], nodes: [] }), updateView: () => {}, URL,
-    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setShowJobs', 'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
+    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
   const selectProject = Function(...Object.keys(env), `return (${projectSource});`)(...Object.values(env));
   return { selectProject, guardNavigation, calls, currentProject, navigationEpoch, env };
 }
@@ -398,7 +398,9 @@ test('actual App project guard Confirm permits project-key isolation; no draft o
   assert.equal(f.calls.filter(call => call[0] === 'confirm').length, 1); assert.equal(f.calls.filter(call => call[0] === 'setData').length, 1);
   assert.deepEqual(f.calls.filter(call => call[0] === 'setSourceDirty'), [['setSourceDirty', false]]);
   const g = projectNavigation({ draft: false }); assert.equal(await g.selectProject('project-two'), true); assert.equal(g.calls.some(call => call[0] === 'confirm'), false);
-  assert.doesNotMatch(projectSource, /activeAgentChatRun|\.stop\(|setRightDockTab/);
+  assert.doesNotMatch(projectSource, /activeAgentChatRun|\.stop\(|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
+  const resetTab = f.calls.find(call => call[0] === 'setRightDockTab')[1];
+  assert.equal(resetTab('agent'), 'agent'); assert.equal(resetTab('tasks'), 'properties');
 });
 
 test('actual App image draft guard Cancel preserves project and Confirm changes it without stopping accepted work', async () => {
@@ -407,7 +409,8 @@ test('actual App image draft guard Cancel preserves project and Confirm changes 
   assert.equal(cancelled.calls.length, 1); assert.match(cancelled.calls[0][1], /图像工坊有未发送的草稿/);
   const confirmed = projectNavigation({ draft: false, imageDraft: true }); assert.equal(await confirmed.selectProject('project-two'), true); assert.equal(confirmed.currentProject.current, 'project-two'); assert.equal(confirmed.calls.filter(call => call[0] === 'confirm').length, 1);
   const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject('project-two'); assert.match(both.calls[0][1], /Agent 和图像工坊都有未发送的草稿/);
-  assert.doesNotMatch(projectSource, /image\.task\.|image\.generate|setRightDockTab/);
+  assert.doesNotMatch(projectSource, /image\.task\.|image\.generate|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
+  assert.equal(confirmed.calls.find(call => call[0] === 'setRightDockTab')[1]('image'), 'image');
 });
 
 test('actual App dirty-panel guard retains source drafts on Cancel and clears dirty state only after Confirm', async () => {

@@ -12,6 +12,9 @@ import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as api from '../apps/web/src/api.js';
 import { referenceForShot } from '../apps/web/src/reference-connections.js';
 
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const id = n => `74000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), shotId = id(2), subjectId = id(3), date = '2026-10-11T08:00:00.000Z';
 const asset = (n = 1, patch = {}) => ({ id: id(10 + n), projectId, name: `主体原图 ${n}`, mimeType: 'image/png', sha256: String(n).repeat(64), width: 1024, height: 1024, sizeBytes: 1000, relativePath: `assets/subject-${n}.png`, ...patch });
@@ -49,6 +52,7 @@ function harness(file, initial) {
     Function('module', 'exports', 'require', code)(module, module.exports, name => {
       if (name === 'react') return react;
       if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
+      if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
       if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
         assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
         return { state: {}, controller: { setContext() {} } };
@@ -286,7 +290,7 @@ test('actual App subject retry captures original public snapshot beside unchange
   const p = provider('mock'), calls = [], notices = [];
   const original = { ...subjectVideo.subjectVideoSnapshot(shot(), reference(), assets), providerId: p.id, model: p.models[0], shotId, shotRevision: 1 }; delete original.id;
   const job = { id: id(88), shotId, providerId: p.id, model: p.models[0], snapshot: structuredClone(original) };
-  const scope = { providers: [p], checkGeneration: () => true, subjectVideoIdentity: subjectVideo.subjectVideoIdentity,
+  const scope = { captureTaskWorkspaceIntent, readTaskRevealContext: () => ({ active: true, projectId, projectEpoch: 0, navigationEpoch: 0, panelIntent: 0, workspaceScope: 'test-workspace' }), openTasks() {}, providers: [p], checkGeneration: () => true, subjectVideoIdentity: subjectVideo.subjectVideoIdentity,
     run: (...args) => { calls.push(args); return Promise.resolve({ id: id(89) }); }, requestId: () => 'frozen-subject-retry-request', notify: message => notices.push(message) };
   const methods = Function(...Object.keys(scope), `${code}; return { submitGeneration, retryGeneration };`)(...Object.values(scope));
   methods.retryGeneration(job);
@@ -308,7 +312,7 @@ test('TaskCenter routes marked or observed subject retries to strict recovery an
     { key: 'retry:legacy', projectId, operation: 'job.retry', input: { jobId: id(89), requestId: 'original-legacy-request' } },
     { key: 'retry:stripped', projectId, operation: 'job.retry', input: { jobId: id(90), requestId: 'stripped-subject-request' } },
   ];
-  const h = harness('TaskCenter.jsx', { activeCount: 0, pending: entries, busy: {}, jobs: [], data: { assets: [], shots: [], jobs: [{ id: id(90), projectId, snapshot: { subjectReference: reference() } }] }, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, run: (...args) => calls.push(args), onClose() {} });
+  const h = harness('TaskCenter.jsx', { captureView: () => () => true, taskViewScope: 'subject-retry-current-view', activeCount: 0, pending: entries, busy: {}, jobs: [], data: { assets: [], shots: [], jobs: [{ id: id(90), projectId, snapshot: { subjectReference: reference() } }] }, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, run: (...args) => calls.push(args), onClose() {} });
   const rows = h.nodes().filter(node => node.type === './PendingSubmission.jsx'); assert.equal(rows.length, 3);
   rows[0].props.onReplay(); rows[1].props.onReplay(); rows[2].props.onReplay();
   assert.deepEqual(calls[0][4], { replay: true, subjectRetry: true }); assert.deepEqual(calls[1][4], { replay: true });

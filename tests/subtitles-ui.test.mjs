@@ -180,7 +180,7 @@ test('actual App subtitle selection keeps other Properties/Agent drafts and requ
   const h = fixture(), updates = [], untouched = { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' };
   let approved = false, current = true;
   const scope = { context: () => ({ projectId, epoch: 1 }), panelIntent: { current: 1 }, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false,
-    confirm: async () => approved, isCurrent: () => current, notify: () => {}, setShowJobs: () => {}, setPropertiesPage: value => updates.push(['page', value]), setRightDockTab: value => updates.push(['tab', value]), setPanelOpen: (...args) => updates.push(['panel', ...args]) };
+    confirm: async () => approved, isCurrent: () => current, notify: () => {}, openTasks: () => {}, setPropertiesPage: value => updates.push(['page', value]), setRightDockTab: value => updates.push(['tab', value]), setPanelOpen: (...args) => updates.push(['panel', ...args]) };
   const open = compile(section('  async function openSubtitle(', '  function clipReplacementContext('), 'openSubtitle', scope);
   await open(cueId); assert.equal(h.controller.getState().cueId, cueId); h.controller.edit('text', 'subtitle draft'); updates.length = 0;
   await open(secondId); assert.equal(h.controller.getState().draft.text, 'subtitle draft'); assert.deepEqual(updates, []);
@@ -191,7 +191,7 @@ test('actual App subtitle selection keeps other Properties/Agent drafts and requ
 test('actual App selection confirmation rejects later edits and panel intent instead of reopening a hidden pane', async () => {
   for (const change of ['draft', 'panel']) {
     const h = fixture(), hold = deferred(), updates = []; h.controller.select(cueId); h.controller.edit('text', 'old');
-    const panelIntent = { current: 1 }, scope = { context: () => ({ projectId }), panelIntent, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false, confirm: () => hold.promise, isCurrent: () => true, notify() {}, setShowJobs() {}, setPropertiesPage: value => updates.push(value), setRightDockTab() {}, setPanelOpen() {} };
+    const panelIntent = { current: 1 }, scope = { context: () => ({ projectId }), panelIntent, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false, confirm: () => hold.promise, isCurrent: () => true, notify() {}, openTasks() {}, setPropertiesPage: value => updates.push(value), setRightDockTab() {}, setPanelOpen() {} };
     const open = compile(section('  async function openSubtitle(', '  function clipReplacementContext('), 'openSubtitle', scope), selecting = open(secondId);
     if (change === 'draft') h.controller.edit('text', 'new'); else panelIntent.current++;
     hold.resolve(true); await selecting; assert.equal(h.controller.getState().cueId, cueId); assert.deepEqual(updates, []);

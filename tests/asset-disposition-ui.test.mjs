@@ -7,6 +7,9 @@ import { createAssetDispositionController, dispositionCounts, dispositionRow, ma
 import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.js';
 import { clearPending, prepareSubmission, pendingForProject, readPending } from '../apps/web/src/submissions.js';
 
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const projectId = '10000000-0000-4000-8000-000000000001';
 const otherProject = '10000000-0000-4000-8000-000000000002';
 const assetId = index => `20000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -184,11 +187,12 @@ test('actual App recovery replays the exact key and refreshes current marks sepa
     isBusy: key => busy.has(key), markBusy: (_id, key, value) => value ? busy.add(key) : busy.delete(key),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, validateMutationResponse, mutationNotApplied, prepareSubmission, clearPending, pendingForProject,
-    isReferenceOperation: () => false, dataRef: { current: { project: { id: projectId }, assets: [asset()] } }, setPending() {}, setShowJobs() {}, setAuth() {}, notify() {}, readableError: error => error.message,
+    isReferenceOperation: () => false, dataRef: { current: { project: { id: projectId }, assets: [asset()] } }, setPending() {}, openTasks() {}, setAuth() {}, notify() {}, readableError: error => error.message,
     refresh: async () => { refreshes++; }, setDispositionRefresh: updater => { markRefreshes++; updater({}); },
     rpc: async (operation, current) => { calls.push({ operation, input: structuredClone(current) }); if (lost) throw Error('Lost'); return row(1, 1, 'favorite'); },
   };
   const source = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   const run = Function(...Object.keys(scope), `${source}; return run;`)(...Object.values(scope));
   await run(dispositionKey(assetId(1)), 'asset.disposition.set', input);
   const original = readPending(projectId, dispositionKey(assetId(1))); assert.ok(original);

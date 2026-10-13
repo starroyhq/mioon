@@ -7,6 +7,9 @@ import { createSourceRangeController, sourceFrameCount, sourcePositionFrame, sou
 import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.js';
 import { readPending, clearPending, prepareSubmission, pendingForProject } from '../apps/web/src/submissions.js';
 
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const asset = (patch = {}) => ({ id: 'asset-a', projectId: 'project-a', mimeType: 'video/mp4', name: 'Source', duration: 1200, ...patch });
 const row = (revision = 0, range = null, source = asset()) => ({ id: source.id, assetId: source.id, projectId: source.projectId, revision, range, sourceFrameCount: sourceFrameCount(source.duration), fps: 30 });
 const context = (patch = {}) => ({ scope: 'project-a:1:asset-a:1', projectId: 'project-a', asset: asset(), ...patch });
@@ -210,12 +213,13 @@ test('actual App range replay uses its original request and triggers latest scop
     isBusy: (key, project) => busy.has(`${project}:${key}`), markBusy: (project, key, value) => value ? busy.add(`${project}:${key}`) : busy.delete(`${project}:${key}`),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, clearPending, pendingForProject,
-    isReferenceOperation: () => false, setPending: () => {}, setShowJobs: () => {}, setAuth: () => {}, readableError: error => error.message,
+    isReferenceOperation: () => false, setPending: () => {}, openTasks: () => {}, setAuth: () => {}, readableError: error => error.message,
     requestCounter: { current: 0 }, dataRef: { current: { project: { id: 'project-a' }, assets: [asset()] } }, setData: () => {},
     rpc: async (operation, input) => { calls.push({ operation, input: structuredClone(input) }); if (calls.length === 1) { historical = row(1, { inFrame: input.inFrame, outFrame: input.outFrame }); remote = historical; throw Error('Lost response after commit'); } return historical; },
     refresh: async () => {}, notify: (...args) => notices.push(args),
     setSourceRangeRefresh: update => { generation = update(generation); void controller.read(); },
   };
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   const run = Function(...Object.keys(scope), `${code};return run`)(...Object.values(scope));
   controller = await controllerFixture({ read: async () => remote, save: input => run('source-range:asset-a', 'asset.range.set', input, undefined, { returnAfterNavigation: true }) });
   controller.edit('inFrame', 30); controller.edit('outFrame', 60); await controller.save();

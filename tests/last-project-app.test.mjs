@@ -50,12 +50,14 @@ function selectionHarness({refresh,confirm=true}={}){
   emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
   refresh:refresh??(async projectId=>({project:{id:projectId},shots:[],nodes:[]})),updateView:()=>{},URL,
   window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}}},
-  ...Object.fromEntries(['setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setShowJobs','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,value=>calls.push([name,value])])),
+  ...Object.fromEntries(['setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,value=>calls.push([name,value])])),
  };
  return {env,calls,select:compile(selectSource,'selectProject',env)};
 }
 test('actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view',async()=>{
  const f=selectionHarness();assert.equal(await f.select(id(2)),true);assert.deepEqual(f.calls.filter(x=>x[0]==='remember'),[['remember',id(2),1]]);
+ const resetTab=f.calls.find(call=>call[0]==='setRightDockTab')[1];assert.equal(resetTab('tasks'),'properties');
+ for(const tab of ['properties','agent','image','delivery'])assert.equal(resetTab(tab),tab);
  for(const args of [[id(2),true],[id(2),false,true,true]]){const g=selectionHarness();assert.equal(await g.select(...args),true);assert.equal(g.calls.some(x=>x[0]==='remember'),false);}
  const cancelled=selectionHarness({confirm:false});assert.equal(await cancelled.select(id(2)),false);assert.deepEqual(cancelled.calls,[]);
 });

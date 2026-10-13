@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { transformSync } from 'esbuild';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createClient} from '../packages/client/src/index.mjs';
@@ -9,6 +10,9 @@ import * as mutations from '../apps/web/src/mutation-submissions.js';
 import {ApiError} from '../apps/web/src/api.js';
 import {prepareSubmission,readPending,writePending,reconcilePending} from '../apps/web/src/submissions.js';
 
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const id=n=>`97000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const profile=()=>GENERATION_INPUT_PROFILES.find(p=>p.providerId==='mock');
 function records(){
@@ -101,9 +105,10 @@ function appHarness(t,dispatch,jobs=[]){
   context:()=>({projectId:currentProject.current,epoch:state.epoch}),isCurrent:captured=>captured.projectId===currentProject.current&&captured.epoch===state.epoch,
   isBusy:(key,project)=>busy.has(project+key),markBusy:(project,key,value)=>value?busy.add(project+key):busy.delete(project+key),
   rpc:async(operation,input)=>{state.calls.push({operation,input:copy(input)});return dispatch(operation,input);},
-  setPending:items=>{state.pending=items;},setShowJobs:value=>{state.showJobs=value;},setAuth:()=>{},
+  setPending:items=>{state.pending=items;},openTasks:(canReveal=()=>true)=>{if(canReveal())state.showJobs=true;},setAuth:()=>{},
   refresh:async project=>{state.refreshes.push(project);},notify:(text,type)=>state.notices.push({text,type}),readableError:error=>error.message,
   requestCounter:{current:0},dataRef:{current:{project:{id:id(1)},shots:[],nodes:[],jobs}},setData:()=>{}};
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
  const run=Function(...Object.keys(scope),`${actual};return runSession;`)(...Object.values(scope));
  return {run,state,currentProject,busy};
 }

@@ -82,6 +82,6 @@ test('App keeps history inside the controlled visible right dock with project id
   // Other existing dialogs keep their accessible close behavior.
   assert.match(app, /<Dialog open onOpenChange=\{open => \{ if \(!open\) onClose\(\); \}\}>/);
   assert.match(app, /<DialogTitle>\{title\}<\/DialogTitle>/); assert.match(app, /aria-label="关闭对话框"/);
-  assert.match(app, /setShowJobs\(false\); setShowExports\(false\); setComparisonId\(null\)/);
+  assert.match(app, /setRightDockTab\(value => value === 'tasks' \? 'properties' : value\); setShowExports\(false\); setComparisonId\(null\)/);
   assert.doesNotMatch(app, /className="export-card"/);
 });

@@ -248,9 +248,9 @@ class Trial:
         expect(self.page.get_by_test_id("workspace-loading")).to_have_count(0)
 
     def close_tasks(self):
-        button = self.page.get_by_role("button", name="关闭任务中心", exact=True)
-        if button.is_visible():
-            button.click()
+        tasks = self.page.get_by_role("tab", name="任务", exact=True)
+        if tasks.is_visible() and tasks.get_attribute("aria-selected") == "true":
+            self.page.get_by_role("tab", name="属性", exact=True).click()
 
     def choose(self, testid, label):
         self.page.get_by_test_id(testid).click()
@@ -345,7 +345,7 @@ class Trial:
         self.choose("shot-ratio", "9:16")
         self.page.get_by_test_id("generate-shot").click()
         state = self.wait(self.state, lambda s: len(s["versions"]) == 1 and s["jobs"][0]["status"] == "succeeded", "V1 mock generation", 90)
-        expect(self.page.get_by_role("button", name="关闭任务中心", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("tab", name="任务", exact=True)).to_have_attribute("aria-selected", "true")
         self.close_tasks()
         v1 = copy.deepcopy(state["versions"][0])
         check(v1["isMock"] and v1["snapshot"]["referenceAssetIds"] == [image["id"]], "Mock/reference snapshot missing")
@@ -359,7 +359,7 @@ class Trial:
         self.page.get_by_test_id("shot-prompt").fill("原创几何测试图，换一种运动节奏。仅验证本地模拟流程。V2")
         self.page.get_by_test_id("generate-shot").click()  # Real Save-and-Generate path.
         state = self.wait(self.state, lambda s: len(s["versions"]) == 2 and all(j["status"] == "succeeded" for j in s["jobs"]), "V2 mock generation", 90)
-        expect(self.page.get_by_role("button", name="关闭任务中心", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("tab", name="任务", exact=True)).to_have_attribute("aria-selected", "true")
         self.close_tasks()
         v2 = next(v for v in state["versions"] if v["id"] != v1["id"])
         check(next(v for v in state["versions"] if v["id"] == v1["id"]) == v1, "Regeneration changed V1")

@@ -8,6 +8,9 @@ import * as submissions from '../apps/web/src/submissions.js';
 import { timelineHistoryState } from '../apps/web/src/timeline-history.js';
 import { mutationNotApplied } from '../apps/web/src/mutation-submissions.js';
 
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const id = n => `72000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), clipId = id(2), oldAssetId = id(3), newAssetId = id(4), trackId = id(5), timelineId = id(6), versionId = id(7), shotId = id(8);
 const clip = patch => ({ id: clipId, name: '保留的片段名', assetId: oldAssetId, trackId, startFrame: 12, durationFrames: 90, sourceInFrame: 30, rect: { x: 20, y: 40, width: 680, height: 1200 }, gain: 0.7, ...patch });
@@ -259,8 +262,9 @@ function runHarness(rpc) {
     readableError: error => error.message, context: () => ({ projectId }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: key => busy.has(key), markBusy: (_project, key, value) => value ? busy.add(key) : busy.delete(key),
     isReferenceOperation: () => false, currentProject, dataRef, requestCounter: { current: 0 }, setData: value => { if (typeof value === 'function') value(dataRef.current); },
-    setPending() {}, setSourceRangeRefresh() {}, setDispositionRefresh() {}, setAuth() {}, setShowJobs() {}, notify: (...args) => notices.push(args),
+    setPending() {}, setSourceRangeRefresh() {}, setDispositionRefresh() {}, setAuth() {}, openTasks() {}, notify: (...args) => notices.push(args),
     refresh: async () => {}, rpc: async (operation, input) => { calls.push({ operation, input: structuredClone(input) }); return rpc(operation, input); } };
+  Object.assign(deps, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = deps.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   const run = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(')} return run;`)(deps);
   return { run, calls, notices };
 }

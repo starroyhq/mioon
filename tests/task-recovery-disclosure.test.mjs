@@ -22,14 +22,21 @@ const freeze = value => { if (value && typeof value === 'object') { Object.value
 // Real TaskCenter, durable cards, pending cards and shared disclosure; only the
 // external visual primitives are replaced. Unexpected imports fail closed.
 function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
-  const modules = new Map(), disclosureProps = [], calls = [];
+  const modules = new Map(), disclosureProps = [], calls = [], slots = [];
+  let cursor = 0, layouts = [];
+  const h = { visible: true, current: true };
+  const equalDeps = (left, right) => left?.length === right.length && right.every((value, index) => value === left[index]);
   const forbidden = () => assert.fail('Passive rendering must not use browser storage or network');
   const storage = new Proxy({}, { get: forbidden, set: forbidden });
   const react = { createElement(type, props, ...children) {
     const properties = { ...props, children };
     if (type === modules.get('RecoveryStorageDetails.tsx')?.default) disclosureProps.push(properties);
     return typeof type === 'function' ? type(properties) : { type, props: properties };
-  } }; react.default = react;
+  },
+    useRef(current) { const index = cursor++; return slots[index] ||= { current }; },
+    useMemo(factory, deps) { const index = cursor++; if (!slots[index] || !equalDeps(slots[index].deps, deps)) slots[index] = { value: factory(), deps }; return slots[index].value; },
+    useLayoutEffect(callback, deps) { const index = cursor++, old = slots[index]; if (old && equalDeps(old.deps, deps)) return; slots[index] = { callback, deps, cleanup: old?.cleanup }; layouts.push(index); },
+  }; react.default = react;
   function load(file) {
     if (modules.has(file)) return modules.get(file);
     const module = { exports: {} };
@@ -38,6 +45,9 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
       if (file === 'RecoveryStorageDetails.tsx') assert.fail(`Unexpected disclosure dependency: ${name}`);
       if (name === '@mioon/contracts') return { ...contracts, DURABLE_EDIT_OPERATIONS: operations };
       if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
+      if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
+      if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './TaskWorkspace.css') return {};
       if (name === './PendingSubmission.jsx') return load('PendingSubmission.jsx');
       if (name === './api.js') return api;
       if (name === './submissions.js') return submissions;
@@ -54,9 +64,13 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
     modules.set(file, module.exports); return module.exports;
   }
   const Component = load('TaskCenter.jsx').default;
-  const callbacks = Object.fromEntries(['run', 'retryGeneration', 'setShowJobs', 'onClose', 'onRecover', 'onReload', 'onAdopt'].map(name => [name, (...args) => calls.push([name, ...args])]));
-  const defaults = { activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, context: () => 'original-context', isCurrent: () => true, confirm: async () => true, inspect: async () => true, ...callbacks };
-  return { calls, disclosureProps, render: patch => Component({ ...defaults, ...patch }) };
+  const callbacks = Object.fromEntries(['run', 'retryGeneration', 'onInspectJob', 'onRecover', 'onReload', 'onAdopt'].map(name => [name, (...args) => calls.push([name, ...args])]));
+  const defaults = { captureView: () => () => h.current, taskViewScope: 'original-task-view', activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, context: () => 'original-context', isCurrent: () => true, confirm: async () => true, ...callbacks };
+  return Object.assign(h, { calls, disclosureProps, render(patch) {
+    cursor = 0; layouts = []; const tree = Component({ ...defaults, ...patch });
+    for (const index of layouts) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback(); }
+    return tree;
+  }, unmount() { for (const slot of slots) slot.cleanup?.(); } });
 }
 
 test('TaskCenter passes the current contract operation count to the real shared disclosure', () => {
@@ -93,20 +107,27 @@ test('existing TaskCenter explicit recover, acknowledge, legacy replay, reconcil
   const failed = job(10, 'failed'), uncertain = job(11, 'submission_unknown');
   const tree = h.render(freeze({ tasks: { phase: 'ready', items: [unknown, applied], uncertain: [], busy: [] }, pending: [entry], jobs: [failed, uncertain], reconcileIds: { [uncertain.id]: '  provider-original  ' } }));
   const all = nodes(tree), find = testId => all.find(node => node.props['data-testid'] === testId);
-  assert.equal(all.filter(node => node.type === 'Button').length, 9, 'The existing task, pending and job controls remain the entire action set');
+  assert.equal(all.filter(node => node.type === 'Button').length, 8, 'The existing task, pending and job controls remain; pane collapse belongs to the shared dock');
   assert.deepEqual(h.calls, []);
   find('recover-durable-task').props.onClick(); find('acknowledge-task').props.onClick();
   find('adopt-legacy-task').props.onClick(); find('resume-pending').props.onClick();
   find(`reconcile-job-${uncertain.id}`).props.onClick(); find(`retry-job-${failed.id}`).props.onClick();
+  const unknownFence = h.calls[0][3], appliedFence = h.calls[1][3], retryFence = h.calls[5][2];
+  for (const fence of [unknownFence, appliedFence, retryFence]) { assert.equal(typeof fence, 'function'); assert.equal(fence(), true); }
   assert.deepEqual(h.calls, [
-    ['onRecover', unknown], ['onRecover', applied, true], ['onAdopt', entry],
+    ['onRecover', unknown, false, unknownFence], ['onRecover', applied, true, appliedFence], ['onAdopt', entry],
     ['run', entry.key, entry.operation, entry.input, '原请求已恢复并确认', { replay: true }],
     ['run', `reconcile:${uncertain.id}`, 'job.reconcile', { jobId: uncertain.id, providerJobId: 'provider-original' }, '已核对已有任务状态，没有重新提交生成'],
-    ['retryGeneration', failed],
+    ['retryGeneration', failed, retryFence],
   ]);
-  const close = all.find(node => node.props['aria-label'] === '关闭任务中心'); close.props.onClick();
-  const dialog = all.find(node => node.type === 'Dialog'); dialog.props.onOpenChange(true); dialog.props.onOpenChange(false);
-  assert.deepEqual(h.calls.slice(-2), [['onClose'], ['onClose']]);
+  assert.equal(all.some(node => ['Dialog', 'DialogContent', 'DialogTitle'].includes(node.type) || node.props.role === 'dialog' || node.props['aria-modal']), false);
+  assert.equal(all.some(node => node.props['aria-label'] === '关闭任务中心'), false);
+  assert.equal(all.filter(node => node.props['data-testid'] === 'task-workspace').length, 1);
+  assert.equal(all.filter(node => node.props['data-testid'] === 'task-workspace-body').length, 1);
+  h.visible = false; h.render();
+  for (const fence of [unknownFence, appliedFence, retryFence]) assert.equal(fence(), false);
+  const count = h.calls.length; find('recover-durable-task').props.onClick(); find(`retry-job-${failed.id}`).props.onClick();
+  assert.equal(h.calls.length, count, 'Retained handlers cannot run after the shared Tasks pane is hidden');
 });
 
 test('restored and busy TaskCenter guards remain intact with the shared disclosure present', () => {
@@ -125,7 +146,7 @@ test('restored and busy TaskCenter guards remain intact with the shared disclosu
   assert.deepEqual(h.calls, []);
 });
 
-test('existing cancellation and inspect-close callbacks still honor confirmation and current-view guards', async () => {
+test('existing cancellation and inspect callbacks still honor confirmation and current-view guards', async () => {
   const h = harness(), running = job(12, 'running');
   for (const [approved, current, executed] of [[false, true, false], [true, false, false], [true, true, true]]) {
     const tree = h.render({ jobs: [running], confirm: async () => approved, isCurrent: captured => { assert.equal(captured, 'original-context'); return current; } });
@@ -134,12 +155,22 @@ test('existing cancellation and inspect-close callbacks still honor confirmation
     assert.equal(h.calls.length - before, executed ? 1 : 0);
     if (executed) assert.deepEqual(h.calls.at(-1), ['run', `cancel:${running.id}`, 'job.cancel', { jobId: running.id }, '已请求停止。请查看任务记录中的实际取消范围。']);
   }
-  for (const accepted of [false, true]) {
-    const inspected = [], tree = h.render({ jobs: [running], inspect: async (...args) => { inspected.push(args); return accepted; } });
-    const before = h.calls.length;
-    await nodes(tree).find(node => node.type === 'Button' && text(node) === '查看镜头').props.onClick();
-    assert.deepEqual(inspected, [[running.shotId, 'settings', null, { reveal: true }]]);
-    assert.equal(h.calls.length - before, accepted ? 1 : 0);
-    if (accepted) assert.deepEqual(h.calls.at(-1), ['setShowJobs', false]);
-  }
+  const inspected = [], tree = h.render({ jobs: [running], onInspectJob: (...args) => inspected.push(args) });
+  const inspect = nodes(tree).find(node => node.type === 'Button' && text(node) === '查看镜头').props.onClick;
+  inspect(); assert.equal(inspected.length, 1); assert.equal(inspected[0].length, 2);
+  assert.equal(inspected[0][0], running); assert.equal(typeof inspected[0][1], 'function'); assert.equal(inspected[0][1](), true);
+  h.render({ jobs: [running], taskViewScope: 'replacement-view' });
+  assert.equal(inspected[0][1](), false); inspect(); assert.equal(inspected.length, 1);
+  h.unmount(); inspect(); assert.equal(inspected.length, 1);
+});
+
+
+test('hiding Tasks while cancel confirmation is pending never cancels from the obsolete pane', async () => {
+  const h = harness(), running = job(12, 'running');
+  let resolve; const approval = new Promise(done => { resolve = done; });
+  const tree = h.render({ jobs: [running], confirm: () => approval });
+  const cancel = nodes(tree).find(node => node.type === 'Button' && text(node) === '停止等待').props.onClick;
+  const pending = cancel(); h.visible = false; h.render({ jobs: [running] });
+  resolve(true); await pending; assert.deepEqual(h.calls, []);
+  h.visible = true; h.render({ jobs: [running] }); await cancel(); assert.deepEqual(h.calls, []);
 });

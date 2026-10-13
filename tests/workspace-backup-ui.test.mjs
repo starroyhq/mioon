@@ -187,6 +187,7 @@ test('actual App integration is an isolated Properties sibling with live request
   const options = { signal: new AbortController().signal }; await props.read({}, options);
   assert.deepEqual(calls, [['workspace.backup.inspect', {}, options]]); props.onUnauthorized(); assert.deepEqual(auth, [false]);
   assert.doesNotMatch(jsx, /setSelected|setPropertiesPage|discardDraft|runDurable|requestId|setToast|setInspectorEpoch|confirm\(/);
-  assert.equal((app.match(/data-testid="right-dock-tab-/g) || []).length, 4);
+  assert.equal((app.match(/data-testid="right-dock-tab-/g) || []).length, 5);
+  assert.match(app, /data-testid="right-dock-tab-tasks"/);
   transformSync(app, { loader: 'jsx', format: 'esm' });
 });

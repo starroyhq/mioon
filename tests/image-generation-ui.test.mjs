@@ -185,7 +185,7 @@ test('actual library reveal respects newer project, navigation and panel choices
     assert.equal(calls.length, changed ? 0 : 3, String(changed));
     if (!changed) assert.deepEqual(calls[0], ['view', 'shared', { assetSearch: 'Saved image', assetFilter: 'all' }]);
   }
-  assert.match(app, /\['properties', 'agent', 'image', 'delivery'\]\.includes\(value\)\) \{ markPanelIntent\(\); setRightDockTab\(value\); \}/);
+  assert.match(app, /\['properties', 'agent', 'image', 'delivery', 'tasks'\]\.includes\(value\)\) \{ markPanelIntent\(\); setRightDockTab\(value\); \}/);
   assert.doesNotMatch(source, /node\.create|setPreviewAsset|image\.generate/);
   assert.doesNotThrow(() => transformSync(app, { loader: 'jsx', format: 'esm' }));
 });

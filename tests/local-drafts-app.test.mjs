@@ -203,7 +203,7 @@ test('actual App draft discard leaves the original pending timeline request and 
   const mutate = compile(mutationSource, 'mutateTimeline', {
     dataRef: { current: { timeline: { revision: 7 } } }, currentProject: { current: key.projectId },
     tasksRef: { current: { blocked: (...args) => { calls.push(['blocked', ...args]); return Boolean(tasks.current); } } },
-    timelinePending: false, notify: (...args) => calls.push(['notify', ...args]), setShowJobs: value => calls.push(['jobs', value]),
+    timelinePending: false, notify: (...args) => calls.push(['notify', ...args]), openTasks: (canReveal = () => true) => { if (canReveal()) calls.push(['jobs', true]); },
     requestId: () => assert.fail('No new request ID while the original request is unresolved'), run: () => assert.fail('No automatic retry or changed replacement intent'),
   });
   assert.equal(await mutate('timeline.clip.update', { clipId: key.clipId, patch: { name: 'New draft' } }, 7), null);

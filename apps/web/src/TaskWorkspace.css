@@ -1,0 +1,30 @@
+.task-workspace{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;height:100%;overflow:hidden;background:#181b20}
+.task-workspace-heading{flex:none;min-width:0;padding:12px;border-bottom:1px solid #30373c}
+.task-workspace-heading h2{margin:0;color:#e0e5db;font-size:12px;font-weight:500}
+.task-workspace-heading p{margin:5px 0 0;color:#99a4a9;font-size:10px;line-height:1.6;overflow-wrap:anywhere}
+.task-workspace-body{flex:1;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:12px;overflow-wrap:anywhere}
+.task-workspace-body:focus-visible{outline:1px solid #8d9e80;outline-offset:-2px}
+.task-workspace-body>h3{margin:16px 0 8px;font-size:11px;color:#c8d0c2;font-weight:500}
+.task-workspace-body>h3:first-child{margin-top:0}
+.task-workspace-body>[data-testid="recovery-task-storage-disclosure"]{margin:10px 0 14px}
+.task-workspace-body>[data-testid="recovery-task-storage-disclosure"] summary{cursor:pointer}
+.task-workspace-body>[data-testid="recovery-task-storage-disclosure"] ul{padding-left:18px}
+.task-workspace-note{flex:none;min-width:0;padding:9px 12px;border-top:1px solid #30373c;color:#89969c;font-size:9px;line-height:1.7;overflow-wrap:anywhere}
+.task-workspace .job-card{min-width:0;padding:11px;margin-bottom:11px;border-radius:7px}
+.task-workspace .job-title{min-width:0;flex-wrap:wrap;gap:6px}
+.task-workspace .job-title strong{min-width:0;flex:1 1 90px;white-space:normal;overflow-wrap:anywhere;line-height:1.6}
+.task-workspace .job-title>.small-badge{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.task-workspace .job-status,.task-workspace .job-snapshot{min-width:0;flex-wrap:wrap;gap:5px 9px;line-height:1.7}
+.task-workspace .job-status>span,.task-workspace .job-snapshot>span{min-width:0;overflow-wrap:anywhere}
+.task-workspace .job-actions{min-width:0;flex-wrap:wrap;justify-content:flex-start;gap:7px}
+.task-workspace .job-actions>button,.task-workspace .reconcile-job>button,.task-workspace .notice>button{max-width:100%;min-width:0;height:auto;min-height:28px;white-space:normal;overflow-wrap:anywhere;text-align:left;line-height:1.6}
+.task-workspace .job-actions>button>svg,.task-workspace .reconcile-job>button>svg{flex-shrink:0}
+.task-workspace .reconcile-job{min-width:0}
+.task-workspace .reconcile-job input{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
+.task-workspace .small-empty{padding:28px 4px}
+/* Five shared dock tabs scroll within the heading at narrow panel widths;
+   the sibling collapse button never joins that overflow area. */
+.inspector-region-heading>.right-dock-tabs{flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+.inspector-region-heading>.right-dock-tabs [data-slot="tabs-list"]{flex:none;width:max-content;max-width:none;justify-content:flex-start}
+.inspector-region-heading>.right-dock-tabs [data-slot="tabs-trigger"]{flex:none}
+.inspector-region-heading>[data-testid="toggle-inspector"]{flex:none;margin-left:6px}

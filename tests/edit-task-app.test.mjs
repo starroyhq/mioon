@@ -7,6 +7,9 @@ import { createEditTaskController } from '../apps/web/src/edit-task-controller.j
 import { isDurableEditOperation, taskInputKey } from '../apps/web/src/edit-task-client.js';
 import * as submissions from '../apps/web/src/submissions.js';
 import { isMutationOperation } from '../apps/web/src/mutation-submissions.js';
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const actual = (start, end) => app.slice(app.indexOf(start), app.indexOf(end));
 const source = actual('  async function run(', '  async function runSession(');
@@ -40,12 +43,13 @@ async function harness(t, hooks = {}) {
   const controller = createEditTaskController({ client, onChange: (owner, snapshot) => { if (owner === currentProject.current) state.snapshots.push(snapshot); } });
   await controller.load(projectId);
   const dataRef = { current: { project: { id: projectId }, timeline: { ...timeline(), revision: 1 }, timelineHistory: { revision: 1 } } };
-  const scope = { subtitlesRef: { current: { controller: { recovered: task => { (state.recoveredSubtitleTasks ||= []).push(structuredClone(task)); } } } }, timelineFormatRef: { current: { controller: { recovered: task => state.recoveredTasks.push(structuredClone(task)) } } }, ...submissions, isMutationOperation, isDurableEditOperation, taskInputKey, tasksRef: { current: controller }, currentProject, dataRef,
+  const scope = { captureTaskWorkspaceIntent,
+    readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }), subtitlesRef: { current: { controller: { recovered: task => { (state.recoveredSubtitleTasks ||= []).push(structuredClone(task)); } } } }, timelineFormatRef: { current: { controller: { recovered: task => state.recoveredTasks.push(structuredClone(task)) } } }, ...submissions, isMutationOperation, isDurableEditOperation, taskInputKey, tasksRef: { current: controller }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (key, owner = currentProject.current) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
     requestCounter: { current: 0 }, setData: next => { dataRef.current = typeof next === 'function' ? next(dataRef.current) : next; },
     notify: (message, type) => state.notices.push({ message, type }), readableError: error => error.message,
-    setPending: value => { state.pending = value; }, setShowJobs: value => { state.jobs = value; }, setAuth: value => { state.auth = value; }, setSubjectRefresh: update => { state.subjectRefresh = update(state.subjectRefresh || {}); },
+    setPending: value => { state.pending = value; }, openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; }, setSubjectRefresh: update => { state.subjectRefresh = update(state.subjectRefresh || {}); },
     refresh: async owner => { state.refreshes.push(owner); }, runSession: async (...args) => { state.calls.push(['session', args]); return null; },
   };
   const functions = Function(...Object.keys(scope), `${source}; return { run, runDurable, recoverTask, adoptLegacyTask };`)(...Object.values(scope));
@@ -222,7 +226,9 @@ test('actual App malformed adoption and race with a newer receipt never clear or
 test('TaskCenter separates durable, legacy and generation details, retains generation recovery/cancel/retry controls', () => {
   const source = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
   const pending = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
-  assert.match(source, /<DialogTitle>任务中心<\/DialogTitle>/); assert.match(source, /本地编辑请求/); assert.match(source, /<h3>生成任务<\/h3>/);
+  assert.match(source, /<TaskWorkspace activeCount=\{activeCount\}>/);
+  assert.doesNotMatch(source, /Dialog(?:Content|Title|Description)?|aria-modal|关闭任务中心/);
+  assert.match(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), /<h2 id="task-workspace-heading">任务中心<\/h2>/); assert.match(source, /本地编辑请求/); assert.match(source, /<h3>生成任务<\/h3>/);
   assert.match(source, /明文 SQLite/); assert.match(source, /未经保险库加密/); assert.match(source, /不会自动执行/);
   assert.match(source, /import RecoveryStorageDetails from '\.\/RecoveryStorageDetails\.tsx'/);
   assert.match(source, /<RecoveryStorageDetails domain="task-center" durableOperationCount=\{DURABLE_EDIT_OPERATIONS\.length\} \/>/);
@@ -235,7 +241,13 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
 
 test('actual TaskCenter does not render an empty-list claim when loading or error and keeps unknown card visible', () => {
   const source = readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8');
-  const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
+  const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+    useMemo: factory => factory(), useRef: current => ({ current }), useLayoutEffect: callback => callback() };
+  const workspace = { exports: {} };
+  Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(name => {
+    if (name === 'react') return { ...react, default: react };
+    assert.fail(`Unexpected TaskWorkspace dependency: ${name}`);
+  }, workspace, workspace.exports);
   const disclosure = { exports: {} };
   Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(name => {
     assert.equal(name, 'react'); return { ...react, default: react };
@@ -243,10 +255,13 @@ test('actual TaskCenter does not render an empty-list claim when loading or erro
   Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? { ...react, default: react }
     : name === '@mioon/contracts' ? { DURABLE_EDIT_OPERATIONS }
     : name === './RecoveryStorageDetails.tsx' ? disclosure.exports
+    : name === './TaskWorkspace.tsx' ? workspace.exports
+    : name === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => true }
+    : name === './TaskWorkspace.css' ? {}
     : name.endsWith('mutation-submissions.js') ? { isMutationOperation } : name.endsWith('edit-task-client.js') ? { isDurableEditOperation }
       : new Proxy({}, { get: (_object, property) => String(property) }), module, module.exports);
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
-  const props = { activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [] }, reconcileIds: {} };
+  const props = { captureView: () => () => true, taskViewScope: 'current-task-view', activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [] }, reconcileIds: {} };
   for (const phase of ['loading', 'error', 'ready']) {
     const rendered = nodes(module.exports.default({ ...props, tasks: { phase, items: [], uncertain: [], busy: [] } }));
     const details = rendered.find(node => node.type === disclosure.exports.default);

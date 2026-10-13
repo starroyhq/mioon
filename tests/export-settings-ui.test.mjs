@@ -165,7 +165,7 @@ function appHarness(f, { restored = false, localState = { baselineConflict: fals
   const calls = [], panels = [], notices = [], pending = [], submitOptions = []; let ids = 0;
   const environment = { panelIntent: { current: 0 }, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
     setRightDockTab: value => panels.push(value), setPanelOpen: (...args) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
-    notify: (...args) => notices.push(args), setShowJobs() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
+    notify: (...args) => notices.push(args), openTasks() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
     context: () => ({ scope: f.live.scope, projectId: environment.currentProject.current }), isCurrent: captured => captured.scope === f.live.scope && captured.projectId === environment.currentProject.current,
     localDeliveryRef: { current: { controller: { getState: () => localState, canPrepare: () => true, submit: async (input, options) => { calls.push(['local-delivery.submit', input]); submitOptions.push(options); return { id: id(20) }; } } } },
     requestId: () => { ids++; return 'frozen-render-id'; }, run: async (...args) => { calls.push(args); return { id: id(20) }; } };

@@ -192,8 +192,12 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /async function selectClip\(/);
   assert.match(app, /if \(!await inspect\(shot\.id\)\) return;/);
   const taskCenter = readFileSync(resolve(renderer, 'TaskCenter.jsx'), 'utf8');
-  assert.match(taskCenter, /if \(await inspect\(job\.shotId/);
-  assert.match(taskCenter, /<DialogTitle>任务中心<\/DialogTitle>/);
+  assert.match(taskCenter, /onInspectJob\(job, stillCurrent\)/);
+  assert.match(taskCenter, /<TaskWorkspace activeCount=\{activeCount\}>/);
+  assert.doesNotMatch(taskCenter, /Dialog(?:Content|Title|Description)?|aria-modal/);
+  const taskWorkspace = readFileSync(resolve(renderer, 'TaskWorkspace.tsx'), 'utf8');
+  assert.match(taskWorkspace, /data-testid="task-workspace"/);
+  assert.match(taskWorkspace, /<h2 id="task-workspace-heading">任务中心<\/h2>/);
   assert.match(app, /<DropdownMenuContent/);
   assert.match(app, /data-testid="workspace-canvas"/);
   assert.match(app, /data-testid="workspace-editing"/);

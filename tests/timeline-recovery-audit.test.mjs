@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { transformSync } from 'esbuild';
 import assert from 'node:assert/strict';
 import {readFileSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -12,6 +13,9 @@ import {timelineHistoryActionForKey} from '../apps/web/src/timeline-keyboard.js'
 // The first group executes unchanged ordinary-JS App functions, extracted exactly
 // as the existing edit-task-app tests do, against an explicitly synthetic task port.
 // This does NOT execute React, createEditTaskController, its validators or SQLite.
+const taskIntentModule = { exports: {} };
+Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
+const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 function section(start, end) {
   const at = app.indexOf(start), until = app.indexOf(end, at + start.length);
@@ -70,7 +74,8 @@ function appHarness(port, {revision = 7, refreshedRevision = 9, subtitleDirty = 
   const currentProject = {current:projectId}, busy = new Set();
   const dataRef = {current:{project:{id:projectId}, timeline:timeline(revision), timelineHistory:history(revision)}};
   const state = {epoch:0, ids:0, notices:[], refreshes:[], jobs:false, recoveredFormats:[], recoveredSubtitles:[]};
-  const scope = {
+  const scope = { captureTaskWorkspaceIntent,
+    readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }),
     timelineFormatRef:{current:{controller:{recovered:task=>state.recoveredFormats.push(copy(task))}}}, subtitlesRef:{current:{controller:{recovered:task=>state.recoveredSubtitles.push(copy(task))}}},
     currentProject, dataRef, tasksRef:{current:port}, requestCounter:{current:0}, timelineHistoryState,
     workspaceMode:'editing', timelinePending:false, clipDirty:false, subtitleDirty, online:true, auth:true, loading:false,
@@ -84,7 +89,7 @@ function appHarness(port, {revision = 7, refreshedRevision = 9, subtitleDirty = 
     requestId: () => `audit-user-intent-${++state.ids}`,
     setData: update => { dataRef.current = update(dataRef.current); },
     notify: (message, type) => state.notices.push({message, type}),
-    setShowJobs: value => { state.jobs = value; }, setAuth: value => { state.auth = value; },
+    openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; },
     setSubjectRefresh: () => assert.fail('Undo/Redo must not refresh subject bindings'),
     refresh: async owner => {
       state.refreshes.push(owner);
@@ -165,12 +170,14 @@ for (const direction of ['undo', 'redo']) {
     port.recover = async (_task, {canExecute}) => {
       entered.resolve(); await release.promise; allowed = canExecute(); return {task:{...port.task, status:'unknown'}};
     };
-    const recovery = h.recoverTask(port.task); await entered.promise;
-    h.state.epoch++; // Actual TaskCenter onClose increments navigationEpoch.
+    let taskPaneCurrent = true;
+    const recovery = h.recoverTask(port.task, false, () => taskPaneCurrent); await entered.promise;
+    taskPaneCurrent = false; // Shared-pane hide revokes the captured Tasks view without changing the project.
     const notices = h.state.notices.length; release.resolve(); await recovery;
     assert.equal(allowed, false); assert.equal(h.state.notices.length, notices);
     assert.equal(h.busy.size, 0);
-    assert.match(app, /onClose=\{\(\) => \{ navigationEpoch\.current\+\+; setShowJobs\(false\); \}\}/);
+    assert.match(app, /canExecute: \(\) => !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)/);
+    assert.match(app, /<TaskCenter taskViewScope=\{taskViewScope\} captureView=\{captureTaskView\}/);
   });
 }
 
