@@ -105,7 +105,7 @@ async function harness(t, options = {}) {
         async clearStorageData() { value.clears++; await options.clear?.(index); } };
       records.sessions.push(value); return value;
     } },
-    sessionCookie: (url, token) => ({ url, value: token }), secureWebPreferences: value => ({ session: value }),
+    sessionCookie: (url, token) => ({ url, value: token }), secureWebPreferences: value => ({ session: value }), windowChromeOptions: () => ({}),
     installSessionPolicy() {}, installWindowPolicy() {}, isAllowedNavigation: () => true,
     writeConnection: async (_, value) => { records.connections.push(value); },
     removeConnectionOnShutdown: async () => { records.removals++; await options.remove?.(records.removals); },

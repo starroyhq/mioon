@@ -51,7 +51,7 @@ const nonnegative = (value, fallback) => Number.isFinite(value) ? Math.max(0, va
 /** Derive one mode's geometry without changing its preferred size or visibility. */
 export function effectiveWorkspaceLayout(preferred, {
   width = Infinity, height = Infinity, centerMinWidth = 320, centerMinHeight = 180,
-  collapsedWidth = 44, separatorSize = 6,
+  centerComfortHeight = 0, timelineFloorHeight = 0, collapsedWidth = 44, separatorSize = 6,
 } = {}) {
   const assetsCollapsed = preferred?.assetsCollapsed === true, inspectorCollapsed = preferred?.inspectorCollapsed === true;
   const collapsed = nonnegative(collapsedWidth, 44), separator = nonnegative(separatorSize, 6);
@@ -73,7 +73,10 @@ export function effectiveWorkspaceLayout(preferred, {
     }
   }
   const assetsWidth = sides[0].value, inspectorWidth = sides[1].value;
-  const timelineMaxHeight = Math.min(PANEL_BOUNDS.timelineHeight.max, Math.max(0, availableHeight - nonnegative(centerMinHeight, 180) - separator));
+  // The center asks for centerComfortHeight as long as the timeline can still keep timelineFloorHeight;
+  // below that the center yields down to its hard minimum. Both default to the plain minimum.
+  const centerReserve = Math.max(nonnegative(centerMinHeight, 180), Math.min(nonnegative(centerComfortHeight, 0), availableHeight - separator - nonnegative(timelineFloorHeight, 0)));
+  const timelineMaxHeight = Math.min(PANEL_BOUNDS.timelineHeight.max, Math.max(0, availableHeight - centerReserve - separator));
   return {
     assetsWidth, inspectorWidth, assetsCollapsed, inspectorCollapsed,
     timelineHeight: Math.min(clampPanelSize('timelineHeight', preferred?.timelineHeight), timelineMaxHeight),

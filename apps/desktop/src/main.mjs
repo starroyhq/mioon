@@ -11,6 +11,7 @@ import { createDesktopAgentSettings } from './secret-store.mjs';
 import { createDesktopImageSecretCodec } from './image-secret-store.mjs';
 import { QuitCoordinator, installUnsavedGuard, installPreferencesCloseDrain } from './lifecycle.mjs';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.mjs';
+import { windowChromeOptions } from './window-chrome.ts';
 
 // The renderer never receives privileged Electron APIs or native filesystem paths.
 app.enableSandbox();
@@ -144,7 +145,7 @@ async function openWindow(context = windowContext) {
   if (!ownsWindowContext(context) || (win && !win.isDestroyed())) return;
   const window = new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
     minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
-    autoHideMenuBar: process.platform !== 'darwin', webPreferences: secureWebPreferences(context.session) });
+    autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(), webPreferences: secureWebPreferences(context.session) });
   win = window;
   installWindowPolicy(window, context.ready.url);
   installPreferencesCloseDrain(window, {
