@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
+import {createRequire} from 'node:module';
 import {openStore} from '../packages/business/src/db.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.mjs';
@@ -58,30 +59,40 @@ function legacyFixture(t){
 
 // This is a frozen validator harness, not a packaged old binary. Whole old
 // modules are retained verbatim in the fixed fixture. Only import specifiers
-// are redirected. canonical and AppError are exact frozen exported snippets;
-// named contract exports come from byte-pinned unchanged contract modules.
-// Other current dependencies below must match their recorded baseline hashes.
+// are redirected. canonical remains an exact frozen exported snippet; the
+// historical contracts barrel, effects catalog and restore policy are whole
+// frozen modules. Other direct dependencies must match their baseline hashes.
+// Unchanged current business helpers still load their own transitive imports;
+// this is deliberately not a fully frozen application dependency graph.
 let frozen;
 async function frozenValidators(){
  if(frozen)return frozen;
- for(const [file,hash]of Object.entries(baseline.dependencyHashes))assert.equal(sha(fs.readFileSync(path.join(repo,file))),hash,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
+ for(const [file,hash]of Object.entries(baseline.dependencyHashes))assert.equal(sha(baseline.sources[file]?.text??fs.readFileSync(path.join(repo,file))),hash,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const data=source=>'data:text/javascript;charset=utf-8,'+encodeURIComponent(source);
  const absolute=file=>pathToFileURL(path.join(repo,file)).href;
- const contracts=data(`${baseline.substitutions.appErrorSource}\nexport * from ${JSON.stringify(absolute('packages/contracts/src/agent-timeline-move.mjs'))};\nexport {hasRequestNotAppliedProof} from ${JSON.stringify(absolute('packages/contracts/src/timeline-acknowledgement.mjs'))};\nexport {AGENT_PROTOCOLS} from ${JSON.stringify(absolute('packages/contracts/src/agent-protocol.mjs'))};`);
+ const requireContracts=createRequire(absolute('packages/contracts/package.json'));
  const canonical=data(baseline.substitutions.canonicalSource),cache=new Map();
+ const contracts=url('packages/contracts/src/index.mjs');
  function url(file){
   if(cache.has(file))return cache.get(file);
   const saved=baseline.sources[file];assert.ok(saved,`Missing frozen source ${file}`);assert.equal(sha(saved.text),saved.sha256,file);
   const source=saved.text.replace(/(from\s+)(['"])([^'"]+)\2/gu,(_match,prefix,_quote,specifier)=>{
    let destination=specifier;
    if(specifier==='@mioon/contracts')destination=contracts;
-   else if(specifier.startsWith('.')){const resolved=path.posix.normalize(path.posix.join(path.posix.dirname(file),specifier));destination=resolved==='packages/business/src/services.mjs'?canonical:baseline.sources[resolved]?url(resolved):absolute(resolved);}
+   else if(specifier.startsWith('.')){
+    const resolved=path.posix.normalize(path.posix.join(path.posix.dirname(file),specifier));
+    if(resolved==='packages/business/src/services.mjs')destination=canonical;
+    else if(Object.hasOwn(baseline.sources,resolved))destination=url(resolved);
+    else{assert.ok(Object.hasOwn(baseline.dependencyHashes,resolved),`Unpinned frozen-validator import: ${file} -> ${resolved}`);destination=absolute(resolved);}
+   }
+   else if(specifier==='zod'&&file==='packages/contracts/src/index.mjs')destination=pathToFileURL(requireContracts.resolve('zod')).href;
+   else assert.ok(['node:crypto','node:net'].includes(specifier),`Unexpected frozen-validator import: ${file} -> ${specifier}`);
    return prefix+JSON.stringify(destination);
   });
   const result=data(source);cache.set(file,result);return result;
  }
  const edit=await import(url('packages/business/src/agent/edit-proposals.mjs')),context=await import(url('packages/business/src/agent/chat-context.mjs'));
- frozen={...edit,...context};return frozen;
+ frozen={...edit,...context,contracts:await import(contracts),restorePolicy:await import(url('packages/business/src/workspace-restore-policy.mjs'))};return frozen;
 }
 
 function tree(root){return fs.readdirSync(root,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(entry=>{const file=path.join(root,entry.name),info=fs.lstatSync(file);return [{path:file,mode:info.mode,...(entry.isFile()?{sha256:sha(fs.readFileSync(file))}:{})},...(entry.isDirectory()?tree(file):[])];});}
@@ -109,6 +120,22 @@ async function capturedGainStates(t){
  }
  return {f,proposals};
 }
+
+test('frozen c3a0a57 restore policy and effects use the exact old catalog despite current operation additions',async()=>{
+ for(const [file,expected]of [
+  ['packages/business/src/workspace-restore-policy.mjs','2be61a06ccfaf1ef37837ca3111ebd16c8ef1f872489728770bf6c2470ca4b05'],
+  ['packages/contracts/src/operation-effects.mjs','c34dad9256d6a24820679add3497c10ce114b28da9b1c8257a958e8b0c9cec10'],
+  ['packages/contracts/src/index.mjs','b9e200c6ae0bc43dc20c8b2febedad81be6442b0e0049dc12ee0c7eee88a2104'],
+ ])assert.equal(sha(baseline.sources[file].text),expected,file);
+ const old=await frozenValidators();
+ assert.equal(old.restorePolicy.RESTORE_DENIED_OPERATIONS.includes('timeline.export.samplePeak'),false);
+ assert.equal(Object.hasOwn(old.contracts.schemas,'timeline.export.samplePeak'),false);
+ assert.equal(Object.hasOwn(old.contracts.operationEffects,'timeline.export.samplePeak'),false);
+ assert.throws(()=>old.contracts.operationEffect('timeline.export.samplePeak'),/Operation effects are not defined/);
+ assert.throws(()=>old.contracts.parse('timeline.export.samplePeak',{}),code('UNKNOWN_OPERATION'));
+ assert.doesNotThrow(()=>old.contracts.assertOperationEffectCoverage(old.contracts.schemas));
+ assert.equal(old.restorePolicy.workspaceRestoreError().constructor,old.contracts.AppError);
+});
 
 test('fixed c3a0a57 shot, move and inspection catalogs stay exact and reject every gain authority shape',()=>{
  for(const [name,definitions,hash,policy]of [['shot',EDIT_TOOL_DEFINITIONS,EDIT_TOOL_CATALOG_HASH,editToolPolicy],['move',TIMELINE_EDIT_TOOL_DEFINITIONS,TIMELINE_EDIT_TOOL_CATALOG_HASH,timelineEditToolPolicy],['read',READ_TOOL_DEFINITIONS,READ_TOOL_CATALOG_HASH,readToolPolicy]]){

@@ -12,6 +12,7 @@ import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,is
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
 import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutationResponse,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '@mioon/contracts';
 import {isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
+import {isExportSamplePeakResponse, EXPORT_SAMPLE_PEAK_LIMITS} from '@mioon/contracts/export-sample-peak';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
@@ -135,6 +136,7 @@ export function createClient(clientOptions = {}) {
   // Only the new bounded read needs transport grace after its 30s analysis
   // budget. Every old default and explicit caller timeout remains unchanged.
   const preflightTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : 35_000;
+  const samplePeakTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : EXPORT_SAMPLE_PEAK_LIMITS.clientTimeoutMs;
   async function request(resource, {body, signal, timeoutMs = requestTimeoutMs} = {}) {
     checkSignal(signal);
     if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new ClientError('VALIDATION_ERROR', 'Request timeout must be positive.');
@@ -197,7 +199,7 @@ export function createClient(clientOptions = {}) {
     const parsed = parse(operation, input);
     const {expectedWorkspaceOrigin, ...transportOptions} = options ?? {};
     const body = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
-    const result = (await request('/api/rpc', {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : {}), ...transportOptions, body})).data;
+    const result = (await request('/api/rpc', {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : {}), ...transportOptions, body})).data;
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (operation === 'job.retry' && result?.snapshot && (Object.hasOwn(result.snapshot, 'subjectReference') || Object.hasOwn(result.snapshot, 'subjectVersionId') ||
@@ -241,6 +243,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid workspace backup summary.');
     if (operation === 'timeline.export.capabilities' && !isTimelineExportCapabilitiesResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export capability report.');
+    if (operation === 'timeline.export.samplePeak' && !isExportSamplePeakResponse(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid 已导出文件解码样本峰值 report.');
     return result;
   }
   async function capabilities(options) { return rpc('provider.list', {}, options); }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
+import {cp, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
@@ -92,6 +92,7 @@ test('foundation configuration strictly checks the real contract and automatical
     '../../packages/contracts/src/agent-protocol.mjs',
     './agent-protocol.consumer.mts',
     './agent-timeline-gain.consumer.mts',
+    './export-sample-peak.consumer.mts',
   ]);
   assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
@@ -169,11 +170,22 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
   await mkdir(temporaryParent, {recursive: true, mode: 0o700});
   const directory = await mkdtemp(path.join(temporaryParent, 'typecheck-test-中-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  for (const name of [sourceName, shimName, consumerName, 'tests/typecheck/agent-timeline-gain.consumer.mts', 'packages/contracts/src/agent-timeline-gain.ts', configName, 'packages/contracts/package.json']) {
+  for (const name of [sourceName, shimName, consumerName,
+    'tests/typecheck/agent-timeline-gain.consumer.mts', 'tests/typecheck/export-sample-peak.consumer.mts',
+    'packages/contracts/src/agent-timeline-gain.ts', 'packages/contracts/src/export-sample-peak.ts',
+    'packages/contracts/src/timeline-delivery.ts', 'packages/contracts/src/timeline-export-range.ts',
+    configName, 'packages/contracts/package.json']) {
     const destination = path.join(directory, name);
     await mkdir(path.dirname(destination), {recursive: true});
     await writeFile(destination, await readFile(path.join(root, name)));
   }
+  // The sample-peak consumer checks the public package subpath. Resolve it to
+  // these real copied sources, never the ancestor working-tree workspace link.
+  // Copy the installed Zod dependency unchanged so its genuine declarations are
+  // checked too. Regular-file copies keep the noEmit snapshot fully observable.
+  await cp(path.join(directory, 'packages/contracts'), path.join(directory, 'node_modules/@mioon/contracts'), {recursive: true});
+  await cp(await realpath(path.join(root, 'packages/contracts/node_modules/zod')),
+    path.join(directory, 'node_modules/zod'), {recursive: true});
   const good = await compileWithoutEmitting(directory, compiler);
   assert.equal(good.status, 0, good.stdout + good.stderr);
   assert.equal(good.stdout + good.stderr, '');
@@ -192,4 +204,22 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
   const recovered = await compileWithoutEmitting(directory, compiler);
   assert.equal(recovered.status, 0, recovered.stdout + recovered.stderr);
   assert.equal(recovered.stdout + recovered.stderr, '');
+
+  // Prove the public-subpath consumer resolves the isolated package copy. The
+  // original workspace and the relative-source copy retain this real export.
+  const publicFile = path.join(directory, 'node_modules/@mioon/contracts/src/export-sample-peak.ts');
+  const publicSource = await readFile(publicFile, 'utf8');
+  const publicExport = 'export const EXPORT_SAMPLE_PEAK_ALGORITHM =';
+  assert.equal(publicSource.split(publicExport).length, 2, 'The mutation must target exactly the real public export');
+  await writeFile(publicFile, publicSource.replace(publicExport, 'const EXPORT_SAMPLE_PEAK_ALGORITHM ='));
+  const missingExport = await compileWithoutEmitting(directory, compiler);
+  assert.equal(missingExport.status, 2, missingExport.stdout + missingExport.stderr);
+  assert.match(missingExport.stdout + missingExport.stderr,
+    /export-sample-peak\.consumer\.mts\(\d+,\d+\): error TS2724: [^\n]*EXPORT_SAMPLE_PEAK_ALGORITHM/,
+    'The real public-subpath consumer must fail when its isolated copied module stops exporting the algorithm');
+
+  await writeFile(publicFile, publicSource);
+  const publicRecovered = await compileWithoutEmitting(directory, compiler);
+  assert.equal(publicRecovered.status, 0, publicRecovered.stdout + publicRecovered.stderr);
+  assert.equal(publicRecovered.stdout + publicRecovered.stderr, '');
 });

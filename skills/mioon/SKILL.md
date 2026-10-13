@@ -586,3 +586,10 @@ See [scope and acceptance](../../docs/NAMED-DELIVERIES.md).
 When explicitly asked to export a time interval, discover the shared render/preflight schemas. Convert the agreed interval to the fixed30fps composition clock and confirm inclusive start/exclusive end; do not infer a source-native frame clock. Send identical optional `exportRange:{startFrame,endFrame}` to source preflight and `timeline.render` with `purpose:'export'`, the saved revision and one retained key. Omit the field for the original full-timeline behavior. Capabilities and previews do not accept a range.
 
 Do not edit, trim or rebase timeline clips/cues to export an interval. Fade and subtitle timing stays global. Full source validation still applies outside the interval. On unknown acceptance, preserve the complete original range/name/settings/input/key and explicitly reconcile the same request, rather than choosing a new key or automatically exporting the full timeline. Read `export.get` for the frozen range and resulting artifact. See [scope and acceptance](../../docs/SELECTED-RANGE-EXPORT.md).
+
+
+## Explicit final-file sample-peak check
+
+When the user requests an audio peak check of an existing final timeline export, discover `timeline export samplePeak` / `timeline_export_samplePeak` and supply only its owned project and succeeded export IDs. Use this resource-intensive local read explicitly; never run it automatically while listing, after rendering, at startup or after response loss. It does not create or retry a render. Cancellation ends only the check. Restored-v1 workspaces refuse it.
+
+Present it as **已导出文件解码样本峰值** with the returned artifact hash, checked time and frozen revision/name/range. Ready includes actual complete supported stereo decode and two hash passes; non-ready has no measurement. Explain that sample peak is not true peak/LUFS and cannot certify the original mix avoided clipping. Do not normalize, rerender, or send the audio/report to a model unless separately authorized. Existing export/download remains available after an incomplete check. See [limits and acceptance](../../docs/EXPORT-SAMPLE-PEAK.md).

@@ -69,7 +69,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
     assert.throws(() => operationEffect(operation), /not defined/);
   assert.throws(() => effectAnnotations(undefined), /Explicit operation effects/);
   assert.throws(() => effectAnnotations({readOnly:true}), /Explicit operation effects/);
-  const readOnly = new Set([...inspections, 'workspace.backup.inspect', 'workspace.restore.inspect', 'frame.request.get', 'frame.task.get', 'frame.task.list', 'image.review.get', 'image.review.list', 'image.profile.list', 'image.request.get', 'image.task.remote.get', 'image.task.get', 'image.task.list', 'image.group.get', 'image.group.list', 'image.version.list', 'subject.list', 'subject.version.list', 'subject.binding.list', 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.format.get']);
+  const readOnly = new Set([...inspections, 'workspace.backup.inspect', 'workspace.restore.inspect', 'frame.request.get', 'frame.task.get', 'frame.task.list', 'image.review.get', 'image.review.list', 'image.profile.list', 'image.request.get', 'image.task.remote.get', 'image.task.get', 'image.task.list', 'image.group.get', 'image.group.list', 'image.version.list', 'subject.list', 'subject.version.list', 'subject.binding.list', 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.format.get']);
   for (const [operation, effect] of Object.entries(operationEffects)) {
     assert.equal(Object.isFrozen(effect), true);
     assert.equal(effect.notes.length > 20, true);
@@ -88,7 +88,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
       assert.equal(effect.idempotent, true);
       for (const field of ['databaseWrite', 'fileWrite', 'externalIO', 'paidGeneration', 'destructive', 'openWorld'])
         assert.equal(effect[field], false, `${operation}: ${field}`);
-      assert.equal(effect.localProcess, ['timeline.export.preflight', 'timeline.export.capabilities'].includes(operation), `${operation}: localProcess`);
+      assert.equal(effect.localProcess, ['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak'].includes(operation), `${operation}: localProcess`);
     }
   }
   assert.equal(Object.isFrozen(operationEffects), true);

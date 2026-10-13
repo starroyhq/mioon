@@ -1259,3 +1259,10 @@ Named download links bind `/media/{assetId}?download=1&exportId={exportId}`. The
 The complete original snapshot remains frozen; only optional `snapshot.exportRange` identifies the output interval. Preflight `summary.durationFrames` and counts still describe the full saved timeline; optional `summary.exportRange` gives the selected interval. All referenced sources are checked. The digest, original request key, strict ACK and existing local-delivery exact intent bind the identical range. Changed/removed range conflicts under that key. Fresh `EXPORT_RANGE_BOUNDS` is a request-bound not-applied rejection only after the existing pre-write rollback proof; stale or unknown receipts never become a fresh retry automatically.
 
 No new operation or schema migration. Historical exact replay precedes current revision/range-length checks and does not requeue an old export. See [selected-range behavior and acceptance](SELECTED-RANGE-EXPORT.md).
+
+
+## 已导出文件解码样本峰值
+
+`timeline.export.samplePeak` accepts exactly `{projectId,exportId}` for one owned succeeded timeline export. It explicitly reads, hashes and decodes the existing delivered MP4; it does not render, create a task/report/cache, edit state or call providers. It is read-only and resource-intensive (`localProcess:true`), with cancellation scoped only to the check. It is unavailable in restored-v1 workspaces and absent from the built-in Agent tool catalog.
+
+The strict report binds original export/output/hash/revision and optional frozen name/range. `ready` includes finite stereo sample peaks, full decoded duration/count and both hash passes; `unsupported`, `incomplete` and `stale` contain no measurement. A value at or below 0 dBFS does not establish no earlier clipping, true peak or loudness compliance. Explicit user recheck is allowed; no automatic retry or exact-receipt promise applies. See [scope, budgets and acceptance](EXPORT-SAMPLE-PEAK.md).

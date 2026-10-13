@@ -36,6 +36,8 @@ import {sourceRangeSchemas} from './source-range.mjs';
 import {assetDispositionSchemas} from './asset-disposition.mjs';
 import {waveformSchemas} from './waveforms.mjs';
 import {exportPreflightSchemas} from './export-preflight.mjs';
+import {exportSamplePeakSchemas} from './export-sample-peak.ts';
+export * from './export-sample-peak.ts';
 import {assertOperationEffectCoverage} from './operation-effects.mjs';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.mjs';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.mjs';
@@ -87,6 +89,7 @@ export const schemas={
 ...assetDispositionSchemas,
 ...waveformSchemas,
 ...exportPreflightSchemas,
+...exportSamplePeakSchemas,
 ...timelineExportCapabilitySchemas,
 'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional()}).strict(),
 'project.list':z.object({}).strict(),
@@ -167,6 +170,7 @@ Object.assign(descriptions,{
  'subject.binding.list':'按唯一镜头或主体过滤器分页只读列出绑定及保留的解绑版本，标记是否需复核',
  'timeline.export.capabilities':'显式检查所选 MP4/H264 导出配置的本地编码能力；运行有界本地计算，不修改项目或导出，不调用供应商；结果绑定项目和时间线版本，实际导出会再次验证',
  'timeline.export.preflight':'只读检查既有时间线的本地导出条件；按版本流式核验素材哈希并运行有界ffprobe元数据检查，不完整解码、不创建时间线、缓存或导出，不调用供应商；返回ready、blocked、incomplete或stale，检查结果不保证未来文件可用',
+ 'timeline.export.samplePeak':'已导出文件解码样本峰值：显式完整解码一个已成功导出的托管文件，返回绑定实际核验文件哈希的临时测量；单次有界本地计算，不排队、不保存、不重试、不修改项目或导出、不调用供应商；结果不保证其他播放或制作阶段的表现',
  'asset.waveform.request':'显式请求本地源音频波形缓存；重复请求复用排队、运行或就绪结果，失败或中断须显式retry；运行有界本地解码并写入可淘汰缓存，不调用生成供应商、不编辑素材或时间线',
  'asset.waveform.get':'只读查询指定项目素材的源音频波形；30fps源范围使用排他出点，最多返回2048个归一化峰值；不启动解码、不探测媒体、不修复或写入缓存；不表示时间线混音结果',
  'asset.disposition.list':'只读查询指定项目中1–100个不重复素材的共享标记，按请求顺序返回；未保存时为 neutral 和 revision 0；缺失或跨项目时整批失败，不创建记录',

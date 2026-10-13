@@ -18,7 +18,7 @@ export const RESTORE_LOCAL_OPERATIONS = Object.freeze([
  'timeline.format.set','timeline.undo','timeline.redo','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.render','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.export.capabilities','timeline.export.preflight','asset.range.set','asset.disposition.set','subject.create','subject.version.add','subject.binding.set',
 ]);
 export const RESTORE_DENIED_OPERATIONS = Object.freeze([
- 'workspace.backup.inspect','provider.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
+ 'timeline.export.samplePeak','workspace.backup.inspect','provider.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
  'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
 ]);
 const messages=Object.freeze({

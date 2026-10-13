@@ -15,6 +15,15 @@ import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.mjs';
 import {createTimelinePreflightServices} from './timeline-preflight.mjs';
+import {createExportSamplePeakServices} from './export-sample-peak.ts';
+import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
+import {ownsStoreLock} from './db.mjs';
+import {isTimelineRenderRecord} from '@mioon/contracts';
+import {readOwnedTimelineAsset} from './timeline-sources.mjs';
+import {validateManagedSource,verifiedManagedHash} from './managed-media.mjs';
+import {run,runStreaming,checkMediaEffect} from './media-runtime.mjs';
+import {withProbePermit} from './media-probe.mjs';
+import {terminateMediaProcesses,waitForMediaProcesses} from './media-processes.mjs';
 import {createReferenceServices} from './references.mjs';
 import {createInspectionServices,createOwnedMediaGraphReader} from './inspection.mjs';
 import {createLocalMutationServices} from './local-mutations.mjs';
@@ -115,6 +124,14 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
  const timeline=createTimelineServices(store,{required,check,hash,now,exportAdmission});
  const preflight=createTimelinePreflightServices(store,{signal:ownerSignal});
+ const samplePeak=restored?{...inactive(),handlers:{'timeline.export.samplePeak':disabled}}:createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
+  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(db,projectId,assetId),
+  validateSource:validateManagedSource,hash:verifiedManagedHash,
+  decode:createExportSamplePeakDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
+  terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
+ }});
  const references=createReferenceServices(store,{required,check,hash,now});
  const inspection=createInspectionServices(store);
  const localMutations=createLocalMutationServices(store,{check,canonical,now,references});
@@ -147,6 +164,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...frames.handlers,
  ...images.handlers,
  ...preflight.handlers,
+ ...samplePeak.handlers,
  ...exportAdmission.handlers,
  ...waveforms.handlers,
  ...sourceRanges.handlers,
@@ -252,6 +270,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   checkpoint(signal);
   const operation=(async()=>{
    if(restored){
+    if(op==='timeline.export.samplePeak')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
     if(Object.hasOwn(restoredReads.readers,op))return restoredReads.call(op,parsed,{signal});
     const saved=restoredReads.replay(op,parsed);if(saved)return publicValue(saved.response);
@@ -276,9 +295,9 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   restoredLifetime?.abort();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),...active]),'SERVICE_STOP_TIMEOUT');
+  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
-  for(const result of results.slice(0,5))if(result.status==='rejected')throw result.reason;
+  for(const result of results.slice(0,6))if(result.status==='rejected')throw result.reason;
  };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.

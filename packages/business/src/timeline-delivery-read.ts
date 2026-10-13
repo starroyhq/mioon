@@ -54,31 +54,48 @@ export function timelineDeliveryDownloadIdentity(url: URL): {assetId: string; ex
   return {assetId, exportId};
 }
 
-/** A synchronous, bounded, read-only snapshot. Historical downloads depend on
- * the retained export, its original queued receipt and its owned output. They
- * do not depend on today's timeline revision or on a still-present source clip.
- * Every missing, foreign or corrupt record has the same opaque null result. */
-export function readTimelineDeliveryDownload(
+/** Backend-only retained identity. The raw checked values never enter an RPC
+ * response. Download retains its legacy acceptance rules; byte analysis adds
+ * its stricter size/hash requirements after this shared provenance gate. */
+export interface TimelineExportOutput {
+  readonly exportId: string;
+  readonly assetId: string;
+  readonly projectId: string;
+  readonly relativePath: string;
+  readonly record: Readonly<Record<string, unknown>>;
+  readonly asset: Readonly<Record<string, unknown>>;
+  readonly snapshot: Readonly<Record<string, unknown>>;
+  readonly identityDigest: string;
+}
+
+interface OutputRequest {exportId: string; assetId?: string; projectId?: string}
+
+/** The common bounded provenance gate. No current timeline or source lookup. */
+function readTimelineExportOutputCore(
   db: DatabaseSync,
-  url: URL,
+  requested: OutputRequest,
   guards: TimelineDeliveryReadGuards,
-): TimelineDeliveryDownload | null {
-  const requested = timelineDeliveryDownloadIdentity(url);
-  if (!requested) return null;
+  requireName: boolean,
+): TimelineExportOutput | null {
   const outer = db.isTransaction;
   try {
     if (!outer) db.exec('BEGIN DEFERRED');
-    const row: unknown = db.prepare(`SELECT ${identity('id')},${identity('projectId')},${bounded('data', RENDER_BYTES)} FROM exports WHERE id=? LIMIT 1`).get(requested.exportId);
+    // Analysis supplies a project scope. The SQL relation is checked before
+    // any export payload is read, including a corrupt foreign JSON document.
+    if (requested.projectId !== undefined && !db.prepare('SELECT 1 FROM projects WHERE id=? LIMIT 1').get(requested.projectId)) return null;
+    const row: unknown = db.prepare(`SELECT ${identity('id')},${identity('projectId')},${bounded('data', RENDER_BYTES)} FROM exports WHERE id=?${requested.projectId === undefined ? '' : ' AND projectId=?'} LIMIT 1`)
+      .get(...requested.projectId === undefined ? [requested.exportId] : [requested.exportId, requested.projectId]);
     if (!object(row) || row.id !== requested.exportId || !uuid(row.projectId)) return null;
     const projectId = row.projectId;
     const record = parse(row.data);
     if (!object(record) || record.id !== requested.exportId || record.projectId !== projectId ||
         record.mode !== 'timeline' || record.purpose !== 'export' || record.status !== 'succeeded' ||
-        record.assetId !== requested.assetId || record.url !== `/media/${requested.assetId}` ||
+        !uuid(record.assetId) || requested.assetId !== undefined && record.assetId !== requested.assetId || record.url !== `/media/${record.assetId}` ||
         typeof record.requestId !== 'string' || record.requestId.length < 8 || record.requestId.length > 200 ||
         !object(record.snapshot)) return null;
+    const assetId = record.assetId;
     const fields = timelineRenderDeliveryFields(record.snapshot);
-    if (typeof fields.deliveryName !== 'string') return null;
+    if (requireName && typeof fields.deliveryName !== 'string') return null;
     const input = {projectId, requestId: record.requestId, purpose: 'export', expectedRevision: record.timelineRevision,
       exportId: record.id, ...fields};
     if (!guards.isTimelineRenderRecord(record, input)) return null;
@@ -92,23 +109,50 @@ export function readTimelineDeliveryDownload(
         ['id', 'projectId', 'requestId', 'mode', 'purpose', 'timelineRevision'].some(field => receipt[field] !== record[field]) ||
         JSON.stringify(receipt.snapshot) !== JSON.stringify(record.snapshot)) return null;
 
-    // The existing graph independently checks SQL/JSON project ownership and
-    // all reverse source-owner relations, including corrupt/foreign owners.
-    // It does not require the current editable timeline to retain its clips.
-    const asset = guards.readOwnedAsset(projectId, requested.assetId);
-    if (!object(asset) || asset.id !== requested.assetId || asset.projectId !== projectId ||
+    // Independently verifies SQL/JSON ownership and reverse version/image/frame
+    // owners. The retained output does not require current editable clips.
+    const asset = guards.readOwnedAsset(projectId, assetId);
+    if (!object(asset) || asset.id !== assetId || asset.projectId !== projectId ||
         asset.mimeType !== 'video/mp4' || asset.provenance !== 'export' || asset.url !== record.url ||
         !ownsPublishedOutputPath(asset.relativePath, requested.exportId)) return null;
-    const contentDisposition = timelineDeliveryContentDisposition(fields.deliveryName, requested.exportId) +
-      `; mioon-export-id="${requested.exportId}"; mioon-asset-id="${requested.assetId}"`;
+    // Keep this exact byte calculation for existing named-download fences.
     const identityDigest = createHash('sha256').update(JSON.stringify([row.data, receiptRow.requestHash, receiptRow.response, asset])).digest('hex');
-    return Object.freeze({exportId: requested.exportId, assetId: requested.assetId, projectId,
-      relativePath: asset.relativePath, mimeType: 'video/mp4', contentDisposition, identityDigest});
+    return Object.freeze({exportId: requested.exportId, assetId, projectId,
+      relativePath: asset.relativePath, record, asset, snapshot: record.snapshot, identityDigest});
   } catch {
     return null;
   } finally {
     if (!outer && db.isTransaction) db.exec('COMMIT');
   }
+}
+
+/** Analysis can read named or unnamed historical outputs, scoped by project. */
+export function readTimelineExportOutput(
+  db: DatabaseSync,
+  requested: {projectId: string; exportId: string},
+  guards: TimelineDeliveryReadGuards,
+): TimelineExportOutput | null {
+  if (!uuid(requested.projectId) || !uuid(requested.exportId)) return null;
+  return readTimelineExportOutputCore(db, requested, guards, false);
+}
+
+/** Historical named download syntax, filename requirement, digest and headers
+ * are unchanged. This route never accepts an unnamed artifact. */
+export function readTimelineDeliveryDownload(
+  db: DatabaseSync,
+  url: URL,
+  guards: TimelineDeliveryReadGuards,
+): TimelineDeliveryDownload | null {
+  const requested = timelineDeliveryDownloadIdentity(url);
+  if (!requested) return null;
+  const output = readTimelineExportOutputCore(db, requested, guards, true);
+  if (!output) return null;
+  const fields = timelineRenderDeliveryFields(output.snapshot);
+  if (typeof fields.deliveryName !== 'string') return null;
+  const contentDisposition = timelineDeliveryContentDisposition(fields.deliveryName, requested.exportId) +
+    `; mioon-export-id="${requested.exportId}"; mioon-asset-id="${requested.assetId}"`;
+  return Object.freeze({exportId: requested.exportId, assetId: requested.assetId, projectId: output.projectId,
+    relativePath: output.relativePath, mimeType: 'video/mp4', contentDisposition, identityDigest: output.identityDigest});
 }
 
 /** Revalidate after pathname/open/stat awaits, immediately before response

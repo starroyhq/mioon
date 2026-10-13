@@ -921,3 +921,10 @@ See [scope and acceptance](NAMED-DELIVERIES.md).
 Discover `mioon schema timeline.render` and `mioon schema timeline.export.preflight`. For a separately authorized export, pass identical `exportRange:{startFrame:15,endFrame:75}` to source preflight and render alongside the saved revision, optional name/settings and stable request key. This means60 composition frames at30fps; frame75 is excluded. Keep the report's exact digest or clearly use the existing unchecked path. Do not send range to capabilities or preview.
 
 On a lost response, retain the original complete JSON and key; do not rebuild it from a newer range or timeline. `export get` exposes the frozen full snapshot plus selected range. The CLI's explicit output destination is unchanged. See [limits and acceptance](SELECTED-RANGE-EXPORT.md).
+
+
+### 已导出文件解码样本峰值
+
+Discover `mioon schema timeline.export.samplePeak`, then explicitly call `mioon timeline export samplePeak --input '{"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222"}'`. This checks an existing succeeded timeline MP4; no request ID, file path or caller hash is accepted. It can consume local CPU/file reads for a bounded 120-second attempt (shared-client default125s unless explicitly overridden). Ctrl+C cancels this observation, not the original export. Output loss does not trigger an automatic retry.
+
+This is decoded sample peak of the final artifact, not loudness or true peak. Reports are ephemeral; unsupported/incomplete/stale checks leave existing downloads usable. Restored-v1 branches explicitly refuse the new analysis. See [contract and limits](EXPORT-SAMPLE-PEAK.md).

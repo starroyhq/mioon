@@ -815,3 +815,10 @@ See [scope and acceptance](NAMED-DELIVERIES.md).
 ## Selected-range timeline test export
 
 `timeline_render` (export only) and `timeline_export_preflight` expose optional strict `exportRange:{startFrame,endFrame}` through shared discovery. Use integer30fps composition frames, start included/end excluded, at least one frame inside the saved duration. Preserve the exact optional range, name, settings, revision and request key after uncertainty. Do not pass range to `timeline_export_capabilities` or preview. The full original snapshot is retained; preflight still checks all referenced media. This adds no built-in Agent tool, generic executor or generation permission. See [behavior and acceptance](SELECTED-RANGE-EXPORT.md).
+
+
+### 已导出文件解码样本峰值
+
+`timeline_export_samplePeak` exposes shared `timeline.export.samplePeak` with strict `{projectId,exportId}`. Discover through `mioon_schema` first. The explicit read-only operation hashes and decodes one owned succeeded timeline MP4, so `localProcess:true` honestly signals CPU/file work; it creates no render, task, cache or stored report. SDK cancellation stops only that observation. Do not automatically check on listing or repeat a lost response. No caller path/hash/request ID or permission flag is accepted. Restored-v1 explicitly denies it before media access.
+
+Ready measurements refer to the immutable export/output identity and actual verified bytes at check time. They are decoded sample peaks, not true peak/LUFS or proof that earlier mixing did not clip. This external tool does not enter the built-in Agent catalog or grant generation permissions. See [contract and limits](EXPORT-SAMPLE-PEAK.md).
