@@ -30,7 +30,8 @@
     "../../apps/web/src/**/*.tsx",
     "browser.consumer.tsx",
     "export-sample-peak.consumer.tsx",
-    "desktop-launcher.consumer.tsx"
+    "desktop-launcher.consumer.tsx",
+    "timeline-audio-preview.consumer.tsx"
   ],
   "exclude": [
     "../../packages/ui/src/components/badge.tsx",

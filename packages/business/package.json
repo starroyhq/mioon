@@ -11,7 +11,8 @@
     "./last-project": "./src/last-project.ts",
     "./local-delivery": "./src/local-delivery.ts",
     "./local-shot-text": "./src/local-shot-text.ts",
-    "./local-shot-text-domain": "./src/local-shot-text-domain.ts"
+    "./local-shot-text-domain": "./src/local-shot-text-domain.ts",
+    "./timeline-audio-preview": "./src/timeline-audio-preview.ts"
   },
   "dependencies": {
     "@mioon/contracts": "workspace:*"

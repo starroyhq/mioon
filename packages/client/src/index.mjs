@@ -1,3 +1,4 @@
+import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {parseExpectedWorkspaceOrigin, isWorkspaceRestoreInspection} from '@mioon/contracts';
@@ -247,6 +248,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid workspace backup summary.');
     if (operation === 'timeline.export.capabilities' && !isTimelineExportCapabilitiesResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export capability report.');
+    if (operation === 'timeline.audioPreview.plan' && !isAudioPreviewPlan(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'Backend returned an invalid sound-audition plan.');
     if (operation === 'timeline.export.samplePeak' && !isExportSamplePeakResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid 已导出文件解码样本峰值 report.');
     return result;

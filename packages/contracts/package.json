@@ -14,7 +14,9 @@
     "./local-delivery": "./src/local-delivery.ts",
     "./local-shot-text": "./src/local-shot-text.ts",
     "./last-project": "./src/last-project.ts",
-    "./agent-timeline-gain": "./src/agent-timeline-gain.ts"
+    "./agent-timeline-gain": "./src/agent-timeline-gain.ts",
+    "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
+    "./timeline-segments": "./src/timeline-segments.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

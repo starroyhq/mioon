@@ -594,6 +594,12 @@ When the user requests an audio peak check of an existing final timeline export,
 
 Present it as **已导出文件解码样本峰值** with the returned artifact hash, checked time and frozen revision/name/range. Ready includes actual complete supported stereo decode and two hash passes; non-ready has no measurement. Explain that sample peak is not true peak/LUFS and cannot certify the original mix avoided clipping. Do not normalize, rerender, or send the audio/report to a model unless separately authorized. Existing export/download remains available after an incomplete check. See [limits and acceptance](../../docs/EXPORT-SAMPLE-PEAK.md).
 
+## Saved timeline sound audition plan
+
+Discover `timeline audioPreview plan` / `timeline_audioPreview_plan` when asked about an existing saved sound-audition interval. Supply exactly the owned project/timeline IDs, saved `expectedRevision`, and inclusive `startFrame`. The returned plan binds a half-open window of at most600 composition frames (20seconds), source hashes and a bounded memory budget. This metadata read does not decode media, save edits, create jobs or prove playback succeeded. Restored-v1 refuses it; the built-in Agent catalog is unchanged.
+
+The UI prepares fixed authenticated PCM resources only on explicit action, then plays sound separately from rendered video. Do not turn a metadata plan into an automatic decode, render or model upload. A stale/unsupported/over-budget result is not permission to replace sources or silently omit audio. Saved mute/gain/fades apply; unsaved drafts do not. Float audition can differ from legacy s16 clipping and does not promise true-peak or loudness safety. See [sound audition scope](../../docs/TIMELINE-AUDIO-PREVIEW.md).
+
 ## Explicit float-checked final export
 
 Only when the user explicitly chooses this policy, supply

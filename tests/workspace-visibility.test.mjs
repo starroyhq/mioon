@@ -67,6 +67,7 @@ function createHarness(file, exportName = 'default') {
     './source-range-state.js': sourceRanges,
     './export-settings-state.js': exportSettings,
     '@xyflow/react': { Handle: 'Handle', Position: { Left: 'left', Right: 'right' } },
+    './TimelineAudioPreview.tsx': { default: 'TimelineAudioPreview', __esModule: true },
     './icons.jsx': { default: 'Icon', __esModule: true },
     './api.js': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob: () => false, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
     './Timeline.jsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },

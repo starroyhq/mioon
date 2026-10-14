@@ -1,3 +1,4 @@
+import {timelineCompositionSegments} from '@mioon/contracts/timeline-segments';
 import {timelineExportOutputFrames} from '@mioon/contracts/timeline-export-range';
 import type {TimelineExportRange} from '@mioon/contracts/timeline-export-range';
 
@@ -35,12 +36,8 @@ export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput):
   const {timeline} = snapshot;
   const start = snapshot.exportRange?.startFrame ?? 0;
   const end = snapshot.exportRange?.endFrame ?? timeline.durationFrames;
-  const edges = [...new Set([0, timeline.durationFrames,
-    ...timeline.clips.flatMap(clip => [clip.startFrame, clip.startFrame + clip.durationFrames]),
-  ])].sort((a, b) => a - b);
   const segments: TimelineExportRangeSegment[] = [];
-  for (let index = 0; index < edges.length - 1; index++) {
-    const beginFrame = edges[index]!, endFrame = edges[index + 1]!;
+  for (const {beginFrame, endFrame} of timelineCompositionSegments(timeline)) {
     const from = Math.max(beginFrame, start), to = Math.min(endFrame, end);
     if (from >= to) continue;
     const first = from - beginFrame, last = to - beginFrame;

@@ -1291,3 +1291,11 @@ attach old evidence. Inherited restored records remain held.
 This increment is backend/HTTP/CLI/MCP opt-in only. It does not add a UI selector
 or change existing UI defaults. See [FLOAT-CHECKED-EXPORT.md](FLOAT-CHECKED-EXPORT.md)
 for report identity, caps, temporary-file ownership and acceptance status.
+
+## Saved timeline sound audition
+
+`timeline.audioPreview.plan` accepts exactly `{projectId,timelineId,expectedRevision,startFrame}`. It reads an existing saved timeline without creating one, returns its strict revision/hash-bound plan for `[startFrame,min(startFrame+600,durationFrames))` at 30fps, and does not read media payloads or launch a decoder. CLI discovery is `timeline audioPreview plan`; MCP discovery is `timeline_audioPreview_plan`. No built-in Agent tool is added. The operation refuses restored-v1 workspaces.
+
+An explicit browser preparation consumes fixed authenticated `GET /api/timeline-audio-preview/pcm` resources with those four fields plus `clipId`, `sourceHash`, and `planHash`. The resource accepts no path, URL, codec, stream index or filter. It validates owned managed sources, both source hashes and current saved identity, then decodes the fixed probed audio stream to exact 48kHz stereo f32le. This resource-intensive local read has one active decoder and no queue; cancellation retains ownership until child and response cleanup are confirmed. Partial data is never playable. No task, cache file, media asset or database state is created.
+
+Preparation is bounded to 20 seconds, a 120-second total browser budget and a conservative 96MiB application-buffer admission, including source staging/acquisition/transport allowances. This is not total browser/native-process RSS. Unknown audio metadata, unsupported streams and over-budget windows fail explicitly. Playback is sound-only from saved data; unsaved edits remain excluded. Float summation may differ from the legacy s16 export's clipping. Neither audition nor a passing sample-peak check establishes true-peak/LUFS compliance. See [exact limits and verification](TIMELINE-AUDIO-PREVIEW.md).

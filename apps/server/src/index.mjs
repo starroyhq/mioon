@@ -1,3 +1,4 @@
+import {createTimelineAudioPreviewHttp} from './timeline-audio-preview-http.ts';
 import {readTimelineDeliveryDownload, timelineDeliveryResponseHeaders} from '@mioon/business/timeline-delivery-read';
 import {readOwnedTimelineAsset} from '@mioon/business/timeline-sources';
 import {isTimelineRenderRecord, isTimelineMutationResponse, hasRequestNotAppliedProof, schemas, publicValue, AppError} from '@mioon/contracts';
@@ -174,6 +175,7 @@ export async function startServer({
       guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
         isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
     const localShotTextHttp=createLocalShotTextHttp({shotText:localShotText,signal:shutdown.signal});
+    const audioPreviewHttp=createTimelineAudioPreviewHttp({service:services.audioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored){
@@ -236,6 +238,7 @@ export async function startServer({
         if (await lastProjectHttp(req, res, url)) return;
         if (await localDeliveryHttp(req, res, url)) return;
         if (await localShotTextHttp(req, res, url)) return;
+        if (await audioPreviewHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {
