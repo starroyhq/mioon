@@ -88,6 +88,7 @@ export async function startServer({
   agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
   taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
   localDraftChannel = 'web', // Trusted desktop build identity only; never HTTP/environment configuration.
+  nativeAudioPreview, // Trusted per-utility authority only; never HTTP/environment configuration.
 
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
@@ -175,7 +176,8 @@ export async function startServer({
       guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
         isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
     const localShotTextHttp=createLocalShotTextHttp({shotText:localShotText,signal:shutdown.signal});
-    const audioPreviewHttp=createTimelineAudioPreviewHttp({service:services.audioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
+    nativeAudioPreview?.bind(services.audioPreview);
+    const audioPreviewHttp=createTimelineAudioPreviewHttp({service:services.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored){

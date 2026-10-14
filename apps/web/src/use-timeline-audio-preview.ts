@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { AUDIO_PREVIEW_LIMITS, type AudioPreviewPlan, type AudioPreviewPlanInput } from '@mioon/contracts/timeline-audio-preview';
 import { createTimelineAudioPreviewClient, TimelineAudioPreviewError, type AudioPreviewPrepareOptions, type AudioPreviewReadOptions, type PreparedAudioPreview } from './timeline-audio-preview-client.ts';
 import { createTimelineAudioPreviewTransport, type AudioPreviewTransportOptions, type AudioPreviewTransportState, type TimelineAudioPreviewTransport } from './timeline-audio-preview-engine.ts';
+import type {NativeAudioPreviewAdmission,NativeAudioPreviewAttempt} from './native-audio-preview-adapter.ts';
 
 export interface TimelineAudioPreviewContext {
   /** Includes the workspace identity and project-open epoch, not just a project id. */
@@ -22,6 +23,7 @@ export type TimelineAudioPreviewPhase = 'idle' | 'preparing' | 'ready' | 'starti
 export interface TimelineAudioPreviewState extends TimelineAudioPreviewContext {
   phase: TimelineAudioPreviewPhase;
   retirement: 'none' | 'closing' | 'failed';
+  nativeAdmission: 'none' | 'waiting' | 'blocked';
   plan: AudioPreviewPlan | null;
   positionFrame: number | null;
   requestedStartFrame: number | null;
@@ -42,10 +44,11 @@ export interface TimelineAudioPreviewControllerOptions {
   createContext?: () => AudioContext;
   prepare?: (input: AudioPreviewPlanInput, options: AudioPreviewPrepareOptions) => Promise<PreparedAudioPreview>;
   createTransport?: (options: AudioPreviewTransportOptions) => TimelineAudioPreviewTransport;
+  nativeAdmission?: NativeAudioPreviewAdmission;
 }
 const emptyContext = (): TimelineAudioPreviewContext => ({ scope: null, executionScope: '', projectId: null, timelineId: null,
   revision: null, durationFrames: 0, sourceIdentity: '', connected: false, visible: false, restored: false, hasUnsavedDrafts: false });
-const initial = (): TimelineAudioPreviewState => ({ ...emptyContext(), phase: 'idle', retirement: 'none', plan: null, positionFrame: null,
+const initial = (): TimelineAudioPreviewState => ({ ...emptyContext(), phase: 'idle', retirement: 'none', nativeAdmission:'none', plan: null, positionFrame: null,
   requestedStartFrame: null, preparedSources: 0, totalSources: 0, error: '' });
 const sameBinding = (a: TimelineAudioPreviewContext, b: TimelineAudioPreviewContext): boolean =>
   a.scope === b.scope && a.executionScope === b.executionScope && a.projectId === b.projectId && a.timelineId === b.timelineId &&
@@ -57,6 +60,9 @@ const canPrepare = (context: TimelineAudioPreviewContext): boolean => Boolean(co
 const codeOf = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
 export function timelineAudioPreviewErrorMessage(error: unknown): string {
   const code = codeOf(error);
+  if (code === 'NATIVE_AUDIO_CLEANUP_UNCONFIRMED') return '上一窗口的声音资源尚未确认释放，当前试听已被阻止。';
+  if (code === 'NATIVE_AUDIO_BUSY') return '另一个窗口正在等待声音资源，请稍后明确准备。';
+  if (code === 'NATIVE_AUDIO_UNAVAILABLE') return '当前原生试听身份无法确认，未开始解码，请重新打开此编辑器后再试。';
   if (code === 'UNAUTHORIZED') return '会话已过期，请重新登录后明确准备声音。';
   if (code === 'AUDIO_PREVIEW_MEMORY_LIMIT' || code === 'AUDIO_PREVIEW_HASH_LIMIT') return '此完整区间超出声音试听容量，未省略音轨。可使用单独的已渲染视频预览。';
   if (code === 'AUDIO_PREVIEW_TIMEOUT') return '声音准备超过 120 秒预算，未保留部分音轨。请重新准备。';
@@ -92,6 +98,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
     flight: Promise<void>;
     settleFlight: () => void;
     resources: Promise<void> | null;
+    native: NativeAudioPreviewAttempt | null;
   }
   let owner: ResourceOwner | null = null;
   let retiring: { owner: ResourceOwner; failed: boolean } | null = null;
@@ -100,7 +107,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
   const makeTransport = options.createTransport ?? createTimelineAudioPreviewTransport;
   const emit = (patch: Partial<TimelineAudioPreviewState>): void => { state = Object.freeze({ ...state, ...patch }); options.onChange?.(state); };
   const clear = (phase: TimelineAudioPreviewPhase, error = ''): void => emit({ phase, error, plan: null, positionFrame: null,
-    requestedStartFrame: null, preparedSources: 0, totalSources: 0 });
+    requestedStartFrame: null, preparedSources: 0, totalSources: 0, nativeAdmission:'none' });
   const retirementState = (): TimelineAudioPreviewState['retirement'] => retiring ? retiring.failed ? 'failed' : 'closing' : 'none';
   const reflectRetirement = (): void => {
     if (!disposed) emit({ retirement: retirementState() });
@@ -117,6 +124,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
       await owned.resources;
       if (owned.context.state !== 'closed') throw new Error('Exact audio context closure is unconfirmed');
     });
+    owned.native?.retire(settlement);
     void settlement.then(() => {
       if (retiring !== record) return;
       retiring = null; reflectRetirement();
@@ -175,11 +183,14 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
         const context = (options.createContext ?? contextFromGesture)();
         let settleFlight: () => void = () => {};
         const flight = new Promise<void>(resolve => { settleFlight = resolve; });
-        attemptOwner = { context, transport: null, flight, settleFlight, resources: null }; owner = attemptOwner;
+        attemptOwner = { context, transport: null, flight, settleFlight, resources: null, native:null }; owner = attemptOwner;
         const owned = attemptOwner;
+        owned.native=options.nativeAdmission?.begin({onRevoke:()=>{if(owner===owned){invalidate();clear('cancelled');}},
+          onWaiting:nativeAdmission=>{if(current(attempt))emit({nativeAdmission});}})??null;
         if (context.sampleRate !== 48000) throw new TimelineAudioPreviewError('AUDIO_PREVIEW_SAMPLE_RATE', '48 kHz clock unavailable');
         if (!current(attempt)) return false;
         const prepared = await preparePcm(input, { context, signal: abort.signal, ...options.getInvocation?.(),
+          ...(owned.native?{reserveNative:(plan:AudioPreviewPlan,signal:AbortSignal)=>owned.native!.acquire(plan,signal)}:{}),
           onResourceSettlement: resources => { owned.resources = resources; void resources.catch(() => {}); },
           onProgress: (preparedSources, totalSources) => { if (current(attempt)) emit({ preparedSources, totalSources }); } });
         if (!current(attempt) || abort.signal.aborted) { prepared.buffers.clear(); return false; }
@@ -197,7 +208,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
         // Transport has acquired only map entries; the completed client has no
         // further payload ownership and must never modify channel samples.
         prepared.buffers.clear();
-        emit({ phase: 'ready', plan: prepared.plan, positionFrame: startFrame, error: '' }); return true;
+        emit({ phase: 'ready', plan: prepared.plan, positionFrame: startFrame, error: '', nativeAdmission:'none' }); return true;
       } catch (error: unknown) {
         if (!current(attempt)) return false;
         invalidate(); clear(codeOf(error) === 'AUDIO_PREVIEW_CANCELLED' ? 'cancelled' : 'error', timelineAudioPreviewErrorMessage(error));
@@ -285,8 +296,10 @@ export function seekTimelineAudioPreview(view: TimelineAudioPreviewView, frame: 
   else fallback(frame);
 }
 
-function withPageVisibility(context: TimelineAudioPreviewContext): TimelineAudioPreviewContext {
-  return typeof document === 'undefined' || document.visibilityState !== 'hidden' ? context : { ...context, visible: false };
+function withPageVisibility(context: TimelineAudioPreviewContext,native=false): TimelineAudioPreviewContext {
+  // Native occlusion/minimization/focus is not an audition handoff. The supplied
+  // visible flag still revokes for actual application-panel/preview changes.
+  return native || typeof document === 'undefined' || document.visibilityState !== 'hidden' ? context : { ...context, visible: false };
 }
 export function timelineAudioPreviewViewState(state: TimelineAudioPreviewState, context: TimelineAudioPreviewContext): TimelineAudioPreviewState {
   return sameBinding(state, context) ? { ...state, hasUnsavedDrafts: context.hasUnsavedDrafts } : { ...initial(), ...context, retirement: state.retirement };
@@ -297,22 +310,23 @@ export function useTimelineAudioPreview(options: TimelineAudioPreviewControllerO
   const controller = useRef<TimelineAudioPreviewController | null>(null);
   if (!controller.current) controller.current = createTimelineAudioPreviewController({
     readPlan: (input, invocation) => callbacks.current.readPlan(input, invocation),
-    getContext: () => withPageVisibility(callbacks.current.getContext?.() ?? callbacks.current.context),
+    getContext: () => withPageVisibility(callbacks.current.getContext?.() ?? callbacks.current.context,Boolean(callbacks.current.nativeAdmission)),
     getInvocation: () => callbacks.current.getInvocation?.() ?? {},
     onExplicitPosition: frame => callbacks.current.onExplicitPosition?.(frame), onBeforePlay: () => callbacks.current.onBeforePlay?.(),
     onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
     ...(options.createContext ? { createContext: () => callbacks.current.createContext!() } : {}),
     ...(options.prepare ? { prepare: (input, invocation) => callbacks.current.prepare!(input, invocation) } : {}),
     ...(options.createTransport ? { createTransport: invocation => callbacks.current.createTransport!(invocation) } : {}),
+    ...(options.nativeAdmission?{nativeAdmission:options.nativeAdmission}:{}),
   });
   const owned = controller.current;
   useLayoutEffect(() => {
-    owned.attach(withPageVisibility(callbacks.current.context));
-    const visibility = (): void => { owned.setContext(withPageVisibility(callbacks.current.getContext?.() ?? callbacks.current.context)); };
+    owned.attach(withPageVisibility(callbacks.current.context,Boolean(callbacks.current.nativeAdmission)));
+    const visibility = (): void => { owned.setContext(withPageVisibility(callbacks.current.getContext?.() ?? callbacks.current.context,Boolean(callbacks.current.nativeAdmission))); };
     const pagehide = (): void => owned.revoke();
     document.addEventListener('visibilitychange', visibility); window.addEventListener('pagehide', pagehide);
     return () => { document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pagehide); owned.dispose(); };
   }, [owned]);
-  useLayoutEffect(() => { owned.setContext(withPageVisibility(options.context)); });
-  return { state: timelineAudioPreviewViewState(state ?? owned.getState(), withPageVisibility(options.context)), controller: owned };
+  useLayoutEffect(() => { owned.setContext(withPageVisibility(options.context,Boolean(options.nativeAdmission))); });
+  return { state: timelineAudioPreviewViewState(state ?? owned.getState(), withPageVisibility(options.context,Boolean(options.nativeAdmission))), controller: owned };
 }

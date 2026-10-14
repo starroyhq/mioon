@@ -9,6 +9,10 @@ import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
 import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
+import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from '../apps/desktop/src/native-audio-preview-host.ts';
+import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-protocol.ts';
+import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-admission.ts';
+import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
@@ -76,7 +80,12 @@ async function harness(t, options = {}) {
       // Run the actual native admission scripts against a clean renderer v1
       // surface. Only the legacy preference flush counts as a flush or waits on
       // the original fixture gate; inspecting and committing are separate calls.
+      this.entryTickets = new Map();
       const renderer = vm.createContext({
+        __mioonProjectEntryAdmission: { consume: (entryToken, projectId) => {
+          const accepted = this.entryTickets.get(entryToken) === projectId; if (accepted) this.entryTickets.delete(entryToken);
+          return { version: 1, entryToken, projectId, accepted };
+        } },
         __mioonNativeCloseAdmission: {
           inspect: () => {
             r.nativeChecks.push(this);
@@ -158,13 +167,19 @@ async function harness(t, options = {}) {
         setPermissionCheckHandler(fn) { value.permissionCheck = fn; },
         setDevicePermissionHandler(fn) { value.devicePermission = fn; },
         setDisplayMediaRequestHandler(fn) { value.displayPermission = fn; },
-        webRequest: { onBeforeRequest(fn) { value.beforeRequest = fn; } }
+        webRequest: { onBeforeRequest(fn) { value.beforeRequest = fn; }, onBeforeSendHeaders(fn) { value.beforeSendHeaders = fn; } }
       });
       r.sessions.push(value); return value;
     } },
     ...security, createProjectWindowHost, MultiWindowQuitCoordinator, MultiWindowRestartCoordinator,
-    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL,
-    ipcMain: { handle(channel, handler) { assert.equal(channel, PROJECT_WINDOW_CHANNEL); r.bridge = handler; } },
+    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
+    createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
+    observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
+    ipcMain: { handle(channel, handler) {
+      assert.ok([PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
+      if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else r.audioBridge = handler;
+    } },
     installNativeCloseAdmission, stopBackendForQuit,
     writeConnection: async (_, value) => {
       const index = r.connectionWrites.length;
@@ -271,6 +286,45 @@ for (const stage of ['drain', 'backend-stop', 'remove', 'clear', 'new-validation
   });
 }
 
+// These gates hold the real main.start() after the supervisor handshake, before
+// publishing its window context. A dead startup has one fatal outcome, never an
+// early recovery dialog whose reply loses ownership when that context appears.
+for (const stage of ['cookie', 'connection']) {
+  test(`unexpected backend exit during initial ${stage} preparation fails before publishing a window context`, async t => {
+    const preparation = deferred(), prematureRecovery = deferred();
+    const f = await harness(t, { [stage]: () => preparation.promise,
+      dialog: value => value.title === '本地服务已停止' ? prematureRecovery.promise : { response: 0 },
+      release: () => { preparation.resolve(); prematureRecovery.resolve({ response: 1 }); } });
+    await until(() => stage === 'cookie' ? f.r.sessions[0]?.cookieStarted : f.r.connectionWrites.length === 1);
+    f.r.children[0].emit('exit', 1);
+    assert.equal(f.r.dialogs.filter(value => value.title === '本地服务已停止').length, 0,
+      'A pre-publication failure must not spend the live-context recovery prompt');
+    assert.equal(f.get('windowContext'), undefined);
+    preparation.resolve(); await f.initial(); await until(() => f.r.finished === 1);
+    assert.equal(f.fatals().length, 1);
+    assert.equal(f.fatals()[0].detail, '本地服务在窗口准备完成前已停止。');
+    assert.equal(f.r.windows.length, 0);
+    assert.equal(f.r.backends.length, 1, 'No replacement can be started by an ownerless recovery reply');
+    assert.equal(f.get('windowContext'), null);
+    assert.equal(f.r.connections.length, stage === 'cookie' ? 0 : 1);
+    assert.equal(f.r.sessions[0].clearFinished, true);
+  });
+}
+
+test('unexpected backend exit before the handshake continuation fails before preparing a session', async t => {
+  const f = await harness(t, { child: () => ({ ready: false }) });
+  await until(() => f.r.children.length === 1);
+  f.r.children[0].ready();
+  f.r.children[0].emit('exit', 1);
+  await f.initial();
+  assert.equal(f.fatals().length, 1);
+  await until(() => f.r.finished === 1);
+  assert.equal(f.fatals()[0].detail, '本地服务在窗口准备完成前已停止。');
+  assert.equal(f.r.dialogs.filter(value => value.title === '本地服务已停止').length, 0);
+  assert.equal(f.r.sessions.length, 0); assert.equal(f.r.connections.length, 0); assert.equal(f.r.windows.length, 0);
+  assert.equal(f.r.backends.length, 1);
+});
+
 for (const stage of ['cookie', 'connection']) {
   test(`initial ${stage} preparation cannot be bypassed by activate`, async t => {
     const gate = deferred();
@@ -347,7 +401,7 @@ for (const response of [0, 1, 'reject']) {
     await until(() => f.rendererDialogs().length === 1);
     await f.restart(); const replacement = f.get('win');
     if (response === 'reject') gate.reject(failure('OLD_RENDERER_DIALOG_FAILED')); else gate.resolve({ response });
-    await until(() => f.get('rendererErrorOwner') === null); await tick();
+    await tick(); await tick();
     assert.equal(replacement.urls.length, 1); f.assertCurrent(1); assert.equal(f.r.backends.length, 2);
   });
 }
@@ -367,16 +421,17 @@ for (const oldResponse of [0, 1, 'reject']) {
     await f.initial(); const oldWindow = f.get('win');
     oldWindow.webContents.emit('unresponsive'); oldWindow.webContents.emit('render-process-gone');
     await until(() => f.rendererDialogs().length === 1);
-    const oldOwner = f.get('rendererErrorOwner');
+    const oldOwner = f.rendererDialogs().at(-1);
+    assert.equal(f.r.dialogParents[f.r.dialogs.indexOf(oldOwner)], oldWindow);
     await f.restart(); const replacement = f.get('win');
     replacement.webContents.emit('unresponsive'); replacement.webContents.emit('render-process-gone');
     await until(() => f.rendererDialogs().length === 2);
-    const currentOwner = f.get('rendererErrorOwner');
-    assert.notEqual(currentOwner, oldOwner); assert.equal(currentOwner.window, replacement);
+    const currentOwner = f.rendererDialogs().at(-1);
+    assert.notEqual(currentOwner, oldOwner); assert.equal(f.r.dialogParents[f.r.dialogs.indexOf(currentOwner)], replacement);
     if (oldResponse === 'reject') oldGate.reject(failure('OLD_RENDERER_DIALOG_FAILED'));
     else oldGate.resolve({ response: oldResponse });
     await tick(); await tick();
-    assert.equal(f.get('rendererErrorOwner'), currentOwner);
+    assert.equal(f.rendererDialogs().at(-1), currentOwner);
     assert.equal(replacement.urls.length, 1); f.assertCurrent(1);
     replacement.webContents.emit('unresponsive'); replacement.webContents.emit('render-process-gone');
     oldWindow.webContents.emit('unresponsive'); await tick();
@@ -385,14 +440,14 @@ for (const oldResponse of [0, 1, 'reject']) {
     // The replacement's original unresponsive prompt predates its gone
     // incident. Its old choice must stay inert until a fresh prompt is answered.
     await until(() => f.rendererDialogs().length === 3);
-    const freshOwner = f.get('rendererErrorOwner');
-    assert.notEqual(freshOwner, currentOwner); assert.equal(freshOwner.window, replacement);
+    const freshOwner = f.rendererDialogs().at(-1);
+    assert.notEqual(freshOwner, currentOwner); assert.equal(f.r.dialogParents[f.r.dialogs.indexOf(freshOwner)], replacement);
     assert.equal(replacement.urls.length, 1); f.assertCurrent(1);
     await tick();
-    assert.equal(f.get('rendererErrorOwner'), freshOwner);
+    assert.equal(f.rendererDialogs().at(-1), freshOwner);
     assert.equal(replacement.urls.length, 1);
     freshGate.resolve({ response: 0 });
-    await until(() => f.get('rendererErrorOwner') === null);
+    await until(() => replacement.urls.length === 2);
     assert.equal(f.rendererDialogs().length, 3);
     assert.equal(replacement.urls.length, 2); f.assertCurrent(1);
   });
@@ -445,8 +500,9 @@ test('activate between accepted window close and quit continuation cannot replac
 async function openOwnedEditor(f) {
   const launcher = f.r.windows[0], projectId = '79000000-0000-4000-8000-000000000001';
   const host = f.get('windowHost');
-  const opened = f.r.bridge({ sender: launcher.webContents, senderFrame: launcher.webContents.mainFrame },
-    { action: 'open', contextId: host.contextFor(launcher).contextId, projectId });
+  const entryToken = randomUUID(); launcher.entryTickets.set(entryToken, projectId);
+  const opened = await f.r.bridge({ sender: launcher.webContents, senderFrame: launcher.webContents.mainFrame },
+    { action: 'open', contextId: host.contextFor(launcher).contextId, projectId, entryToken, remember: true });
   assert.equal(opened.ok, true);
   const editor = f.r.windows.at(-1); await host.loadFor(editor);
   assert.equal(f.r.bridge({ sender: editor.webContents, senderFrame: editor.webContents.mainFrame },

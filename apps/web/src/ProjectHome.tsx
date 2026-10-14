@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
@@ -37,6 +37,8 @@ export interface ProjectHomeProps {
   status?: ReactNode;
   createDisabledReason?: string;
   onCreateStateChange?: (state: ProjectHomeCreateState) => void;
+  canMutateEntry?: () => boolean;
+  createIntentVersion?: number;
 }
 
 function ProjectSymbol({ size = 20 }: { size?: number }) {
@@ -56,7 +58,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, createDisabledReason = '', onCreateStateChange }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0 }: ProjectHomeProps) {
   const prefix = useId();
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
@@ -78,7 +80,9 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   }
   const locked = busy || submitting || phase === 'opening';
   const empty = !projects.length && !listBusy && !listError;
-  const canAct = () => current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening';
+  const canAct = () => canMutateEntry?.() !== false && current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening';
+
+  useEffect(() => { if (createIntentVersion > 0 && canMutateEntry?.() !== false) setCreateOpen(true); }, [createIntentVersion]);
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

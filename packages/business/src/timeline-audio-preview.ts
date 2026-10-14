@@ -169,11 +169,15 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
   }
 
   async function consumeSource<T>(rawInput: unknown, context: {signal?: AbortSignal;
+    /** Trusted in-process registration before source effects. This promise is
+     * independent of public observer cancellation and rejects cleanup doubt. */
+    onResourceSettlement?: (settlement: Promise<void>) => void;
     consume: (decoded: TimelineAudioPreviewDecodedPcm, context: TimelineAudioPreviewConsumeContext) => Promise<T>}): Promise<T> {
     runtime.assertOrdinaryWorkspace();
     if (!plainData(rawInput, 4096)) throw fault('VALIDATION_ERROR', 400);
     const parsed = audioPreviewSourceInputSchema.safeParse(rawInput);
-    if (!parsed.success || !context || typeof context.consume !== 'function') throw fault('VALIDATION_ERROR', 400);
+    if (!parsed.success || !context || typeof context.consume !== 'function' ||
+        context.onResourceSettlement !== undefined && typeof context.onResourceSettlement !== 'function') throw fault('VALIDATION_ERROR', 400);
     available(context.signal);
     const input = parsed.data, request = {projectId: input.projectId, timelineId: input.timelineId,
       expectedRevision: input.expectedRevision, startFrame: input.startFrame};
@@ -247,7 +251,14 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       fence();
       return consumed;
     }
-    const work = prepareAndConsume();
+    let resolveResources!: () => void, rejectResources!: (reason: unknown) => void;
+    const resources = new Promise<void>((resolve, reject) => {resolveResources = resolve; rejectResources = reject;});
+    // Always observe this internal proof, including ordinary Web callers that
+    // do not need the optional native handoff hook.
+    resources.catch(() => {});
+    let registrationFailed = false, registrationError: unknown;
+    try {context.onResourceSettlement?.(resources);} catch (error) {registrationFailed = true; registrationError = error;}
+    const work = registrationFailed ? Promise.reject<T>(registrationError) : prepareAndConsume();
     const joined = (async () => {
       try {return await work;}
       catch (error) {
@@ -272,6 +283,10 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       }
     })();
     entry.task = joined;
+    // Ordinary decode/read/abort failures can retire after confirmed cleanup.
+    // A sticky shutdown failure is different and remains fail-closed even if
+    // waitForClose eventually observes the original child exit.
+    joined.then(resolveResources, () => {if (state.shutdownFailure) rejectResources(state.shutdownFailure); else resolveResources();});
     // Retain non-cooperative hash/decode/consumer work after caller cancellation.
     entry.task.catch(error => {if (unconfirmed(error)) state.shutdownFailure ??= error;});
     try {const result = await observe(joined, signal); fence(); return result;}

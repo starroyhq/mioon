@@ -265,12 +265,16 @@ test('desktop source keeps the renderer sandbox and native secret channel privat
     assert.doesNotMatch(source, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   }
   assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
-  assert.equal((main.match(/ipcMain\.handle\(/g) || []).length, 1);
+  assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
+    ['NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL']);
+  assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
   const bridge = await readFile(new URL('../apps/desktop/src/project-window-preload.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(preload + bridge, /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
-  assert.match(preload, /exposeInMainWorld\('__mioonProjectWindow'/);
+  const audioBridge = await readFile(new URL('../apps/desktop/src/native-audio-preview-preload.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(preload + bridge + audioBridge, /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
+  assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
+    ['__mioonNativeAudioPreview', '__mioonProjectWindow']);
 });
 
 for (const platform of ['linux', 'darwin']) test('desktop settings persist ciphertext outside project data with owner-only files (' + platform + ')', async () => {

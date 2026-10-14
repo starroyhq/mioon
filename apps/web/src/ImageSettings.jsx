@@ -15,7 +15,7 @@ const storageLabel = value => ({ none: '未保存', session: '仅本次后端运
 export const imageStorageReason = storage => ({ WEB_SESSION_ONLY: '当前服务器不提供系统安全存储。仅本次后端运行可用，后端退出后密钥清除。', LINUX_BASIC_TEXT: '系统仅提供 basic_text，不支持安全持久保存。可明确选择仅本次后端运行。', OS_SECRET_STORE_UNAVAILABLE: '系统安全存储不可用。可明确选择仅本次后端运行。' }[storage?.reasonCode] || '系统安全存储可用。持久保存需要你的明确选择；不会退回明文文件。');
 
 /** Mounted across dock navigation. Only the write-only input ever holds a key. */
-export default function ImageSettings({ active = false, contextKey, client, slot = 'official', onSelectSlot = noop, onClose = noop, onSnapshot = noop, onDirtyChange = noop, beforeClose, closeLabel, onNavigationStateChange }) {
+export default function ImageSettings({ active = false, contextKey, client, slot = 'official', onSelectSlot = noop, onRequestSelectSlot, onClose = noop, onSnapshot = noop, onDirtyChange = noop, beforeClose, closeLabel, onNavigationStateChange }) {
   if (!['official', 'custom'].includes(slot)) throw new TypeError('Unknown image settings slot');
   const custom = slot === 'custom', prefix = custom ? 'custom-image-settings' : 'image-settings';
   const [state, setState] = useState(initialImageSettingsState), [hasKey, setHasKey] = useState(false), [keyNotice, setKeyNotice] = useState('');
@@ -59,7 +59,7 @@ export default function ImageSettings({ active = false, contextKey, client, slot
   };
   function submit(event) { event.preventDefault(); if (!usable() || !imageSettingsCanSave(session.current?.getState() || state)) return; const value = keyInput.current?.value || ''; clearKey(); void session.current?.save(value); }
   const { snapshot, draft } = state, editable = visible && imageSettingsEditable(state), destination = imageSettingsDestination(draft), bindingChanged = imageSettingsBindingChanged(state);
-  const selectSlot = next => { if (!usable() || next === slot) return; if (keyInput.current?.value) setKeyNotice('切换连接时已清空新输入的密钥；非秘密草稿仍保留。'); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onSelectSlot(next); };
+  const selectSlot = next => { if (!usable() || next === slot) return; if (onRequestSelectSlot) { onRequestSelectSlot(next); return; } if (keyInput.current?.value) setKeyNotice('切换连接时已清空新输入的密钥；非秘密草稿仍保留。'); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onSelectSlot(next); };
   return <section className="image-settings-page" data-testid={`${prefix}-page`} data-phase={state.phase} hidden={!visible} inert={!visible} aria-label="图像连接设置">
     <header className="image-generation-heading"><div><span className="image-generation-eyebrow">IMAGE · CONNECTION</span><h2>图像设置</h2><p>一次配置，逐次确认付费生成</p></div><Button type="button" variant="ghost" className="button quiet" data-testid={`${prefix}-back`} aria-label={closeLabel ?? '返回图像工坊'} disabled={!visible} onClick={close}><Icon name="left" size={14} />{closeLabel ?? '返回'}</Button></header>
     <div className="image-settings-slots" role="group" aria-label="图像连接槽位"><Button type="button" variant="ghost" className="button" data-testid={`${prefix}-slot-official`} aria-pressed={!custom} disabled={!visible} onClick={() => selectSlot('official')}>OpenAI 官方</Button><Button type="button" variant="ghost" className="button" data-testid={`${prefix}-slot-custom`} aria-pressed={custom} disabled={!visible} onClick={() => selectSlot('custom')}>自定义兼容连接</Button><Button type="button" variant="ghost" className="button" data-testid={`${prefix}-slot-comfy`} aria-pressed={false} disabled={!visible} onClick={() => selectSlot('comfy')}>本地 ComfyUI</Button></div>

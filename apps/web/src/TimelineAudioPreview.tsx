@@ -14,6 +14,8 @@ export function timelineAudioPreviewStatus(state: TimelineAudioPreviewState): st
   if (state.restored) return '恢复分支暂不支持已保存时间线声音试听。';
   if (!state.connected) return '连接恢复后可明确准备声音。';
   if (!state.visible) return '试听面板隐藏后已释放声音，请重新准备。';
+  if (state.nativeAdmission === 'blocked') return '上一窗口的声音资源尚未确认释放，当前试听已被阻止。';
+  if (state.nativeAdmission === 'waiting') return '正在等待另一窗口释放声音资源，尚未开始准备当前声音。';
   if (state.error) return state.error;
   if (state.phase === 'preparing') return state.totalSources ? `正在准备完整区间的声音 ${state.preparedSources}/${state.totalSources}…` : '正在核对已保存区间与声音容量…';
   if (state.phase === 'starting') return '正在启动声音播放…';

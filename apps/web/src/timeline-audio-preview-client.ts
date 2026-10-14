@@ -3,6 +3,8 @@ import {
   audioPreviewPlanSchema, audioPreviewPlanDigestMaterial, isAudioPreviewPlan,
   type AudioPreviewPlan, type AudioPreviewPlanInput, type AudioPreviewSourceDescriptor,
 } from '@mioon/contracts/timeline-audio-preview';
+import {NATIVE_AUDIO_LEASE_HEADER,nativeAudioLeaseSchema} from '@mioon/contracts/native-audio-preview';
+import type {NativeAudioLease} from '@mioon/contracts/native-audio-preview';
 
 export const AUDIO_PREVIEW_PCM_ENDPOINT = '/api/timeline-audio-preview/pcm';
 /** A transferred BYOB view and its conservative copy fit the 2 MiB reserve. */
@@ -32,6 +34,8 @@ export interface AudioPreviewPrepareOptions extends AudioPreviewReadOptions {
   /** Separate from a prompt timeout/cancel result: resolves only after the
    * original work and its response cancellation have actually settled. */
   onResourceSettlement?: (settlement: Promise<void>) => void;
+  /** Native-only main/utility verified reservation, before any source Fetch or AudioBuffer. */
+  reserveNative?: (plan:AudioPreviewPlan,signal:AbortSignal)=>Promise<NativeAudioLease>;
 }
 export interface AudioPreviewClientOptions {
   readPlan: (input: AudioPreviewPlanInput, options: AudioPreviewReadOptions) => Promise<unknown>;
@@ -228,6 +232,13 @@ export function createTimelineAudioPreviewClient({ readPlan, fetcher = (...args)
         check();
         if (Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') !== plan.planHash) protocol();
         freezePlan(plan);
+        let nativeLease:NativeAudioLease|null=null;
+        if(options.reserveNative){
+          const reserved=await options.reserveNative(plan,abort.signal);check();
+          const checkedLease=nativeAudioLeaseSchema.safeParse(reserved);if(!checkedLease.success)protocol();nativeLease=checkedLease.data;
+          if(nativeLease.planHash!==plan.planHash||nativeLease.admittedBytes!==plan.memory.admittedBytes||nativeLease.owner.projectId!==input.projectId||
+            nativeLease.input.projectId!==input.projectId||nativeLease.input.timelineId!==input.timelineId||nativeLease.input.expectedRevision!==input.expectedRevision||nativeLease.input.startFrame!==input.startFrame)protocol();
+        }
         let retainedAudioBufferBytes = 0, transportChunkBytes = 0;
         const allocation = (): AudioPreviewAllocation => ({ retainedAudioBufferBytes, largestInFlightSourceBytes: plan.memory.largestSourcePcmBytes,
           transportChunkBytes, conservativeBytes: 2 * retainedAudioBufferBytes + 2 * plan.memory.largestSourcePcmBytes + AUDIO_PREVIEW_LIMITS.transportReserveBytes });
@@ -236,7 +247,8 @@ export function createTimelineAudioPreviewClient({ readPlan, fetcher = (...args)
           check();
           const query = new URLSearchParams({ projectId: input.projectId, timelineId: input.timelineId, expectedRevision: String(input.expectedRevision),
             startFrame: String(input.startFrame), clipId: source.clipId, sourceHash: source.sourceHash, planHash: plan.planHash });
-          const response = await fetcher(`${AUDIO_PREVIEW_PCM_ENDPOINT}?${query}`, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: abort.signal });
+          const response = await fetcher(`${AUDIO_PREVIEW_PCM_ENDPOINT}?${query}`, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: abort.signal,
+            ...(nativeLease?{headers:{[NATIVE_AUDIO_LEASE_HEADER]:nativeLease.leaseId}}:{}) });
           try { check(); } catch (error) { try { await response.body?.cancel(); } catch { cleanupUnconfirmed(); } throw error; }
           const buffer = await readTimelineAudioPreviewPcm(response, plan, source, options.context, readerAbort.signal, check,
             bytes => { transportChunkBytes = Math.max(transportChunkBytes, bytes); options.onAllocation?.({ ...allocation(), retainedAudioBufferBytes: retainedAudioBufferBytes + source.pcmBytes,

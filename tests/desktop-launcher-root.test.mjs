@@ -15,6 +15,7 @@ function homeHarness(patch = {}) {
   const react = { ...actual, useId: () => `id-${cursor++}`,
     useState(value) { const index = cursor++; if (!(index in slots)) slots[index] = value; return [slots[index], next => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }]; },
     useRef(value) { return slots[cursor++] ||= { current: value }; },
+    useEffect() { cursor++; },
   };
   const module = { exports: {} };
   Function('require', 'module', 'exports', transformSync(source('ProjectHome.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
@@ -54,99 +55,111 @@ test('typed launcher dependency graph never imports App, editor controllers or l
   const paths = Object.keys(result.metafile.inputs);
   for (const forbidden of ['/App.jsx', '/AgentWorkspace.jsx', '/ImageGeneration.jsx', '/use-subjects.js', '/AgentSettings.jsx', '/ImageSettings.jsx', '/ComfyImageSettings.jsx']) assert.equal(paths.some(path => path.endsWith(forbidden)), false, forbidden);
 });
-test('root glue has no role URL branch and supplies editor only for verified editor context', () => {
-  const rootSource = source('DesktopRoot.tsx');
-  assert.doesNotMatch(rootSource, /URLSearchParams|[?&]role/);
-  assert.match(rootSource, /host\.context\.role === 'launcher'/); assert.match(rootSource, /renderEditor\(host\.context, host\.bridge\)/);
-  const launcher = source('LauncherRoot.tsx');
-  assert.match(launcher, /installNativeCloseAdmission/); assert.match(launcher, /document\.visibilityState !== 'hidden'/); assert.match(launcher, /settings\.canLeave\(ticket\.settings\)/);
+
+test('root mounts all three verified native roles without project-role URL authority', () => {
+  const text = source('DesktopRoot.tsx');
+  assert.doesNotMatch(text, /URLSearchParams|[?&]role/);
+  assert.match(text, /host\.context\.role === 'launcher'/); assert.match(text, /host\.context\.role === 'settings'/);
+  assert.match(text, /<NativeEditorRoot/);
+  assert.doesNotMatch(source('LauncherRoot.tsx'), /renderSettings\(/);
+  assert.match(source('SettingsRoot.tsx'), /installNativeCloseAdmission/);
+  assert.match(source('NativeEditorRoot.tsx'), /renderEditor\(context, bridge, entry\)/);
+});
+test('entry form stale handlers cannot mutate while sealed before React rerenders disabled props', () => {
+  let allowed = true;
+  const h = homeHarness({ canMutateEntry: () => allowed });
+  find(h.render(), 'project-home-create-toggle').props.onClick();
+  const input = find(h.render(), 'project-home-name'); const toggle = find(h.render(), 'project-home-create-toggle');
+  const before = h.reports.length; allowed = false;
+  input.props.onChange({ target: { value: 'late secret title' } }); toggle.props.onClick();
+  assert.equal(h.reports.length, before); assert.equal(find(h.render(), 'project-home-name').props.value, '');
+});
+test('native settings slot delegates before existing key clearing; Web fallback remains present', () => {
+  for (const file of ['ImageSettings.jsx', 'ComfyImageSettings.jsx']) assert.match(source(file), /onRequestSelectSlot/);
+  const image = source('ImageSettings.jsx');
+  assert.ok(image.indexOf('if (onRequestSelectSlot)') < image.indexOf("setKeyNotice('切换连接"));
+  assert.match(image, /onRequestSelectSlot\(next\); return;/);
+  assert.match(source('ComfyImageSettings.jsx'), /else leave\(\(\) => onSelectSlot\(slot\)\)/);
+  assert.match(source('SettingsRoot.tsx'), /window\.close\(\); return false/);
 });
 
-// Exercise the actual launcher callback boundary. The existing forms remain
-// outside this host, and their close helper rechecks before cleanup/onClose.
-import { createSettingsNavigationRegistry, closeSettingsAfterPermission } from '../apps/web/src/settings-navigation-state.ts';
+import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-state.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
-import { createLauncherCloseSettings, createLauncherController } from '../apps/web/src/launcher-state.ts';
-function launcherHarness(confirm = async () => true, options = {}) {
-  const actual = createRequire(join(root, 'apps/web/package.json'))('react');
-  const slots = [], effects = [], handlers = new Map(); let cursor = 0, admission;
-  const react = { ...actual,
-    useState(value) { const index = cursor++; if (!(index in slots)) slots[index] = typeof value === 'function' ? value() : value; return [slots[index], next => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }]; },
-    useRef(value) { return slots[cursor++] ||= { current: value }; },
-    useCallback(fn) { cursor++; return fn; },
-    useEffect(fn, dependencies) {
-      const index = cursor++, previous = slots[index];
-      if (!previous || !dependencies || dependencies.some((value, offset) => !Object.is(value, previous.dependencies?.[offset]))) {
-        const current = { dependencies, cleanup: undefined }; slots[index] = current;
-        effects.push(() => { previous?.cleanup?.(); current.cleanup = fn(); });
-      }
-    },
-  };
-  let context = { version: 1, contextId: 'launcher', backendId: 'backend', role: 'launcher', initialProjectId: null, autoOpen: false,
-    editorProjectId: null, editorPhase: 'none', quitting: false, settingsVersion: 0, settingsSlot: null, ...options.context };
-  const state = { projects: [], workspace: { restored: false }, phase: 'home', openingProjectId: null, error: '', notice: '', creating: false, createUnknown: false, listBusy: false, listError: '', version: 0 };
-  let controller = { getState: () => state, getContext: () => context, activate() {}, dispose() {}, boot: async () => {}, interacted() {}, updateContext() {}, refresh: async () => {}, open: async () => true, create: async () => true };
-  const subscribers = new Set();
-  const bridge = { context: async () => context, openProject: async () => ({ ok: true, reason: 'accepted' }),
-    subscribe: callback => { subscribers.add(callback); return () => subscribers.delete(callback); } };
-  const module = { exports: {} }, window = { location: { search: '', href: 'http://localhost/' } }, document = { visibilityState: 'visible', addEventListener(name, fn) { handlers.set(name, fn); }, removeEventListener() {} };
-  const map = {
-    react, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => confirm }, './ProjectHome.tsx': { default: 'project-home' }, './LastProjectStatus.tsx': { default: 'locator-status' },
-    './last-project-state.ts': { createLastProjectController: () => ({ getState: () => ({ identityBlocked: false, revision: null }), activate() {}, dispose() {}, discover: async () => null }) },
-    './settings-navigation-state.ts': { createSettingsNavigationRegistry },
-    './native-close-state.ts': { createNativeCloseRegistry, installNativeCloseAdmission: (_window, settings) => { if (options.nativeAdmission) admission = createNativeCloseAdmission({ ...settings, now: () => 1, newToken: () => 'launcher-close-token' }); return () => {}; } },
-    './launcher-state.ts': {
-      createLauncherClient: () => options.client ?? { inspect: async () => ({ restored: false, workspaceOrigin: null }), list: async () => [] },
-      createLauncherController: settings => options.realController ? (controller = createLauncherController(settings)) : controller,
-      createLauncherCloseSettings, launcherCreateDisabledReason: () => '',
-    },
-    './project-home.css': {},
-  };
-  Function('require', 'module', 'exports', 'window', 'document', transformSync(source('LauncherRoot.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => { assert.ok(Object.hasOwn(map, name), name); return map[name]; }, module, module.exports, window, document);
-  let settings;
-  const h = { get context() { return context; }, document, handlers, get state() { return controller.getState(); }, controller: () => controller,
-    admission: () => admission, drain: () => window.__mioonFlushWorkspacePreferences(), settings: () => settings,
-    render() { cursor = 0; return module.exports.default({ context, bridge, rpc() {}, contractChecks: {}, renderSettings: props => { settings = props; return null; } }); },
-    flushEffects() { effects.splice(0).forEach(effect => effect()); },
-    hostContext(patch, { render = true, effects = true } = {}) {
-      context = { ...context, ...patch };
-      subscribers.forEach(callback => callback(context));
-      if (render) h.render(); if (effects) h.flushEffects();
-    },
-    hostIntent(slot, timing) { h.hostContext({ settingsSlot: slot, settingsVersion: context.settingsVersion + 1 }, timing); },
-    mount() { h.render(); h.flushEffects(); return h.render(); },
-  };
-  return h;
+const uuid = n => `68000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const context = patch => ({ version: 2, role: 'settings', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
+  editorProjectId: null, editorPhase: 'none', editorCount: 2, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: 'agent', settingsVersion: 1,
+  selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
+const tick = () => new Promise(setImmediate);
+function settingsFixture(confirm = async () => true) {
+  const registry = createSettingsNavigationRegistry();
+  const registration = registry.register('agent');
+  registration.update({ dirty: false, busy: false, blocked: false, version: 1 });
+  const navigation = createSettingsWindowNavigation({ context: context(), registry, confirm });
+  return { registry, registration, navigation };
 }
-test('authorized settings close accepts same-stack secret cleanup, but changed input cancels before cleanup', async () => {
-  const h = launcherHarness(); let home = h.mount(); await home.props.onPage('settings'); home = h.render(); assert.equal(home.props.page, 'settings');
-  const settings = h.settings(), owner = settings.registry.register('home:agent'); let version = 1;
-  const publish = dirty => owner.update({ dirty, busy: false, blocked: false, version: version++ }); publish(true);
-  const capturedVersion = version;
-  await closeSettingsAfterPermission(settings.beforeClose, () => capturedVersion === version, () => { publish(false); settings.onClose(); });
-  assert.equal(h.render().props.page, 'projects');
-
-  let resolve; const confirmation = new Promise(yes => { resolve = yes; }); const changed = launcherHarness(() => confirmation);
-  home = changed.mount(); await home.props.onPage('settings'); changed.render();
-  const live = changed.settings(), registration = live.registry.register('home:agent');
-  registration.update({ dirty: true, busy: false, blocked: false, version: 1 });
-  let cleared = false; const pending = closeSettingsAfterPermission(live.beforeClose, () => true, () => { cleared = true; live.onClose(); });
-  registration.update({ dirty: true, busy: false, blocked: false, version: 2 }); resolve(true); await pending;
-  assert.equal(cleared, false); assert.equal(changed.render().props.page, 'settings');
+test('settings slot consent is exact and changed input remains with its owner', async () => {
+  const answer = Promise.withResolvers(); const f = settingsFixture(() => answer.promise);
+  f.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
+  const pending = f.navigation.select('custom');
+  f.registration.update({ dirty: true, busy: false, blocked: false, version: 3 });
+  answer.resolve(true); assert.equal(await pending, false); assert.equal(f.navigation.selected, 'agent');
+  assert.equal(f.registry.capture()[0].dirty, true);
 });
-test('keep-alive settings selection is synchronous and does not release another owner', async () => {
-  const h = launcherHarness(); const home = h.mount(); await home.props.onPage('settings'); h.render();
-  const settings = h.settings(), owner = settings.registry.register('home:agent'); owner.update({ dirty: true, busy: false, blocked: false, version: 1 });
-  settings.onSelect('custom'); h.render(); assert.equal(h.settings().selected, 'custom');
-  assert.equal(settings.registry.capture().some(entry => entry.slot === 'home:agent' && entry.dirty), true);
-  h.document.visibilityState = 'hidden'; h.handlers.get('visibilitychange')(); h.render(); assert.equal(h.settings().visible, false);
+test('cancelled, busy or unknown settings slot cannot clear or select another form', async () => {
+  const cancelled = settingsFixture(async () => false);
+  cancelled.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
+  assert.equal(await cancelled.navigation.select('custom'), false); assert.equal(cancelled.navigation.selected, 'agent');
+  for (const flags of [{ busy: true, blocked: false }, { busy: false, blocked: true }]) {
+    const f = settingsFixture(() => assert.fail('blocked form cannot ask to discard'));
+    f.registration.update({ dirty: true, ...flags, version: 2 });
+    assert.equal(await f.navigation.select('custom'), false); assert.equal(f.navigation.selected, 'agent');
+  }
 });
-
-test('a superseded initial context rejection cannot unmount an owner established by a newer host event', async () => {
+test('accepted slot selection retains registry owners and their nonsecret drafts', async () => {
+  const f = settingsFixture(); f.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
+  const before = f.registry.capture();
+  assert.equal(await f.navigation.select('custom'), true); assert.equal(f.navigation.selected, 'custom');
+  assert.deepEqual(f.registry.capture(), before);
+});
+test('new host or local same-slot intent invalidates older pending consent synchronously', async () => {
+  for (const kind of ['host', 'local']) {
+    const answer = Promise.withResolvers(); const f = settingsFixture(() => answer.promise);
+    f.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
+    const pending = f.navigation.select('custom');
+    if (kind === 'host') f.navigation.receive(context({ settingsVersion: 2, settingsSlot: 'agent' }));
+    else await f.navigation.select('agent');
+    answer.resolve(true); assert.equal(await pending, false); assert.equal(f.navigation.selected, 'agent');
+  }
+});
+test('requesting editor closure does not unmount, clear, hide or change settings owner', async () => {
+  const f = settingsFixture(); f.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
+  const before = f.registry.capture(); const version = f.navigation.version;
+  f.navigation.receive(context({ editorCount: 1 })); f.navigation.receive(context({ editorCount: 0 }));
+  assert.deepEqual(f.registry.capture(), before); assert.equal(f.navigation.version, version); assert.equal(f.navigation.selected, 'agent');
+});
+test('settings close P0 survives presentation-only quit and preserves exact dirty/busy/unknown fences', () => {
+  const f = settingsFixture();
+  const admission = createNativeCloseAdmission({ registry: createNativeCloseRegistry(), settings: f.registry,
+    readScope: () => `${uuid(2)}:${f.navigation.version}`, readDocumentURL: () => 'http://localhost/?settings=1', now: () => 1, newToken: () => 'settings-close' });
+  const ticket = admission.inspect(); assert.equal(ticket.disposition, 'clean');
+  f.navigation.receive(context({ quitting: true }));
+  assert.equal(admission.commit(ticket.token, { discardDirty: false, allowDrainFailure: false, expiresAt: 1000 }), true);
+  f.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
+  let prevented = false; assert.equal(admission.beforeUnload({ preventDefault() { prevented = true; }, returnValue: '' }), false); assert.equal(prevented, true);
+  f.registration.update({ dirty: true, busy: false, blocked: true, version: 3 }); assert.equal(admission.inspect().disposition, 'blocked');
+});
+test('foreign settings context and stale settings version cannot select an owned form', async () => {
+  const f = settingsFixture();
+  f.navigation.receive(context({ contextId: uuid(99), settingsSlot: 'custom', settingsVersion: 2 }));
+  f.navigation.receive(context({ settingsSlot: 'custom', settingsVersion: 0 }));
+  await tick(); assert.equal(f.navigation.selected, 'agent');
+});
+test('a superseded initial context rejection cannot unmount an established native role', async () => {
   const actual = createRequire(join(root, 'apps/web/package.json'))('react');
-  const slots = [], effects = []; let cursor = 0, receive, reject;
-  const pending = new Promise((_resolve, no) => { reject = no; });
-  const bridge = { subscribe: callback => { receive = callback; return () => {}; }, context: () => pending };
+  const slots = [], effects = []; let cursor = 0, receive;
+  const pending = Promise.withResolvers();
+  const bridge = { subscribe: callback => { receive = callback; return () => {}; }, context: () => pending.promise };
   const react = { ...actual,
     useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], next => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }]; },
     useEffect(fn) { const index = cursor++; if (!(index in slots)) { slots[index] = true; effects.push(fn); } },
@@ -154,163 +167,28 @@ test('a superseded initial context rejection cannot unmount an owner established
   const module = { exports: {} };
   Function('require', 'module', 'exports', 'window', transformSync(source('DesktopRoot.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
     if (name === 'react') return react;
-    if (name === './LauncherRoot.tsx') return { default: 'launcher' };
+    if (name === './LauncherRoot.tsx') return { __esModule: true, default: 'launcher' };
+    if (name === './SettingsRoot.tsx') return { __esModule: true, default: 'settings' };
+    if (name === './NativeEditorRoot.tsx') return { __esModule: true, default: 'editor' };
     if (name === './desktop-window-client.ts') return { readDesktopWindowBridge: () => bridge };
     assert.fail(name);
   }, module, module.exports, {});
   const render = () => { cursor = 0; return module.exports.default({ rpc() {}, contractChecks: {}, renderWeb: () => actual.createElement('web'), renderEditor: () => actual.createElement('editor'), renderSettings: () => null }); };
-  render(); effects.splice(0).forEach(effect => effect());
-  receive({ contextId: 'current-owner', role: 'editor' });
-  assert.ok(nodes(render()).some(node => node.type === 'editor'));
-  reject(new Error('superseded describe failed')); await new Promise(setImmediate);
-  assert.ok(nodes(render()).some(node => node.type === 'editor'));
+  render(); effects.splice(0).forEach(effect => effect()); receive({ contextId: 'current-owner', role: 'editor' });
+  assert.equal(render().type, 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal(render().type, 'editor');
 });
 
-
-test('actual launcher creation uncertainty reaches close-only risk admission without becoming success or replay', async () => {
-  const h = launcherHarness(async () => true, { nativeAdmission: true }); const home = h.mount();
-  h.state.createUnknown = true; h.state.version++;
-  const admission = h.admission();
-  assert.equal(admission.inspect().disposition, 'unknown');
-  home.props.onCreateStateChange({ dirty: true, busy: false, version: 1 });
-  const dirty = admission.inspect(); assert.equal(dirty.disposition, 'unknown-dirty');
-  assert.equal(admission.commit(dirty.token, { discardDirty: true, allowDrainFailure: false, expiresAt: 1000 }), false);
-  assert.equal(await h.drain(), false); assert.equal(h.state.createUnknown, true);
-  assert.equal(admission.inspect('reload', 'http://localhost/').disposition, 'blocked');
-  let prevented = false;
-  assert.equal(admission.beforeUnload({ preventDefault() { prevented = true; }, returnValue: '' }), false); assert.equal(prevented, true);
-  const approved = admission.inspect();
-  assert.equal(admission.commit(approved.token, { discardDirty: true, allowDrainFailure: false, allowUnknown: true, expiresAt: 1000 }), true);
-  assert.equal(admission.beforeUnload({ preventDefault() { assert.fail('Explicit same-owner risk close should pass once'); }, returnValue: '' }), true);
-  assert.equal(h.state.createUnknown, true); assert.equal(await home.props.onCreate('another story', ''), false);
+test('scoped picker uses shared focus-managed controlled Dialog and retains hidden form owner', () => {
+  const picker = source('ProjectEntry.tsx');
+  assert.match(picker, /import \{ Dialog, DialogContent, DialogDescription, DialogTitle \} from '@mioon\/ui\/components\/dialog'/);
+  assert.match(picker, /<Dialog open=\{state.shown\}/);
+  assert.match(picker, /details\.cancel\(\); void controller\.dismiss\(\)/);
+  assert.match(picker, /<DialogContent keepMounted showCloseButton=\{false\} hidden=\{!state.shown\} inert=\{!state.shown\}/);
+  assert.doesNotMatch(picker, /role="dialog"|modal-backdrop/);
+  const shared = readFileSync(join(root, 'packages/ui/src/components/dialog.tsx'), 'utf8');
+  assert.match(shared, /keepMounted = false/); assert.match(shared, /<DialogPortal keepMounted=\{keepMounted\}>/);
 });
 
-test('actual launcher unknown close cannot waive busy settings or changes to the captured creation identity', () => {
-  const h = launcherHarness(async () => true, { nativeAdmission: true }); const home = h.mount();
-  h.state.createUnknown = true; h.state.version++;
-  const admission = h.admission(), first = admission.inspect();
-  h.state.version++;
-  assert.equal(admission.commit(first.token, { discardDirty: false, allowDrainFailure: false, allowUnknown: true, expiresAt: 1000 }), false);
-  home.props.onCreateStateChange({ dirty: true, busy: true, version: 1 }); assert.equal(admission.inspect().disposition, 'blocked');
-  home.props.onCreateStateChange({ dirty: true, busy: false, version: 2 });
-  const form = h.settings().registry.register('home:agent'); form.update({ dirty: false, busy: false, blocked: true, version: 1 });
-  assert.equal(admission.inspect().disposition, 'blocked');
-  form.update({ dirty: false, busy: true, blocked: false, version: 2 }); assert.equal(admission.inspect().disposition, 'blocked');
-});
-
-
-const launcherTick = () => new Promise(setImmediate);
-for (const editorPhase of ['none', 'ready']) {
-  for (const delivery of ['before inspect', 'after inspect']) {
-    test(`real launcher ${editorPhase} quit context ${delivery} and deferred prop effect preserve the close capture`, async () => {
-      const h = launcherHarness(async () => true, { nativeAdmission: true, realController: true,
-        context: { editorPhase, editorProjectId: editorPhase === 'ready' ? 'editor' : null } });
-      h.mount(); await launcherTick(); h.render(); h.flushEffects();
-      const before = h.state;
-      if (delivery === 'before inspect') h.hostContext({ quitting: true }, { effects: false });
-      const admission = h.admission(), ticket = admission.inspect();
-      assert.equal(ticket.disposition, 'clean');
-      if (delivery === 'after inspect') h.hostContext({ quitting: true }, { effects: false });
-      // The same host context reaches the real controller a second time through
-      // LauncherRoot's deferred prop effect, between native inspect and commit.
-      h.flushEffects();
-      assert.equal(h.controller().getContext().quitting, true);
-      assert.equal(await h.drain(), true);
-      assert.equal(admission.commit(ticket.token, { discardDirty: false, allowDrainFailure: false, expiresAt: 1000 }), true);
-      assert.equal(h.state, before, 'presentation-only host delivery must not invent a controller mutation');
-      assert.equal(admission.beforeUnload({ preventDefault() { assert.fail('Unchanged launcher must close'); }, returnValue: '' }), true);
-    });
-  }
-}
-
-test('real launcher keeps exact input and settings fences across quit context deliveries', async () => {
-  for (const change of ['create-input', 'settings-input', 'settings-intent', 'busy-settings']) {
-    const h = launcherHarness(async () => true, { nativeAdmission: true, realController: true });
-    h.mount(); await launcherTick(); let home = h.render(); h.flushEffects();
-    const owner = h.settings().registry.register('home:agent');
-    owner.update({ dirty: false, busy: false, blocked: false, version: 1 });
-    h.hostContext({ quitting: true }, { effects: false });
-    const admission = h.admission(), ticket = admission.inspect(); assert.equal(ticket.disposition, 'clean');
-    if (change === 'create-input') home.props.onCreateStateChange({ dirty: true, busy: false, version: 1 });
-    if (change === 'settings-input') owner.update({ dirty: true, busy: false, blocked: false, version: 2 });
-    if (change === 'settings-intent') h.hostIntent('agent', { effects: false });
-    if (change === 'busy-settings') owner.update({ dirty: false, busy: true, blocked: false, version: 2 });
-    h.flushEffects();
-    assert.equal(admission.commit(ticket.token, { discardDirty: true, allowDrainFailure: false, expiresAt: 1000 }), false, change);
-    let prevented = false;
-    if (change !== 'settings-intent') {
-      assert.equal(admission.beforeUnload({ preventDefault() { prevented = true; }, returnValue: '' }), false, change);
-      assert.equal(prevented, true, change);
-    }
-  }
-});
-
-test('real launcher quit presentation cannot waive active creation or its unknown-result risk permission', async () => {
-  const pending = Promise.withResolvers();
-  const h = launcherHarness(async () => true, { nativeAdmission: true, realController: true,
-    client: { inspect: async () => ({ restored: false, workspaceOrigin: null }), list: async () => [], create: () => pending.promise } });
-  h.mount(); await launcherTick(); h.render(); h.flushEffects();
-  const work = h.controller().create('new project', ''); await launcherTick();
-  h.hostContext({ quitting: true }, { effects: false });
-  const admission = h.admission(); assert.equal(admission.inspect().disposition, 'blocked');
-  pending.reject(new Error('Result unknown')); assert.equal(await work, false);
-  const unknown = admission.inspect(); assert.equal(unknown.disposition, 'unknown');
-  assert.equal(admission.commit(unknown.token, { discardDirty: false, allowDrainFailure: false, expiresAt: 1000 }), false);
-  assert.equal(admission.inspect('reload', 'http://localhost/').disposition, 'blocked');
-  const approved = admission.inspect(); h.flushEffects();
-  assert.equal(admission.commit(approved.token, { discardDirty: false, allowDrainFailure: false, allowUnknown: true, expiresAt: 1000 }), true);
-  assert.equal(h.state.createUnknown, true); assert.equal(await h.drain(), false);
-  assert.equal(admission.beforeUnload({ preventDefault() { assert.fail('Same unknown-result owner was explicitly approved'); }, returnValue: '' }), true);
-});
-
-test('explicit projects intent returns locally selected settings to projects', async () => {
-  const h = launcherHarness(); let home = h.mount(); home.props.onPage('settings'); await launcherTick();
-  home = h.render(); h.flushEffects(); assert.equal(home.props.page, 'settings');
-  h.hostIntent(null); await launcherTick(); assert.equal(h.render().props.page, 'projects');
-});
-test('explicit projects intent keeps cancelled settings until another explicit request', async () => {
-  let confirmations = 0; const h = launcherHarness(async () => ++confirmations > 1);
-  h.mount().props.onPage('settings'); await launcherTick(); h.render(); h.flushEffects();
-  const owner = h.settings().registry.register('home:agent'); owner.update({ dirty: true, busy: false, blocked: false, version: 1 });
-  h.hostIntent(null); await launcherTick(); assert.equal(confirmations, 1); assert.equal(h.render().props.page, 'settings');
-  h.flushEffects(); await launcherTick(); assert.equal(confirmations, 1);
-  h.hostIntent(null); await launcherTick(); assert.equal(confirmations, 2); assert.equal(h.render().props.page, 'projects');
-});
-test('explicit projects intent cannot leave busy or unresolved settings and can leave restored settings', async () => {
-  for (const flags of [{ busy: true, blocked: false }, { busy: false, blocked: true }]) {
-    let confirmations = 0; const h = launcherHarness(async () => { confirmations++; return true; });
-    h.mount().props.onPage('settings'); await launcherTick(); h.render(); h.flushEffects();
-    h.settings().registry.register('home:agent').update({ dirty: true, ...flags, version: 1 });
-    h.hostIntent(null); await launcherTick(); assert.equal(h.render().props.page, 'settings'); assert.equal(confirmations, 0);
-  }
-  const restored = launcherHarness(); restored.mount().props.onPage('settings'); await launcherTick();
-  restored.state.workspace = { restored: true }; restored.render(); restored.flushEffects();
-  restored.hostIntent(null); await launcherTick(); assert.equal(restored.render().props.page, 'projects');
-});
-test('explicit settings intent invalidates older projects confirmation before React receives the new context', async () => {
-  let answer; const h = launcherHarness(() => new Promise(resolve => { answer = resolve; }));
-  h.mount().props.onPage('settings'); await launcherTick(); h.render(); h.flushEffects();
-  h.settings().registry.register('home:agent').update({ dirty: true, busy: false, blocked: false, version: 1 });
-  h.render().props.onPage('projects'); await launcherTick(); assert.equal(typeof answer, 'function');
-  h.hostIntent('agent', { render: false, effects: false }); answer(true); await launcherTick();
-  assert.equal(h.render().props.page, 'settings', 'new native same-slot intent must fence the older permission before a React effect');
-  h.flushEffects(); await launcherTick(); assert.equal(h.render().props.page, 'settings');
-});
-test('explicit local choice invalidates an older projects confirmation before awaiting its own permission', async () => {
-  let answer, confirmations = 0;
-  const h = launcherHarness(() => ++confirmations === 1 ? new Promise(resolve => { answer = resolve; }) : Promise.resolve(false));
-  h.mount().props.onPage('settings'); await launcherTick(); h.render(); h.flushEffects();
-  h.settings().registry.register('home:agent').update({ dirty: true, busy: false, blocked: false, version: 1 });
-  h.render().props.onPage('projects'); await launcherTick();
-  h.render().props.onPage('settings'); answer(true); await launcherTick();
-  assert.equal(h.render().props.page, 'settings');
-});
-
-test('a newer local slot choice wins over a received projects intent whose React effect is still pending', async () => {
-  let confirmations = 0; const h = launcherHarness(async () => { confirmations++; return true; });
-  h.mount().props.onPage('settings'); await launcherTick(); h.render(); h.flushEffects();
-  h.settings().registry.register('home:agent').update({ dirty: true, busy: false, blocked: false, version: 1 });
-  h.hostIntent(null, { render: false, effects: false });
-  h.settings().onSelect('custom'); h.render(); h.flushEffects(); await launcherTick();
-  assert.equal(h.render().props.page, 'settings'); assert.equal(h.settings().selected, 'custom'); assert.equal(confirmations, 0);
+test('hidden editor picker does not boot catalog reads before an explicit entry action', () => {
+  assert.match(source('native-project-entry.ts'), /if \(context.role === 'launcher'\) void controller.boot\(\)/);
 });

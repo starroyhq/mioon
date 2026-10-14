@@ -65,12 +65,24 @@ function ui() {
 // Execute the actual TSX callbacks with deterministic hook slots, while retaining
 // real React elements and shared controls for SSR and Base UI handler checks.
 function harness(patch = {}) {
-  const actual = ui(), slots = [], calls = [];
-  let cursor = 0;
+  const actual = ui(), slots = [], calls = [], effects = [];
+  let cursor = 0, mounted = true;
   const react = { ...actual.React,
-    useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }]; },
+    useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], value => { if (mounted) slots[index] = typeof value === 'function' ? value(slots[index]) : value; }]; },
     useRef(initial) { const index = cursor++; return slots[index] ||= { current: initial }; },
     useId() { const index = cursor++; return `home-test-${index}`; },
+    useEffect(effect, dependencies) {
+      const index = cursor++, before = slots[index];
+      if (before && dependencies && before.dependencies && dependencies.length === before.dependencies.length &&
+          dependencies.every((value, offset) => Object.is(value, before.dependencies[offset]))) return;
+      const current = { kind: 'effect', dependencies: dependencies ? [...dependencies] : undefined, cleanup: undefined };
+      slots[index] = current;
+      effects.push(() => {
+        if (!mounted || slots[index] !== current) return;
+        before?.cleanup?.();
+        current.cleanup = effect();
+      });
+    },
   };
   const module = { exports: {} };
   Function('require', 'module', 'exports', 'fetch', 'localStorage', 'sessionStorage', transformSync(readFileSync(sourceFile, 'utf8'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
@@ -82,7 +94,17 @@ function harness(patch = {}) {
   }, module, module.exports, forbidden, new Proxy({}, { get: forbidden, set: forbidden }), new Proxy({}, { get: forbidden, set: forbidden }));
   const h = { calls, props: defaults({ onPage: value => calls.push(['page', value]), onOpen: value => calls.push(['open', value]),
     onRetry: () => calls.push(['retry']), onRefresh: () => calls.push(['refresh']), onCreate: async (...args) => { calls.push(['create', ...args]); return true; }, ...patch }) };
-  h.render = (next = {}) => { h.props = { ...h.props, ...next }; cursor = 0; return module.exports.default(h.props); };
+  h.flushEffects = () => { for (const run of effects.splice(0)) run(); };
+  h.render = (next = {}) => {
+    assert.equal(mounted, true, 'Disposed harness cannot rerender');
+    h.flushEffects(); h.props = { ...h.props, ...next }; cursor = 0;
+    const tree = module.exports.default(h.props); h.flushEffects(); return tree;
+  };
+  h.unmount = () => {
+    if (!mounted) return;
+    mounted = false; effects.length = 0;
+    for (const slot of slots) if (slot?.kind === 'effect') { slot.cleanup?.(); slot.cleanup = undefined; }
+  };
   h.html = tree => actual.renderToStaticMarkup(tree);
   return h;
 }
@@ -285,4 +307,18 @@ componentTest('mac-inset home header preserves native-control space and interact
 
 test('actual App wires the scoped home stylesheet without weakening TypeScript module checks', () => {
   assert.match(readFileSync(join(root, 'apps/web/src/App.jsx'), 'utf8'), /import ['"]\.\/project-home\.css['"]/);
+});
+
+componentTest('native create intent effect opens once and retained inputs survive later same-version renders', () => {
+  const h = harness({ canMutateEntry: () => true });
+  h.render({ createIntentVersion: 1 });
+  assert.ok(find(h.render(), 'project-home-create-form'));
+  fill(h, 'retained input', 'retained description');
+  find(h.render(), 'project-home-create-cancel').props.onClick();
+  assert.equal(nodes(h.render()).some(node => node.props?.['data-testid'] === 'project-home-create-form'), false);
+  h.render({ createIntentVersion: 2 });
+  assert.equal(find(h.render(), 'project-home-name').props.value, 'retained input');
+  assert.equal(find(h.render(), 'project-home-description').props.value, 'retained description');
+  assert.deepEqual(h.calls, []);
+  h.unmount(); h.flushEffects();
 });

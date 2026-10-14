@@ -34,6 +34,9 @@ function environment(options = {}) {
   const env = {
     ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace,
     editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
+    nativeProjectEntry: { open: async projectId => { calls.push(['nativeEntry.open', projectId]); return true; },
+      show: async mode => { calls.push(['nativeEntry.show', mode]); return true; },
+      readCloseSnapshot: () => ({ dirty: false, busy: false, unknown: false, identity: [] }) },
     // The hook is a fixed integration boundary here. Its actual arguments are
     // recorded; readiness and selection still execute the real App functions.
     useEditorWindowStatus: (...args) => calls.push(['editorWindowStatus', ...args]),
@@ -312,8 +315,9 @@ test('actual empty startup chooses home while explicit startup succeeds without 
 
 
 function nativeEditor(projectId) {
-  return { context: { version: 1, role: 'editor', contextId: id(8), backendId: id(9), initialProjectId: projectId,
-    autoOpen: false, editorProjectId: projectId, editorPhase: 'opening', settingsSlot: null, settingsVersion: 0, quitting: false },
+  return { context: { version: 2, role: 'editor', windowId: id(7), contextId: id(8), backendId: id(9), initialProjectId: projectId,
+    autoOpen: false, editorProjectId: projectId, editorPhase: 'opening', editorCount: 1, entryMode: null, entryVersion: 0, entryReceipt: null,
+    settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false },
     bridge: { editorStatus: async () => true, showProjects: async () => true } };
 }
 
@@ -472,23 +476,29 @@ test('native pending/error render never mounts launcher home or settings in the 
     assert.equal(result.mounted.includes('AgentSettings'), false); assert.equal(result.mounted.includes('ImageSettings'), false);
     const report = callsOf(h, 'editorWindowStatus').at(-1);
     assert.deepEqual(report.slice(0, 5), ['editorWindowStatus', h.env.nativeWindow, id(3), phase, false]);
-    assert.equal(report.length, 6); assert.equal(typeof report[5], 'function');
-    report[5](id(3));
+    assert.equal(report.length, 5, 'native status has no renderer-local remember callback');
     assert.deepEqual(callsOf(h, 'remember'), [], 'opening/error cannot persist a locator');
   }
 });
 
 
-test('native remember callback rechecks the real current project readiness and restored scope', async () => {
+test('native ready status has no local locator writer while Web selection still remembers', async () => {
   const render = boundaryRenderer(), h = harness({ nativeWindow: nativeEditor(id(3)) });
   assert.equal(await h.selectProject(id(3), true), true);
-  render(h); const remember = callsOf(h, 'editorWindowStatus').at(-1)[5];
-  remember(id(3));
-  assert.deepEqual(callsOf(h, 'remember'), [['remember', id(3), h.env.projectEpoch.current]]);
-  const count = callsOf(h, 'remember').length;
-  remember(id(1));
-  h.env.workspaceRef.current = { restored: true }; remember(id(3));
-  h.env.workspaceRef.current = { restored: false }; h.env.importSession.current.active = false; remember(id(3));
-  h.env.importSession.current.active = true; h.env.viewReady.current = false; remember(id(3));
-  assert.equal(callsOf(h, 'remember').length, count, 'wrong target, restored, unmounted, and unready cannot write');
+  render(h); const report = callsOf(h, 'editorWindowStatus').at(-1);
+  assert.equal(report.length, 5); assert.equal(report[4], true);
+  assert.deepEqual(callsOf(h, 'remember'), []);
+  assert.equal(await h.selectProject(id(3)), true); assert.deepEqual(callsOf(h, 'remember'), []);
+  const web = harness(); assert.equal(await web.selectProject(id(1)), true);
+  assert.deepEqual(callsOf(web, 'remember'), [['remember', id(1), 1]]);
+});
+
+test('native alternate project delegates before any editor draft, request or URL mutation', async () => {
+  const h = harness({ nativeWindow: nativeEditor(id(3)) }); assert.equal(await h.selectProject(id(3), true), true);
+  const data = h.env.data, epoch = h.env.projectEpoch.current, navigation = h.env.navigationEpoch.current;
+  const count = h.calls.length;
+  assert.equal(await h.selectProject(id(2)), true);
+  assert.deepEqual(h.calls.slice(count), [['nativeEntry.open', id(2)]]);
+  assert.equal(h.env.data, data); assert.equal(h.env.currentProject.current, id(3));
+  assert.equal(h.env.projectEpoch.current, epoch); assert.equal(h.env.navigationEpoch.current, navigation);
 });

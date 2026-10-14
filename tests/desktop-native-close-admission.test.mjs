@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
+import { createProjectRendererRecovery } from '../apps/desktop/src/project-window-recovery.ts';
 import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.mjs';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
@@ -102,6 +103,8 @@ function fixture(t, options = {}) {
   const installed = installNativeCloseAdmission(win, {
     timeoutMs: options.timeoutMs ?? 200,
     isCurrent: () => owns && allowed,
+    beforeReload: options.beforeReload,
+    reloadPreparationTimeoutMs: options.reloadPreparationTimeoutMs,
     confirmDiscard: async action => { discardCount++; events.push('confirm-discard'); return await (options.confirmDiscard?.(action) ?? true); },
     confirmClose: async action => { drainDecisionCount++; events.push('confirm-drain'); return await (options.confirmClose?.(action) ?? true); },
     onBlocked: reason => { notices.push(reason); events.push(`notice:${reason}`); },
@@ -553,17 +556,17 @@ test('real renderer binds reload to the exact current document URL and action', 
   assert.equal(page.commit(reload.token, { ...options, action: 'reload', targetUrl: `${url}-other` }), false);
 });
 
-test('main routes only user reload paths through admission; startup load failures remain fatal', async () => {
+test('main routes user reload through admission and only proved initial empty load failures remain recoverable', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
-  assert.match(main, /const recovery = windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
-  assert.match(main, /if \(response === 0\) await recovery\?\.reload\(\)/);
+  assert.match(main, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
+  assert.match(main, /const rendererFailed = createProjectRendererRecovery\(/);
   const start = main.indexOf('async function openWindow('), end = main.indexOf('\nfunction prepareOwnedWindow(', start);
   const source = main.slice(start, end);
   assert.match(source, /await windowHost\.loadFor\(window\)/);
   assert.doesNotMatch(source, /requestReload/);
   const window = {}, startupError = Object.assign(Error('Startup failed'), { code: 'ERR_ABORTED' });
-  const context = vm.createContext({ ownsWindowContext: () => true,
+  const context = vm.createContext({ ownsWindowContext: () => true, ownsWindow: () => true, initialWindowLoads: new WeakMap(),
     windowHost: { ensureLauncher: () => window, loadFor: async target => { assert.equal(target, window); throw startupError; } } });
   vm.runInContext(source, context);
   context.context = { ready: { url: 'http://127.0.0.1:45000' } };
@@ -748,12 +751,15 @@ test('gone recovery ERR_ABORTED consumes proof without retrying the page or any 
 
 test('main captures incident-bound recovery before asking and discloses possible crash loss', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const from = main.indexOf('async function rendererFailed('), to = main.indexOf('\nasync function fatal(', from);
+  const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const recovery = main.slice(from, to);
-  assert.ok(recovery.indexOf('captureRecoveryDecision()') < recovery.indexOf('await dialog.showMessageBox'));
+  assert.match(recovery, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
+  const coordinator = await readFile(new URL('../apps/desktop/src/project-window-recovery.ts', import.meta.url), 'utf8');
+  assert.ok(coordinator.indexOf('options.capture(window)') < coordinator.indexOf('await options.prompt(window)'));
+  assert.ok(coordinator.indexOf('recovery.claimPrompt()') < coordinator.indexOf('await options.prompt(window)'));
   assert.match(recovery, /未保存的输入可能已经丢失/);
   assert.match(recovery, /不会重新提交任务或生成请求/);
-  assert.match(recovery, /if \(response === 0\) await recovery\?\.reload\(\)/);
+  assert.match(coordinator, /if \(result === 0\) await recovery\.reload\(\)/);
 });
 
 test('explicit confirmed-gone Exit closes once before stopping backend, without dead-page calls', async t => {
@@ -838,15 +844,15 @@ test('cancel/Escape in the actual recovery dialog retains window, backend and un
   const f = fixture(t, { execute: () => { throw Error('Dead page must not be queried'); } });
   f.win.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 });
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const from = main.indexOf('let rendererErrorOwner = null;'), to = main.indexOf('\nasync function fatal(', from);
+  const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   let dialogOptions;
-  const context = vm.createContext({ windowAdmissions: new WeakMap([[f.win, f.admission]]),
-    ownsWindow: () => true, dialog: { showMessageBox: async options => { dialogOptions = options; return { response: options.cancelId }; } },
-    app: { quit() { assert.fail('Cancel cannot quit'); } }, window: f.win, ownerContext: {} });
+  const context = vm.createContext({ createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
+    ownsWindow: () => true, dialog: { showMessageBox: async (parent, options) => { assert.equal(parent, f.win); dialogOptions = options; return { response: options.cancelId }; } },
+    app: { quit() { assert.fail('Cancel cannot quit'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
   vm.runInContext(main.slice(from, to), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal(dialogOptions.cancelId, 2);
-  assert.deepEqual(Array.from(dialogOptions.buttons), ['重新载入界面', '退出', '保留窗口']);
+  assert.deepEqual(Array.from(dialogOptions.buttons), ['重新载入界面', '退出应用', '保留窗口']);
   assert.equal(f.win.destroyed, false); assert.equal(f.stats().stopped, 0); assert.deepEqual(f.scripts, []);
   assert.equal(await f.admission.captureRecoveryDecision().exit(), true);
 });
@@ -855,10 +861,10 @@ test('the actual recovery dialog authorizes Exit only for explicit response one'
   const f = fixture(t, { execute: () => { throw Error('Dead page must not be queried'); } });
   f.win.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 });
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const from = main.indexOf('let rendererErrorOwner = null;'), to = main.indexOf('\nasync function fatal(', from);
-  const context = vm.createContext({ windowAdmissions: new WeakMap([[f.win, f.admission]]),
+  const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
+  const context = vm.createContext({ createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async () => ({ response: 1 }) },
-    app: { quit() { assert.fail('Explicit recovery must use its captured scoped decision'); } }, window: f.win, ownerContext: {} });
+    app: { quit() { assert.fail('Explicit recovery must use its captured scoped decision'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
   vm.runInContext(main.slice(from, to), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal(f.win.destroyed, true); assert.equal(f.stats().stopped, 1); assert.equal(f.stats().finished, 1);
@@ -867,17 +873,17 @@ test('the actual recovery dialog authorizes Exit only for explicit response one'
 
 async function recoveryDialogHarness(t, f, show, isCurrent = () => true) {
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
-  const from = main.indexOf('let rendererErrorOwner = null;'), to = main.indexOf('\nasync function fatal(', from);
+  const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const calls = [], pending = [], errors = [];
-  const context = vm.createContext({ windowAdmissions: new WeakMap([[f.win, f.admission]]),
+  const context = vm.createContext({ createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => isCurrent() && !f.win.destroyed,
-    dialog: { showMessageBox: options => { calls.push(options); return show(calls.length, options); } },
-    window: f.win, ownerContext: {} });
+    dialog: { showMessageBox: (parent, options) => { assert.equal(parent, f.win); calls.push(options); return show(calls.length, options); } },
+    window: f.win, ownerContext: {incident: {failed: false}} });
   vm.runInContext(main.slice(from, to), context);
   const onFailure = () => pending.push(vm.runInContext('rendererFailed(window, ownerContext)', context).catch(error => errors.push(error)));
   f.win.webContents.on('unresponsive', onFailure); f.win.webContents.on('render-process-gone', onFailure);
   t.after(() => { f.win.webContents.removeListener('unresponsive', onFailure); f.win.webContents.removeListener('render-process-gone', onFailure); });
-  return { calls, pending, errors, owner: () => vm.runInContext('rendererErrorOwner', context) };
+  return { calls, pending, errors };
 }
 
 for (const oldResponse of [0, 1, 2]) {
@@ -936,7 +942,7 @@ async function reloadMenuHarness(f, isCurrent = () => true) {
   const from = main.indexOf('function installMenu()'), to = main.indexOf('\nconst quitCoordinator', from);
   let menu;
   const errors = [];
-  const context = vm.createContext({ process: { platform: 'linux' }, windowContext: {}, win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
+  const context = vm.createContext({ process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => f.win}, initialWindowLoads: new WeakMap(), win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } }, fatal: error => errors.push(error) });
   vm.runInContext(main.slice(from, to) + '\ninstallMenu();', context);
@@ -970,15 +976,16 @@ test('the explicit Reload menu cannot treat unresponsive or replaced owners as c
   }
 });
 
-async function actualMainAdmissionCallbacks(dialog, window = {}, owner = () => true) {
+async function actualMainAdmissionCallbacks(dialog, window = {}, owner = () => true, bindings = {}) {
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
   const from = main.indexOf('windowAdmissions.set(window, installNativeCloseAdmission(window, {');
   const to = main.indexOf("\n  window.on('closed'", from);
   let callbacks;
   const context = vm.createContext({ window, context: { ready: { url: 'http://127.0.0.1:45000' } },
+    owner: {url: 'http://127.0.0.1:45000'}, initialLoad: {consumeClose: () => false}, windowHost: {closeStateChanged() {}},
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window, value) => { callbacks = value; return {}; },
     ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined,
-    dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {} });
+    dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });
   vm.runInContext(main.slice(from, to), context);
   return callbacks;
 }
@@ -1036,3 +1043,112 @@ for (const kind of ['confirmClose', 'confirmDiscard']) {
     }
   });
 }
+
+test('native close completion and disposal never reacquire destroyed BrowserWindow contents', async t => {
+  const f = fixture(t), contents = f.win.webContents;
+  Object.defineProperty(f.win, 'webContents', {get() {
+    if (f.win.destroyed) throw new TypeError('Object has been destroyed');
+    return contents;
+  }});
+  assert.equal(await f.coordinator.request(), true);
+  const scripts = f.scripts.length;
+  assert.doesNotThrow(() => f.admission.dispose()); assert.doesNotThrow(() => f.admission.dispose());
+  assert.equal(await f.admission.requestReload(), false); assert.equal(f.scripts.length, scripts);
+  for (const event of ['will-prevent-unload', 'did-start-navigation', 'did-navigate', 'render-process-gone', 'unresponsive', 'responsive']) {
+    assert.equal(contents.listenerCount(event), 0);
+  }
+});
+
+
+test('pre-reload retirement is shared and finishes before any fresh P0 inspection', async t => {
+  const retirement = deferred(); let calls = 0, signal;
+  const f = fixture(t, { beforeReload: value => { calls++; signal = value; return retirement.promise; } });
+  const first = f.admission.requestReload(), duplicate = f.admission.requestReload();
+  assert.equal(first, duplicate); await tick();
+  assert.equal(calls, 1); assert.deepEqual(f.scripts, []); assert.deepEqual(f.reloads, []); assert.equal(signal.aborted, false);
+  retirement.resolve(true); assert.equal(await first, true);
+  assert.deepEqual(f.events, ['inspect', 'flush', 'commit', 'reload', 'reloaded']);
+  assert.equal(signal.aborted, true, 'Document commit releases only this reload preparation fence');
+});
+
+for (const outcome of ['denied', 'rejected']) {
+  test(`pre-reload retirement ${outcome} leaves the page and P0 untouched`, async t => {
+    const retirement = deferred(); let signal;
+    const f = fixture(t, { beforeReload: value => { signal = value; return retirement.promise; } });
+    const reloading = f.admission.requestReload(); await tick();
+    assert.deepEqual(f.scripts, []);
+    if (outcome === 'denied') retirement.resolve(false); else retirement.reject(Error('Cleanup unknown'));
+    assert.equal(await reloading, false); assert.deepEqual(f.reloads, []); assert.deepEqual(f.scripts, []);
+    assert.equal(signal.aborted, true); assert.equal(f.win.destroyed, false);
+  });
+}
+
+test('pre-reload retirement captures later input afresh and cancelled consent never resumes playback', async t => {
+  const retirement = deferred(); let calls = 0, signal;
+  const f = fixture(t, { beforeReload: value => { calls++; signal = value; return retirement.promise; }, confirmDiscard: () => false });
+  const reloading = f.admission.requestReload(); await tick();
+  assert.deepEqual(f.scripts, []); f.change({nextDirty: true}); retirement.resolve(true);
+  assert.equal(await reloading, false); assert.equal(f.stats().discardCount, 1);
+  assert.equal(calls, 1); assert.equal(signal.aborted, true); assert.deepEqual(f.reloads, []); assert.equal(f.win.destroyed, false);
+});
+
+for (const replaced of ['owner', 'document', 'url', 'closed', 'disposed']) {
+  test(`pre-reload retirement late success cannot reload a replaced ${replaced}`, async t => {
+    const retirement = deferred(); let signal;
+    const f = fixture(t, {beforeReload: value => {signal = value; return retirement.promise;}});
+    const reloading = f.admission.requestReload(); await tick();
+    assert.deepEqual(f.scripts, []);
+    if (replaced === 'owner') f.replaceOwner();
+    if (replaced === 'document') f.navigate();
+    if (replaced === 'url') f.changeUrl('http://127.0.0.1:45000/?project=project-b');
+    if (replaced === 'closed') {f.win.destroyed = true; f.win.emit('closed');}
+    if (replaced === 'disposed') f.admission.dispose();
+    retirement.resolve(true); assert.equal(await reloading, false); await tick();
+    assert.deepEqual(f.scripts, []); assert.deepEqual(f.reloads, []); assert.equal(signal.aborted, true);
+  });
+}
+
+test('pre-reload retirement old completion cannot release or advance a newer reload attempt', async t => {
+  const old = deferred(), fresh = deferred(), signals = [];
+  const f = fixture(t, {beforeReload: signal => {signals.push(signal); return signals.length === 1 ? old.promise : fresh.promise;}});
+  const first = f.admission.requestReload(); await tick(); assert.deepEqual(f.scripts, []);
+  f.navigate(); assert.equal(await first, false);
+  const second = f.admission.requestReload(); await tick(); assert.equal(signals.length, 2);
+  old.resolve(true); await tick(); assert.deepEqual(f.scripts, []); assert.equal(signals[1].aborted, false);
+  fresh.resolve(true); assert.equal(await second, true); assert.equal(f.reloads.length, 1); assert.equal(signals[1].aborted, true);
+});
+
+test('pre-reload retirement is not requested for ordinary close or confirmed-gone recovery', async t => {
+  const close = fixture(t, {beforeReload: () => assert.fail('Close retains its existing protocol')});
+  assert.equal(await close.coordinator.request(), true);
+  const gone = fixture(t, {beforeReload: () => assert.fail('Gone proof cannot wait for a dead renderer ACK')});
+  gone.win.webContents.emit('render-process-gone');
+  assert.equal(await gone.admission.captureRecoveryDecision().reload(), true);
+  assert.deepEqual(gone.events, ['reload', 'reloaded']);
+});
+
+
+test('pre-reload retirement timeout abandons observation without lending the P0 ticket lease', async t => {
+  const retirement = deferred(); let signal;
+  const f = fixture(t, {reloadPreparationTimeoutMs: 5, timeoutMs: 200,
+    beforeReload: value => {signal = value; return retirement.promise;}});
+  const reloading = f.admission.requestReload();
+  assert.equal(await reloading, false); assert.equal(signal.aborted, true); assert.deepEqual(f.scripts, []);
+  retirement.resolve(true); await tick(); assert.deepEqual(f.reloads, []);
+});
+
+
+test('actual main pre-reload hook binds the original audio host and captured exact editor contents', async () => {
+  const contents = {}, window = {}, signal = new AbortController().signal, gate = deferred(), calls = [];
+  const owner = {role: 'editor', backendId: 'backend-a'}, document = {...owner, window, contextId: 'document-a'};
+  let currentDocument = document;
+  Object.defineProperty(window, 'webContents', {get() {assert.fail('The callback must use the previously captured contents');}});
+  const callbacks = await actualMainAdmissionCallbacks({}, window, () => true, {contents, owner,
+    context: {audioHost: {retireOwnerForReload(captured, received) {calls.push(captured); assert.equal(received, signal); return gate.promise;}}},
+    nativeAudioHost: {retireOwnerForReload() {assert.fail('Never use a replacement global audio host');}},
+    windowHost: {ownerForContents(received) {assert.equal(received, contents); return currentDocument;}}});
+  const preparation = callbacks.beforeReload(signal);
+  assert.equal(calls.length, 1); assert.equal(calls[0].window, window); assert.equal(calls[0].contents, contents);
+  assert.equal(calls[0].contextId, 'document-a'); gate.resolve(true); assert.equal(await preparation, true);
+  currentDocument = null; assert.equal(await callbacks.beforeReload(signal), false); assert.equal(calls.length, 1);
+});

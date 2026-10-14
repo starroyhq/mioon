@@ -4,6 +4,7 @@ import { onMediaProcess } from '@mioon/business/media-processes';
 import { initializeSubtitleResources } from '@mioon/business/subtitle-resources';
 import { createAgentSettingsClient } from './secret-broker.mjs';
 import { createImageSecretClient } from './image-secret-broker.mjs';
+import { createNativeAudioPreviewAuthority } from '@mioon/business/native-audio-preview';
 
 if (!process.parentPort || !process.versions.electron) throw new Error('Backend must run in Electron utilityProcess');
 if (Number(process.versions.node.split('.')[0]) < 24 || typeof DatabaseSync !== 'function') {
@@ -12,6 +13,7 @@ if (Number(process.versions.node.split('.')[0]) < 24 || typeof DatabaseSync !== 
 
 let server, starting = false, startFailed = false, closing = false, lastPing = Date.now();
 let initialization;
+let nativeAudioPreview;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 const imageSecretCodec = createImageSecretClient({ port: process.parentPort });
 onMediaProcess(({ type, pid, kind }) => process.parentPort.postMessage({ type: 'media-process', event: type, pid, kind }));
@@ -37,6 +39,11 @@ const lease = setInterval(() => { if (Date.now() - lastPing > 30000) void shutdo
 process.parentPort.on('message', ({ data }) => {
   if (data?.type === 'ping') { lastPing = Date.now(); return; }
   if (data?.type === 'stop') { void shutdown(); return; }
+  if (data?.type === 'native-audio:reserve' || data?.type === 'native-audio:retire') {
+    if (nativeAudioPreview && !closing) void nativeAudioPreview.command(data).then(
+      reply => process.parentPort.postMessage(reply), () => { /* No fabricated retirement acknowledgment. */ });
+    return;
+  }
   if (data?.type !== 'start' || starting || closing) return;
   starting = true;
   initialization = (async () => {
@@ -45,7 +52,10 @@ process.parentPort.on('message', ({ data }) => {
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
       initializeSubtitleResources(data.subtitleResourcesDir);
-      server = await startServer({ dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
+      // A desktop utility without the fixed public-key gate must never fall
+      // back to the ordinary Web PCM lane because main wiring was incomplete.
+      nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
+      server = await startServer({ dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
       if (!closing) process.parentPort.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {

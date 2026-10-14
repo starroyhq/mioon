@@ -5,14 +5,14 @@ import { createProjectWindowBridge } from '../apps/desktop/src/project-window-pr
 import { isProjectWindowRequest, PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT } from '../apps/desktop/src/project-window-protocol.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 const id = '11111111-1111-4111-8111-111111111111';
-const context = { version:1, role:'launcher', contextId:id, backendId:id, initialProjectId:null, autoOpen:true, editorProjectId:null, editorPhase:'none', settingsSlot:null, settingsVersion:0, quitting:false };
+const context = { version:2, role:'launcher', windowId:id, contextId:id, backendId:id, initialProjectId:null, autoOpen:true, editorProjectId:null, editorPhase:'none', editorCount:0, entryMode:null, entryVersion:0, entryReceipt:null, settingsSlot:null, settingsVersion:0, selectionProjectId:null, selectionVersion:0, locatorStatus:null, locatorIntent:null, quitting:false };
 test('fixed preload exposes only validated window actions and strips Electron event authority', async () => {
   const calls = []; let receive, removed;
-  const bridge = createProjectWindowBridge({ invoke: async (channel, request) => { calls.push([channel, request]); return request.action === 'describe' ? context : request.action === 'open' ? {ok:true,reason:'accepted'} : true; },
+  const bridge = createProjectWindowBridge({ invoke: async (channel, request) => { calls.push([channel, request]); return request.action === 'describe' ? context : request.action === 'open' ? {ok:true,reason:'accepted',targetWindowId:id,targetPhase:'opening'} : true; },
     on: (channel, listener) => { assert.equal(channel, PROJECT_WINDOW_EVENT); receive=listener; }, removeListener: (channel, listener) => { removed=listener; } });
-  assert.deepEqual(Object.keys(bridge).sort(), ['context','editorStatus','openProject','showProjects','showSettings','subscribe']);
+  assert.deepEqual(Object.keys(bridge).sort(), ['context','editorStatus','openProject','publishLocatorStatus','requestLocatorAction','requestProjectEntry','showProjects','showSettings','subscribe']);
   assert.equal(Object.isFrozen(bridge), true);
-  await bridge.openProject(id); await bridge.showProjects(); await bridge.showSettings('agent'); await bridge.editorStatus(id,'ready');
+  await bridge.openProject(id, true, id); await bridge.requestProjectEntry('new'); await bridge.showProjects(); await bridge.showSettings('agent'); await bridge.editorStatus(id,'ready');
   assert.ok(calls.every(([channel, request]) => channel === PROJECT_WINDOW_CHANNEL && isProjectWindowRequest(request)));
   const events=[]; const release=bridge.subscribe(value=>events.push(value)); const secret={sender:{send(){assert.fail();}},token:'not-exposed'};
   receive(secret,context); receive(secret,{...context,token:'forbidden'}); assert.equal(events.length,1); assert.deepEqual(events[0],context); assert.notEqual(events[0],context);
@@ -21,7 +21,7 @@ test('fixed preload exposes only validated window actions and strips Electron ev
 });
 test('preload rejects malformed output and protocol rejects extra authority fields', async () => {
   for(const extra of [{url:'https://evil.invalid'}, {path:'/tmp/x'}, {token:'x'}, {operation:'image.generate'}]) assert.equal(isProjectWindowRequest({action:'open',contextId:id,projectId:id,...extra}),false);
-  for(const bad of [{...context,role:'admin'}, {...context,editorPhase:{toString:()=> 'ready'}}, {...context,settingsVersion:-1}, {...context,secret:'x'}]) {
+  for(const bad of [{...context,version:1}, {...context,role:{toString:()=> 'launcher'}}, {...context,role:'admin'}, {...context,editorPhase:{toString:()=> 'ready'}}, {...context,settingsVersion:-1}, {...context,secret:'x'}]) {
     const bridge=createProjectWindowBridge({invoke:async()=>bad,on(){},removeListener(){}}); await assert.rejects(bridge.context());
   }
 });
@@ -37,4 +37,19 @@ test('restart confirmation cannot act on replaced startup/backend or a newly req
   owner={}; deferred.resolve(true); assert.equal(await work,false); assert.equal(calls,0);
   const next=Promise.withResolvers(); const second=confirmOwnedWindowRestart({getOwner:()=>owner,canRequest:()=>available,confirm:()=>next.promise,restart:async()=>calls++});
   available=false; next.resolve(true); assert.equal(await second,false); assert.equal(calls,0);
+});
+
+test('old preload cannot borrow replacement document context for a late status or action', async () => {
+  let current = context, actions = 0, receive;
+  const bridge = createProjectWindowBridge({ invoke: async (_channel, request) => {
+    if (request.action === 'describe') return current;
+    actions++; return true;
+  }, on: (_channel, listener) => { receive = listener; }, removeListener() {} });
+  await bridge.context(); const events = []; bridge.subscribe(value => events.push(value));
+  current = { ...context, contextId: '22222222-2222-4222-8222-222222222222' };
+  receive({}, current);
+  await assert.rejects(bridge.editorStatus(id, 'ready'));
+  await assert.rejects(bridge.openProject(id, true, id));
+  await assert.rejects(bridge.showSettings('agent'));
+  assert.equal(actions, 0); assert.equal(events.length, 0);
 });

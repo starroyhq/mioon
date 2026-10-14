@@ -10,7 +10,7 @@ assert.equal(app.indexOf('  useEffect(() => {\n    const controller = preference
 const effect = app.slice(start, end + '\n  }, []);'.length);
 const deferred = () => Promise.withResolvers();
 
-function fixture({ restored = false, pending = true, result = true, held = null, viewHeld = null } = {}) {
+function fixture({ native = false, restored = false, pending = true, result = true, held = null, viewHeld = null } = {}) {
   const calls = [], listeners = new Map(), global = {}, workspaceRef = { current: { restored } };
   let serial = 1, cleanup;
   const clip = {
@@ -27,7 +27,7 @@ function fixture({ restored = false, pending = true, result = true, held = null,
     removeEventListener: (name, callback) => { if (listeners.get(prefix + name) === callback) listeners.delete(prefix + name); },
   });
   const document = { ...events('document:'), visibilityState: 'visible' };
-  const scope = {
+  const scope = { nativeWindow: native ? {} : null,
     useEffect: callback => { cleanup = callback(); }, globalThis: global, document, window: events('window:'),
     preferencesRef: { current: { flush: async () => { calls.push('view'); if (viewHeld) await viewHeld.promise; }, hasUnsaved: () => false } },
     lastProjectRef: { current: { flush: async () => { calls.push('locator'); return true; } } },
@@ -123,4 +123,10 @@ test('desktop close warning describes unconfirmed local drafts and view without 
   assert.match(warning, /本地草稿/); assert.match(warning, /视图/);
   assert.match(warning, /未确认/); assert.match(warning, /不会取消/);
   assert.match(warning, /buttons: \[action === 'reload' \? '仍然重新载入' : '仍然退出', '继续编辑'\], defaultId: 1, cancelId: 1/);
+});
+
+
+test('native editor close drains its own clip and view while the launcher exclusively drains the shared locator', async () => {
+  const f=fixture({native:true});assert.equal(await f.drain(),true);assert.deepEqual(f.calls,['view','clip']);
+  f.calls.length=0;await f.listeners.get('window:pagehide')();assert.equal(f.calls.includes('locator'),false);assert.equal(f.calls.includes('view'),true);
 });

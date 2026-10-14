@@ -142,7 +142,8 @@ const settingsDepartureSource = section('  async function prepareSettingsDepartu
 const sessionReadySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const selectSource = section('  async function selectProject(', '  async function reloadPreferences(');
 const reloadSource = section('  async function reloadPreferences() {', '  async function boot() {');
-const callsite = section('<TopbarSaveStatus ', '<LastProjectStatus ');
+const callsite = section('<TopbarSaveStatus ', '<>{nativeWindow ? <NativeLocatorStatus ');
+assert.match(callsite, /\/>$/);
 const compile = (source, expression, env) => Function(...Object.keys(env), `${source}\nreturn ${expression};`)(...Object.values(env));
 let projectElement;
 function appElement(env) {
@@ -271,7 +272,7 @@ function harness(t) {
     inspectorDirty: false, formatDirty: false, inspectorDraft: { title: 'retained inspector draft' }, formatDraft: { width: 1920 },
     paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties' };
   const calls = [], currentProject = { current: null }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 };
-  const env = { currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } }, workspaceOriginScope,
+  const env = { nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } }, workspaceOriginScope,
     projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },

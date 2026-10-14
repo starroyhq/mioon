@@ -115,7 +115,9 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.ok(!main.includes('no-sandbox'));
   assert.ok(!main.includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
-  assert.equal((main.match(/ipcMain\.handle\(/g) || []).length, 1);
+  assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
+    ['NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL']);
+  assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
   assert.match(main, /return windowHost\.dispatch\(event, request\)/);
   assert.match(main, /preload: path\.join\(app\.getAppPath\(\), 'preload\.cjs'\)/);
 });

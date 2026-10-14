@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createNativeCloseAdmission, createNativeCloseRegistry, installNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
+import { combineNativeEntryClose } from '../apps/web/src/native-entry-close.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
 const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
@@ -45,7 +46,7 @@ function fixture({ native = true, unknown = true, writesChangeState = false } = 
   const record = { outcome: 'unknown', operation: 'original-operation', persisted: 'original-record' };
   const write = name => { calls.push(name); if (writesChangeState) additional = { ...additional, busy: true }; return Promise.resolve(true); };
   const clip = { hasUnpersisted: () => { calls.push('clip-sync'); return true; }, flushForClose: () => write('clip-put'), capture: () => 1, isCurrent: () => true };
-  const env = {
+  const env = { combineNativeEntryClose, nativeProjectEntry: null,
     nativeWindow: native ? { role: 'editor', projectId: 'a' } : null,
     nativeSettingsScope: { pauseObservation(paused) { pauses.push(paused); } },
     window, document, globalThis: global, useEffect: callback => cleanups.push(callback()), installNativeCloseAdmission,
@@ -107,7 +108,7 @@ for (const checkpoint of ['prepare', 'flush']) {
       });
       assert.equal(result.event.defaultPrevented, true); assert.deepEqual(f.calls, []);
       assert.equal(f.admission.cancel(ticket.token), true);
-      await f.hidden(); assert.ok(f.calls.includes('clip-put')); assert.ok(f.calls.includes('locator-put'));
+      await f.hidden(); assert.ok(f.calls.includes('clip-put')); assert.equal(f.calls.includes('locator-put'), false, 'Native locator belongs only to the retained launcher');
     });
   }
 }
@@ -152,7 +153,7 @@ test('actual ordinary Web and native normal-close lifecycle paths retain their f
     const f = fixture({ native, unknown: false }); f.arm({ risk: false });
     assert.equal((await f.window.dispatch('beforeunload')).event.defaultPrevented, false);
     assert.ok(f.calls.includes('clip-put')); f.calls.length = 0;
-    await f.hidden(); assert.ok(f.calls.includes('locator-put')); f.calls.length = 0;
+    await f.hidden(); assert.equal(f.calls.includes('locator-put'), !native); assert.ok(f.calls.includes('preferences-put')); f.calls.length = 0;
     await f.window.dispatch('pagehide'); assert.ok(f.calls.includes('preferences-put'));
   }
 });

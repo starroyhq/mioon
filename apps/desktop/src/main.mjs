@@ -10,6 +10,10 @@ import { createDesktopStartup } from './startup.mjs';
 import { createDesktopAgentSettings } from './secret-store.mjs';
 import { createDesktopImageSecretCodec } from './image-secret-store.mjs';
 import { createProjectWindowHost } from './project-window-host.ts';
+import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from './native-audio-preview-host.ts';
+import { NATIVE_AUDIO_CHANNEL } from './native-audio-preview-protocol.ts';
+import { consumeNativeProjectEntry } from './project-entry-admission.ts';
+import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from './project-window-recovery.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from './project-window-quit.ts';
 import { confirmOwnedWindowRestart } from './project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL } from './project-window-protocol.ts';
@@ -33,8 +37,9 @@ catch (error) { startupStorageError = error; }
 let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let startupOperation;
-let windowContext, windowHost;
+let windowContext, windowHost, nativeAudioHost;
 const windowAdmissions = new WeakMap();
+const initialWindowLoads = new WeakMap();
 const cancelledStartupErrors = new WeakSet();
 let quitFailureNotice;
 let smokeDiscardDecision;
@@ -100,34 +105,55 @@ async function start() {
     }
     startup.checkpoint();
     const token = randomBytes(32).toString('hex');
+    const backendId = randomUUID(), nativeAudioIdentity = createNativeAudioPreviewSigningIdentity(backendId);
+    let ownedAudioHost, backendExitObserved = false;
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
       modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }) });
-    backend.on('exit', ({ expected }) => { if (!expected && ready && !quitting && !smokeOutput) void backendFailed(); });
+    const ownedBackend = backend, incident = createProjectBackendIncident();
+    ownedBackend.on('exit', ({ expected }) => {
+      backendExitObserved = true; ownedAudioHost?.notifyBackendExit();
+      if (!expected) incident.fail();
+      if (!expected && backend === ownedBackend && !quitting) { windowHost?.refresh(); if (windowContext?.incident === incident && !smokeOutput) void backendFailed(ownedBackend, incident); }
+    });
     const started = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'),
-      subtitleResourcesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'subtitles'),token });
+      subtitleResourcesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'subtitles'),token, nativeAudioPreview: nativeAudioIdentity.config });
     startup.checkpoint();
+    incident.assertAlive();
     ready = started;
     activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
-    installSessionPolicy(activeSession, ready.url, () => windowHost?.windows().find(window => windowHost.contextFor(window)?.role === 'editor'), { downloadsDirectory: app.getPath('downloads') });
+    installSessionPolicy(activeSession, ready.url, contents => windowHost?.windowForContents(contents), { downloadsDirectory: app.getPath('downloads') });
     await activeSession.cookies.set(sessionCookie(ready.url, token));
     startup.checkpoint();
+    incident.assertAlive();
     await writeConnection(paths, { url: ready.url, token, pid: ready.runtime.pid, identity });
     startup.checkpoint();
+    incident.assertAlive();
     // A backend handshake alone is not permission to open a window. Publish its
     // context only after this start owns a prepared session and discovery file.
-    const context = windowContext = { startup, ready: started, session: activeSession };
+    const context = windowContext = { startup, ready: started, session: activeSession, incident };
     windowHost = createProjectWindowHost({
-      backendId: randomUUID(), launcherUrl: `${started.url}/`, editorUrl: projectId => `${started.url}/?project=${projectId}`,
+      backendId, launcherUrl: `${started.url}/`, editorUrl: projectId => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
-      canInteract: () => quitRouter.allowsWindows,
+      canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       createWindow: () => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
         minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
         autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(),
         webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
-      prepareWindow: window => prepareOwnedWindow(window, context),
-      onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void rendererFailed(window, context).catch(fatal); },
+      prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
+      consumeProjectEntry: consumeNativeProjectEntry,
+      onDocumentInvalidated: owner => ownedAudioHost?.revokeOwner(owner, false),
+      onWebContentsDestroyed: windowId => ownedAudioHost?.revokeWindowDestroyed(windowId),
+      onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void initialWindowFailed(window, context).catch(fatal); },
     });
+    ownedAudioHost = createNativeAudioPreviewHost({ backendId, origin: started.url, signer: nativeAudioIdentity,
+      request: (command, onPending) => ownedBackend.requestNativeAudio(command, onPending),
+      isAdmissionAllowed: () => ownsWindowContext(context) && backend === ownedBackend && quitRouter.allowsWindows && !context.incident.failed,
+      isBackendExitConfirmed: () => backendExitObserved && ownedBackend.child === null && ownedBackend.stopOutcome?.exitConfirmed === true && !ownedBackend.hasUnconfirmedMedia,
+      ownerForContents: contents => { const owner = windowHost?.ownerForContents(contents); return owner?.role === 'editor' ? { ...owner, contents } : null; },
+    });
+    nativeAudioHost = context.audioHost = ownedAudioHost;
+    activeSession.webRequest.onBeforeSendHeaders((details, callback) => callback(ownedAudioHost.beforeSendHeaders(details)));
     await openWindow(context);
     startup.checkpoint();
     return { identity, runtime: ready.runtime, tools: tools.versions };
@@ -151,14 +177,28 @@ function ownsWindow(window, context) {
 async function openWindow(context = windowContext) {
   if (!ownsWindowContext(context)) return;
   const window = windowHost?.ensureLauncher();
-  if (window) await windowHost.loadFor(window);
+  if (window) {
+    try { await windowHost.loadFor(window); }
+    catch (error) { if (!ownsWindow(window, context) || !initialWindowLoads.get(window)?.failed) throw error; }
+  }
 }
 
-function prepareOwnedWindow(window, context) {
+function prepareOwnedWindow(window, context, owner) {
   win = window;
-  installWindowPolicy(window, context.ready.url);
+  const contents = window.webContents;
+  const initialLoad = observeInitialProjectLoad(window, owner.url, () => ownsWindow(window, context));
+  initialWindowLoads.set(window, initialLoad);
+  installWindowPolicy(window, context.ready.url, { url: owner.url, isCurrent: () => owner.isCurrent() });
   windowAdmissions.set(window, installNativeCloseAdmission(window, {
-    isCurrent: () => ownsWindow(window, context) && isAllowedNavigation(window.webContents.getURL(), context.ready.url),
+    isCurrent: () => ownsWindow(window, context) && window.webContents.getURL() === owner.url && isAllowedNavigation(window.webContents.getURL(), context.ready.url),
+    onCloseStateChange: state => windowHost?.closeStateChanged(window, state),
+    consumeInitialEmptyClose: () => initialLoad.consumeClose(),
+    beforeReload: signal => {
+      if (owner.role !== 'editor') return true;
+      const document = windowHost?.ownerForContents(contents);
+      return document?.window === window && document.backendId === owner.backendId
+        ? context.audioHost?.retireOwnerForReload({ ...document, contents }, signal) ?? false : false;
+    },
     confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox(window, { type: 'warning', title: '本地草稿或视图尚未确认保存',
       message: `部分本地草稿或视图位置尚未确认保存，仍要${action === 'reload' ? '重新载入' : '退出'}？`,
       detail: `${action === 'reload' ? '重新载入' : '直接退出'}可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。可以继续编辑并核对保存状态。`,
@@ -185,6 +225,10 @@ function prepareOwnedWindow(window, context) {
 }
 
 async function stop() {
+  const context = windowContext, audioHost = context?.audioHost;
+  await audioHost?.shutdown();
+  if (context && windowContext !== context) throw Object.assign(new Error('Desktop ownership changed during shutdown.'), { code: 'BACKEND_STOP_FAILED' });
+  if (nativeAudioHost === audioHost) nativeAudioHost = null;
   windowHost?.dispose(); windowHost = null;
   windowContext = null;
   await startupOperation?.abort();
@@ -203,9 +247,9 @@ async function restart() {
   return restartCoordinator.request();
 }
 
-async function backendFailed() {
-  if (restarting || quitting) return;
-  const failedBackend = backend, failedContext = windowContext;
+async function backendFailed(failedBackend = backend, incident = windowContext?.incident) {
+  if (restarting || quitting || backend !== failedBackend || !incident?.claimPrompt()) return;
+  const failedContext = windowContext;
   if (backend?.hasUnconfirmedMedia) return quitFailed({ code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
   const { response } = await dialog.showMessageBox({ type: 'error', title: '本地服务已停止',
     message: '本地服务意外退出。已保存的数据会在重启时恢复。',
@@ -216,30 +260,23 @@ async function backendFailed() {
   else app.quit();
 }
 
-let rendererErrorOwner = null;
-async function rendererFailed(window, context) {
-  if (!ownsWindow(window, context) || (rendererErrorOwner?.window === window && rendererErrorOwner.context === context)) return;
-  const recovery = windowAdmissions.get(window)?.captureRecoveryDecision();
-  if (!recovery?.claimPrompt()) return;
-  const owner = rendererErrorOwner = { window, context };
-  try {
-    const { response } = await dialog.showMessageBox({ type: 'warning', title: '界面需要重新载入',
-      message: '工作区界面没有响应。后台任务仍由本地服务管理。',
-      detail: '如果界面进程已经崩溃，未保存的输入可能已经丢失。重新载入只恢复当前界面，不会重新提交任务或生成请求。',
-      buttons: ['重新载入界面', '退出', '保留窗口'], defaultId: 0, cancelId: 2 });
-    if (!ownsWindow(window, context)) return;
-    if (response === 0) await recovery?.reload();
-    else if (response === 1) await recovery?.exit();
-  } catch (error) {
-    if (ownsWindow(window, context)) throw error;
-  } finally {
-    // A pending old-window dialog must neither block a replacement's recovery
-    // prompt nor release that replacement's duplicate-event guard when it ends.
-    if (rendererErrorOwner === owner) {
-      rendererErrorOwner = null;
-      if (recovery.takePendingIncident()) await rendererFailed(window, context);
-    }
-  }
+const rendererFailed = createProjectRendererRecovery({
+  isCurrent: (window, context) => ownsWindow(window, context) && quitRouter.allowsWindows && !context.incident.failed,
+  capture: window => windowAdmissions.get(window)?.captureRecoveryDecision(),
+  prompt: window => dialog.showMessageBox(window, { type: 'warning', title: '界面需要重新载入',
+    message: '工作区界面没有响应。后台任务仍由本地服务管理。',
+    detail: '如果界面进程已经崩溃，未保存的输入可能已经丢失。重新载入只恢复当前界面，不会重新提交任务或生成请求。',
+    buttons: ['重新载入界面', '退出应用', '保留窗口'], defaultId: 0, cancelId: 2 }).then(result => result.response),
+});
+async function initialWindowFailed(window, context) {
+  const proof = initialWindowLoads.get(window)?.captureFailure();
+  if (!proof) return rendererFailed(window, context, 'load-error');
+  const { response } = await dialog.showMessageBox(window, { type: 'error', title: '窗口尚未载入',
+    message: '此窗口还未打开任何项目界面。', detail: '可以重试固定入口，或关闭这个尚未载入的空窗口。其他窗口与后台任务会保留。',
+    buttons: ['重试载入', '关闭空窗口', '保留窗口'], defaultId: 0, cancelId: 2 });
+  if (!ownsWindow(window, context) || !proof.isCurrent()) return;
+  if (response === 0 && quitRouter.allowsWindows && !context.incident.failed) { try { await proof.retry(); } catch { if (ownsWindow(window, context)) await initialWindowFailed(window, context); } }
+  else if (response === 1) proof.close();
 }
 
 async function fatal(error) {
@@ -259,10 +296,15 @@ function installMenu() {
   const template = [];
   if (process.platform === 'darwin') template.push({ role: 'appMenu' });
   template.push({ label: '应用', submenu: [
-    { label: '项目首页', click: () => windowHost?.showProjects() },
+    { label: '新建项目', click: () => windowHost?.requestProjectEntry('new', BrowserWindow.getFocusedWindow()) },
+    { label: '打开项目', click: () => windowHost?.requestProjectEntry('open', BrowserWindow.getFocusedWindow()) },
+    { label: '连接设置', click: () => windowHost?.showSettings('agent') },
     { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => {
-      const window = BrowserWindow.getFocusedWindow() || win;
-      if (ownsWindow(window, windowContext)) void windowAdmissions.get(window)?.captureRecoveryDecision().reload().catch(fatal);
+      const window = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
+      if (ownsWindow(window, windowContext) && !windowContext.incident.failed) {
+        if (initialWindowLoads.get(window)?.failed) void initialWindowFailed(window, windowContext).catch(fatal);
+        else void windowAdmissions.get(window)?.captureRecoveryDecision().reload().catch(fatal);
+      }
     } },
     { label: '重启本地服务', click: () => confirmOwnedWindowRestart({
       getOwner: () => windowContext || startupOperation, canRequest: () => quitRouter.allowsWindows && !restarting,
@@ -307,6 +349,7 @@ const restartCoordinator = new MultiWindowRestartCoordinator({
 });
 const quitRouter = createProjectWindowQuitRouter({ quit: quitCoordinator, restart: restartCoordinator, onPendingChange: () => windowHost?.refresh() });
 function requestApplicationQuit(source) { return quitRouter.request(source).catch(quitFailed); }
+ipcMain.handle(NATIVE_AUDIO_CHANNEL, (event, request) => nativeAudioHost?.dispatch(event, request) ?? null);
 ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
   return windowHost.dispatch(event, request);
@@ -331,10 +374,10 @@ if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStor
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => {
-    if (quitCoordinator.state === 'idle' && !restarting) windowHost?.showProjects();
+    if (quitCoordinator.state === 'idle' && !restarting) windowHost?.activate(BrowserWindow.getFocusedWindow());
   });
   app.on('activate', () => {
-    if (!restarting && !quitting && quitCoordinator.state === 'idle' && ownsWindowContext(windowContext)) void openWindow().catch(fatal);
+    if (!restarting && !quitting && quitCoordinator.state === 'idle' && ownsWindowContext(windowContext)) windowHost?.activate(BrowserWindow.getFocusedWindow());
   });
   app.on('window-all-closed', () => { if (!restarting && process.platform !== 'darwin') app.quit(); });
   app.on('before-quit', event => {

@@ -24,6 +24,7 @@ function harness() {
   const calls = { rpc: [], positions: [], contexts: [], transports: [], order: [] };
   let controller, latestOptions;
   const env = {
+    nativeAudioAdmission: null,
     workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview,
     workspaceRef: { current: { restored: false } }, currentProject: { current: id(1) }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 },
     dataRef: { current: { project: { id: id(1) }, timeline, assets: [asset] } },

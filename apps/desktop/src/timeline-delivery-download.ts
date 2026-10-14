@@ -87,3 +87,20 @@ export function configureTimelineDeliveryDownload(
     event.preventDefault();
   }
 }
+
+/** Resolve only the actual native initiator. A missing/stale registry result is
+ * not permission to substitute the first or focused editor. */
+export function configureOwnedTimelineDeliveryDownload(
+  event: Pick<Event, 'preventDefault'>,
+  item: Item,
+  webContents: Contents | undefined,
+  resolveWindow: (contents: Contents | undefined) => Window | null | undefined,
+  origin: string,
+  directory: TimelineDownloadDirectory,
+  isAllowedNavigation: (value: string, origin: string) => boolean,
+): void {
+  let owner: Window | null | undefined;
+  try { owner = resolveWindow(webContents); }
+  catch { event.preventDefault(); return; }
+  configureTimelineDeliveryDownload(event, item, webContents, owner, origin, directory, isAllowedNavigation);
+}

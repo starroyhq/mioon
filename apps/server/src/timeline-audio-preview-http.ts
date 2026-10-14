@@ -2,9 +2,10 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import {audioPreviewSourceInputSchema,AUDIO_PREVIEW_PROFILE} from '@mioon/contracts/timeline-audio-preview';
 import type {AudioPreviewSourceInput} from '@mioon/contracts/timeline-audio-preview';
 import type {TimelineAudioPreviewConsumeContext} from '@mioon/business/timeline-audio-preview';
+import type {NativeAudioPreviewAuthority, NativeAudioSourceAdmission} from '@mioon/business/native-audio-preview';
 
 export interface AudioPreviewHttpService {
-  consumeSource(input:unknown,options:{signal?:AbortSignal;consume:(decoded:{readonly pcm:Buffer},context:TimelineAudioPreviewConsumeContext)=>Promise<void>}):Promise<unknown>;
+  consumeSource(input:unknown,options:{signal?:AbortSignal;onResourceSettlement?:(settlement:Promise<void>)=>void;consume:(decoded:{readonly pcm:Buffer},context:TimelineAudioPreviewConsumeContext)=>Promise<void>}):Promise<unknown>;
 }
 const fail=(code:string,status=400):Error&{code:string;status:number}=>Object.assign(new Error('声音试听请求未完成，请核对当前项目和区间后重试。'),{code,status});
 const send=(res:ServerResponse,status:number,code:string):void=>{
@@ -26,10 +27,11 @@ function inputFromUrl(url:URL):AudioPreviewSourceInput {
 /** Fixed authenticated same-origin resource, called only after the existing
  * Host/Origin/session checks. The service owns source selection, admission,
  * hashes and process cleanup; the HTTP consumer owns only this response. */
-export function createTimelineAudioPreviewHttp({service,signal,assertAvailable}:{service:AudioPreviewHttpService;signal?:AbortSignal;assertAvailable:()=>void}){
+export function createTimelineAudioPreviewHttp({service,signal,assertAvailable,nativeAdmission}:{service:AudioPreviewHttpService;signal?:AbortSignal;assertAvailable:()=>void;nativeAdmission?:Pick<NativeAudioPreviewAuthority,'accept'>}){
   return async(req:IncomingMessage,res:ServerResponse,url:URL):Promise<boolean>=>{
     if(!/^\/api\/timeline-audio-preview(?:\/|$)/u.test(url.pathname))return false;
     const controller=new AbortController();
+    let admitted:NativeAudioSourceAdmission|undefined;
     const abort=():void=>{controller.abort();};
     const closed=():void=>{if(!res.writableFinished)abort();};
     const combined=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
@@ -42,7 +44,9 @@ export function createTimelineAudioPreviewHttp({service,signal,assertAvailable}:
       if(Buffer.byteLength(req.url??'')>2048||req.headers['transfer-encoding']||
           req.headers['content-length']!==undefined&&req.headers['content-length']!=='0')throw fail('AUDIO_PREVIEW_INVALID_INPUT');
       const input=inputFromUrl(url);
-      await service.consumeSource(input,{signal:combined,consume:async({pcm},{plan,source,signal:attemptSignal,beforeEffect})=>{
+      admitted=nativeAdmission?.accept(req,res,url,input);
+      const sourceSignal=admitted?AbortSignal.any([combined,admitted.signal]):combined;
+      await service.consumeSource(input,{signal:sourceSignal,...(admitted?{onResourceSettlement:admitted.onResourceSettlement}:{}),consume:async({pcm},{plan,source,signal:attemptSignal,beforeEffect})=>{
         beforeEffect();
         if(attemptSignal.aborted||res.destroyed||res.writableEnded)throw fail('AUDIO_PREVIEW_ABORTED',409);
         if(plan.profileId!==AUDIO_PREVIEW_PROFILE||plan.planHash!==input.planHash||source.clipId!==input.clipId||
@@ -80,7 +84,7 @@ export function createTimelineAudioPreviewHttp({service,signal,assertAvailable}:
         const status=typeof value?.status==='number'&&[400,403,404,405,409,413,429,503].includes(value.status)?value.status:409;
         send(res,status,code);
       }
-    }finally{req.off('aborted',abort);res.off('close',closed);}
+    }finally{admitted?.finish();req.off('aborted',abort);res.off('close',closed);}
     return true;
   };
 }

@@ -178,6 +178,8 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
     'tests/typecheck/float-checked-export.consumer.mts', 'packages/contracts/src/timeline-export-float.ts',
     'tests/typecheck/native-close.consumer.mts', 'apps/desktop/src/native-close.ts',
     'tests/typecheck/timeline-audio-preview.consumer.mts', 'packages/contracts/src/timeline-audio-preview.ts', 'packages/contracts/src/timeline-segments.ts',
+    'packages/contracts/src/native-audio-preview.ts', 'apps/desktop/src/native-audio-preview-protocol.ts',
+    'apps/desktop/src/native-audio-preview-host.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/native-audio-preview-preload.ts',
     'apps/desktop/src/project-window-host.ts', 'apps/desktop/src/project-window-protocol.ts', 'apps/desktop/src/project-window-preload.ts',
     'packages/contracts/src/agent-timeline-gain.ts', 'packages/contracts/src/export-sample-peak.ts',
     'packages/contracts/src/timeline-delivery.ts', 'packages/contracts/src/timeline-export-range.ts',

@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events';
 import { trustedOrigin } from './security.mjs';
 import { createAgentSettingsBroker } from './secret-broker.mjs';
 import { createImageSecretBroker } from './image-secret-broker.mjs';
+import { createNativeAudioPreviewBroker } from './native-audio-preview-broker.ts';
+import { nativeAudioConfigSchema } from '@mioon/contracts/native-audio-preview';
 
 // Normal worker drains finish inside the first phase. A signal being accepted
 // is not proof of exit: keep the owned handle until Electron reports its exit.
@@ -33,6 +35,7 @@ export class BackendSupervisor extends EventEmitter {
   }
 
   start(config) {
+    if (config.nativeAudioPreview !== undefined) nativeAudioConfigSchema.parse(config.nativeAudioPreview);
     if (this.hasUnconfirmedMedia) throw unconfirmedMediaError();
     if (this.child || this.stopping || !['idle', 'stopped', 'failed'].includes(this.state)) throw new Error('Backend already active');
     this.state = 'starting';
@@ -74,6 +77,11 @@ export class BackendSupervisor extends EventEmitter {
       const imageSecretBroker = createImageSecretBroker({ imageSecretCodec: this.imageSecretCodec,
         send: message => child.postMessage(message),
         isActive: () => this.child === child && ['starting', 'running', 'stopping'].includes(this.state) });
+      const nativeAudioBroker = config.nativeAudioPreview ? createNativeAudioPreviewBroker({
+        backendId: config.nativeAudioPreview.backendId, send: message => child.postMessage(message),
+        isCurrent: () => this.child === child && ['running', 'stopping'].includes(this.state),
+      }) : null;
+      this.nativeAudioBroker = nativeAudioBroker;
       timer = setTimeout(() => { fail(new Error('本地服务启动超时')); kill(); }, this.startupTimeout);
       child.on('error', () => {
         if (this.child !== child || !['starting', 'running'].includes(this.state)) return;
@@ -82,6 +90,7 @@ export class BackendSupervisor extends EventEmitter {
       child.on('message', message => {
         if (settingsBroker.handle(message)) return;
         if (imageSecretBroker.handle(message)) return;
+        if (nativeAudioBroker?.handle(message)) return;
         if (this.child !== child) return;
         if (message?.type === 'media-process') {
           const pid = message.pid;
@@ -108,6 +117,7 @@ export class BackendSupervisor extends EventEmitter {
       child.once('exit', code => {
         settingsBroker.close();
         imageSecretBroker.close();
+        nativeAudioBroker?.close();
         clearTimeout(timer);
         clearInterval(heartbeat);
         if (this.child !== child) return;
@@ -127,6 +137,11 @@ export class BackendSupervisor extends EventEmitter {
       try { child.postMessage({ type: 'start', ...config }); }
       catch { fail(new Error('本地服务启动通信失败')); kill(); }
     });
+  }
+
+  requestNativeAudio(command, onPending) {
+    if (!this.nativeAudioBroker) return Promise.reject(Object.assign(new Error('Native audition is unavailable.'), {code: 'NATIVE_AUDIO_UNCONFIRMED'}));
+    return this.nativeAudioBroker.request(command, onPending);
   }
 
   stop() {

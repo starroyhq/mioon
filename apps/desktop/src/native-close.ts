@@ -33,9 +33,17 @@ interface NativeCloseOptions {
   /** Must ignore a replaced window/backend. Also called when an initial close
    * is rejected before the current document has an allowed application URL. */
   onCancel(): void;
+  /** Presentation/registry metadata only; never admission or a close permit. */
+  onCloseStateChange?(state: 'closing' | 'retained'): void;
   /** Invoke the existing owner-scoped QuitCoordinator synchronously. Its promise
    * remains responsible for backend shutdown only after the window is closed. */
   requestQuit(): unknown;
+  /** Exact never-committed blank-window close proof, owned by native startup. */
+  consumeInitialEmptyClose?(): boolean;
+  /** Retire only this document's native resources before taking a fresh P0
+   * snapshot. Abort ends observation, never proves cleanup or resumes playback. */
+  beforeReload?(signal: AbortSignal): boolean | Promise<boolean>;
+  reloadPreparationTimeoutMs?: number;
   timeoutMs?: number;
 }
 interface Attempt {
@@ -66,6 +74,7 @@ interface RendererIncident {
 }
 type BoundedResult = { ok: true; value: unknown } | { ok: false };
 const DEFAULT_TIMEOUT_MS = 1500;
+const RELOAD_PREPARATION_TIMEOUT_MS = 10000;
 const flushScript = "typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : false";
 
 function inspection(value: unknown): NativeCloseInspection | null {
@@ -106,9 +115,13 @@ function bounded(action: () => Promise<unknown>, signal: AbortSignal, expiresAt:
  * discard dialogs precede a final renderer validation and one-shot ticket; the
  * renderer must validate that ticket again synchronously during beforeunload. */
 export function installNativeCloseAdmission(win: NativeCloseWindow, options: NativeCloseOptions) {
+  const contents = win.webContents;
   const configuredTimeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timeoutMs = Number.isFinite(configuredTimeout)
     ? Math.max(1, Math.min(DEFAULT_TIMEOUT_MS, Math.floor(configuredTimeout))) : DEFAULT_TIMEOUT_MS;
+  const configuredPreparation = options.reloadPreparationTimeoutMs ?? RELOAD_PREPARATION_TIMEOUT_MS;
+  const preparationTimeoutMs = Number.isFinite(configuredPreparation)
+    ? Math.max(1, Math.min(RELOAD_PREPARATION_TIMEOUT_MS, Math.floor(configuredPreparation))) : RELOAD_PREPARATION_TIMEOUT_MS;
   let documentGeneration = 0, serial = 0, disposed = false;
   let active: Attempt | null = null;
   let allowOnce: Attempt | null = null;
@@ -122,8 +135,9 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     catch { return false; }
   };
   const readUrl = (): string | null => {
+    if (!ownsWindow()) return null;
     try {
-      const url = win.webContents.getURL();
+      const url = contents.getURL();
       return typeof url === 'string' && url.length > 0 && url.length <= 8192 ? url : null;
     } catch { return null; }
   };
@@ -143,7 +157,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     const token = JSON.stringify(attempt.token);
     // Cleanup cannot authorize anything, and is intentionally best effort. An
     // absolute commit deadline also prevents a late script from arming a ticket.
-    try { void win.webContents.executeJavaScript(`typeof globalThis.__mioonNativeCloseAdmission?.cancel === 'function' ? globalThis.__mioonNativeCloseAdmission.cancel(${token}) : false`).catch(() => {}); }
+    try { void contents.executeJavaScript(`typeof globalThis.__mioonNativeCloseAdmission?.cancel === 'function' ? globalThis.__mioonNativeCloseAdmission.cancel(${token}) : false`).catch(() => {}); }
     catch { /* Renderer loss already leaves native admission cancelled. */ }
   }
   function cancel(attempt: Attempt, reason?: NativeCloseBlockReason) {
@@ -155,6 +169,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     attempt.resolve(false);
     // A replaced window/document must never cancel a newer owner's quit.
     if (!ownsGeneration(attempt)) return;
+    if (attempt.action === 'close') { try { options.onCloseStateChange?.('retained'); } catch { /* Metadata cannot change admission. */ } }
     try { options.onCancel(); } catch { /* Cancellation remains final. */ }
     if (reason && ownsGeneration(attempt)) {
       try { void Promise.resolve(options.onBlocked(reason, attempt.action)).catch(() => {}); }
@@ -165,7 +180,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     if (!current(attempt)) { cancel(attempt); return; }
     attempt.reloadStarted = true;
     try {
-      await win.webContents.loadURL(attempt.targetUrl!);
+      await contents.loadURL(attempt.targetUrl!);
     } catch (error) {
       if (attempt.committedDocument !== undefined) {
         const owned = currentLoad(attempt);
@@ -191,8 +206,16 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
   }
   async function proceed(attempt: Attempt) {
     try {
+      if (attempt.action === 'reload' && options.beforeReload) {
+        const prepared = await bounded(() => Promise.resolve(options.beforeReload!(attempt.abort.signal)),
+          attempt.abort.signal, Date.now() + preparationTimeoutMs);
+        if (!current(attempt)) { cancel(attempt); return; }
+        if (!prepared.ok || prepared.value !== true) { cancel(attempt, 'unavailable'); return; }
+      }
+      // Retirement may have taken time and input may have changed. Inspect only
+      // now; its final ticket still gets the original independent 1.5s lease.
       const inspectScript = `typeof globalThis.__mioonNativeCloseAdmission?.inspect === 'function' ? globalThis.__mioonNativeCloseAdmission.inspect(${JSON.stringify(attempt.action)},${JSON.stringify(attempt.targetUrl)}) : null`;
-      const result = await bounded(() => win.webContents.executeJavaScript(inspectScript), attempt.abort.signal, Date.now() + timeoutMs);
+      const result = await bounded(() => contents.executeJavaScript(inspectScript), attempt.abort.signal, Date.now() + timeoutMs);
       if (!current(attempt)) { cancel(attempt); return; }
       const captured = result.ok ? inspection(result.value) : null;
       if (!captured) { cancel(attempt, 'unavailable'); return; }
@@ -211,7 +234,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
         // The renderer must revalidate the exact owner/version/operation both
         // before arming and during its final synchronous beforeunload.
       } else {
-        const drained = await bounded(() => win.webContents.executeJavaScript(flushScript), attempt.abort.signal, Date.now() + timeoutMs);
+        const drained = await bounded(() => contents.executeJavaScript(flushScript), attempt.abort.signal, Date.now() + timeoutMs);
         if (!current(attempt)) { cancel(attempt); return; }
         saved = drained.ok && drained.value === true;
         if (!saved) {
@@ -231,7 +254,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       const expiresAt = Date.now() + timeoutMs;
       const token = JSON.stringify(captured.token);
       const commitScript = `typeof globalThis.__mioonNativeCloseAdmission?.commit === 'function' ? globalThis.__mioonNativeCloseAdmission.commit(${token}, {discardDirty:${discardDirty},allowDrainFailure:${!saved},${unknown ? 'allowUnknown:true,' : ''}expiresAt:${expiresAt},action:${JSON.stringify(attempt.action)},targetUrl:${JSON.stringify(attempt.targetUrl)}}) : false`;
-      const committed = await bounded(() => win.webContents.executeJavaScript(commitScript), attempt.abort.signal, expiresAt);
+      const committed = await bounded(() => contents.executeJavaScript(commitScript), attempt.abort.signal, expiresAt);
       if (!current(attempt)) { cancel(attempt); return; }
       if (!committed.ok || committed.value !== true || Date.now() >= expiresAt) { cancel(attempt, 'changed'); return; }
       // Keep ownership until closed or vetoed, including the IPC gap between this
@@ -260,6 +283,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     const attempt: Attempt = { id: ++serial, document: documentGeneration, abort: new AbortController(), token: null,
       action, sourceUrl, targetUrl: action === 'reload' ? sourceUrl : null, result, resolve, reject };
     active = attempt;
+    if (action === 'close') { try { options.onCloseStateChange?.('closing'); } catch { /* Metadata cannot change admission. */ } }
     if (mode === 'gone-reload') void loadCurrentUrl(attempt).catch(() => cancel(attempt, 'unavailable'));
     else if (mode === 'gone-close') {
       attempt.expiresAt = Date.now() + timeoutMs;
@@ -269,6 +293,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     return attempt;
   }
   const onClose: Listener = event => {
+    if (!active && !allowOnce && options.consumeInitialEmptyClose?.() === true) return;
     if (goneExit) {
       const allowance = goneExit;
       goneExit = null;
@@ -387,12 +412,12 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
   };
   win.on('close', onClose);
   win.on('closed', onClosed);
-  win.webContents.on('will-prevent-unload', onVeto);
-  win.webContents.on('did-start-navigation', onNavigation);
-  win.webContents.on('did-navigate', onDocumentCommitted);
-  win.webContents.on('render-process-gone', onRendererGone);
-  win.webContents.on('unresponsive', onUnresponsive);
-  win.webContents.on('responsive', onResponsive);
+  contents.on('will-prevent-unload', onVeto);
+  contents.on('did-start-navigation', onNavigation);
+  contents.on('did-navigate', onDocumentCommitted);
+  contents.on('render-process-gone', onRendererGone);
+  contents.on('unresponsive', onUnresponsive);
+  contents.on('responsive', onResponsive);
   function requestReload(): Promise<boolean> {
     if (active) return active.action === 'reload' ? active.result : Promise.resolve(false);
     if (!ownsWindow()) return Promise.resolve(false);
@@ -468,12 +493,12 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       rendererIncident = null;
       disposed = true;
       win.removeListener('close', onClose); win.removeListener('closed', onClosed);
-      win.webContents.removeListener('will-prevent-unload', onVeto);
-      win.webContents.removeListener('did-start-navigation', onNavigation);
-      win.webContents.removeListener('did-navigate', onDocumentCommitted);
-      win.webContents.removeListener('render-process-gone', onRendererGone);
-      win.webContents.removeListener('unresponsive', onUnresponsive);
-      win.webContents.removeListener('responsive', onResponsive);
+      contents.removeListener('will-prevent-unload', onVeto);
+      contents.removeListener('did-start-navigation', onNavigation);
+      contents.removeListener('did-navigate', onDocumentCommitted);
+      contents.removeListener('render-process-gone', onRendererGone);
+      contents.removeListener('unresponsive', onUnresponsive);
+      contents.removeListener('responsive', onResponsive);
     },
   };
 }

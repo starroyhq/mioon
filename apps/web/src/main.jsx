@@ -10,7 +10,7 @@ import { AgentDockPane } from './AgentWorkspace.jsx';
 import AgentSettings from './AgentSettings.jsx';
 import ImageSettings from './ImageSettings.jsx';
 import ComfyImageSettings from './ComfyImageSettings.jsx';
-import { rpc } from './api.js';
+import { ApiError, rpc } from './api.js';
 import { schemas } from '@mioon/contracts';
 import { workspaceRestoreInspectionSchema } from '../../../packages/contracts/src/workspace-restore.mjs';
 import '@xyflow/react/dist/style.css';
@@ -24,11 +24,11 @@ document.documentElement.classList.add('dark');
 const frame = desktopFrame(navigator.userAgent);
 if (frame) document.documentElement.dataset.desktopFrame = frame;
 
-const launcherContracts = { parseCreateInput: value => schemas['project.create'].parse(value), parseWorkspaceInspection: value => workspaceRestoreInspectionSchema.parse(value) };
+const launcherContracts = { parseCreateInput: value => schemas['project.create'].parse(value), parseWorkspaceInspection: value => workspaceRestoreInspectionSchema.parse(value), isDefinitiveCreateRejection: error => error instanceof ApiError && error.definitive === true };
 const renderConnections = ({ selected, visible, registry, onSelect, beforeClose, onClose }) => <ProjectHomeConnections selected={selected} onSelect={onSelect} panes={{
-  agent: <AgentDockPane visible={visible && selected === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel="返回项目列表" beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
-  official: <AgentDockPane visible={visible && selected === 'official'}><SettingsNavigationSlot registry={registry} slot="home:official">{report => <ImageSettings active={visible && selected === 'official'} contextKey="native-launcher" closeLabel="返回项目列表" slot="official" onSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
-  custom: <AgentDockPane visible={visible && selected === 'custom'}><SettingsNavigationSlot registry={registry} slot="home:custom">{report => <ImageSettings active={visible && selected === 'custom'} contextKey="native-launcher" closeLabel="返回项目列表" slot="custom" onSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
-  comfy: <AgentDockPane visible={visible && selected === 'comfy'}><SettingsNavigationSlot registry={registry} slot="home:comfy">{report => <ComfyImageSettings active={visible && selected === 'comfy'} contextKey="native-launcher" closeLabel="返回项目列表" onSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
+  agent: <AgentDockPane visible={visible && selected === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel="关闭设置窗口" beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
+  official: <AgentDockPane visible={visible && selected === 'official'}><SettingsNavigationSlot registry={registry} slot="home:official">{report => <ImageSettings active={visible && selected === 'official'} contextKey="native-settings" closeLabel="关闭设置窗口" slot="official" onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
+  custom: <AgentDockPane visible={visible && selected === 'custom'}><SettingsNavigationSlot registry={registry} slot="home:custom">{report => <ImageSettings active={visible && selected === 'custom'} contextKey="native-settings" closeLabel="关闭设置窗口" slot="custom" onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
+  comfy: <AgentDockPane visible={visible && selected === 'comfy'}><SettingsNavigationSlot registry={registry} slot="home:comfy">{report => <ComfyImageSettings active={visible && selected === 'comfy'} contextKey="native-settings" closeLabel="关闭设置窗口" onSelectSlot={onSelect} onRequestSelectSlot={onSelect} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
 }} />;
-createRoot(document.getElementById('root')).render(<React.StrictMode><TooltipProvider delay={350}><ConfirmationProvider><ReactFlowProvider><DesktopRoot rpc={rpc} contractChecks={launcherContracts} renderWeb={() => <App />} renderEditor={(context, bridge) => <App nativeWindow={{ context, bridge }} />} renderSettings={renderConnections} /></ReactFlowProvider></ConfirmationProvider></TooltipProvider></React.StrictMode>);
+createRoot(document.getElementById('root')).render(<React.StrictMode><TooltipProvider delay={350}><ConfirmationProvider><ReactFlowProvider><DesktopRoot rpc={rpc} contractChecks={launcherContracts} renderWeb={() => <App />} renderEditor={(context, bridge, entry) => <App nativeWindow={{ context, bridge }} nativeProjectEntry={entry} />} renderSettings={renderConnections} /></ReactFlowProvider></ConfirmationProvider></TooltipProvider></React.StrictMode>);

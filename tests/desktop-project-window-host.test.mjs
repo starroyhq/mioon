@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
@@ -73,169 +74,160 @@ function fixture(t, setup = {}) {
     },
     prepareWindow(window, owner) { owners.set(window, owner); setup.prepare?.(window, owner); },
     onLoadError: setup.onLoadError,
+    onDocumentInvalidated: setup.invalidated, onWebContentsDestroyed: setup.destroyed,
+    consumeProjectEntry: setup.consume ?? (async (_owner, entryToken, projectId) => ({ version: 1, entryToken, projectId, accepted: true })),
   });
   t.after(() => host.dispose());
   const event = window => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame });
   const invoke = (window, request) => host.dispatch(event(window), request.action === 'describe' ? request :
     { contextId: host.contextFor(window).contextId, ...request });
-  return { host, events, created, owners, event, invoke,
+  const open = (projectId, source = created.find(window => window.creation.role === 'launcher'), entryToken = randomUUID(), remember = true) =>
+    invoke(source, { action: 'open', projectId, entryToken, remember });
+  return { host, events, created, owners, event, invoke, open,
     setCurrent(value) { current = value; }, setInteractive(value) { interactive = value; host.refresh(); },
     async launcher() { const window = host.ensureLauncher(); await host.loadFor(window); return window; },
     async editor(projectId = projectA) {
-      assert.equal(host.openProject(projectId).reason, 'accepted');
+      assert.equal((await open(projectId)).reason, 'accepted');
       const window = created.at(-1); await host.loadFor(window); return window;
     },
     ready(window, projectId = projectA) { return invoke(window, { action: 'editor-status', projectId, phase: 'ready' }); },
   };
 }
 
-test('one launcher, one editor, one backend; same project focuses and different project is explicitly blocked', async t => {
-  const f = fixture(t), launcher = await f.launcher();
-  assert.equal(f.host.ensureLauncher(), launcher);
-  assert.equal(f.invoke(launcher, { action: 'describe' }).autoOpen, true);
-  const editor = await f.editor();
-  assert.equal(f.host.contextFor(launcher).autoOpen, false);
-  assert.equal(f.host.contextFor(editor).initialProjectId, projectA);
-  assert.equal(f.ready(editor), true);
-  assert.equal(launcher.visible, true); assert.equal(editor.visible, true);
-  assert.equal(f.events.includes('launcher:hide'), false);
-  assert.deepEqual(f.host.openProject(projectA), { ok: true, reason: 'already-open' });
-  assert.deepEqual(f.host.openProject(projectB), { ok: false, reason: 'another-editor' });
-  assert.equal(f.created.length, 2);
-  assert.deepEqual(f.created.map(window => window.creation.backendId), [backendId, backendId]);
-  assert.ok(f.created.flatMap(window => window.webContents.sent).every(({ channel, value }) =>
-    channel === PROJECT_WINDOW_EVENT && isProjectWindowContext(value)));
+test('different projects get immutable editors and the launcher hides at first reservation', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  assert.equal(f.host.ensureLauncher(), launcher); assert.equal(launcher.visible, false);
+  assert.equal(f.host.contextFor(launcher).editorCount, 2);
+  assert.equal(f.host.contextFor(a).initialProjectId, projectA); assert.equal(f.host.contextFor(b).initialProjectId, projectB);
+  f.ready(a); f.ready(b, projectB);
+  assert.equal((await f.open(projectA, b)).reason, 'already-open'); assert.equal(f.created.length, 3);
+  assert.equal(a.focuses > 0, true); assert.equal(launcher.visible, false);
+  assert.ok(f.created.flatMap(window => window.webContents.sent).every(({ channel, value }) => channel === PROJECT_WINDOW_EVENT && isProjectWindowContext(value)));
 });
 
-test('IPC requires exact window, main frame, canonical current URL and bounded request keys', async t => {
+test('v2 requires exact sender, main frame, context and fixed project URL', async t => {
   const f = fixture(t), launcher = await f.launcher(), contextId = f.host.contextFor(launcher).contextId;
-  const request = { action: 'open', contextId, projectId: projectA };
-  const frame = { url: `${origin}/` };
-  assert.throws(() => f.host.dispatch({ sender: {}, senderFrame: frame }, request), /sender/);
-  assert.throws(() => f.host.dispatch({ sender: launcher.webContents, senderFrame: frame }, request), /sender/);
+  const request = { action: 'open', contextId, projectId: projectA, entryToken: randomUUID(), remember: true };
+  assert.throws(() => f.host.dispatch({ sender: {}, senderFrame: launcher.webContents.mainFrame }, request), /sender/);
+  assert.throws(() => f.host.dispatch({ sender: launcher.webContents, senderFrame: { url: `${origin}/` } }, request), /sender/);
   assert.throws(() => f.host.dispatch(f.event(launcher), { ...request, url: 'file:///secret' }), /request/);
-  assert.throws(() => f.host.dispatch(f.event(launcher), { ...request, projectId: '../secret' }), /request/);
-  launcher.webContents.mainFrame.url = `${origin}/other`;
-  assert.throws(() => f.host.dispatch(f.event(launcher), request), /sender/);
-  launcher.webContents.mainFrame.url = `${origin}/`;
-  const contentsUrl = launcher.webContents.getURL;
-  launcher.webContents.getURL = () => `${origin}/?unexpected=1`;
-  assert.throws(() => f.host.dispatch(f.event(launcher), request), /sender/);
-  launcher.webContents.getURL = contentsUrl;
-  assert.equal(f.created.length, 1);
+  assert.throws(() => f.host.dispatch(f.event(launcher), { ...request, contextId: randomUUID() }), /Stale/);
+  const a = await f.editor(); f.ready(a);
+  a.inPage(editorUrl(projectB));
+  assert.throws(() => f.ready(a, projectB), /sender/);
+  assert.equal(f.host.contextFor(a).initialProjectId, projectA);
+  a.navigate(editorUrl(projectB));
+  assert.equal(f.host.isTrustedDocument(a), false); assert.equal(f.host.windowForContents(a.webContents), null);
+  assert.throws(() => f.ready(a, projectB), /sender/);
 });
 
-test('only assigned editor and exact current project may report initial ready or failed', async t => {
-  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor();
-  assert.equal(f.invoke(launcher, { action: 'editor-status', projectId: projectA, phase: 'ready' }), false);
-  assert.equal(f.ready(editor, projectB), false);
-  editor.inPage(editorUrl(projectB));
-  assert.equal(f.ready(editor, projectB), false, 'opening cannot replace its assigned project through history');
-  assert.equal(f.invoke(editor, { action: 'editor-status', projectId: projectB, phase: 'failed' }), false);
-  editor.inPage(editorUrl(projectA));
-  assert.equal(f.invoke(editor, { action: 'editor-status', projectId: projectA, phase: 'failed' }), true);
-  editor.inPage(editorUrl(projectB));
-  assert.equal(f.ready(editor, projectB), false, 'failed initial opening does not release its assigned project');
-  editor.inPage(editorUrl(projectA));
-  assert.equal(f.ready(editor), true);
-  editor.inPage(editorUrl(projectB));
-  assert.equal(f.ready(editor, projectB), true, 'a guarded in-editor navigation is reported against its exact URL');
-  assert.equal(f.host.contextFor(editor).editorProjectId, projectB);
-  assert.equal(f.host.openProject(projectB).reason, 'already-open');
-  assert.equal(f.host.openProject(projectA).reason, 'another-editor');
+test('same project including uppercase UUID focuses its exact existing owner without another load', async t => {
+  const f = fixture(t); await f.launcher(); const a = await f.editor();
+  const before = f.events.filter(event => event === 'editor:load').length;
+  const result = await f.open(projectA.toUpperCase());
+  assert.equal(result.reason, 'already-open'); assert.equal(result.targetWindowId, f.host.contextFor(a).windowId);
+  assert.equal(result.targetPhase, 'opening'); assert.equal(f.created.length, 2);
+  assert.equal(f.events.filter(event => event === 'editor:load').length, before);
 });
 
-test('real reload rotates bridge generation while native lifetime ownership survives; in-page changes do not rotate', async t => {
-  const f = fixture(t); await f.launcher(); const editor = await f.editor(); f.ready(editor);
-  const owner = f.owners.get(editor), previous = f.host.contextFor(editor), oldEvent = f.event(editor);
-  editor.inPage(editorUrl(projectB));
-  assert.equal(f.host.contextFor(editor).contextId, previous.contextId);
-  assert.equal(f.ready(editor, projectB), true);
-  editor.navigate(editorUrl(projectB));
-  const next = f.host.contextFor(editor);
-  assert.notEqual(next.contextId, previous.contextId);
-  assert.equal(next.initialProjectId, projectB);
-  assert.equal(owner.isCurrent(), true);
-  assert.throws(() => f.host.dispatch(oldEvent, { action: 'describe' }), /sender/);
-  assert.throws(() => f.host.dispatch(f.event(editor), { action: 'editor-status', contextId: previous.contextId,
-    projectId: projectB, phase: 'ready' }), /Stale/);
-  assert.equal(f.ready(editor, projectB), true);
+test('one sealed token has one consume/reservation and a readable historical receipt after target closes', async t => {
+  const hold = Promise.withResolvers(); let consumes = 0;
+  const f = fixture(t, { consume: async (_owner, entryToken, projectId) => { consumes++; await hold.promise; return { version: 1, entryToken, projectId, accepted: true }; } });
+  const launcher = await f.launcher(), token = randomUUID();
+  const first = f.open(projectA, launcher, token), second = f.open(projectA, launcher, token);
+  assert.equal(first, second); assert.equal(f.created.length, 1); assert.equal(f.host.contextFor(launcher).entryReceipt, null);
+  hold.resolve(); const result = await first; assert.equal(consumes, 1); assert.equal(result.reason, 'accepted');
+  const a = f.created.at(-1); await f.host.loadFor(a); a.finishClose();
+  const receipt = f.host.contextFor(launcher).entryReceipt;
+  assert.equal(receipt.entryToken, token); assert.deepEqual(receipt.result, result);
+  assert.deepEqual(await f.open(projectA, launcher, token), result); assert.equal(consumes, 1); assert.equal(f.created.length, 2);
 });
 
-test('newer launcher/settings intent wins against delayed editor readiness', async t => {
-  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor();
-  const focusBefore = editor.focuses;
-  editor.isMinimized = () => true;
-  assert.equal(f.host.showSettings('comfy'), true);
-  const version = f.host.contextFor(launcher).settingsVersion;
-  assert.equal(f.ready(editor), true);
-  assert.equal(editor.inactiveShows, 1); assert.equal(editor.focuses, focusBefore);
-  assert.equal(f.events.includes('editor:restore'), false, 'restore can activate a minimized window');
-  assert.equal(launcher.visible, true);
-  assert.equal(f.host.contextFor(launcher).settingsSlot, 'comfy');
-  assert.equal(f.host.showSettings('comfy'), true);
-  assert.equal(f.host.contextFor(launcher).settingsVersion, version + 1);
-  assert.equal(f.host.showProjects(), true);
-  assert.equal(f.host.contextFor(launcher).settingsSlot, null);
+test('unknown or busy launcher admission refuses all first reservations without hiding it', async t => {
+  const f = fixture(t, { consume: async (_owner, entryToken, projectId) => ({ version: 1, entryToken, projectId, accepted: false }) });
+  const launcher = await f.launcher();
+  assert.equal(f.host.requestProjectEntry('open'), true); assert.equal(f.host.requestProjectEntry('new'), true);
+  assert.equal((await f.open(projectA)).ok, false); assert.equal(launcher.visible, true); assert.equal(f.created.length, 1);
+  assert.equal(f.host.contextFor(launcher).entryReceipt.result.ok, false);
 });
 
-test('editor slot releases on actual closed, then launcher reappears without reopening the project', async t => {
-  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor(); f.ready(editor);
-  const launcherShows = launcher.shows;
-  editor.holdClose = true; editor.close();
-  assert.equal(f.host.openProject(projectB).reason, 'another-editor');
-  assert.equal(launcher.shows, launcherShows);
-  editor.finishClose();
-  assert.equal(launcher.visible, true); assert.equal(f.host.contextFor(launcher).autoOpen, false);
-  assert.equal(launcher.shows, launcherShows + 1);
-  assert.equal(f.host.contextFor(launcher).editorPhase, 'none');
-  assert.equal(f.host.openProject(projectB).reason, 'accepted');
+test('stale document or a quit fence crossing admission cannot reserve, hide or replay', async t => {
+  for (const transition of ['reload', 'quit']) {
+    const hold = Promise.withResolvers();
+    const f = fixture(t, { consume: async (_owner, entryToken, projectId) => { await hold.promise; return { version: 1, entryToken, projectId, accepted: true }; } });
+    const launcher = await f.launcher(), pending = f.open(projectA);
+    if (transition === 'reload') launcher.navigate(`${origin}/`);
+    else { f.setInteractive(false); f.setInteractive(true); }
+    hold.resolve(); assert.equal((await pending).ok, false); assert.equal(f.created.length, 1); assert.equal(launcher.visible, true);
+  }
 });
 
-test('closing launcher leaves editor/backend lifetime intact; later launcher is never auto-open', async t => {
-  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor(); f.ready(editor);
-  launcher.close();
-  assert.deepEqual(f.host.windows(), [editor]); assert.equal(f.owners.get(editor).isCurrent(), true);
-  assert.equal(f.host.showProjects(), true);
-  const replacement = f.created.at(-1); await f.host.loadFor(replacement);
-  assert.notEqual(replacement, launcher); assert.equal(f.host.contextFor(replacement).autoOpen, false);
-  assert.equal(f.host.contextFor(replacement).backendId, backendId);
+test('late A admission/readiness does not steal focus from newer B', async t => {
+  const f = fixture(t); await f.launcher(); const base = await f.editor(); f.ready(base);
+  const a = await f.editor(projectB); const projectC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const b = await f.editor(projectC), before = a.focuses;
+  a.isMinimized = () => true; f.ready(b, projectC); f.ready(a, projectB);
+  assert.equal(a.focuses, before); assert.equal(a.inactiveShows > 0, true); assert.equal(f.events.includes('editor:restore'), false);
 });
 
-test('closed/replaced owners cannot publish ready, reveal a window, or report a late failed load', async t => {
-  const held = Promise.withResolvers(), errors = [];
-  const f = fixture(t, { create(window) { if (window.creation.role === 'editor') window.loading = held; },
-    onLoadError: error => errors.push(error) });
-  await f.launcher(); f.host.openProject(projectA);
-  const old = f.created.at(-1); await tick();
-  const oldRequest = { action: 'editor-status', contextId: f.host.contextFor(old).contextId, projectId: projectA, phase: 'ready' };
-  old.finishClose();
-  f.host.openProject(projectB); const replacement = f.created.at(-1);
-  assert.throws(() => f.host.dispatch(f.event(old), oldRequest), /sender/);
-  old.emit('ready-to-show'); held.reject(new Error('late old load'));
-  await f.host.loadFor(old); await f.host.loadFor(replacement).catch(() => {});
-  assert.equal(old.visible, false); assert.equal(f.host.contextFor(replacement).editorProjectId, projectB);
-  // The shared deferred also rejects the current replacement's load; only that
-  // exact current owner is allowed to report its own failure.
-  assert.equal(errors.length, 1);
+test('settings is one independent owner and entry intents target an editor rather than reveal launcher', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor();
+  assert.equal(f.host.showSettings('agent'), true); const settings = f.created.at(-1); await f.host.loadFor(settings);
+  assert.equal(f.host.contextFor(settings).role, 'settings'); assert.equal(f.host.showSettings('comfy'), true);
+  assert.equal(f.created.at(-1), settings); assert.equal(f.host.contextFor(settings).settingsSlot, 'comfy');
+  assert.equal(f.host.contextFor(launcher).settingsSlot, null); assert.equal(launcher.visible, false);
+  assert.equal(f.host.requestProjectEntry('new', a), true); assert.equal(f.host.contextFor(a).entryMode, 'new');
+  assert.equal((await f.open(projectB, settings)).ok, false);
+  a.finishClose(); assert.equal(launcher.visible, true); assert.equal(settings.destroyed, false);
 });
 
-test('same-window successful navigation supersedes a late initial-load rejection', async t => {
-  const held = Promise.withResolvers(), errors = [];
-  const f = fixture(t, { create(window) { if (window.creation.role === 'editor') window.loading = held; },
-    onLoadError: error => errors.push(error) });
-  const launcher = await f.launcher(); f.host.openProject(projectA);
-  const editor = f.created.at(-1), originalLoad = f.host.loadFor(editor);
-  await tick(); f.ready(editor);
-  const previous = f.host.contextFor(editor).contextId;
-  editor.navigate(editorUrl(projectA));
-  assert.notEqual(f.host.contextFor(editor).contextId, previous);
-  assert.equal(f.ready(editor), true);
-  const shows = launcher.shows;
-  held.reject(Object.assign(new Error('old document aborted'), { code: 'ERR_ABORTED' }));
-  await originalLoad;
-  assert.equal(f.host.contextFor(editor).editorPhase, 'ready');
-  assert.equal(launcher.shows, shows); assert.deepEqual(errors, []);
+test('actual last editor closure reveals launcher once and preserves settings', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  const before = launcher.shows;
+  a.finishClose(); assert.equal(launcher.visible, false); assert.equal(launcher.shows, before);
+  b.holdClose = true; f.host.closeStateChanged(b, 'closing'); b.close();
+  assert.equal((await f.open(projectB)).reason, 'busy'); assert.equal(f.host.contextFor(launcher).editorCount, 1);
+  f.host.closeStateChanged(b, 'retained'); assert.equal((await f.open(projectB)).reason, 'already-open');
+  f.host.closeStateChanged(b, 'closing'); b.finishClose();
+  assert.equal(launcher.visible, true); assert.equal(launcher.shows, before + 1); assert.equal(f.host.contextFor(launcher).autoOpen, false);
+});
+
+test('reload rotates exact document capture but never immutable project binding', async t => {
+  const f = fixture(t); await f.launcher(); const a = await f.editor(); f.ready(a);
+  const capture = f.host.ownerForContents(a.webContents), stable = f.owners.get(a), before = f.host.contextFor(a);
+  a.navigate(editorUrl(projectA));
+  assert.equal(capture.isCurrent(), false); assert.equal(stable.isCurrent(), true);
+  assert.notEqual(f.host.contextFor(a).contextId, before.contextId); assert.equal(f.host.contextFor(a).windowId, before.windowId);
+  assert.equal(f.host.contextFor(a).initialProjectId, projectA); assert.equal(f.ready(a), true);
+});
+
+test('failed editor owns a visible failure surface while launcher remains hidden', async t => {
+  const errors = [], hold = Promise.withResolvers();
+  const f = fixture(t, { create(window) { if (window.creation.role === 'editor') window.loading = hold; }, onLoadError: error => errors.push(error) });
+  const launcher = await f.launcher(); await f.open(projectA); const a = f.created.at(-1), load = f.host.loadFor(a);
+  await tick(); hold.reject(new Error('load failed')); await assert.rejects(load, /load failed/);
+  assert.equal(errors.length, 1); assert.equal(f.host.contextFor(a).editorPhase, 'failed'); assert.equal(a.visible, true); assert.equal(launcher.visible, false);
+  assert.equal((await f.open(projectA)).targetWindowId, f.host.contextFor(a).windowId); assert.equal(f.created.length, 2);
+});
+
+test('reload supersedes late initial load rejection without changing current ready state', async t => {
+  const errors = [], hold = Promise.withResolvers();
+  const f = fixture(t, { create(window) { if (window.creation.role === 'editor') window.loading = hold; }, onLoadError: error => errors.push(error) });
+  await f.launcher(); await f.open(projectA); const a = f.created.at(-1), original = f.host.loadFor(a);
+  await tick(); a.navigate(editorUrl(projectA)); f.ready(a); hold.reject(new Error('old load')); await original;
+  assert.equal(f.host.contextFor(a).editorPhase, 'ready'); assert.equal(errors.length, 0);
+});
+
+test('latest explicit ready selection alone reaches the launcher locator and closing/reload revoke it', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor();
+  const first = f.host.contextFor(launcher).selectionVersion; const b = await f.editor(projectB);
+  assert.equal(f.host.contextFor(launcher).selectionVersion > first, true); assert.equal(f.host.contextFor(launcher).selectionProjectId, null);
+  f.ready(a); assert.equal(f.host.contextFor(launcher).selectionProjectId, null);
+  f.ready(b, projectB); assert.equal(f.host.contextFor(launcher).selectionProjectId, projectB);
+  f.host.closeStateChanged(b, 'closing'); assert.equal(f.host.contextFor(launcher).selectionProjectId, null);
+  f.host.closeStateChanged(b, 'retained'); assert.equal(f.host.contextFor(launcher).selectionProjectId, null);
+  await f.open(projectA); assert.equal(f.host.contextFor(launcher).selectionProjectId, projectA);
+  a.navigate(editorUrl(projectA)); f.ready(a); assert.equal(f.host.contextFor(launcher).selectionProjectId, null);
 });
 
 test('quit fence rejects creation/reveal immediately but does not revoke native owner identity', async t => {
@@ -243,7 +235,7 @@ test('quit fence rejects creation/reveal immediately but does not revoke native 
   f.setInteractive(false);
   const editorShows = editor.shows, launcherShows = launcher.shows;
   assert.equal(f.host.ensureLauncher(), null);
-  assert.equal(f.host.openProject(projectB).reason, 'busy');
+  assert.equal((await f.open(projectB)).reason, 'busy');
   assert.equal(f.host.showProjects(), false); assert.equal(f.host.showSettings('agent'), false);
   assert.equal(f.owners.get(editor).isCurrent(), true);
   assert.equal(f.host.contextFor(launcher).quitting, true);
@@ -261,7 +253,7 @@ test('superseded backend identity rejects stale load and bridge callbacks', asyn
   launcher.emit('ready-to-show');
   assert.equal(launcher.shows, shows); assert.equal(f.owners.get(launcher).isCurrent(), false);
   assert.equal(f.host.ensureLauncher(), null);
-  assert.equal(f.host.openProject(projectA).reason, 'unavailable');
+  assert.throws(() => f.open(projectA));
   assert.throws(() => f.invoke(launcher, { action: 'describe' }), /sender/);
 });
 
@@ -275,7 +267,7 @@ test('Quit closes source synchronously first, waits for every actual closed, the
   const pending = quit.request(editor);
   assert.equal(quit.state, 'requesting'); assert.equal(editor.closeCalls, 1); assert.equal(launcher.closeCalls, 0);
   assert.equal(quit.request(), pending); assert.equal(stops, 0);
-  assert.equal(f.host.openProject(projectB).reason, 'busy');
+  assert.equal((await f.open(projectB)).reason, 'busy');
   editor.finishClose();
   assert.equal(launcher.closeCalls, 1); assert.equal(stops, 0); assert.equal(f.created.length, 2);
   launcher.finishClose(); assert.equal(stops, 0);
@@ -294,7 +286,7 @@ test('unrelated or replaced owner cancellation cannot cancel the active exact-wi
   assert.equal(quit.cancel(editor), true); assert.equal(await first, false);
   assert.equal(quit.state, 'idle'); assert.equal(stops, 0);
   editor.finishClose();
-  f.host.openProject(projectB); const replacement = f.created.at(-1); await f.host.loadFor(replacement);
+  await f.open(projectB); const replacement = f.created.at(-1); await f.host.loadFor(replacement);
   replacement.holdClose = true;
   const second = quit.request(replacement);
   assert.equal(quit.cancel(editor), false);
@@ -349,7 +341,7 @@ test('failed stop does not finish or create windows; invalid source cannot start
 test('destroyed handles awaiting actual closed retain slots and keep backend Quit fenced', async t => {
   const f = fixture(t), launcher = await f.launcher(), editor = await f.editor();
   editor.destroyed = true;
-  assert.equal(f.host.openProject(projectB).reason, 'busy');
+  assert.equal((await f.open(projectA)).reason, 'busy');
   assert.equal(f.host.windows().includes(editor), true);
   let stops = 0;
   const quit = new MultiWindowQuitCoordinator({ getWindows: f.host.windows, stop() { stops++; }, finish() {},
@@ -371,14 +363,14 @@ test('restart uses P0 closure order, stops after actual closed and starts only a
     onStateChange: state => f.setInteractive(state === 'idle') });
   const pending = restart.request(editor);
   assert.equal(restart.state, 'requesting'); assert.equal(editor.closeCalls, 1); assert.equal(launcher.closeCalls, 0);
-  assert.equal(f.host.openProject(projectB).reason, 'busy');
+  assert.equal((await f.open(projectB)).reason, 'busy');
   editor.finishClose(); assert.equal(launcher.closeCalls, 1); assert.equal(stopCalls, 0);
   launcher.finishClose(); await tick();
   assert.equal(stopCalls, 1); assert.equal(startCalls, 0); assert.equal(restart.state, 'stopping');
   assert.equal(restart.cancelForQuit(), false, 'stop/start cannot overlap a Quit drain');
   stopped.resolve(); assert.equal(await pending, true);
   assert.equal(startCalls, 1); assert.equal(restart.state, 'idle');
-  assert.equal(f.events.some(event => event.endsWith(':hide')), false); assert.equal(f.created.length, 2);
+  assert.equal(f.events.some(event => event.endsWith(':hide')), true); assert.equal(f.created.length, 2);
 });
 
 test('Quit can synchronously supersede a requesting restart, without parallel stop/start', async t => {
@@ -504,16 +496,163 @@ test('queued Quit survives failed restart stop, then reports its own failure and
 });
 
 
-test('explicit projects intent advances the existing settings version even when its slot was already null', async t => {
+test('fresh entry intents advance only their target entry version and never settings form state', async t => {
   const f = fixture(t), launcher = await f.launcher();
-  const first = f.host.contextFor(launcher).settingsVersion;
-  assert.equal(f.host.showProjects(), true);
-  assert.equal(f.host.contextFor(launcher).settingsVersion, first + 1);
-  assert.equal(f.host.contextFor(launcher).settingsSlot, null);
-  assert.equal(f.host.showProjects(), true);
-  assert.equal(f.host.contextFor(launcher).settingsVersion, first + 2);
-  assert.equal(f.host.showSettings('agent'), true);
-  assert.equal(f.host.contextFor(launcher).settingsVersion, first + 3);
-  assert.equal(f.host.showProjects(), true);
-  assert.equal(f.host.contextFor(launcher).settingsVersion, first + 4);
+  const first = f.host.contextFor(launcher).entryVersion;
+  assert.equal(f.host.showProjects(), true); assert.equal(f.host.contextFor(launcher).entryVersion, first + 1);
+  assert.equal(f.host.requestProjectEntry('new'), true); assert.equal(f.host.contextFor(launcher).entryVersion, first + 2);
+  assert.equal(f.host.contextFor(launcher).settingsVersion, 0);
+  assert.equal(f.host.showSettings('agent'), true); const settings = f.created.at(-1); await f.host.loadFor(settings);
+  assert.equal(f.host.contextFor(settings).settingsVersion, 1); assert.equal(f.host.contextFor(settings).entryVersion, 0);
+});
+
+test('out-of-order independent entry admissions preserve newer focus and selection intent', async t => {
+  const held = Promise.withResolvers();
+  const projectC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', projectD = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const f = fixture(t, { consume: async (_owner, entryToken, projectId) => {
+    if (projectId === projectC) await held.promise;
+    return { version: 1, entryToken, projectId, accepted: true };
+  } });
+  const launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  const openingC = f.open(projectC, a); await f.open(projectD, b);
+  const d = f.created.at(-1); await f.host.loadFor(d); f.ready(d, projectD);
+  const dFocus = d.focuses; held.resolve(); await openingC;
+  const c = f.created.at(-1); await f.host.loadFor(c); f.ready(c, projectC);
+  assert.equal(c.focuses, 0); assert.equal(c.inactiveShows > 0, true); assert.equal(d.focuses, dFocus);
+  assert.equal(f.host.contextFor(launcher).selectionProjectId, projectD);
+});
+
+test('cancelled Quit does not revive pre-fence readiness; fresh selection may reveal again', async t => {
+  const f = fixture(t); await f.launcher(); const a = await f.editor();
+  const count = a.shows + a.inactiveShows;
+  f.setInteractive(false); f.setInteractive(true); f.ready(a); a.emit('ready-to-show');
+  assert.equal(a.shows + a.inactiveShows, count);
+  await f.open(projectA); assert.equal(a.shows + a.inactiveShows, count + 1);
+});
+
+test('P0 close metadata follows its real pending admission and exact cancellation', async t => {
+  const f = fixture(t); await f.launcher(); const a = await f.editor(); f.ready(a);
+  const inspect = Promise.withResolvers();
+  a.webContents.executeJavaScript = () => inspect.promise;
+  const admission = installNativeCloseAdmission(a, { isCurrent: () => f.owners.get(a).isCurrent(),
+    confirmClose: () => false, confirmDiscard: () => false, onBlocked() {}, onCancel() {}, requestQuit() {},
+    onCloseStateChange: state => f.host.closeStateChanged(a, state) });
+  t.after(() => admission.dispose()); a.close();
+  assert.equal(f.host.contextFor(a).editorPhase, 'closing'); assert.equal((await f.open(projectA)).reason, 'busy');
+  inspect.resolve({ version: 1, token: 'exact-close-token', disposition: 'blocked' }); await tick();
+  assert.equal(f.host.contextFor(a).editorPhase, 'ready'); assert.equal(a.destroyed, false);
+});
+
+test('activation focuses the exact editor without opening a picker or revealing launcher', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  const entryA = f.host.contextFor(a).entryVersion, entryB = f.host.contextFor(b).entryVersion, focusA = a.focuses;
+  assert.equal(f.host.activate(a), true); assert.equal(a.focuses, focusA + 1);
+  assert.equal(f.host.contextFor(a).entryVersion, entryA); assert.equal(f.host.contextFor(b).entryVersion, entryB);
+  assert.equal(launcher.visible, false); assert.notEqual(f.host.preferredWindow(launcher), launcher, 'hidden launcher is not a menu reload fallback');
+  f.setInteractive(false); assert.equal(f.host.activate(b), false); assert.equal(f.host.activate(), false);
+});
+
+const locatorSummary = (statusVersion = 1, extra = {}) => ({ version: 1, statusVersion, phase: 'error', uncertain: true,
+  identityBlocked: false, canRetry: true, canRecheck: true, reading: false, rechecked: false, ...extra });
+
+test('locator metadata has one exact launcher owner and settings forwards one version-bound action', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor();
+  f.host.showSettings('agent'); const settings = f.created.at(-1); await f.host.loadFor(settings);
+  const status = locatorSummary();
+  assert.equal(f.invoke(a, { action: 'locator-status', status }), false);
+  assert.equal(f.invoke(settings, { action: 'locator-status', status }), false);
+  assert.equal(f.invoke(launcher, { action: 'locator-status', status }), true);
+  assert.deepEqual(f.host.contextFor(a).locatorStatus, status); assert.deepEqual(f.host.contextFor(settings).locatorStatus, status);
+  assert.equal(f.invoke(a, { action: 'locator-action', locatorAction: 'retry', expectedStatusVersion: 1 }), false);
+  assert.equal(f.invoke(settings, { action: 'locator-action', locatorAction: 'retry', expectedStatusVersion: 0 }), false);
+  assert.equal(f.invoke(settings, { action: 'locator-action', locatorAction: 'retry', expectedStatusVersion: 1 }), true);
+  const intent = f.host.contextFor(launcher).locatorIntent;
+  assert.equal(intent.action, 'retry'); assert.equal(intent.expectedStatusVersion, 1);
+  assert.equal(f.host.contextFor(a).locatorIntent, null); assert.equal(f.host.contextFor(settings).locatorIntent, null);
+  assert.equal(f.invoke(settings, { action: 'locator-action', locatorAction: 'retry', expectedStatusVersion: 1 }), true);
+  assert.equal(f.host.contextFor(launcher).locatorIntent.intentVersion, intent.intentVersion);
+  assert.equal(f.invoke(settings, { action: 'locator-action', locatorAction: 'recheck', expectedStatusVersion: 1 }), false);
+  assert.equal(f.invoke(launcher, { action: 'locator-status', status: locatorSummary(1, { reading: true }) }), false);
+  assert.equal(f.invoke(launcher, { action: 'locator-status', status: locatorSummary(2, { reading: true, canRetry: false, canRecheck: false }) }), true);
+  assert.equal(f.host.contextFor(launcher).locatorIntent, null);
+  assert.equal(f.invoke(settings, { action: 'locator-action', locatorAction: 'retry', expectedStatusVersion: 2 }), false);
+});
+
+test('locator reload revokes old status/action/selection and stale frames cannot republish', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor(); f.ready(a);
+  f.host.showSettings('agent'); const settings = f.created.at(-1); await f.host.loadFor(settings);
+  f.invoke(launcher, { action: 'locator-status', status: locatorSummary() });
+  const oldEvent = f.event(launcher), oldContext = f.host.contextFor(launcher).contextId;
+  launcher.navigate(`${origin}/`);
+  assert.equal(f.host.contextFor(settings).locatorStatus, null); assert.equal(f.host.contextFor(launcher).selectionProjectId, null);
+  assert.equal(f.invoke(settings, { action: 'locator-action', locatorAction: 'retry', expectedStatusVersion: 1 }), false);
+  assert.throws(() => f.host.dispatch(oldEvent, { action: 'locator-status', contextId: oldContext, status: locatorSummary(2) }), /sender/);
+  assert.throws(() => f.host.dispatch(f.event(launcher), { action: 'locator-status', contextId: oldContext, status: locatorSummary(2) }), /Stale/);
+});
+
+test('audio invalidation snapshots precede rotation and only real contents destruction proves owner loss', async t => {
+  const invalidations = [], destroyed = [];
+  const f = fixture(t, { invalidated: owner => invalidations.push({ owner, wasCurrent: owner.isCurrent() }), destroyed: id => destroyed.push(id) });
+  await f.launcher(); const a = await f.editor(), before = f.host.contextFor(a);
+  a.navigate(editorUrl(projectA));
+  const old = invalidations.find(value => value.owner.windowId === before.windowId);
+  assert.ok(old); assert.equal(old.wasCurrent, true); assert.equal(old.owner.contextId, before.contextId); assert.equal(old.owner.isCurrent(), false);
+  assert.deepEqual(destroyed, []); f.host.closeStateChanged(a, 'closing'); a.finishClose(); assert.deepEqual(destroyed, []);
+  a.webContents.emit('destroyed'); a.webContents.emit('destroyed'); assert.deepEqual(destroyed, [before.windowId]);
+});
+
+test('a pre-consume Quit refusal has an exact negative receipt even when invoke ACK is lost', async t => {
+  let consumes = 0;
+  const f = fixture(t, { consume: () => { consumes++; return null; } }), launcher = await f.launcher(), token = randomUUID();
+  f.setInteractive(false); const refused = await f.open(projectA, launcher, token);
+  f.setInteractive(true);
+  assert.equal(refused.reason, 'busy'); assert.equal(consumes, 0);
+  assert.deepEqual(f.host.contextFor(launcher).entryReceipt, { entryToken: token, result: refused });
+  assert.deepEqual(await f.open(projectA, launcher, token), refused); assert.equal(consumes, 0); assert.equal(f.created.length, 1);
+});
+
+test('security or P0 preparation failure retains failed owner without loading application code', async t => {
+  const error = new Error('Synthetic policy installation failure');
+  const f = fixture(t, { prepare(window) { if (window.creation.role === 'editor') throw error; } });
+  const launcher = await f.launcher(); const result = await f.open(projectA), a = f.created.at(-1);
+  assert.equal(result.reason, 'accepted'); assert.equal(result.targetPhase, 'failed');
+  await assert.rejects(f.host.loadFor(a), value => value === error);
+  assert.equal(f.events.includes('editor:load'), false); assert.equal(launcher.visible, false);
+  assert.equal(f.host.contextFor(a).editorPhase, 'failed'); assert.equal(f.host.windows().includes(a), true);
+});
+
+function rejectDestroyedContentsGetter(window) {
+  const contents = window.webContents;
+  Object.defineProperty(window, 'webContents', { get() {
+    if (window.destroyed) throw new TypeError('Object has been destroyed');
+    return contents;
+  } });
+  return contents;
+}
+
+test('destroyed BrowserWindow getter cannot interrupt exact editor closure or release a sibling', async t => {
+  const destroyed = [];
+  const f = fixture(t, { create: rejectDestroyedContentsGetter, destroyed: id => destroyed.push(id) });
+  const launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  f.host.showSettings('agent'); const settings = f.created.at(-1); await f.host.loadFor(settings);
+  const aContents = a.webContents, bContents = b.webContents, aId = f.host.contextFor(a).windowId, bId = f.host.contextFor(b).windowId;
+  assert.doesNotThrow(() => a.finishClose());
+  assert.equal(f.host.windowForContents(aContents), null); assert.equal(f.host.windowForContents(bContents), b);
+  assert.equal(f.host.contextFor(launcher).editorCount, 1); assert.equal(launcher.visible, false); assert.equal(settings.destroyed, false);
+  assert.deepEqual(destroyed, [], 'BrowserWindow.closed is not WebContents destruction evidence');
+  assert.doesNotThrow(() => aContents.emit('destroyed')); aContents.emit('destroyed');
+  assert.deepEqual(destroyed, [aId]); assert.equal(f.host.windowForContents(bContents), b);
+  assert.doesNotThrow(() => b.finishClose()); assert.equal(launcher.visible, true);
+  assert.doesNotThrow(() => bContents.emit('destroyed')); assert.deepEqual(destroyed, [aId, bId]);
+  assert.doesNotThrow(() => f.host.dispose());
+});
+
+test('late contents destroyed after host disposal uses its captured owner without a native getter', async t => {
+  const destroyed = [];
+  const f = fixture(t, { create: rejectDestroyedContentsGetter, destroyed: id => destroyed.push(id) });
+  await f.launcher(); const a = await f.editor(), contents = a.webContents, ownerId = f.host.contextFor(a).windowId;
+  a.destroyed = true;
+  assert.doesNotThrow(() => f.host.dispose()); assert.deepEqual(destroyed, []);
+  assert.doesNotThrow(() => contents.emit('destroyed')); contents.emit('destroyed');
+  assert.deepEqual(destroyed, [ownerId]); assert.equal(f.host.windowForContents(contents), null);
 });

@@ -9,6 +9,10 @@ import { createDesktopStartup } from '../apps/desktop/src/startup.mjs';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.mjs';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.mjs';
 import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
+import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from '../apps/desktop/src/native-audio-preview-host.ts';
+import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-protocol.ts';
+import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-admission.ts';
+import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
@@ -132,7 +136,8 @@ async function harness(t, options = {}) {
     session: { fromPartition() {
       const index = records.sessions.length;
       const value = { cookies: { set: async cookie => { value.cookie = cookie; await options.cookie?.(index); } }, clears: 0,
-        async clearStorageData() { value.clears++; await options.clear?.(index); } };
+        async clearStorageData() { value.clears++; await options.clear?.(index); },
+        webRequest: { onBeforeSendHeaders(fn) { value.beforeSendHeaders = fn; } } };
       records.sessions.push(value); return value;
     } },
     sessionCookie: (url, token) => ({ url, value: token }), secureWebPreferences: value => ({ session: value }), windowChromeOptions: () => ({}),
@@ -149,8 +154,14 @@ async function harness(t, options = {}) {
           error => { records.starts.push({ error }); throw error; }) });
       }
     },
-    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL,
-    ipcMain: { handle(channel, handler) { assert.equal(channel, PROJECT_WINDOW_CHANNEL); records.bridge = handler; } },
+    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
+    createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
+    observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
+    ipcMain: { handle(channel, handler) {
+      assert.ok([PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      records.ipcHandlers ??= new Map(); assert.equal(records.ipcHandlers.has(channel), false); records.ipcHandlers.set(channel, handler);
+      if (channel === PROJECT_WINDOW_CHANNEL) records.bridge = handler; else records.audioBridge = handler;
+    } },
     installNativeCloseAdmission, stopBackendForQuit,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } },
     dialog: { showMessageBox: async (parentOrValue, modalValue) => { const value = modalValue ?? parentOrValue; records.dialogs.push(value); return { response: 0 }; }, showMessageBoxSync: () => 0 },

@@ -7,3 +7,10 @@ contextBridge.exposeInMainWorld('__mioonProjectWindow', createProjectWindowBridg
   on: (channel, listener) => { ipcRenderer.on(channel, listener); },
   removeListener: (channel, listener) => { ipcRenderer.removeListener(channel, listener); },
 }));
+
+import { createNativeAudioPreviewBridge } from './native-audio-preview-preload.ts';
+contextBridge.exposeInMainWorld('__mioonNativeAudioPreview', createNativeAudioPreviewBridge({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+  on: (channel, listener) => { ipcRenderer.on(channel, listener); },
+  removeListener: (channel, listener) => { ipcRenderer.removeListener(channel, listener); },
+}));

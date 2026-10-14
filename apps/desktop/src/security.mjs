@@ -1,4 +1,5 @@
-import {configureTimelineDeliveryDownload, timelineDownloadIdentity} from './timeline-delivery-download.ts';
+import {configureOwnedTimelineDeliveryDownload, timelineDownloadIdentity} from './timeline-delivery-download.ts';
+import {installAssignedProjectNavigation} from './project-window-navigation.ts';
 
 export const COOKIE_NAME = 'mioon_session';
 
@@ -69,12 +70,12 @@ export function installSessionPolicy(session, origin, getWindow, downloads) {
   session.setDevicePermissionHandler(() => false);
   session.setDisplayMediaRequestHandler((_request, callback) => callback({}));
   session.on('will-download', (event, item, webContents) => {
-    configureTimelineDeliveryDownload(event, item, webContents, getWindow(), origin, downloads, isAllowedNavigation);
+    configureOwnedTimelineDeliveryDownload(event, item, webContents, getWindow, origin, downloads, isAllowedNavigation);
   });
   session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: details.resourceType === 'subFrame' || !isAllowedRequest(details.url, origin) }));
 }
 
-export function installWindowPolicy(win, origin) {
+export function installWindowPolicy(win, origin, assignedNavigation) {
   const contents = win.webContents;
   const blockNavigation = (event, target) => { if (!isAllowedNavigation(event.url || target, origin)) event.preventDefault(); };
   contents.on('will-navigate', blockNavigation);
@@ -85,4 +86,5 @@ export function installWindowPolicy(win, origin) {
   });
   contents.on('will-attach-webview', event => event.preventDefault());
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  if (assignedNavigation) return installAssignedProjectNavigation(contents, assignedNavigation);
 }

@@ -13,7 +13,7 @@ import './comfy-image-settings.css';
 
 const noop = () => {};
 /** Independent local profile. Viewing and saving never check or start the runtime. */
-export default function ComfyImageSettings({ active = false, contextKey, client, onSelectSlot = noop, onClose = noop, onSnapshot = noop, onDirtyChange = noop, beforeClose, closeLabel, onNavigationStateChange }) {
+export default function ComfyImageSettings({ active = false, contextKey, client, onSelectSlot = noop, onRequestSelectSlot, onClose = noop, onSnapshot = noop, onDirtyChange = noop, beforeClose, closeLabel, onNavigationStateChange }) {
   const [state, setState] = useState(initialComfyImageSettingsState);
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
   const ancestorVisible = useWorkspaceVisibility(), visible = ancestorVisible && active && pageVisible;
@@ -51,7 +51,7 @@ export default function ComfyImageSettings({ active = false, contextKey, client,
   const checkedModels = check?.checkpoints || [], hasSavedModel = draft?.model && !checkedModels.includes(draft.model);
   return <section className="image-settings-page comfy-image-settings-page" data-testid="comfy-image-settings-page" data-phase={state.phase} hidden={!visible} inert={!visible} aria-label="本地 ComfyUI 图像设置">
     <header className="image-generation-heading"><div><span className="image-generation-eyebrow">IMAGE · LOCAL CONNECTION</span><h2>图像设置</h2><p>本地 ComfyUI · 逐次准备并审批</p></div><Button type="button" variant="ghost" className="button quiet" data-testid="comfy-image-settings-back" aria-label={closeLabel} disabled={!visible} onClick={() => leave(onClose, beforeClose)}><Icon name="left" size={14} />{closeLabel ?? '返回'}</Button></header>
-    <div className="image-settings-slots" role="group" aria-label="图像连接槽位">{[['official', 'OpenAI 官方'], ['custom', '自定义兼容连接'], ['comfy', '本地 ComfyUI']].map(([slot, label]) => <Button key={slot} type="button" variant="ghost" className="button" data-testid={`comfy-image-settings-slot-${slot}`} aria-pressed={slot === 'comfy'} disabled={!visible} onClick={() => { if (slot !== 'comfy') leave(() => onSelectSlot(slot)); }}>{label}</Button>)}</div>
+    <div className="image-settings-slots" role="group" aria-label="图像连接槽位">{[['official', 'OpenAI 官方'], ['custom', '自定义兼容连接'], ['comfy', '本地 ComfyUI']].map(([slot, label]) => <Button key={slot} type="button" variant="ghost" className="button" data-testid={`comfy-image-settings-slot-${slot}`} aria-pressed={slot === 'comfy'} disabled={!visible} onClick={() => { if (slot !== 'comfy') { if (onRequestSelectSlot) { if (usable()) onRequestSelectSlot(slot); } else leave(() => onSelectSlot(slot)); } }}>{label}</Button>)}</div>
     <form className="image-settings-form" noValidate autoComplete="off" onSubmit={event => { event.preventDefault(); if (usable()) void session.current?.save(); }}>
       <p className="image-settings-help">仅连接你已安装并启动的 ComfyUI v0.39.0。不会安装或启动运行时，不会下载模型或自定义节点。打开设置和保存均不探测服务。</p>
       {!snapshot ? <div role="status"><p>{state.phase === 'loading' ? '正在读取本地连接设置…' : state.message}</p>{state.phase !== 'loading' && <Button type="button" variant="ghost" className="button" data-testid="comfy-image-settings-load" disabled={!visible} onClick={() => { if (usable()) void session.current?.load(); }}>重新读取</Button>}</div> : <>

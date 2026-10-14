@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { transformSync } from 'esbuild';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +37,22 @@ function installRegistrySource(source) {
   return result;
 }
 
+// The sole local Dialog extension is the optional, default-off portal lifetime
+// prop. Undo exactly these three reviewed edits before checking every byte and
+// the pinned upstream hash. No other component or source range is exempted.
+function normalizeDialogKeepMounted(source) {
+  const substitutions = [
+    ['  showCloseButton = true,\n  keepMounted = false,\n  ...props', '  showCloseButton = true,\n  ...props'],
+    ['  showCloseButton?: boolean\n  keepMounted?: boolean\n})', '  showCloseButton?: boolean\n})'],
+    ['    <DialogPortal keepMounted={keepMounted}>', '    <DialogPortal>'],
+  ];
+  for (const [local, upstream] of substitutions) {
+    assert.equal(source.split(local).length - 1, 1, `Exactly one approved Dialog edit: ${local}`);
+    source = source.replace(local, upstream);
+  }
+  return source;
+}
+
 test('all fifteen shadcn base-nova components match the pinned official source', async t => {
   assert.equal(manifest.style, 'base-nova');
   assert.equal(manifest.installationNamespace, '@mioon/ui');
@@ -52,11 +70,50 @@ test('all fifteen shadcn base-nova components match the pinned official source',
       assert.ok(upstream, 'registry contains the original source file');
       assert.equal(sha256(upstream), item.sourceSha256);
       const installed = component(item.name);
-      assert.equal(installed, installRegistrySource(upstream));
-      assert.equal(sha256(installed), item.vendoredSha256);
+      const pinned = item.name === 'dialog' ? normalizeDialogKeepMounted(installed) : installed;
+      assert.equal(pinned, installRegistrySource(upstream));
+      assert.equal(sha256(pinned), item.vendoredSha256);
       assert.doesNotMatch(installed, /IconPlaceholder|@\/registry\/|from "cn"|@radix-ui/);
     });
   }
+});
+
+test('DialogContent defaults to the upstream portal lifetime and forwards only explicit keepMounted to the real portal boundary', () => {
+  const require = createRequire(resolve(ui, 'package.json'));
+  const React = require('react');
+  const { Dialog: primitives } = require('@base-ui/react/dialog');
+  const module = { exports: {} };
+  Function('require', 'module', 'exports', transformSync(component('dialog'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
+    if (name === 'react') return React;
+    if (name === '@base-ui/react/dialog') return { Dialog: primitives };
+    if (name === '@mioon/ui/lib/utils') return { cn: (...values) => values.filter(Boolean).join(' ') };
+    if (name === '@mioon/ui/components/button') return { Button: props => React.createElement('button', props) };
+    if (name === 'lucide-react') return { XIcon: () => null };
+    assert.fail(`Unexpected Dialog dependency: ${name}`);
+  }, module, module.exports);
+  const { DialogContent, DialogPortal } = module.exports;
+  const child = React.createElement('input', { defaultValue: 'retained form draft' });
+  const onKeyDown = () => {}, ref = React.createRef();
+  for (const keepMounted of [undefined, false, true]) {
+    const tree = DialogContent({ children: child, showCloseButton: false, hidden: true, inert: true, onKeyDown, ref,
+      ...(keepMounted === undefined ? {} : { keepMounted }) });
+    assert.equal(tree.type, DialogPortal);
+    assert.equal(tree.props.keepMounted, keepMounted ?? false);
+    const portal = tree.type(tree.props);
+    assert.equal(portal.type, primitives.Portal);
+    assert.equal(portal.props.keepMounted, keepMounted ?? false);
+    assert.equal(portal.props['data-slot'], 'dialog-portal');
+    const [overlay, popup] = tree.props.children;
+    assert.equal(overlay.type(overlay.props).type, primitives.Backdrop);
+    assert.equal(popup.type, primitives.Popup);
+    assert.equal(Object.hasOwn(popup.props, 'keepMounted'), false, 'Portal-only lifetime prop must not leak onto the Popup DOM');
+    assert.equal(popup.props.children[0], child); assert.equal(popup.props.children[1], false);
+    assert.equal(popup.props.hidden, true); assert.equal(popup.props.inert, true);
+    assert.equal(popup.props.onKeyDown, onKeyDown); assert.equal(popup.props.ref, ref);
+  }
+  const ordinary = DialogContent({ children: child });
+  assert.equal(ordinary.props.keepMounted, false);
+  assert.equal(ordinary.props.children[1].props.children[1].type, primitives.Close, 'Existing callers retain the upstream close control');
 });
 
 test('behavioral components use real Base UI primitives', () => {
