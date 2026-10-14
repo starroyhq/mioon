@@ -1,3 +1,4 @@
+import {isTimelineColourPlanSnapshot} from './timeline-colour.ts';
 import {isTimelineExportRangeSnapshot} from './timeline-export-range.ts';
 import {isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {z} from 'zod';
@@ -53,7 +54,7 @@ export function isTimelineExportDelivery(delivery,timeline,exportSettings){
 // Passing an exportSettings key (including undefined) binds its exact presence.
 // Workers omit that option and validate the frozen deterministic profile alone.
 export function isTimelineExportSnapshot(snapshot,options={}){
- if(!object(snapshot)||!isTimelineDeliveryNameSnapshot(snapshot,options)||!isTimelineExportRangeSnapshot(snapshot,options))return false;
+ if(!object(snapshot)||!isTimelineColourPlanSnapshot(snapshot)||!isTimelineDeliveryNameSnapshot(snapshot,options)||!isTimelineExportRangeSnapshot(snapshot,options))return false;
  const present=Object.hasOwn(snapshot,'delivery');
  if(Object.hasOwn(options,'exportSettings')&&(options.exportSettings!==undefined)!==present)return false;
  if(!present)return true;

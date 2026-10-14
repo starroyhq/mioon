@@ -1,5 +1,6 @@
 import {timelineExportRangeFields} from '@mioon/contracts/timeline-export-range';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
+import {projectTimelineColourPlan} from '../../contracts/src/timeline-colour.ts';
 import {AppError,sourceFrameCount,getTimelineFadeIssue,timelineOutputPreset,getTimelineSubtitleIssue,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,resolveTimelineExportDelivery} from '@mioon/contracts';
 
 const integer=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
@@ -41,12 +42,15 @@ export function validateTimeline(timeline,assets,{structureOnly=false}={}){
 // Keep this projection and source order identical for both new exports and
 // preflight digests. Omitted legacy fields stay omitted in frozen responses.
 export function freezeTimelineSnapshot(timeline,assets,exportSettings,deliveryInput={}){
- return JSON.parse(JSON.stringify({timeline,...timelineDeliveryNameFields(deliveryInput),...timelineExportRangeFields(deliveryInput),...(exportSettings===undefined?{}:{delivery:resolveTimelineExportDelivery(timeline,exportSettings)}),...(timeline.subtitles?.cues.length?{subtitleProfile:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256}}:{}),assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
+ const snapshot=JSON.parse(JSON.stringify({timeline,...timelineDeliveryNameFields(deliveryInput),...timelineExportRangeFields(deliveryInput),...(exportSettings===undefined?{}:{delivery:resolveTimelineExportDelivery(timeline,exportSettings)}),...(timeline.subtitles?.cues.length?{subtitleProfile:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256}}:{}),assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
   const source=assets.get(id);
   if(!source)throw Object.assign(Error('Timeline snapshot does not match managed asset'),{code:'TIMELINE_SOURCE_UNAVAILABLE'});
   return {id:source.id,sha256:source.sha256,mimeType:source.mimeType,duration:source.duration,width:source.width,height:source.height,
    hasAudio:typeof source.hasAudio==='boolean'?source.hasAudio:null,relativePath:source.relativePath};
  })}));
+ const colourPlan=projectTimelineColourPlan(snapshot);
+ if(colourPlan!==undefined)snapshot.colourPlan=colourPlan;
+ return snapshot;
 }
 
 export const TIMELINE_LIMITS=Object.freeze({fps:30,width:720,height:1280,tracks:12,clips:100,durationFrames:18000});

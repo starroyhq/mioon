@@ -1,3 +1,4 @@
+import {isTimelineClipColour} from './timeline-colour.ts';
 import {isTimelineSubtitles} from './timeline-subtitles.mjs';
 import {timelineOutputPreset} from './timeline-format.mjs';
 // Saved timeline acknowledgements are complete records, never patches. These
@@ -28,21 +29,22 @@ export function isTimelineRecord(value, {projectId} = {}) {
       !integer(value.durationFrames, 0, 18000) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
       !Array.isArray(value.tracks) || value.tracks.length < 1 || value.tracks.length > 12 ||
       !Array.isArray(value.clips) || value.clips.length > 100) return false;
-  const tracks = new Map(), ids = new Set();
+  const tracks = new Map(), trackKinds = new Map(), ids = new Set();
   for (const track of value.tracks) {
     if (!fields(track, trackFields) || !uuid(track.id) || tracks.has(track.id) || !text(track.name, 150) ||
         !['video', 'audio'].includes(track.kind) || !integer(track.orderIndex, 0, 11) ||
         typeof track.hidden !== 'boolean' || typeof track.muted !== 'boolean' || (track.kind === 'audio' && track.hidden)) return false;
-    tracks.set(track.id, []);
+    tracks.set(track.id, []); trackKinds.set(track.id, track.kind);
   }
   let duration = 0;
   for (const clip of value.clips) {
-    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames']) ||
+    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour']) ||
         !uuid(clip.id) || ids.has(clip.id) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
         !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
         clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
         !Number.isFinite(clip.gain) || clip.gain < 0 || clip.gain > 2 ||
-        provenance.some(key => Object.hasOwn(clip, key) && !uuid(clip[key]))) return false;
+        provenance.some(key => Object.hasOwn(clip, key) && !uuid(clip[key])) ||
+        Object.hasOwn(clip, 'colour') && (!isTimelineClipColour(clip.colour) || clip.colour !== null && trackKinds.get(clip.trackId) !== 'video')) return false;
     const rect = clip.rect;
     if (!fields(rect, ['x', 'y', 'width', 'height']) || !integer(rect.x, 0, value.width-2) || !integer(rect.y, 0, value.height-2) ||
         !integer(rect.width, 2, value.width) || !integer(rect.height, 2, value.height) ||
@@ -68,7 +70,7 @@ export function isTimelineReplacementResponse(value, input) {
       !isTimelineRecord(value, {projectId: input.projectId}) || value.revision !== input.expectedRevision + 1 ||
       encoder.encode(JSON.stringify(value)).byteLength > TIMELINE_REPLACEMENT_RESPONSE_BYTES) return false;
   const target = value.clips.find(clip => clip.id === input.clipId);
-  if (!target || target.assetId !== input.assetId || Object.hasOwn(target, 'jobId')) return false;
+  if (!target || target.assetId !== input.assetId || Object.hasOwn(target, 'jobId') || target.colour != null && target.colour.source !== null) return false;
   if (input.versionId === undefined) return provenance.every(key => !Object.hasOwn(target, key));
   return target.versionId === input.versionId && uuid(target.shotId);
 }

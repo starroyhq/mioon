@@ -5,6 +5,8 @@ import { transformSync } from 'esbuild';
 import * as audio from '../apps/web/src/clip-audio-state.js';
 import * as timelineFormat from '../apps/web/src/timeline-format-state.js';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
+import * as clipLut from '../apps/web/src/clip-lut-state.ts';
+import { createClipLutRecovery } from '../apps/web/src/clip-lut-recovery.ts';
 import { isTimelineRecord } from '@mioon/contracts';
 
 const id = n => `77000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -22,7 +24,7 @@ const equalDeps = (a, b) => a?.length === b?.length && a.every((value, i) => Obj
 
 // Run the real component tree and callbacks, with the same dependency-free
 // hook fixture used by other inspector tests. Native layout is separate QA.
-async function inspectorHarness(patch = {}) {
+async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('No LUT RPC expected'); }) {
   const slots = [], modules = new Map(), dirtyEvents = [], saves = [];
   let cursor = 0, effects = [], layouts = [], tree, needsRender = false, unmounted = false;
   let props = { clip: clip(), timeline: timeline(), asset: asset(), onDirtyChange: value => dirtyEvents.push(value), onSave: async (id, saved, revision) => { saves.push({ id, patch: structuredClone(saved), revision }); const next = timeline(clip(saved), revision + 1); props = { ...props, clip: next.clips[0], timeline: next }; return next; }, onRemove() {}, onPreview() {}, busy: false, ...patch };
@@ -54,6 +56,9 @@ async function inspectorHarness(patch = {}) {
       if (id === './clip-audio-state.js') return audio;
       if (id === './timeline-format-state.js') return timelineFormat;
       if (id === './clip-draft-state.ts') return clipDraft;
+      if (id === './clip-lut-state.ts') return { ...clipLut, createClipLutController: options => clipLut.createClipLutController({ ...options, recovery: createClipLutRecovery({ storage: () => ({ getItem: () => null, setItem() {}, removeItem() {} }), lock: async (_name, action) => action() }) }) };
+      if (id === './ClipLutControls.tsx') return load('ClipLutControls.tsx');
+      if (id === './api.js') return { rpc: lutRpc };
       if (id === './clip-draft-client.ts') return { createClipDraftClient: () => client };
       if (id === './clip-draft-hook.ts') return load('clip-draft-hook.ts');
       if (id === './ClipDraftRecovery.tsx') return load('ClipDraftRecovery.tsx');
@@ -244,4 +249,36 @@ test('source playback copy stays explicit about dry audio and the shared render 
   const source = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
   assert.match(source, /源素材原声 · 不应用片段音量或淡入\/淡出/);
   assert.match(source, /音频淡入\/淡出均使用与导出相同的本地渲染/);
+});
+
+test('real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline', async () => {
+  const projectId = id(1), assetId = id(3), lutId = id(90), rpcCalls = [];
+  const resource = { id: lutId, projectId, name: 'Creative.cube', kind: 'cube3d', sha256: 'c'.repeat(64), sizeBytes: 100, profile: 'mioon-cube3d-normalized-tetrahedral-v1',
+    metadata: { profileId: 'mioon-cube3d-normalized-tetrahedral-v1', size: 2, title: null, domainMin: [0, 0, 0], domainMax: [1, 1, 1], rowCount: 8, rowOrder: 'red-fastest', interpolation: 'tetrahedral', numericPrecision: 'float64' },
+    createdAt: stamp, colourCompatibility: 'unverified', renderBinding: 'not_implemented' };
+  const h = await inspectorHarness({}, async (operation, input) => {
+    rpcCalls.push({ operation, input });
+    if (operation === 'timeline.colour.source.inspect') return { projectId, assetId, assetSha256: 'a'.repeat(64), streamIndex: 0, evidence: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'limited', pixelFormat: 'yuv420p', bitDepth: 8, hdrMetadata: false }, status: 'compatible', reason: null };
+    if (operation === 'lut.list') return { projectId, items: [resource], nextAfter: null };
+    if (operation === 'lut.inspect') return { resource, integrity: 'verified' };
+    throw Error(`Unexpected ${operation}`);
+  });
+  assert.equal(h.saves.length, 0); assert.equal(rpcCalls.length, 0);
+  h.find('open-clip-lut').props.onClick(); await tick(); h.render();
+  h.edit('clip-lut-source-range', 'limited');
+  h.find('clip-lut-source-declaration').props.onChange({ target: { checked: true } }); h.render();
+  assert.equal(h.find('confirm-clip-colour-source').props.disabled, false);
+  h.find('confirm-clip-colour-source').props.onClick(); h.render();
+  assert.equal(h.saves.length, 0, 'Explicit source confirmation is still a local draft');
+  h.edit('clip-lut-resource', lutId); await tick(); h.render();
+  h.find('clip-lut-look-declaration').props.onChange({ target: { checked: true } }); h.render();
+  h.find('apply-clip-lut').props.onClick(); h.render(); h.edit('clip-lut-strength', '37');
+  h.find('clip-lut-enabled').props.onChange({ target: { checked: false } }); h.render();
+  assert.equal(h.saves.length, 0); assert.equal(h.find('save-clip').props.disabled, false);
+  await h.submit(); await tick(); h.render();
+  assert.equal(h.saves.length, 1); const saved = h.saves[0].patch.colour;
+  assert.equal(saved.profileId, 'mioon-rec709-sdr-clip-v1'); assert.equal(saved.source.assetSha256, 'a'.repeat(64)); assert.equal(saved.source.range, 'limited');
+  assert.deepEqual(saved.look, { resourceId: lutId, resourceSha256: resource.sha256, resourceProfile: resource.profile, purpose: 'rec709-sdr-creative', declaredBy: 'user', enabled: false, strength: 0.37 });
+  assert.equal(h.find('save-clip').props.disabled, true);
+  assert.deepEqual(rpcCalls.map(call => call.operation), ['timeline.colour.source.inspect', 'lut.list', 'lut.inspect']);
 });

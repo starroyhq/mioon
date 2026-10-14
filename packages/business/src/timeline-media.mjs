@@ -16,6 +16,9 @@ import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {createTimelineFloatStaging} from './timeline-float-staging.ts';
 import {planTimelineExportRange,validateTimelineExportRangeOutputStart} from './timeline-export-range-plan.ts';
+import {isTimelineColourSnapshot} from '../../contracts/src/timeline-colour.ts';
+import {prepareTimelineColourLuts,timelineColourInputFilter,TIMELINE_COLOUR_OUTPUT_FILTER,TIMELINE_COLOUR_OUTPUT_ARGS} from './timeline-colour-lut.ts';
+import {validateTimelineColourSourceInterpretation} from './timeline-colour-source.ts';
 
 const FPS=30,SAMPLES_PER_FRAME=1600;
 const checkFloatAudio=createTimelineFloatAudioChecker({run,runStreaming,withProbePermit,checkMediaEffect,terminationMs:MEDIA_TERMINATION_POLICY.graceMs+MEDIA_TERMINATION_POLICY.reapMs});
@@ -75,11 +78,13 @@ function ownedTimelineWork(destination,beforeEffect,signal){
 // clip edges so even a 100-clip / 10-minute composition only opens <=12 media
 // inputs at once. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
-export async function renderTimeline(snapshot,assets,destination,{signal,beforeEncode,beforeEffect}={}){
+export async function renderTimeline(snapshot,assets,destination,{signal,beforeEncode,beforeEffect,readLut}={}){
  checkMediaEffect(beforeEffect,signal);
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
  validateSubtitleSnapshotProfile(snapshot);
- if(!isTimelineExportSnapshot(snapshot))throw Object.assign(Error('The saved export delivery profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ if(!isTimelineExportSnapshot(snapshot)||!isTimelineColourSnapshot(snapshot))throw Object.assign(Error('The saved export delivery profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ const colour=snapshot.colourPlan,colourClips=new Map((colour?.clips??[]).map(item=>[item.clipId,item]));
+ if(colour)for(const item of colour.clips){const clip=timeline.clips.find(value=>value.id===item.clipId),asset=assets.get(item.assetId);validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:asset?.colourProbe,assetSha256:asset?.sha256,streamIndex:asset?.videoStreamIndex});}
  const delivery=snapshot.delivery,plan=planTimelineExportRange(snapshot),floatChecked=delivery?.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID;
  // Never trust an earlier capability report as an admission token. Legacy and
  // omitted-settings snapshots keep their original no-probe rendering path.
@@ -89,13 +94,23 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
  // The validated frozen snapshot owns output geometry. Keep the editing and
  // audio timebase fixed while portrait, landscape and square share this path.
  const {width,height}=timeline;
- const owned=floatChecked?createTimelineFloatStaging(destination,{signal,beforeEffect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory})
+ const owned=floatChecked||colour?createTimelineFloatStaging(destination,{signal,beforeEffect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory})
   :beforeEffect===undefined?null:ownedTimelineWork(destination,beforeEffect,signal);
  const work=owned?.work??await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
- const effect=owned?.effect??beforeEffect;
- let unconfirmed=false,audioCheck,primaryFailure;
+ let effect=owned?.effect??beforeEffect;
+ let unconfirmed=false,audioCheck,primaryFailure,colourStage;
  try{
   checkMediaEffect(effect,signal);
+  if(colour){
+   colourStage=await prepareTimelineColourLuts(colour,destination,{signal,beforeEffect:effect,readLut},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory});
+   effect=colourStage.effect;
+   // An actual bounded float/colour conversion and LUT invocation, rather than
+   // merely trusting the advertised filter names. No source media is consumed.
+   const first=colour.clips[0],look=first?colourStage.filter(first.clipId):'';
+   await run('ffmpeg',['-hide_banner','-loglevel','error','-threads','1','-filter_threads','1','-f','lavfi','-i','color=c=black:s=16x16:r=30',
+    '-vf',`${timelineColourInputFilter('limited')},${look}${TIMELINE_COLOUR_OUTPUT_FILTER}`,'-frames:v','1','-an','-f','null','-'],{timeout:15000,maxStdoutBytes:65536,maxStderrBytes:65536,signal,beforeEffect:effect});
+   checkMediaEffect(effect,signal);colourStage.verifyBytes();beforeEncode?.();checkMediaEffect(effect,signal);
+  }
   const subtitles=await prepareTimelineSubtitles(snapshot,work,{signal,beforeEffect:effect,...(owned?{openOwnedFile:owned.openOwnedFile,writeOwnedFile:owned.writeOwnedFile}:{})});checkMediaEffect(effect,signal);
   const entries=[],ownedSegments=[];
   for(let segment=0;segment<plan.segments.length;segment++){
@@ -114,14 +129,15 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
     args.push('-t',seconds(frames+1),'-i',asset.path);
     inputs.push({clip,asset,visual,audio,input});
    }
-   const filters=[`color=c=black:s=${width}x${height}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[base]`,timelineAudioSilenceFilter(samples)];
+   const filters=[`color=c=black:s=${width}x${height}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=${colour?'rgba':'yuv420p'}[base]`,timelineAudioSilenceFilter(samples)];
    let visual='base';const sounds=['silence'];
    for(const {clip,asset,input,visual:show,audio} of inputs){
     if(show){
      const {x,y,width,height}=clip.rect,label=`v${input}`,next=`layer${input}`;
      // rgba padding preserves the lower layers in the letterbox/pillarbox area.
-     filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)[${label}]`);
-     filters.push(`[${visual}][${label}]overlay=x=${x}:y=${y}:eof_action=pass:repeatlast=0:shortest=0[${next}]`);visual=next;
+     const colourInput=colour?`${timelineColourInputFilter(colourClips.get(clip.id).range)},${colourStage.filter(clip.id)}`:'';
+     filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)[${label}]`);
+     filters.push(`[${visual}][${label}]overlay=x=${x}:y=${y}:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}[${next}]`);visual=next;
     }
     if(audio){
      const label=`a${input}`;
@@ -135,12 +151,12 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
    // 1080 short edge is a 1.5x upscale of the fixed 720-short-edge composition.
    const scale=delivery&&(delivery.effective.width!==width||delivery.effective.height!==height)
     ?`scale=${delivery.effective.width}:${delivery.effective.height}:flags=${delivery.effective.scaling},setsar=1,`:'';
-   filters.push(`[${visual}]${scale}trim=end_frame=${frames},${selected.videoOutputTrim}setpts=N/(${FPS}*TB),format=yuv420p[outv]`);
+   filters.push(`[${visual}]${scale}trim=end_frame=${frames},${selected.videoOutputTrim}setpts=N/(${FPS}*TB),${colour?TIMELINE_COLOUR_OUTPUT_FILTER:'format=yuv420p'}[outv]`);
    const segmentFile=path.join(work,`segment-${String(segment).padStart(3,'0')}.mov`);
    const filterArgs=['-filter_complex',filters.join(';')];
-   if(subtitles){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-filter_complex_script',script);}
+   if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-filter_complex_script',script);}
    const videoArgs=delivery?timelineExportVideoArgs(delivery):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
-   args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
+   args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);
    await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal,beforeEffect:effect});
    checkMediaEffect(effect,signal);
@@ -153,7 +169,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
   if(floatChecked){audioCheck=await checkFloatAudio(list,plan.outputFrames,{signal,beforeEffect:effect,ownedSegments});checkMediaEffect(effect,signal);assertTimelineFloatAudioAllowed(audioCheck);}
   // The fenced worker reserves and retains the destination inode and checks
   // it in beforeEffect. Only that owned empty output may be overwritten.
-  await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy','-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
+  await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy',...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
   checkMediaEffect(effect,signal);
   const result=await probe(destination,{signal,beforeEffect:effect}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
   checkMediaEffect(effect,signal);
@@ -164,11 +180,15 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
    ||!Number.isFinite(Number(a?.duration))||Math.abs(Number(a.duration)-plan.outputFrames/FPS)>0.025
    ||!String(result.probe.format?.format_name).split(',').includes('mp4')))throw Error('Rendered timeline failed delivery-profile verification');
   validateTimelineExportRangeOutputStart(plan,result.probe);
+  if(colour){
+   if(v?.color_primaries!=='bt709'||v?.color_transfer!=='bt709'||v?.color_space!=='bt709'||v?.color_range!=='tv')throw Object.assign(Error('The rendered SDR colour metadata does not match its frozen plan.'),{code:'TIMELINE_COLOUR_OUTPUT_INVALID'});
+   colourStage.verifyBytes();checkMediaEffect(effect,signal);
+  }
   return floatChecked?{...result,audioCheck}:result;
- }catch(error){primaryFailure=error;unconfirmed=floatChecked&&error?.terminationUnconfirmed===true;if(floatChecked&&audioCheck&&!signal?.aborted)rememberTimelineFloatAudioFailure(error,audioCheck);throw error;}
+ }catch(error){primaryFailure=error;unconfirmed=Boolean((floatChecked||colour)&&error?.terminationUnconfirmed===true);if(floatChecked&&audioCheck&&!signal?.aborted)rememberTimelineFloatAudioFailure(error,audioCheck);throw error;}
  finally{
-  if(unconfirmed&&owned)void waitForMediaProcesses({signal}).then(()=>owned.cleanup());
-  else if(owned){const cleaned=owned.cleanup();if(floatChecked&&!cleaned&&!primaryFailure){const failure=Object.assign(Error('The float export staging cleanup could not be confirmed.'),{code:'EXPORT_AUDIO_STAGING_CHANGED'});if(!signal?.aborted)rememberTimelineFloatAudioFailure(failure,audioCheck??null);throw failure;}}
+  if(unconfirmed&&owned)void waitForMediaProcesses({signal}).then(()=>{colourStage?.cleanup();owned.cleanup();});
+  else if(owned){const colourCleaned=colourStage?.cleanup()??true,cleaned=owned.cleanup();if((floatChecked||colour)&&(!cleaned||!colourCleaned)&&!primaryFailure){const failure=Object.assign(Error('The export staging cleanup could not be confirmed.'),{code:floatChecked?'EXPORT_AUDIO_STAGING_CHANGED':'TIMELINE_COLOUR_RESOURCE_CHANGED'});if(floatChecked&&!signal?.aborted)rememberTimelineFloatAudioFailure(failure,audioCheck??null);throw failure;}}
   else await rm(work,{recursive:true,force:true});
  }
 }

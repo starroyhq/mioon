@@ -6,6 +6,7 @@ import {acquireWorkspaceLock} from './workspace-lock.mjs';
 import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';
 import {validateWorkspaceRestoreSchema,detectWorkspaceRestoreEvidence,classifyWorkspaceSchema,installWorkspaceRestoreSchema} from './workspace-restore-schema.mjs';
 import {createWorkspaceSchemaDispatch} from './workspace-schema-dispatch.ts';
+export {validateCurrentWorkspaceColourProfile} from './workspace-schema-dispatch.ts';
 
 const workspaceSchemas=createWorkspaceSchemaDispatch({initializeThrough24:initializeWorkspaceSchemaThrough24,
  detectRestoreEvidence:detectWorkspaceRestoreEvidence,classify:classifyWorkspaceSchema,

@@ -1,3 +1,4 @@
+import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
 import {TIMELINE_LOUDNESS_APPLY_OPERATION,TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES,createTimelineLoudnessApplyContracts} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineFormatProvenance} from './timeline-format-receipts.mjs';
@@ -26,7 +27,7 @@ export function restoreTimelineEditableSnapshot(timeline,saved){
 
 const bounded=(column,bytes)=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${bytes} THEN ${column} END`;
 const identity=column=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
-const definiteRejections=new Set(['EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
+const definiteRejections=new Set(['TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE','EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
  'SUBTITLE_LIMIT','SUBTITLE_BOUNDS','SUBTITLE_OVERLAP','SUBTITLE_NOT_FOUND','INVALID_FADE','FADE_AUDIO_UNSUPPORTED','AUDIO_HIDDEN_UNSUPPORTED','TIMELINE_LIMIT','CLIP_OVERLAP','SPLIT_BOUNDS','SPLIT_FADE_BOUNDS',
  'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE',...TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES]);
 
@@ -69,6 +70,9 @@ export function createTimelineRecoveryBoundary(db,input){
    const key=JSON.stringify([clip.assetId,...['versionId','shotId','jobId'].map(field=>[Object.hasOwn(clip,field),clip[field]])]);
    if(seen.has(key))continue;
    assets.set(clip.assetId,clipSource(clip));seen.add(key);
+  }
+  try{validateTimelineColourBindings(db,timeline,assets);}catch(error){
+   if(['TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE'].includes(error.code))throw new AppError(error.code,error.message,error.status);throw error;
   }
   return assets;
  }

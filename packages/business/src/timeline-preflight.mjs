@@ -10,8 +10,11 @@ import {validateTimeline,validateSavedTimeline} from './timeline-inputs.mjs';
 import {terminateMediaProcesses} from './media-processes.mjs';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.mjs';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
+import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../../contracts/src/timeline-colour.ts';
+import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
 
 const messages=Object.freeze({
+ ...TIMELINE_COLOUR_PREFLIGHT_MESSAGES,
  EXPORT_RANGE_BOUNDS:'The export range must fit inside the saved timeline and contain at least one 30fps frame; the end is exclusive.',
  SUBTITLE_RESOURCE_UNAVAILABLE:'The bundled subtitle font is missing or does not match this rendering profile.',
  TIMELINE_MISSING:'This project has no saved timeline. Add clips and save the timeline before exporting.',
@@ -40,6 +43,7 @@ function summary(snapshot,verified){
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
 }
 function classify(error){
+ if(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,error.code))return ['blocked',error.code];
  if(error.code==='SUBTITLE_RESOURCE_UNAVAILABLE')return ['blocked','SUBTITLE_RESOURCE_UNAVAILABLE'];
  if(error.code==='INSPECTION_BUDGET_EXCEEDED')return ['incomplete','PREFLIGHT_SNAPSHOT_BUDGET'];
  if(error.code==='MANAGED_SOURCE_LIMIT'||error.code==='PREFLIGHT_BUDGET')return ['incomplete','PREFLIGHT_BUDGET'];
@@ -68,7 +72,7 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   let initial;
   try{initial=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);}
-  catch(error){if(error.code==='NOT_FOUND')throw error;if(error.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(error.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
+  catch(error){if(error.code==='NOT_FOUND')throw error;if(error.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,error.code)?error.code:error.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;report.snapshotHash=timelineSnapshotHash(initial.snapshot);
   report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;
@@ -96,7 +100,7 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   const preparation=(async()=>{
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;}
    return prepareTimelineInputs(initial.snapshot,{root:store.root,projectId:input.projectId,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id);},
-   signal,budget,beforeEffect,probe:async(file,options)=>{beforeEffect?.();const result=await probe(file,{...options,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}});
+   signal,budget,beforeEffect,readLut:createTimelineColourLutReader(store.db,input.projectId),probe:async(file,options)=>{beforeEffect?.();const result=await probe(file,{...options,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}});
   })();
   // A caller can observe its deadline, but the exact underlying preparation
   // remains owned until it settles. No new check is admitted, nor successful

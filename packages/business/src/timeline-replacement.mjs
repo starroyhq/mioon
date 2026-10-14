@@ -24,6 +24,7 @@ export function createTimelineReplacementBoundary(db,input){
   const version=input.versionId===undefined?null:boundary.version(input.versionId,undefined,source.id);
   for(const key of provenance)delete clip[key];
   clip.assetId=source.id;
+  if(clip.colour!==undefined&&clip.colour!==null)clip.colour={...clip.colour,source:null};
   if(version){clip.versionId=version.id;clip.shotId=version.shotId;}
  }
  return {...boundary,read,apply};

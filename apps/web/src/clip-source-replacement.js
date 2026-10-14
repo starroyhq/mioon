@@ -101,7 +101,9 @@ export function clipReplacementAcknowledged(review, timeline) {
     if (saved.versionId !== review.candidate.versionId || saved.shotId !== review.candidate.version.shotId) return false;
   } else if (Object.hasOwn(saved, 'versionId') || Object.hasOwn(saved, 'shotId')) return false;
   const retained = clip => Object.fromEntries(Object.entries(clip).filter(([key]) => !['assetId', 'versionId', 'shotId', 'jobId'].includes(key)));
-  return same(retained(saved), retained(review.clip));
+  const expected = retained(review.clip);
+  if (expected.colour) expected.colour = { ...expected.colour, source: null };
+  return same(retained(saved), expected);
 }
 
 const initialState = () => ({ phase: 'idle', selectedKey: '', review: null, error: '' });

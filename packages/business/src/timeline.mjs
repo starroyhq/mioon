@@ -230,7 +230,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   'timeline.clip.add':input=>mutate('timeline.clip.add',input,(timeline,boundary)=>{
    const source=boundary.inputAsset(input.assetId);
    timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(timeline),gain:input.gain??1,
-    ...Object.fromEntries(['fadeInFrames','fadeOutFrames'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
+    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
   'timeline.clip.update':input=>updateClip(input),
   'timeline.clip.replaceSource':input=>{

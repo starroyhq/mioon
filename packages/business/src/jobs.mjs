@@ -1,4 +1,5 @@
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
+import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline-colour-lut.ts';
 import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVERY_RECEIPT_SQL} from '@mioon/contracts/timeline-delivery';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
@@ -55,7 +56,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
  // Custom delivery adds an awaited capability step. Preserve the complete
  // immutable acceptance identity across every existing async/publication fence;
  // a replaced snapshot must never be restored by publishing an older copy.
- const customExport=requiresPreparedTimelineExportIdentity;
+ const customExport=e=>requiresPreparedTimelineExportIdentity(e)||Boolean(e?.snapshot&&Object.hasOwn(e.snapshot,'colourPlan'));
  const exportIdentity=e=>JSON.stringify(Object.fromEntries(['id','projectId','requestId','mode','purpose','timelineRevision','snapshot','createdAt'].map(key=>[key,e[key]])));
  // A removed delivery field must not disguise an accepted custom export as
  // a historical legacy job before the worker's first observation. The bounded
@@ -253,7 +254,9 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   const floatExport=isFloatTimelineExport(e);
   // Fresh non-overwriting publication also preserves a prior successful output.
   const relativePath=`media/export-${e.id}-${randomUUID()}.mp4`,file=path.join(root,relativePath),part=file+'.part.mp4';
-  const fencedAttempt=restored||floatExport||hasSelectedTimelineExportRange(e.snapshot),effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
+  const colourExport=Boolean(e?.snapshot&&Object.hasOwn(e.snapshot,'colourPlan'));
+  const readLut=colourExport?createTimelineColourLutReader(store.db,e.projectId):undefined;
+  const fencedAttempt=restored||floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
   let preparedAssets,linkedOutput=false,publicationAccepted=false,outputIdentity,outputHandle,claimLive=true,validateSources,floatMeasurement,terminationUnconfirmed=false;
   const beforeEffect=fencedAttempt?()=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}}:undefined;
   const checkCustomSources=()=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});};
@@ -263,11 +266,11 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    if(e.mode==='timeline') {
     if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     const assets=await prepareTimelineInputs(e.snapshot,{root,projectId:e.projectId,signal,
-     beforeEffect,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id);},validateLinks:timeline=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline);}});checkpoint(signal);
+     beforeEffect,readLut,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id);},validateLinks:timeline=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
     if(customExport(e)||restored)preparedAssets=assets;
     if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});
-    const rendered=await renderTimeline(e.snapshot,assets,part,{signal,beforeEffect,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
+    const rendered=await renderTimeline(e.snapshot,assets,part,{signal,beforeEffect,readLut,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
     if(floatExport)floatMeasurement=ownedFloatTimelineMeasurement(rendered);
    } else {
     const files=[];
@@ -291,6 +294,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    // Recheck the preserved relational owner immediately before publication.
    if(currentOwnedExport(e)?.status!=='running')return;
    checkCustomSources();
+   if(colourExport)verifyTimelineColourLuts(e.snapshot.colourPlan,readLut,true);
    // Retain only this custom attempt's owned output inode for conservative
    // cleanup if source ownership changes before the database commit.
    if(customExport(e)||restored){
@@ -337,7 +341,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    }
    if(outputHandle)await outputHandle.close().catch(()=>{});
    };
-   if(floatExport&&terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
+   if((floatExport||colourExport)&&terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();
   }
  }

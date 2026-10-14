@@ -168,12 +168,12 @@ for(const sourceVersion of [24,26])test(`offline create→verify→restore→sta
  const reopened=openStore(destination);try{assert.equal(getWorkspaceRestoreContext(reopened).schemaVersion,result.databaseSchemaVersion);}finally{reopened.close();}
 });
 
-test('schema28 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
+test('schema30 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
  const base=temporary(t),store=openStore(path.join(base,'ordinary'));t.after(()=>store.close());
  const before=snapshot(store.db),inspection=inspectWorkspaceBackup(store);
- assert.equal(inspection.databaseSchemaVersion,28);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
- for(const version of [1,23,24,26,28])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
- for(const version of [0,25,27,29,30,26.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
+ assert.equal(inspection.databaseSchemaVersion,30);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
+ for(const version of [1,23,24,26,28,30])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
+ for(const version of [0,25,27,29,31,32,26.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
  for(const profileId of ['restored-local-v1','restored-local-v2','restored-local-v3'])for(const sourceSchema of [24,26,28])for(const databaseSchemaVersion of [25,27,29]){
   assert.equal(workspaceRestorationPairSchema.safeParse({profile:profileId,sourceSchema,databaseSchemaVersion}).success,
    profileId==='restored-local-v1'?sourceSchema===24&&databaseSchemaVersion===25:profileId==='restored-local-v2'?sourceSchema===26&&databaseSchemaVersion===27:sourceSchema===28&&databaseSchemaVersion===29);

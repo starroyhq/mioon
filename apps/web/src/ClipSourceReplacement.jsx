@@ -51,6 +51,7 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
         <div><dt>保留片段时长</dt><dd>{review.clip.durationFrames} 帧 · {(review.clip.durationFrames / 30).toFixed(2)} 秒</dd></div>
         <div><dt>保留时间线位置</dt><dd>{review.clip.startFrame} → {review.clip.startFrame + review.clip.durationFrames} 帧</dd></div>
       </dl>
+      {review.clip.colour && <p className="clip-replacement-warning" data-testid="clip-replacement-colour-warning">LUT、启用状态与强度会保留；新来源的色彩解释将清除。替换后必须重新核对并确认 Rec.709 SDR 与范围，才能渲染。</p>}
       <p className="clip-replacement-note">不会自动裁短或清除淡入/淡出。不修改镜头选用版本、其他片段或已有导出。</p>
     </div>}
     {issue && <p className="clip-replacement-warning" id="clip-replacement-review-issue" role="alert">{issue}</p>}

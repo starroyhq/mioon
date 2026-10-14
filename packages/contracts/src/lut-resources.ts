@@ -63,7 +63,7 @@ export const lutResourceDescriptions=Object.freeze({
 });
 
 export function lutRestorePolicy(operation:string,schemaVersion:number):{operation:string;available:boolean;reason:'AVAILABLE'|'RESTORE_OPERATION_UNAVAILABLE'} {
-  const available=!operation.startsWith('lut.')||schemaVersion===29&&operation!=='lut.import';
+  const available=!operation.startsWith('lut.')||(schemaVersion===29||schemaVersion===31)&&operation!=='lut.import';
   return {operation,available,reason:available?'AVAILABLE':'RESTORE_OPERATION_UNAVAILABLE'};
 }
 

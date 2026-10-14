@@ -1,3 +1,4 @@
+import {isTimelineColourSourceInspection} from '@mioon/contracts/timeline-colour';
 import {isLutRpcResponse} from './lut-resources.ts';
 import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_CLIENT_MS} from './timeline-loudness-apply.ts';
 import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
@@ -248,6 +249,8 @@ export function createClient(clientOptions = {}) {
     if(!imageReadValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid image record.');
     if (operation === 'export.get' && !isTimelineExportFloatReadResponse(result, parsed.exportId, isTimelineRenderRecord))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid float export report.');
+    if (operation === 'timeline.colour.source.inspect' && !isTimelineColourSourceInspection(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid source colour inspection.', {details:{operation}});
     if (operation === 'timeline.format.get' && !isTimelineFormatReadResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))

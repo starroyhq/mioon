@@ -8,7 +8,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {openStore,installCurrentWorkspaceRestoreSchema} from '@mioon/business/db';
 import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
 
-const ordinaryVersions=[...Array.from({length:24},(_,index)=>index+1),26,28];
+const ordinaryVersions=[...Array.from({length:24},(_,index)=>index+1),26,28,30];
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-14T00:00:00.000Z'});
 
 function fixture(t){
@@ -43,7 +43,7 @@ function mutate(file,change){
  try{db.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');change(db);}finally{db.close();}
 }
 
-test('desktop migration accepts ordinary28 from current openStore and preserves source identity, bytes, modes and credentials',async t=>{
+test('desktop migration accepts ordinary30 from current openStore and preserves source identity, bytes, modes and credentials',async t=>{
  const f=fixture(t),before=snapshot(f.source);
  const result=await migrateData(f.source,f.destination);
  assert.deepEqual(result,{ok:true,projects:1,assets:0,destination:f.destination,sourceUnchanged:true,copiedCredentials:false});
@@ -61,18 +61,18 @@ test('desktop migration accepts ordinary28 from current openStore and preserves 
 });
 
 for(const [label,change,code] of [
- ['complete restored29',db=>{
+ ['complete restored31',db=>{
   const restored=installCurrentWorkspaceRestoreSchema(db,metadata());
-  assert.equal(restored.schemaVersion,29);assert.equal(restored.sourceSchema,28);
-  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...ordinaryVersions,29]);
+  assert.equal(restored.schemaVersion,31);assert.equal(restored.sourceSchema,30);
+  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...ordinaryVersions,31]);
  },'RESTORE_MIGRATION_UNAVAILABLE'],
- ['partial restoration metadata on ordinary28',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['partial restoration evidence on ordinary28',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['execution epoch without restore marker on ordinary28',db=>db.exec('ALTER TABLE edit_tasks ADD COLUMN executionEpoch TEXT'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['restored29 marker without metadata',db=>db.exec('INSERT INTO schema_version VALUES(29)'),'RESTORE_MIGRATION_UNAVAILABLE'],
- ['mixed historical restore25 and ordinary28 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['future30 marker on ordinary28',db=>db.exec('INSERT INTO schema_version VALUES(30)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['mixed historical restore27 and ordinary28 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['partial restoration metadata on ordinary30',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['partial restoration evidence on ordinary30',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['execution epoch without restore marker on ordinary30',db=>db.exec('ALTER TABLE edit_tasks ADD COLUMN executionEpoch TEXT'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['restored31 marker without metadata',db=>db.exec('INSERT INTO schema_version VALUES(31)'),'RESTORE_MIGRATION_UNAVAILABLE'],
+ ['mixed historical restore25 and ordinary30 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['future32 marker on ordinary30',db=>db.exec('INSERT INTO schema_version VALUES(32)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['mixed historical restore27 and ordinary30 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
 ])test(`desktop migration rejects ${label} before destination creation without changing source`,async t=>{
  const f=fixture(t);mutate(f.file,change);
  const before=snapshot(f.source),siblings=fs.readdirSync(f.base).sort();

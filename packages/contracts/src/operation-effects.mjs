@@ -1,3 +1,4 @@
+import {timelineColourEffects} from './timeline-colour.ts';
 import {lutResourceEffects} from './lut-resources.ts';
 // Audited against services.mjs, local-mutations.mjs, references.mjs, timeline.mjs and jobs.mjs.
 // Effects include work the call schedules/resumes, not just its synchronous RPC.
@@ -22,6 +23,7 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  ...timelineColourEffects,
   ...lutResourceEffects,
   'timeline.loudness.apply': define({...replayEdit,localProcess:true,notes:'Explicit project/revision/request-bound fixed-gain application. Replays a retained exact acknowledgement before media work. A new request rehashes owned audio sources and remeasures the complete original and candidate float mix, then atomically updates eligible clip gains, one undo history and an immutable receipt. No client gains, limiter, normalization, implicit export-profile change, network, model or payment. Socket interruption does not cancel accepted mutation; reconcile the same durable request. Restored workspaces may read captured receipts but cannot execute a new application.'}),
   'timeline.loudness.prepare': define({...read,localProcess:true,notes:'Explicit resource-intensive read of one complete saved timeline at its expected revision, fixed mix/measurement profiles and user-selected LUFS/dBTP target. Hashes owned potentially audible sources twice and streams pre-encode float PCM for the original and, when representable, an actually measured fixed-multiplier candidate. Bounded 120-second local observation; no queue, cache, persistent task, database/file write, automatic retry, network, model or paid generation. Results are ephemeral with applyAllowed always false, never edit/export authority. Read-only idempotence does not promise identical future measurements. Not a built-in Agent tool.'}),

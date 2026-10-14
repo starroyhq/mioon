@@ -1,3 +1,4 @@
+import {isTimelineClipColour} from './timeline-colour.ts';
 import {createTimelineLoudnessApplyContracts,TIMELINE_LOUDNESS_APPLY_OPERATION,hasTimelineLoudnessApplyNotAppliedProof} from './timeline-loudness-apply.ts';
 import {isTimelineExportRangeInput,isTimelineExportRangeProofInput,hasTimelineExportRangeBoundsProof} from './timeline-export-range.ts';
 import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
@@ -26,7 +27,7 @@ const timestamp = value => text(value, 1, 64) && Number.isFinite(Date.parse(valu
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const encoder = new TextEncoder();
 const baseFields = ['projectId', 'expectedRevision', 'requestId'];
-const clipFields = ['trackId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames', 'fadeOutFrames'];
+const clipFields = ['trackId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames', 'fadeOutFrames', 'colour'];
 const provenance = ['versionId', 'shotId', 'jobId'];
 const same = (a, b) => object(a) && object(b)
   ? Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && same(a[key], b[key]))
@@ -76,7 +77,7 @@ export function isTimelineMutationResponse(operation, input, value) {
         clip.sourceInFrame === (input.sourceInFrame ?? 0) && clip.gain === (input.gain ?? 1) &&
         same(clip.rect, input.rect ?? {x: 0, y: 0, width: value.width, height: value.height}) &&
         provenance.every(key => !Object.hasOwn(clip, key)) &&
-        ['fadeInFrames', 'fadeOutFrames'].every(key => (input[key] !== undefined) === Object.hasOwn(clip, key)));
+        ['fadeInFrames', 'fadeOutFrames', 'colour'].every(key => (input[key] !== undefined) === Object.hasOwn(clip, key)));
     }
     case 'timeline.clip.update':
       return operationInput(input, ['clipId', 'patch']) && uuid(input.clipId) && patchInput(input.patch, clipFields) && Boolean(target && hasFields(target, input.patch, Object.keys(input.patch)));
@@ -85,7 +86,7 @@ export function isTimelineMutationResponse(operation, input, value) {
     case 'timeline.clip.split':
       if (!operationInput(input, ['clipId', 'atFrame']) || !uuid(input.clipId) || !integer(input.atFrame, 0, 18000) || !target || target.startFrame + target.durationFrames !== input.atFrame || (target.fadeOutFrames ?? 0) !== 0) return false;
       return value.clips.some(right => right.id !== target.id && right.startFrame === input.atFrame &&
-        ['trackId', 'assetId', 'name', 'rect', 'gain', ...provenance].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key) && same(right[key], target[key])) &&
+        ['trackId', 'assetId', 'name', 'rect', 'gain', 'colour', ...provenance].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key) && same(right[key], target[key])) &&
         (right.sourceInFrame === target.sourceInFrame + target.durationFrames || right.sourceInFrame === 0 && target.sourceInFrame === 0) &&
         (right.fadeInFrames ?? 0) === 0 && ['fadeInFrames', 'fadeOutFrames'].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key)));
     case 'timeline.seed':
@@ -114,7 +115,7 @@ export function isTimelineRenderRecord(value, input) {
       value.mode !== 'timeline' || value.purpose !== input.purpose || value.timelineRevision !== input.expectedRevision ||
       (input.exportId !== undefined && value.id !== input.exportId) ||
       !['queued', 'running', 'succeeded', 'failed'].includes(value.status) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
-      !fields(value.snapshot, ['timeline', 'assets'], ['subtitleProfile','delivery','deliveryName','exportRange']) || !isTimelineExportSnapshot(value.snapshot,{purpose:input.purpose,exportSettings:input.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(value.snapshot) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
+      !fields(value.snapshot, ['timeline', 'assets'], ['subtitleProfile','delivery','deliveryName','exportRange','colourPlan']) || !isTimelineExportSnapshot(value.snapshot,{purpose:input.purpose,exportSettings:input.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(value.snapshot) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
       value.snapshot.timeline.revision !== input.expectedRevision || !value.snapshot.timeline.clips.length ||
       (input.timelineId !== undefined && value.snapshot.timeline.id !== input.timelineId) ||
       !Array.isArray(value.snapshot.assets) || value.snapshot.assets.length < 1 || value.snapshot.assets.length > 100 ||
@@ -153,11 +154,18 @@ const proofCodes = new Set([
   'SUBTITLE_LIMIT', 'SUBTITLE_BOUNDS', 'SUBTITLE_OVERLAP', 'SUBTITLE_NOT_FOUND', 'AUDIO_HIDDEN_UNSUPPORTED', 'TIMELINE_LIMIT', 'CLIP_OVERLAP', 'SPLIT_BOUNDS', 'SPLIT_FADE_BOUNDS',
   'TIMELINE_NOT_EMPTY', 'MISSING_SELECTION', 'NOTHING_TO_UNDO', 'NOTHING_TO_REDO', 'EMPTY_TIMELINE', 'PREFLIGHT_STALE', 'TIMELINE_REVISION_LIMIT',
 ]);
+const colourProofCodes = new Set(['TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE']);
 const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT']);
 const subjectProofCodes = new Set(['REVISION_CONFLICT', 'SUBJECT_NO_CHANGE', 'SUBJECT_REVISION_LIMIT', 'SUBJECT_BINDING_LIMIT', 'SUBJECT_ROLE_MISMATCH']);
 export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(error,input);
   const details = error?.details;
+  if(colourProofCodes.has(error?.code))return Boolean(baseInput(input)&&TIMELINE_MUTATION_OPERATIONS.includes(operation)&&
+    operation!=='timeline.render'&&object(details)&&
+    (!Object.hasOwn(input,'colour')||isTimelineClipColour(input.colour))&&
+    (!object(input.patch)||!Object.hasOwn(input.patch,'colour')||isTimelineClipColour(input.patch.colour))&&
+    (integer(error.status,400,499)&&![401,403].includes(error.status)||error.status===undefined&&error.definitive===true)&&
+    details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===input.projectId&&details.requestId===input.requestId);
   const rangeProof={operation,error,isRenderInput:value=>
     operationInput(value,['purpose','exportRange'],['preflightSnapshotHash','exportSettings','deliveryName']) && isTimelineDeliveryNameInput(value,value.purpose) &&
     (value.exportSettings===undefined||timelineExportSettingsSchema.safeParse(value.exportSettings).success) && (value.preflightSnapshotHash===undefined||digest(value.preflightSnapshotHash))};

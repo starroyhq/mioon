@@ -1,3 +1,5 @@
+import { clipColourSchema } from '../../../packages/contracts/src/timeline-colour.ts';
+import type { ClipColour } from '../../../packages/contracts/src/timeline-colour.ts';
 import { clipDraftFailure } from './clip-draft-client.ts';
 import type { ClipDraftFailure } from './clip-draft-client.ts';
 import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
@@ -44,12 +46,17 @@ export function clipDraftPatch(raw: ClipDraftRaw): Record<string, unknown> | nul
   if (Object.values(rect).some(value => !Number.isSafeInteger(value) || value % 2 !== 0) || rect.x < 0 || rect.y < 0 || rect.width < 2 || rect.height < 2) return null;
   for (const field of ['fadeInFrames', 'fadeOutFrames']) if (own(patch, field) && (Number(patch[field]) < 0 || Number(patch[field]) > Number(patch.durationFrames))) return null;
   if (Number(patch.fadeInFrames ?? 0) + Number(patch.fadeOutFrames ?? 0) > Number(patch.durationFrames)) return null;
+  if (own(raw, 'colour')) {
+    if (raw.colour !== null && !clipColourSchema.safeParse(raw.colour).success) return null;
+    patch.colour = copy(raw.colour);
+  }
   return { ...patch, rect };
 }
 export function clipDraftRaw(clip: Record<string, unknown>): ClipDraftRaw {
   const rect = object(clip.rect) ? clip.rect : {};
   return { name: typeof clip.name === 'string' ? clip.name : '', trackId: String(clip.trackId), startFrame: clip.startFrame as number,
     durationFrames: clip.durationFrames as number, sourceInFrame: clip.sourceInFrame as number, rect: { x: rect.x as number, y: rect.y as number, width: rect.width as number, height: rect.height as number }, gain: clip.gain as number,
+    ...(own(clip, 'colour') ? { colour: copy(clip.colour as ClipColour | null) } : {}),
     ...(own(clip, 'fadeInFrames') ? { fadeInFrames: clip.fadeInFrames as number } : {}), ...(own(clip, 'fadeOutFrames') ? { fadeOutFrames: clip.fadeOutFrames as number } : {}) };
 }
 export function clipDraftSource(clip: Record<string, unknown>, asset: Record<string, unknown> | undefined): ClipDraftSource {
@@ -211,7 +218,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       schedule();
     },
     edit(key: keyof ClipDraftRaw, value: ClipDraftRaw[keyof ClipDraftRaw]) {
-      if (!active || !context.visible || !own(state.raw, key) && !['fadeInFrames', 'fadeOutFrames'].includes(key)) return false;
+      if (!active || !context.visible || !own(state.raw, key) && !['fadeInFrames', 'fadeOutFrames', 'colour'].includes(key)) return false;
       serial++; emit({ raw: { ...state.raw, [key]: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
     },
     restore(token = capture()) {

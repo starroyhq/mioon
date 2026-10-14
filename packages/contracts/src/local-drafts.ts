@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {clipColourSchema} from './timeline-colour.ts';
 
 // UI-only local input. This is deliberately not a business-operation schema.
 export const LOCAL_DRAFT_LIMITS = Object.freeze({slots:128, rowBytes:8192, envelopeBytes:2*1024*1024, httpBytes:12*1024, urlBytes:2048});
@@ -12,6 +13,7 @@ export const clipDraftRawSchema=z.object({
   name:unicode.max(200),trackId:id,startFrame:rawNumber,durationFrames:rawNumber,sourceInFrame:rawNumber,
   rect:z.object({x:rawNumber,y:rawNumber,width:rawNumber,height:rawNumber}).strict(),gain:rawNumber,
   fadeInFrames:rawNumber.optional(),fadeOutFrames:rawNumber.optional(),
+  colour:clipColourSchema.nullable().optional(),
 }).strict();
 export const clipDraftValueSchema=z.object({baseRevision:revision.min(1),source:clipDraftSourceSchema,raw:clipDraftRawSchema,updatedAt:z.string().datetime()}).strict();
 export const clipDraftProjectSchema=z.object({projectId:id}).strict();

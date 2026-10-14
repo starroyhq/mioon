@@ -157,3 +157,18 @@ test('exact PUT and DELETE retries require a successful durability checkpoint af
   assert.throws(()=>f.drafts.discard(remove),code('LOCAL_DRAFT_SAVE_UNCERTAIN'));
   f.setFault(()=>{});assert.equal(f.drafts.discard(remove).revision,2);
 });
+
+test('SDR colour drafts survive actual sidecar reopen without normalizing omitted, null or source-invalidated looks', async t => {
+  const f = await fixture(t);
+  const look = { resourceId: randomUUID(), resourceSha256: 'b'.repeat(64), resourceProfile: 'mioon-cube3d-normalized-tetrahedral-v1', purpose: 'rec709-sdr-creative', declaredBy: 'user', enabled: false, strength: 0.37 };
+  const colour = { profileId: 'mioon-rec709-sdr-clip-v1', source: { assetSha256: f.asset.sha256, streamIndex: 0, profileId: 'rec709-yuv-sdr-v1', range: 'limited', declaredBy: 'user', declaredAt: '2026-10-14T18:00:00.000Z' }, look };
+  for (const fields of [{}, { colour }, { colour: { ...colour, source: null } }, { colour: null }]) {
+    const raw = { ...f.raw, ...fields }, before = f.snapshot();
+    const saved = f.drafts.put(f.input(undefined, { raw }));
+    assert.deepEqual(saved.draft.raw, raw); assert.equal(f.snapshot(), before, 'A sidecar draft never mutates the business timeline');
+    f.restart();
+    const reloaded = f.drafts.get(f.key);
+    assert.deepEqual(reloaded.draft.raw, raw); assert.equal(Object.hasOwn(reloaded.draft.raw, 'colour'), Object.hasOwn(fields, 'colour'));
+    f.drafts.discard(f.deletion(reloaded));
+  }
+});

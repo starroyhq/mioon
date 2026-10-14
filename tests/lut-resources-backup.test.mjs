@@ -6,15 +6,15 @@ import {isWorkspaceBackupPayloadPath} from '../packages/contracts/src/workspace-
 const text='# retained lexical original\r\nTITLE "Resource portable"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 async function source(t){const base=mkdtempSync(path.join(os.tmpdir(),'mioon-lut-backup-'));t.after(()=>rmSync(base,{recursive:true,force:true}));const root=path.join(base,'source'),store=openStore(root),s=createServices(store,new Map());const project=await s.call('project.create',{name:'Portable LUT'}),input={projectId:project.id,requestId:'portable-resource-request',name:'look.cube',dataBase64:Buffer.from(text).toString('base64')},response=await s.call('lut.import',input);await s.drain();store.close();return {base,root,input,response,backup:path.join(base,'backup'),restored:path.join(base,'restored')};}
-test('offline cold capture and restore29 preserve exact bytes/hash/receipt without .cube media path',async t=>{
- const f=await source(t),created=await createWorkspaceBackup({source:f.root,destination:f.backup});assert.equal(created.databaseSchemaVersion,28);assert.equal(created.inventory.complete,true);
+test('offline cold capture and restore31 preserve exact bytes/hash/receipt without .cube media path',async t=>{
+ const f=await source(t),created=await createWorkspaceBackup({source:f.root,destination:f.backup});assert.equal(created.databaseSchemaVersion,30);assert.equal(created.inventory.complete,true);
  const verified=await verifyWorkspaceBackup({directory:f.backup});assert.equal(verified.integrity,'verified');
  const manifest=JSON.parse(readFileSync(path.join(f.backup,'manifest.json'),'utf8'));assert.deepEqual(manifest.entries.map(e=>e.path),['payload/workbench.sqlite']);
  assert.equal(isWorkspaceBackupPayloadPath('payload/media/11111111-1111-4111-8111-111111111111.cube'),false);
  const original=readFileSync(path.join(f.root,'workbench.sqlite'));assert.equal(sha(readFileSync(path.join(f.backup,'payload/workbench.sqlite'))),sha(original));
- const restored=await restoreWorkspaceBackup({directory:f.backup,destination:f.restored});assert.equal(restored.databaseSchemaVersion,29);
+ const restored=await restoreWorkspaceBackup({directory:f.backup,destination:f.restored});assert.equal(restored.databaseSchemaVersion,31);
  const store=openStore(f.restored),s=createServices(store,new Map());try{
-  assert.equal(getWorkspaceRestoreContext(store).schemaVersion,29);
+  assert.equal(getWorkspaceRestoreContext(store).schemaVersion,31);
   assert.deepEqual((await s.call('lut.inspect',{projectId:f.input.projectId,lutId:f.response.resource.id})).resource,f.response.resource);
   assert.deepEqual((await s.call('lut.list',{projectId:f.input.projectId})).items,[f.response.resource]);
   assert.deepEqual(Buffer.from(store.db.prepare('SELECT content FROM project_lut_resources').get().content),Buffer.from(text));
