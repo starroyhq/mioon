@@ -31,7 +31,8 @@
     "./float-checked-export.consumer.mts",
     "./native-close.consumer.mts",
     "./timeline-audio-preview.consumer.mts",
-    "./export-loudness.consumer.mts"
+    "./export-loudness.consumer.mts",
+    "./timeline-mix-loudness.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

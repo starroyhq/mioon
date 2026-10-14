@@ -11,7 +11,7 @@ export interface ExportAudioObservationAdmission {
   shutdownFailure: unknown;
 }
 
-// One owner-bound permit for final-file audio observations. Store wrappers
+// One owner-bound permit for final-file and current-mix audio observations. Store wrappers
 // around the same native database share it. There is no queue or result cache.
 // The operation that acquired it retains its task until its exact child closes;
 // an unconfirmed termination remains a sticky owner-wide shutdown failure.

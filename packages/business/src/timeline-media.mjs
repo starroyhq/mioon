@@ -3,7 +3,7 @@ import {constants,mkdtempSync,openSync,fstatSync,lstatSync,closeSync,unlinkSync,
 import path from 'node:path';
 import {run,probe} from './media.mjs';
 import {validateTimeline} from './timeline-inputs.mjs';
-import {timelineAudioFadeFilters} from './timeline-audio.mjs';
+import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';
 import {prepareTimelineSubtitles,timelineSubtitleFilters} from './subtitle-media.mjs';
 import {validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
 import {isTimelineExportSnapshot} from '@mioon/contracts';
@@ -114,7 +114,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
     args.push('-t',seconds(frames+1),'-i',asset.path);
     inputs.push({clip,asset,visual,audio,input});
    }
-   const filters=[`color=c=black:s=${width}x${height}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[base]`,`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[silence]`];
+   const filters=[`color=c=black:s=${width}x${height}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=yuv420p[base]`,timelineAudioSilenceFilter(samples)];
    let visual='base';const sounds=['silence'];
    for(const {clip,asset,input,visual:show,audio} of inputs){
     if(show){
@@ -125,10 +125,10 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
     }
     if(audio){
      const label=`a${input}`;
-     filters.push(`[${input}:${asset.audioStreamIndex??'a:0'}]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},${timelineAudioFadeFilters(clip,begin)}asetpts=N/SR/TB[${label}]`);sounds.push(label);
+     filters.push(timelineClipAudioFilter(clip,begin,samples,input,asset.audioStreamIndex));sounds.push(label);
     }
    }
-   filters.push(`${sounds.map(s=>`[${s}]`).join('')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},${selected.audioOutputTrim}asetpts=N/SR/TB[outa]`);
+   filters.push(timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim));
    const captioned=timelineSubtitleFilters(subtitles,begin,end,visual);filters.push(...captioned.filters);visual=captioned.visual;
    // Scale the completed editing-canvas composition, including captions. Clip
    // rectangles, subtitle layout/cues, source sampling and audio stay untouched.

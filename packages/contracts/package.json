@@ -18,7 +18,8 @@
     "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
     "./native-audio-preview": "./src/native-audio-preview.ts",
     "./timeline-segments": "./src/timeline-segments.ts",
-    "./export-loudness": "./src/export-loudness.ts"
+    "./export-loudness": "./src/export-loudness.ts",
+    "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

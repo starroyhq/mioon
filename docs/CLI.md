@@ -933,3 +933,9 @@ This is decoded sample peak of the final artifact, not loudness or true peak. Re
 ## Explicit exported-file loudness check
 
 Discover `mioon schema timeline.export.loudness`, then use `mioon timeline export loudness --input '<JSON>'` with the selected project's succeeded export ID, its actual expected output SHA-256 and fixed measurement profile from the schema. The optional LUFS/dBTP target is explicitly user-chosen; omission only measures. This resource-intensive read shares the samplePeak slot and fixed120s budget; client default125s remains overridable. Ctrl+C stops only this check. It does not normalize, render or queue edits, and lost output is no reason to automatically retry. Full JSON, validity states and source-bound advisory limits are in [EXPORT-LOUDNESS](EXPORT-LOUDNESS.md).
+
+## Explicit saved-timeline full-mix candidate
+
+Discover `mioon schema timeline.loudness.prepare`, then use `mioon timeline loudness prepare --input '<JSON>'` (or `mioon rpc timeline.loudness.prepare`). Supply the owned `projectId`, saved `expectedRevision`, fixed `mixProfile:"timeline-float-mix-v1"`, fixed `measurementProfile:"bs1770-5-48k-stereo-fir4x-v1"` and explicit user-selected `target:{integratedLufs,truePeakCeilingDbtp}`. No target/profile is defaulted; no request ID, path, URL, export ID, arbitrary file flag or permission flag is accepted.
+
+This complete pre-encode float-mix observation returns the original measurement and, if every resulting gain is representable, a separately measured fixed-multiplier candidate. Passing target/true-peak checks leaves `applyAllowed:false`; nothing is edited, queued or exported. The bounded local work uses120s with125s shared-client grace and a64KiB response reader. Ctrl+C retires only its owned observation; response loss never triggers an automatic retry. Restored-v1 refuses it. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).

@@ -145,7 +145,11 @@ const textSites = {
   "tests/workspace-preferences-http.test.mjs": 2,
   "tests/subject-video-transports.test.mjs": 5,
   "tests/video-first-last-transports.test.mjs": 5,
-  'tests/export-loudness-transports.test.mjs': 3
+  'tests/export-loudness-transports.test.mjs': 3,
+  // CLI JSON stdout/stderr + SDK stderr continuously decode; SDK stdout remains protocol-owned.
+  'tests/timeline-mix-loudness-transports.test.mjs': 3,
+  // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.
+  'tests/timeline-mix-loudness-real-transports.test.mjs': 1
 };
 const binarySites = {
   'tests/http-streams-qa-native.mjs': 1,

@@ -32,7 +32,8 @@
     "export-sample-peak.consumer.tsx",
     "desktop-launcher.consumer.tsx",
     "timeline-audio-preview.consumer.tsx",
-    "export-loudness.consumer.tsx"
+    "export-loudness.consumer.tsx",
+    "timeline-mix-loudness.consumer.tsx"
   ],
   "exclude": [
     "../../packages/ui/src/components/badge.tsx",

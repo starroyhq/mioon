@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.mjs",
     "./connection": "./src/connection.mjs",
+    "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts",
     "./download": "./src/download.mjs"
   },
   "dependencies": {

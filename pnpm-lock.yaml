@@ -86,6 +86,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@mioon/client':
+        specifier: workspace:*
+        version: link:../../packages/client
       '@mioon/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

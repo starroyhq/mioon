@@ -2,9 +2,9 @@
 
 Updated: 2026-10-14 UTC. This is approved iteration scope, not a completion claim.
 Original roadmap baseline: `66a0193`; current status wording was checked against
-committed baseline `1829dd0` plus this exported-file loudness slice. Verified deliverables and historical test totals remain
+committed baseline `b9e7d1e` plus this independently validated current-mix candidate slice. Verified deliverables and historical test totals remain
 in STATUS.md and their dated acceptance reports. The latest independently completed full gate
-is [exported-file loudness](EXPORT-LOUDNESS.md): 7,194 total / 7,192 passed /
+is [complete current-mix candidates](TIMELINE-MIX-LOUDNESS.md): 7,330 total / 7,328 passed /
 0 failed / 0 cancelled / 2 existing skips, with strict typecheck exit 0. Older feature gates retain their own baselines.
 The documentation check itself does not rerun product or platform acceptance.
 
@@ -14,8 +14,9 @@ Independent project home, per-project native windows with one shared backend,
 and bounded [20-second sound audition](TIMELINE-AUDIO-PREVIEW.md) have since been
 delivered. [Complete exported-file loudness observation](EXPORT-LOUDNESS.md)
 has passed its independent implementation/acceptance gate. Measurement and arithmetic advice
-do not complete loudness normalization: frozen current-mix candidates, explicit
-atomic gain application, undo and remeasurement remain the next separate stage.
+do not complete loudness normalization. [Frozen full-current-mix candidates](TIMELINE-MIX-LOUDNESS.md)
+have passed their separate read-only implementation/acceptance gate; explicit atomic gain application,
+undo, float-v2 UI selection and remeasurement remain the next separate stage.
 
 The core local Linux engineering trial is available; it does not wait for every
 item below. [STATUS](../STATUS.md) records the user-UI merge `4858642` and

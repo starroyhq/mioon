@@ -5,6 +5,8 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
+import * as mixLoudnessRpc from '../apps/web/src/timeline-mix-loudness-rpc.ts';
+import * as mixLoudnessContracts from '@mioon/contracts/timeline-mix-loudness';
 import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.js';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
@@ -24,16 +26,19 @@ const defer = () => { let resolve, reject; const promise = new Promise((yes, no)
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 const lifecycleSource = appSource.slice(appSource.indexOf('  const importSession ='), appSource.indexOf('  const currentProject ='));
 const refreshSource = appSource.slice(appSource.indexOf('  const refresh = useCallback('), appSource.indexOf('  async function revealImageAsset('));
+function actualApiDependency(name) {
+  if (name === '@mioon/contracts') return contracts;
+  if (name === './workspace-origin.js') return workspaceOrigin;
+  if (name === './timeline-mix-loudness-rpc.ts') return mixLoudnessRpc;
+  if (name === '@mioon/contracts/timeline-mix-loudness') return mixLoudnessContracts;
+  throw new Error(`Unexpected API dependency ${name}`);
+}
 function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false, workspace = { restored: false }, projectReady = true } = {}) {
   const notifications = [], requests = [], refreshes = [], busyWrites = [], stateWrites = [], busy = new Set(), input = { value: 'selected-files' };
   const currentProject = { current: projectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, requestCounter = { current: 0 };
   const data = { project: { id: projectId }, assets: [] }, dataRef = { current: data };
   const apiModule = { exports: {} }, workspaceRef = { current: workspace };
-  Function('module', 'exports', 'require', 'fetch', transformSync(apiSource, { format: 'cjs' }).code)(apiModule, apiModule.exports, name => {
-    if (name === '@mioon/contracts') return contracts;
-    if (name === './workspace-origin.js') return workspaceOrigin;
-    throw new Error(`Unexpected API dependency ${name}`);
-  }, async (url, options) => {
+  Function('module', 'exports', 'require', 'fetch', transformSync(apiSource, { format: 'cjs' }).code)(apiModule, apiModule.exports, actualApiDependency, async (url, options) => {
     const body = JSON.parse(options.body);
     return fetchImpl ? fetchImpl(url, options, body, requests.length) : Response.json({ ok: true, data: ack(body.input) });
   });
@@ -400,4 +405,16 @@ test('home presentation never starts project polling or performs the loaded-proj
   const poll = mountActualPolling(h, false); await poll.tick(); await poll.visibility('visible');
   await h.scope.refresh(projectId);
   assert.deepEqual(h.requests, []); assert.deepEqual(h.stateWrites, []); assert.equal(poll.listeners.size, 0); poll.cleanup();
+});
+
+test('actual API harness loads four exact real dependencies and rejects any unlisted module', () => {
+  const names = [...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]);
+  assert.deepEqual(names, ['@mioon/contracts', './workspace-origin.js', './timeline-mix-loudness-rpc.ts', '@mioon/contracts/timeline-mix-loudness']);
+  assert.equal(actualApiDependency(names[0]), contracts);
+  assert.equal(actualApiDependency(names[1]), workspaceOrigin);
+  assert.equal(actualApiDependency(names[2]), mixLoudnessRpc);
+  assert.equal(actualApiDependency(names[3]), mixLoudnessContracts);
+  for (const name of ['./timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {
+    assert.throws(() => actualApiDependency(name), { message: `Unexpected API dependency ${name}` });
+  }
 });
