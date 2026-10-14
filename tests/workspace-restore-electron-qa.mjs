@@ -10,6 +10,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {registerHooks} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
@@ -29,16 +30,17 @@ async function utility(){
  const results=[];
  for(const mockLedger of [false,true])for(const revision of ['beb7fcf','1536878','3446aed']){
   const base=path.join(evidence,`case-${revision}-${mockLedger?'mock':'base'}`);ensurePrivateDirectory(base,{create:true});
-  const source=path.join(base,'source');let store=openStore(source);
-  const projectId=randomUUID(),jobId=randomUUID();store.put('projects',{id:projectId,name:'Synthetic Electron restore gate'});store.put('jobs',{id:jobId,projectId,status:'queued',providerId:'must-not-execute'});
+  const source=path.join(base,'source');ensurePrivateDirectory(source,{create:true});ensurePrivateDirectory(path.join(source,'media'),{create:true});
+  const db=new DatabaseSync(path.join(source,'workbench.sqlite'));db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeWorkspaceSchemaThrough24(db);
+  const projectId=randomUUID(),jobId=randomUUID();db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,JSON.stringify({id:projectId,name:'Synthetic Electron restore gate'}));db.prepare('INSERT INTO jobs VALUES(?,?,?)').run(jobId,projectId,JSON.stringify({id:jobId,projectId,status:'queued',providerId:'must-not-execute'}));
   if(mockLedger){
-   const provider=createMockProvider({db:store.db,root:source,now:()=>1234});
+   const provider=createMockProvider({db,root:source,now:()=>1234});
    await provider.submit({model:'mock-motion-v1',prompt:'Synthetic ledger preservation',aspectRatio:'9:16',duration:2,parameters:{scenario:'success'}},{requestId:randomUUID(),jobId});
-   assert.equal(store.db.prepare('SELECT count(*) AS n FROM mock_provider_submissions').get().n,1);
+   assert.equal(db.prepare('SELECT count(*) AS n FROM mock_provider_submissions').get().n,1);
   }
-  installWorkspaceRestoreSchema(store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});
-  const before=snapshot(store.db);store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');store.close();
-  store=openStore(source);assert.equal(getWorkspaceRestoreContext(store).profile,'restored-local-v1');assert.equal(snapshot(store.db),before);store.close();
+  installWorkspaceRestoreSchema(db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});
+  const before=snapshot(db);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');db.close();
+  const store=openStore(source);assert.equal(getWorkspaceRestoreContext(store).profile,'restored-local-v1');assert.equal(snapshot(store.db),before);store.close();
   const root=path.join(base,'old-open');ensurePrivateDirectory(root,{create:true});ensurePrivateDirectory(path.join(root,'media'),{create:true});fs.copyFileSync(path.join(source,'workbench.sqlite'),path.join(root,'workbench.sqlite'));
   const native=new DatabaseSync(path.join(root,'workbench.sqlite'));
   const sqliteSourceId=native.prepare('SELECT sqlite_source_id() AS source').get().source;

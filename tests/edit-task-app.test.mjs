@@ -43,7 +43,7 @@ async function harness(t, hooks = {}) {
   const controller = createEditTaskController({ client, onChange: (owner, snapshot) => { if (owner === currentProject.current) state.snapshots.push(snapshot); } });
   await controller.load(projectId);
   const dataRef = { current: { project: { id: projectId }, timeline: { ...timeline(), revision: 1 }, timelineHistory: { revision: 1 } } };
-  const scope = { captureTaskWorkspaceIntent,
+  const scope = { timelineLoudnessApplyRef: { current: null }, captureTaskWorkspaceIntent,
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }), subtitlesRef: { current: { controller: { recovered: task => { (state.recoveredSubtitleTasks ||= []).push(structuredClone(task)); } } } }, timelineFormatRef: { current: { controller: { recovered: task => state.recoveredTasks.push(structuredClone(task)) } } }, ...submissions, isMutationOperation, isDurableEditOperation, taskInputKey, tasksRef: { current: controller }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (key, owner = currentProject.current) => busy.has(`${owner}:${key}`), markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
@@ -56,7 +56,7 @@ async function harness(t, hooks = {}) {
   return { ...functions, controller, state, currentProject, busy, dataRef, storageValues, client, setTask: value => { task = value; } };
 }
 
-test('actual App routes only the nineteen explicit writes into Task prepare/execute while excluded and legacy paths remain session based', async t => {
+test('actual App routes only the twenty explicit writes into Task prepare/execute while excluded and legacy paths remain session based', async t => {
   const h = await harness(t);
   const saved = await h.run('timeline:mutation', operation, input);
   assert.deepEqual(saved, timeline()); assert.equal(h.storageValues.size, 0);
@@ -266,7 +266,7 @@ test('actual TaskCenter does not render an empty-list claim when loading or erro
     const rendered = nodes(module.exports.default({ ...props, tasks: { phase, items: [], uncertain: [], busy: [] } }));
     const details = rendered.find(node => node.type === disclosure.exports.default);
     assert.equal(details.props.domain, 'task-center'); assert.equal(details.props.durableOperationCount, DURABLE_EDIT_OPERATIONS.length);
-    assert.match(rendered.find(node => node.props?.['data-testid'] === 'durable-task-storage').props.children.join(''), /^19 类时间线元数据（含输出规格）/);
+    assert.match(rendered.find(node => node.props?.['data-testid'] === 'durable-task-storage').props.children.join(''), /^20 类时间线元数据（含输出规格）/);
     assert.equal(rendered.some(node => node.props?.['data-testid'] === 'no-durable-tasks'), phase === 'ready');
     assert.equal(rendered.some(node => node.props?.['data-testid'] === 'task-list-unavailable'), phase !== 'ready');
   }

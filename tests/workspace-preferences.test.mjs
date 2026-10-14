@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -20,9 +21,9 @@ const at = (value, path) => path.reduce((result, key) => result[key], value);
 const set = (value, path, replacement) => { at(value, path.slice(0, -1))[path.at(-1)] = replacement; return value; };
 const protectedTables = ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_requests', 'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events'];
 const capture = store => Object.fromEntries(protectedTables.map(table => [table, store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
-async function fixture(t) {
+async function fixture(t,{open=openStore}={}) {
   const root = await mkdtemp(path.join(tmpdir(), 'wb-preferences-'));
-  let store = openStore(root), services = createServices(store, new Map()), preferences = createWorkspacePreferences(store);
+  let store = open(root), services = createServices(store, new Map()), preferences = createWorkspacePreferences(store);
   const project = await services.call('project.create', {name: 'Synthetic workspace preferences'});
   const f = {root, projectId: project.id, get store() { return store; }, get preferences() { return preferences; }, call: (op, input) => services.call(op, input),
     restart() { store.close(); store = openStore(root); services = createServices(store, new Map()); preferences = createWorkspacePreferences(store); }};
@@ -261,7 +262,7 @@ test('selection IDs can outlive entities, project preferences stay isolated, and
 });
 
 test('additive v5 migration preserves legacy records, immutable requests, history and bytes', async t => {
-  const f = await fixture(t), projectId = f.projectId;
+  const f = await fixture(t,{open:openLegacyWorkspaceStore}), projectId = f.projectId;
   await f.call('shot.create', {projectId, title: 'Legacy shot'});
   let timeline = await f.call('timeline.get', {projectId});
   const input = {projectId, expectedRevision: timeline.revision, requestId: randomUUID(), kind: 'audio', name: 'Legacy edit'};

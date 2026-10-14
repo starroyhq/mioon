@@ -5,7 +5,6 @@ import {mkdtemp, rm, writeFile, readFile, readdir, unlink, symlink} from 'node:f
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {onMediaProcess, spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.mjs';
 import {runStreaming} from '../packages/business/src/media-runtime.mjs';
 import childProcess from 'node:child_process';
@@ -14,7 +13,7 @@ import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {EXPORT_SAMPLE_PEAK_LIMITS, isExportSamplePeakResponse} from '@mioon/contracts/export-sample-peak';
-import {openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {createExportSamplePeakServices} from '../packages/business/src/export-sample-peak.ts';
 import {readTimelineDeliveryDownload} from '../packages/business/src/timeline-delivery-read.ts';
@@ -207,7 +206,6 @@ test('restored denial catalogue and service boundary reject before touching payl
   assert.equal(touched, 0); assert.equal(effects, 0);
 });
 
-
 test('actual restored-v1 shared service denies valid and hostile payloads before getters, bytes, or local processes', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-peak-'));
   let store = openStore(root), services = createServices(store, new Map());
@@ -216,7 +214,7 @@ test('actual restored-v1 shared service denies valid and hostile payloads before
   const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
   const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
     manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
-  try {installWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
+  try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
   store = openStore(root);
   services = createServices(store, new Proxy(new Map(), {get() {throw Error('Must not inspect a provider');}}));
   let media = 0, getters = 0; const off = onMediaProcess(() => {media++;});
@@ -230,7 +228,6 @@ test('actual restored-v1 shared service denies valid and hostile payloads before
   assert.equal(getters, 0); assert.equal(media, 0);
   assert.equal(store.db.prepare('SELECT total_changes() AS n').get().n, beforeChanges); assert.deepEqual(await files(root), beforeFiles);
 });
-
 
 test('actual runner registry retains exact advisory handle until late close and never kills unrelated render handle', async t => {
   const spawned = deferred(), waiting = deferred(), controller = new AbortController();
@@ -297,7 +294,6 @@ test('actual runner registry retains exact advisory handle until late close and 
     assert.deepEqual(unrelated.kills, []);
   } finally {restore();}
 });
-
 
 test('full and ranged 600-second outputs accept exactly 4800-frame discrepancy and reject 4801', async t => {
   for (const range of [false, true]) await t.test(range ? 'ranged' : 'full', async t => {

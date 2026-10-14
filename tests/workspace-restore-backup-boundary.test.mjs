@@ -5,8 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,createHash} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -22,7 +21,7 @@ const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sou
 
 test('restored backup capture refuses before output creation and preserves the whole source',async t=>{
  const f=fixture(t),db=new DatabaseSync(f.file);
- try{installWorkspaceRestoreSchema(db,metadata());}finally{db.close();}
+ try{installCurrentWorkspaceRestoreSchema(db,metadata());}finally{db.close();}
  const bytes=fs.readFileSync(f.file),mode=fs.statSync(f.file).mode,entries=fs.readdirSync(f.base).sort();
  await assert.rejects(createWorkspaceBackup({source:f.source,destination:f.destination}),{code:'RESTORE_BACKUP_UNAVAILABLE'});
  assert.equal(fs.existsSync(f.destination),false);
@@ -43,7 +42,7 @@ test('ordinary capture still retains unknown non-restoration data and creates a 
  const f=fixture(t),db=new DatabaseSync(f.file);
  try{db.exec("CREATE TABLE unrelated_private_note(id INTEGER PRIMARY KEY,note TEXT); INSERT INTO unrelated_private_note VALUES(1,'synthetic retained note');");}finally{db.close();}
  const bytes=fs.readFileSync(f.file),created=await createWorkspaceBackup({source:f.source,destination:f.destination});
- assert.equal(created.databaseSchemaVersion,24);
+ assert.equal(created.databaseSchemaVersion,26);
  assert.deepEqual(await verifyWorkspaceBackup({directory:f.destination}),created);
  assert.deepEqual(fs.readFileSync(path.join(f.destination,'payload/workbench.sqlite')),bytes);
  assert.deepEqual(fs.readFileSync(f.file),bytes);

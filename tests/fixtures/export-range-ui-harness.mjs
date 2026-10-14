@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as rangeContract from '@mioon/contracts/timeline-export-range';
+import * as floatContract from '@mioon/contracts/timeline-export-float';
 import * as deliveryContract from '@mioon/contracts/timeline-delivery';
 import * as samplePeakContract from '@mioon/contracts/export-sample-peak';
 import * as loudnessContract from '@mioon/contracts/export-loudness';
@@ -17,6 +18,7 @@ export function component(file) {
     Function('module', 'exports', 'require', transformSync(source, { loader: name.endsWith('.tsx') ? 'tsx' : name.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code)(module, module.exports, key => {
       if (key === 'react') return react;
       if (key === '@mioon/contracts/timeline-export-range') return rangeContract;
+      if (key === '@mioon/contracts/timeline-export-float') return floatContract;
       if (key === '@mioon/contracts/timeline-delivery') return deliveryContract;
       if (key === '@mioon/contracts/export-sample-peak') return samplePeakContract;
       if (key === '@mioon/contracts/export-loudness') return loudnessContract;

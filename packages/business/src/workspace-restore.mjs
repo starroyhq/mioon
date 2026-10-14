@@ -8,7 +8,7 @@ import {validatePrivateDirectory,validateManagedDirectory} from '@mioon/contract
 import {WORKSPACE_BACKUP_LIMITS as limits} from '../../contracts/src/workspace-backup.mjs';
 import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSchema} from '../../contracts/src/workspace-restore-offline.mjs';
 import {withVerifiedWorkspaceBackup,withDisposableDatabase} from './workspace-backup.mjs';
-import {classifyWorkspaceSchema,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema,WORKSPACE_RESTORE_PROFILE} from './workspace-restore-schema.mjs';
+import {classifyCurrentWorkspaceSchema as classifyWorkspaceSchema,installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema as validateWorkspaceRestoreSchema} from './db.mjs';
 import {acquireWorkspaceLock} from './workspace-lock.mjs';
 import {checkCancelled,sameNode,sameFile,explicitPath,checkSeparate,createDestination,createNewDirectory,checkDirectoryIdentity,
  inspectFile,streamFile,syncDirectory,syncDestinationParent,scanDirectory,removeOwnedDirectory} from './workspace-backup-storage.mjs';
@@ -20,7 +20,7 @@ const messages=Object.freeze({
  DESTINATION_EXISTS:'The restore destination already exists. Choose a new destination; existing contents were not changed.',
  LOCKED:'The destination contains a preexisting workspace lock. No lock was removed or repaired.',
  LOCK_LOST:'The destination lock changed. The restore was not activated by this operation.',
- SOURCE_SCHEMA_UNSUPPORTED:'Only fully classified schema24 original backups can be restored. Restored or unknown schemas are not supported.',
+ SOURCE_SCHEMA_UNSUPPORTED:'Only fully classified schema24 or schema26 original backups can be restored. Restored or unknown schemas are not supported.',
  CHANGED:'A backup or destination file changed. Preserve the incomplete destination for review.',
  LIMIT:'The backup or restored candidate exceeds a fixed offline restore safety limit.',
  CANCELLED:'Restore was cancelled before activation. The incomplete destination is retained and cannot be reused automatically.',
@@ -57,9 +57,9 @@ function checkDestinationAncestors(destination){
   if(path.dirname(ancestor)===ancestor)break;
  }
 }
-function requireSource24(db){
+function requireSupportedOriginalSource(db){
  const profile=classifyWorkspaceSchema(db);
- if(profile.schemaVersion!==24||profile.profile!=='ordinary')fail('SOURCE_SCHEMA_UNSUPPORTED');
+ if(![24,26].includes(profile.schemaVersion)||profile.profile!=='ordinary')fail('SOURCE_SCHEMA_UNSUPPORTED');
 }
 function sameBinding(info,expected){return ['sourceBackupId','manifestHash','sourceDbHash',...(Object.hasOwn(expected,'restorationId')?['restorationId']:[])].every(key=>info[key]===expected[key]);}
 function binding(info){return Object.fromEntries(['restorationId','workspaceOrigin','sourceBackupId','manifestHash','sourceDbHash'].map(key=>[key,info[key]]));}
@@ -116,8 +116,8 @@ export async function restoreWorkspaceBackup({directory,destination,signal}={}){
   directory=explicitPath(directory);destination=explicitPath(destination);checkSeparate(directory,destination);checkCancelled(signal);
   if(validatePrivateDirectory(destination,{allowMissing:true}))fail('DESTINATION_EXISTS');
   checkDestinationAncestors(destination);
-  return await withVerifiedWorkspaceBackup({directory,signal,inspectDatabaseCopy:requireSource24},async source=>{
-   if(source.manifest.databaseSchemaVersion!==24)fail('SOURCE_SCHEMA_UNSUPPORTED');
+  return await withVerifiedWorkspaceBackup({directory,signal,inspectDatabaseCopy:requireSupportedOriginalSource},async source=>{
+   if(![24,26].includes(source.manifest.databaseSchemaVersion))fail('SOURCE_SCHEMA_UNSUPPORTED');
    const sourceDatabase=source.files.find(value=>value.entry.role==='database');
    info={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:source.manifest.backupId,
     manifestHash:source.manifestHash,sourceDbHash:sourceDatabase.entry.sha256,createdAt:new Date().toISOString()};
@@ -133,7 +133,7 @@ export async function restoreWorkspaceBackup({directory,destination,signal}={}){
    check();let db,profile;
    try{
     db=new DatabaseSync(candidate,{enableForeignKeyConstraints:false,enableDoubleQuotedStringLiterals:false});
-    requireSource24(db);check();
+    requireSupportedOriginalSource(db);check();
     // Only fixed source SQL has been classified before any candidate write.
     db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA trusted_schema=OFF;');
     const pageSize=db.prepare('PRAGMA page_size').get().page_size;
@@ -177,7 +177,7 @@ export async function restoreWorkspaceBackup({directory,destination,signal}={}){
    source.checkFiles();check();
    // Prepare/validate the result before activation. There are no cancellation
    // checks after the no-clobber link: a committed branch is never rolled back.
-   result={...binding(info),profile:WORKSPACE_RESTORE_PROFILE,sourceSchema:24,databaseSchemaVersion:25,publication:'confirmed',createdAt:info.createdAt,
+   result={...binding(info),profile:profile.profile,sourceSchema:profile.sourceSchema,databaseSchemaVersion:profile.schemaVersion,publication:'confirmed',createdAt:info.createdAt,
     fileCount:source.result.fileCount,payloadBytes:source.result.payloadBytes,databaseBytes:candidateIdentity.size,
     additionalDiskBytesEstimate:source.result.payloadBytes+4*limits.databaseBytes+64*1024*1024,
     inventory:source.manifest.inventory,heldCounts:profile.heldCounts};
@@ -217,7 +217,7 @@ async function inspectExpectedPublication({destination,expected,signal,checkSour
   const info=await withDisposableDatabase({database,databaseRoot:destination,temporaryParent:temporary,signal,check},db=>validateWorkspaceRestoreSchema(db));
   const recheck=()=>{check();if(!sameFile(before,inspectFile(database,destination,{private:true,maxBytes:limits.databaseBytes})))fail('STATUS_UNAVAILABLE');};
   recheck();if(!sameBinding(info,expected))fail('STATUS_UNAVAILABLE');
-  const result={...binding(info),profile:info.profile,sourceSchema:24,databaseSchemaVersion:25,publication:'observed_guarded',createdAt:info.createdAt,durability:'not_reconfirmed',heldCounts:info.heldCounts};
+  const result={...binding(info),profile:info.profile,sourceSchema:info.sourceSchema,databaseSchemaVersion:info.schemaVersion,publication:'observed_guarded',createdAt:info.createdAt,durability:'not_reconfirmed',heldCounts:info.heldCounts};
   if(!workspaceRestorePublicationStatusSchema.safeParse(result).success)fail('STATUS_UNAVAILABLE');return {result,recheck};
  }catch(cause){if(cause?.code==='WORKSPACE_BACKUP_CANCELLED')throw error('CANCELLED');throw error('STATUS_UNAVAILABLE');}
  finally{if(temporaryIdentity)try{removeOwnedDirectory(temporary,temporary,temporaryIdentity);}catch{fail('STATUS_UNAVAILABLE');}}
@@ -231,7 +231,7 @@ export async function inspectWorkspaceRestorePublication({destination,directory,
   if(directory!==undefined){
    if([restorationId,sourceBackupId,manifestHash,sourceDbHash].some(value=>value!==undefined))fail('STATUS_UNAVAILABLE');
    directory=explicitPath(directory);destination=explicitPath(destination);checkSeparate(directory,destination);
-   return await withVerifiedWorkspaceBackup({directory,signal,inspectDatabaseCopy:requireSource24},async source=>{
+   return await withVerifiedWorkspaceBackup({directory,signal,inspectDatabaseCopy:requireSupportedOriginalSource},async source=>{
     const expected={sourceBackupId:source.manifest.backupId,manifestHash:source.manifestHash,sourceDbHash:source.files.find(value=>value.entry.role==='database').entry.sha256};
     const observation=await inspectExpectedPublication({destination,expected,signal,checkSource:source.check});
     await source.recheck();observation.recheck();return observation.result;

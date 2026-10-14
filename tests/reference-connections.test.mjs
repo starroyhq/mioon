@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {mkdtemp, rm, readFile} from 'node:fs/promises';
@@ -20,10 +21,10 @@ function png(width=36,height=64,color=85) {
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))]);
 }
 const clone=value=>JSON.parse(JSON.stringify(value));
-async function fixture(t,env={}) {
+async function fixture(t,env={},{open=openStore}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'wb-reference-'));
  let store,services,providers;
- const start=()=>{store=openStore(root);providers=createProviderRegistry({db:store.db,root,env});services=createServices(store,providers,{env});};start();
+ const start=(openStoreForStart=openStore)=>{store=openStoreForStart(root);providers=createProviderRegistry({db:store.db,root,env});services=createServices(store,providers,{env});};start(open);
  const f={root,get store(){return store;},get services(){return services;},get providers(){return providers;},call:(op,input)=>services.call(op,input),restart(){store.close();start();},
   state(){return Object.fromEntries(['projects','assets','shots','nodes','edges','jobs','versions','exports'].map(table=>[table,clone(store.list(table))]));},
   async image(projectId=this.projectId,color=85,width=36,height=64){const asset=await this.call('asset.import',{projectId,name:'Synthetic local reference.png',mimeType:'image/png',dataBase64:png(width,height,color).toString('base64')});const node=await this.call('node.create',{projectId,type:'image',assetId:asset.id,label:'Synthetic reference',position:{x:100,y:100}});return {asset,node};},
@@ -184,7 +185,7 @@ test('inconsistent stored bindings fail closed without erasing manual data or qu
 });
 
 test('additive reference migration does not rewrite legacy decorative edges or manual selections',async t=>{
- const f=await fixture(t),{asset,node}=await f.image(),shot=await f.shot(f.projectId,{referenceAssetIds:[asset.id]});
+ const f=await fixture(t,{},{open:openLegacyWorkspaceStore}),{asset,node}=await f.image(),shot=await f.shot(f.projectId,{referenceAssetIds:[asset.id]});
  f.store.put('edges',{id:randomUUID(),projectId:f.projectId,source:node.id,target:shot.id});
  const before=f.state();f.store.db.exec('DROP TABLE reference_requests; DELETE FROM schema_version WHERE version=4;');f.restart();assert.deepEqual(f.state(),before);
  assert.equal(f.store.db.prepare('SELECT version FROM schema_version WHERE version=4').get().version,4);assert.deepEqual(f.store.db.prepare('SELECT * FROM reference_requests').all(),[]);

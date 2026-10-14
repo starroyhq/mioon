@@ -6,8 +6,8 @@ import {mkdtempSync,rmSync,existsSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {schemas,isWorkspaceRestoreInspection,isEditTaskEnvelope,isEditTaskListEnvelope} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {installWorkspaceRestoreSchema,getWorkspaceRestoreContext} from '../packages/business/src/workspace-restore-schema.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
+import {getWorkspaceRestoreContext} from '../packages/business/src/workspace-restore-schema.mjs';
 import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,RESTORE_DENIED_OPERATIONS,assertWorkspaceRestoreOrigin,refuseRestoredOperation} from '../packages/business/src/workspace-restore-policy.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {startWorker} from '../packages/business/src/jobs.mjs';
@@ -48,7 +48,7 @@ async function fixture(t){
  await tasks.drain();await services.drain();store.close();
  const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
  const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:now};
- try{installWorkspaceRestoreSchema(db,metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}
+ try{installCurrentWorkspaceRestoreSchema(db,metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}
  store=openStore(root);services=createServices(store,new Proxy(new Map(),{get(){throw Error('Restored construction inspected a provider');}}));tasks=createEditTasks({store,services});
  t.after(async()=>{await tasks.drain();await services.drain();if(store.db.isOpen)store.close();rmSync(root,{recursive:true,force:true});});
  return {root,store,services,tasks,project,edited,input,response,pending,metadata};

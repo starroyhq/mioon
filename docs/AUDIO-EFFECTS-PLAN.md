@@ -8,6 +8,8 @@
 当前首片[已导出文件响度检查](EXPORT-LOUDNESS.md)已通过独立验收：完整文件测量和只读算术建议，
 尚不应用统一响度。当前[完整浮点混音与固定倍率候选](TIMELINE-MIX-LOUDNESS.md)已通过独立 typecheck／全量与 Linux 生产包验收，仍为只读候选；显式原子 gain 应用、undo、float-v2 界面选择与应用后重测仍是后续；[固定 schema/profile 兼容前置](WORKSPACE-SCHEMA-PROFILES.md)已通过独立 typecheck／全量与实际生产 ASAR backend 门，仍不启用新版本或迁移。
 
+本轮正在实现[原子应用与 26/27 配套恢复](TIMELINE-LOUDNESS-APPLY.md)，尚未完成最终集成验收。以下“没有 UI 选择器”是原规划/已提交前置基线的能力归属；新选择器与显式应用以该独立验收报告为准，不能提前算交付。
+
 ## 1. 优先顺序与产品边界
 
 原定先[项目首页](PROJECT-HOME-PLAN.zh-CN.md)，再实时音频预览与统一响度，当前进展见上方。

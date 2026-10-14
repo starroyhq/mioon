@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.js';
 import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.js';
+import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.mjs';
 
 class Storage {
   values = new Map();
@@ -98,7 +99,7 @@ test('historical responses must identify the original project and target before 
   assert.doesNotThrow(() => validateMutationResponse(order, { id: 'project-a', revision: 5 }));
 });
 
-test('App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure', () => {
+test('App opts every six-op path in, uses explicit drawer replay, and never resumes a partial structure', async () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry, \{ replay \}\)/);
   assert.match(app, /mutation && replay \? null : result/);
@@ -117,13 +118,14 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
     'mutationNotApplied', 'hasRequestNotAppliedProof', `${flags}\n${decision}\nreturn rejected;`);
   const owner = '87000000-0000-4000-8000-000000000001', other = '87000000-0000-4000-8000-000000000002';
   const stored = { input: { projectId: owner, requestId: 'original-app-classification-request' } };
+  const loudnessInput = (await loudnessApplyFixture(stored.input)).input;
   const check = (operation, error, receipt = stored) => classify(operation, error, receipt, isMutationOperation,
     TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, mutationNotApplied, hasRequestNotAppliedProof);
   const rejection = { code: 'REVISION_CONFLICT', definitive: true, details: {} };
   for (const operation of ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', ...TIMELINE_MUTATION_OPERATIONS]) {
     assert.equal(check(operation, rejection), false, `${operation} does not trust a bare 4xx`);
-    if (operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.')) {
-      const fields = operation === 'timeline.format.set' ? { expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } : operation === 'timeline.subtitle.add' ? { expectedRevision: 1, text: '字幕', startFrame: 0, durationFrames: 30 } : { expectedRevision: 1, cueId: other, ...(operation === 'timeline.subtitle.update' ? { patch: { text: '字幕' } } : {}) };
+    if (operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.')) {
+      const fields = operation === 'timeline.loudness.apply' ? loudnessInput : operation === 'timeline.format.set' ? { expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } : operation === 'timeline.subtitle.add' ? { expectedRevision: 1, text: '字幕', startFrame: 0, durationFrames: 30 } : { expectedRevision: 1, cueId: other, ...(operation === 'timeline.subtitle.update' ? { patch: { text: '字幕' } } : {}) };
       const formatStored = { input: { ...stored.input, ...fields } };
       const proof = { mutationOutcome: 'not_applied', operation, projectId: owner, requestId: stored.input.requestId };
       assert.equal(check(operation, { ...rejection, details: proof }, formatStored), true);

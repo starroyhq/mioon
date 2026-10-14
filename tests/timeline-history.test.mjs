@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -11,9 +12,9 @@ import {createServices} from '../packages/business/src/services.mjs';
 const clone = value => JSON.parse(JSON.stringify(value));
 const domain = timeline => clone({tracks:timeline.tracks, clips:timeline.clips, durationFrames:timeline.durationFrames});
 const unrelated = ['projects','assets','shots','nodes','edges','jobs','versions','exports'];
-async function fixture(t) {
+async function fixture(t,{open=openStore}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-history-'));
- let store=openStore(root), services=createServices(store,new Map());
+ let store=open(root), services=createServices(store,new Map());
  const f={root,get store(){return store;}, call:(operation,input)=>services.call(operation,input),
   restart(){store.close();store=openStore(root);services=createServices(store,new Map());},
   asset(projectId,mimeType='image/png') {const id=randomUUID();return store.put('assets',{id,projectId,name:'Local synthetic fixture',mimeType,duration:2,width:720,height:1280,sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`});},
@@ -160,7 +161,7 @@ test('failed durable-response commit rolls back snapshots, branch removal, curso
 });
 
 test('additive migration preserves legacy timeline and response bytes, using legacy state as first undo baseline',async t=>{
- const f=await fixture(t),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
+ const f=await fixture(t,{open:openLegacyWorkspaceStore}),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
  const params=input(projectId,timeline,{kind:'audio',name:'Legacy audio'});timeline=await f.call('timeline.track.add',params);
  const before=f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId).data;
  const responses=f.store.db.prepare('SELECT * FROM timeline_requests').all(),outside=f.capture();

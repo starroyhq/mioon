@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "f8b91713af0c8ed3994e32fa57447827a0ab3883",
+  "purpose": "Unchanged historical wire validators; production new schemas are never used as expected old behavior. Not a complete packaged binary.",
+  "files": {
+    "workspace-backup.mjs": "35599f4a0058d40be1a2a8b874794c931a741bb25db770cf88a1d58612170291",
+    "workspace-restore-offline.mjs": "30027b552e182ac81f295eee0639a2a900aa7f2048fd27d23a22ff438ac830f5",
+    "workspace-restore.mjs": "b623c122317bf337f42e43e0569319602e0c065697c144b9371216e9e71fff7b"
+  }
+}

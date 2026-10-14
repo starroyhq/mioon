@@ -124,9 +124,11 @@ for(const restored of [false,true])test(`combined Mock record cap runs before ${
 
 for(const populated of [false,true])test(`real offline restore of ordinary ${populated?'populated':'empty'} Mock workspace reopens without inherited provider work`,async t=>{
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'restore-mock-profile-')),source=path.join(base,'source'),backup=path.join(base,'backup'),destination=path.join(base,'restored');t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
- let store=openStore(source);createMockProvider({db:store.db,root:source});if(populated)seedRaw(store.db);const before=snapshot(store.db);store.close();const sourceBefore=tree(source);
+ fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o700});
+ const db=new DatabaseSync(path.join(source,'workbench.sqlite'));db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeLegacyWorkspaceSchema(db);
+ createMockProvider({db,root:source});if(populated)seedRaw(db);const before=snapshot(db);db.close();const sourceBefore=tree(source);
  await createWorkspaceBackup({source,destination:backup});const backupBefore=tree(backup),result=await restoreWorkspaceBackup({directory:backup,destination});
- store=openStore(destination);let services,worker;
+ const store=openStore(destination);let services,worker;
  try{
   assertOriginal(store.db,before);const frozen=snapshot(store.db),changes=store.db.prepare('SELECT total_changes() AS n').get().n;
   const bomb=()=>{throw Error('Unexpected inherited provider access');};services=createServices(store,new Proxy(new Map(),{get:bomb}));worker=startWorker(store,new Proxy({},{get:bomb}),new Proxy({},{get:bomb}));await worker.tick();await worker.stop();worker=undefined;await services.drain();services=undefined;

@@ -326,8 +326,8 @@ test('MCP discovery and calls expose no proposal/approval/recovery authority', {
   const f = await editWireFixture(t, 'responses'), {project, shot} = await f.setup(), {proposal} = await f.propose(project.id, shot), before = tableSnapshot(f.root);
   const client = new Client({name: 'synthetic-edit-boundary-audit', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.mjs')], cwd: REPO,
-    env: {PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN}, stderr: 'pipe'});
-  t.after(() => client.close()); await client.connect(transport);
+    env: {...f.testRuntimeEnvironment, PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN}, stderr: 'pipe'});
+  f.deferCleanup(() => client.close()); await client.connect(transport);
   const listing = await client.listTools(); assert.equal(listing.tools.some(tool => /agent.*edit|propose_shot|edit.*approve|edit.*recover/u.test(tool.name)), false);
   for (const name of ['mioon_propose_shot_update','agent_edit_approve','agent_edit_recover','agent_chat_editApprove']) {
     const result = await client.callTool({name, arguments: {proposalId: proposal.id, digest: proposal.digest}});

@@ -1,3 +1,5 @@
+import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
+import {TIMELINE_LOUDNESS_APPLY_OPERATION,TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES,createTimelineLoudnessApplyContracts} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineFormatProvenance} from './timeline-format-receipts.mjs';
 import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
@@ -5,6 +7,7 @@ import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 import {validateSavedTimeline} from './timeline-inputs.mjs';
 
+const loudnessApplyContracts=createTimelineLoudnessApplyContracts({isTimelineRecord});
 const clone=value=>JSON.parse(JSON.stringify(value));
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -31,12 +34,15 @@ const definiteRejections=new Set(['EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIM
 // receipt absence is necessary, but cannot make a post-write or scope failure
 // definite. The caller marks *every* write, including legacy initialization.
 export function rejectTimelineMutation(db,input,error,{receiptAbsent,writesStarted,transactionEntered,callbackFailed,operation}){
+ // New loudness proofs require its owner-aware adapter's exact post-rollback
+ // binding; never fall back to the legacy optional operation/project proof.
+ if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return;
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
   error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId,...(operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
 }
 
 export function readTimelineReceipt(db,input,operation){
- const bytes=operation==='timeline.render'?TIMELINE_RENDER_RESPONSE_BYTES:operation==='timeline.clip.replaceSource'?TIMELINE_REPLACEMENT_RESPONSE_BYTES:TIMELINE_RESPONSE_BYTES;
+ const bytes=operation===TIMELINE_LOUDNESS_APPLY_OPERATION?TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES:operation==='timeline.render'?TIMELINE_RENDER_RESPONSE_BYTES:operation==='timeline.clip.replaceSource'?TIMELINE_REPLACEMENT_RESPONSE_BYTES:TIMELINE_RESPONSE_BYTES;
  const row=db.prepare(`SELECT ${bounded('requestHash',64)} AS requestHash,${bounded('response',bytes)} AS response FROM timeline_requests WHERE requestId=?`).get(input.requestId);
  if(row&&(typeof row.requestHash!=='string'||!/^[a-f0-9]{64}$/.test(row.requestHash)))invalidTimeline();
  return row;
@@ -150,7 +156,13 @@ export function createTimelineRecoveryBoundary(db,input){
   }
   return timeline;
  }
+ const loudnessRecovery=createTimelineLoudnessRecovery(input,{
+  invalid:invalidTimeline,isResponse:loudnessApplyContracts.isTimelineLoudnessApplyResponse,
+  readCurrent:historical=>read({sourceSemantics:!historical}),sources,
+  readReceipt:()=>readTimelineReceipt(db,input,TIMELINE_LOUDNESS_APPLY_OPERATION),
+ });
  function replay(operation,text){
+  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessRecovery.replay(text);
   if(operation==='timeline.format.set')readTimelineFormatProvenance(db,input,readTimelineReceipt(db,input,operation)?.requestHash);
   let response;try{response=JSON.parse(text);}catch{invalidTimeline();}
   if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
@@ -164,6 +176,7 @@ export function createTimelineRecoveryBoundary(db,input){
   return response;
  }
  function verify(operation,response,requestHash){
+  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessRecovery.verify(response,requestHash);
   if(operation==='timeline.format.set')readTimelineFormatProvenance(db,input,requestHash);
   if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
   const current=read();if(!current)unavailable();

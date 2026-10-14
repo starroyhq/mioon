@@ -141,6 +141,15 @@ test('doctor observes pnpm separately without changing direct Node build prerequ
 test('tooling options are explicit and bounded; no shell or arbitrary command arguments', () => {
   assert.equal(parseArguments(['test']).suite, 'portable');
   assert.equal(parseArguments(['test']).concurrency, 1);
+  assert.equal(parseArguments(['test']).compileCache, undefined);
+  assert.equal(parseArguments(['test']).reporter, undefined);
+  assert.equal(parseArguments(['test', '--reporter=tap']).reporter, 'tap');
+  assert.equal(parseArguments(['test', '--reporter=spec']).reporter, 'spec');
+  for (const args of [['test', '--reporter=other'], ['test', '--reporter=tap', '--reporter=spec'], ['build', '--reporter=tap']]) assert.throws(() => parseArguments(args));
+  assert.throws(() => testCommand('.', [], 1, process.execPath, 'outside'));
+  assert.ok(testCommand('.', [], 1, process.execPath, 'tap').args.includes('--test-reporter=tap'));
+  assert.equal(parseArguments(['test', '--compile-cache']).compileCache, true);
+  for (const args of [['build', '--compile-cache'], ['doctor', '--compile-cache'], ['test', '--compile-cache=yes'], ['test', '--compile-cache', '--compile-cache']]) assert.throws(() => parseArguments(args));
   assert.deepEqual(parseArguments(['test', '--suite=full', '--concurrency=2', '--file=a.test.mjs']).files, ['a.test.mjs']);
   assert.equal(parseArguments(['doctor', '--channel=production', '--native-ready']).nativeReady, true);
   for (const args of [[], ['exec'], ['build', '--file=a.test.mjs'], ['test', '--concurrency=0'], ['test', '--concurrency=5'], ['test', '--file=../bad.test.mjs'], ['test', '--file=a.test.mjs;echo x'], ['test', '--file=a.test.mjs', '--file=a.test.mjs'], ['doctor', '--native-ready=yes'], ['test', '--suite=all'], ['build', '--channel=production', '--channel=development']]) assert.throws(() => parseArguments(args));

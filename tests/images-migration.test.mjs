@@ -18,7 +18,7 @@ function assertOld(db,before,{startupMigrations=false}={}){
   if(startupMigrations&&row.type==='table'&&row.name==='agent_edit_proposals')return normalizeAgentEditProposalObject(row);
   if(!startupMigrations||row.type!=='table'||row.name!=='edit_tasks')return row;
   let sql=row.sql;
-  for(const operation of ['timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']){
+  for(const operation of ['timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply']){
    const token=`,'${operation}'`;assert.equal(sql.split(token).length,2,`only the explicit later operation ${operation} changes historical SQL`);sql=sql.replace(token,'');
   }
   return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql});
@@ -73,7 +73,7 @@ test('new image identities resist updates, delete and INSERT OR REPLACE and disp
 
 test('normal startup preserves schema15 rows through later migrations and the explicit format allowlist rebuild',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-image-migration-'));let db=legacyDatabase(path.join(root,'workbench.sqlite')),store;
- try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) v FROM schema_version').get().v,24);assertOld(store.db,before,{startupMigrations:true});const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
+ try{seed(db);const before=capture(db);db.close();db=null;store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);assertOld(store.db,before,{startupMigrations:true});const after=capture(store.db);store.close();store=openStore(root);assert.deepEqual(capture(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 
 test('interruption and unknown results keep fences and permit only explicit local-result recovery',t=>{

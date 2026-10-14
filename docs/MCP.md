@@ -575,7 +575,7 @@ authority, generation call or namespace are introduced. See
 [Durable UI task recovery](TASK-RECOVERY.md) is a dedicated authenticated UI
 coordinator for ten non-rendering timeline edits and two reference operations.
 The implemented subject extension adds only `subject.create`, `subject.version.add`
-and `subject.binding.set` in a dedicated subject lane, for fifteen at that stage. `timeline.format.set` adds the sixteenth fixed operation. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations bring the total to nineteen, sharing `timeline:mutation`.
+and `subject.binding.set` in a dedicated subject lane, for fifteen at that stage. `timeline.format.set` adds the sixteenth fixed operation. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations brought the total to nineteen, sharing `timeline:mutation`. The explicit `timeline.loudness.apply` operation is now the twentieth entry in that lane; its scalar durable intent and exact receipt use the [atomic apply contract](TIMELINE-LOUDNESS-APPLY.md).
 It does not register a generic execute/recover MCP tool or expand built-in Agent
 authority. Existing MCP tools still use the same shared business handlers and
 strict historical acknowledgements; retain exact arguments and request IDs.
@@ -632,7 +632,7 @@ is historical and ownership-checked. Malformed success or generic 4xx stays
 unknown without matching operation/project/request rollback proof.
 
 UI durable preparation adds only these three writes under `subject:mutation`,
-bringing its explicit allowlist to fifteen at that stage; the later format operation makes sixteen, and three subtitle writes now make nineteen in total. External calls do not automatically
+bringing its explicit allowlist to fifteen at that stage; the later format operation makes sixteen, and three subtitle writes made nineteen, and explicit `timeline.loudness.apply` now makes twenty. External calls do not automatically
 create UI tasks, and no generic task-execution MCP tool is added. This external
 catalog does not expand built-in Agent tools/context. Subject/style bindings are
 local planning only: actual `first_frame` still uses `reference_attach`. Later
@@ -833,3 +833,7 @@ Ready measurements refer to the immutable export/output identity and actual veri
 `timeline_loudness_prepare` exposes `timeline.loudness.prepare` through the existing schema-driven catalog. Discover with `mioon_schema`. Require the owned project, saved `expectedRevision`, explicit fixed mix/measurement profiles and user-selected LUFS/dBTP target. No request ID, arbitrary path/URL, selected range or approval flag is accepted, and discovery alone never starts decoding.
 
 Effects are `readOnly:true`, `localProcess:true`, `fileWrite:false`, with no database writes, network or paid work. This is resource-intensive local computation:120s server budget,125s default shared-client deadline,64KiB streaming response cap. The original full float mix and actual fixed-multiplier candidate are measured independently; returned comparisons and gains never grant application authority (`applyAllowed:false`). Do not treat an exported-file arithmetic suggestion as this current-timeline measurement, infer a target, apply edits, call a model or retry lost output automatically. SDK cancellation retires only this observation's owned work. Restored-v1 denies it, and the internal Agent's four metadata tools and permission defaults remain unchanged. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
+
+## Explicit atomic fixed-gain application
+
+`timeline_loudness_apply` exposes the same strict `timeline.loudness.apply` contract. It is `readOnly:false`, `databaseWrite:true`, `localProcess:true`, `idempotent:true`, with no file/network/model/payment effects. Discovery is not authorization to apply. Require the user-selected target and explicit action, retain the original requestId and exact scalar binding, and never treat `applyAllowed:false` from prepare as an application token. The server remeasures before a single atomic edit; same-key historical replay does not rerun media. Local cancellation/output loss remains unknown. No internal Agent catalog expansion is included. See [contract and restored restrictions](TIMELINE-LOUDNESS-APPLY.md).

@@ -33,6 +33,8 @@ export function parseArguments(args) {
     seen.add(key);
     if (key === '--channel' && command !== 'test') result.channel = desktopIdentity.identityForChannel(value).channel;
     else if (key === '--native-ready' && flag === key && command === 'doctor') result.nativeReady = true;
+    else if (key === '--reporter' && command === 'test' && ['tap', 'spec'].includes(value)) result.reporter = value;
+    else if (key === '--compile-cache' && flag === key && command === 'test') result.compileCache = true;
     else if (key === '--concurrency' && command === 'test' && /^[1-4]$/.test(value)) result.concurrency = Number(value);
     else if (key === '--suite' && command === 'test' && ['portable', 'full'].includes(value)) result.suite = value;
     else if (key === '--file' && command === 'test' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.mjs$/.test(value) && !result.files.includes(value)) result.files.push(value);
@@ -303,9 +305,10 @@ export function buildCommands(root, entries, channel, execPath = process.execPat
     {command: execPath, args: [path.join(root, 'apps/desktop/scripts/build.mjs'), `--channel=${channel}`], cwd: root},
   ];
 }
-export function testCommand(root, files, concurrency = 1, execPath = process.execPath) {
+export function testCommand(root, files, concurrency = 1, execPath = process.execPath, reporter) {
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw fail('TOOLING_USAGE', 'Test concurrency must be between 1 and 4.');
-  return {command: execPath, args: ['--test', `--test-concurrency=${concurrency}`, ...files], cwd: root};
+  if (reporter !== undefined && !['tap', 'spec'].includes(reporter)) throw fail('TOOLING_USAGE', 'Test reporter must be tap or spec.');
+  return {command: execPath, args: ['--test', ...(reporter ? [`--test-reporter=${reporter}`] : []), `--test-concurrency=${concurrency}`, ...files], cwd: root};
 }
 
 // Owned direct child only; never a shell, numeric PID signal, or automatic retry.

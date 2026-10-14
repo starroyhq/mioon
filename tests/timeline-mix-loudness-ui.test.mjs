@@ -104,7 +104,7 @@ test('actual details close clears a report or pending observation, and reopening
 test('actual App wiring reads saved snapshot, pinned workspace and live draft controllers without crossing export extractor markers', async () => {
   const app = source('App.jsx'), first = app.indexOf('  function timelineMixLoudnessContext()'), end = app.indexOf('  const nativePreviewPause =', first);
   assert.ok(first > 0 && end > first); assert.ok(end < app.indexOf('  function checkTimelineExport('));
-  assert.match(app, /<TimelineMixLoudness loudness=\{timelineMixLoudness\} \/>/);
+  assert.match(app, /<TimelineMixLoudness loudness=\{timelineMixLoudness\} /);
   const saved = { id: timelineId, projectId, revision: 4, durationFrames: 60, fps: 30,
     tracks: [{ id: id(7), kind: 'audio', orderIndex: 0, muted: false, hidden: false }],
     clips: [{ id: id(4), trackId: id(7), assetId: sourceId, startFrame: 0, sourceInFrame: 0, durationFrames: 60, gain: .5 }] };

@@ -1,3 +1,4 @@
+import * as loudnessApplyRpc from '../apps/web/src/timeline-loudness-apply-rpc.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -29,6 +30,7 @@ const refreshSource = appSource.slice(appSource.indexOf('  const refresh = useCa
 function actualApiDependency(name) {
   if (name === '@mioon/contracts') return contracts;
   if (name === './workspace-origin.js') return workspaceOrigin;
+  if (name === './timeline-loudness-apply-rpc.ts') return loudnessApplyRpc;
   if (name === './timeline-mix-loudness-rpc.ts') return mixLoudnessRpc;
   if (name === '@mioon/contracts/timeline-mix-loudness') return mixLoudnessContracts;
   throw new Error(`Unexpected API dependency ${name}`);
@@ -407,14 +409,15 @@ test('home presentation never starts project polling or performs the loaded-proj
   assert.deepEqual(h.requests, []); assert.deepEqual(h.stateWrites, []); assert.equal(poll.listeners.size, 0); poll.cleanup();
 });
 
-test('actual API harness loads four exact real dependencies and rejects any unlisted module', () => {
+test('actual API harness loads five exact real dependencies and rejects any unlisted module', () => {
   const names = [...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]);
-  assert.deepEqual(names, ['@mioon/contracts', './workspace-origin.js', './timeline-mix-loudness-rpc.ts', '@mioon/contracts/timeline-mix-loudness']);
-  assert.equal(actualApiDependency(names[0]), contracts);
-  assert.equal(actualApiDependency(names[1]), workspaceOrigin);
-  assert.equal(actualApiDependency(names[2]), mixLoudnessRpc);
-  assert.equal(actualApiDependency(names[3]), mixLoudnessContracts);
-  for (const name of ['./timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {
+  assert.deepEqual(names, ['./timeline-loudness-apply-rpc.ts', '@mioon/contracts', './workspace-origin.js', './timeline-mix-loudness-rpc.ts', '@mioon/contracts/timeline-mix-loudness']);
+  assert.equal(actualApiDependency(names[0]), loudnessApplyRpc);
+  assert.equal(actualApiDependency(names[1]), contracts);
+  assert.equal(actualApiDependency(names[2]), workspaceOrigin);
+  assert.equal(actualApiDependency(names[3]), mixLoudnessRpc);
+  assert.equal(actualApiDependency(names[4]), mixLoudnessContracts);
+  for (const name of ['./timeline-loudness-apply-rpc.js', './timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {
     assert.throws(() => actualApiDependency(name), { message: `Unexpected API dependency ${name}` });
   }
 });

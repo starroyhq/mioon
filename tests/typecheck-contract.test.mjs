@@ -98,6 +98,7 @@ test('foundation configuration strictly checks the real contract and automatical
     './timeline-audio-preview.consumer.mts',
     './export-loudness.consumer.mts',
     './timeline-mix-loudness.consumer.mts',
+    './timeline-loudness-apply.consumer.mts',
   ]);
   assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
@@ -179,6 +180,7 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
     'tests/typecheck/agent-timeline-gain.consumer.mts', 'tests/typecheck/export-sample-peak.consumer.mts',
     'tests/typecheck/export-loudness.consumer.mts', 'packages/contracts/src/export-loudness.ts',
     'tests/typecheck/timeline-mix-loudness.consumer.mts', 'packages/contracts/src/timeline-mix-loudness.ts',
+    'tests/typecheck/timeline-loudness-apply.consumer.mts', 'packages/contracts/src/timeline-loudness-apply.ts',
     'tests/typecheck/float-checked-export.consumer.mts', 'packages/contracts/src/timeline-export-float.ts',
     'tests/typecheck/native-close.consumer.mts', 'apps/desktop/src/native-close.ts',
     'tests/typecheck/timeline-audio-preview.consumer.mts', 'packages/contracts/src/timeline-audio-preview.ts', 'packages/contracts/src/timeline-segments.ts',

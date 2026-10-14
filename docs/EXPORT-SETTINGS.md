@@ -121,7 +121,7 @@ A rejected publication cleans only a confirmed unpublished output inode created
 by that attempt. Changed identity, uncertain database reads or a durably accepted
 result preserve the file; cleanup uncertainty is not proof that nothing remains.
 
-`timeline.render` remains outside the 19 durable edit-task operations. Its
+`timeline.render` remains outside the 20 durable edit-task operations. Its
 first-party session receipt is not a new cross-restart intent journal. Successful
 exports and timeline receipts persist; callers must retain unresolved exact
 render inputs. Malformed success and unproven errors retain ambiguity. Only a

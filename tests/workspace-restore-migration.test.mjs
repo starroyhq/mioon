@@ -5,7 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,createHash} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {migrateData} from '../apps/desktop/scripts/migrate-data.mjs';
 import {withOrdinaryMigrationSource} from '../apps/desktop/scripts/migration-restore-guard.mjs';
@@ -15,8 +15,10 @@ const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sou
 function fixture(t){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-restore-migration-'));
  const source=path.join(base,'source'),destination=path.join(base,'absent-parent','destination');
- const store=openStore(source),projectId=randomUUID();
- store.put('projects',{id:projectId,name:'迁移源',revision:1});store.close();
+ fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o700});
+ const db=new DatabaseSync(path.join(source,'workbench.sqlite')),projectId=randomUUID();
+ db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeWorkspaceSchemaThrough24(db);
+ db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,JSON.stringify({id:projectId,name:'迁移源',revision:1}));db.close();
  fs.writeFileSync(path.join(source,'media','preserved.bin'),'unchanged synthetic source bytes');
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  return {base,source,destination,file:path.join(source,'workbench.sqlite')};

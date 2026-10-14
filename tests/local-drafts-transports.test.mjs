@@ -334,7 +334,7 @@ test('local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bod
   assert.deepEqual(f.snapshot(), before); await f.noEffects();
 });
 
-test('a real cold schema-24 backup excludes populated local drafts and preserves the source sidecar exactly', {timeout: 30000}, async t => {
+test('a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly', {timeout: 30000}, async t => {
   const f = await fixture(t), initial = await f.draft();
   const saved = await f.data('/api/local-drafts/clip', {method: 'PUT', input: write(f, initial,
     rawClip(f, {name: 'LOCAL_DRAFT_EXCLUDED_FROM_BACKUP_🎬', startFrame: '-', gain: ''}))});
@@ -347,11 +347,11 @@ test('a real cold schema-24 backup excludes populated local drafts and preserves
   t.after(() => rm(backupRoot, {recursive: true, force: true}));
   const destination = path.join(backupRoot, 'capture');
   const result = await createWorkspaceBackup({source: f.root, destination});
-  assert.equal(result.integrity, 'verified'); assert.equal(result.databaseSchemaVersion, 24);
+  assert.equal(result.integrity, 'verified'); assert.equal(result.databaseSchemaVersion, 26);
   assert.equal(result.inventory.complete, true);
   assert.deepEqual(await verifyWorkspaceBackup({directory: destination}), result);
   const manifestText = await readFile(path.join(destination, 'manifest.json'), 'utf8'), manifest = JSON.parse(manifestText);
-  assert.equal(manifest.databaseSchemaVersion, 24);
+  assert.equal(manifest.databaseSchemaVersion, 26);
   assert.deepEqual(manifest.entries.map(entry => entry.path).sort(),
     ['payload/workbench.sqlite', `payload/${f.sourceRelativePath}`].sort());
   assert.equal(manifestText.includes('local-drafts'), false);

@@ -1,3 +1,4 @@
+import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_CLIENT_MS} from './timeline-loudness-apply.ts';
 import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
 import {isTimelineRenderRecord} from '@mioon/contracts';
@@ -145,6 +146,7 @@ export function createClient(clientOptions = {}) {
   const preflightTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : 35_000;
   const samplePeakTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : EXPORT_SAMPLE_PEAK_LIMITS.clientTimeoutMs;
   const loudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : EXPORT_LOUDNESS_LIMITS.clientTimeoutMs;
+  const loudnessApplyTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_LOUDNESS_APPLY_CLIENT_MS;
   const mixLoudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_MIX_LOUDNESS_LIMITS.clientTimeoutMs;
   async function request(resource, {body, signal, timeoutMs = requestTimeoutMs} = {}) {
     checkSignal(signal);
@@ -157,7 +159,7 @@ export function createClient(clientOptions = {}) {
     let response;
     try {
       response = await fetchImpl(base + resource, {method: body ? 'POST' : 'GET', headers: {authorization: `Bearer ${token}`, ...(body ? {'content-type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: combined, redirect: 'error'});
-      const result = body?.operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessEnvelope(response, combined) : await response.json();
+      const result = body?.operation === 'timeline.loudness.apply' ? await readTimelineLoudnessApplyEnvelope(response, combined) : body?.operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessEnvelope(response, combined) : await response.json();
       if (!result || typeof result.ok !== 'boolean' ||
           (result.ok ? (body && !Object.hasOwn(result, 'data')) || !response.ok : typeof result.error?.code !== 'string' || typeof result.error?.message !== 'string'))
         throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid response.', {details: recoveryDetails});
@@ -208,7 +210,7 @@ export function createClient(clientOptions = {}) {
     const parsed = parse(operation, input);
     const {expectedWorkspaceOrigin, ...transportOptions} = options ?? {};
     const body = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
-    const result = (await request('/api/rpc', {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : {}), ...transportOptions, body})).data;
+    const result = (await request('/api/rpc', {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})).data;
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (operation === 'job.retry' && result?.snapshot && (Object.hasOwn(result.snapshot, 'subjectReference') || Object.hasOwn(result.snapshot, 'subjectVersionId') ||

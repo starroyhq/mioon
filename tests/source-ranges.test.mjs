@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
@@ -8,9 +9,9 @@ import {spawn} from 'node:child_process';
 import {openStore} from '../packages/business/src/db.mjs';
 import {createServices,canonical} from '../packages/business/src/services.mjs';
 
-async function fixture(t){
+async function fixture(t,{open=openStore}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-source-ranges-'));
- let store=openStore(root),services=createServices(store,new Map());
+ let store=open(root),services=createServices(store,new Map());
  const f={root,get store(){return store;},call:(op,input)=>services.call(op,input),
   restart(){store.close();store=openStore(root);services=createServices(store,new Map());},
   asset(mimeType='video/mp4',duration=2,projectId=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private fixture',mimeType,duration,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'});},
@@ -177,12 +178,13 @@ test('retained source receipts reject update/delete/replacement, and cross-table
 });
 
 test('targeted v11/v12 additive reapplication preserves all old receipt bytes and fresh schema invariants',async t=>{
- const f=await fixture(t);await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
+ const f=await fixture(t,{open:openLegacyWorkspaceStore});await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
  const old=f.store.db.prepare('SELECT * FROM mutation_requests').get();
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  const fresh=f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all();
  const fullSchema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- const completeFresh=fullSchema();
+ const current=await fixture(t);
+ const completeFresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
  // Reapply only the two removed asset companions and the subject extension
  // that owns reciprocal triggers on them. Keep unrelated later schema markers:
  // deleting those while retaining their tables would fabricate a downgrade.
@@ -198,7 +200,7 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,24);
+ assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
  assert.deepEqual(fullSchema(),completeFresh);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(fullSchema(),completeFresh);
 });

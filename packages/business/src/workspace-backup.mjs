@@ -9,7 +9,8 @@ import {acquireWorkspaceLock} from './workspace-lock.mjs';
 import {fail,checkCancelled,safeBackupError,sameNode,sameFile,explicitPath,checkSeparate,createDestination,createNewDirectory,
  checkDirectoryIdentity,inspectFile,syncDirectory,syncDestinationParent,streamFile,readJsonFile,writeBoundedFile,publishMarker,scanDirectory,removeOwnedFile,removeOwnedDirectory} from './workspace-backup-storage.mjs';
 import {createIssueCollector,buildWorkspaceInventory,inspectDatabase} from './workspace-backup-inventory.mjs';
-import {detectWorkspaceRestoreEvidence} from './workspace-restore-schema.mjs';
+import {detectCurrentWorkspaceRestoreEvidence as detectWorkspaceRestoreEvidence} from './db.mjs';
+import {hasWorkspaceBackupRestoreEvidence} from './workspace-backup-schema-versions.ts';
 
 const applicationVersion=applicationPackage.version;
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -85,7 +86,7 @@ async function refuseRestoredCapture({database,source,destination,signal,check})
  try{
   await withDisposableDatabase({database,databaseRoot:source,temporaryParent:temporary,signal,check,databasePrivate:false},db=>{
    db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;');
-   if(detectWorkspaceRestoreEvidence(db))throw Object.assign(new Error('Backups of restored working branches are unavailable until recursive restore is supported.'),{code:'RESTORE_BACKUP_UNAVAILABLE'});
+   if(hasWorkspaceBackupRestoreEvidence(db)||detectWorkspaceRestoreEvidence(db))throw Object.assign(new Error('Backups of restored working branches are unavailable until recursive restore is supported.'),{code:'RESTORE_BACKUP_UNAVAILABLE'});
   });
  }finally{removeOwnedDirectory(temporary,temporary,identity);}
 }

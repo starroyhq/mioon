@@ -102,14 +102,15 @@ const textSites = {
   "tests/desktop-media-shutdown.test.mjs": 2,
   "tests/dual-workspace-server.mjs": 2,
   "tests/edit-task-process-recovery.test.mjs": 1,
+  "tests/timeline-loudness-process-recovery.test.mjs": 1,
+  "tests/workspace-schema26.test.mjs": 2,
   "tests/edit-tasks-http.test.mjs": 2,
   "tests/export-preflight-http-observer.test.mjs": 2,
   "tests/export-settings-transports.test.mjs": 3,
   "tests/frame-recovery.test.mjs": 1,
   "tests/frame-transports.test.mjs": 3,
   "tests/generation-input-transports.test.mjs": 4,
-  "tests/helpers/agent-edit-wire-fixture.mjs": 1,
-  "tests/helpers/agent-timeline-wire-fixture.mjs": 2,
+  "tests/helpers/agent-edit-wire-lifecycle.ts": 3,
   "tests/helpers/edit-tasks-http-fixture.mjs": 1,
   "tests/http-file-shutdown.test.mjs": 2,
   "tests/image-activation-transports.test.mjs": 2,
@@ -148,6 +149,8 @@ const textSites = {
   'tests/export-loudness-transports.test.mjs': 3,
   // CLI JSON stdout/stderr + SDK stderr continuously decode; SDK stdout remains protocol-owned.
   'tests/timeline-mix-loudness-transports.test.mjs': 3,
+  // Actual CLI stdout/stderr and official MCP stderr are bounded UTF-8 text.
+  'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.
   'tests/timeline-mix-loudness-real-transports.test.mjs': 1
 };
@@ -169,7 +172,7 @@ async function sourceFiles(directory) {
   for (const entry of await readdir(directory, {withFileTypes: true})) {
     const target = path.join(directory, entry.name);
     if (entry.isDirectory()) files.push(...await sourceFiles(target));
-    else if (entry.isFile() && entry.name.endsWith('.mjs')) files.push(target);
+    else if (entry.isFile() && /\.(?:mjs|ts)$/u.test(entry.name)) files.push(target);
   }
   return files.sort();
 }

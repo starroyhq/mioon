@@ -19,7 +19,7 @@ The original released slice covers twelve operations:
 The subject-library extension adds three explicit operations and a separate
 `subject:mutation` editing lane: `subject.create`, `subject.version.add`, and
 `subject.binding.set`. Its implementation and acceptance status is tracked in
-[Subject library](SUBJECT-LIBRARY.md). That extension brought the coordinator to fifteen fixed operations. The later [timeline output format](TIMELINE-OUTPUT-FORMATS.md) slice appends `timeline.format.set` under `timeline:mutation`, for sixteen total. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations bring the total to nineteen, sharing `timeline:mutation`. Its dual CAS/pristine-state gates apply; this grants no model tools or generic service dispatch.
+[Subject library](SUBJECT-LIBRARY.md). That extension brought the coordinator to fifteen fixed operations. The later [timeline output format](TIMELINE-OUTPUT-FORMATS.md) slice appends `timeline.format.set` under `timeline:mutation`, for sixteen total. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations brought the total to nineteen, sharing `timeline:mutation`. The explicit `timeline.loudness.apply` operation is now the twentieth entry in that lane; its scalar durable intent and exact receipt use the [atomic apply contract](TIMELINE-LOUDNESS-APPLY.md). Its dual CAS/pristine-state gates apply; this grants no model tools or generic service dispatch.
 
 The eight local canvas/asset metadata mutations and `timeline.render` retain their
 existing session-based UI recovery paths. Generation, retries, exports, imports,

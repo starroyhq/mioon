@@ -11,7 +11,7 @@ import {PassThrough} from 'node:stream';
 import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_LIMITS, isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
-import {openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {createExportLoudnessServices} from '../packages/business/src/export-loudness.ts';
 import {createExportLoudnessAccumulator} from '../packages/business/src/export-loudness-meter.ts';
@@ -21,7 +21,6 @@ import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.mjs';
 import {boundedShutdown} from '../packages/business/src/operation-lifecycle.mjs';
 import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
 import {onMediaProcess, spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.mjs';
 import {runStreaming} from '../packages/business/src/media-runtime.mjs';
@@ -234,7 +233,7 @@ test('actual restored-v1 composition denies loudness before parsing valid or hos
   const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
   const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
     manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
-  try {installWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
+  try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
   store = openStore(root);
   services = createServices(store, new Proxy(new Map(), {get() {throw Error('Must not inspect providers');}}));
   let media = 0, getters = 0; const off = onMediaProcess(() => {media++;});

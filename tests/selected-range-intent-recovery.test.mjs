@@ -5,8 +5,8 @@ import {readFile, stat} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {isTimelineMutationResponse, publicValue} from '@mioon/contracts';
+import {installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
 import {hash} from '../packages/business/src/services.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {matchesRestoredExport, restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.mjs';
 import {selectedRangeFixture, RANGE, SETTINGS, authority, action} from './fixtures/selected-range-http-fixture.mjs';
 
@@ -123,7 +123,7 @@ test('restored profile allows an explicit new-origin range export while captured
   // store is closed. This is a profile/origin test, not a backup-copy claim.
   await f.restart(async () => {
     const db = new DatabaseSync(path.join(f.root, 'workbench.sqlite'));
-    try {installWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
+    try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
   });
   const holds = JSON.stringify(f.store.db.prepare('SELECT * FROM workspace_restore_holds ORDER BY kind,id').all());
   assert.equal(matchesRestoredExport(f.store, originalExport), false, 'captured selected-range record is not dispatch-eligible');

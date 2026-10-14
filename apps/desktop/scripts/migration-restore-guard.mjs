@@ -9,7 +9,7 @@ import {constants,lstatSync,realpathSync,openSync,closeSync,fstatSync,readSync,w
 import {setImmediate as yieldIO} from 'node:timers/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {assertStoragePrivacyAvailable,createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
-import {detectWorkspaceRestoreEvidence} from '@mioon/business/workspace-restore-schema';
+import {detectCurrentWorkspaceRestoreEvidence} from '@mioon/business/db';
 import {sameFile,sameNode,inspectFile,removeOwnedFile,removeOwnedDirectory} from '@mioon/business/workspace-backup-storage';
 
 const refuse=()=>Object.assign(new Error('Restored working branches cannot use legacy migration. Keep the original backup and use the dedicated restore workflow with a new destination.'),{code:'RESTORE_MIGRATION_UNAVAILABLE'});
@@ -45,7 +45,7 @@ export async function withOrdinaryMigrationSource(file,consume){
   const ready=inspectFile(candidate,directory,{private:true,maxBytes:before.size});if(!sameNode(created,ready)||ready.size!==before.size)throw changed();owned.set(candidate,ready);
   db=new DatabaseSync(candidate,{readOnly:true,enableForeignKeyConstraints:false,enableDoubleQuotedStringLiterals:false});
   db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON;');
-  if(detectWorkspaceRestoreEvidence(db))throw refuse();
+  if(detectCurrentWorkspaceRestoreEvidence(db))throw refuse();
   const check=()=>{cold(file);if(!sameFile(before,sourceFile(file))||!sameFile(ready,inspectFile(candidate,directory,{private:true,maxBytes:before.size})))throw changed();};
   // The consumer uses this verified copy, never reopens the original for copy.
   // Close SQLite first; the copy remains private until consumer settlement.

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -263,7 +264,7 @@ test('indexed reverse ownership and scoped pagination avoid unrelated-project sc
 
 test('additive inspection index migration tolerates malformed and huge legacy version JSON without rewriting records', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-inspection-migration-'));
-  let store = openStore(root);
+  let store = openLegacyWorkspaceStore(root);
   t.after(async () => {store.close(); await rm(root, {recursive: true, force: true});});
   const projectId = randomUUID(); store.put('projects', {id: projectId, name: 'Legacy', description: '', revision: 1});
   for (const data of ['{invalid', JSON.stringify({padding: 'x'.repeat(70000)}), ...[{private: 'object'}, ['array'], 'x'.repeat(60000), `${randomUUID()}\u0000${'x'.repeat(50000)}`, 123].map(assetId => JSON.stringify({assetId}))]) {

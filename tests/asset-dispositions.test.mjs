@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
@@ -9,9 +10,9 @@ import {LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.mjs';
 import {createServices,canonical} from '../packages/business/src/services.mjs';
 
-async function fixture(t){
+async function fixture(t,{open=openStore}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-asset-dispositions-'));
- let store=openStore(root),services=createServices(store,new Map());
+ let store=open(root),services=createServices(store,new Map());
  const f={root,get store(){return store;},call:(op,input)=>services.call(op,input),
   restart(){store.close();store=openStore(root);services=createServices(store,new Map());},
   asset(mimeType='video/mp4',projectId=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private disposition asset',mimeType,duration:2,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'});},
@@ -264,12 +265,13 @@ test('duplicate presence and corrupted wrong-table placement fail closed for all
 });
 
 test('v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart',async t=>{
- const f=await fixture(t),asset=f.asset();await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
+ const f=await fixture(t,{open:openLegacyWorkspaceStore}),asset=f.asset();await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
  await f.call('asset.range.set',{projectId:f.project.id,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),inFrame:0,outFrame:30});
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',randomUUID(),'old-hash',randomUUID());
  const schema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- const fresh=schema();
+ const current=await fixture(t);
+ const fresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
  // Reapply the targeted additive schema and the subject namespace extension
  // whose trigger belongs to the removed table. Unrelated later schemas remain
  // installed; deleting their markers would manufacture a review downgrade.
@@ -281,7 +283,7 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
  const old=snapshot(f,['schema_version']);f.restart();
  assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests','timeline_format_requests']),old);assert.deepEqual(schema(),fresh);
- assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,24);
+ assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
 });
 

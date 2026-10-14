@@ -76,7 +76,7 @@ test('finite exceptional-marker query bounds output without MAX or numeric role 
   assert.equal(calls.length,1);assert.equal(rows.length,2);assert.match(calls[0],/main\.schema_version/);assert.match(calls[0],/LIMIT 2$/);
   assert.doesNotMatch(calls[0],/MAX\(|version\s*>/i);
 });
-for(const version of [26,27])test(`unknown marker ${version} refuses startup/context/backup/migration/restore before downstream execution`,async t=>{
+for(const version of [28,29])test(`unknown marker ${version} refuses startup/context/backup/migration/restore before downstream execution`,async t=>{
   const f=await restoreFixture(t,{stages:false});
   const sourceFile=path.join(f.source,'workbench.sqlite');
   let db=new DatabaseSync(sourceFile);db.exec(`INSERT INTO schema_version VALUES(${version})`);const before=logical(db);db.close();

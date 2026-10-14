@@ -1,3 +1,4 @@
+import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {bindRestoredExport} from './workspace-restore-exports.mjs';
 import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
@@ -291,5 +292,11 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
  // history, revision and receipt transaction, with no second mutation engine.
  const moveClipInProject=(input,target)=>updateClip(input,createAgentTimelineMoveBoundary(db,input,target));
  const setClipGainInProject=(input,target)=>updateClip(input,createAgentTimelineGainBoundary(db,input,target));
- return {ensure,history,handlers,moveClipInProject,setClipGainInProject};
+ const createLoudnessApplyTransactions=assertAvailable=>createTimelineLoudnessTransactions({
+  db,transaction,editable,snapshot,recordEdit,saveResponse,now,
+  putTimeline:value=>{put('timelines',value);},
+  error:(code,status=409)=>new AppError(code,'已审核的固定增益无法应用，请重新检查当前时间线',status),
+  isDomainError:error=>error instanceof AppError,
+ },assertAvailable);
+ return {ensure,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions};
 }

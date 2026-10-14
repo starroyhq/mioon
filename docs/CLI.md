@@ -701,7 +701,7 @@ namespace are unchanged. See [reference recovery](REFERENCE-RECOVERY.md).
 
 The new [durable UI task slice](TASK-RECOVERY.md) covers ten non-rendering timeline
 edits and two reference operations. The implemented subject extension adds exactly
-`subject.create`, `subject.version.add` and `subject.binding.set`, for fifteen operations. `timeline.format.set` is now the sixteenth explicit operation, in the timeline lane. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations bring the total to nineteen, sharing `timeline:mutation`. It adds no CLI task-execution command and
+`subject.create`, `subject.version.add` and `subject.binding.set`, for fifteen operations. `timeline.format.set` is now the sixteenth explicit operation, in the timeline lane. The three explicit `timeline.subtitle.add`, `timeline.subtitle.update`, and `timeline.subtitle.remove` operations brought the total to nineteen, sharing `timeline:mutation`. The explicit `timeline.loudness.apply` operation is now the twentieth entry in that lane; its scalar durable intent and exact receipt use the [atomic apply contract](TIMELINE-LOUDNESS-APPLY.md). It adds no CLI task-execution command and
 does not change existing command inputs, original receipts or journal key scopes.
 CLI callers must continue retaining their complete original request and key.
 Native UI restart discovery does not imply durable storage of arbitrary external
@@ -762,7 +762,7 @@ a new intent. Malformed success and generic 4xx remain unknown without matching
 operation/project/request rollback proof. The CLI never invents keys or retries.
 
 The three writes are also the only additions to the UI durable allowlist, now
-fifteen at that stage, under `subject:mutation`; the later format operation makes sixteen, and three subtitle writes now make nineteen in total. Direct CLI requests do not automatically become
+fifteen at that stage, under `subject:mutation`; the later format operation makes sixteen, and three subtitle writes made nineteen, and explicit `timeline.loudness.apply` now makes twenty. Direct CLI requests do not automatically become
 UI tasks. Local metadata is ordinary SQLite, not vault-encrypted: keep secrets out
 of names and inputs. This is local planning without provider calls, paid work,
 Blender or built-in Agent catalog/context changes. Actual `first_frame` continues
@@ -939,3 +939,7 @@ Discover `mioon schema timeline.export.loudness`, then use `mioon timeline expor
 Discover `mioon schema timeline.loudness.prepare`, then use `mioon timeline loudness prepare --input '<JSON>'` (or `mioon rpc timeline.loudness.prepare`). Supply the owned `projectId`, saved `expectedRevision`, fixed `mixProfile:"timeline-float-mix-v1"`, fixed `measurementProfile:"bs1770-5-48k-stereo-fir4x-v1"` and explicit user-selected `target:{integratedLufs,truePeakCeilingDbtp}`. No target/profile is defaulted; no request ID, path, URL, export ID, arbitrary file flag or permission flag is accepted.
 
 This complete pre-encode float-mix observation returns the original measurement and, if every resulting gain is representable, a separately measured fixed-multiplier candidate. Passing target/true-peak checks leaves `applyAllowed:false`; nothing is edited, queued or exported. The bounded local work uses120s with125s shared-client grace and a64KiB response reader. Ctrl+C retires only its owned observation; response loss never triggers an automatic retry. Restored-v1 refuses it. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
+
+## Explicit atomic fixed-gain application
+
+Discover `mioon schema timeline.loudness.apply`. After an explicitly reviewed current prepare report, call `mioon timeline loudness apply --input '<JSON>'` with its project/revision/profiles/target, snapshot hash, versioned candidate digest and one stable requestId. There is no client gain list. The server repeats full measurement before committing one gain group, revision and undo entry. A same-key retry returns the immutable original ACK first; changed content conflicts. Ctrl+C or output loss does not cancel an accepted edit. Preserve the exact key/input and reconcile; never invent a replacement key from a timeout. The operation has no model/network/payment effects and is not a built-in Agent tool. See [atomic application](TIMELINE-LOUDNESS-APPLY.md).

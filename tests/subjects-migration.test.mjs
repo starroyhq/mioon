@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {randomUUID} from 'node:crypto';
@@ -114,14 +115,14 @@ function rawDatabase(root) {const db=new DatabaseSync(path.join(root,'workbench.
 function openForTest(t,root) {const store=openStore(root);t.after(()=>store.close());return store;}
 
 // Temporary 15/16/17/18/19/20/21/22/23/24 markers gate later migrations while the unchanged
-// v1–14 IF NOT EXISTS bootstraps populate all other legacy tables. It is removed
+// frozen through24 constructor populates the v1–14 IF NOT EXISTS tables. They are removed
 // before any fixture data or snapshot is made. The edit table comes solely from
 // the frozen SQL above; no v15 table is ever downgraded to manufacture a fixture.
 export function createSchema14Store(root) {
  let db=rawDatabase(root);
  db.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY); CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);');
  db.exec(LEGACY_EDIT_TASK_SCHEMA);db.prepare('INSERT INTO schema_version VALUES(?)').run(15);db.prepare('INSERT INTO schema_version VALUES(?)').run(16);db.prepare('INSERT INTO schema_version VALUES(?)').run(17);db.prepare('INSERT INTO schema_version VALUES(?)').run(18);db.prepare('INSERT INTO schema_version VALUES(?)').run(19);db.prepare('INSERT INTO schema_version VALUES(?)').run(20);db.prepare('INSERT INTO schema_version VALUES(?)').run(21);db.prepare('INSERT INTO schema_version VALUES(?)').run(22);db.prepare('INSERT INTO schema_version VALUES(?)').run(23);db.prepare('INSERT INTO schema_version VALUES(?)').run(24);db.close();
- const store=openStore(root);
+ const store=openLegacyWorkspaceStore(root);
  assert.deepEqual(SUBJECT_TABLES.filter(name=>store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),[]);
  store.db.exec('DELETE FROM schema_version WHERE version IN (15,16,17,18,19,20,21,22,23,24)');
  assert.equal(store.db.prepare('SELECT max(version) n FROM schema_version').get().n,14);
@@ -224,7 +225,7 @@ function assertLegacyPreserved(db,before) {
 function assertNewSchema(db) {
  assert.deepEqual(SUBJECT_TABLES.filter(name=>db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)),SUBJECT_TABLES);
  assert.equal(db.prepare('SELECT count(*) n FROM schema_version WHERE version=15').get().n,1);
- assert.equal(db.prepare('SELECT max(version) n FROM schema_version').get().n,24);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
  for(const table of LATER_IMAGE_TABLES)assert.deepEqual(rows(db,table),[],'later image migration never manufactures image records');
  for(const table of LATER_FRAME_TABLES)assert.deepEqual(rows(db,table),[],'later frame migration never manufactures extraction records');
  assert.deepEqual(rows(db,'timeline_format_requests'),[],'later format migration never manufactures request provenance');
@@ -344,7 +345,7 @@ test('fresh and upgraded stores expose identical v15 schema and retain original 
  upgraded.close();upgraded=openStore(root);
  const fresh=openForTest(t,temporaryRoot(t));assertNewSchema(upgraded.db);assertNewSchema(fresh.db);
  assert.deepEqual(schema(upgraded.db),schema(fresh.db));
- assert.deepEqual(DURABLE_EDIT_OPERATIONS,[...LEGACY_OPERATIONS.slice(0,7),'timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']);
+ assert.deepEqual(DURABLE_EDIT_OPERATIONS,[...LEGACY_OPERATIONS.slice(0,7),'timeline.seed','timeline.undo','timeline.redo','reference.attach','reference.detach','subject.create','subject.version.add','subject.binding.set','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply']);
  for(const operation of LEGACY_OPERATIONS)assert.equal(editTaskLane(operation),operation.startsWith('timeline.')?'timeline:mutation':'reference:mutation');
  for(const store of [upgraded,fresh]) {
   assertConstraintAndTriggerBehavior(store.db,{expanded:true});

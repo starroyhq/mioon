@@ -91,7 +91,7 @@ test('cold backup verify and offline restore preserve v2 queued failed succeeded
   }
   assert.deepEqual(tree(source), sourceBefore); const backupBefore = tree(backup);
   const restored = await restoreWorkspaceBackup({directory: backup, destination});
-  assert.equal(restored.publication, 'confirmed'); assert.equal(restored.databaseSchemaVersion, 25);
+  assert.equal(restored.publication, 'confirmed'); assert.equal(restored.databaseSchemaVersion, 27);
   assert.equal(restored.heldCounts.exports, 3); assert.ok(restored.heldCounts.timeline_requests >= 3);
   assert.deepEqual(restored.inventory, created.inventory);
   assert.deepEqual(tree(source), sourceBefore); assert.deepEqual(tree(backup), backupBefore);
@@ -102,7 +102,7 @@ test('cold backup verify and offline restore preserve v2 queued failed succeeded
     assert.deepEqual(select(db), frozenRows);
     const after = logical(db);
     for (const [table, values] of Object.entries(originalTables)) {
-      const actual = after[table].filter(value => table !== 'schema_version' || value.version <= 24).map(value => {
+      const actual = after[table].filter(value => table !== 'schema_version' || value.version !== 27).map(value => {
         const next = Object.assign(Object.create(Object.getPrototypeOf(value)), value);
         if (table === 'edit_tasks') delete next.executionEpoch; return next;
       });

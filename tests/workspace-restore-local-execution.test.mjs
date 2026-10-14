@@ -8,8 +8,7 @@ import {mkdtempSync,rmSync,writeFileSync,readdirSync,unlinkSync,readFileSync} fr
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
 import {createServices,hash,canonical,now} from '../packages/business/src/services.mjs';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
 import {createTimelineServices} from '../packages/business/src/timeline.mjs';
@@ -58,7 +57,7 @@ async function fixture(t,{exportOptions,agent=false,media=false,subjectTask=fals
  const intents=agent?['shot.update','timeline.clip.update'].map(operation=>({operation,input:agentIntent(store,services,project,saved,timeline,operation)})):[];
  await tasks.drain();await services.drain();store.close();
  const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:now()};
- const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installWorkspaceRestoreSchema(db,metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}
+ const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installCurrentWorkspaceRestoreSchema(db,metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}
  store=openStore(root);services=createServices(store,new Map(),{exportOptions});tasks=createEditTasks({store,services});
  const f={root,store,services,tasks,project,empty,savedInput,saved,asset,timeline,pending,heldExport,intents,capturedSubject,metadata,context:{expectedWorkspaceOrigin:metadata.workspaceOrigin}};
  t.after(async()=>{await tasks.drain();await services.drain();if(store.db.isOpen)store.close();rmSync(root,{recursive:true,force:true});});return f;
@@ -134,7 +133,6 @@ test('new export seals receipt hash and immutable identity atomically; worker ig
  assert.equal(spawns,0);assert.equal(JSON.stringify(f.store.db.prepare('SELECT * FROM exports ORDER BY id').all()),raw);
 });
 
-
 test('import path replacement after native observation is never adopted or removed as owned output',async t=>{
  const f=await fixture(t),binary=path.join(f.root,'synthetic-probe.mjs'),previous=process.env.MIOON_FFPROBE_PATH;
  writeFileSync(binary,`#!${process.execPath}\nprocess.stdout.write(JSON.stringify({streams:[{index:0,codec_type:'video',codec_name:'png',width:1,height:1}],format:{duration:'1'}}));\n`,{mode:0o700});
@@ -145,7 +143,6 @@ test('import path replacement after native observation is never adopted or remov
  assert.equal(spawns,1);assert.equal(f.store.list('assets',f.project.id).length,before);assert.equal(readFileSync(replaced,'utf8'),'foreign replacement');
 });
 
-
 for(const drift of ['same-inode bytes','project JSON owner'])test(`import ${drift} drift while probe awaits cannot publish an asset`,async t=>{
  const f=await fixture(t),binary=path.join(f.root,'synthetic-probe.mjs'),previous=process.env.MIOON_FFPROBE_PATH;
  writeFileSync(binary,`#!${process.execPath}\nsetTimeout(()=>process.stdout.write(JSON.stringify({streams:[{index:0,codec_type:'video',codec_name:'png',width:1,height:1}],format:{duration:'1'}})),20);\n`,{mode:0o700});
@@ -155,7 +152,6 @@ for(const drift of ['same-inode bytes','project JSON owner'])test(`import ${drif
  await assert.rejects(f.services.call('asset.import',{projectId:f.project.id,name:'One pixel',mimeType:'image/png',dataBase64:Buffer.from([137,80,78,71,13,10,26,10,0]).toString('base64')},f.context),code('RESTORE_OPERATION_UNAVAILABLE'));
  assert.equal(spawns,1);assert.equal(f.store.list('assets',f.project.id).length,before);
 });
-
 
 test('captured subject task reserves its shared local key across operations, while unrelated namespaces remain usable',async t=>{
  const f=await fixture(t,{subjectTask:true}),key=f.capturedSubject.task.requestId;
@@ -178,7 +174,6 @@ test('positive current-origin timeline and storyboard exports publish through th
  for(const value of [timeline,storyboard]){const result=f.store.get('exports',value.id);assert.equal(result.status,'succeeded',JSON.stringify(result.error));assert.ok(result.assetId);assert.ok(matchesRestoredExport(f.store,result));assert.equal(f.store.get('assets',result.assetId).provenance,'export');}
  assert.equal(JSON.stringify(f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(f.heldExport.id)),heldBefore);
 });
-
 
 test('fresh import pins caller name, MIME and bytes while its native probe awaits',async t=>{
  const f=await fixture(t),binary=path.join(f.root,'synthetic-probe.mjs'),previous=process.env.MIOON_FFPROBE_PATH;
@@ -226,7 +221,6 @@ for(const scenario of ['timeline after first segment','storyboard source probe',
  const result=f.store.get('exports',value.id);assert.equal(changed,true);assert.equal(result.status,'failed');assert.equal(result.assetId,null);assert.equal(f.store.db.prepare('SELECT count(*) n FROM assets').get().n,before);
  assert.equal(encodes,scenario==='storyboard source probe'?0:1);assert.equal(readdirSync(path.join(f.root,'media')).filter(name=>name.startsWith('export-')).length,0);
 });
-
 
 test('ordinary v24 actual Mock download decodes and publishes a selected version', {timeout:15000},async t=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-normal-mock-')),store=openStore(root),mock=createMockProvider({db:store.db,root}),providers=new Map([['mock',mock]]),services=createServices(store,providers);let worker;

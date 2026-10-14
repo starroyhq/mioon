@@ -20,6 +20,11 @@ const policy={maxPostAttempts:1,automaticRetry:false,price:'usage-based-unknown'
 const insert=(db,table,value)=>{const keys=Object.keys(value);return db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value));};
 function database(file=':memory:'){const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(fixtureSql);return db;}
 function snapshot(db){const objects=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),rows={},foreignKeys={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();foreignKeys[name]=db.prepare(`PRAGMA foreign_key_list("${name}")`).all();}return {objects,rows,foreignKeys};}
+function normalizeStartupTaskObject(row){
+ const token=",'timeline.loudness.apply'";
+ assert.equal(row.sql.split(token).length,2,'startup adds exactly one explicit loudness operation token');
+ return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql:row.sql.replace(token,'')});
+}
 function sameOld(db,before,{startupMigrations=false}={}){
  const after=snapshot(db),next=new Map(after.objects.map(value=>[value.name,value]));
  assert.equal(after.objects.length,before.objects.length+(startupMigrations?1:0));
@@ -29,7 +34,7 @@ function sameOld(db,before,{startupMigrations=false}={}){
  }
  for(const old of before.objects){
   const current=next.get(old.name);
-  const normalized=old.name==='image_reviews'?normalizeImageReviewObject(current):startupMigrations&&old.type==='table'&&old.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
+  const normalized=old.name==='image_reviews'?normalizeImageReviewObject(current):startupMigrations&&old.type==='table'&&old.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):startupMigrations&&old.type==='table'&&old.name==='edit_tasks'?normalizeStartupTaskObject(current):current;
   assert.deepEqual(normalized,old,old.name);
  }
  assert.deepEqual(after.foreignKeys,before.foreignKeys);
@@ -131,7 +136,7 @@ test('schema23 admits only a bound official edit descriptor and rejects cross-br
 });
 
 test('fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes',()=>{
- for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.equal(store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,24);assert.equal(store.db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
+ for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);assert.equal(store.db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
 });
 
 test('startup marker failure preserves frozen database and enables a later successful retry',()=>{

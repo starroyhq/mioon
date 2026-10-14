@@ -1,31 +1,26 @@
-# Current execution index — 2026-10-13
+# Current execution index — 2026-10-14
 
 The M0–M3 and V2–V4.1 checklists below are historical delivery records, not the
-remaining product queue. Current committed code is `dc3bbe8cf664017f4c1a3d0dbb56d3ece5e1e374`:
-user UI merge `4858642` and backend-only opt-in float-checked exports are verified
-in [STATUS](STATUS.md), with separately attributed full-suite and runtime evidence.
-This documentation-only update does not repeat those tests.
+remaining product queue. Current committed baseline is `f8b91713af0c8ed3994e32fa57447827a0ab3883`.
+[STATUS](STATUS.md) and dated acceptance reports record the independent project home,
+multiple project windows, bounded sound audition, exported-file loudness and complete
+current-mix candidates, plus fixed schema/profile prerequisite. Their actual gates
+are separate; the [atomic loudness apply slice](docs/TIMELINE-LOUDNESS-APPLY.md) is
+currently under integration and its final feature gate is not yet complete.
 
 The limited local Linux trial is available. Follow the [source startup guide](docs/CORE-TRIAL.zh-CN.md)
-for commands and [STATUS](STATUS.md) for the newer code/Git boundary. To identify
-this checkout and the accepted UI merge history without running the application:
-
-```sh
-git rev-parse HEAD
-git show --format='%H%n%P%n%s' --no-patch 48586426d4a5e52a2a4daf7ef84fbd5f5c26e02b
-```
-
-Prioritize stability and useful bounded slices within the [six remaining directions](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-13).
+for commands and [STATUS](STATUS.md) for attributed code/Git observations. Identify
+this checkout with `git rev-parse HEAD`; a local checkpoint does not imply remote sync.
+Prioritize the current explicit apply/undo/output remeasurement slice, then bounded
+stability and useful stages within the [six remaining directions](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-14).
 They are feature directions, not six commits or a promised completion date.
-New backend work must preserve the user's UI, existing shared contracts, original
-media and historical receipts. New logic uses TS; gradual legacy migration must
-not become a whole-repository rewrite. Do not start another feature solely to
-keep a queue busy or treat distant roadmap completion as a prerequisite for trial.
+New logic uses TS; gradual legacy migration must not become a whole-repository
+rewrite. Preserve the user's workbench, original media, shared services and receipts.
 
-Mac/Windows native acceptance and real-provider work remain separate, specifically
-scoped gates. The last verified GitHub `ccfaab5` / Mac `08890b7` observations were
-not refreshed here; later local commits are not implicitly approved for push.
-No platform candidate, ordinary source build or Mock result establishes those gates.
+Mac/Windows native acceptance and real-provider work remain separately scoped gates.
+The dated Git observations in STATUS and the roadmap are historical observations,
+not a fresh remote check. No platform candidate, source build or Mock result proves
+native/live quality, and later commits do not carry implicit push authority.
 
 ## Historical M0–M3 / V2–V4.1 records
 

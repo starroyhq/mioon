@@ -179,7 +179,11 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
   ownerSignal?.addEventListener('abort', stop, {once: true});
   if (ownerSignal?.aborted) stop();
 
-  async function prepare(rawInput: unknown, context: {signal?: AbortSignal} = {}): Promise<TimelineMixLoudnessResponse> {
+  // Backend-only synchronous continuation. A public prepare DTO cannot recreate
+  // this live fence; it expires as soon as the continuation returns or throws.
+  async function withFreshMeasurement<T>(rawInput: unknown,
+    consume: (report: TimelineMixLoudnessResponse, finalFence: () => void) => T,
+    context: {signal?: AbortSignal} = {}): Promise<T> {
     // Refuse restored workspaces before even inspecting a hostile input getter.
     runtime.assertOrdinaryWorkspace();
     if (!plainData(rawInput, 2048)) throw fault('VALIDATION_ERROR', 400);
@@ -297,23 +301,39 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     entry.task = joined;
     // Retain the exact task across public cancellation and noncooperative I/O.
     joined.catch(error => {if (unconfirmed(error)) state.shutdownFailure ??= error;});
+    let live = false;
     try {
-      const result = await observe(joined, signal); fence();
-      const response = publish(input, initial, result, bytesHashed, pcmBytes);
-      fence(); return response;
-    } catch (error) {
-      try {fence();} catch { /* Preserve the first causal fence failure. */ }
-      if (state.shutdownFailure) throw state.shutdownFailure;
-      const cause = fencedFailure ?? error, code = codeOf(cause);
-      if (timedOut) throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);
-      if (code && publicCodes.has(code))
-        throw fault(code, code === 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED' ? 403 : code === 'OPERATION_CANCELLED' ? 503 : 409);
-      if (code === 'MEDIA_TIMEOUT') throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);
-      if (code === 'MEDIA_CANCELLED') throw fault('OPERATION_CANCELLED', 503);
-      if (code === 'LOUDNESS_INVALID_PCM' || code === 'LOUDNESS_DURATION_MISMATCH') throw fault('TIMELINE_MIX_LOUDNESS_INVALID_PCM');
-      if (code?.startsWith('MANAGED_')) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
-      throw fault('TIMELINE_MIX_LOUDNESS_DECODE_FAILED');
-    } finally {controller.abort();}
+      let response: TimelineMixLoudnessResponse;
+      try {
+        const result = await observe(joined, signal); fence();
+        response = publish(input, initial, result, bytesHashed, pcmBytes);
+        fence();
+      } catch (error) {
+        try {fence();} catch { /* Preserve the first causal fence failure. */ }
+        if (state.shutdownFailure) throw state.shutdownFailure;
+        const cause = fencedFailure ?? error, code = codeOf(cause);
+        if (timedOut) throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);
+        if (code && publicCodes.has(code))
+          throw fault(code, code === 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED' ? 403 : code === 'OPERATION_CANCELLED' ? 503 : 409);
+        if (code === 'MEDIA_TIMEOUT') throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);
+        if (code === 'MEDIA_CANCELLED') throw fault('OPERATION_CANCELLED', 503);
+        if (code === 'LOUDNESS_INVALID_PCM' || code === 'LOUDNESS_DURATION_MISMATCH') throw fault('TIMELINE_MIX_LOUDNESS_INVALID_PCM');
+        if (code?.startsWith('MANAGED_')) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
+        throw fault('TIMELINE_MIX_LOUDNESS_DECODE_FAILED');
+      }
+      // All children have retired. Crucially, transaction/commit errors from
+      // this continuation are outside media normalization and remain unknown.
+      live = true;
+      return consume(response, () => {
+        if (!live) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
+        fence();
+        // Synchronous adapters may consume time or revoke ownership while
+        // validating the last source. Close that final boundary before writes.
+        assertOwner();
+        if (state.stopped || signal.aborted) throw fault(timedOut ? 'TIMELINE_MIX_LOUDNESS_TIMEOUT' : 'OPERATION_CANCELLED', 503);
+        if (remainingMs() <= 0) {timedOut = true; controller.abort(); throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);}
+      });
+    } finally {live = false; controller.abort();}
   }
   async function drain(): Promise<void> {
     stop();
@@ -321,7 +341,9 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     finally {ownerSignal?.removeEventListener('abort', stop);}
     if (state.shutdownFailure) throw state.shutdownFailure;
   }
-  return {handlers: {'timeline.loudness.prepare': prepare}, drain};
+  const prepare = (rawInput: unknown, context: {signal?: AbortSignal} = {}): Promise<TimelineMixLoudnessResponse> =>
+    withFreshMeasurement(rawInput, report => report, context);
+  return {handlers: {'timeline.loudness.prepare': prepare}, withFreshMeasurement, drain};
 }
 
 type Candidate = TimelineMixLoudnessResponse['candidate'];

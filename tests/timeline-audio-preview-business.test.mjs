@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {AUDIO_PREVIEW_LIMITS, isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
-import {openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {createTimelineAudioPreviewServices} from '../packages/business/src/timeline-audio-preview.ts';
 import {readTimelinePreflightSnapshot, readTimelineSourceGraph} from '../packages/business/src/timeline-sources.mjs';
@@ -14,7 +14,6 @@ import {validateTimeline} from '../packages/business/src/timeline-inputs.mjs';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.mjs';
 import {boundedShutdown} from '../packages/business/src/operation-lifecycle.mjs';
 import {workspaceRestoreError} from '../packages/business/src/workspace-restore-policy.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
 const deferred = () => {let resolve; const promise = new Promise(r => {resolve = r;}); return {resolve, promise};};
@@ -264,7 +263,7 @@ test('restored workspace rejects hostile payload before getters, ownership reade
 test('real restored schema remains zero-write and denies source payload access', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-audio-')); let store = openStore(root);
   store.close(); const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  try {installWorkspaceRestoreSchema(db, {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
+  try {installCurrentWorkspaceRestoreSchema(db, {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
     manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()}); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
   store = openStore(root); let getters = 0, effects = 0;
   const denied = () => {effects++; throw Error('Unexpected effect');};

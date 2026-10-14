@@ -363,8 +363,8 @@ test('actual CLI and MCP gain update/undo share the approved Agent timeline hist
   const approved = savedTimeline(f.root, project.id), originalProposal = savedProposal(f.root, proposal.id), baseline = timelineRows(f.root).length;
   const client = new Client({name: 'synthetic-agent-timeline-boundary-audit', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.mjs')], cwd: REPO,
-    env: {PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'ignore'});
-  t.after(() => client.close()); await client.connect(transport);
+    env: {...f.testRuntimeEnvironment, PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'ignore'});
+  f.deferCleanup(() => client.close()); await client.connect(transport);
   const tools = (await client.listTools()).tools.map(value => value.name);
   for (const name of ['timeline_clip_update', 'timeline_undo']) assert.ok(tools.includes(name));
   assert.equal(tools.some(name => /agent.*edit|propose_timeline|edit.*approve|edit.*recover/u.test(name)), false);

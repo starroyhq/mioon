@@ -7,7 +7,7 @@ import * as fixedInputs from '../packages/business/src/workspace-schema-v24-cons
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore, getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
+import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.mjs';
 import {initializeLegacyWorkspaceSchema, initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {createMockProvider} from '../packages/business/src/providers/mock.mjs';
 import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
@@ -25,6 +25,19 @@ const profile = name => ({
   objects: golden.profiles[name].schema.map(id => golden.definitions[id]),
   tables: golden.profiles[name].tables,
 });
+
+// Runtime26 has exactly two reviewed differences from the independent24
+// golden. Derive that expectation from frozen bytes, never from the migration
+// under test; all other SQL, indexes, triggers, raw rows and sequences stay exact.
+function currentOrdinaryProfile(name = 'ordinary-24') {
+  const expected = structuredClone(profile(name));
+  const tasks = expected.objects.find(object => object.name === 'edit_tasks');
+  const oldCheck = "'timeline.subtitle.remove'))";
+  assert.equal(tasks.sql.split(oldCheck).length, 2);
+  tasks.sql = tasks.sql.replace(oldCheck, "'timeline.subtitle.remove','timeline.loudness.apply'))");
+  expected.tables.schema_version.rows.push(['26', 'integer', '3236']);
+  return expected;
+}
 
 function objects(db) {
   return db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all().map(row => ({...row}));
@@ -276,7 +289,7 @@ test('through24 constructor keeps every ordinary1–24 trusted SQL/default-row c
 });
 
 for (let version = 1; version <= 24; version++) {
-  test(`frozen ordinary${version} classifies without mutation and runtime opens to the frozen through24 result`, t => {
+  test(`frozen ordinary${version} classifies without mutation and runtime opens with only the reviewed ordinary26 delta`, t => {
     const name = `ordinary-${version}`;
     const root = onDisk(t, name);
     const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
@@ -286,17 +299,17 @@ for (let version = 1; version <= 24; version++) {
     } finally { db.close(); }
     const store = openStore(root);
     try {
-      assert.deepEqual(snapshot(store.db), profile('ordinary-24'));
+      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile());
       assertPreserved(store.db, profile(name), version);
       assert.equal(getWorkspaceRestoreContext(store), null);
     } finally { store.close(); }
   });
 }
 
-test('fresh runtime construction ends at frozen ordinary24 and has no restoration authority', t => {
+test('fresh runtime construction has only the reviewed ordinary26 delta and no restoration authority', t => {
   const store = openStore(onDisk(t));
   try {
-    assert.deepEqual(snapshot(store.db), profile('ordinary-24'));
+    assert.deepEqual(snapshot(store.db), currentOrdinaryProfile());
     assert.equal(getWorkspaceRestoreContext(store), null);
   } finally { store.close(); }
 });
@@ -311,14 +324,15 @@ test('real Mock ledger constructor keeps the frozen optional ordinary24 table/in
 
 for (const mock of [false, true]) for (const seeded of [false, true]) {
   const suffix = (mock ? '-mock' : '') + (seeded ? '-seeded' : '');
-  test(`frozen ordinary24${suffix} reopens without changing schema, raw rows, receipts or sequence`, t => {
+  test(`frozen ordinary24${suffix} reopens with only the reviewed26 schema delta, preserving raw rows, receipts and sequence`, t => {
     const name = `ordinary-24${suffix}`;
     const store = openStore(onDisk(t, name));
     try {
-      assert.deepEqual(snapshot(store.db), profile(name));
-      assert.deepEqual(classifyWorkspaceSchema(store.db), {schemaVersion: 24, profile: 'ordinary'});
+      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile(name));
+      assertPreserved(store.db, profile(name));
+      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 26, profile: 'ordinary'});
       if (seeded) constraints(store.db, {restored: false, mock});
-      assert.deepEqual(snapshot(store.db), profile(name));
+      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }
   });
 
@@ -364,14 +378,14 @@ for (const repair of ['known-marker-gap', 'initial-markers-absent', 'marker-tabl
     } finally { db.close(); }
     const store = openStore(root);
     try {
-      assert.deepEqual(snapshot(store.db), profile(repair === 'marker-table-absent' ? 'ordinary-24' : initial));
+      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile(repair === 'marker-table-absent' ? 'ordinary-24' : initial));
       assert.equal(getWorkspaceRestoreContext(store), null);
     } finally { store.close(); }
   });
 }
 
-for (const version of [26, 27]) {
-  test(`future marker${version} is refused before ordinary bootstrap can execute imported SQL`, t => {
+for (const version of [26, 27, 28, 29]) {
+  test(`unsupported marker-only profile${version} is refused before ordinary bootstrap can execute imported SQL`, t => {
     const root = onDisk(t, 'ordinary-24-seeded');
     const file = path.join(root, 'workbench.sqlite');
     let db = new DatabaseSync(file);

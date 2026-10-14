@@ -5,7 +5,7 @@ import {mkdtempSync,rmSync,existsSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.mjs';
+import {openStore,installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
 import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {classifyWorkspaceSchema,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema,getWorkspaceRestoreContext,isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.mjs';
 const info=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T00:00:00.000Z'});
@@ -87,7 +87,7 @@ test('partial metadata/profile/marker/guard/epoch structures refuse with no ordi
 });
 test('unregistered/copied/mutated/closed stores cannot manufacture a verified restoration or ordinary context',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'restore-context-'));t.after(()=>rmSync(root,{recursive:true,force:true}));let store=openStore(root);assert.equal(getWorkspaceRestoreContext(store),null);
- assert.equal(getWorkspaceRestoreContext({...store}),null);installWorkspaceRestoreSchema(store.db,info());store.close();store=openStore(root);
+ assert.equal(getWorkspaceRestoreContext({...store}),null);installCurrentWorkspaceRestoreSchema(store.db,info());store.close();store=openStore(root);
  const ctx=getWorkspaceRestoreContext(store);assert.throws(()=>getWorkspaceRestoreContext({...store}),/not verified/);const originalPrepare=store.db.prepare;store.db.prepare=()=>({iterate:()=>[],get:()=>undefined});assert.throws(()=>getWorkspaceRestoreContext({...store}),/not verified/);store.db.prepare=originalPrepare;assert.equal(Object.isFrozen(ctx),true);assert.equal(Object.isFrozen(ctx.heldCounts),true);assert.equal(isRestoredRecordHeld(store,'agent_chat_quota','1'),true);
  const rootValue=store.root;store.root+='-fake';assert.throws(()=>getWorkspaceRestoreContext(store),/not verified/);store.root=rootValue;
  store.close();assert.throws(()=>getWorkspaceRestoreContext(store),/not verified/);
@@ -95,7 +95,7 @@ test('unregistered/copied/mutated/closed stores cannot manufacture a verified re
 test('metadata UUID/hash validation rejects trailing newline and construction leaves source24 unchanged',t=>{
  const db=fresh(t),before=snapshot(db);for(const key of ['restorationId','workspaceOrigin','sourceBackupId','manifestHash','sourceDbHash']){const value=info();value[key]+='\n';assert.throws(()=>installWorkspaceRestoreSchema(db,value),/RESTORE_METADATA_INVALID/);assert.deepEqual(snapshot(db),before);}
 });
-test('ordinary v24 reopen keeps raw schema/rows/receipts and source profile classification intact',t=>{
+test('ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'restore-ordinary-'));t.after(()=>rmSync(root,{recursive:true,force:true}));let store=openStore(root);seed(store.db);const before=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),before);assert.equal(getWorkspaceRestoreContext(store),null);store.close();
 });
 test('quoted keyword lookalikes are not equivalent fixed schema objects',t=>{

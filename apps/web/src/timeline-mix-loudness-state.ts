@@ -6,7 +6,7 @@ import { parseExportLoudnessTarget } from './export-loudness-state.ts';
 import type { ExportLoudnessDraft } from './export-loudness-state.ts';
 
 export const TIMELINE_MIX_LOUDNESS_LABEL = '当前整片浮点混音与固定增益候选';
-export const TIMELINE_MIX_LOUDNESS_LIMITATION = '仅测量当前已保存时间线的编码前浮点混音，不是已导出文件。不会修改音量或创建导出任务；不代表已实现逐段响度统一，也不保证 AAC 编码后的峰值。';
+export const TIMELINE_MIX_LOUDNESS_LIMITATION = '仅测量当前已保存时间线的编码前浮点混音，不是已导出文件。准备测量不会修改音量或创建导出任务，应用须另行确认；不代表已实现逐段响度统一，也不保证 AAC 编码后的峰值。';
 export interface TimelineMixLoudnessContext {
   readonly scope: string | null;
   readonly executionScope: string;

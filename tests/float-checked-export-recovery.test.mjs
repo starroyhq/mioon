@@ -1,18 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
-import {mkdtemp, readFile, writeFile, readdir, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, readdir, rm} from 'node:fs/promises';
 import {readdirSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord, publicValue} from '@mioon/contracts';
 import {isTimelineExportAudioOutcome} from '@mioon/contracts/timeline-export-float';
-import {openStore} from '../packages/business/src/db.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {createServices} from '../packages/business/src/services.mjs';
 import {startWorker} from '../packages/business/src/jobs.mjs';
 import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {installWorkspaceRestoreSchema, isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.mjs';
+import {isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.mjs';
 import {matchesRestoredExport} from '../packages/business/src/workspace-restore-exports.mjs';
 import {createTimelineFloatAudioAccumulator} from '../packages/business/src/timeline-float-audio-check.ts';
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement, bindFloatTimelineFailure, ownedFloatTimelineMeasurement,
@@ -55,7 +56,7 @@ async function fixture(t, {gain = 1} = {}) {
       if (restore) {
         const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
         const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-        try {installWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
+        try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
         f.context = {expectedWorkspaceOrigin: metadata.workspaceOrigin};
       }
       store = openStore(root); services = createServices(store, new Map(), {exportOptions: {inspect: (...args) => inspect(...args)}});
@@ -179,7 +180,6 @@ test('storyboard and float timeline request keys remain separate in both orders 
   }
 });
 
-
 test('a stripped float row cannot borrow a real storyboard row and its receipt, even with an exact copied payload', async t => {
   for (const restored of [false, true]) for (const crossProject of [false, true]) for (const exactCopy of [false, true]) {
     await t.test(`restored=${restored}, crossProject=${crossProject}, exactCopy=${exactCopy}`, async t => {
@@ -216,9 +216,10 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
   const bytes = await readFile(new URL('./fixtures/float-checked-export-legacy-140fa882.json', import.meta.url));
   assert.equal(sha(bytes), 'fafe232360d51726403dfbe67bc18341c9f29d7fce65b12c243156bbc81a36c2');
   const baseline = JSON.parse(bytes), root = await mkdtemp(path.join(tmpdir(), 'mioon-float-old-golden-'));
-  let store = openStore(root), services;
-  t.after(async () => {await services?.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  const db = store.db;
+  let store, services;
+  t.after(async () => {await services?.drain(); store?.close(); await rm(root, {recursive: true, force: true});});
+  const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
+  db.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;'); initializeWorkspaceSchemaThrough24(db);
   db.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;');
   try {
     for (const [table, values] of Object.entries(baseline.tables)) {
@@ -234,10 +235,13 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
     db.exec('COMMIT; PRAGMA foreign_keys=ON;');
   } catch (error) {if (db.isTransaction) db.exec('ROLLBACK'); throw error;}
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  await mkdir(path.dirname(path.join(root, baseline.media.relativePath)), {recursive: true, mode: 0o700});
   await writeFile(path.join(root, baseline.media.relativePath), Buffer.from(baseline.media.base64, 'base64'));
-  const before = rows(db); store.close(); store = openStore(root);
+  const before = rows(db); db.close(); store = openStore(root);
+  // The frozen24 rows remain byte-exact; startup contributes only marker26.
+  const expected = {...before, schema_version: [...before.schema_version, {__rowid__: 26, version: 26}]};
   services = createServices(store, new Map(), {exportOptions: {inspect: async () => {throw Error('Old replay must not probe');}}});
-  assert.deepEqual(rows(store.db), before);
+  assert.deepEqual(rows(store.db), expected);
   for (const render of baseline.renders) {
     const input = JSON.parse(render.inputJson), expected = JSON.parse(render.responseJson);
     assert.equal(JSON.stringify(await services.call('timeline.render', input)), render.responseJson);
@@ -247,7 +251,7 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
     assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(render.requestId).response,
       baseline.tables.timeline_requests.find(value => value.requestId === render.requestId).response);
   }
-  await services.call('project.get', {projectId: baseline.projectId}); assert.deepEqual(rows(store.db), before);
+  await services.call('project.get', {projectId: baseline.projectId}); assert.deepEqual(rows(store.db), expected);
 });
 
 test('failed v2 current report never enters immutable ACK; exact replay precedes changed capability/revision after restart', async t => {

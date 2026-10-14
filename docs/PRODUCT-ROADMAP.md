@@ -2,10 +2,8 @@
 
 Updated: 2026-10-14 UTC. This is approved iteration scope, not a completion claim.
 Original roadmap baseline: `66a0193`; current status wording was checked against
-committed baseline `b9e7d1e` plus this independently validated current-mix candidate slice. Verified deliverables and historical test totals remain
-in STATUS.md and their dated acceptance reports. The latest independently completed full gate
-is [complete current-mix candidates](TIMELINE-MIX-LOUDNESS.md): 7,330 total / 7,328 passed /
-0 failed / 0 cancelled / 2 existing skips, with strict typecheck exit 0. Older feature gates retain their own baselines.
+committed baseline `f8b9171`; the separate [atomic apply integration](TIMELINE-LOUDNESS-APPLY.md) is in progress and has not yet passed its final feature gate. Verified deliverables and historical test totals remain
+in STATUS.md and their dated acceptance reports. The latest independently completed full gate is the [fixed schema/profile prerequisite](WORKSPACE-SCHEMA-PROFILES.md): 7,399 total / 7,397 passed / 0 failed / 0 cancelled / 2 existing skips, with strict typecheck exit 0. Older feature gates retain their own baselines.
 The documentation check itself does not rerun product or platform acceptance.
 
 ## Current delivery and remaining work (2026-10-14)
@@ -29,9 +27,7 @@ not new implementation, external-service authority or a fixed number of commits.
 1. **Editing experience.** Delivered: managed media, source ranges, favorite/reject,
    current-timeline usage/filter/location, raw-source waveforms, clip fades,
    three 30fps canvas presets, bounded draft/restart recovery, independent project
-   home/windows, saved-timeline sound audition up to20seconds and complete exported-file loudness observation. The next approved
-   work is current-mix candidates
-   and explicit loudness gain application, followed by the bounded audio/effects
+   home/windows, saved-timeline sound audition up to20seconds and complete exported-file loudness observation. Complete current-mix candidates are also delivered. The current implementation work is explicit loudness gain application, followed by the bounded audio/effects
    stages below. Existing user workbench design is preserved. Reproduced reliability defects remain actionable; scoped proxy
    performance and tags/notes remain separate open work. Ducking/crossfades,
    color/HDR and later effects are not made complete by their inclusion in the plan.
@@ -92,9 +88,7 @@ The user approved adding the proposed audio/effects stages to the iteration queu
 and explicitly added unified loudness. [AUDIO-EFFECTS-PLAN.md](AUDIO-EFFECTS-PLAN.md)
 defines current capabilities, remaining work, dependency order and acceptance.
 [Project home](PROJECT-HOME-PLAN.zh-CN.md) comes first, then real-time audio preview
-and loudness. Both linked plans are new planning documents in this update; their
-planned features are not implemented. This is design and sequencing only; no implementation, installation,
-live call or release is performed by this documentation change.
+and loudness. Those documents began as planning-only records. Project home/windows, bounded saved-timeline sound audition, final-file loudness observation and full-current-mix candidates now have their separate dated acceptance reports above. Remaining effects and application stages are not made complete by the original plan.
 
 1. **Audible and reviewable audio.** Real-time timeline mixing must implement saved
    gain/mute/fades/source ranges and overlap, with the same versioned effects,
@@ -178,6 +172,11 @@ and real local media gates. That evidence does not establish a live-model result
   Existing clip gain and mute are foundations, not new features to reimplement.
 - Explicit SDR/color metadata handling and preview/export consistency before richer exposure,
   white-balance/contrast/saturation controls. Unsupported HDR/log paths need clear treatment.
+  The user confirmed LUT support as a later iteration on 2026-10-14: start with project-managed
+  `.cube` 3D LUT files, explicit per-clip enable/strength, persistent source identity, and matching
+  preview/export results for a defined SDR input path. Creative looks and Log conversion are
+  distinct; complete Log/HDR color management remains a separate scope. LUT support is planned,
+  not implemented by the current loudness work, and does not change the agreed iteration order.
 - Export preflight, selected-range test exports and playback of the produced artifact.
   Reuse existing immutable render snapshots, fingerprints and output probing.
 

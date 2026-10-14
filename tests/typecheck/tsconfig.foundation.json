@@ -23,6 +23,10 @@
     "rootDir": "../.."
   },
   "files": [
+    "../../scripts/lib/test-compile-cache.ts",
+    "../helpers/agent-edit-wire-lifecycle.ts",
+    "../helpers/agent-edit-wire-lifecycle-cases.ts",
+    "../helpers/test-compile-cache-cases.ts",
     "../../packages/contracts/src/agent-protocol.ts",
     "../../packages/contracts/src/agent-protocol.mjs",
     "./agent-protocol.consumer.mts",
@@ -32,7 +36,8 @@
     "./native-close.consumer.mts",
     "./timeline-audio-preview.consumer.mts",
     "./export-loudness.consumer.mts",
-    "./timeline-mix-loudness.consumer.mts"
+    "./timeline-mix-loudness.consumer.mts",
+    "./timeline-loudness-apply.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

@@ -6,6 +6,7 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.mjs';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import {migrateAgentEditProposalSchema} from '../packages/business/src/agent/edit-proposal-schema.mjs';
 const legacy=readFileSync(new URL('./fixtures/agent-edit-legacy-schema10.sql',import.meta.url),'utf8');
 const columns=['position','id','projectId','runId','shotId','digest','definition','status','approval','outcome','createdAt','updatedAt','bytes'];
@@ -63,9 +64,11 @@ test('every rebuild stage rolls back without marker or changed old rows/triggers
 
 test('fresh startup and upgraded startup converge and reopen never rewrites legacy data',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-agent-migration24-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
- let store=openStore(root);const fresh=store.db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='agent_edit_proposals' ORDER BY type,name").all();
+ const current=openStore(path.join(root,'fresh-current'));
+ const fresh=current.db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='agent_edit_proposals' ORDER BY type,name").all();current.close();
+ let store=openLegacyWorkspaceStore(root);
  store.db.exec('DROP TABLE agent_edit_proposals;DELETE FROM schema_version WHERE version=24;');store.db.exec(legacy);store.close();
- store=openStore(root);assert.equal(store.db.prepare('SELECT max(version) n FROM schema_version').get().n,24);
+ store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
  assert.deepEqual(store.db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE tbl_name='agent_edit_proposals' ORDER BY type,name").all(),fresh);const after=snapshot(store.db);store.close();
  store=openStore(root);assert.deepEqual(snapshot(store.db),after);store.close();
 });

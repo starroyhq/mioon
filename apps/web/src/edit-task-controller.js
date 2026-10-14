@@ -99,7 +99,7 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     const task = response.task, invocation = requireTaskWorkspace(value.restore.get(task.id), value.workspace);
     value.uncertain.add(task.id); publish(task.projectId, value);
     try {
-      return receive(await client.execute({ projectId: task.projectId, taskId: task.id, digest: task.digest, instanceId: response.instanceId }, invocation), taskIdentity(task), value);
+      return receive(await client.execute({ projectId: task.projectId, taskId: task.id, digest: task.digest, instanceId: response.instanceId }, { ...invocation, ...(task.operation === 'timeline.loudness.apply' ? { operation: task.operation } : {}) }), taskIdentity(task), value);
     } catch (error) { publish(task.projectId, value); throw error; }
   }
   async function submit({ projectId, operation, input, expectedWorkspaceOrigin }, { canExecute = () => true } = {}) {
@@ -114,7 +114,7 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
       catch (error) { invalidate(projectId, error, value); throw error; }
       // Navigating away during preparation leaves a recoverable prepared task.
       // It never authorizes a late callback to dispatch from another workspace.
-      if (!canExecute() || terminal(prepared.task) || prepared.task.acknowledged) return prepared;
+      if (!(operation === 'timeline.loudness.apply' ? canExecute(prepared.task) : canExecute()) || terminal(prepared.task) || prepared.task.acknowledged) return prepared;
       return await execute(prepared, value);
     } finally { value.busy.delete(lane); publish(projectId, value); }
   }
@@ -126,9 +126,9 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     try {
       // Always lookup first. After a server restart only this explicit action
       // may obtain its new nonce and execute the original persisted parameters.
-      let response = receive(await client.get({ projectId: expected.projectId, taskId: expected.id }), taskIdentity(expected), value);
+      let response = receive(await client.get({ projectId: expected.projectId, taskId: expected.id, ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) }), taskIdentity(expected), value);
       if (response.task.acknowledged || terminal(response.task)) return response;
-      if (response.task.status === 'dispatching') response = receive(await client.reconcile({ projectId: expected.projectId, taskId: expected.id, digest: expected.digest }, invocation), taskIdentity(expected), value);
+      if (response.task.status === 'dispatching') response = receive(await client.reconcile({ projectId: expected.projectId, taskId: expected.id, digest: expected.digest }, { ...invocation, ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) }), taskIdentity(expected), value);
       else if (canExecute()) response = await execute(response, value);
       return response;
     } finally { value.busy.delete(expected.id); publish(expected.projectId, value); }
@@ -137,7 +137,7 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     if (!terminal(expected)) throw taskProtocolError();
     const value = state(expected.projectId), invocation = requireTaskWorkspace(value.restore.get(expected.id), value.workspace);
     const response = await client.acknowledge({ projectId: expected.projectId, taskId: expected.id, digest: expected.digest,
-      expectedRevision: expected.revision, status: expected.status }, invocation);
+      expectedRevision: expected.revision, status: expected.status }, { ...invocation, ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) });
     validateTaskEnvelope(response, taskIdentity(expected));
     if (!response.task.acknowledged || response.task.status !== expected.status || response.task.revision <= expected.revision) throw taskProtocolError();
     return receive(response, taskIdentity(expected), value);

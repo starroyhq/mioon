@@ -14,7 +14,7 @@ import {validateTimeline} from '../packages/business/src/timeline-inputs.mjs';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.mjs';
 import {boundedShutdown} from '../packages/business/src/operation-lifecycle.mjs';
 import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
+import {installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
 import {exportAudioObservationAdmission} from '../packages/business/src/export-audio-observation.ts';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');

@@ -3,6 +3,7 @@ import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.jsx';
 import { selectedExportDelivery } from './export-settings-state.js';
 import './export-settings.css';
+import TimelineExportProfile from './TimelineExportProfile.tsx';
 
 export default function TimelineExportSettings({ timeline, value, disabled, onChange }) {
   const delivery = selectedExportDelivery(timeline, value);
@@ -26,6 +27,7 @@ export default function TimelineExportSettings({ timeline, value, disabled, onCh
       <WorkbenchSelect id="export-bitrate" data-testid="export-bitrate" value={value.rateControl.targetKbps} disabled={disabled} onChange={event => choose({ rateControl: { mode: 'bitrate', targetKbps: Number(event.target.value) } })}>
         <option value="2000">2 Mb/s</option><option value="4000">4 Mb/s</option><option value="8000">8 Mb/s</option>
       </WorkbenchSelect></div>}
+    <TimelineExportProfile value={value} disabled={disabled} onChange={onChange} Select={WorkbenchSelect} />
     {delivery && <dl className="export-preflight-summary" data-testid="export-settings-summary">
       <div><dt>编辑合成</dt><dd>{timeline.width} × {timeline.height}</dd></div>
       <div><dt>本次成片</dt><dd data-testid="export-output-dimensions">{delivery.dimensions}</dd></div>

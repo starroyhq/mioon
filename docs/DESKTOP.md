@@ -113,7 +113,7 @@ macOS 隐藏原生标题栏（`titleBarStyle: 'hidden'`），三枚窗口按钮�
 
 macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开窗口，明确退出才关闭服务。此行为已写入源码，但仍需 macOS 实机验证。发布升级、正式签名和公证仍未完成。Agent 与官方/自定义 Images 专用设置及 Electron safeStorage 接入已实现；密钥保持独立绑定，不向 renderer 返回密钥，不用一个配置槽静默替换另一个。ComfyUI 有独立无密钥连接设置。真实 macOS Keychain 可用性/拒绝/重启兼容尚未原生认证；9e基线使用同步 safeStorage；本次整合候选的 macOS 路径使用官方异步 API，超时/失败不回退同步，真实 Keychain 仍待验证。Linux 保留原四类强 keyring 同步路径和旧密文，客户端超时不能解除其主线程阻塞；Windows 仍 fail-closed。候选详情见 [Keychain 异步边界](KEYCHAIN-ASYNC-CANDIDATE.md)。安全存储不可用时仅允许明确的 session-only 模式，不回退到明文持久化；Agent 会话密钥在主进程关闭时丢失，Images 会话密钥在其 backend 生命周期结束时丢失。
 
-本地编辑协调账本当前覆盖 19 类固定操作：原有时间线/首帧连接十二类，加 `subject.create`、`subject.version.add`、`subject.binding.set`，以及 `timeline.format.set` 和三类手动字幕 `timeline.subtitle.add`、`timeline.subtitle.update`、`timeline.subtitle.remove`。启动或列表读取不会自动执行；其余八类画板/素材编辑和 `timeline.render` 等保持各自原有恢复边界。Images/ComfyUI 的审批与结果恢复是独立任务语义，不通过这份编辑账本执行。详见 [任务恢复契约](TASK-RECOVERY.md)。
+本地编辑协调账本当前覆盖 20 类固定操作：原有时间线/首帧连接十二类，加 `subject.create`、`subject.version.add`、`subject.binding.set`，以及 `timeline.format.set` 和三类手动字幕 `timeline.subtitle.add`、`timeline.subtitle.update`、`timeline.subtitle.remove`，以及完整固定倍率候选的 `timeline.loudness.apply` 原子应用。启动或列表读取不会自动执行；其余八类画板/素材编辑和 `timeline.render` 等保持各自原有恢复边界。Images/ComfyUI 的审批与结果恢复是独立任务语义，不通过这份编辑账本执行。详见 [任务恢复契约](TASK-RECOVERY.md)。
 
 ## 项目视图记忆
 

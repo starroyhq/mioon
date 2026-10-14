@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -9,9 +10,9 @@ import {createServices,canonical} from '../packages/business/src/services.mjs';
 import {createMutationReplay} from '../packages/business/src/mutation-replay.mjs';
 import {AppError} from '@mioon/contracts';
 
-async function fixture(t) {
+async function fixture(t,{open=openStore}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-mutation-'));
- let store=openStore(root),services=createServices(store,new Map());
+ let store=open(root),services=createServices(store,new Map());
  const f={root,get store(){return store;},get services(){return services;},
   call:(op,input)=>services.call(op,input),
   restart(){store.close();store=openStore(root);services=createServices(store,new Map());},
@@ -224,7 +225,7 @@ test('journal entries cannot be updated, deleted or replaced and retain exact re
 });
 
 test('additive first migration and repeated startup preserve old rows and journal response bytes',async t=>{
- const f=await fixture(t),projectId=f.project.id;
+ const f=await fixture(t,{open:openLegacyWorkspaceStore}),projectId=f.project.id;
  await f.shot(projectId);await f.node(projectId);
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(key(),'old-hash',' { "legacy": true, "spacing": "preserve" } ');
  f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',key(),'legacy-hash',randomUUID());

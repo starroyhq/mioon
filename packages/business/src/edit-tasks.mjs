@@ -168,6 +168,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  function applied(value,result) { return update(value,'applied',{receiptDigest:hash(result)}); }
  function dispatch(operation,input,value) {
   switch(operation) {
+   case 'timeline.loudness.apply': return services.call('timeline.loudness.apply',input);
    case 'timeline.format.set': return withTimelineFormatTaskDispatch(db,value.row,()=>services.call('timeline.format.set',input));
    case 'timeline.subtitle.add': return services.call('timeline.subtitle.add',input);
    case 'timeline.subtitle.update': return services.call('timeline.subtitle.update',input);
@@ -195,7 +196,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    open();owner();const args=fields(input,['projectId','operation','input','origin']);
    if(!['new','legacy_session'].includes(args.origin))invalid();
    const intent=parseIntent(args.operation,args.input,args.projectId);
-   if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);}
+   if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
    const result=store.tx(()=>{
     owner();project(args.projectId);
     const prior=db.prepare(`${select} WHERE lane=? AND requestId=?`).get(intent.lane,intent.requestId);

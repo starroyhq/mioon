@@ -1,3 +1,4 @@
+import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
 import {validateTimeline} from './timeline-inputs.mjs';
@@ -161,6 +162,10 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   decode:createTimelineMixLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
+ const assertLoudnessApplyAvailable=()=>{if(restored)throw workspaceRestoreError();checkpoint(ownerSignal);if(!ownsStoreLock(store))throw new AppError('EDIT_TASK_OWNER_REQUIRED','只有持有工作区锁的后端可以应用增益',403);};
+ const loudnessApply=restored?{handlers:{'timeline.loudness.apply':disabled}}:createTimelineLoudnessApplyServices({
+  measurement:mixLoudness,transactions:timeline.createLoudnessApplyTransactions(assertLoudnessApplyAvailable),assertAvailable:assertLoudnessApplyAvailable,
+ });
  const audioPreview=restored?{...inactive(),handlers:{'timeline.audioPreview.plan':disabled},consumeSource:disabled}:createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:projectId=>{
@@ -214,6 +219,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...samplePeak.handlers,
  ...loudness.handlers,
  ...mixLoudness.handlers,
+ ...loudnessApply.handlers,
  ...audioPreview.handlers,
  ...exportAdmission.handlers,
  ...waveforms.handlers,

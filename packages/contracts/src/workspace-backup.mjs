@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {workspaceBackupSourceSchemaVersion} from './workspace-schema-profiles.ts';
 
 export const WORKSPACE_BACKUP_FORMAT='mioon-workspace-backup';
 export const WORKSPACE_BACKUP_FORMAT_VERSION=1;
@@ -42,7 +43,7 @@ export const workspaceBackupEntrySchema=z.object({
 export const workspaceBackupManifestSchema=z.object({
  format:z.literal(WORKSPACE_BACKUP_FORMAT),formatVersion:z.literal(1),backupId:z.string().uuid(),
  createdAt:z.string().datetime(),applicationVersion:z.string().min(1).max(64).regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/),
- databaseSchemaVersion:z.number().int().min(1).max(24),scope:z.literal('whole_workspace'),
+ databaseSchemaVersion:workspaceBackupSourceSchemaVersion,scope:z.literal('whole_workspace'),
  entries:z.array(workspaceBackupEntrySchema).min(1).max(WORKSPACE_BACKUP_LIMITS.fileCount),inventory:workspaceBackupInventorySchema,
 }).strict().superRefine((value,ctx)=>{
  let bytes=0;const paths=new Set();let databases=0,previous='';
@@ -55,7 +56,7 @@ export const workspaceBackupCompleteSchema=z.object({
 }).strict();
 export const workspaceBackupResultSchema=z.object({
  format:z.literal(WORKSPACE_BACKUP_FORMAT),formatVersion:z.literal(1),backupId:z.string().uuid(),
- integrity:z.literal('verified'),restoration:z.literal('not_tested'),warnings:z.array(z.literal('SOURCE_LOCK_RELEASE_UNCONFIRMED')).length(1).optional(),databaseSchemaVersion:z.number().int().min(1).max(24),
+ integrity:z.literal('verified'),restoration:z.literal('not_tested'),warnings:z.array(z.literal('SOURCE_LOCK_RELEASE_UNCONFIRMED')).length(1).optional(),databaseSchemaVersion:workspaceBackupSourceSchemaVersion,
  fileCount:integer.min(1).max(WORKSPACE_BACKUP_LIMITS.fileCount),payloadBytes:integer.min(1).max(WORKSPACE_BACKUP_LIMITS.totalBytes),inventory:workspaceBackupInventorySchema,
 }).strict();
 
@@ -63,7 +64,7 @@ export const workspaceBackupSchemas={'workspace.backup.inspect':z.object({}).str
 const count=integer.nullable();
 export const workspaceBackupInspectionSchema=z.object({
  formatVersion:z.literal(1),scope:z.literal('whole_workspace'),captureReady:z.literal(false),reason:z.literal('BACKEND_RUNNING'),
- databaseSchemaVersion:z.number().int().min(1).max(24).nullable(),
+ databaseSchemaVersion:workspaceBackupSourceSchemaVersion.nullable(),
  counts:z.object({projects:count,assets:count,videoTasks:count,imageTasks:count,frameTasks:count,exports:count}).strict(),
  unresolved:z.object({videoTasks:count,imageTasks:count,frameTasks:count,exports:count,agentRuns:count,agentProposals:count,editTasks:count}).strict(),
  limits:z.object(Object.fromEntries(Object.entries(WORKSPACE_BACKUP_LIMITS).map(([key,value])=>[key,z.literal(value)]))).strict(),

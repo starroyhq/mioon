@@ -6,20 +6,19 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineRenderRecord,isExportPreflightResponse} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
+import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
 import {createServices,hash} from '../packages/business/src/services.mjs';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.mjs';
 import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.mjs';
 import {startWorker} from '../packages/business/src/jobs.mjs';
 import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {matchesRestoredExport,restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.mjs';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
 
 const clone=value=>structuredClone(value),settings=()=>clone(TIMELINE_EXPORT_DEFAULT_SETTINGS);
 async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-named-delivery-'));let store=openStore(root),probes=0,inspect=async()=>{probes++;return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};},services=createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}});
- const f={root,get store(){return store;},get services(){return services;},get probes(){return probes;},setInspect(fn){inspect=fn;},input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export'}),state:()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()])),async restart({restore=false}={}){await services.drain();store.close();if(restore){f.metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installWorkspaceRestoreSchema(db,f.metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}f.context={expectedWorkspaceOrigin:f.metadata.workspaceOrigin};}store=openStore(root);services=createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}});}};
+ const f={root,get store(){return store;},get services(){return services;},get probes(){return probes;},setInspect(fn){inspect=fn;},input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export'}),state:()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()])),async restart({restore=false}={}){await services.drain();store.close();if(restore){f.metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installCurrentWorkspaceRestoreSchema(db,f.metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}f.context={expectedWorkspaceOrigin:f.metadata.workspaceOrigin};}store=openStore(root);services=createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}});}};
  f.project=await services.call('project.create',{name:'Original project'});f.timeline=await services.call('timeline.get',{projectId:f.project.id});
  const id=randomUUID(),bytes=Buffer.from('synthetic source bytes'),relativePath='media/source.mp4';await writeFile(path.join(root,relativePath),bytes);
  f.asset=store.put('assets',{id,projectId:f.project.id,name:'Video',mimeType:'video/mp4',sha256:createHash('sha256').update(bytes).digest('hex'),relativePath,width:720,height:1280,duration:1,hasAudio:false,sizeBytes:bytes.length,createdAt:new Date().toISOString()});

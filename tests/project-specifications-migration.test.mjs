@@ -157,18 +157,42 @@ function seed(db){
  assert.deepEqual(new Set(rows.map(row=>row.status)),new Set(['prepared','dispatching','unknown','applied','not_applied']));
  assert.ok(rows.every(row=>row.input.includes('\\u754c')));
 }
+function assertTaskSqlExpansion(current,previous,{startup=false}={}){
+ const additions=['timeline.format.set',...(startup?['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply']:[])];
+ const operationList=sql=>sql.match(/CHECK\(operation IN \(([^)]+)\)\)/)[1].split(',').map(value=>value.trim().slice(1,-1));
+ assert.deepEqual(operationList(current).sort(),[...LEGACY_OPERATIONS,...additions].sort(),'only the exact named task operations are admitted, once each');
+ let retained=current;
+ for(const operation of additions){
+  const token=`,'${operation}'`;
+  assert.equal(retained.split(token).length,2,`only one explicit later operation ${operation} changes historical SQL`);
+  retained=retained.replace(token,'');
+ }
+ assert.equal(retained,previous,'the exact named operation tokens are the only task table DDL change');
+}
 function assertNarrowExpansion(db,before,{startup=false}={}){
  const previous=before.objects.find(row=>row.type==='table'&&row.name==='edit_tasks').sql;
  const current=db.prepare("SELECT sql FROM sqlite_schema WHERE name='edit_tasks'").get().sql;
- const operationList=sql=>sql.match(/CHECK\(operation IN \(([^)]+)\)\)/)[1].split(',').map(value=>value.trim().slice(1,-1));
- assert.deepEqual(new Set(operationList(current)),new Set([...LEGACY_OPERATIONS,'timeline.format.set',...(startup?['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']:[])]));
- const withoutOperations=sql=>sql.replace(/CHECK\(operation IN \([^)]+\)\)/,'CHECK(operation IN (LEGACY_PLUS_FORMAT))');
- assert.equal(withoutOperations(current),withoutOperations(previous),'the operation allowlist is the only task table DDL change');
+ assertTaskSqlExpansion(current,previous,{startup});
  assert.deepEqual(db.prepare('PRAGMA table_info(edit_tasks)').all().map(row=>row.name),COLUMNS);
- assert.equal(db.prepare('SELECT max(version) AS n FROM schema_version').get().n,startup?24:21);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),startup?[...Array.from({length:24},(_,index)=>index+1),26]:Array.from({length:21},(_,index)=>index+1));
  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE type='table' AND name LIKE 'edit_tasks_%'").get().n,0);
  assert.deepEqual(db.prepare('SELECT * FROM timeline_format_requests').all(),[],'migration invents no requests or specifications');
 }
+
+test('startup SQL normalization rejects missing, duplicate, extra and isolated loudness expansion',t=>{
+ const db=database();t.after(()=>db.close());
+ const previous=snapshot(db).objects.find(row=>row.type==='table'&&row.name==='edit_tasks').sql;
+ migrate(db);
+ const isolated=db.prepare("SELECT sql FROM sqlite_schema WHERE name='edit_tasks'").get().sql;
+ const current=isolated.replace(/(CHECK\(operation IN \([^)]+)(\)\))/,(_,head,tail)=>head+['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply'].map(operation=>`,'${operation}'`).join('')+tail);
+ assertTaskSqlExpansion(isolated,previous);
+ assertTaskSqlExpansion(current,previous,{startup:true});
+ const token=",'timeline.loudness.apply'";
+ for(const changed of [current.replace(token,''),current.replace(token,token+token),current.replace(token,token+",'timeline.loudness.preview'"),current.replace('CHECK(bytes=16384)','CHECK(bytes=16385)')]){
+  assert.throws(()=>assertTaskSqlExpansion(changed,previous,{startup:true}),assert.AssertionError);
+ }
+ assert.throws(()=>assertTaskSqlExpansion(current,previous),assert.AssertionError,'isolated historical migrations cannot admit loudness');
+});
 
 test('schema21 preserves independently frozen schema20 rows, raw task inputs, all states, every index and trigger',t=>{
  const db=database();t.after(()=>db.close());seed(db);const before=snapshot(db);
@@ -179,7 +203,7 @@ test('schema21 preserves independently frozen schema20 rows, raw task inputs, al
  preserved(db,before);
 });
 
-test('actual schema20 startup migration matches fresh schema22 and is byte-stable across repeated restarts',t=>{
+test('actual schema20 startup migration matches fresh schema26 and is byte-stable across repeated restarts',t=>{
  const upgradedRoot=root(t),freshRoot=root(t),legacy=database(path.join(upgradedRoot,'workbench.sqlite'));seed(legacy);const before=snapshot(legacy);legacy.close();
  let upgraded=openStore(upgradedRoot);const fresh=openStore(freshRoot);t.after(()=>{upgraded.close();fresh.close();});
  preserved(upgraded.db,before);assertNarrowExpansion(upgraded.db,before,{startup:true});

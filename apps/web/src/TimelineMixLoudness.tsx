@@ -5,7 +5,7 @@ import type { ExportLoudnessMeasurement } from '@mioon/contracts/export-loudness
 import { TIMELINE_MIX_LOUDNESS_LABEL, TIMELINE_MIX_LOUDNESS_LIMITATION, parseTimelineMixLoudnessTarget, timelineMixLoudnessAvailable, timelineMixLoudnessStatusMessage } from './timeline-mix-loudness-state.ts';
 import type { TimelineMixLoudnessView } from './timeline-mix-loudness-state.ts';
 
-export interface TimelineMixLoudnessProps { readonly loudness: TimelineMixLoudnessView }
+export interface TimelineMixLoudnessProps { readonly loudness: TimelineMixLoudnessView; readonly apply?: React.ReactNode; readonly onRevokeApply?: () => void }
 const fixed = (value: number): string => `${value > 0 ? '+' : ''}${value.toFixed(2)}`;
 const peak = (value: number | null, unit: string): string => value === null ? `−∞ ${unit}（数字静音）` : `${fixed(value)} ${unit}`;
 const states = { valid: '可计算综合响度', digital_silence: '数字静音', too_short: '短于 400 毫秒', below_gate: '低于绝对门限' };
@@ -14,18 +14,18 @@ function Measurement({ value, label, testId }: { readonly value: ExportLoudnessM
     真峰值估算 {peak(value.truePeakDbtp, 'dBTP')} · 样本峰值 {peak(value.samplePeakDbfs, 'dBFS')}</p>;
 }
 
-/** Complete saved-program measurement only; no apply action or platform presets. */
-export default function TimelineMixLoudness({ loudness }: TimelineMixLoudnessProps) {
+/** Read-only observation with a separately owned, explicit human apply control. */
+export default function TimelineMixLoudness({ loudness, apply, onRevokeApply }: TimelineMixLoudnessProps) {
   const { state, controller } = loudness;
-  if (!timelineMixLoudnessAvailable(state)) return null;
+  if (!timelineMixLoudnessAvailable(state)) return apply ?? null;
   const parsed = parseTimelineMixLoudnessTarget(state.draft), preparing = state.phase === 'preparing', report = state.report;
   const status = timelineMixLoudnessStatusMessage(state), targetError = Boolean(parsed.error && (state.draft.integratedLufs || state.draft.truePeakCeilingDbtp));
   const prefix = `timeline-mix-loudness-${state.timelineId}`, statusId = `${prefix}-status`, errorId = `${prefix}-error`;
   return <details className="export-sample-peak timeline-mix-loudness" data-testid="timeline-mix-loudness" style={{ minWidth: 0, maxWidth: '100%' }}
-    onToggle={event => { if (!event.currentTarget.open) controller.revoke(state); }}>
+    onToggle={event => { if (!event.currentTarget.open) { controller.revoke(state); onRevokeApply?.(); } }}>
     <summary className="export-sample-peak-label">{TIMELINE_MIX_LOUDNESS_LABEL}</summary>
     <p data-testid="timeline-mix-loudness-scope">完整已保存时间线：第 0 帧至第 {state.durationFrames} 帧（不含）· rev {state.revision}。始终测量整片，不使用本次所选导出范围。</p>
-    <p>请填写两个明确目标；不预设平台标准。真峰值比较额外预留 0.5 dB，固定增益候选仅供只读比较。</p>
+    <p>请填写两个明确目标；不预设平台标准。真峰值比较额外预留 0.5 dB，准备结果保持只读，应用需另行核对确认。</p>
     <label htmlFor={`${prefix}-lufs`} style={{ display: 'block', marginTop: 6 }}>目标响度（LUFS，−60 至 −5）</label>
     <Input id={`${prefix}-lufs`} type="number" min={-60} max={-5} step="any" data-testid="timeline-mix-loudness-target-lufs"
       style={{ minWidth: 0, maxWidth: '100%', fontSize: 12 }} value={state.draft.integratedLufs}
@@ -65,5 +65,6 @@ export default function TimelineMixLoudness({ loudness }: TimelineMixLoudnessPro
       </>}
     </div>
     <p className="export-sample-peak-limitation">{TIMELINE_MIX_LOUDNESS_LIMITATION}</p>
+    {apply}
   </details>;
 }

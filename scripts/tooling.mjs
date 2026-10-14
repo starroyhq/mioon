@@ -20,15 +20,20 @@ export async function main(args = process.argv.slice(2)) {
     }
     if (!report.buildReady) {console.error(JSON.stringify(report, null, 2)); return 1;}
     const commands = options.command === 'build' ? [...await typecheckCommands(root), ...buildCommands(root, entries, options.channel)]
-      : [testCommand(root, await discoverTests(root, options), options.concurrency)];
+      : [testCommand(root, await discoverTests(root, options), options.concurrency, process.execPath, options.reporter)];
     for (const command of commands) {
-      const result = await executeCommand(command, {env: toolingEnvironment(process.env, {mediaPaths: options.command === 'test'})});
+      const env = toolingEnvironment(process.env, {mediaPaths: options.command === 'test'});
+      const result = options.command === 'test' && options.compileCache
+        ? await (await import('./lib/test-compile-cache.ts')).withOwnedTestCompileCache(env, cachedEnv => executeCommand(command, {env: cachedEnv}))
+        : await executeCommand(command, {env});
       if (result.code !== 0) return result.code;
     }
     return 0;
   } catch (error) {
     console.error(JSON.stringify({status: 'failed', code: error.code || 'TOOLING_FAILED',
-      message: error.code ? error.message : 'Local tooling failed. Check the documented options and prerequisites.'}));
+      message: error.code ? error.message : 'Local tooling failed. Check the documented options and prerequisites.',
+      ...(error.cacheCleanupFailed ? {cacheCleanupFailed: true} : {})}));
+    if (error.code === 'TEST_COMPILE_CACHE_INTERRUPTED') return error.exitCode;
     return error.code === 'NATIVE_TEST_LANE_BLOCKED' ? 2 : 1;
   }
 }

@@ -9,16 +9,18 @@ import {createRequire} from 'node:module';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.mjs';
+import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 const fixtureDir=new URL('./fixtures/workspace-restore-legacy/',import.meta.url),sourceDir=new URL('../packages/business/src/',import.meta.url),serverDir=new URL('../apps/server/src/',import.meta.url);
 const provenance=JSON.parse(readFileSync(new URL('provenance.json',fixtureDir),'utf8'));
 const plain=value=>JSON.parse(JSON.stringify(value));
 function snapshot(db){const objects=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all();return plain({objects,tables:Object.fromEntries(objects.filter(row=>row.type==='table').map(({name})=>[name,db.prepare(`SELECT rowid AS capturedRowid,* FROM "${name}" ORDER BY rowid`).all()]))});}
 function restored(t){
- const base=mkdtempSync(path.join(tmpdir(),'mioon-restore-old-'));t.after(()=>rmSync(base,{recursive:true,force:true}));const root=path.join(base,'source');let store=openStore(root);
- const projectId=randomUUID(),jobId=randomUUID();store.put('projects',{id:projectId,name:'legacy gate proof'});store.put('jobs',{id:jobId,projectId,status:'queued',providerId:'must-not-construct'});
- installWorkspaceRestoreSchema(store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T00:00:00Z'});store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');store.close();
- const db=new DatabaseSync(path.join(root,'workbench.sqlite'));const before=snapshot(db);db.close();return {base,root,before};
+ const base=mkdtempSync(path.join(tmpdir(),'mioon-restore-old-'));t.after(()=>rmSync(base,{recursive:true,force:true}));const root=path.join(base,'source');mkdirSync(root,{mode:0o700});mkdirSync(path.join(root,'media'),{mode:0o700});
+ const db=new DatabaseSync(path.join(root,'workbench.sqlite'));db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeWorkspaceSchemaThrough24(db);
+ const projectId=randomUUID(),jobId=randomUUID();db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,JSON.stringify({id:projectId,name:'legacy gate proof'}));db.prepare('INSERT INTO jobs VALUES(?,?,?)').run(jobId,projectId,JSON.stringify({id:jobId,projectId,status:'queued',providerId:'must-not-construct'}));
+ installWorkspaceRestoreSchema(db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T00:00:00Z'});db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+ const before=snapshot(db);db.close();return {base,root,before};
 }
 function copyOnly(f,name){const root=path.join(f.base,name);mkdirSync(root,{mode:0o700});mkdirSync(path.join(root,'media'),{mode:0o700});copyFileSync(path.join(f.root,'workbench.sqlite'),path.join(root,'workbench.sqlite'));return root;}
 function runner(f,revision,body,{server=false,migration=false}={}){
@@ -74,8 +76,8 @@ test('actual frozen344 services and timeline produce export intents whose origin
  // This independently proves the old production code really did include the
  // requestId field. Missing-field support above is a synthetic defensive case.
  assert.ok(result.records.exports.every(row=>typeof JSON.parse(row.data).requestId==='string'));
- const store=openStore(root);const assertRecords=()=>{for(const [table,rows] of Object.entries(result.records))assert.deepEqual(plain(store.db.prepare(`SELECT rowid AS capturedRowid,* FROM ${table} ORDER BY rowid`).all()),rows);};assertRecords();
- installWorkspaceRestoreSchema(store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T00:00:00Z'});assertRecords();
- assert.equal(store.db.prepare("SELECT namespace FROM workspace_restore_holds WHERE kind='exports' AND id=?").get(result.storyboardId).namespace,'export');assert.equal(store.db.prepare("SELECT namespace FROM workspace_restore_holds WHERE kind='exports' AND id=?").get(result.timelineId).namespace,'timeline');store.close();
+ const db=new DatabaseSync(path.join(root,'workbench.sqlite'));db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeWorkspaceSchemaThrough24(db);const assertRecords=()=>{for(const [table,rows] of Object.entries(result.records))assert.deepEqual(plain(db.prepare(`SELECT rowid AS capturedRowid,* FROM ${table} ORDER BY rowid`).all()),rows);};assertRecords();
+ installWorkspaceRestoreSchema(db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T00:00:00Z'});assertRecords();
+ assert.equal(db.prepare("SELECT namespace FROM workspace_restore_holds WHERE kind='exports' AND id=?").get(result.storyboardId).namespace,'export');assert.equal(db.prepare("SELECT namespace FROM workspace_restore_holds WHERE kind='exports' AND id=?").get(result.timelineId).namespace,'timeline');db.close();
  const reopened=openStore(root);assert.equal(validateWorkspaceRestoreSchema(reopened.db).profile,'restored-local-v1');reopened.close();
 });

@@ -984,12 +984,12 @@ therefore never automatically clears an unknown render receipt. Reference errors
 reference recovery now also validates operation-bound acknowledgements and retained ownership; see [REFERENCE-RECOVERY.md](REFERENCE-RECOVERY.md). See
 [TIMELINE-RECOVERY.md](TIMELINE-RECOVERY.md) for scope and session-storage limits.
 
-### Durable UI edit tasks (nineteen explicit operations)
+### Durable UI edit tasks (twenty explicit operations)
 
-The authenticated `/api/tasks` route family has an explicit nineteen-operation
-allowlist: fourteen timeline metadata edits (all timeline mutations except
+The authenticated `/api/tasks` route family has an explicit twenty-operation
+allowlist: fifteen timeline metadata edits (all timeline mutations except
 `timeline.render`), `reference.attach` / `reference.detach`, and the three subject
-writes listed below. The sixteenth entry is `timeline.format.set`, with its own pristine-state and dual-revision gates; three `timeline.subtitle.*` writes append to the same timeline lane. The subject extension is implemented; focused checks, builds
+writes listed below. The sixteenth entry is `timeline.format.set`, with its own pristine-state and dual-revision gates; three `timeline.subtitle.*` writes append to the same timeline lane. The twentieth entry is `timeline.loudness.apply`, which remeasures a bound fixed-gain candidate and atomically writes the audible clip group; see [the apply contract](TIMELINE-LOUDNESS-APPLY.md). The subject extension is implemented; focused checks, builds
 and Linux native acceptance passed, with the independent full release gate passed.
 See [its current gate](SUBJECT-LIBRARY.md). It is a UI recovery control plane, not
 an additional generic RPC, MCP tool or Agent capability. The underlying shared
@@ -1312,3 +1312,9 @@ Preparation is bounded to 20 seconds, a 120-second total browser budget and a co
 A ready report binds the request, saved revision, timeline/snapshot identity and sorted twice-hashed audible sources. `original` measures the complete pre-encode float mix. A representable candidate applies one fixed multiplier to every audible clip gain without clamping and completes another full measurement; `candidate.measurement`, `meetsTarget` and `meetsTruePeak` describe that actual second pass. Silence, too-short/below-gate measurements and gains outside `(0,2]` do not invent a usable candidate. `applyAllowed` is always false at both report and candidate levels, even when both comparisons pass. This observation cannot edit the timeline, authorize an Agent proposal, render, limit, upload or promise AAC/final-file loudness safety.
 
 The shared client uses125s transport grace over the server's120s work budget; explicit caller timeouts remain respected. The response is stream-bounded to64KiB before JSON parsing and validated against the exact request. Disconnect, CLI Ctrl+C and MCP cancellation retire only this observation's owned local work. Busy/stale/cancelled/unsupported/over-budget failures do not return partial measurements or authorize retries. No queue, report persistence, cache/database/file writes, network, model or paid operation is added. Restored-v1 refuses the operation; the internal Agent still exposes only its four existing metadata tools.
+
+## Atomic fixed-gain application
+
+`timeline.loudness.apply` is a separate explicit durable mutation. Its strict scalar input adds the caller-owned `requestId`, exact `snapshotSha256`, and versioned `candidateDigest` to the prepare request. No gains, paths, report payload, or approval flag is accepted. Shared `timelineLoudnessCandidateDigest` hashes the complete validated report except its wall clock; the server independently remeasures both complete mixes and both source hashes before one atomic gain/history/receipt commit. Read-only reports keep `applyAllowed:false`.
+
+Exact retained ACK replay precedes media or current-revision admission, including after undo/restart. Disconnect is unknown, never cancellation or permission to use a new key. The UI uses the existing durable task API. New apply is denied in restored profiles; captured ACKs remain strictly readable. Original exports stay v1 unless the user explicitly chooses `mp4_h264_float_checked_v2`; successful application does not certify the encoded file. See [full contract, migration and verification boundary](TIMELINE-LOUDNESS-APPLY.md).

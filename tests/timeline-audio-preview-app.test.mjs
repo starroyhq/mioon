@@ -12,9 +12,18 @@ const preview = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const start = app.indexOf('  function soundAuditionContext()');
-const end = app.indexOf('  function exportSamplePeakContext()', start);
-assert.ok(start >= 0 && end > start, 'Actual App sound context and hook block must be present');
-const block = app.slice(start, end);
+const hookEnd = app.indexOf('  function readTimelineLoudnessRecoveryScope()', start);
+const positionStart = app.indexOf('  const effectivePlayhead =', hookEnd);
+const end = app.indexOf('  function exportSamplePeakContext()', positionStart);
+assert.ok(start >= 0 && hookEnd > start && positionStart > hookEnd && end > positionStart,
+  'Actual App sound hook and explicit-position blocks must be present, separately from loudness apply');
+// Exercise both real audition blocks without constructing the independent apply
+// controller. Its identity/intent lifecycle has its own actual-App contract tests.
+const block = app.slice(start, hookEnd) + app.slice(positionStart, end);
+assert.match(block, /const audioPreview = useTimelineAudioPreview/);
+assert.match(block, /const effectivePlayhead = timelineAudioPreviewPosition/);
+assert.match(block, /const seekTimelineSound = frame => seekTimelineAudioPreview/);
+assert.doesNotMatch(block, /useTimelineLoudnessApply|readTimelineLoudnessRecoveryScope/);
 
 function harness() {
   const timeline = { id: id(2), projectId: id(1), revision: 1, fps: 30, durationFrames: 900,

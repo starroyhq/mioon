@@ -3,6 +3,7 @@
  * synthetic request bodies so acceptance can assert exact tool linkage. */
 import http from 'node:http';
 import {randomUUID} from 'node:crypto';
+import {ownedModelCloser} from './agent-edit-wire-lifecycle.ts';
 import {responsesFixture, frameResponsesEvent} from '../agent-responses-fixture.mjs';
 
 const frame = value => `data: ${typeof value === 'string' ? value : JSON.stringify(value)}\n\n`;
@@ -91,6 +92,6 @@ export async function startEditWireModel({port = 0} = {}) {
     plan: value => queued.push(structuredClone(value)),
     held: () => [...held.keys()],
     release(phase) { for (const [key, resolve] of [...held]) if (key.startsWith(`${phase}:`)) resolve(); },
-    async close() { for (const res of sockets) res.destroy(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); },
+    close: ownedModelCloser(server, sockets),
   };
 }

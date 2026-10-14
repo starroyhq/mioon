@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {spawn} from 'node:child_process';
+import {fixtureCli} from './agent-edit-wire-lifecycle.ts';
 import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT} from '@mioon/contracts';
 import {editWireFixture, database, chatRoute, REPO, EDIT_WIRE_TOKEN} from './agent-edit-wire-fixture.mjs';
 
@@ -57,24 +57,8 @@ export async function timelineWireFixture(t, protocol) {
     const proposal = (await f.proposals(projectId, '?view=all')).proposals.find(item => item.runId === sent.run.id);
     return {input, sent, done, proposal};
   };
-  f.cli = (operation, input = {}) => new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(REPO, 'apps/cli/src/index.mjs'), ...operation.split('.'), '--input', JSON.stringify(input)],
-      {cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'], env: {PATH: process.env.PATH || '', HOME: f.root,
-        MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}});
-    let stdout = '', stderr = '';
-    // Both textual collectors decode incremental UTF-8 before receiving chunks.
-    child.stdout.setEncoding('utf8').on('data', chunk => {stdout += chunk;});
-    child.stderr.setEncoding('utf8').on('data', chunk => {stderr += chunk;});
-    const timer = setTimeout(() => {child.kill('SIGKILL'); reject(Error(`CLI timed out: ${operation}`));}, 12000);
-    child.once('error', error => {clearTimeout(timer); reject(error);});
-    child.once('close', (code, signal) => {
-      clearTimeout(timer);
-      try {
-        assert.equal(signal, null, stderr);
-        assert.equal(stdout.includes(EDIT_WIRE_TOKEN), false); assert.equal(stderr.includes(EDIT_WIRE_TOKEN), false);
-        resolve({code, body: JSON.parse(stdout), stderr});
-      } catch (error) {reject(error);}
-    });
-  });
+  f.cli = (operation, input = {}) => fixtureCli(f.lifetime, process.execPath, [path.join(REPO, 'apps/cli/src/index.mjs'), ...operation.split('.'), '--input', JSON.stringify(input)],
+    {cwd: REPO, env: {PATH: process.env.PATH || '', HOME: f.root, MIOON_BASE_URL: f.process.url, MIOON_TOKEN: EDIT_WIRE_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}}, operation, EDIT_WIRE_TOKEN);
+
   return f;
 }

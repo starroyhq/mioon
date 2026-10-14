@@ -1,3 +1,4 @@
+import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
 import { isWorkspaceRestoreInspection } from '@mioon/contracts';
 import { workspaceOriginOptions } from './workspace-origin.js';
 import { readTimelineMixLoudnessRpc } from './timeline-mix-loudness-rpc.ts';
@@ -8,7 +9,7 @@ export class ApiError extends Error {
 }
 export async function rpc(operation, input = {}, { signal, expectedWorkspaceOrigin } = {}) {
   const invocation = workspaceOriginOptions(expectedWorkspaceOrigin);
-  const mix = operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal }) : null;
+  const mix = operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal }) : null;
   const response = mix?.response ?? await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
   let body;
   try { body = mix ? mix.body : await response.json(); } catch { throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'NETWORK'); }

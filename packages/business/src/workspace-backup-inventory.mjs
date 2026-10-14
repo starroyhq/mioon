@@ -1,3 +1,4 @@
+import {readWorkspaceBackupSchemaVersion} from './workspace-backup-schema-versions.ts';
 // All SQL here targets a private disposable copy, never the source workspace or
 // completed payload. Unknown tables/rows are retained byte-for-byte in SQLite.
 import path from 'node:path';
@@ -24,7 +25,7 @@ export function createIssueCollector(){
   result:()=>({complete:totalIssues===0,totalIssues,issues:[...issues],truncated:totalIssues>issues.length})};
 }
 export function inspectDatabase(db){
- db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;');
+ db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
  const checked=db.prepare('PRAGMA quick_check(1)').get();
  if(!checked||Object.values(checked)[0]!=='ok')fail('DATABASE_INVALID');
  const tables=new Map();
@@ -35,13 +36,7 @@ export function inspectDatabase(db){
  if(!tables.has('schema_version')||!tables.has('assets'))fail('DATABASE_INVALID');
  const ordinary=name=>{if(tables.has(name)&&/^CREATE\s+VIRTUAL\s+TABLE/i.test(tables.get(name)||''))fail('DATABASE_INVALID');};
  for(const table of ['schema_version','assets','jobs','exports','image_tasks','frame_tasks','image_reviews','image_remote_runs'])ordinary(table);
- let version=0;const versions=new Set();
- for(const row of db.prepare("SELECT CASE WHEN typeof(version)='integer' AND version BETWEEN 1 AND 24 THEN version ELSE NULL END AS version FROM schema_version LIMIT 25").iterate()){
-  if(versions.size>=24)fail('LIMIT');
-  if(row.version===null||versions.has(row.version))fail('DATABASE_INVALID');
-  versions.add(row.version);version=Math.max(version,row.version);
- }
- if(!version)fail('DATABASE_INVALID');
+ const version=readWorkspaceBackupSchemaVersion(db);
  return {tables,version};
 }
 

@@ -4,7 +4,8 @@ import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../../packages/business/src/db.mjs';
+import {DatabaseSync} from 'node:sqlite';
+import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/workspace-fixed-schema.mjs';
 import {createWorkspaceBackup} from '../../packages/business/src/workspace-backup.mjs';
 import {canonicalImageInput as canonical,IMAGE_FIXED_OPTIONS} from '../../packages/contracts/src/images.mjs';
 export const repo=fileURLToPath(new URL('../..',import.meta.url));
@@ -25,11 +26,16 @@ export function logical(db){
 export async function restoreFixture(t,{mediaBytes=1024,stages=true}={}){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-offline-restore-')),source=path.join(base,'source'),backup=path.join(base,'backup'),destination=path.join(base,'restored');
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
- const store=openStore(source),db=store.db,projectId=randomUUID(),assetId=randomUUID(),jobId=randomUUID(),exportId=randomUUID(),exportRequest=randomUUID();
+ // This fixture owns the historical source24 -> restored25 contract. Current
+ // openStore intentionally migrates ordinary databases to26, so seed the
+ // frozen source directly rather than depending on the runtime default.
+ fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o700});
+ const db=new DatabaseSync(path.join(source,'workbench.sqlite'));db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeWorkspaceSchemaThrough24(db);
+ const projectId=randomUUID(),assetId=randomUUID(),jobId=randomUUID(),exportId=randomUUID(),exportRequest=randomUUID();
  const write=(relative,bytes)=>{const file=path.join(source,relative);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,bytes,{mode:0o600});};
  const raw=value=>' \n'+JSON.stringify(value,null,'\t')+'\n ';
  const media=Buffer.alloc(mediaBytes,97),relativePath=`media/${assetId}.mp4`;
- store.put('projects',{id:projectId,name:secret});store.put('assets',{id:assetId,projectId,relativePath,sha256:hash(media),sizeBytes:media.length,mimeType:'video/mp4',name:'synthetic'});write(relativePath,media);
+ db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,JSON.stringify({id:projectId,name:secret}));db.prepare('INSERT INTO assets VALUES(?,?,?)').run(assetId,projectId,JSON.stringify({id:assetId,projectId,relativePath,sha256:hash(media),sizeBytes:media.length,mimeType:'video/mp4',name:'synthetic'}));write(relativePath,media);
  db.prepare('INSERT INTO jobs VALUES(?,?,?)').run(jobId,projectId,raw({id:jobId,projectId,status:'submission_unknown',requestId:randomUUID(),prompt:secret}));
  db.prepare('INSERT INTO exports VALUES(?,?,?)').run(exportId,projectId,raw({id:exportId,projectId,status:'running',requestId:exportRequest,mode:'storyboard'}));
  db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('export',exportRequest,'a'.repeat(64),exportId);
@@ -53,10 +59,10 @@ export async function restoreFixture(t,{mediaBytes=1024,stages=true}={}){
    db.prepare("INSERT INTO frame_tasks(id,projectId,requestId,inputHash,input,snapshot,state,revision,started,createdAt,updatedAt) VALUES(?,?,?,?,?,?,'queued',1,0,'at','at')").run(frameId,projectId,frameRequest,hash(canonical(frameInput)),canonical(frameInput),canonical(frameSnapshot));
    db.prepare("INSERT INTO frame_requests VALUES(?,'frame.extract',?,?,?,?,?)").run(frameRequest,projectId,frameId,hash(canonical(frameInput)),canonical(frameInput),canonical(response));
    db.exec('COMMIT');
-  }catch(error){db.exec('ROLLBACK');store.close();throw error;}
+  }catch(error){db.exec('ROLLBACK');db.close();throw error;}
   write(`frame-staging/${frameId}.png`,'partial frame bytes');
  }
- const before=logical(db);store.close();
+ const before=logical(db);db.close();
  write('access-token','EXCLUDED_SYNTHETIC_CREDENTIAL');write('image-settings/settings.json','EXCLUDED_SYNTHETIC_CREDENTIAL');
  const created=await createWorkspaceBackup({source,destination:backup});
  return {base,source,backup,destination,before,created,projectId,assetId,relativePath};

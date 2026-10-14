@@ -1,3 +1,4 @@
+import {readWorkspaceBackupSchemaVersion} from './workspace-backup-schema-versions.ts';
 import {WORKSPACE_BACKUP_LIMITS,workspaceBackupInspectionSchema,IMAGE_STATES,FRAME_STATES} from '@mioon/contracts';
 
 // A live-backend DB summary only. Never follows file paths, opens a file, starts
@@ -24,8 +25,7 @@ export function inspectWorkspaceBackup(store){
  const started=!db.isTransaction;
  try{
   if(started)db.exec('BEGIN');
-  const version=db.prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get()?.version;
-  if(Number.isInteger(version)&&version>=1&&version<=24)databaseSchemaVersion=version;else add('SCHEMA_UNSUPPORTED');
+  try{databaseSchemaVersion=readWorkspaceBackupSchemaVersion(db);}catch{add('SCHEMA_UNSUPPORTED');}
   for(const [key,table] of Object.entries(totalTables))counts[key]=count(table);
   for(const [key,d] of Object.entries(definitions)){
    if(count(d.table)===null){unresolved[key]=null;continue;}

@@ -5,18 +5,23 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Worker} from 'node:worker_threads';
-import {AppError,TIMELINE_MUTATION_OPERATIONS} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.mjs';
-import {createServices} from '../packages/business/src/services.mjs';
+import {AppError,TIMELINE_MUTATION_OPERATIONS,hasRequestNotAppliedProof,isTimelineMutationResponse} from '@mioon/contracts';
+import {timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
+import {openStore,ownsStoreLock} from '../packages/business/src/db.mjs';
+import {createServices,hash} from '../packages/business/src/services.mjs';
+import {createTimelineServices} from '../packages/business/src/timeline.mjs';
+import {createTimelineLoudnessApplyServices} from '../packages/business/src/timeline-loudness-apply.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
+import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.mjs';
 
 const at='2026-10-10T00:00:00.000Z',clone=value=>JSON.parse(JSON.stringify(value));
 const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_history','timeline_history_cursors','timeline_requests','timeline_format_requests'];
 async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-timeline-recovery-'));
- let store=openStore(root),services=createServices(store,new Map());
- const f={root,get store(){return store;},call:(op,input)=>services.call(op,input),
-  restart(){store.close();store=openStore(root);services=createServices(store,new Map());},
+ let store=openStore(root),services=createServices(store,new Map()),apply;
+ const f={root,get store(){return store;},call:(op,input)=>op==='timeline.loudness.apply'?apply(input):services.call(op,input),
+  liveCall:(op,input)=>services.call(op,input),
+  restart(){store.close();store=openStore(root);services=createServices(store,new Map());connectApply();},
   capture(){return Object.fromEntries(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
   asset(patch={}){const id=randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Recovery fixture',mimeType:'video/mp4',
    duration:10,width:720,height:1280,hasAudio:true,hasVideo:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,createdAt:at,...patch});},
@@ -27,6 +32,41 @@ async function fixture(t){
    store.put('shots',{...shot,selectedVersionId:version.id});return {asset,shot,job,version};
   }
  };
+ // This recovery suite replaces measurement only. The apply admission service,
+ // shared SQLite mutation/history/receipt transaction, ownership boundary and
+ // public replay path are production code. Actual decoding and the private
+ // measurement lifetime are covered by timeline-loudness-apply-business and
+ // timeline-loudness-transactions (including its createServices media test).
+ function reportFor(timeline){
+  const report=readyMixLoudness({...mixLoudnessInput,projectId:f.projectId,expectedRevision:timeline.revision,
+   target:{integratedLufs:-24,truePeakCeilingDbtp:-1}}),sampleFrames=timeline.durationFrames*1600;
+  const clips=timeline.clips.filter(clip=>clip.gain>0&&!timeline.tracks.find(track=>track.id===clip.trackId).muted);
+  report.identity={timelineId:timeline.id,timelineRevision:timeline.revision,snapshotSha256:hash(timeline),
+   range:{startFrame:0,endFrame:timeline.durationFrames,sampleFrames},
+   sources:[...new Set(clips.map(clip=>clip.assetId))].sort().map(assetId=>({assetId,sha256:store.get('assets',assetId).sha256,sizeBytes:1024}))};
+  const blocks=1+Math.floor((sampleFrames-19200)/4800);
+  for(const measurement of [report.original,report.candidate.measurement])Object.assign(measurement,{sampleFrames,
+   decodedDurationSeconds:sampleFrames/48000,gatingBlockCount:blocks,absoluteGatedBlockCount:blocks,relativeGatedBlockCount:blocks});
+  report.candidate.gains=clips.map(clip=>({clipId:clip.id,assetId:clip.assetId,beforeGain:clip.gain,
+   afterGain:clip.gain*report.candidate.gainMultiplier})).sort((a,b)=>a.clipId<b.clipId?-1:1);
+  Object.assign(report.checks,{bytesHashed:report.identity.sources.length*2048,pcmBytes:sampleFrames*16,
+   decodeWorkFrames:timeline.durationFrames*2,segmentCount:clips.length});
+  return report;
+ }
+ function connectApply(){
+  const assertAvailable=()=>{if(!ownsStoreLock(store))throw new AppError('EDIT_TASK_OWNER_REQUIRED','Owner required',403);};
+  const shared=createTimelineServices(store,{hash,now:()=>new Date().toISOString(),
+   required:(table,id)=>{const value=store.get(table,id);if(!value)throw new AppError('NOT_FOUND','Missing',404);return value;},
+   check:(value,revision)=>{if(value.revision!==revision)throw new AppError('REVISION_CONFLICT','Changed',409);}});
+  apply=createTimelineLoudnessApplyServices({assertAvailable,transactions:shared.createLoudnessApplyTransactions(assertAvailable),
+   measurement:{async withFreshMeasurement(input,consume){
+    const timeline=store.list('timelines').find(value=>value.projectId===input.projectId),report=reportFor(timeline);
+    return consume(report,()=>{assertAvailable();assert.deepEqual(store.get('timelines',timeline.id),timeline);});
+   }}}).handlers['timeline.loudness.apply'];
+ }
+ f.loudnessFields=async timeline=>{const report=reportFor(timeline);return {mixProfile:report.mixProfile,measurementProfile:report.measurementProfile,
+  target:report.target,snapshotSha256:report.identity.snapshotSha256,candidateDigest:await timelineLoudnessCandidateDigest(report)};};
+ connectApply();
  f.projectId=(await f.call('project.create',{name:t.name.slice(0,150)})).id;
  f.otherId=(await f.call('project.create',{name:'Other private project'})).id;
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
@@ -41,7 +81,8 @@ async function allReceipts(f){
  let timeline=await f.call('timeline.get',{projectId:f.projectId});
  async function call(operation,fields={}){
   const input=params(f,timeline,fields),response=await f.call(operation,input);
-  receipts.push({operation,input,response:clone(response)});if(operation!=='timeline.render')timeline=response;return response;
+  assert.equal(isTimelineMutationResponse(operation,input,response),true,`${operation} complete ACK`);
+  receipts.push({operation,input,response:clone(response)});if(operation!=='timeline.render')timeline=operation==='timeline.loudness.apply'?response.timeline:response;return response;
  }
  // Record a real format mutation while the timeline is still pristine; later
  // receipts exercise its historical replay after content and history exist.
@@ -58,6 +99,7 @@ async function allReceipts(f){
  const cueId=timeline.subtitles.cues[0].id;
  await call('timeline.subtitle.update',{cueId,patch:{text:'更新字幕'}});
  await call('timeline.subtitle.remove',{cueId});
+ await call('timeline.loudness.apply',await f.loudnessFields(timeline));
  await call('timeline.render',{purpose:'preview'});
  await call('timeline.clip.remove',{clipId});
  await call('timeline.undo');
@@ -70,7 +112,7 @@ async function rejected(f,operation,input,{code,proof=false}={}){
  await assert.rejects(f.call(operation,input),error=>{
   if(code)assert.ok((Array.isArray(code)?code:[code]).includes(error.code),`${operation}: ${error.code}, expected ${code}`);
   assert.equal(error.details?.mutationOutcome,proof?'not_applied':undefined);
-  if(proof)assert.equal(error.details.requestId,input.requestId);
+  if(proof){assert.equal(error.details.requestId,input.requestId);assert.equal(hasRequestNotAppliedProof(error,input,{operation}),true);}
   assert.ok(!JSON.stringify(error).includes('FOREIGN_SECRET'));return true;
  });
  assert.deepEqual(f.capture(),before);
@@ -93,21 +135,26 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all fifteen retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all sixteen retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of [...timeline.clips])timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=result.receipts.find(x=>x.operation==='timeline.render').response;
  f.store.put('exports',{...f.store.get('exports',render.id),status:'failed',error:{code:'EXPORT_FAILED',message:'Synthetic offline failure',retryable:true},updatedAt:'2026-10-10T01:00:00.000Z'});
  f.restart();const before=f.capture();
- for(const {operation,input,response} of result.receipts){assert.deepEqual(await f.call(operation,input),response);assert.deepEqual(f.capture(),before);}
+ for(const {operation,input,response} of result.receipts){assert.deepEqual(await f.liveCall(operation,input),response);assert.deepEqual(f.capture(),before);}
  const independent=openStore(f.root,{lock:false});try{
   const services=createServices(independent,new Map());
-  for(const {operation,input,response} of result.receipts)assert.deepEqual(await services.call(operation,input),response);
+  for(const {operation,input,response} of result.receipts){
+   if(operation==='timeline.loudness.apply')await assert.rejects(services.call(operation,input),error=>{
+    assert.equal(error.code,'EDIT_TASK_OWNER_REQUIRED');assert.equal(error.details?.mutationOutcome,undefined);return true;
+   });
+   else assert.deepEqual(await services.call(operation,input),response);
+  }
  }finally{independent.close();}
  assert.deepEqual(f.capture(),before);
 });
 
-test('all fifteen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all sixteen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},{code:'REVISION_CONFLICT',proof:true});
  const clip=timeline.clips[0];
@@ -151,15 +198,16 @@ test('lost acknowledgements retain proof absence after project, timeline and his
  });
 });
 
-test('all fifteen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all sixteen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of ['hash','JSON','owner','semantics'])await t.test(corruption,async t=>{
   const f=await fixture(t),{receipts}=await allReceipts(f);f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
   for(const {operation,input,response} of receipts){
    const changed=clone(response);
-   if(corruption==='owner')changed.projectId=f.otherId;
+   if(corruption==='owner')(operation==='timeline.loudness.apply'?changed.timeline:changed).projectId=f.otherId;
    if(corruption==='semantics'){
-    const timeline=operation==='timeline.render'?changed.snapshot.timeline:changed;
+    const timeline=operation==='timeline.render'?changed.snapshot.timeline:operation==='timeline.loudness.apply'?changed.timeline:changed;
     if(operation==='timeline.format.set')timeline.width=720; // Valid square pair, wrong accepted preset.
+    else if(operation==='timeline.loudness.apply')timeline.clips[0].gain=.1; // Must match the retained application gain proof.
     else timeline.clips[0].sourceInFrame=10000;
    }
    if(corruption==='hash')f.store.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('g'.repeat(64),input.requestId);
@@ -186,7 +234,7 @@ async function prepared(f,operation){
   'timeline.subtitle.remove':{cueId:timeline.subtitles?.cues[0].id},
   'timeline.format.set':{expectedProjectRevision:f.store.get('projects',f.projectId).revision,presetId:'landscape_720'}
  };
- return {timeline,input:params(f,timeline,fields[operation]??{})};
+ return {timeline,input:params(f,timeline,operation==='timeline.loudness.apply'?await f.loudnessFields(timeline):fields[operation]??{})};
 }
 test('every keyed write rolls back receipt failures and post-write owner changes without not-applied proof',async t=>{
  for(const operation of TIMELINE_MUTATION_OPERATIONS)for(const corruption of ['receipt failure','timeline owner'])await t.test(`${operation}: ${corruption}`,async t=>{

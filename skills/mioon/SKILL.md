@@ -361,7 +361,7 @@ See [reference recovery](../../docs/REFERENCE-RECOVERY.md).
 The workbench can coordinate persisted recovery for ten timeline edits excluding
 `timeline.render`, plus `reference.attach` and `reference.detach`. The implemented
 subject extension adds exactly `subject.create`, `subject.version.add` and
-`subject.binding.set`, for fifteen operations under three explicit lanes. `timeline.format.set` is now the sixteenth fixed operation; three explicit `timeline.subtitle.*` writes append to the same lane, for nineteen total; consult
+`subject.binding.set`, for fifteen operations under three explicit lanes. `timeline.format.set` is now the sixteenth fixed operation; three explicit `timeline.subtitle.*` writes append to the same lane, for nineteen at that stage. Explicit `timeline.loudness.apply` adds the twentieth fixed entry in the same lane; consult
 [scope and acceptance](../../docs/TASK-RECOVERY.md). This adds no generic Agent/MCP
 execution authority. External tools still require their exact original arguments
 and key. Do not infer that all edits, renders or paid submissions receive this
@@ -410,7 +410,7 @@ inputs, validate the historical acknowledgement, then refresh. Generic 4xx,
 malformed success and ownership failures do not settle prior uncertainty without
 matching operation/project/request rollback proof. Never automatically retry or
 invent a replacement key. UI preparation adds these three writes to its explicit
-durable allowlist in `subject:mutation` (fifteen at that stage, nineteen with the later format/subtitle operations); external calls are not
+durable allowlist in `subject:mutation` (fifteen at that stage, twenty with the later format/subtitle and explicit loudness apply operations); external calls are not
 automatically persisted as UI tasks. Capacity failure precedes dispatch, with no
 silent eviction. Metadata is plain local SQLite, not vault-encrypted; no secrets.
 
@@ -620,9 +620,7 @@ Never retry the old failed export as a new key automatically or treat its origin
 queued replay as newly queued work. Never supply `renderAttemptId`, `audioCheck`,
 measurement, output hash or a private path as caller authority.
 
-V2 is currently available through shared backend/CLI/MCP input, without a new UI
-selector. Do not tell the user to find a mode control that this slice does not
-provide. Existing omitted/v1 requests keep their exact default behavior.
+The original float-v2 slice provided shared backend/CLI/MCP input. The later atomic loudness application slice adds an explicit UI profile selector. Existing omitted/v1 requests keep their exact default behavior; applying gains never switches that profile automatically.
 See [profile, report and limits](../../docs/FLOAT-CHECKED-EXPORT.md).
 
 
@@ -635,3 +633,9 @@ When asked to check an existing delivered file's loudness, discover `timeline ex
 When asked to measure the complete current saved mix against a chosen target, discover `timeline loudness prepare` / `timeline_loudness_prepare`. Require the saved revision, fixed `timeline-float-mix-v1` mix profile, fixed `bs1770-5-48k-stereo-fir4x-v1` measurement profile and the user's explicit LUFS/dBTP target. Ask for an unspecified target; never infer a platform default or repurpose an exported-file arithmetic suggestion. Do not send paths, URLs, request IDs, ranges, hashes or authority flags.
 
 This resource-intensive read measures the full original pre-encode float mix and, when representable, actually measures a second mix using one unchanged multiplier across audible clip gains. Present the two measurements, validity and target/true-peak comparisons accurately. `applyAllowed` always remains false, including successful candidates; no edit, render, limiter, upload, model call or automatic retry is authorized. Unsaved drafts are not included. Cancellation retires only this observation's owned work; missing results require a new explicit request. No persistent report/cache/task/file write or new Agent permission is created; restored-v1 denies the operation. See [exact report boundary](../../docs/API.md#saved-timeline-full-mix-loudness-preparation).
+
+## Explicit atomic loudness application
+
+Only when the user requests applying a reviewed current full-mix candidate, discover `timeline loudness apply` / `timeline_loudness_apply`. Bind the same project, saved revision, explicit profiles/target, snapshot hash, versioned candidate digest and one stable requestId. Use the shared digest helper; never send client gains or infer authorization from a report. The server independently remeasures and commits one atomic gain group and undo entry. Persist the exact request identity for reconciliation. Lost output/timeout/Ctrl+C does not authorize a fresh key or prove cancellation. A same-key retained receipt survives undo and tool loss. Restore profiles prohibit new applications.
+
+The UI now exposes an explicit float-checked export profile, while omitted/v1 requests remain default-compatible; applying gains never selects it automatically. Export then remeasure the actual output to verify the chosen target. See [application boundary](../../docs/TIMELINE-LOUDNESS-APPLY.md).

@@ -1,3 +1,4 @@
+import {createTimelineLoudnessApplyContracts,TIMELINE_LOUDNESS_APPLY_OPERATION,hasTimelineLoudnessApplyNotAppliedProof} from './timeline-loudness-apply.ts';
 import {isTimelineExportRangeInput,isTimelineExportRangeProofInput,hasTimelineExportRangeBoundsProof} from './timeline-export-range.ts';
 import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
 import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
@@ -13,7 +14,7 @@ export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
   'timeline.clip.replaceSource', 'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed',
   'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
-  ...TIMELINE_SUBTITLE_OPERATIONS,
+  ...TIMELINE_SUBTITLE_OPERATIONS, TIMELINE_LOUDNESS_APPLY_OPERATION,
 ]);
 export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -38,7 +39,9 @@ const patchInput = (patch, allowed) => object(patch) && Object.keys(patch).lengt
 // Identity and source-intent checks that can be verified without the previous
 // aggregate. Ownership, exact history transitions and immutable receipt hashes
 // are additionally checked by the backend. No validator edits the supplied data.
+const loudnessApplyContracts=createTimelineLoudnessApplyContracts({isTimelineRecord});
 export function isTimelineMutationResponse(operation, input, value) {
+  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessApplyContracts.isTimelineLoudnessApplyResponse(value,input);
   if(operation==='timeline.format.set') return timelineFormatSchemas[operation].safeParse(input).success &&
     isTimelineRecord(value,{projectId:input.projectId}) && value.revision===input.expectedRevision+1 &&
     timelineOutputPreset(value)?.id===input.presetId && value.clips.length===0 && value.durationFrames===0;
@@ -153,6 +156,7 @@ const proofCodes = new Set([
 const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT']);
 const subjectProofCodes = new Set(['REVISION_CONFLICT', 'SUBJECT_NO_CHANGE', 'SUBJECT_REVISION_LIMIT', 'SUBJECT_BINDING_LIMIT', 'SUBJECT_ROLE_MISMATCH']);
 export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
+  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(error,input);
   const details = error?.details;
   const rangeProof={operation,error,isRenderInput:value=>
     operationInput(value,['purpose','exportRange'],['preflightSnapshotHash','exportSettings','deliveryName']) && isTimelineDeliveryNameInput(value,value.purpose) &&

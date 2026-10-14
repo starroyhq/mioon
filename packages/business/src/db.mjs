@@ -4,7 +4,16 @@ import path from 'node:path';
 import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {acquireWorkspaceLock} from './workspace-lock.mjs';
 import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';
-import {validateWorkspaceRestoreSchema,detectWorkspaceRestoreEvidence} from './workspace-restore-schema.mjs';
+import {validateWorkspaceRestoreSchema,detectWorkspaceRestoreEvidence,classifyWorkspaceSchema,installWorkspaceRestoreSchema} from './workspace-restore-schema.mjs';
+import {createWorkspaceSchemaDispatch} from './workspace-schema-dispatch.ts';
+
+const workspaceSchemas=createWorkspaceSchemaDispatch({initializeThrough24:initializeWorkspaceSchemaThrough24,
+ detectRestoreEvidence:detectWorkspaceRestoreEvidence,classify:classifyWorkspaceSchema,
+ install:installWorkspaceRestoreSchema,validate:validateWorkspaceRestoreSchema});
+export const detectCurrentWorkspaceRestoreEvidence=workspaceSchemas.detect;
+export const classifyCurrentWorkspaceSchema=workspaceSchemas.classify;
+export const installCurrentWorkspaceRestoreSchema=workspaceSchemas.installRestore;
+export const validateCurrentWorkspaceRestoreSchema=workspaceSchemas.validateRestore;
 
 // Backend-only proof of the actual acquired workspace lock. Neither caller
 // options nor copied store properties can manufacture ownership. A replaced,
@@ -17,7 +26,7 @@ export function getWorkspaceRestoreContext(store){
  // Always bypass caller-overridden methods for this absence proof. A copied or
  // fake schema25 store can never manufacture the exact registered capability.
  const scan={prepare:sql=>Reflect.apply(DatabaseSync.prototype.prepare,db,[sql])};
- let restored;try{restored=detectWorkspaceRestoreEvidence(scan);}catch{const error=new Error('Workspace store identity is not verified');error.code='RESTORE_STORE_UNVERIFIED';throw error;}
+ let restored;try{restored=detectCurrentWorkspaceRestoreEvidence(scan);}catch{const error=new Error('Workspace store identity is not verified');error.code='RESTORE_STORE_UNVERIFIED';throw error;}
  if(!restored){if(verified?.profile){const error=new Error('Workspace restoration profile disappeared');error.code='RESTORE_STORE_UNVERIFIED';throw error;}return null;}
  if(!verified||verified.profile===null||db!==verified.db||store.root!==verified.root||verified.db.isOpen!==true){const error=new Error('Workspace store identity is not verified');error.code='RESTORE_STORE_UNVERIFIED';throw error;}
  return verified.profile;
@@ -69,12 +78,9 @@ export function openStore(root,{lock=true}={}){
   db.exec('PRAGMA trusted_schema=OFF;');
   if(db.prepare('PRAGMA trusted_schema').get().trusted_schema!==0)throw new Error('Trusted schema must be disabled');
   db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL;');
- // Preserve ordinary legacy additive/repair startup semantics. Offline restore
- // uses strict source24 classification; any restore evidence here takes only
- // the complete schema25 validation branch and can never run old bootstrap.
- let restoreContext=null;
- if(detectWorkspaceRestoreEvidence(db))restoreContext=validateWorkspaceRestoreSchema(db);
- else initializeWorkspaceSchemaThrough24(db);
+ // The typed dispatcher retains old through24 repair and fixed restored25;
+ // explicit ordinary26/restored27 roles never fall through to legacy bootstrap.
+ const restoreContext=workspaceSchemas.initialize(db);
  if(db.prepare('PRAGMA foreign_keys').get().foreign_keys!==1)throw new Error('Foreign-key enforcement must be enabled');
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};

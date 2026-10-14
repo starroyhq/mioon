@@ -1,5 +1,5 @@
 /** Actual offline backup/restore boundary for the private delivery companion.
- * Reuses the established schema-24 offline fixture; no hand-made restoration
+ * Reopens the established offline fixture through the current runtime; no hand-made restoration
  * marker, fake database, server, media worker or external provider is involved.
  */
 import test from 'node:test';
@@ -66,7 +66,7 @@ test('actual cold backup excludes delivery draft, immutable intent and atomic te
  assert.deepEqual(tree(f.source),sourceBefore,'Backup and verify must preserve all source bytes and modes, including excluded files');
  assert.deepEqual(tree(f.backup),originalBackupBefore);
  const backupBefore=tree(backup),restored=await restoreWorkspaceBackup({directory:backup,destination:f.destination});
- assert.equal(restored.publication,'confirmed');assert.equal(restored.databaseSchemaVersion,25);
+ assert.equal(restored.publication,'confirmed');assert.equal(restored.databaseSchemaVersion,27);
  assert.equal(fs.existsSync(path.join(f.destination,LOCAL_DELIVERY_FILENAME)),false);assert.equal(fs.existsSync(path.join(f.destination,temporary)),false);
  assert.deepEqual(tree(f.source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);
  const restoredStore=openStore(f.destination),restoredServices=createServices(restoredStore,new Map());
