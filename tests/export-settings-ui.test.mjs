@@ -172,7 +172,9 @@ function appHarness(f, { restored = false, localState = { baselineConflict: fals
     requestId: () => { ids++; return 'frozen-render-id'; }, run: async (...args) => { calls.push(args); return { id: id(20) }; } };
   return { calls, panels, pending, submitOptions, ids: () => ids,
     open: appFunction('  function openTimelineExport(', '  const historyState', environment),
-    check: appFunction('  function checkTimelineExport(', '  function openTimelineExport(', environment),
+    // The adjacent passive loudness hook is a separate declaration, not part
+    // of the function under test. All original capability/intent assertions stay.
+    check: appFunction('  function checkTimelineExport(', '  const exportLoudness =', environment),
     render: appFunction('  async function renderTimeline(', '  async function previewSource(', environment) };
 }
 

@@ -21,6 +21,8 @@ import {createTimelineExportAdmissionServices} from './timeline-export-admission
 import {createTimelinePreflightServices} from './timeline-preflight.mjs';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
 import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
+import {createExportLoudnessServices} from './export-loudness.ts';
+import {createExportLoudnessDecoder} from './export-loudness-decoder.ts';
 import {ownsStoreLock} from './db.mjs';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {readOwnedTimelineAsset,readTimelinePreflightSnapshot,readTimelineSourceGraph} from './timeline-sources.mjs';
@@ -136,6 +138,14 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   decode:createExportSamplePeakDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
+ const loudness=restored?{...inactive(),handlers:{'timeline.export.loudness':disabled}}:createExportLoudnessServices(store,{signal:ownerSignal,runtime:{
+  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(db,projectId,assetId),
+  validateSource:validateManagedSource,hash:verifiedManagedHash,
+  decode:createExportLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
+  terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
+ }});
  const audioPreview=restored?{...inactive(),handlers:{'timeline.audioPreview.plan':disabled},consumeSource:disabled}:createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:projectId=>{
@@ -187,6 +197,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...images.handlers,
  ...preflight.handlers,
  ...samplePeak.handlers,
+ ...loudness.handlers,
  ...audioPreview.handlers,
  ...exportAdmission.handlers,
  ...waveforms.handlers,
@@ -293,7 +304,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   checkpoint(signal);
   const operation=(async()=>{
    if(restored){
-    if(op==='timeline.export.samplePeak'||op==='timeline.audioPreview.plan')throw workspaceRestoreError();
+    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.audioPreview.plan')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
     if(Object.hasOwn(restoredReads.readers,op))return restoredReads.call(op,parsed,{signal});
     const saved=restoredReads.replay(op,parsed);if(saved)return publicValue(saved.response);
@@ -318,9 +329,10 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   restoredLifetime?.abort();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const results=await boundedShutdown(Promise.allSettled([waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),audioPreview.drain(),...active]),'SERVICE_STOP_TIMEOUT');
+  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),audioPreview.drain()];
+  const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
-  for(const result of results.slice(0,7))if(result.status==='rejected')throw result.reason;
+  for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;
  };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.

@@ -138,7 +138,7 @@ function appHarness(f, { restored = false, localState = { baselineConflict: fals
     setRightDockTab: value => panels.push(['tab', value]), setPanelOpen: (...args) => panels.push(args),
   };
   const render = appFunction('  async function renderTimeline(', '  async function previewSource(', env);
-  const check = appFunction('  function checkTimelineExport(', '  function openTimelineExport(', env);
+  const check = appFunction('  function checkTimelineExport(', '  const exportLoudness =', env);
   const open = appFunction('  function openTimelineExport(', '  const historyState', { ...env, checkTimelineExport: check });
   const renderUnchecked = appFunction('  function renderUncheckedTimeline(', '  async function renderTimeline(', { renderTimeline: render });
   return { calls, notices, views, panels, pending, jobs, exports, submitOptions, env, render, renderUnchecked, check, open };

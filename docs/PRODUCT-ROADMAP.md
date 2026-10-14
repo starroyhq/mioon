@@ -1,14 +1,21 @@
 # Mioon approved product roadmap
 
-Updated: 2026-10-13 UTC. This is approved iteration scope, not a completion claim.
+Updated: 2026-10-14 UTC. This is approved iteration scope, not a completion claim.
 Original roadmap baseline: `66a0193`; current status wording was checked against
-committed code `56de9fd`. Verified deliverables and historical test totals remain
-in STATUS.md and their dated acceptance reports. The latest committed full gate
-is [the empty-workspace slice](EMPTY-WORKSPACE-MODE.md): 6,210 total / 6,208 passed /
-0 failed / 0 cancelled / 2 existing skips. Older feature gates retain their own baselines.
+committed baseline `1829dd0` plus this exported-file loudness slice. Verified deliverables and historical test totals remain
+in STATUS.md and their dated acceptance reports. The latest independently completed full gate
+is [exported-file loudness](EXPORT-LOUDNESS.md): 7,194 total / 7,192 passed /
+0 failed / 0 cancelled / 2 existing skips, with strict typecheck exit 0. Older feature gates retain their own baselines.
 The documentation check itself does not rerun product or platform acceptance.
 
-## Current delivery and remaining work (2026-10-13)
+## Current delivery and remaining work (2026-10-14)
+
+Independent project home, per-project native windows with one shared backend,
+and bounded [20-second sound audition](TIMELINE-AUDIO-PREVIEW.md) have since been
+delivered. [Complete exported-file loudness observation](EXPORT-LOUDNESS.md)
+has passed its independent implementation/acceptance gate. Measurement and arithmetic advice
+do not complete loudness normalization: frozen current-mix candidates, explicit
+atomic gain application, undo and remeasurement remain the next separate stage.
 
 The core local Linux engineering trial is available; it does not wait for every
 item below. [STATUS](../STATUS.md) records the user-UI merge `4858642` and
@@ -20,11 +27,11 @@ not new implementation, external-service authority or a fixed number of commits.
 
 1. **Editing experience.** Delivered: managed media, source ranges, favorite/reject,
    current-timeline usage/filter/location, raw-source waveforms, clip fades,
-   three 30fps canvas presets and bounded draft/restart recovery. The newly approved
-   order is project home first, then real-time timeline audio preview and loudness
-   matching/targeting, followed by the bounded audio/effects stages below. Existing
-   UI is user-maintained and must be preserved; this planning update starts no UI
-   implementation. Reproduced reliability defects remain actionable; scoped proxy
+   three 30fps canvas presets, bounded draft/restart recovery, independent project
+   home/windows, saved-timeline sound audition up to20seconds and complete exported-file loudness observation. The next approved
+   work is current-mix candidates
+   and explicit loudness gain application, followed by the bounded audio/effects
+   stages below. Existing user workbench design is preserved. Reproduced reliability defects remain actionable; scoped proxy
    performance and tags/notes remain separate open work. Ducking/crossfades,
    color/HDR and later effects are not made complete by their inclusion in the plan.
 2. **Export extensions.** Delivered: preflight, MP4/H.264 settings, frozen named

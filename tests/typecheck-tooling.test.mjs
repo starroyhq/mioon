@@ -181,7 +181,7 @@ test('fixed compiler projects cover future runtime TypeScript and only the exact
   const excluded = JSON.parse(await readFile(path.join(root, 'config/typecheck-legacy-typed-exclusions.json'), 'utf8'));
   assert.deepEqual(foundation.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
   assert.deepEqual(foundation.exclude, ['../../packages/ui/**', '../../apps/web/**']);
-  assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx']);
+  assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx', 'export-loudness.consumer.tsx']);
   assert.equal(excluded.length, 19); assert.equal(new Set(excluded).size, excluded.length);
   for (const file of excluded) assert.match(file, /^packages\/ui\/src\/[a-zA-Z0-9/.-]+\.tsx?$/);
   assert.deepEqual(browser.exclude, excluded.map(file => `../../${file}`));

@@ -624,3 +624,8 @@ V2 is currently available through shared backend/CLI/MCP input, without a new UI
 selector. Do not tell the user to find a mode control that this slice does not
 provide. Existing omitted/v1 requests keep their exact default behavior.
 See [profile, report and limits](../../docs/FLOAT-CHECKED-EXPORT.md).
+
+
+## Explicit final-file loudness check
+
+When asked to check an existing delivered file's loudness, discover `timeline export loudness` / `timeline_export_loudness`. Bind the owned succeeded export ID, expected actual output SHA-256 and fixed measurement profile; never supply paths or trust a hash as verification. Only supply custom LUFS/dBTP targets the user chose, with no inferred platform default. The explicit complete-file check returns integrated LUFS, decoded sample peak and estimated true peak; selected-range exports measure that selected file, not the whole current timeline. Distinguish digital silence, too short, below gate, missing audio and incomplete results. Arithmetic gain advice is not edit authority or a promise of hitting a target after AAC encoding; do not automatically normalize, limit, render, call a model or retry a lost observation. Existing samplePeak stays a different metric. Restored workspaces deny loudness before media access. See [measurement contract and limits](../../docs/EXPORT-LOUDNESS.md).

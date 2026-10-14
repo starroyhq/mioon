@@ -77,7 +77,7 @@ test('App keeps history inside the controlled visible right dock with project id
   assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt\.localeCompare\(a\.createdAt\)\);/);
   assert.match(app, /<DeliveryWorkspace page=\{showExports \? 'history' : 'compose'\}/);
   assert.match(app, /<AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible=\{showExports\}/);
-  assert.match(app, /<ExportHistoryList samplePeak=\{exportSamplePeak\} heldExportIds=\{data\.restore\?\.heldExportIds\} orderedExports=\{orderedExports\} projectName=\{data\.project\?\.name\} timelineRevision=\{timeline\?\.revision\} \/>/);
+  assert.match(app, /<ExportHistoryList samplePeak=\{exportSamplePeak\} loudness=\{exportLoudness\} heldExportIds=\{data\.restore\?\.heldExportIds\} orderedExports=\{orderedExports\} projectName=\{data\.project\?\.name\} timelineRevision=\{timeline\?\.revision\} \/>/);
   assert.doesNotMatch(app, /showExports && <Modal|<Modal title="导出记录"/);
   // Other existing dialogs keep their accessible close behavior.
   assert.match(app, /<Dialog open onOpenChange=\{open => \{ if \(!open\) onClose\(\); \}\}>/);

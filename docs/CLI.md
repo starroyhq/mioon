@@ -928,3 +928,8 @@ On a lost response, retain the original complete JSON and key; do not rebuild it
 Discover `mioon schema timeline.export.samplePeak`, then explicitly call `mioon timeline export samplePeak --input '{"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222"}'`. This checks an existing succeeded timeline MP4; no request ID, file path or caller hash is accepted. It can consume local CPU/file reads for a bounded 120-second attempt (shared-client default125s unless explicitly overridden). Ctrl+C cancels this observation, not the original export. Output loss does not trigger an automatic retry.
 
 This is decoded sample peak of the final artifact, not loudness or true peak. Reports are ephemeral; unsupported/incomplete/stale checks leave existing downloads usable. Restored-v1 branches explicitly refuse the new analysis. See [contract and limits](EXPORT-SAMPLE-PEAK.md).
+
+
+## Explicit exported-file loudness check
+
+Discover `mioon schema timeline.export.loudness`, then use `mioon timeline export loudness --input '<JSON>'` with the selected project's succeeded export ID, its actual expected output SHA-256 and fixed measurement profile from the schema. The optional LUFS/dBTP target is explicitly user-chosen; omission only measures. This resource-intensive read shares the samplePeak slot and fixed120s budget; client default125s remains overridable. Ctrl+C stops only this check. It does not normalize, render or queue edits, and lost output is no reason to automatically retry. Full JSON, validity states and source-bound advisory limits are in [EXPORT-LOUDNESS](EXPORT-LOUDNESS.md).

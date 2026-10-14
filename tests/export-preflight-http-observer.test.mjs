@@ -105,8 +105,8 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
 });
 
 
-test('only three explicit advisory operations observe disconnect; private capability files do not become business cancellation', async () => {
-  const observed = new Set(['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak']);
+test('only four explicit advisory operations observe disconnect; private capability files do not become business cancellation', async () => {
+  const observed = new Set(['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness']);
   assert.equal(operationEffect('timeline.export.capabilities').fileWrite, true, 'the real temporary-file effect must remain disclosed');
   for (const operation of Object.keys(schemas)) {
     const req = new EventEmitter(), res = new EventEmitter(); let received;
@@ -121,7 +121,7 @@ test('observer policy rejects every other file writer and future business/networ
   const importLine = "import {operationEffect} from '@mioon/contracts';";
   assert.equal(source.split(importLine).length, 2, 'one exact metadata dependency, actual observer function remains intact');
   const cases = [
-    ...['timeline.export.preflight', 'timeline.export.samplePeak'].map(operation => ({operation, patch:{fileWrite:true}})),
+    ...['timeline.export.preflight', 'timeline.export.samplePeak', 'timeline.export.loudness'].map(operation => ({operation, patch:{fileWrite:true}})),
     ...[{readOnly:false}, {databaseWrite:true}, {externalIO:true}, {paidGeneration:true}, {destructive:true}, {openWorld:true}]
       .map(patch => ({operation:'timeline.export.capabilities', patch})),
   ];

@@ -164,11 +164,21 @@ const localInputArgs = (file: string): string[] => [
  * format/rate/layout changes; -xerror prevents treating a decoder error as EOF.
  * pcm_f32le only packs the native AAC float samples into interleaved bytes. */
 export function createExportSamplePeakDecoder(runtime: ExportSamplePeakDecoderRuntime): ExportSamplePeakDecoder {
-  return async function decodeExportSamplePeak(file, expectedDurationSeconds, options) {
+  return createExportAudioObservationDecoder(runtime, createExportSamplePeakAccumulator, parseExportSamplePeakProbe);
+}
+
+/** Shared trusted transport only: preserve the exact existing finite-stream
+ * codec invocation and child lifecycle while each observation owns its pure
+ * reducer and probe policy. This function never authorizes a caller path. */
+export function createExportAudioObservationDecoder<Measurement>(runtime: ExportSamplePeakDecoderRuntime,
+  createAccumulator: (expectedDurationSeconds: number) => {write(chunk: Buffer): void; finish(): Measurement},
+  parseProbe: (output: unknown, expectedDurationSeconds: number) => ExportSamplePeakProbe,
+): (file: string, expectedDurationSeconds: number, options: ExportSamplePeakDecodeOptions) => Promise<Measurement> {
+  return async function decodeExportAudioObservation(file, expectedDurationSeconds, options) {
     if (typeof file !== 'string' || !file || file.includes('\0') || !path.isAbsolute(file) ||
         !options || typeof options.beforeEffect !== 'function' || typeof options.remainingMs !== 'function') throw configuration();
     validateDuration(expectedDurationSeconds);
-    const accumulator = createExportSamplePeakAccumulator(expectedDurationSeconds);
+    const accumulator = createAccumulator(expectedDurationSeconds);
     let callbackFailure: unknown;
     const remaining = (): number => {
       const value = options.remainingMs();
@@ -190,7 +200,7 @@ export function createExportSamplePeakDecoder(runtime: ExportSamplePeakDecoderRu
           '-show_entries', 'format=format_name,duration:stream=index,codec_type,codec_name,sample_rate,channels,channel_layout,duration',
           '-of', 'json', ...localInputArgs(file)], runnerOptions(PROBE_BYTES, PROBE_TIMEOUT_MS));
         fence();
-        return parseExportSamplePeakProbe(raw, expectedDurationSeconds);
+        return parseProbe(raw, expectedDurationSeconds);
       });
       fence();
       let bytesSeen = 0;

@@ -3,6 +3,7 @@ import { transformSync } from 'esbuild';
 import * as rangeContract from '@mioon/contracts/timeline-export-range';
 import * as deliveryContract from '@mioon/contracts/timeline-delivery';
 import * as samplePeakContract from '@mioon/contracts/export-sample-peak';
+import * as loudnessContract from '@mioon/contracts/export-loudness';
 import * as contracts from '@mioon/contracts';
 const element = (type, props, ...children) => typeof type === 'function' ? type({ ...props, children }) : ({ type, props: { ...props, children } });
 export const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeof tree !== 'object' ? [] : [tree, ...nodes(tree.props?.children)];
@@ -18,6 +19,7 @@ export function component(file) {
       if (key === '@mioon/contracts/timeline-export-range') return rangeContract;
       if (key === '@mioon/contracts/timeline-delivery') return deliveryContract;
       if (key === '@mioon/contracts/export-sample-peak') return samplePeakContract;
+      if (key === '@mioon/contracts/export-loudness') return loudnessContract;
       if (key === '@mioon/contracts') return contracts;
       if (key === './api.js') return { statusText: String };
       if (key === './icons.jsx') return { __esModule: true, default: 'Icon' };

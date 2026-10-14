@@ -7,6 +7,8 @@ import {timelineExportOutputFrames, timelineExportRangeFields} from '@mioon/cont
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {readTimelineExportOutput} from './timeline-delivery-read.ts';
 import type {TimelineDeliveryReadGuards, TimelineExportOutput} from './timeline-delivery-read.ts';
+import {exportAudioObservationAdmission} from './export-audio-observation.ts';
+import type {ExportAudioObservationEntry} from './export-audio-observation.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const codeOf = (error: unknown): string | undefined => object(error) && typeof error.code === 'string' ? error.code : undefined;
@@ -55,11 +57,6 @@ interface Descriptor {
   readonly durationSeconds: number;
   readonly outputFrames: number;
 }
-interface Entry {readonly controller: AbortController; readonly signal: AbortSignal; task: Promise<unknown>}
-interface Admission {active: Entry | null; stopped: boolean; shutdownFailure: unknown}
-// A copied store wrapper around the same native database cannot create a
-// second permit. There is never a backlog or an in-flight result cache.
-const admissions = new WeakMap<DatabaseSync, Admission>();
 const sameFile = (left: ExportSamplePeakFileIdentity, right: ExportSamplePeakFileIdentity): boolean =>
   left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 function fileIdentity(value: unknown): value is ExportSamplePeakFileIdentity {
@@ -107,9 +104,7 @@ function classify(error: unknown): {status: 'unsupported' | 'incomplete' | 'stal
 export function createExportSamplePeakServices(store: ExportSamplePeakStore,
   options: {runtime: ExportSamplePeakRuntime; signal?: AbortSignal}) {
   const {runtime, signal: ownerSignal} = options;
-  let admission = admissions.get(store.db);
-  if (!admission) {admission = {active: null, stopped: false, shutdownFailure: undefined}; admissions.set(store.db, admission);}
-  const state = admission;
+  const state = exportAudioObservationAdmission(store.db);
   const assertOwner = (): void => {
     runtime.assertOrdinaryWorkspace();
     if (!runtime.ownsLock()) throw fault('EXPORT_SAMPLE_PEAK_OWNER_REQUIRED', 403);
@@ -154,7 +149,7 @@ export function createExportSamplePeakServices(store: ExportSamplePeakStore,
     let timedOut = false, fencedFailure: unknown, expected: ExportSamplePeakFileIdentity | undefined;
     const remainingMs = (): number => Math.max(0, EXPORT_SAMPLE_PEAK_LIMITS.timeoutMs - (performance.now() - started));
     const timer = setTimeout(() => {timedOut = true; controller.abort();}, remainingMs());
-    const entry: Entry = {controller, signal, task: Promise.resolve()};
+    const entry: ExportAudioObservationEntry = {controller, signal, task: Promise.resolve()};
     state.active = entry;
     const fence = (): void => {
       try {

@@ -131,7 +131,7 @@ async function harness(t, {restored = false, gates = {}, projectReady = true} = 
   t.after(() => { core.localDelivery.controller.dispose(); core.exportPreflight.controller.dispose(); });
   await core.localDelivery.controller.load();
   const render = actual('  async function renderTimeline(', '  async function previewSource(', environment);
-  const check = actual('  function checkTimelineExport(', '  function openTimelineExport(', environment);
+  const check = actual('  function checkTimelineExport(', '  const exportLoudness =', environment);
   const open = actual('  function openTimelineExport(', '  const historyState', environment);
   const choose = (startFrame = 7, endFrame = 19) => {
     const controller = core.exportRange.controller;
