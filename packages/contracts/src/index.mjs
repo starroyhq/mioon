@@ -1,3 +1,5 @@
+import {lutResourceSchemas,lutResourceDescriptions} from './lut-resources.ts';
+export * from './lut-resources.ts';
 import {audioPreviewSchemas} from './timeline-audio-preview.ts';
 export * from './timeline-audio-preview.ts';
 import {timelineExportRangeSchema,isTimelineExportRangeInput} from './timeline-export-range.ts';
@@ -83,6 +85,7 @@ const clipFields={trackId:id,name:z.string().min(1).max(200),startFrame:frame,du
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
+...lutResourceSchemas,
 ...workspaceBackupSchemas,
 ...workspaceRestoreSchemas,
 ...timelineFormatSchemas,
@@ -150,6 +153,7 @@ export const descriptions={
 'workspace.restore.inspect':'只读查看工作区恢复分支身份、隔离计数与可用操作；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。',
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
+ ...lutResourceDescriptions,
  'timeline.audioPreview.plan':'只读规划当前已保存时间线最多20秒的声音试听区间；绑定项目、版本与素材哈希，返回有界PCM准备清单。此调用不解码、不播放、不初始化时间线、不写入；PCM另由固定已认证本地资源显式有界解码，不能作为完整成片或响度/真峰值检查。',
  'timeline.subtitle.add':'按时间线版本添加一条手动字幕；固定字体排版，30fps时间，返回完整已保存时间线',
  'timeline.subtitle.update':'按时间线版本更新指定字幕文字或时间；不修改素材，不生成语音或转录',

@@ -1,3 +1,4 @@
+import {createLutResourceServices} from './lut-resources.ts';
 import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
@@ -54,6 +55,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const inactive=()=>({handlers:{},drain:async()=>{},approveReviewed:disabled,rejectReview:disabled});
  const active=new Set(),restoredLifetime=restored?new AbortController():null;let shutdownFailure;
  const {db,root,get,list,put,tx}=store;
+ const luts=restored?inactive():createLutResourceServices(store,{signal:ownerSignal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>{},assertImportAllowed:()=>{if(getWorkspaceRestoreContext(store))disabled();}}});
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
  const check=(v,rev)=>{if(v.revision!==rev)throw new AppError('REVISION_CONFLICT','内容已有新版本，请重新读取后再修改',409,{entityId:v.id,expectedRevision:rev,currentRevision:v.revision,current:publicValue(v)});};
  const dedupe=(scope,requestId,requestHash,table)=>{const r=db.prepare(scope==='generation'?`SELECT CASE WHEN typeof(requestHash)='text' AND length(CAST(requestHash AS BLOB))=64 THEN requestHash END AS requestHash,CASE WHEN typeof(resourceId)='text' AND length(CAST(resourceId AS BLOB))=36 THEN resourceId END AS resourceId FROM idempotency WHERE scope=? AND requestId=?`:'SELECT * FROM idempotency WHERE scope=? AND requestId=?').get(scope,requestId);if(!r)return null;if(r.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同内容',409,{requestId});return required(table,r.resourceId);};
@@ -211,6 +213,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const exportValues=projectId=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
   .map(row=>subjectDisclosure('exports',JSON.parse(row.data),row.projectId,row.id));
  const handlers={
+ ...luts.handlers,
  'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
  'workspace.restore.inspect':()=>({restored:false}),
  ...frames.handlers,

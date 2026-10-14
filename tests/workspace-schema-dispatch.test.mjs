@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
-import {open,fixture as ordinaryFixture,snapshot,preserved} from './workspace-schema26-fixtures.mjs';
+import {open,fixture as ordinaryFixture,snapshot} from './workspace-schema26-fixtures.mjs';
 import {readCurrentWorkspaceRole,createWorkspaceSchemaDispatch} from '../packages/business/src/workspace-schema-dispatch.ts';
 const unsupported=error=>error.code==='RESTORE_SCHEMA_UNSUPPORTED';
 function fixture(t,versions,{metadata=false,marker=true,ddl='CREATE TABLE schema_version(version INTEGER PRIMARY KEY)'}={}){
@@ -60,10 +61,23 @@ function ordinaryDispatch(onLegacy=()=>{}) {
 function ordinaryDatabase(t,profile='ordinary-24-seeded'){
  const db=open(':memory:');t.after(()=>db.close());if(profile)ordinaryFixture(db,profile);return db;
 }
-test('completed24 goes directly to one strict26 transaction without legacy bootstrap writes',t=>{
+function preservedCurrent(db,before) {
+ const after=snapshot(db),expected=structuredClone(before),lutTables=new Set(['project_lut_resources','lut_import_requests']);
+ const additions=after.objects.filter(object=>lutTables.has(object.tbl_name));
+ assert.equal(additions.length,15);
+ assert.equal(createHash('sha256').update(JSON.stringify(additions)).digest('hex'),'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00');
+ after.objects=after.objects.filter(object=>!lutTables.has(object.tbl_name));
+ for(const table of lutTables){assert.deepEqual(after.tables[table].rows,[]);delete after.tables[table];}
+ const tasks=expected.objects.find(object=>object.name==='edit_tasks');
+ tasks.sql=tasks.sql.replace("'timeline.subtitle.remove'))","'timeline.subtitle.remove','timeline.loudness.apply'))");
+ expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238']);
+ assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus the reviewed26 CHECK and28 addition');
+ assert.equal(db.prepare('PRAGMA quick_check(1)').get().quick_check,'ok');assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
+}
+test('completed24 enters explicit26 and28 migrations without legacy bootstrap writes',t=>{
  const db=ordinaryDatabase(t),before=snapshot(db);let calls=0;
  assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);
- assert.equal(calls,0);preserved(db,before);
+ assert.equal(calls,0);preservedCurrent(db,before);
 });
 test('completed24 rejects imported marker trigger before its real audit side effect can execute',t=>{
  const db=ordinaryDatabase(t);let calls=0;
@@ -83,13 +97,13 @@ test('genuinely missing known markers keep the old ordinary repair path before26
  assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);assert.equal(calls,1);
  const after=snapshot(db);
  for(const [name,table]of Object.entries(before.tables))if(name!=='schema_version')assert.deepEqual(after.tables[name],table,`${name}: legacy gap repair preserves raw records`);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26]);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28]);
 });
 for(const profile of [null,'ordinary-1','ordinary-14','ordinary-21','ordinary-23'])test(`real ${profile??'missing marker table'} retains historical bootstrap/upgrade qualification`,t=>{
  const db=ordinaryDatabase(t,profile);let calls=0;
  assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);assert.equal(calls,1);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26]);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-26');
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28]);
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-28');
 });
 
 for(const [name,sql]of [
@@ -98,7 +112,7 @@ for(const [name,sql]of [
  ['marker26 and known marker removed','DELETE FROM schema_version WHERE version IN(1,26)'],
  ['all marker rows removed','DELETE FROM schema_version'],
  ['marker table removed','DROP TABLE schema_version'],
-])test(`actual26 ${name} is refused unchanged before historical repair`,t=>{
+])test(`actual28 ${name} is refused unchanged before historical repair`,t=>{
  const db=ordinaryDatabase(t);let legacyCalls=0;const dispatch=ordinaryDispatch(()=>legacyCalls++);
  dispatch.initialize(db);assert.equal(legacyCalls,0);db.exec(sql);const before=snapshot(db);
  assert.throws(()=>readCurrentWorkspaceRole(db),unsupported);

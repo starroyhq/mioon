@@ -26,16 +26,16 @@ const profile = name => ({
   tables: golden.profiles[name].tables,
 });
 
-// Runtime26 has exactly two reviewed differences from the independent24
-// golden. Derive that expectation from frozen bytes, never from the migration
-// under test; all other SQL, indexes, triggers, raw rows and sequences stay exact.
+// Current ordinary28 retains the reviewed26 task CHECK and adds marker28 plus
+// the separately pinned LUT catalog below. Keep the independent24 golden intact;
+// historical constructors and profiles still compare against its original bytes.
 function currentOrdinaryProfile(name = 'ordinary-24') {
   const expected = structuredClone(profile(name));
   const tasks = expected.objects.find(object => object.name === 'edit_tasks');
   const oldCheck = "'timeline.subtitle.remove'))";
   assert.equal(tasks.sql.split(oldCheck).length, 2);
   tasks.sql = tasks.sql.replace(oldCheck, "'timeline.subtitle.remove','timeline.loudness.apply'))");
-  expected.tables.schema_version.rows.push(['26', 'integer', '3236']);
+  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238']);
   return expected;
 }
 
@@ -62,6 +62,20 @@ function snapshot(db) {
       return [name, rawTable(db, name, fields)];
     })),
   };
+}
+
+// Reviewed schema28 addition, pinned independently rather than imported from
+// the implementation under test. Unknown objects and changed SQL still fail.
+function currentOrdinarySnapshot(db) {
+  const actual = snapshot(db), lutTables = new Set(['project_lut_resources', 'lut_import_requests']);
+  const lutObjects = actual.objects.filter(object => lutTables.has(object.tbl_name));
+  assert.equal(lutObjects.length, 15);
+  assert.equal(sha(JSON.stringify(lutObjects)), 'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00', 'exact reviewed LUT table/index/protection catalog');
+  assert.deepEqual(actual.tables.project_lut_resources, {fields: ['id','projectId','name','sha256','sizeBytes','profile','metadata','content','createdAt'], rows: []});
+  assert.deepEqual(actual.tables.lut_import_requests, {fields: ['requestId','projectId','inputHash','resourceId'], rows: []});
+  actual.objects = actual.objects.filter(object => !lutTables.has(object.tbl_name));
+  for (const table of lutTables) delete actual.tables[table];
+  return actual;
 }
 
 function decode(type, value) {
@@ -289,7 +303,7 @@ test('through24 constructor keeps every ordinary1–24 trusted SQL/default-row c
 });
 
 for (let version = 1; version <= 24; version++) {
-  test(`frozen ordinary${version} classifies without mutation and runtime opens with only the reviewed ordinary26 delta`, t => {
+  test(`frozen ordinary${version} classifies without mutation and runtime opens with only the reviewed ordinary28 delta`, t => {
     const name = `ordinary-${version}`;
     const root = onDisk(t, name);
     const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
@@ -299,17 +313,17 @@ for (let version = 1; version <= 24; version++) {
     } finally { db.close(); }
     const store = openStore(root);
     try {
-      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile());
+      assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile());
       assertPreserved(store.db, profile(name), version);
       assert.equal(getWorkspaceRestoreContext(store), null);
     } finally { store.close(); }
   });
 }
 
-test('fresh runtime construction has only the reviewed ordinary26 delta and no restoration authority', t => {
+test('fresh runtime construction has only the reviewed ordinary28 delta and no restoration authority', t => {
   const store = openStore(onDisk(t));
   try {
-    assert.deepEqual(snapshot(store.db), currentOrdinaryProfile());
+    assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile());
     assert.equal(getWorkspaceRestoreContext(store), null);
   } finally { store.close(); }
 });
@@ -324,15 +338,15 @@ test('real Mock ledger constructor keeps the frozen optional ordinary24 table/in
 
 for (const mock of [false, true]) for (const seeded of [false, true]) {
   const suffix = (mock ? '-mock' : '') + (seeded ? '-seeded' : '');
-  test(`frozen ordinary24${suffix} reopens with only the reviewed26 schema delta, preserving raw rows, receipts and sequence`, t => {
+  test(`frozen ordinary24${suffix} reopens with only the reviewed28 schema delta, preserving raw rows, receipts and sequence`, t => {
     const name = `ordinary-24${suffix}`;
     const store = openStore(onDisk(t, name));
     try {
-      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile(name));
+      assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
       assertPreserved(store.db, profile(name));
-      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 26, profile: 'ordinary'});
+      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 28, profile: 'ordinary'});
       if (seeded) constraints(store.db, {restored: false, mock});
-      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile(name));
+      assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }
   });
 
@@ -378,7 +392,7 @@ for (const repair of ['known-marker-gap', 'initial-markers-absent', 'marker-tabl
     } finally { db.close(); }
     const store = openStore(root);
     try {
-      assert.deepEqual(snapshot(store.db), currentOrdinaryProfile(repair === 'marker-table-absent' ? 'ordinary-24' : initial));
+      assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(repair === 'marker-table-absent' ? 'ordinary-24' : initial));
       assert.equal(getWorkspaceRestoreContext(store), null);
     } finally { store.close(); }
   });

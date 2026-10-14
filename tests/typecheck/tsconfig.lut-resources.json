@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "strict": true,
+    "skipLibCheck": false,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "rootDir": "../.."
+  },
+  "files": [
+    "../../packages/contracts/src/lut-resources.ts",
+    "../../packages/business/src/lut-resource-validation.ts",
+    "../../packages/business/src/lut-resources.ts",
+    "../../packages/business/src/workspace-schema-v28.ts",
+    "../../packages/business/src/workspace-restore-schema-v29.ts",
+    "../../packages/business/src/workspace-schema-dispatch.ts",
+    "../../packages/business/src/workspace-backup-schema-versions.ts",
+    "../../packages/client/src/lut-resources.ts",
+    "../../apps/cli/src/lut-import-file.ts",
+    "./lut-resources.consumer.mts"
+  ]
+}

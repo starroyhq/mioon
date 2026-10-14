@@ -943,3 +943,7 @@ This complete pre-encode float-mix observation returns the original measurement 
 ## Explicit atomic fixed-gain application
 
 Discover `mioon schema timeline.loudness.apply`. After an explicitly reviewed current prepare report, call `mioon timeline loudness apply --input '<JSON>'` with its project/revision/profiles/target, snapshot hash, versioned candidate digest and one stable requestId. There is no client gain list. The server repeats full measurement before committing one gain group, revision and undo entry. A same-key retry returns the immutable original ACK first; changed content conflicts. Ctrl+C or output loss does not cancel an accepted edit. Preserve the exact key/input and reconcile; never invent a replacement key from a timeout. The operation has no model/network/payment effects and is not a built-in Agent tool. See [atomic application](TIMELINE-LOUDNESS-APPLY.md).
+
+## LUT resource foundation
+
+`mioon lut import --file /owned/path/look.cube --input '{"projectId":"PROJECT_UUID","requestId":"STABLE_REQUEST_KEY"}'` reads bounded local bytes, not a backend path. `mioon lut list` and `mioon lut inspect` use the same RPC input shapes. The shared source limit is7MiB, not the standalone parser's32MiB ceiling. No LUT is yet applied to a clip or rendered. See [LUT resources, replay and recovery](LUT-RESOURCES.md).

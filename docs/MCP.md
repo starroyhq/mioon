@@ -837,3 +837,7 @@ Effects are `readOnly:true`, `localProcess:true`, `fileWrite:false`, with no dat
 ## Explicit atomic fixed-gain application
 
 `timeline_loudness_apply` exposes the same strict `timeline.loudness.apply` contract. It is `readOnly:false`, `databaseWrite:true`, `localProcess:true`, `idempotent:true`, with no file/network/model/payment effects. Discovery is not authorization to apply. Require the user-selected target and explicit action, retain the original requestId and exact scalar binding, and never treat `applyAllowed:false` from prepare as an application token. The server remeasures before a single atomic edit; same-key historical replay does not rerun media. Local cancellation/output loss remains unknown. No internal Agent catalog expansion is included. See [contract and restored restrictions](TIMELINE-LOUDNESS-APPLY.md).
+
+## LUT resource foundation
+
+Discovery now includes `lut_import`, `lut_list` and `lut_inspect`. Import requires an explicit project, stable request ID, name and canonical base64 source bytes (maximum7MiB); no local path or URL parameter is accepted. Metadata includes explicit unverified-colour/not-implemented-rendering status. The current SDK's10MiB stdio limit is unchanged, and a maximum complete LUT message is checked against its actual ReadBuffer. A new bounded LUT-only lane also exercises actual official MCP stdio import/replay/list/inspect and lost/tampered ACK recovery. It does not rerun issue #1 or change built-in Agent authority. See [LUT resources](LUT-RESOURCES.md).

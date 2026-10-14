@@ -1,3 +1,4 @@
+import {isLutRpcResponse} from './lut-resources.ts';
 import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_CLIENT_MS} from './timeline-loudness-apply.ts';
 import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
@@ -106,7 +107,7 @@ function interrupted() { return new ClientError('INTERRUPTED', 'Stopped waiting 
 function checkSignal(signal) { if (signal?.aborted) throw interrupted(); }
 const keyedMutationOperations = new Set([
   ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS,
-  'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare',
+  'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
 ]);
 function uncertainRequestDetails(body) {
   if (!body) return {};
@@ -188,6 +189,7 @@ export function createClient(clientOptions = {}) {
             ...(proven?{operation:body.operation,requestId:body.input.requestId,submissionMayHaveSucceeded:false}:recoveryDetails)};
           if(!proven)delete details.observation;
         }
+        if (body?.operation==='lut.import') details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),...recoveryDetails};
         if (body && ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'RESTORE_BACKUP_UNAVAILABLE'].includes(error.code)) {
           details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}), ...recoveryDetails};
           delete details.mutationOutcome; delete details.frameOutcome; delete details.observation;
@@ -250,6 +252,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+    if (['lut.import','lut.list','lut.inspect'].includes(operation) && !isLutRpcResponse(operation,parsed,result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid LUT resource response.',{details:operation==='lut.import'?uncertainRequestDetails(body):{operation}});
     if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid restored workspace summary.');
     if (operation === 'workspace.backup.inspect' && !isWorkspaceBackupInspection(result))

@@ -58,11 +58,11 @@ test('bounded marker projection refuses unsafe integer values without JavaScript
  assert.throws(()=>readWorkspaceBackupSchemaVersion(db),{code:'WORKSPACE_BACKUP_DATABASE_INVALID'});
 });
 
-test('ordinary24 unknown journal survives startup migration and cold26 archive while fixed27 restore refuses it',async t=>{
+test('ordinary24 unknown journal survives startup migration and cold28 archive while fixed29 restore refuses it',async t=>{
  const {openStore}=await import('../packages/business/src/db.mjs');
  const {restoreWorkspaceBackup}=await import('../packages/business/src/workspace-restore.mjs');
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'backup-custom-journal-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- const source=path.join(root,'source'),backup24=path.join(root,'backup24'),backup26=path.join(root,'backup26'),destination=path.join(root,'restore27');
+ const source=path.join(root,'source'),backup24=path.join(root,'backup24'),backup28=path.join(root,'backup28'),destination=path.join(root,'restore29');
  fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o700});
  const file=path.join(source,'workbench.sqlite');let db=new DatabaseSync(file);
  try{
@@ -77,15 +77,15 @@ test('ordinary24 unknown journal survives startup migration and cold26 archive w
  assert.equal((await verifyWorkspaceBackup({directory:backup24})).restoration,'not_tested');
  const store=openStore(source);
  try{
-  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n,26);
+  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n,28);
   const read=store.db.prepare('SELECT rowid AS rowid,* FROM unknown_retained_journal');read.setReadBigInts(true);
   const actual=read.get();assert.equal(actual.rowid,9007199254740993n);assert.deepEqual(actual.data,new Uint8Array([0,255,13,10]));assert.equal(actual.n,123.25);
  }finally{store.close();}
- const original26=fs.readFileSync(file),created=await createWorkspaceBackup({source,destination:backup26});
- assert.equal(created.databaseSchemaVersion,26);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
- assert.deepEqual(fs.readFileSync(path.join(backup26,'payload/workbench.sqlite')),original26);
- assert.deepEqual(await verifyWorkspaceBackup({directory:backup26}),created);
- await assert.rejects(restoreWorkspaceBackup({directory:backup26,destination}),{code:'WORKSPACE_RESTORE_SOURCE_SCHEMA_UNSUPPORTED'});
+ const original28=fs.readFileSync(file),created=await createWorkspaceBackup({source,destination:backup28});
+ assert.equal(created.databaseSchemaVersion,28);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
+ assert.deepEqual(fs.readFileSync(path.join(backup28,'payload/workbench.sqlite')),original28);
+ assert.deepEqual(await verifyWorkspaceBackup({directory:backup28}),created);
+ await assert.rejects(restoreWorkspaceBackup({directory:backup28,destination}),{code:'WORKSPACE_RESTORE_SOURCE_SCHEMA_UNSUPPORTED'});
  assert.equal(fs.existsSync(destination),false);
- assert.deepEqual(fs.readFileSync(file),original26);assert.deepEqual(fs.readFileSync(path.join(backup26,'payload/workbench.sqlite')),original26);
+ assert.deepEqual(fs.readFileSync(file),original28);assert.deepEqual(fs.readFileSync(path.join(backup28,'payload/workbench.sqlite')),original28);
 });

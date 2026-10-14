@@ -20,7 +20,8 @@
     "./timeline-segments": "./src/timeline-segments.ts",
     "./export-loudness": "./src/export-loudness.ts",
     "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts",
-    "./timeline-loudness-apply": "./src/timeline-loudness-apply.ts"
+    "./timeline-loudness-apply": "./src/timeline-loudness-apply.ts",
+    "./lut-resources": "./src/lut-resources.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

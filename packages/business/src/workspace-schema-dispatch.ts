@@ -1,10 +1,12 @@
 import type {DatabaseSync} from 'node:sqlite';
 import type {WorkspaceSchemaReader} from './workspace-schema-profile.ts';
 import {initializeWorkspaceSchema26} from './workspace-schema-v26.ts';
+import {initializeWorkspaceSchema28} from './workspace-schema-v28.ts';
+import {createWorkspaceRestoreProfileV29} from './workspace-restore-schema-v29.ts';
 import {createWorkspaceRestoreProfileV27} from './workspace-restore-schema-v27.ts';
 import type {WorkspaceRestoreMetadataV27} from './workspace-restore-schema-v27.ts';
 
-export type CurrentWorkspaceRole = 'ordinary-through-24' | 'ordinary-26' | 'restored-25-evidence' | 'restored-27-evidence';
+export type CurrentWorkspaceRole = 'ordinary-through-24' | 'ordinary-26' | 'ordinary-28' | 'restored-25-evidence' | 'restored-27-evidence' | 'restored-29-evidence';
 interface Classification {readonly schemaVersion: number; readonly profile: string}
 export interface LegacyWorkspaceProfile<T extends object> {
   initializeThrough24(db: DatabaseSync): void;
@@ -55,12 +57,13 @@ function hasLoudnessApplyOperation(sql: string): boolean {
  * separate gate; ordinary legacy repair eligibility does not prove that every
  * schema object is known. Numeric ordering never confers restoration authority. */
 export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWorkspaceRole {
-  let marker = false, restoreEvidence = false, loudnessApplyEvidence = false, count = 0;
+  let marker = false, restoreEvidence = false, loudnessApplyEvidence = false, lutEvidence = false, count = 0;
   for (const item of db.prepare("SELECT type,CASE WHEN length(CAST(name AS BLOB))<=128 THEN name END AS name,CASE WHEN length(CAST(sql AS BLOB))<=131072 THEN sql END AS sql FROM main.sqlite_schema LIMIT 1025").iterate()) {
     const value = row(item);
     if (++count > 1024 || typeof value.name !== 'string' || Buffer.byteLength(value.name) > 128)
       throw Object.assign(new Error('RESTORE_SCHEMA_LIMIT'), {code: 'RESTORE_SCHEMA_LIMIT'});
     const name = fold(value.name);
+    if (/project_lut_resources|lut_import_requests/.test(name)) lutEvidence = true;
     if (name.startsWith('workspace_restor') || name.startsWith('restore_')) restoreEvidence = true;
     if (name === 'edit_tasks') {
       if (value.type !== 'table' || typeof value.sql !== 'string') return unsupported();
@@ -73,39 +76,44 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
     }
   }
   if (!marker) {
-    if (loudnessApplyEvidence) return unsupported();
+    if (loudnessApplyEvidence || lutEvidence) return unsupported();
     return restoreEvidence ? 'restored-25-evidence' : 'ordinary-through-24';
   }
-  const extra = db.prepare('SELECT CAST(version AS TEXT) AS version,typeof(version) AS type FROM main.schema_version WHERE version NOT IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 3').all().map(row);
+  const extra = db.prepare('SELECT CAST(version AS TEXT) AS version,typeof(version) AS type FROM main.schema_version WHERE version NOT IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 4').all().map(row);
   if (extra.length === 0) {
-    if (loudnessApplyEvidence) return unsupported();
+    if (loudnessApplyEvidence || lutEvidence) return unsupported();
     return restoreEvidence ? 'restored-25-evidence' : 'ordinary-through-24';
   }
   if (extra.some(value => value.type !== 'integer')) return unsupported();
   if (extra.length === 1 && extra[0]?.version === '25') {
-    if (loudnessApplyEvidence) return unsupported();
+    if (loudnessApplyEvidence || lutEvidence) return unsupported();
     return 'restored-25-evidence';
   }
   const ordinary26 = extra.length === 1 && extra[0]?.version === '26';
   const restored27 = extra.length === 2 && extra[0]?.version === '26' && extra[1]?.version === '27';
-  if (!ordinary26 && !restored27) return unsupported();
+  const ordinary28 = extra.length === 2 && extra[0]?.version === '26' && extra[1]?.version === '28';
+  const restored29 = extra.length === 3 && extra[0]?.version === '26' && extra[1]?.version === '28' && extra[2]?.version === '29';
+  if (!ordinary26 && !restored27 && !ordinary28 && !restored29) return unsupported();
+  if ((ordinary26 || restored27) && lutEvidence) return unsupported();
   const known = db.prepare('SELECT CAST(version AS TEXT) AS version FROM main.schema_version WHERE version IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 25').all().map(row);
   if (known.length !== 24 || known.some((value, index) => value.version !== String(index + 1))) return unsupported();
-  if (ordinary26 && restoreEvidence) return unsupported();
-  return ordinary26 ? 'ordinary-26' : 'restored-27-evidence';
+  if ((ordinary26 || ordinary28) && restoreEvidence) return unsupported();
+  return ordinary26 ? 'ordinary-26' : ordinary28 ? 'ordinary-28' : restored29 ? 'restored-29-evidence' : 'restored-27-evidence';
 }
 
 /** Bound once by existing db wiring. Only application-owned fixed constructors
  * are supplied here; no public DTO may select or replace schema implementations. */
 export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWorkspaceProfile<T>) {
   const restored27 = createWorkspaceRestoreProfileV27(legacy.initializeThrough24);
+  const restored29 = createWorkspaceRestoreProfileV29(legacy.initializeThrough24);
   const detect = (db: WorkspaceSchemaReader): boolean => {
     const role = readCurrentWorkspaceRole(db);
     if (role === 'ordinary-through-24' || role === 'restored-25-evidence') return legacy.detectRestoreEvidence(db);
-    return role === 'restored-27-evidence';
+    return role === 'restored-27-evidence' || role === 'restored-29-evidence';
   };
   const classify = (db: DatabaseSync): Classification => {
     const role = readCurrentWorkspaceRole(db);
+    if (role === 'ordinary-28' || role === 'restored-29-evidence') return restored29.classifyWorkspaceSchemaV28V29(db);
     return role === 'ordinary-26' || role === 'restored-27-evidence'
       ? restored27.classifyWorkspaceSchemaV26V27(db) : legacy.classify(db);
   };
@@ -113,12 +121,17 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     const role = readCurrentWorkspaceRole(db);
     if (role === 'restored-25-evidence') return legacy.validate(db);
     if (role === 'restored-27-evidence') return restored27.validateWorkspaceRestoreSchemaV27(db);
+    if (role === 'restored-29-evidence') return restored29.validateWorkspaceRestoreSchemaV29(db);
     return unsupported();
   };
   const initialize = (db: DatabaseSync) => {
     const role = readCurrentWorkspaceRole(db);
-    if (role === 'restored-25-evidence' || role === 'restored-27-evidence') return validateRestore(db);
-    if (role === 'ordinary-26') {initializeWorkspaceSchema26(db); return null;}
+    if (role === 'restored-25-evidence' || role === 'restored-27-evidence' || role === 'restored-29-evidence') return validateRestore(db);
+    if (role === 'ordinary-28') {initializeWorkspaceSchema28(db); return null;}
+    // The28 additive initializer validates the retained26 structures and repairs
+    // allowed receipt guards in its own transaction. Do not commit an earlier
+    // repair before28 has rejected a conflicting imported LUT object.
+    if (role === 'ordinary-26') {initializeWorkspaceSchema28(db); return null;}
     // Completed24 enters the strict migration before any historical bootstrap
     // writes. In particular INSERT OR IGNORE still fires BEFORE INSERT
     // triggers, so rerunning the old constructor here is not a read-only check.
@@ -128,12 +141,14 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     const complete24 = marker && db.prepare('SELECT COUNT(*) AS count FROM main.schema_version').get()?.count === 24;
     if (!complete24) legacy.initializeThrough24(db);
     initializeWorkspaceSchema26(db);
+    initializeWorkspaceSchema28(db);
     return null;
   };
   const installRestore = (db: DatabaseSync, metadata: WorkspaceRestoreMetadataV27) => {
     const profile = classify(db);
     if (profile.schemaVersion === 24 && profile.profile === 'ordinary') return legacy.install(db, metadata);
     if (profile.schemaVersion === 26 && profile.profile === 'ordinary') return restored27.installWorkspaceRestoreSchemaV27(db, metadata);
+    if (profile.schemaVersion === 28 && profile.profile === 'ordinary') return restored29.installWorkspaceRestoreSchemaV29(db, metadata);
     return unsupported();
   };
   return {detect, classify, validateRestore, initialize, installRestore};

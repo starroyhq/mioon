@@ -1,3 +1,6 @@
+import {createLutResourceServices,assertLutReadProfile} from './lut-resources.ts';
+import {lutRestorePolicy} from '../../contracts/src/lut-resources.ts';
+import {ownsStoreLock} from './db.mjs';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {readOwnedTimelineAsset} from './timeline-sources.mjs';
@@ -32,6 +35,7 @@ export function createRestoredReadServices(store,{signal}={}) {
  const {db,get,list}=store;
  const required=(table,id)=>{const value=get(table,id);if(!value)throw new AppError('NOT_FOUND','找不到记录',404,{id});return value;};
  const denied=()=>{throw workspaceRestoreError();};
+ const luts=createLutResourceServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertLutReadProfile(restored.schemaVersion),assertImportAllowed:denied}});
  const timeline=createTimelineServices(store,{required,check:denied,hash,now});
  const inspection=createInspectionServices(store);
  const ranges=createSourceRangeServices(store,{canonical,readOnly:true});
@@ -60,6 +64,7 @@ export function createRestoredReadServices(store,{signal}={}) {
  const exportValues=projectId=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
   .map(row=>disclose('exports',JSON.parse(row.data),row.projectId,row.id));
  const readers={
+  ...luts.readers,
   ...createWaveformHistoryReaders(store).handlers,
   ...createImageHistoryReaders(store).handlers,
   ...createFrameHistoryReaders(store).handlers,
@@ -67,7 +72,7 @@ export function createRestoredReadServices(store,{signal}={}) {
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts).map(([kind,count])=>({kind,count})),
-   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>({operation,available:true,reason:'AVAILABLE'})),
+   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>lutRestorePolicy(operation,restored.schemaVersion)),
     ...RESTORE_DENIED_OPERATIONS.map(operation=>({operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}))],
    backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}}),
   ...inspection.handlers,
