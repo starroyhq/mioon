@@ -58,44 +58,49 @@ function legacyFixture(t){
 }
 
 // This is a frozen validator harness, not a packaged old binary. Whole old
-// modules are retained verbatim in the fixed fixture. Only import specifiers
-// are redirected. canonical remains an exact frozen exported snippet; the
-// historical contracts barrel, effects catalog, restore policy, export profile
-// and render acknowledgement are whole frozen modules. The previously pinned
-// local-delivery type source is preserved too, without evaluating it as a JS
-// data URL. Other direct dependencies must match their baseline hashes.
-// Unchanged current business helpers still load their own transitive imports;
-// this is deliberately not a fully frozen application dependency graph.
+// modules remain verbatim in the fixture; only import specifiers are redirected.
+// File URLs preserve the original db/restore-schema cycle and native TS loading.
+// The canonical snippet is the existing exact frozen substitution. Every live
+// direct dependency remains hash-pinned, including schema-only dependencies.
+// Other live helpers still load their own transitive imports; this is not a
+// fully frozen application dependency graph or an application downgrade test.
 let frozen;
-async function frozenValidators(){
- if(frozen)return frozen;
- for(const [file,hash]of Object.entries(baseline.dependencyHashes))assert.equal(sha(baseline.sources[file]?.text??fs.readFileSync(path.join(repo,file))),hash,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
- const data=source=>'data:text/javascript;charset=utf-8,'+encodeURIComponent(source);
+async function loadFrozenValidators(fixture=baseline,readDependency=file=>fs.readFileSync(path.join(repo,file))){
+ for(const [file,hash]of Object.entries(fixture.dependencyHashes))assert.equal(sha(fixture.sources[file]?.text??readDependency(file)),hash,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
+ for(const [file,saved]of Object.entries(fixture.sources)){
+  assert.match(file,/^packages\/(?:business|contracts)\/src\/[a-zA-Z0-9_./-]+\.(?:mjs|ts)$/u);
+  assert.equal(path.posix.normalize(file),file);assert.ok(!file.split('/').includes('..'));
+  assert.equal(sha(saved.text),saved.sha256,`Frozen source changed: ${file}`);
+ }
+ const directory=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-old-agent-modules-'));
  const absolute=file=>pathToFileURL(path.join(repo,file)).href;
  const requireContracts=createRequire(absolute('packages/contracts/package.json'));
- const canonical=data(baseline.substitutions.canonicalSource),cache=new Map();
- const contracts=url('packages/contracts/src/index.mjs');
- function url(file){
-  if(cache.has(file))return cache.get(file);
-  const saved=baseline.sources[file];assert.ok(saved,`Missing frozen source ${file}`);assert.equal(sha(saved.text),saved.sha256,file);
-  const source=saved.text.replace(/(from\s+)(['"])([^'"]+)\2/gu,(_match,prefix,_quote,specifier)=>{
-   let destination=specifier;
-   if(specifier==='@mioon/contracts')destination=contracts;
-   else if(specifier.startsWith('.')){
-    const resolved=path.posix.normalize(path.posix.join(path.posix.dirname(file),specifier));
-    if(resolved==='packages/business/src/services.mjs')destination=canonical;
-    else if(Object.hasOwn(baseline.sources,resolved))destination=url(resolved);
-    else{assert.ok(Object.hasOwn(baseline.dependencyHashes,resolved),`Unpinned frozen-validator import: ${file} -> ${resolved}`);destination=absolute(resolved);}
-   }
-   else if(specifier==='zod'&&['packages/contracts/src/index.mjs','packages/contracts/src/timeline-export-profile.mjs'].includes(file))destination=pathToFileURL(requireContracts.resolve('zod')).href;
-   else assert.ok(['node:crypto','node:net'].includes(specifier),`Unexpected frozen-validator import: ${file} -> ${specifier}`);
-   return prefix+JSON.stringify(destination);
-  });
-  const result=data(source);cache.set(file,result);return result;
- }
- const edit=await import(url('packages/business/src/agent/edit-proposals.mjs')),context=await import(url('packages/business/src/agent/chat-context.mjs'));
- frozen={...edit,...context,contracts:await import(contracts),restorePolicy:await import(url('packages/business/src/workspace-restore-policy.mjs'))};return frozen;
+ const local=file=>path.join(directory,file),url=file=>pathToFileURL(local(file)).href;
+ const canonical=pathToFileURL(path.join(directory,'canonical.mjs')).href;
+ try{
+  fs.writeFileSync(path.join(directory,'canonical.mjs'),fixture.substitutions.canonicalSource,{mode:0o600});
+  for(const [file,saved]of Object.entries(fixture.sources)){
+   const source=saved.text.replace(/(from\s+)(['"])([^'"]+)\2/gu,(_match,prefix,_quote,specifier)=>{
+    let destination=specifier;
+    if(specifier==='@mioon/contracts')destination=url('packages/contracts/src/index.mjs');
+    else if(specifier==='@mioon/contracts/private-storage'&&file==='packages/business/src/db.mjs'){
+     const dependency='packages/contracts/src/private-storage.mjs';assert.ok(Object.hasOwn(fixture.dependencyHashes,dependency));destination=absolute(dependency);
+    }else if(specifier.startsWith('.')){
+     const resolved=path.posix.normalize(path.posix.join(path.posix.dirname(file),specifier));
+     if(resolved==='packages/business/src/services.mjs')destination=canonical;
+     else if(Object.hasOwn(fixture.sources,resolved))destination=url(resolved);
+     else{assert.ok(Object.hasOwn(fixture.dependencyHashes,resolved),`Unpinned frozen-validator import: ${file} -> ${resolved}`);destination=absolute(resolved);}
+    }else if(specifier==='zod'&&['packages/contracts/src/index.mjs','packages/contracts/src/timeline-export-profile.mjs','packages/contracts/src/local-delivery.ts'].includes(file))destination=pathToFileURL(requireContracts.resolve('zod')).href;
+    else assert.ok(['node:crypto','node:net'].includes(specifier)||file==='packages/business/src/db.mjs'&&['node:sqlite','node:util/types','node:path'].includes(specifier)||file==='packages/business/src/workspace-restore-schema.mjs'&&specifier==='node:sqlite',`Unexpected frozen-validator import: ${file} -> ${specifier}`);
+    return prefix+JSON.stringify(destination);
+   });
+   fs.mkdirSync(path.dirname(local(file)),{recursive:true,mode:0o700});fs.writeFileSync(local(file),source,{mode:0o600});
+  }
+  const edit=await import(url('packages/business/src/agent/edit-proposals.mjs')),context=await import(url('packages/business/src/agent/chat-context.mjs'));
+  return {...edit,...context,contracts:await import(url('packages/contracts/src/index.mjs')),restorePolicy:await import(url('packages/business/src/workspace-restore-policy.mjs'))};
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
 }
+async function frozenValidators(){return frozen??=await loadFrozenValidators();}
 
 function tree(root){return fs.readdirSync(root,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(entry=>{const file=path.join(root,entry.name),info=fs.lstatSync(file);return [{path:file,mode:info.mode,...(entry.isFile()?{sha256:sha(fs.readFileSync(file))}:{})},...(entry.isDirectory()?tree(file):[])];});}
 async function backupCli(t,args){
@@ -122,6 +127,35 @@ async function capturedGainStates(t){
  }
  return {f,proposals};
 }
+
+test('frozen c3a0a57 schema dependency cycle preserves exact original source hashes',()=>{
+ const expected={
+  'packages/business/src/db.mjs':'84af099e2b1422574fcabf27d9f3984c0c9c1f045d00860f20f16d247707544f',
+  'packages/business/src/workspace-fixed-schema.mjs':'9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab',
+  'packages/business/src/workspace-restore-schema.mjs':'9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b',
+  'packages/business/src/image-schema.mjs':'8a364f2d61669cff35ba6a77d5a8a6fd5a26044bfa970b09e78ce780929931e3',
+  'packages/business/src/frame-schema.mjs':'d1310a5945bfcf577b5e2780159507e753eb28f3b4e94d5e109c4bf65ced2655',
+ };
+ assert.equal(baseline.sourceCommit,'c3a0a57da7b54f62a999fe006dbc47d46d6c83c0');
+ for(const [file,hash]of Object.entries(expected)){assert.equal(baseline.sources[file].sha256,hash);assert.equal(sha(baseline.sources[file].text),hash);assert.equal(baseline.dependencyHashes[file],hash);}
+});
+test('frozen validator loader rejects changed historical source before import',async()=>{
+ const changed=plain(baseline);changed.sources['packages/business/src/db.mjs'].text+='\n// deliberate drift';
+ await assert.rejects(loadFrozenValidators(changed),/Baseline dependency changed: packages\/business\/src\/db\.mjs/u);
+ const unpinnedSource=plain(baseline);unpinnedSource.sources['packages/business/src/agent/chat-context.mjs'].text+='\n// deliberate drift';
+ await assert.rejects(loadFrozenValidators(unpinnedSource),/Frozen source changed: packages\/business\/src\/agent\/chat-context\.mjs/u);
+});
+test('frozen validator loader rejects live direct-dependency drift before import',async()=>{
+ const target='packages/business/src/workspace-lock.mjs';let reads=0;
+ await assert.rejects(loadFrozenValidators(baseline,file=>{const value=fs.readFileSync(path.join(repo,file));if(file!==target)return value;reads++;return Buffer.concat([value,Buffer.from('\n// deliberate drift')]);}),/Baseline dependency changed: packages\/business\/src\/workspace-lock\.mjs/u);
+ assert.equal(reads,1);
+});
+test('frozen validator loader refuses unpinned imports instead of broadening its dependency allowlist',async()=>{
+ const changed=plain(baseline),file='packages/business/src/agent/chat-context.mjs';
+ changed.sources[file].text='import unknown from "./not-a-pinned-module.mjs";\n'+changed.sources[file].text;
+ changed.sources[file].sha256=sha(changed.sources[file].text);
+ await assert.rejects(loadFrozenValidators(changed),/Unpinned frozen-validator import: .*not-a-pinned-module\.mjs/u);
+});
 
 test('frozen c3a0a57 restore policy and effects use the exact old catalog despite current operation additions',async()=>{
  for(const [file,expected]of [

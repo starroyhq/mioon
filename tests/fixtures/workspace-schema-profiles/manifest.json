@@ -1,0 +1,175 @@
+{
+  "formatVersion": 1,
+  "sourceCommit": "0343ed390a85c319210b5f179180cf9c8c3985c2",
+  "synthetic": true,
+  "closureStatements": {
+    "packages/business/src/workspace-fixed-schema.mjs": {
+      "sha256": "8f265f51f2566f7c735757821060cac4f496b4568cf4d5d9cdcb090360bca97c",
+      "statements": 1
+    },
+    "packages/business/src/edit-task-schema.mjs": {
+      "sha256": "e5589f96b04fbbd18fd7cc12ac5c187b4561c76bb69af1e86076dd41bceb5335",
+      "statements": 6
+    },
+    "packages/business/src/subject-schema.mjs": {
+      "sha256": "ae3efbb76a4d5953cf7a4d0af84fbe7b97324d99b1805304ce35f8a5ea4aec9d",
+      "statements": 1
+    },
+    "packages/business/src/image-schema.mjs": {
+      "sha256": "8ce8c6d2d869972814810335490cc88cd44cd0af06a82b2f198a3e69f66a7575",
+      "statements": 1
+    },
+    "packages/business/src/images/review-schema.mjs": {
+      "sha256": "aec00d46baf1ad3050d2d32968ac5f3e452ae0e6381391947d09161261258f12",
+      "statements": 7
+    },
+    "packages/business/src/comfy-image-schema.mjs": {
+      "sha256": "2f0d70670edf76b3536199f8c443032b5916e07c22810c41274d6342862d3038",
+      "statements": 2
+    },
+    "packages/business/src/frame-schema.mjs": {
+      "sha256": "4a5377951035d8903652ab55feda0cd4d9f30f7e29b53e6ca88b5e2ba2337dd3",
+      "statements": 5
+    },
+    "packages/business/src/timeline-format-schema.mjs": {
+      "sha256": "58583aded1af71f311ef0eb9a26e7d99ee799e704baa61d922cade862e17d3dc",
+      "statements": 2
+    },
+    "packages/business/src/timeline-subtitle-schema.mjs": {
+      "sha256": "66f3c72d7e8b045c5ed33cc012f640b4bf0fda07af241fc0457be59813020583",
+      "statements": 4
+    },
+    "packages/business/src/agent/edit-proposal-schema.mjs": {
+      "sha256": "404b6a140976c92deef032c6d0c950f959ba74a290ffea7197fab514c4ac36a9",
+      "statements": 1
+    }
+  },
+  "interpolationInputs": {
+    "INSPECTION_ROW_LIMITS": {
+      "versions": 65536
+    },
+    "INSPECTION_VERSION_ASSET_EXPRESSION": "CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND 65536\n  THEN CASE WHEN json_valid(data) THEN CASE WHEN json_type(data,'$.assetId')='text' AND length(CAST(json_extract(data,'$.assetId') AS BLOB))=36\n    THEN json_extract(data,'$.assetId') END END END",
+    "FRAME_PROFILE_ID": "local-png-1024-v1",
+    "FRAME_SELECTION_RULE": "first-pts-at-or-after-v1",
+    "FRAME_LIMITS": {
+      "inputBytes": 4096,
+      "snapshotBytes": 4096,
+      "receiptBytes": 4096,
+      "taskBytes": 16384,
+      "requestBytes": 12288,
+      "responseBytes": 4096,
+      "pageSize": 20,
+      "maxPageSize": 50,
+      "cursorBytes": 768,
+      "activeGlobal": 1,
+      "queuedPerProject": 2,
+      "queuedGlobal": 8,
+      "tasksPerProject": 256,
+      "tasksGlobal": 2048,
+      "requestsPerTask": 16,
+      "reservedControlRequestsPerTask": 15,
+      "requestsPerProject": 4096,
+      "requestsGlobal": 32768,
+      "sourceBytes": 536870912,
+      "sourceDuration": 600,
+      "sourceMaxEdge": 4096,
+      "sourceMaxPixels": 8388608,
+      "resultBytes": 4194304,
+      "resultMaxEdge": 1024,
+      "resultMaxPixels": 1048576,
+      "relativePathBytes": 1024
+    }
+  },
+  "generation": {
+    "source": "Each business and contracts src file and package.json was read with git show <fixed commit>:<path> into a temporary private tree. Only zod 3.25.76 was reused from the installed dependency graph; no current business/contract source was imported.",
+    "method": "Execute the unmodified baseline initializeLegacyWorkspaceSchema through a capture facade. Capture committed exec boundaries; split only the first trusted SQL batch immediately before marker2 to expose synthetic ordinary1. Construct optional ledgers with the real baseline createMockProvider, with no submit/poll/download/render. Install/validate schema25 with fixed synthetic metadata.",
+    "ordinary1": "Synthetic checkpoint immediately before INSERT marker2 in the initial trusted SQL batch. It is not represented as an independently released historical v1 database.",
+    "rows": "Every table includes ordered column names and rows ordered by exact decimal rowid. Each cell stores typeof and uppercase hex(CAST(value AS BLOB)); real values instead store SQLite printf %!.26g. This preserves raw JSON whitespace/Unicode escapes, BLOBs, NULLs, 64-bit integers, real values, receipt bytes, rowids and sequence rows.",
+    "baselineTreeSha256": "8815129d93438acd74b8aa79ddeff6d71bf8b82f3b51ddc71085959873505678",
+    "nodeVersion": "v24.19.0",
+    "sqliteVersion": "3.53.3"
+  },
+  "constructorSources": {
+    "packages/business/src/agent/edit-proposal-schema.mjs": "662ed2c50f6d69c6d675c0d0db3f4edf10ffef93f56931c3fde36b323d6fc632",
+    "packages/business/src/comfy-image-schema.mjs": "31e354a1223ecfbfa67d7e8cdc171c99f49a4b032d57ac17366aa4061ca2300c",
+    "packages/business/src/edit-task-schema.mjs": "6a7753f04ede401445f3e68f35aa804cc546938e5b485b2152f48e8d6d69ca91",
+    "packages/business/src/frame-schema.mjs": "d1310a5945bfcf577b5e2780159507e753eb28f3b4e94d5e109c4bf65ced2655",
+    "packages/business/src/image-schema.mjs": "8a364f2d61669cff35ba6a77d5a8a6fd5a26044bfa970b09e78ce780929931e3",
+    "packages/business/src/images/review-schema.mjs": "71d7b325ec4441c758638f214ce35f27296493aef1073c3b0be62f669ebdd240",
+    "packages/business/src/inspection-query.mjs": "6aae6b7fdd32ddb7c4a842a63402c0f92a589e28d55f1a10f5daf060c0ef3465",
+    "packages/business/src/providers/mock.mjs": "a0c0dc758234af6ad475dc7f1ec037c54f871aa1c44faf5e8d099b6a5214ae3b",
+    "packages/business/src/subject-schema.mjs": "2ba181530ac2ed4cb861e7578280f6d653b2fbe81b25a6b2484e088833a62e7d",
+    "packages/business/src/timeline-format-schema.mjs": "25ac5e155a99d8df4c4c53dd1acb184df51b29f6b034b5becc4ceef2ccf44609",
+    "packages/business/src/timeline-subtitle-schema.mjs": "cdcfa2c9e97dd26bb478e91852ae48e76f5847b179c4d84e7e6f81d5ce01e9fe",
+    "packages/business/src/workspace-fixed-schema.mjs": "9751e2f2d74b64c1cbd070d61e11941d1eba135ca8748bbdc20bd20ebab05bab",
+    "packages/business/src/workspace-restore-schema.mjs": "9b3861b3e0ec72b0ab1d1b676657205f5b3a934342abf308a4cc394307c3670b",
+    "packages/contracts/src/frame-extraction.mjs": "f391842a6cf697dc889f0c852c5ee49dd198af8d4eefc66ff03d87a4f2e425c9"
+  },
+  "fixtures": {
+    "golden.json": {
+      "sha256": "6e3f8f14199f5a64d2412c647f5db79b2da63bd4702f0a7f88df548a8b06502b",
+      "bytes": 670870,
+      "profiles": 31,
+      "definitions": 424
+    }
+  },
+  "reusedRegressionLanes": [
+    "tests/workspace-restore-schema.test.mjs",
+    "tests/workspace-restore-mock-schema.test.mjs",
+    "tests/workspace-backup-business.test.mjs",
+    "tests/workspace-restore-offline.test.mjs",
+    "tests/workspace-restore-backup-boundary.test.mjs",
+    "tests/workspace-restore-migration.test.mjs"
+  ],
+  "restore25Closure": {
+    "file": "packages/business/src/workspace-restore-schema.mjs",
+    "sha256": "49ee16aa394793188d5ce7b93e4f91b3242a8e6d6fdb02c6d8fc91be82e5e926",
+    "statements": 48,
+    "excludedFunction": "detectWorkspaceRestoreEvidence",
+    "allowedIdentifierRenames": {
+      "initializeWorkspaceSchemaThrough24": "initializeLegacyWorkspaceSchema",
+      "fixedProfilesThrough24AndRestore25": "fixedProfiles",
+      "installDefinitionsV25": "installDefinitions"
+    },
+    "scope": "All baseline non-import statements except the explicitly changed role detector, including metadata, families, guards, Mock SQL, capture and validation, profiles and uniqueKeys caches. This is a regression/source-ownership guard, not runtime tamper protection."
+  },
+  "dependencyDeclarations": {
+    "packages/business/src/workspace-fixed-schema.mjs": [
+      "import {INSPECTION_VERSION_ASSET_EXPRESSION} from './workspace-schema-v24-constants.ts';",
+      "import {bootstrapEditTaskSchema,migrateSubjectEditTasks,migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from './edit-task-schema.mjs';",
+      "import {migrateSubjectSchema} from './subject-schema.mjs';",
+      "import {migrateImageSchema} from './image-schema.mjs';",
+      "import {migrateImageReviewSchema,migrateCustomImageReviewSchema,migrateComfyImageReviewSchema,migrateImageEditReviewSchema} from './images/review-schema.mjs';",
+      "import {migrateComfyImageSchema} from './comfy-image-schema.mjs';",
+      "import {migrateFrameSchema} from './frame-schema.mjs';",
+      "import {migrateTimelineFormatSchema} from './timeline-format-schema.mjs';",
+      "import {migrateAgentEditProposalSchema} from './agent/edit-proposal-schema.mjs';"
+    ],
+    "packages/business/src/edit-task-schema.mjs": [
+      "export {migrateTimelineSubtitleEditTasks} from './timeline-subtitle-schema.mjs';"
+    ],
+    "packages/business/src/subject-schema.mjs": [],
+    "packages/business/src/image-schema.mjs": [
+      "import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './workspace-schema-v24-constants.ts';"
+    ],
+    "packages/business/src/images/review-schema.mjs": [],
+    "packages/business/src/comfy-image-schema.mjs": [],
+    "packages/business/src/frame-schema.mjs": [
+      "import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './workspace-schema-v24-constants.ts';",
+      "import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './workspace-schema-v24-constants.ts';"
+    ],
+    "packages/business/src/timeline-format-schema.mjs": [],
+    "packages/business/src/timeline-subtitle-schema.mjs": [],
+    "packages/business/src/agent/edit-proposal-schema.mjs": [],
+    "packages/business/src/workspace-restore-schema.mjs": [
+      "import {DatabaseSync} from 'node:sqlite';",
+      "import {detectFixedWorkspaceRestoreEvidence} from './workspace-schema-profile.ts';",
+      "import {createHash} from 'node:crypto';",
+      "import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';",
+      "import {getWorkspaceRestoreContext} from './db.mjs';",
+      "export {getWorkspaceRestoreContext} from './db.mjs';"
+    ],
+    "packages/business/src/workspace-schema-v24-constants.ts": []
+  },
+  "dependencyDeclarationScope": "Explicit reviewed import/re-export allowlist after the S prerequisite, separate from fixed0343 source body hashes. Historical constructors must never reconnect to active reader/media constants even while the values happen to remain identical. Frozen constants have no static or dynamic module dependencies."
+}

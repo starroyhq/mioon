@@ -2,8 +2,9 @@
 // No imported SQL is executed to discover a profile. All expected definitions
 // come from application-owned schema code on a fresh in-memory connection.
 import {DatabaseSync} from 'node:sqlite';
+import {detectFixedWorkspaceRestoreEvidence} from './workspace-schema-profile.ts';
 import {createHash} from 'node:crypto';
-import {initializeLegacyWorkspaceSchema} from './workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';
 import {getWorkspaceRestoreContext} from './db.mjs';
 export {getWorkspaceRestoreContext} from './db.mjs';
 
@@ -74,7 +75,7 @@ function mockGuardsSql(){return immutable('workspace_restore_mock_evidence')+moc
  `CREATE TRIGGER restore_hold_${table}_${event.toLowerCase()} BEFORE ${event} ON ${table} BEGIN SELECT RAISE(ABORT,'RESTORED_RECORD_HELD');END;`).join('\n')).join('\n');}
 function optionalMockTables(db){return db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='mock_provider_tasks'").get()?mockTables:[];}
 let profiles;
-function fixedProfiles(){
+function fixedProfilesThrough24AndRestore25(){
  if(profiles)return profiles;
  const db=new DatabaseSync(':memory:'),legacy=new Map(),variants=new Map();
  try{
@@ -84,8 +85,8 @@ function fixedProfiles(){
    if(Number.isInteger(version)){legacy.set(version,objects);for(const [name,obj] of objects){if(!variants.has(name))variants.set(name,new Set());variants.get(name).add(JSON.stringify(obj));}}
   };
   const facade={get isTransaction(){return db.isTransaction;},prepare:(...args)=>db.prepare(...args),exec:(sql)=>{const result=db.exec(sql);capture();return result;}};
-  initializeLegacyWorkspaceSchema(facade);capture();
-  installDefinitions(db);const restored=schema(db);
+  initializeWorkspaceSchemaThrough24(facade);capture();
+  installDefinitionsV25(db);const restored=schema(db);
   db.exec(MOCK_SCHEMA_SQL);
   const extra=new Map([...schema(db)].filter(([name])=>mockObjects.has(name)));
   if(extra.size!==5)fail('RESTORE_SCHEMA_UNSUPPORTED');
@@ -100,24 +101,14 @@ function markers(db,max){
  if(values.length!==max||values.some((row,i)=>row.type!=='integer'||row.version!==i+1))fail('RESTORE_SCHEMA_UNSUPPORTED','Schema markers are incomplete or unsupported');
 }
 export function detectWorkspaceRestoreEvidence(db){
- // This read-only detector intentionally does not classify ordinary legacy
- // schemas. Backup uses it only on a disposable copy before creating output.
- let count=0;
- for(const row of db.prepare(`SELECT type,CASE WHEN length(CAST(name AS BLOB))<=128 THEN name END AS name,CASE WHEN length(CAST(sql AS BLOB))<=131072 THEN sql END AS sql FROM sqlite_schema LIMIT ${WORKSPACE_RESTORE_LIMITS.schemaObjects+1}`).iterate()){
-  if(++count>WORKSPACE_RESTORE_LIMITS.schemaObjects)fail('RESTORE_SCHEMA_LIMIT');
-  if(typeof row.name!=='string'||Buffer.byteLength(row.name)>128)fail('RESTORE_SCHEMA_LIMIT');
-  if(row.name.startsWith('workspace_restor')||row.name.startsWith('restore_'))return true;
-  if(row.type==='table'&&row.name==='edit_tasks'&&/executionepoch/i.test(row.sql||''))return true;
-  if(row.type==='table'&&row.name==='schema_version'&&row.sql){
-   let ordinary=false;try{ordinary=normalize(row.sql)===normalize('CREATE TABLE schema_version(version INTEGER PRIMARY KEY)');}catch{}
-   if(ordinary&&db.prepare('SELECT 1 FROM schema_version WHERE version>=25 LIMIT 1').get())return true;
-  }
- }
- return false;
+ // Keep the established boolean API; unknown roles throw before bootstrap.
+ // Ordinary false is not a substitute for the offline fixed-schema validator.
+ return detectFixedWorkspaceRestoreEvidence(db,normalize,WORKSPACE_RESTORE_LIMITS.schemaObjects);
 }
+
 export function classifyWorkspaceSchema(db){
  safety(db);const actual=schema(db);if(!actual.size)return Object.freeze({schemaVersion:0,profile:'ordinary'});
- const fixed=fixedProfiles();
+ const fixed=fixedProfilesThrough24AndRestore25();
  // Restore evidence cannot fall back to the old bootstrap, even if markers or
  // state were lost. Compare structure before reading any imported table.
  const restoreEvidence=detectWorkspaceRestoreEvidence(db);
@@ -229,7 +220,7 @@ function discoverTrustedKeys(db){
  }
  uniqueKeys=keys;
 }
-function installDefinitions(db){
+function installDefinitionsV25(db){
  // Called only for trusted reference construction or a classified source24.
  db.exec(metadataSql);discoverTrustedKeys(db);
  db.exec('INSERT INTO schema_version VALUES(25);');

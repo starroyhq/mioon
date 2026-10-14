@@ -6,7 +6,7 @@
 2026-10-14 进展：独立首页及[多项目窗口](MULTIPLE-PROJECT-WINDOWS.md)已交付，
 [时间线声音试听](TIMELINE-AUDIO-PREVIEW.md)已交付最多 20 秒的声音区间，不代表完整视频合成播放。
 当前首片[已导出文件响度检查](EXPORT-LOUDNESS.md)已通过独立验收：完整文件测量和只读算术建议，
-尚不应用统一响度。当前[完整浮点混音与固定倍率候选](TIMELINE-MIX-LOUDNESS.md)已通过独立 typecheck／全量与 Linux 生产包验收，仍为只读候选；显式原子 gain 应用、undo、float-v2 界面选择与应用后重测仍是下一片。
+尚不应用统一响度。当前[完整浮点混音与固定倍率候选](TIMELINE-MIX-LOUDNESS.md)已通过独立 typecheck／全量与 Linux 生产包验收，仍为只读候选；显式原子 gain 应用、undo、float-v2 界面选择与应用后重测仍是后续；[固定 schema/profile 兼容前置](WORKSPACE-SCHEMA-PROFILES.md)已通过独立 typecheck／全量与实际生产 ASAR backend 门，仍不启用新版本或迁移。
 
 ## 1. 优先顺序与产品边界
 

@@ -3,7 +3,7 @@ import {isAsyncFunction,isPromise} from 'node:util/types';
 import path from 'node:path';
 import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {acquireWorkspaceLock} from './workspace-lock.mjs';
-import {initializeLegacyWorkspaceSchema} from './workspace-fixed-schema.mjs';
+import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';
 import {validateWorkspaceRestoreSchema,detectWorkspaceRestoreEvidence} from './workspace-restore-schema.mjs';
 
 // Backend-only proof of the actual acquired workspace lock. Neither caller
@@ -74,7 +74,7 @@ export function openStore(root,{lock=true}={}){
  // the complete schema25 validation branch and can never run old bootstrap.
  let restoreContext=null;
  if(detectWorkspaceRestoreEvidence(db))restoreContext=validateWorkspaceRestoreSchema(db);
- else initializeLegacyWorkspaceSchema(db);
+ else initializeWorkspaceSchemaThrough24(db);
  if(db.prepare('PRAGMA foreign_keys').get().foreign_keys!==1)throw new Error('Foreign-key enforcement must be enabled');
  const tables=new Set(['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines']);
  const table=t=>{if(!tables.has(t))throw Error('Unknown table');return t;};

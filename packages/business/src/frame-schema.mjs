@@ -1,5 +1,5 @@
-import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from '../../contracts/src/frame-extraction.mjs';
-import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
+import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './workspace-schema-v24-constants.ts';
+import {INSPECTION_VERSION_ASSET_EXPRESSION,INSPECTION_ROW_LIMITS} from './workspace-schema-v24-constants.ts';
 
 // Schema20 only adds two retained tables and new indexes/triggers. The caller
 // owns the transaction and marker; all pre-existing SQL and row bytes survive.

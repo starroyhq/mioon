@@ -1,6 +1,8 @@
 // Trusted application SQL only. Mechanically extracted from baseline beb7fcf db.mjs.
 // Imported database SQL must be classified before this initializer is called.
-import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.mjs';
+// Fixed through24 constructor: do not append future versions or mutate its
+// schema-only dependency closure. Future migrations use a separate initializer.
+import {INSPECTION_VERSION_ASSET_EXPRESSION} from './workspace-schema-v24-constants.ts';
 import {bootstrapEditTaskSchema,migrateSubjectEditTasks,migrateTimelineFormatEditTasks,migrateTimelineSubtitleEditTasks} from './edit-task-schema.mjs';
 import {migrateSubjectSchema} from './subject-schema.mjs';
 import {migrateImageSchema} from './image-schema.mjs';
@@ -367,3 +369,6 @@ export function initializeLegacyWorkspaceSchema(db){
   catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
 }
+
+// Compatibility alias: exactly the same fixed constructor, never latest schema.
+export const initializeWorkspaceSchemaThrough24=initializeLegacyWorkspaceSchema;
