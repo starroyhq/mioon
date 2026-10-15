@@ -20,7 +20,9 @@ assert.ok(start >= 0 && hookEnd > start && positionStart > hookEnd && end > posi
   'Actual App sound hook and explicit-position blocks must be present, separately from loudness apply');
 // Exercise both real audition blocks without constructing the independent apply
 // controller. Its identity/intent lifecycle has its own actual-App contract tests.
-const block = app.slice(start, hookEnd) + app.slice(positionStart, end);
+const ownerStart = app.indexOf('  function beforeTimelineAudioPlay()'), ownerEnd = app.indexOf('  const registerExportPreviewPause', ownerStart);
+assert.ok(ownerStart >= 0 && ownerEnd > ownerStart);
+const block = app.slice(ownerStart, ownerEnd) + app.slice(start, hookEnd) + app.slice(positionStart, end);
 assert.match(block, /const audioPreview = useTimelineAudioPreview/);
 assert.match(block, /const effectivePlayhead = timelineAudioPreviewPosition/);
 assert.match(block, /const seekTimelineSound = frame => seekTimelineAudioPreview/);
@@ -40,7 +42,7 @@ function harness() {
     dataRef: { current: { project: { id: id(1) }, timeline, assets: [asset] } },
     viewRef: { current: { activeMode: 'editing', editing: { previewKind: 'timeline', selectedClipId: null, quickAssetId: null, playhead: 30 } } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false,
-    workspaceMode: 'editing', previewKind: 'timeline', previewAsset: null, comparisonId: null, clipDirty: false, subtitleDirty: false, formatDirty: false,
+    workspaceMode: 'editing', previewKind: 'timeline', previewAsset: null, comparisonIdRef: { current: null }, comparisonPreviewPause: { current: null }, clipDirty: false, subtitleDirty: false, formatDirty: false,
     clipDraftRef: { current: null },
     canvasVisible: true, panelVisible: name => name === 'canvas' && env.canvasVisible,
     exportPreviewPause: { current: () => calls.order.push('export-pause') }, nativePreviewPause: { current: () => calls.order.push('native-pause') }, playhead: 30,
@@ -120,7 +122,7 @@ test('an unapplied clip recovery candidate warns even with clean inputs without 
 });
 
 for (const [name, change] of Object.entries({ hidden: f => { f.env.canvasVisible = false; }, sourceTab: f => { f.env.viewRef.current.editing.previewKind = 'source'; },
-  canvasMode: f => { f.env.viewRef.current.activeMode = 'canvas'; }, modal: f => { f.env.previewAsset = { id: id(4) }; }, comparison: f => { f.env.comparisonId = id(9); },
+  canvasMode: f => { f.env.viewRef.current.activeMode = 'canvas'; }, modal: f => { f.env.previewAsset = { id: id(4) }; }, comparison: f => { f.env.comparisonIdRef.current = id(9); },
   clipSwitch: f => { f.env.viewRef.current.editing.selectedClipId = id(5); }, sourceSwitch: f => { f.env.viewRef.current.editing.quickAssetId = id(4); },
   logout: f => { f.env.auth = false; }, disconnected: f => { f.env.online = false; }, restored: f => { f.env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) }; },
   projectReopen: f => { f.env.projectEpoch.current++; }, revision: f => { f.env.dataRef.current.timeline = { ...f.env.dataRef.current.timeline, revision: 2 }; } })) {

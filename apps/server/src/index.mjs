@@ -33,6 +33,8 @@ import {createImageSettings,createCustomImageSettings} from '@mioon/business/ima
 import {createImageSettingsFile,createCustomImageSettingsFile} from '@mioon/business/images/settings-file';
 import {createLiveImageGateway,createCompatibleImageGateway} from '@mioon/business/images/gateway';
 import {createFileResponses} from './file-response.mjs';
+import {createOwnedMediaGraphReader} from '@mioon/business/inspection';
+import {createVersionComparisonMediaHttp} from './version-comparison-media.ts';
 import {callObservedRpc} from './rpc-observation.mjs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -114,6 +116,13 @@ export async function startServer({
   const shutdown = new AbortController();
   let worker, server, agentSettings, imageSettings, customImageSettings, comfySettings, chatRuntime, chatHttp, services, editTasks;
   const files = createFileResponses({signal: shutdown.signal});
+  const versionComparisonMedia = createVersionComparisonMediaHttp({db: store.db, root, signal: shutdown.signal,
+    readGraph: projectId => createOwnedMediaGraphReader(store.db, projectId), resolvePath: safePath, createFiles: createFileResponses,
+    validateFile: file => validateManagedFile(file, {root}),
+    assertAvailable: () => {
+      if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();
+      if (!ownsStoreLock(store)) throw Object.assign(Error('本地文件不可用。'), {code: 'FILE_UNAVAILABLE', status: 404});
+    }});
   try {
     if (token === undefined) {
       token = randomBytes(32).toString('hex');
@@ -219,6 +228,7 @@ export async function startServer({
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
         }
         if(restored&&isUnavailableRestoredRoute(url.pathname,req.method))throw workspaceRestoreError();
+        if (url.pathname === '/api/version-comparison/media' && await versionComparisonMedia.handle(req, res, url)) return;
         if (url.pathname === '/api/agent/settings') {
           try {
             const context = {selfPort: server.address().port};
@@ -322,7 +332,7 @@ export async function startServer({
       forceDrain.unref();
       try {
         await boundedShutdown(Promise.all([
-          worker.stop(), services.drain(), editTasks.drain(), files.close(),
+          worker.stop(), services.drain(), editTasks.drain(), files.close(), versionComparisonMedia.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
           !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close(),
         ]), 'SERVER_STOP_TIMEOUT');
@@ -336,7 +346,7 @@ export async function startServer({
     chatRuntime?.close(); chatHttp?.close();
     const drain = server?.listening ? new Promise(resolve => server.close(resolve)) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, files.close(), worker?.stop(), services?.drain(), editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, files.close(), versionComparisonMedia.close(), worker?.stop(), services?.drain(), editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }

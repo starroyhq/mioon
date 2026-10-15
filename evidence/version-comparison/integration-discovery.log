@@ -1,0 +1,31 @@
+✔ actual sample submission freezes exact short input through durable path without touching final range or opening history (13.450146ms)
+✔ failure and pending recovery never alter final range or silently submit a second request (2.132299ms)
+✔ sample settings/range changes while durable prepare waits prevent execution (1.457377ms)
+✔ actual trial-range setter owns only trial state; timeline preview excludes selected-range exports (1.585008ms)
+✔ exact comparison route inherits native same-origin media permission, not download/navigation/audio grants (12.777792ms)
+✔ actual App comparison opening and close synchronously fence context and pause owners (5.073752ms)
+✔ actual App context binds live project/epoch/workspace and synchronous comparison identity (7.65064ms)
+✔ actual App before-play callbacks deny background playback while comparison owns the surface (3.832675ms)
+✔ actual explicit Use revalidates binding before existing revision-aware selection, never timeline replacement (3.574506ms)
+✔ background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI (2.892901ms)
+✔ explicit pair preserves nonlatest identities and frozen metadata across list/new-current changes (12.695663ms)
+✔ each cross-scope and malformed identity fails closed (3.391987ms)
+✔ offline hidden restored unknown-workspace and scope changes revoke earlier bindings (2.74469ms)
+✔ changed immutable metadata is stale; missing fields never use mutable shot defaults (5.549714ms)
+✔ four-locale comparison copy has exact placeholder parity (7.603971ms)
+✔ actual dialog requires two explicit distinct choices and never defaults latest (13.375932ms)
+✔ playback owns one side, pauses peer and registers external pause (6.690634ms)
+✔ offline fences retained events immediately and requires explicit clear/reselection after reconnect (7.299711ms)
+✔ retained use/play callbacks cannot select or play a newly substituted side (4.594649ms)
+✔ same-ID mutated source, project scope, and hidden dialog suppress actual players (10.750783ms)
+✔ single decoder cleans up src and restores it during StrictMode-style effect replay (2.84558ms)
+✔ all four locales render actual ready and stale controls without resetting choices (7.084602ms)
+✔ retained chooser and reset cannot rebind or clear a newer scope or newer choices (5.998796ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5663.45152

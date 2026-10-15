@@ -1,0 +1,30 @@
+✔ every composed UI and native catalog has exact four-locale and placeholder parity (198.948397ms)
+✔ UI literal ledger rejects unexplained, newly introduced and stale exceptions (2.299251ms)
+✔ current source has no unreviewed or stale static UI literal exceptions (1935.450831ms)
+✔ static semantic keys used by UI translation calls exist in the composed catalog (798.726556ms)
+✔ visible template guard distinguishes app copy from dynamic semantic keys (1.577472ms)
+✔ exact comparison route inherits native same-origin media permission, not download/navigation/audio grants (3.860385ms)
+✔ actual App comparison opening and close synchronously fence context and pause owners (2.289003ms)
+✔ actual App context binds live project/epoch/workspace and synchronous comparison identity (5.061177ms)
+✔ actual App before-play callbacks deny background playback while comparison owns the surface (0.823126ms)
+✔ actual explicit Use revalidates binding before existing revision-aware selection, never timeline replacement (6.751741ms)
+✔ background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI (1.913064ms)
+✔ retained invalid Compare opener has no state or media effects; null always closes (2.734263ms)
+✔ actual App conditional retains comparison after its shot disappears, leaving a close path (193.576933ms)
+✔ actual dialog requires two explicit distinct choices and never defaults latest (18.359337ms)
+✔ playback owns one side, pauses peer and registers external pause (5.088474ms)
+✔ offline fences retained events immediately and requires explicit clear/reselection after reconnect (5.791791ms)
+✔ retained use/play callbacks cannot select or play a newly substituted side (2.887848ms)
+✔ same-ID mutated source, project scope, and hidden dialog suppress actual players (5.479094ms)
+✔ single decoder cleans up src and restores it during StrictMode-style effect replay (1.600127ms)
+✔ all four locales render actual ready and stale controls without resetting choices (3.594478ms)
+✔ retained chooser and reset cannot rebind or clear a newer scope or newer choices (3.543442ms)
+✔ removing the open shot retains a closable unavailable dialog without playback or replacement (1.57277ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6188.536486

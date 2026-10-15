@@ -23,6 +23,14 @@ reran no product tests, native acceptance or stopped issue investigations.
   in [the feature acceptance boundary](EXPORT-PREVIEW.md). Native GUI acceptance
   remains separate; this is not a live final-quality or HDR preview.
 
+- **Fixed shot-video comparison: bounded source increment.** Existing A/B UI now
+  uses explicit distinct immutable selections, exact local media identity,
+  frozen metadata and stale/offline playback fencing in four languages. The
+  read-only exact-version route and source acceptance are documented in
+  [version comparison](VERSION-COMPARISON.md). Native GUI remains unverified;
+  image-group comparison, synchronized/wipe/diff views and live generation are
+  not included.
+
 ## Current delivery and remaining work (2026-10-15)
 
 1. **Editing, audio and loudness.** Independent project home/windows, managed
@@ -137,12 +145,13 @@ item's evidence and permission boundary rather than silently treating it as done
 2. Separately scope local media tags/notes with explicit persistence, undo/replay
    and four-language presentation boundaries; do not duplicate the delivered
    favorite/reject or current-timeline-usage features.
-3. Separately scope richer version comparison using existing immutable versions,
-   with exact selected-version identity and stale-result handling; do not infer
-   permission for paid generation or automatic timeline replacement.
+3. The bounded existing shot-video comparison increment now has its own
+   [source acceptance](VERSION-COMPARISON.md). Broader comparison modes and
+   native GUI acceptance remain separate; paid generation and automatic timeline
+   replacement are not authorized by this slice.
 
-The latter two are candidate slices within the historical approved roadmap, not
-newly implemented features or permission for broader external actions. Audio
+The dated feature checkpoints record each slice’s actual implementation and
+acceptance; this queue grants no permission for broader external actions. Audio
 qualification and native LUT reselection remain independent acceptance work;
 issue publication, platform changes and real-provider gates retain their own
 approval requirements.

@@ -64,6 +64,6 @@ test('actual trial-range setter owns only trial state; timeline preview excludes
   });
   choose({ startText: '10', endText: '20' }); assert.deepEqual(draft, { startText: '10', endText: '20', scope: 'owner', version: 1 });
   assert.match(source, /timelineJobs\.find\(e => !e\.snapshot\?\.exportRange/);
-  assert.match(source, /onBeforePlay: \(\) => \{ exportPreviewPause\.current\?\.\(\); nativePreviewPause\.current\?\.\(\); \}/);
-  assert.match(source, /onBeforePlay=\{\(\) => \{ audioPreview\.controller\.revoke\(\); nativePreviewPause\.current\?\.\(\); \}\}/);
+  assert.match(source, /onBeforePlay: beforeTimelineAudioPlay/);
+  assert.match(source, /onBeforePlay=\{beforeExportPreviewPlay\}/);
 });

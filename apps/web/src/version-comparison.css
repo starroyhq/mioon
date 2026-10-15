@@ -1,0 +1,8 @@
+.version-comparison .comparison-title select { min-width: 0; width: 100%; }
+.version-comparison .comparison-media { aspect-ratio: 16 / 9; height: auto; display: grid; place-items: center; }
+.version-comparison .comparison-media video { width: 100%; height: 100%; object-fit: contain; }
+.version-comparison .comparison-identity { font-size: 11px; overflow-wrap: anywhere; line-height: 1.7; }
+.version-comparison .comparison-prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
+.version-comparison .comparison-status { padding: 0 25px; }
+.version-comparison .comparison-column h3 { font-size: 13px; margin: 8px 0; }
+@media (max-width: 700px) { .version-comparison .comparison-grid { grid-template-columns: minmax(0, 1fr); padding: 16px; } }
