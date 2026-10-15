@@ -1,4 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
+// Marker remains available if any later bridge setup fails.
+contextBridge.exposeInMainWorld('__mioonDesktop', true);
+import { createDesktopLutRecoveryBridge } from './lut-recovery-preload.ts';
+contextBridge.exposeInMainWorld('__mioonLutRecovery', createDesktopLutRecoveryBridge({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+}));
 import { createProjectWindowBridge } from './project-window-preload.ts';
 // Sandboxed, context-isolated, fixed window-only bridge. Business access stays
 // on the existing authenticated same-origin HTTP services.

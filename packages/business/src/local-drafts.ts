@@ -1,4 +1,5 @@
-import {createHash,randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
+import {calculateWorkspaceScope} from '@mioon/contracts/workspace-scope';
 import {constants,openSync,closeSync,fsyncSync,fstatSync} from 'node:fs';
 import {isProxy} from 'node:util/types';
 import path from 'node:path';
@@ -82,7 +83,7 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
   function identity():string{
     const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
     if(!directory||!db)fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
-    const current=createHash('sha256').update(JSON.stringify([channel,path.resolve(root),String(directory.dev),String(directory.ino),String(db.dev),String(db.ino),db.birthtimeMs??null])).digest('hex');
+    const current=calculateWorkspaceScope({channel,root,directory,db});
     if(scope!==undefined&&scope!==current)fail('LOCAL_DRAFT_SCOPE_MISMATCH');
     scope=current;return current;
   }

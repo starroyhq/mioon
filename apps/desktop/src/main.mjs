@@ -1,3 +1,8 @@
+import { createDesktopLutRecoveryHost } from './lut-recovery-host.ts';
+import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
+import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
+import { calculateWorkspaceScope } from '../../../packages/contracts/src/workspace-scope.ts';
+import { validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic } from '@mioon/contracts/private-storage';
 import { createAppLanguageHost } from './app-language-host.ts';
 import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
@@ -44,7 +49,7 @@ catch (error) { startupStorageError = error; }
 let win, backend, activeSession, ready, restarting = false, quitting = false;
 let agentSettings;
 let startupOperation;
-let windowContext, windowHost, nativeAudioHost;
+let windowContext, windowHost, nativeAudioHost, lutRecoveryHost;
 const windowAdmissions = new WeakMap();
 const initialWindowLoads = new WeakMap();
 const cancelledStartupErrors = new WeakSet();
@@ -160,6 +165,32 @@ async function start() {
       ownerForContents: contents => { const owner = windowHost?.ownerForContents(contents); return owner?.role === 'editor' ? { ...owner, contents } : null; },
     });
     nativeAudioHost = context.audioHost = ownedAudioHost;
+    // Host authority is independent of the renderer's workspace claim and of
+    // localhost's random port/session partition. Pin the existing filesystem
+    // fingerprint for this backend lifetime and recompute at every boundary.
+    const currentLutWorkspaceScope = () => {
+      if (!ownsWindowContext(context) || backend !== ownedBackend || !quitRouter.allowsWindows || context.incident.failed || backendExitObserved) throw new Error('LUT recovery owner unavailable.');
+      const directory = validatePrivateDirectory(paths.dataDir);
+      const db = validateManagedFile(path.join(paths.dataDir, 'workbench.sqlite'), { root: paths.dataDir });
+      if (!directory || !db) throw new Error('LUT recovery workspace unavailable.');
+      return calculateWorkspaceScope({ channel: identity.channel, root: paths.dataDir, directory, db });
+    };
+    const lutWorkspaceScope = currentLutWorkspaceScope();
+    lutRecoveryHost = createDesktopLutRecoveryHost({
+      currentWorkspaceScope: () => {
+        const scope = currentLutWorkspaceScope();
+        if (scope !== lutWorkspaceScope) throw new Error('LUT recovery workspace changed.');
+        return scope;
+      },
+      ownerForEvent: event => {
+        const owner = windowHost?.ownerForContents(event.sender);
+        if (!owner || owner.role !== 'editor' || !owner.projectId || event.senderFrame !== owner.frame || event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== owner.url) return null;
+        return { projectId: owner.projectId, isCurrent: () => ownsWindowContext(context) && owner.isCurrent() &&
+          event.senderFrame === owner.frame && event.senderFrame === event.sender.mainFrame && event.senderFrame?.url === owner.url };
+      },
+      createStore: guard => createDesktopLutRecoveryStore({ userData: paths.userData, guard, storage: { validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic } }),
+    });
+
     activeSession.webRequest.onBeforeSendHeaders((details, callback) => callback(ownedAudioHost.beforeSendHeaders(details)));
     await openWindow(context);
     startup.checkpoint();
@@ -368,6 +399,7 @@ const restartCoordinator = new MultiWindowRestartCoordinator({
 });
 const quitRouter = createProjectWindowQuitRouter({ quit: quitCoordinator, restart: restartCoordinator, onPendingChange: () => windowHost?.refresh() });
 function requestApplicationQuit(source) { return quitRouter.request(source).catch(quitFailed); }
+ipcMain.handle(CLIP_LUT_RECOVERY_CHANNEL, (event, request) => lutRecoveryHost?.dispatch(event, request) ?? { ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' });
 ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
   if (!languageHost) throw new Error('App language preferences are not available.');
   return languageHost.dispatch(event, request);

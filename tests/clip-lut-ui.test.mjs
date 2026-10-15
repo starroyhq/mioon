@@ -193,7 +193,8 @@ test('actual controls disclose whole-timeline adoption, source-ungraded status a
   assert.equal(byId('clip-lut-file').props.accept, '.cube'); assert.equal(byId('clip-lut-strength').props.min, 0); assert.equal(byId('clip-lut-strength').props.max, 100);
   assert.equal(nodes(tree).filter(node => String(node.type).includes('button')).every(node => node.props.type === 'button'), true);
   assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8'), /<ClipLutControls/);
-  assert.match(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), /未调色，不应用片段 LUT/);
+  assert.match(readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8'), /t\('timeline\.preview\.sourceUnprocessed'\)/);
+  assert.match(translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /未调色，不应用片段 LUT/);
 });
 
 test('retained controls cannot act after disposal; source reinspection revokes old approval', async t => {
@@ -318,12 +319,14 @@ test('a verified import ACK with failed metadata cleanup stays visibly successfu
   assert.equal(data.size, 0); assert.equal(h.state().recovery, null); assert.equal(h.calls.filter(call => call[0] === 'lut.import').length, 1);
 });
 
-test('actual reopened controls require reselect and explicit retry and disclose metadata-only same-origin persistence', async t => {
+test('actual reopened controls require reselect and explicit retry and disclose desktop and web persistence boundaries', async t => {
   const original = await pendingRecovery(t), h = harness(t, { recoveryStore: original.recoveryStore }); h.controller.open(); await tick();
   const tree = renderControls(h.state()), byId = id => nodes(tree).find(node => node.props?.['data-testid'] === id);
   assert.ok(byId('clip-lut-reselect')); assert.equal(byId('clip-lut-file').props.disabled, true); assert.equal(byId('retry-clip-lut-import'), undefined);
-  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /不保存 LUT 文件内容或路径/); assert.match(textOf(byId('clip-lut-recovery-disclosure')), /不会自动导入或应用/);
-  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /清除浏览器数据或更换站点地址/);
+  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /不保存 LUT 内容或路径/); assert.match(textOf(byId('clip-lut-recovery-disclosure')), /不会自动导入或应用/);
+  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /网页版仍仅支持同一站点地址/);
+  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /正常退出重启或本地地址变化后仍可恢复/);
+  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /清除相应本地数据会丢失记录/);
 });
 
 test('browser storage requires cross-window lock support and preserves one canonical pending request under concurrent reserve', async () => {
@@ -380,4 +383,72 @@ test('image controls disclose reference display, strict PNG admission, alpha and
  const h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?imageInspection():undefined});h.controller.open();await tick();const tree=renderControls(h.state(),h.live(),'image'),all=textOf(tree);
  assert.match(all,/Gamma 2.4/);assert.match(all,/不是线性光或 HDR/);assert.match(all,/没有 sRGB 标签/);assert.match(all,/ICC \/ P3 \/ HDR/);assert.match(all,/系统和显示器/);assert.equal(nodes(tree).some(node=>node.props?.['data-testid']==='clip-lut-source-range'),false);
  const declaration=nodes(tree).find(node=>node.props?.['data-testid']==='clip-lut-source-declaration');assert.equal(declaration.props.checked,false);assert.equal(declaration.props.disabled,false);
+});
+
+test('confirmed cleanup acknowledged after disposal retires only its exact shared map entry', async t => {
+  for (const replace of [false, true]) {
+    const data = new Map(), imports = new Map(), fixture = memoryRecovery(data), gate = deferred(); let completes = 0;
+    const adapter = { ...fixture.adapter, complete: async value => {
+      if (++completes === 1) throw Error('initial cleanup unavailable');
+      await fixture.adapter.complete(value); await gate.promise;
+    } };
+    const first = harness(t, { imports, recoveryStore: data, recoveryAdapter: adapter, handler: (op, input) => op === 'lut.import' ? importResponse(input) : undefined });
+    first.controller.open(); await tick(); assert.equal(await first.controller.importFile(file()), true);
+    const key = [...imports.keys()][0], original = imports.get(key), clearing = first.controller.clearConfirmedRecovery();
+    await tick(); assert.equal(data.size, 0); first.controller.dispose();
+    const replacement = { ...original, phase: 'unknown' }; if (replace) imports.set(key, replacement);
+    gate.resolve(); assert.equal(await clearing, false, 'old UI remains fenced');
+    if (replace) assert.equal(imports.get(key), replacement, 'newer shared entry is never cleared');
+    else {
+      assert.equal(imports.size, 0);
+      const next = harness(t, { imports, recoveryStore: data }); next.controller.open(); await tick();
+      assert.equal(next.state().recoveryPhase, 'ready'); assert.equal(next.state().recovery, null);
+    }
+    assert.equal(first.calls.filter(([op]) => op === 'lut.import').length, 1);
+  }
+});
+
+test('lost cleanup ACK reconciles only confirmed outcomes after validated absent-hint read, without writes or retry', async t => {
+  for (const phase of ['imported', 'rejected', 'unknown', 'sending']) {
+    const data = new Map(), imports = new Map(), fixture = memoryRecovery(data), record = await prepareClipLutImport(file(), projectId, id(20));
+    record.phase = phase;
+    const key = clipLutRecoveryKey({ workspaceScope: hash, projectId }); imports.set(key, record);
+    let writes = 0;
+    const recovery = { ...fixture.adapter, reserve: async () => { writes++; }, complete: async () => { writes++; } };
+    const h = harness(t, { imports, recoveryStore: data, recoveryAdapter: recovery }); h.controller.open(); await tick(); await h.controller.checkRecovery();
+    const confirmed = ['imported', 'rejected'].includes(phase);
+    assert.equal(h.state().recoveryPhase, confirmed ? 'ready' : 'error');
+    assert.equal(imports.has(key), !confirmed);
+    if (confirmed) assert.equal(h.state().importRecord?.phase ?? phase, phase);
+    assert.equal(writes, 0); assert.equal(h.calls.some(([op]) => op === 'lut.import'), false); assert.deepEqual(h.edits, []);
+  }
+  const data = new Map(), imports = new Map(), fixture = memoryRecovery(data);
+  const recovery = { ...fixture.adapter, complete: async value => { await fixture.adapter.complete(value); throw Error('cleanup committed, ACK lost'); } };
+  const first = harness(t, { imports, recoveryStore: data, recoveryAdapter: recovery, handler: (op, input) => op === 'lut.import' ? importResponse(input) : undefined });
+  first.controller.open(); await tick(); assert.equal(await first.controller.importFile(file()), true);
+  assert.equal(data.size, 0); assert.equal(imports.size, 1); first.controller.dispose();
+  const reopened = harness(t, { imports, recoveryStore: data }); reopened.controller.open(); await tick();
+  assert.equal(reopened.state().recoveryPhase, 'ready'); assert.equal(reopened.state().importRecord.phase, 'imported');
+  assert.equal(imports.size, 0); assert.equal(reopened.calls.some(([op]) => op === 'lut.import'), false);
+});
+
+test('absent-hint reconciliation preserves newer, foreign, mismatching and unconfirmed records', async t => {
+  for (const scenario of ['replacement', 'unavailable', 'mismatch', 'scope']) {
+    const data = new Map(), imports = new Map(), fixture = memoryRecovery(data), record = await prepareClipLutImport(file(), projectId, id(20));
+    record.phase = 'imported';
+    const key = clipLutRecoveryKey({ workspaceScope: hash, projectId }); imports.set(key, record);
+    const replacement = { ...record, phase: 'unknown' };
+    const other = clipLutRecoveryMetadata({ workspaceScope: hash, projectId }, { ...record, input: { ...record.input, requestId: id(81) } });
+    const adapter = { ...fixture.adapter, read: async identity => {
+      if (scenario === 'replacement') imports.set(key, replacement);
+      if (scenario === 'unavailable') throw Error('read ACK missing');
+      return scenario === 'mismatch' ? other : fixture.adapter.read(identity);
+    } };
+    const h = harness(t, { imports, recoveryStore: data, recoveryAdapter: adapter });
+    if (scenario === 'scope') h.setWorkspace('b'.repeat(64));
+    h.controller.open(); await tick();
+    assert.equal(imports.get(key), scenario === 'replacement' ? replacement : record);
+    assert.equal(h.calls.some(([op]) => op === 'lut.import'), false); assert.deepEqual(h.edits, []);
+    if (scenario !== 'scope') assert.equal(h.state().recoveryPhase, 'error');
+  }
 });

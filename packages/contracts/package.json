@@ -22,7 +22,8 @@
     "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts",
     "./timeline-loudness-apply": "./src/timeline-loudness-apply.ts",
     "./lut-resources": "./src/lut-resources.ts",
-    "./timeline-colour": "./src/timeline-colour.ts"
+    "./timeline-colour": "./src/timeline-colour.ts",
+    "./workspace-scope": "./src/workspace-scope.ts"
   },
   "dependencies": {
     "zod": "3.25.76"
