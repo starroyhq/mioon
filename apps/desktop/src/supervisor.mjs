@@ -4,6 +4,7 @@ import { createAgentSettingsBroker } from './secret-broker.mjs';
 import { createImageSecretBroker } from './image-secret-broker.mjs';
 import { createNativeAudioPreviewBroker } from './native-audio-preview-broker.ts';
 import { nativeAudioConfigSchema } from '@mioon/contracts/native-audio-preview';
+import { createExitDiagnostics, classifyBackendExit } from './exit-diagnostics.ts';
 
 // Normal worker drains finish inside the first phase. A signal being accepted
 // is not proof of exit: keep the owned handle until Electron reports its exit.
@@ -17,6 +18,8 @@ const forceOwnedUtility = child => {
   const pid = child.pid;
   if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) process.kill(pid, 'SIGKILL');
 };
+const backendExitReasons = new Set(['stop-requested', 'lease-expired', 'signal-term', 'signal-int',
+  'uncaught-exception', 'unhandled-rejection', 'shutdown-failed', 'startup-failed']);
 
 export class BackendSupervisor extends EventEmitter {
   constructor({ fork, modulePath, environment, startupTimeout = 20000, stopTimeout = BACKEND_STOP_BUDGET.gracefulMs,
@@ -45,6 +48,10 @@ export class BackendSupervisor extends EventEmitter {
     this.stopOutcome = null;
     this.shutdownFailed = false;
     this.stopForced = false;
+    this.exitReason = null;
+    this.termination = null;
+    this.diagnostics = createExitDiagnostics({ dataDir: config.dataDir, modulePath: this.modulePath });
+    this.recordDiagnostic('start');
     return new Promise((resolve, reject) => {
       let settled = false;
       let timer;
@@ -64,8 +71,14 @@ export class BackendSupervisor extends EventEmitter {
           env: this.environment, stdio: 'ignore', serviceName: 'Mioon Backend',
           allowLoadingUnsignedLibraries: false, execArgv: []
         });
-      } catch (error) { fail(error); return; }
-      const kill = () => { if (this.child === child) { try { child.kill(); } catch {} } };
+      } catch (error) { this.exitReason = 'startup-error'; this.recordDiagnostic('spawn-failed', { classification: 'abnormal' }); fail(error); return; }
+      const kill = reason => {
+        if (this.child !== child) return;
+        this.noteExitReason(reason);
+        this.termination = 'utility-kill';
+        this.recordDiagnostic('termination-requested', { classification: 'terminated' });
+        try { child.kill(); } catch { /* Only the exit event confirms termination. */ }
+      };
       // The listener and replies belong to this exact child. A late completion
       // from an old utility can never be delivered to its replacement.
       const settingsBroker = createAgentSettingsBroker({ agentSettings: this.agentSettings,
@@ -82,16 +95,28 @@ export class BackendSupervisor extends EventEmitter {
         isCurrent: () => this.child === child && ['running', 'stopping'].includes(this.state),
       }) : null;
       this.nativeAudioBroker = nativeAudioBroker;
-      timer = setTimeout(() => { fail(new Error('本地服务启动超时')); kill(); }, this.startupTimeout);
+      timer = setTimeout(() => { this.noteExitReason('startup-timeout'); fail(new Error('本地服务启动超时')); kill('startup-timeout'); }, this.startupTimeout);
       child.on('error', () => {
         if (this.child !== child || !['starting', 'running'].includes(this.state)) return;
-        fail(new Error('本地服务运行时错误')); kill();
+        const reason = this.state === 'starting' ? 'startup-error' : 'runtime-error';
+        this.noteExitReason(reason);
+        fail(new Error('本地服务运行时错误')); kill(reason);
       });
       child.on('message', message => {
         if (settingsBroker.handle(message)) return;
         if (imageSecretBroker.handle(message)) return;
         if (nativeAudioBroker?.handle(message)) return;
         if (this.child !== child) return;
+        if (message?.type === 'exit-diagnostic') {
+          // Only fixed reason labels cross into diagnostics. Never persist a
+          // utility message, error, runtime payload, or startup configuration.
+          if (backendExitReasons.has(message.reason)) {
+            this.noteExitReason(message.reason);
+            if (message.reason === 'shutdown-failed') this.shutdownFailed = true;
+            this.recordDiagnostic('backend-notice', { reason: message.reason });
+          }
+          return;
+        }
         if (message?.type === 'media-process') {
           const pid = message.pid;
           if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid && pid !== child.pid) {
@@ -100,17 +125,26 @@ export class BackendSupervisor extends EventEmitter {
           }
           return;
         }
-        if (message?.type === 'shutdown-failed') { this.shutdownFailed = true; return; }
-        if (message?.type === 'failed') { fail(new Error('本地服务启动失败。请检查数据目录和应用文件。')); return; }
+        if (message?.type === 'shutdown-failed') {
+          this.shutdownFailed = true; this.noteExitReason('shutdown-failed'); this.recordDiagnostic('backend-notice', { reason: 'shutdown-failed' }); return;
+        }
+        if (message?.type === 'failed') {
+          this.noteExitReason('startup-failed'); this.recordDiagnostic('backend-notice');
+          fail(new Error('本地服务启动失败。请检查数据目录和应用文件。')); return;
+        }
         if (message?.type !== 'ready' || settled || this.state !== 'starting') return;
         try { this.origin = trustedOrigin(message.url); }
-        catch (error) { fail(error); kill(); return; }
+        catch (error) { this.noteExitReason('invalid-origin'); fail(error); kill('invalid-origin'); return; }
         settled = true;
         clearTimeout(timer);
         this.cancelStart = null;
         this.state = 'running';
+        this.recordDiagnostic('ready');
         heartbeat = this.heartbeat = setInterval(() => {
-          if (this.child === child && this.state === 'running') { try { child.postMessage({ type: 'ping' }); } catch { kill(); } }
+          if (this.child === child && this.state === 'running') {
+            try { child.postMessage({ type: 'ping' }); }
+            catch { clearInterval(heartbeat); kill('communication-lost'); }
+          }
         }, 10000);
         resolve({ url: this.origin, runtime: message.runtime });
       });
@@ -121,6 +155,7 @@ export class BackendSupervisor extends EventEmitter {
         clearTimeout(timer);
         clearInterval(heartbeat);
         if (this.child !== child) return;
+        const exitState = this.state;
         if (!settled) fail(new Error(`本地服务退出 (${code})`));
         this.child = null;
         this.stopFailure = null;
@@ -130,13 +165,30 @@ export class BackendSupervisor extends EventEmitter {
         // claim media reap. Retain uncertainty and block automatic replacement.
         this.hasUnconfirmedMedia = this.mediaPids.size > 0;
         if (this.hasUnconfirmedMedia) this.stopOutcome.mediaExitConfirmed = false;
+        const reason = this.exitReason ?? 'utility-exit';
+        const classification = classifyBackendExit({ reason, shutdownFailed: this.shutdownFailed,
+          forced: this.stopForced, expected: this.expectedExit, code, mediaExitConfirmed: !this.hasUnconfirmedMedia });
+        this.recordDiagnostic('exit', { state: exitState, reason, classification, code,
+          exitConfirmed: true, mediaExitConfirmed: !this.hasUnconfirmedMedia });
         this.state = this.hasUnconfirmedMedia ? 'media-unconfirmed' : this.expectedExit ? 'stopped' : 'failed';
         this.emit('exit', { code, expected: this.expectedExit,
           ...(this.hasUnconfirmedMedia ? { mediaExitConfirmed: false } : {}) });
       });
       try { child.postMessage({ type: 'start', ...config }); }
-      catch { fail(new Error('本地服务启动通信失败')); kill(); }
+      catch { this.noteExitReason('startup-communication-failed'); fail(new Error('本地服务启动通信失败')); kill('startup-communication-failed'); }
     });
+  }
+
+  noteExitReason(reason) {
+    // A later user quit must not erase the fault that initiated shutdown.
+    if (!this.exitReason || this.exitReason === 'stop-requested' ||
+      ['uncaught-exception', 'unhandled-rejection'].includes(reason)) this.exitReason = reason;
+  }
+
+  recordDiagnostic(event, details = {}) {
+    this.diagnosticsAvailable = this.diagnostics?.record({ event, state: this.state, reason: this.exitReason,
+      expected: this.expectedExit, forced: this.stopForced || this.termination !== null, shutdownFailed: this.shutdownFailed,
+      termination: this.termination, ...details }) ?? false;
   }
 
   requestNativeAudio(command, onPending) {
@@ -154,6 +206,8 @@ export class BackendSupervisor extends EventEmitter {
     this.cancelStart?.();
     this.expectedExit = true;
     this.state = 'stopping';
+    this.noteExitReason('stop-requested');
+    this.recordDiagnostic('stop-requested');
     clearInterval(this.heartbeat);
     const child = this.child;
     this.stopping = new Promise((resolve, reject) => {
@@ -164,7 +218,10 @@ export class BackendSupervisor extends EventEmitter {
         clearTimeout(timer); clearTimeout(forceTimer); clearTimeout(confirmTimer);
         child.removeListener('exit', exited);
         if (error) {
-          if (!error.exitConfirmed) { this.stopFailure = error; this.state = 'stop-unconfirmed'; }
+          if (!error.exitConfirmed) {
+            this.stopFailure = error; this.state = 'stop-unconfirmed';
+            this.recordDiagnostic('stop-unconfirmed', { exitConfirmed: false });
+          }
           reject(error);
         } else { this.stopOutcome = outcome; resolve(outcome); }
       };
@@ -183,10 +240,14 @@ export class BackendSupervisor extends EventEmitter {
         clearTimeout(timer);
         forced = true;
         this.stopForced = true;
+        this.termination = 'utility-kill';
+        this.recordDiagnostic('termination-requested', { classification: 'terminated', exitConfirmed: false });
         try { child.kill(); } catch { /* Continue to the owned hard-stop phase. */ }
         if (done) return;
         forceTimer = setTimeout(() => {
           if (done || this.child !== child) return;
+          this.termination = 'owned-sigkill';
+          this.recordDiagnostic('termination-requested', { classification: 'terminated', exitConfirmed: false });
           try { this.forceKill(child); } catch { /* Exit confirmation remains mandatory. */ }
           if (done) return;
         }, this.terminateTimeout);

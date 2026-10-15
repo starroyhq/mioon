@@ -15,7 +15,7 @@ const data = source => 'data:text/javascript;base64,' + Buffer.from(source).toSt
 
 // No installed dependencies are used or borrowed. Real Agent config/settings,
 // codecs, brokers, supervisor and quit-helper bodies use import-only rewriting.
-// Three explicitly reviewed TypeScript adapters use Node's strip-only erasure;
+// Six explicitly reviewed TypeScript modules use Node's strip-only erasure;
 // their type-only imports must never become runtime imports. Native audition
 // schemas are a counted rejecting double: this secrets-only fixture supplies no
 // audio configuration and must never execute an audio admission or proof.
@@ -24,6 +24,16 @@ const data = source => 'data:text/javascript;base64,' + Buffer.from(source).toSt
 // Download parsing is outside this fixture. Its exact contract double counts
 // calls as well as throwing, because the production download guard catches errors.
 const forbidden = () => { throw Error('Filesystem persistence is outside this fixture'); };
+// Exercise the real diagnostic/classification body while denying filesystem
+// operations. These fixtures have no dataDir; disk acceptance has its own suite.
+const diagnosticFsUrl = data(`export let writes = 0; export const constants = {};
+  export function readFileSync() { throw Error('Diagnostic metadata is outside this fixture'); }
+  const denied = () => { writes++; throw Error('Diagnostic persistence is outside this fixture'); };
+  export {denied as chmodSync, denied as closeSync, denied as fchmodSync, denied as fstatSync,
+    denied as fsyncSync, denied as lstatSync, denied as mkdirSync, denied as openSync,
+    denied as renameSync, denied as unlinkSync, denied as writeSync};`);
+const diagnosticFs = await import(diagnosticFsUrl);
+after(() => assert.equal(diagnosticFs.writes, 0, 'Secrets-only fixtures must never attempt diagnostic writes'));
 const deliveryParserUrl = data('export let calls = 0; export function parseTimelineDeliveryContentDisposition() { calls++; throw Error("Timeline delivery parsing is outside this secrets fixture"); }');
 const deliveryParser = await import(deliveryParserUrl);
 const nativeAudioContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Native audition schemas are outside this secrets fixture"); }; export const nativeAudioConfigSchema = {parse: forbidden}; export const nativeAudioCommandSchema = {safeParse: forbidden}; export const nativeAudioReplySchema = {safeParse: forbidden};');
@@ -31,6 +41,7 @@ const nativeAudioContracts = await import(nativeAudioContractsUrl);
 after(() => assert.equal(nativeAudioContracts.calls, 0, 'Secrets fixtures must never execute native audition schemas'));
 after(() => assert.equal(deliveryParser.calls, 0, 'Secrets fixtures must never execute download parsing'));
 const overrides = new Map([
+  ['node:fs', diagnosticFsUrl],
   ['@mioon/contracts/timeline-delivery', deliveryParserUrl],
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.mjs', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
@@ -40,11 +51,11 @@ const overrides = new Map([
 ]);
 const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.mjs', 'apps/desktop/src/secret-store.mjs', 'apps/desktop/src/image-secret-store.mjs',
   'apps/desktop/src/image-secret-broker.mjs', 'apps/desktop/src/secret-broker.mjs', 'apps/desktop/src/supervisor.mjs',
-  'apps/desktop/src/security.mjs', 'apps/desktop/src/timeline-delivery-download.ts',
+  'apps/desktop/src/security.mjs', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.mjs', 'packages/business/src/agent/settings.mjs', 'packages/business/src/agent/config.mjs',
   'packages/business/src/agent/presets.mjs']);
 const reviewedTypeScript = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/timeline-delivery-download.ts',
-  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts']);
+  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/exit-diagnostics.ts']);
 const urls = new Map();
 function moduleUrl(name) {
   if (urls.has(name)) return urls.get(name);
@@ -145,7 +156,7 @@ test('audited imports and codec construction make no native calls; Images client
   assert.ok(['status', 'encrypt', 'decrypt'].every(method => f.calls.includes(method)));
 });
 
-test('import fixture permits only reviewed erased adapters and pure native messages and refuses runtime Electron or unknown source paths', () => {
+test('import fixture permits only six reviewed erased modules and refuses runtime Electron or unknown source paths', () => {
   const name = 'apps/desktop/src/timeline-delivery-download.ts';
   const original = readFileSync(new URL(name, root), 'utf8');
   assert.match(original, /import type \{[^}]*\} from 'electron'/);
@@ -159,7 +170,7 @@ test('import fixture permits only reviewed erased adapters and pure native messa
   }
   assert.equal(deliveryParser.calls, 0);
   assert.equal(nativeAudioContracts.calls, 0);
-  assert.deepEqual([...reviewedTypeScript].sort(), ['apps/desktop/src/app-language-text.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'packages/i18n/src/catalogs/native.ts']);
+  assert.deepEqual([...reviewedTypeScript].sort(), ['apps/desktop/src/app-language-text.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'packages/i18n/src/catalogs/native.ts']);
   for (const adapter of reviewedTypeScript) assert.ok(urls.has(adapter));
 });
 

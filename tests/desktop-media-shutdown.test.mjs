@@ -595,7 +595,7 @@ test('backend stop during startup suppresses a late ready and drains the created
 test('backend startup and shutdown failures cannot serialize an arbitrary error code', async () => {
   const runtime = await backendHarness({ start: async () => { throw Object.assign(new Error(syntheticFailure), { code: syntheticFailure }); } });
   runtime.start(); await tick(); runtime.stop(); await tick();
-  assert.equal(runtime.messages[0].code, 'BACKEND_START_FAILED');
+  assert.equal(runtime.messages.find(message => message.type === 'failed').code, 'BACKEND_START_FAILED');
   assert.ok(!JSON.stringify(runtime.messages).includes(syntheticFailure));
   assert.equal(runtime.messages.some(message => message.type === 'stopped'), false);
   assert.ok(runtime.exits.every(code => code === 1));
@@ -604,7 +604,7 @@ test('backend startup and shutdown failures cannot serialize an arbitrary error 
 test('backend waits for image codec availability and closes its own narrow client on shutdown', async () => {
   let refreshed, closeCount=0; const gate=new Promise(resolve=>{refreshed=resolve;});
   const runtime=await backendHarness({imageRefresh:()=>gate,imageClose:()=>{closeCount++;}});
-  runtime.start(); runtime.stop(); assert.equal(runtime.messages.length,0); assert.equal(closeCount,0);
+  runtime.start(); runtime.stop(); assert.equal(runtime.messages.filter(message => message.type !== 'exit-diagnostic').length,0); assert.equal(closeCount,0);
   refreshed(); const options=await runtime.started; assert.equal(typeof options.imageSecretCodec.refreshStorage,'function');
   await tick(); assert.deepEqual(runtime.exits,[0]); assert.equal(closeCount,1); assert.equal(runtime.messages.some(v=>v.type==='ready'),false);
 });
