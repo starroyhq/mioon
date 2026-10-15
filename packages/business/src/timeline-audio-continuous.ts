@@ -1,4 +1,7 @@
 import {createHash} from 'node:crypto';
+import {volumeEnvelopeField, volumeEnvelopeSnapshotFields, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
+import {createVolumeEnvelopeEvaluator} from '../../contracts/src/timeline-volume-envelope.mjs';
+import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {CONTINUOUS_AUDIO_LIMITS as LIMITS, CONTINUOUS_AUDIO_PROFILE,
   continuousAudioPlanInputSchema, continuousAudioPlanSchema, continuousAudioBlockInputSchema,
@@ -62,7 +65,7 @@ export interface ContinuousAudioRuntime {
 }
 interface Current {
   plan: ContinuousAudioPlan; snapshot: Snapshot; assets: Map<string, TimelineAudioPreviewManagedAsset>;
-  segments: readonly TimelineCompositionSegment[]; voices: Clip[];
+  segments: readonly TimelineCompositionSegment[]; voices: Clip[]; envelopeClips: Clip[];
 }
 interface Verified {
   file: string; info: TimelineAudioPreviewFileIdentity; asset: TimelineAudioPreviewManagedAsset;
@@ -101,7 +104,9 @@ interface ConsumeOptions<T> {
  * its first source decode with TWO complete hashes; later blocks retain that
  * proof only while pathname, dev/ino/size/mtime/ctime stay identical at every
  * effect boundary. This explicitly differs from V1's double hash per window.
- * No durable state or PCM cache is created. */
+ * Automated sources required before their first audible block instead bracket
+ * their eligibility probe with the two hashes; the same exact-identity fence
+ * then protects later decode. No durable state or PCM cache is created. */
 export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; root: string},
   {runtime, signal: ownerSignal}: {runtime: ContinuousAudioRuntime; signal?: AbortSignal}) {
   let state = admissions.get(store.db);
@@ -120,7 +125,12 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     if (!plain(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
     const saved = raw.timeline, managed = new Map<string, TimelineAudioPreviewManagedAsset>();
     if (!Array.isArray(saved.tracks) || !Array.isArray(saved.clips)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
-    const projected = {timeline: {id: saved.id, projectId: saved.projectId, revision: saved.revision, fps: saved.fps,
+    let envelopeProfile: ReturnType<typeof volumeEnvelopeSnapshotFields>;
+    try {
+      volumeEnvelopeReadSnapshot(raw);
+      envelopeProfile = volumeEnvelopeSnapshotFields({clips: saved.clips});
+    } catch {throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');}
+    const projected = {...envelopeProfile, timeline: {id: saved.id, projectId: saved.projectId, revision: saved.revision, fps: saved.fps,
       durationFrames: saved.durationFrames,
       tracks: saved.tracks.map((track: unknown) => {
         if (!object(track)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
@@ -129,7 +139,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       clips: saved.clips.map((clip: unknown) => {
         if (!object(clip) || ['transition', 'transitions', 'effects', 'speed', 'rate', 'opacity', 'blendMode'].some(key => Object.hasOwn(clip, key))) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
         return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame, durationFrames: clip.durationFrames,
-          sourceInFrame: clip.sourceInFrame, gain: clip.gain,
+          sourceInFrame: clip.sourceInFrame, gain: clip.gain, ...volumeEnvelopeField(clip),
           ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
           ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {})};
       })}, assets: raw.assets.map((asset: unknown) => {
@@ -148,7 +158,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     const tracks = new Map(timeline.tracks.map(track => [track.id, track])), sources = new Map(assets.map(asset => [asset.id, asset]));
     if (tracks.size !== timeline.tracks.length || sources.size !== assets.length || assets.some(asset => asset.projectId !== input.projectId) ||
         timeline.tracks.some(track => track.kind === 'audio' && track.hidden)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
-    const clipIds = new Set<string>(), byTrack = new Map<string, Clip[]>(), voices: Clip[] = []; let duration = 0;
+    const clipIds = new Set<string>(), byTrack = new Map<string, Clip[]>(), voices: Clip[] = [], envelopeClips: Clip[] = []; let duration = 0;
     for (const clip of timeline.clips) {
       const track = tracks.get(clip.trackId), asset = sources.get(clip.assetId), end = clip.startFrame + clip.durationFrames;
       if (!track || !asset || clipIds.has(clip.id) || end > 18000) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
@@ -158,8 +168,13 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       if (image ? asset.hasAudio === true || clip.sourceInFrame !== 0 : typeof asset.hasAudio !== 'boolean' || asset.duration === null ||
           asset.duration <= 0 || clip.sourceInFrame + clip.durationFrames > Math.floor(asset.duration * 30 + 1e-6)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > clip.durationFrames ||
-          ((clip.fadeInFrames ?? 0) > 0 || (clip.fadeOutFrames ?? 0) > 0) && asset.hasAudio !== true) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
+          ((clip.fadeInFrames ?? 0) > 0 || (clip.fadeOutFrames ?? 0) > 0) && asset.hasAudio !== true && clip.volumeEnvelope == null) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       const list = byTrack.get(clip.trackId) ?? []; list.push(clip); byTrack.set(clip.trackId, list);
+      if (clip.volumeEnvelope != null) {
+        if (image) throw fail('VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');
+        if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
+        envelopeClips.push(clip);
+      }
       if (!track.muted && clip.gain !== 0 && asset.hasAudio === true) {
         if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
         voices.push(clip);
@@ -170,7 +185,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       clips.sort((a, b) => a.startFrame - b.startFrame);
       if (clips.some((clip, index) => index > 0 && clip.startFrame < clips[index - 1]!.startFrame + clips[index - 1]!.durationFrames)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
     }
-    const segments = timelineCompositionSegments(timeline), uniqueAssets = new Set(voices.map(clip => clip.assetId));
+    const segments = timelineCompositionSegments(timeline), uniqueAssets = new Set([...voices, ...envelopeClips].map(clip => clip.assetId));
     const hashBytes = [...uniqueAssets].reduce((sum, id) => sum + 2 * sources.get(id)!.sizeBytes, 0);
     let workFrames = 0, runs = 0;
     for (const clip of voices) for (const segment of segments) if (segment.beginFrame >= clip.startFrame && segment.endFrame <= clip.startFrame + clip.durationFrames) {
@@ -179,7 +194,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     if (hashBytes > LIMITS.hashReadBytes) throw fail('AUDIO_PREVIEW_HASH_LIMIT');
     if (workFrames > LIMITS.decodeWorkFrames || runs > LIMITS.decodeSegments) throw fail('AUDIO_PREVIEW_BUDGET');
     const snapshotHash = hash(canonical(snapshot));
-    const plan: ContinuousAudioPlan = {schemaVersion: 2, status: 'planned', profileId: CONTINUOUS_AUDIO_PROFILE,
+    const plan: ContinuousAudioPlan = {...volumeEnvelopeSnapshotFields(timeline), schemaVersion: 2, status: 'planned', profileId: CONTINUOUS_AUDIO_PROFILE,
       projectId: input.projectId, timelineId: input.timelineId, timelineRevision: input.expectedRevision,
       startFrame: input.startFrame, durationFrames: timeline.durationFrames, blockFrames: 60, sampleRate: 48000,
       channels: 2, admittedBytes: LIMITS.memoryBytes, snapshotHash, planHash: '0'.repeat(64)};
@@ -189,7 +204,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     // later clip head when both intersect a block, regardless of UUID order.
     voices.sort((a, b) => tracks.get(a.trackId)!.orderIndex - tracks.get(b.trackId)!.orderIndex ||
       a.startFrame - b.startFrame || a.id.localeCompare(b.id));
-    return {plan, snapshot, assets: managed, segments, voices};
+    return {plan, snapshot, assets: managed, segments, voices, envelopeClips};
   }
   const inputOf = (input: ContinuousAudioBlockInput): ContinuousAudioPlanInput => ({projectId: input.projectId, timelineId: input.timelineId,
     expectedRevision: input.expectedRevision, startFrame: input.startFrame});
@@ -321,6 +336,22 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     const voice: AudioPreviewVoice = {...clip, clipId: clip.id, sourceKey: '0'.repeat(64), fadeInFrames: clip.fadeInFrames ?? 0,
       fadeOutFrames: clip.fadeOutFrames ?? 0, intersectionStartFrame: from, intersectionEndFrame: to};
     const start = (from - clip.startFrame) * 1600, end = (to - clip.startFrame) * 1600;
+    if (clip.volumeEnvelope != null) {
+      const envelope = createVolumeEnvelopeEvaluator(clip);
+      for (let sample = start; sample < end; sample++) {
+        // Linear fade × linear automation is generally quadratic, not a ramp.
+        const gain = audioPreviewEnvelopeGainAtLocalSample(voice, sample) * envelope.atSample(sample);
+        const sourceOffset = (sample - start) * 8;
+        const targetOffset = ((from - blockStart) * 1600 + sample - start) * 8;
+        for (let channel = 0; channel < 2; channel++) {
+          const offset = targetOffset + channel * 4;
+          const value = output.readFloatLE(offset) + pcm.readFloatLE(sourceOffset + channel * 4) * gain;
+          if (!Number.isFinite(Math.fround(value))) throw fail('AUDIO_PREVIEW_INVALID_PCM');
+          output.writeFloatLE(value, offset);
+        }
+      }
+      return;
+    }
     const splits = [...new Set([start, end, voice.fadeInFrames * 1600, (clip.durationFrames - voice.fadeOutFrames) * 1600])]
       .filter(sample => sample >= start && sample <= end).sort((a, b) => a - b);
     for (let part = 0; part < splits.length - 1; part++) {
@@ -402,6 +433,19 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       try {
         beforeEffect();
         const startFrame = input.blockStartFrame, endFrame = Math.min(startFrame + 60, owned.initial.plan.durationFrames);
+        // Eligibility is independent of audibility and block intersection. Verify
+        // every automated source before allocating/publishing even silent output.
+        for (const clip of owned.initial.envelopeClips) {
+          beforeEffect();
+          const verified = await verifiedAsset(owned, clip.assetId, signal);
+          const asset = owned.initial.snapshot.assets.find(asset => asset.id === clip.assetId)!;
+          assertVolumeEnvelopeSource(clip, {mimeType: asset.mimeType, audio: verified.probe ?? null});
+          if (asset.hasAudio !== true) throw fail('AUDIO_PREVIEW_STALE');
+          if (!verified.complete && !owned.initial.voices.some(voice => voice.assetId === clip.assetId &&
+              voice.startFrame < endFrame && voice.startFrame + voice.durationFrames > startFrame)) {
+            await hashAsset(owned, verified, signal); verified.complete = true;
+          }
+        }
         const pcm = Buffer.alloc((endFrame - startFrame) * 12800);
         for (const clip of owned.initial.voices) {
           const from = Math.max(startFrame, clip.startFrame), to = Math.min(endFrame, clip.startFrame + clip.durationFrames);
@@ -425,7 +469,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
         owned.cancelled = true;
         await closeCursors(owned);
         if (uncertainty(error)) {owned.failure = error; admission.failure = error;}
-        if (object(error) && typeof error.code === 'string' && (/^(?:AUDIO_PREVIEW_|OPERATION_CANCELLED|RESTORE_|WORKSPACE_)/u.test(error.code))) throw error;
+        if (object(error) && typeof error.code === 'string' && (/^(?:VOLUME_ENVELOPE_|AUDIO_PREVIEW_|OPERATION_CANCELLED|RESTORE_|WORKSPACE_)/u.test(error.code))) throw error;
         if (uncertainty(error)) throw error;
         throw fail(signal.aborted ? 'OPERATION_CANCELLED' : 'AUDIO_PREVIEW_DECODE_FAILED');
       } finally {

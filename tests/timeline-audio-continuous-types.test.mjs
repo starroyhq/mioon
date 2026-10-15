@@ -17,6 +17,9 @@ const sources = [
   'packages/business/src/timeline-audio-preview-decoder.ts',
   'packages/business/src/timeline-audio-continuous.ts',
   'packages/business/src/timeline-audio-continuous-decoder.ts',
+  'packages/business/src/timeline-volume-envelope-source.ts',
+  'packages/contracts/src/timeline-volume-envelope-processing.ts',
+  'packages/contracts/src/timeline-volume-envelope.d.mts',
   'packages/contracts/src/timeline-audio-preview.ts',
   'packages/contracts/src/timeline-audio-continuous.ts',
   'packages/contracts/src/timeline-segments.ts',
@@ -53,7 +56,7 @@ test('strict real compiler rejects unsuppressed runner and coordinator implement
   await mkdir(evidence, {recursive: true, mode: 0o700});
   const directory = await mkdtemp(path.join(evidence, 'continuous-audio-typecheck-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  for (const name of [...sources, ...consumers.map(name => `tests/typecheck/${name}`), 'package.json', 'packages/contracts/package.json']) {
+  for (const name of [...sources, 'packages/contracts/src/timeline-volume-envelope.mjs', ...consumers.map(name => `tests/typecheck/${name}`), 'package.json', 'packages/contracts/package.json']) {
     const destination = path.join(directory, name);
     await mkdir(path.dirname(destination), {recursive: true});
     await writeFile(destination, await readFile(path.join(repository, name)));

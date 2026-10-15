@@ -65,8 +65,13 @@ test('current renderer retains exact shared audio helper wiring and unchanged tr
     "filters.push(timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim));",
   ])assert.equal(source.split(wiring).length,2,`exact single production wiring: ${wiring}`);
   const helper=await readFile(new URL('../packages/business/src/timeline-audio-filter-graph.ts',import.meta.url));
-  // This audio-only module remains byte-identical to the accepted extraction.
-  assert.equal(createHash('sha256').update(helper).digest('hex'),'7701c38b8b2001da046d4801bb981607cbedf24635e489acdfc776cf477c5779');
+  // Retain the original accepted source proof. The current helper adds only a
+  // non-null processing branch; legacy literals are exercised above and below.
+  const historical=JSON.parse(await readFile(new URL('./fixtures/timeline-mix-loudness/filter-helper-b8821e7.json',import.meta.url),'utf8'));
+  assert.equal(historical.sourceCommit,'b8821e70b7eaafd84305fe6d0d4d8b40aaedf657');
+  assert.equal(createHash('sha256').update(historical.source).digest('hex'),'7701c38b8b2001da046d4801bb981607cbedf24635e489acdfc776cf477c5779');
+  assert.equal(historical.sourceSha256,'7701c38b8b2001da046d4801bb981607cbedf24635e489acdfc776cf477c5779');
+  assert.equal(createHash('sha256').update(helper).digest('hex'),'c9a288be8773aed61390c37f0fa52b50f8c19a8160c0fbc1d409807ba66c1ee6');
 });
 
 test('typed fade extraction preserves the old helper body byte-for-byte and its public import path',async()=>{

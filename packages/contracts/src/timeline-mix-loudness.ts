@@ -1,3 +1,4 @@
+import {VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.mjs';
 import {z} from 'zod';
 import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_ADVISORY_MARGIN_DB,
   exportLoudnessTargetSchema, exportLoudnessMeasurementSchema} from './export-loudness.ts';
@@ -33,6 +34,7 @@ export const timelineMixLoudnessCandidateSchema=z.discriminatedUnion('status',[
 ]);
 export type TimelineMixLoudnessCandidate=z.infer<typeof timelineMixLoudnessCandidateSchema>;
 export const timelineMixLoudnessResponseSchema=z.object({...timelineMixLoudnessInputSchema.shape,
+  volumeEnvelopeProcessingProfile: z.literal(VOLUME_ENVELOPE_PROFILE).optional(),
   status:z.literal('ready'),checkedAt:z.string().max(30).datetime(),stage:z.literal('preencode_float_mix'),applyAllowed:z.literal(false),
   identity:z.object({timelineId:id,timelineRevision:count(Number.MAX_SAFE_INTEGER,1),snapshotSha256:hash,
     range:z.object({startFrame:z.literal(0),endFrame:count(18000,1),sampleFrames:count(28800000,1600)}).strict(),
@@ -43,6 +45,7 @@ export const timelineMixLoudnessResponseSchema=z.object({...timelineMixLoudnessI
     passes:z.union([z.literal(1),z.literal(2)]),audioFullyDecoded:z.literal(true)}).strict(),
 }).strict().superRefine((v,c)=>{
   const fail=(message:string):void=>c.addIssue({code:z.ZodIssueCode.custom,message});
+  if (Object.hasOwn(v, 'volumeEnvelopeProcessingProfile') && v.volumeEnvelopeProcessingProfile === undefined) fail('Envelope processing identity must be explicit.');
   const {range,sources}=v.identity;
   if(v.identity.timelineRevision!==v.expectedRevision)fail('Saved revision must match the requested revision.');
   if(range.sampleFrames!==range.endFrame*1600||v.original.sampleFrames!==range.sampleFrames)

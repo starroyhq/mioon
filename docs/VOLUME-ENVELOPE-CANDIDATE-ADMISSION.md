@@ -103,3 +103,7 @@ passing. Independent read-only review findings on context safety, snapshot
 wrapper bytes and request binding were corrected before the final checkpoint.
 No whole-repository typecheck or full suite was run; the new code is MJS and
 verification here is syntax plus the explicitly listed runtime tests.
+
+The separate [internal processing checkpoint](VOLUME-ENVELOPE-PROCESSING-INTERNAL.md)
+now addresses processing consumers. This Node-only admission experiment remains
+standalone and is not used as production snapshot schema or mutation authority.

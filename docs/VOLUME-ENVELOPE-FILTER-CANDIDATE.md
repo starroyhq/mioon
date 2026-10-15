@@ -64,3 +64,11 @@ Installed-filter and short media/PCM comparison gates remain unresolved, as do
 coherent render/continuous/both-analysis rollout, actual-source eligibility,
 legacy audition refusal, budgets and feature activation. No media process or
 long acceptance run is part of this slice.
+
+## Subsequent internal integration
+
+The original dormant candidate state above is historical. The compiler is now
+reused by the internal shared graph; its numeric implementation is unchanged.
+See [internal processing checkpoint](VOLUME-ENVELOPE-PROCESSING-INTERNAL.md) for
+consumer/source/profile integration, current test evidence and still-closed
+mutation/workspace/UI activation gates.

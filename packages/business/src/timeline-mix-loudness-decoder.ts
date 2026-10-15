@@ -1,3 +1,6 @@
+import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
+import type {TimelineVolumeEnvelopeClip} from '../../contracts/src/timeline-volume-envelope-processing.ts';
+import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
 import path from 'node:path';
 import {timelineCompositionSegments} from '@mioon/contracts/timeline-segments';
 import {parseTimelineAudioPreviewProbe} from './timeline-audio-preview-decoder.ts';
@@ -30,7 +33,7 @@ export interface TimelineMixLoudnessTrack {
   readonly id: string; readonly kind: 'video' | 'audio'; readonly orderIndex: number;
   readonly hidden: boolean; readonly muted: boolean;
 }
-export interface TimelineMixLoudnessClip {
+export interface TimelineMixLoudnessClip extends TimelineVolumeEnvelopeClip {
   readonly id: string; readonly trackId: string; readonly assetId: string;
   readonly startFrame: number; readonly durationFrames: number; readonly sourceInFrame: number;
   readonly gain: number; readonly fadeInFrames?: number; readonly fadeOutFrames?: number;
@@ -113,17 +116,19 @@ function prepare(timeline: TimelineMixLoudnessTimeline, assets: ReadonlyMap<stri
         !integer(clip.fadeInFrames ?? 0, 0, clip.durationFrames) || !integer(clip.fadeOutFrames ?? 0, 0, clip.durationFrames) ||
         (clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > clip.durationFrames ||
         ['transition', 'transitions', 'effects', 'speed', 'rate', 'opacity', 'blendMode'].some(key => Object.hasOwn(clip, key))) throw configuration();
+    volumeEnvelopeField(clip);
     const asset = savedAssets.get(clip.assetId)!;
     if (!object(asset) || typeof asset.mimeType !== 'string' || typeof asset.hasAudio !== 'boolean' ||
         asset.audioStreamIndex !== undefined && !integer(asset.audioStreamIndex, 0, Number.MAX_SAFE_INTEGER)) throw configuration();
+    if (clip.volumeEnvelope != null && asset.mimeType.startsWith('image/')) throw configuration();
     const image = ['image/png', 'image/jpeg', 'image/webp'].includes(asset.mimeType);
     const video = ['video/mp4', 'video/webm'].includes(asset.mimeType);
     const audio = ['audio/wav', 'audio/mpeg', 'audio/mp4'].includes(asset.mimeType);
-    if (tracks.get(clip.trackId)!.kind === 'video' ? !image && !video : !audio || !asset.hasAudio) throw configuration();
+    if (tracks.get(clip.trackId)!.kind === 'video' ? !image && !video : !audio || !asset.hasAudio && clip.volumeEnvelope == null) throw configuration();
     if (image ? clip.sourceInFrame !== 0 || asset.hasAudio :
       typeof asset.duration !== 'number' || !Number.isFinite(asset.duration) || asset.duration <= 0 ||
       clip.sourceInFrame + clip.durationFrames > Math.floor(asset.duration * 30 + 1e-6)) throw configuration();
-    if (!asset.hasAudio && ((clip.fadeInFrames ?? 0) > 0 || (clip.fadeOutFrames ?? 0) > 0)) throw configuration();
+    if (!asset.hasAudio && clip.volumeEnvelope == null && ((clip.fadeInFrames ?? 0) > 0 || (clip.fadeOutFrames ?? 0) > 0)) throw configuration();
     ids.add(clip.id); finalFrame = Math.max(finalFrame, clip.startFrame + clip.durationFrames);
   }
   if (finalFrame !== timeline.durationFrames) throw configuration();
@@ -137,15 +142,15 @@ function prepare(timeline: TimelineMixLoudnessTimeline, assets: ReadonlyMap<stri
     const clips = savedClips.filter(clip => clip.startFrame <= segment.beginFrame && clip.startFrame + clip.durationFrames >= segment.endFrame &&
       savedAssets.get(clip.assetId)!.hasAudio && !tracks.get(clip.trackId)!.muted && clip.gain > 0)
       .sort((a, b) => tracks.get(a.trackId)!.orderIndex - tracks.get(b.trackId)!.orderIndex || a.id.localeCompare(b.id))
-      .map(clip => Object.freeze({...clip}));
+      .map(clip => Object.freeze({...clip, ...volumeEnvelopeField(clip)}));
     decodeWorkFrames += clips.length * (segment.endFrame - segment.beginFrame + 1);
     if (decodeWorkFrames > LIMITS.decodeWorkFrames) throw budget();
     segments.push(Object.freeze({...segment, clips: Object.freeze(clips)}));
   }
   if (segments.length > LIMITS.maxSegments) throw budget();
   const sampleFrames = timeline.durationFrames * LIMITS.samplesPerFrame;
-  const observedClips = savedClips.filter(clip => !tracks.get(clip.trackId)!.muted && clip.gain > 0 &&
-    !savedAssets.get(clip.assetId)!.mimeType.startsWith('image/')).map(clip => Object.freeze({...clip}));
+  const observedClips = savedClips.filter(clip => clip.volumeEnvelope != null || !tracks.get(clip.trackId)!.muted && clip.gain > 0 &&
+    !savedAssets.get(clip.assetId)!.mimeType.startsWith('image/')).map(clip => Object.freeze({...clip, ...volumeEnvelopeField(clip)}));
   return Object.freeze({sampleFrames, pcmBytes: sampleFrames * FRAME_BYTES, segmentCount: segments.length, decodeWorkFrames,
     segments: Object.freeze(segments), observedClips: Object.freeze(observedClips)});
 }
@@ -259,6 +264,8 @@ export function createTimelineMixLoudnessDecoder(runtime: TimelineMixLoudnessDec
         if (prepared.observedClips.some(clip => clip.assetId === assetId &&
           clip.sourceInFrame + clip.durationFrames > Math.floor(source.durationSeconds * 30 + 1e-6)))
           throw failure('TIMELINE_MIX_LOUDNESS_SOURCE_BOUNDS', 'A potentially audible saved interval exceeds its verified source duration.');
+        for (const clip of prepared.observedClips) if (clip.assetId === assetId)
+          assertVolumeEnvelopeSource(clip, {mimeType: asset.mimeType, audio: source.audio});
         if (source.audio) sources.set(assetId, source.audio);
       }
       let bytesSeen = 0;

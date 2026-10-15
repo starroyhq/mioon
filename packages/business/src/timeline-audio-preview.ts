@@ -132,6 +132,7 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     });
     const clips = timeline.clips.map((clip: unknown) => {
       if (!object(clip)) return unavailable();
+      if (Object.hasOwn(clip, 'volumeEnvelope') && clip.volumeEnvelope !== null) throw fault('AUDIO_PREVIEW_VOLUME_ENVELOPE_UNSUPPORTED');
       // Do not silently audition a corrupt saved speed/effect the renderer rejects.
       if (['transition', 'transitions', 'effects', 'speed', 'rate', 'opacity', 'blendMode'].some(key => Object.hasOwn(clip, key))) unavailable();
       return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame,

@@ -1,3 +1,5 @@
+import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
+import {parseTimelineAudioPreviewProbe} from './timeline-audio-preview-decoder.ts';
 import {readManagedTimelineImage,validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
 import path from 'node:path';
 import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue,isTimelineExportSnapshot} from '@mioon/contracts';
@@ -145,6 +147,13 @@ export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,s
   const imageColour=snapshot.colourPlan?.clips.some(item=>item.assetId===a.id&&item.kind==='image')?await readManagedTimelineImage(root,a,{signal,beforeEffect:checkSource,expected:hashed.info},{validateSource:validateManagedSource,runStreaming}):null;
   checkSource();
   const media=await probe(hashed.file,{signal,beforeSpawn:checkSource,beforeEffect,...(imageColour?.evidence.profileId==='jfif-ycbcr8-srgb-v1'?{verifiedJfif:true}:{})});checkMediaEffect(beforeEffect,signal);checkSource();
+  const automated=snapshot.timeline.clips.filter(clip=>clip.assetId===a.id&&clip.volumeEnvelope!=null);
+  if(automated.length){
+   // The actual probe is bracketed by managed hash/identity checks. Include
+   // muted/zero-gain automation; cached hasAudio is not stream evidence.
+   const audio=parseTimelineAudioPreviewProbe(JSON.stringify(media.probe));
+   for(const clip of automated)assertVolumeEnvelopeSource(clip,{mimeType:a.mimeType,audio});
+  }
   if(snapshot.colourPlan)for(const planned of snapshot.colourPlan.clips.filter(item=>item.assetId===a.id)){
    const clip=snapshot.timeline.clips.find(item=>item.id===planned.clipId);
    if(planned.kind==='image')validateTimelineImageSourceInterpretation({source:clip?.colour?.source,evidence:imageColour?.evidence,probe:media.probe,assetSha256:hashed.sha256,streamIndex:media.videoStreamIndex});

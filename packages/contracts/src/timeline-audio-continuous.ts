@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {isVolumeEnvelope, isVolumeEnvelopeProcessingSnapshot, VOLUME_ENVELOPE_PROCESSING_PROFILE} from './timeline-volume-envelope-processing.ts';
+import type {TimelineVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {audioPreviewPlanInputSchema, AUDIO_PREVIEW_LIMITS} from './timeline-audio-preview.ts';
 
 /** V2 is a pull session, separate from the frozen twenty-second V1 resource.
@@ -20,28 +22,32 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const integer = (min: number, max: number) => z.number().finite().int().min(min).max(max);
 /** Backend projection only. Public callers cannot submit saved snapshots. */
 const snapshotId = z.string().uuid(), snapshotFrame = integer(0, 18000);
-export const continuousAudioSnapshotSchema = z.object({timeline: z.object({id: snapshotId, projectId: snapshotId,
+export const continuousAudioSnapshotSchema = z.object({volumeEnvelopeProfile: z.literal(VOLUME_ENVELOPE_PROCESSING_PROFILE).optional(), timeline: z.object({id: snapshotId, projectId: snapshotId,
   revision: integer(1, Number.MAX_SAFE_INTEGER), fps: z.literal(30), durationFrames: snapshotFrame,
   tracks: z.array(z.object({id: snapshotId, kind: z.enum(['video', 'audio']), orderIndex: integer(0, 11),
     hidden: z.boolean(), muted: z.boolean()}).strict()).min(1).max(12),
   clips: z.array(z.object({id: snapshotId, trackId: snapshotId, assetId: snapshotId, startFrame: snapshotFrame,
     durationFrames: integer(1, 18000), sourceInFrame: integer(0, Number.MAX_SAFE_INTEGER - 18000),
-    gain: z.number().finite().min(0).max(2), fadeInFrames: snapshotFrame.optional(), fadeOutFrames: snapshotFrame.optional()}).strict()).max(100),
+    gain: z.number().finite().min(0).max(2), fadeInFrames: snapshotFrame.optional(), fadeOutFrames: snapshotFrame.optional(),
+    volumeEnvelope: z.custom<TimelineVolumeEnvelope|null>().optional()}).strict().refine(clip =>
+      !Object.hasOwn(clip, 'volumeEnvelope') || isVolumeEnvelope(clip.volumeEnvelope, clip.durationFrames), 'Invalid volume envelope.')).max(100),
 }).strict(), assets: z.array(z.object({id: snapshotId, projectId: snapshotId, sha256: digest,
   sizeBytes: integer(1, Number.MAX_SAFE_INTEGER),
   mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4']),
   duration: z.number().finite().nonnegative().nullable(), hasAudio: z.boolean().nullable().optional(),
-}).strict()).max(100)}).strict();
+}).strict()).max(100)}).strict().refine(isVolumeEnvelopeProcessingSnapshot, 'Invalid volume envelope processing profile.');
 export type ContinuousAudioSnapshot = z.infer<typeof continuousAudioSnapshotSchema>;
 export const continuousAudioPlanInputSchema = audioPreviewPlanInputSchema;
 export type ContinuousAudioPlanInput = z.infer<typeof continuousAudioPlanInputSchema>;
 export const continuousAudioPlanSchema = z.object({
   schemaVersion: z.literal(2), status: z.literal('planned'), profileId: z.literal(CONTINUOUS_AUDIO_PROFILE),
+  volumeEnvelopeProfile: z.literal(VOLUME_ENVELOPE_PROCESSING_PROFILE).optional(),
   projectId: z.string().uuid(), timelineId: z.string().uuid(), timelineRevision: integer(1, Number.MAX_SAFE_INTEGER),
   startFrame: integer(0, 17999), durationFrames: integer(1, 18000),
   blockFrames: z.literal(60), sampleRate: z.literal(48000), channels: z.literal(2),
   admittedBytes: z.literal(AUDIO_PREVIEW_LIMITS.memoryBytes), snapshotHash: digest, planHash: digest,
-}).strict().refine(plan => plan.startFrame < plan.durationFrames, 'Start must precede the saved end.');
+}).strict().refine(plan => !Object.hasOwn(plan, 'volumeEnvelopeProfile') || plan.volumeEnvelopeProfile === VOLUME_ENVELOPE_PROCESSING_PROFILE,
+  'Invalid volume envelope processing profile.').refine(plan => plan.startFrame < plan.durationFrames, 'Start must precede the saved end.');
 export type ContinuousAudioPlan = z.infer<typeof continuousAudioPlanSchema>;
 export const continuousAudioBlockInputSchema = audioPreviewPlanInputSchema.extend({
   planHash: digest, sessionId: z.string().uuid(),

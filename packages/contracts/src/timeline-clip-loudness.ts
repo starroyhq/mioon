@@ -1,3 +1,4 @@
+import {VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.mjs';
 import {z} from 'zod';
 import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_LIMITS, exportLoudnessMeasurementSchema} from './export-loudness.ts';
 
@@ -15,9 +16,10 @@ export const timelineClipLoudnessInputSchema = z.object({projectId: id, timeline
 export type TimelineClipLoudnessInput = z.infer<typeof timelineClipLoudnessInputSchema>;
 export const timelineClipLoudnessSchemas = Object.freeze({[TIMELINE_CLIP_LOUDNESS_OPERATION]: timelineClipLoudnessInputSchema});
 export const timelineClipLoudnessResponseSchema = z.object({...timelineClipLoudnessInputSchema.shape,
+  volumeEnvelopeProcessingProfile: z.literal(VOLUME_ENVELOPE_PROFILE).optional(),
   status: z.literal('ready'), checkedAt: z.string().max(30).datetime(), applyAllowed: z.literal(false),
   processingProfile: z.literal(TIMELINE_CLIP_LOUDNESS_PROFILE), stage: z.literal('isolated_clip_post_gain_fades_pre_mix'),
-  identity: z.object({snapshotSha256: hash, trackId: id, assetId: id, assetSha256: hash,
+  identity: z.object({volumeEnvelopeSha256: hash.optional(), snapshotSha256: hash, trackId: id, assetId: id, assetSha256: hash,
     sourceBytes: count(TIMELINE_CLIP_LOUDNESS_LIMITS.sourceBytes, 1),
     startFrame: count(17999), durationFrames: count(TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames, 1), sourceInFrame: count(18000),
     gain: z.number().finite().positive().max(2), fadeInFrames: count(TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames), fadeOutFrames: count(TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames),
@@ -30,6 +32,9 @@ export const timelineClipLoudnessResponseSchema = z.object({...timelineClipLoudn
 }).strict().superRefine((v, c) => {
   const fail = (message: string) => c.addIssue({code: z.ZodIssueCode.custom, message});
   const i = v.identity;
+  if (Object.hasOwn(v, 'volumeEnvelopeProcessingProfile') !== Object.hasOwn(i, 'volumeEnvelopeSha256') ||
+      Object.hasOwn(v, 'volumeEnvelopeProcessingProfile') && (v.volumeEnvelopeProcessingProfile === undefined || i.volumeEnvelopeSha256 === undefined))
+    fail('Envelope processing profile and exact envelope digest must occur together.');
   if (i.assetSha256 !== v.expectedAssetSha256) fail('The selected source must match the expected hash.');
   if (i.startFrame + i.durationFrames > 18000 || i.sourceInFrame + i.durationFrames > 18000 || i.fadeInFrames + i.fadeOutFrames > i.durationFrames ||
       i.measurementEndFrame !== i.durationFrames) fail('Saved clip and independent measurement bounds must agree.');

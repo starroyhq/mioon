@@ -1,3 +1,4 @@
+import {volumeEnvelopeField, volumeEnvelopeProcessingProfile, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {createExportLoudnessAccumulator} from './export-loudness-meter.ts';
@@ -150,8 +151,11 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
       return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame,
         durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
         ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
-        ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {})};
+        ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {}),
+        ...volumeEnvelopeField(clip)};
     });
+    let processingSnapshot: ReturnType<typeof volumeEnvelopeReadSnapshot>;
+    try {processingSnapshot = volumeEnvelopeReadSnapshot(raw);} catch {throw fault('TIMELINE_CLIP_LOUDNESS_RESOURCE_LIMIT');}
     const managed = new Map<string, Managed>(), assets = new Map<string, TimelineMixLoudnessAsset>();
     const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
     for (const asset of raw.assets) {
@@ -182,7 +186,7 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
     if (source.sizeBytes > LIMITS.sourceBytes) throw fault('TIMELINE_CLIP_LOUDNESS_SOURCE_LIMIT');
     if (plan.decodeWorkFrames > LIMITS.decodeWorkFrames || plan.pcmBytes > LIMITS.pcmBytes) throw fault('TIMELINE_CLIP_LOUDNESS_RESOURCE_LIMIT');
     return {signal, timelineId: saved.id, revision: saved.revision,
-      identity: hashText(JSON.stringify({saved: raw, selection: input})), assets,
+      identity: hashText(JSON.stringify({saved: processingSnapshot, selection: input})), assets,
       sources: freeze([source]), plan};
   }
   const stop = (): void => {state.stopped = true; state.active?.controller.abort();};
@@ -312,9 +316,9 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
       try {
         const result = await observe(joined, signal); fence();
         const clip = initial.signal.clip, source = initial.sources[0]!;
-        response = {...input, status: 'ready', checkedAt: new Date().toISOString(), applyAllowed: false,
+        response = {...(volumeEnvelopeProcessingProfile([clip]) ? {volumeEnvelopeProcessingProfile: volumeEnvelopeProcessingProfile([clip])} : {}), ...input, status: 'ready', checkedAt: new Date().toISOString(), applyAllowed: false,
           processingProfile: TIMELINE_CLIP_LOUDNESS_PROFILE, stage: 'isolated_clip_post_gain_fades_pre_mix',
-          identity: {snapshotSha256: initial.identity, trackId: clip.trackId, assetId: clip.assetId,
+          identity: {...(clip.volumeEnvelope != null ? {volumeEnvelopeSha256: hashText(JSON.stringify(clip.volumeEnvelope))} : {}), snapshotSha256: initial.identity, trackId: clip.trackId, assetId: clip.assetId,
             assetSha256: source.sha256, sourceBytes: source.sizeBytes, startFrame: clip.startFrame,
             durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
             fadeInFrames: clip.fadeInFrames ?? 0, fadeOutFrames: clip.fadeOutFrames ?? 0,

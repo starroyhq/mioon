@@ -1,0 +1,31 @@
+{
+  "baseCommit": "b8821e70b7eaafd84305fe6d0d4d8b40aaedf657",
+  "nodeExecutable": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+  "nodeVersion": "v24.21.0",
+  "nodeSha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+  "typescriptVersion": "6.0.3",
+  "sourceSha256": {
+    "packages/business/src/timeline-audio-continuous.ts": "4296af3c19994c6f8ecbb1c3ee623789e164134d299449531f225baabcb2ee78",
+    "packages/business/src/timeline-audio-filter-graph.ts": "c9a288be8773aed61390c37f0fa52b50f8c19a8160c0fbc1d409807ba66c1ee6",
+    "packages/business/src/timeline-audio-preview.ts": "4a68a5adf3228ae35ad9b02daf6e4e71982bf771815c0a87c57fda4efc39e7bb",
+    "packages/business/src/timeline-clip-loudness.ts": "62a104623cd7e609ed2b13727390237d484fc654b04efe12821cfd22a79e86de",
+    "packages/business/src/timeline-inputs.mjs": "54dab7ceaf60d4bd5dc218d2a213fc08c84a36858b9c45c454eb1c2b87556907",
+    "packages/business/src/timeline-mix-loudness-decoder.ts": "cdfee94fbe20cbae46f2903abe950416d19f74e320dc958739c6ea2f4a8b7813",
+    "packages/business/src/timeline-mix-loudness.ts": "08a1235ef7444789683761a06e96731ffa45b5c6206a19785cd763b58434be6f",
+    "packages/business/src/timeline-sources.mjs": "46e21bf36b5e9d8f49a2e1c0efda024bd7da6d18148be97135b6f54ef390c7bb",
+    "packages/business/src/timeline-volume-envelope-filter-candidate.d.mts": "9df44bc9bd514c3035d8eed4d4f2480028b0cdc8964e3fab2996186e53e26afc",
+    "packages/business/src/timeline-volume-envelope-source.ts": "c655c6130a4f90f3b4e9d31090540eabd932702e11906d4378a435a2f4329474",
+    "packages/contracts/src/timeline-audio-continuous.ts": "a77aa0372ba158ef61b7ddd9de1d7dc53724c376cc1a1a2c30ed6890cb502e47",
+    "packages/contracts/src/timeline-clip-loudness.ts": "fc0c580c4ca5dc7a7b52258d53bb4b19255a6cb1e3b993733d8ef3b635b1e058",
+    "packages/contracts/src/timeline-export-profile.mjs": "4bf9ecf396e6c33e8be89e2194148f542188da4f9240627639de057280f8fa87",
+    "packages/contracts/src/timeline-mix-loudness.ts": "e5e546485fcf6f03e7798adca900fbb0149dc36c70e438308b2b8d6f317b98e2",
+    "packages/contracts/src/timeline-volume-envelope-processing.ts": "6cc5991fdeb3d30258bad62fe98448eae3db2ddeda267bf8f240d7eb93d117f8",
+    "packages/contracts/src/timeline-volume-envelope.d.mts": "308bf767cc48c1adb4dc352ee2c13415f4eafbf554744bbb23885df31585b9b2",
+    "tests/fixtures/timeline-mix-loudness/filter-helper-b8821e7.json": "e6141339bdc68ca4a263ef1cf334128a34df637edc331e85c5bc35523075f5c2",
+    "tests/timeline-audio-continuous-types.test.mjs": "c7fbbcea5028567279b1f6c2c4632b3682fe7935abda84cf3cdf6d9e5b922389",
+    "tests/timeline-mix-loudness-decoder.test.mjs": "8a05d4c517273f74633db0332c068099b0f3ee61bff995685015b6cb5e56f88b",
+    "tests/timeline-volume-envelope-analysis.test.mjs": "02f78c781533c0a7c78499f9511669122341d5e1d42fbb66c792f0b9da2a450e",
+    "tests/timeline-volume-envelope-continuous.test.mjs": "b0e63f89b6deb9f42455eaabc039e06d628bf3088b8f8c9617f03d1ed1bfa220",
+    "tests/timeline-volume-envelope-processing.test.mjs": "de73a3de4345efd2defa63d5cbcdbf344c4cd68606ba94e3f4a8eb9929632597"
+  }
+}

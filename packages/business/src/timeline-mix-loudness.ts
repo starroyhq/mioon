@@ -1,3 +1,4 @@
+import {volumeEnvelopeField, volumeEnvelopeProcessingProfile, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {createExportLoudnessAccumulator} from './export-loudness-meter.ts';
@@ -141,8 +142,11 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
       return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame,
         durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
         ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
-        ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {})};
+        ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {}),
+        ...volumeEnvelopeField(clip)};
     });
+    let processingSnapshot: ReturnType<typeof volumeEnvelopeReadSnapshot>;
+    try {processingSnapshot = volumeEnvelopeReadSnapshot(raw);} catch {throw fault('TIMELINE_MIX_LOUDNESS_RESOURCE_LIMIT');}
     const managed = new Map<string, Managed>(), assets = new Map<string, TimelineMixLoudnessAsset>();
     const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
     for (const asset of raw.assets) {
@@ -166,14 +170,14 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     // Persisted hasAudio=false cannot prove a potentially audible video is
     // silent. Pin and double-hash all unmuted positive-gain media so the real
     // probe can confirm that saved audio presence still agrees with its bytes.
-    const observed = new Set(timeline.clips.filter(clip => !tracksById.get(clip.trackId)!.muted && clip.gain > 0 &&
+    const observed = new Set(timeline.clips.filter(clip => clip.volumeEnvelope != null || !tracksById.get(clip.trackId)!.muted && clip.gain > 0 &&
       !assets.get(clip.assetId)!.mimeType.startsWith('image/')).map(clip => clip.assetId));
     const sources = [...observed].sort().map(id => managed.get(id)!);
     const totalSourceBytes = sources.reduce((sum, asset) => sum + asset.sizeBytes, 0);
     if (sources.some(asset => asset.sizeBytes > LIMITS.sourceBytes) || totalSourceBytes > LIMITS.sourceBytes) throw fault('TIMELINE_MIX_LOUDNESS_SOURCE_LIMIT');
     if (plan.decodeWorkFrames * 2 > LIMITS.decodeWorkFrames || plan.pcmBytes * 2 > LIMITS.pcmBytes) throw fault('TIMELINE_MIX_LOUDNESS_RESOURCE_LIMIT');
     return {timeline: freeze(timeline), timelineId: saved.id, revision: saved.revision,
-      identity: hashText(JSON.stringify(raw)), assets, sources: freeze(sources), plan};
+      identity: hashText(JSON.stringify(processingSnapshot)), assets, sources: freeze(sources), plan};
   }
   const stop = (): void => {state.stopped = true; state.active?.controller.abort();};
   ownerSignal?.addEventListener('abort', stop, {once: true});
@@ -378,7 +382,8 @@ async function prepareCandidate(initial: Current, original: ExportLoudnessMeasur
 function publish(input: TimelineMixLoudnessInput, initial: Current,
   result: {original: ExportLoudnessMeasurement; candidate: Candidate}, bytesHashed: number, pcmBytes: number): TimelineMixLoudnessResponse {
   const passes = result.candidate.status === 'measured' ? 2 : 1;
-  const value = {...input, status: 'ready', checkedAt: new Date().toISOString(), stage: 'preencode_float_mix', applyAllowed: false,
+  const envelopeProfile = volumeEnvelopeProcessingProfile(initial.timeline.clips);
+  const value = {...(envelopeProfile ? {volumeEnvelopeProcessingProfile: envelopeProfile} : {}), ...input, status: 'ready', checkedAt: new Date().toISOString(), stage: 'preencode_float_mix', applyAllowed: false,
     identity: {timelineId: initial.timelineId, timelineRevision: initial.revision, snapshotSha256: initial.identity,
       range: {startFrame: 0, endFrame: initial.timeline.durationFrames, sampleFrames: initial.timeline.durationFrames * 1600},
       sources: initial.sources.map(source => ({assetId: source.id, sha256: source.sha256, sizeBytes: source.sizeBytes}))},
