@@ -94,7 +94,7 @@ import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';
 import TimelineInspector from './TimelineInspector.jsx';
 import { canEditTimelineAudioRole, isWorkspaceRestoreInspection } from '@mioon/contracts';
-import { readClipAudioRoleCapability } from './clip-audio-role-state.ts';
+import { observeClipAudioRoleCapability } from './clip-audio-role-state.ts';
 import SubtitleInspector from './SubtitleInspector.jsx';
 import { useSubtitles } from './use-subtitles.js';
 import { subtitleAcknowledged } from './subtitle-state.js';
@@ -584,9 +584,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       if (!bootGuard.current.isCurrent(ticket)) return;
       const verifiedWorkspace = retainWorkspaceIdentity(workspaceRef.current, observedWorkspace);
       workspaceRef.current = verifiedWorkspace; setWorkspace(verifiedWorkspace);
-      const roleEditable = await readClipAudioRoleCapability(verifiedWorkspace, () => rpc('workspace.restore.inspect', { includeAudioRoleCapability: true }), isWorkspaceRestoreInspection, canEditTimelineAudioRole);
-      if (!bootGuard.current.isCurrent(ticket)) return;
-      setAudioRoleEditable(roleEditable);
+      observeClipAudioRoleCapability(verifiedWorkspace, () => rpc('workspace.restore.inspect', { includeAudioRoleCapability: true }), isWorkspaceRestoreInspection, canEditTimelineAudioRole,
+        () => bootGuard.current.isCurrent(ticket) && workspaceRef.current === verifiedWorkspace, setAudioRoleEditable);
       const [list, caps, locator] = await Promise.all([
         rpc('project.list'), verifiedWorkspace.restored ? [] : rpc('provider.list'),
         verifiedWorkspace.restored ? Promise.resolve(null) : lastProjectRef.current.discover(),

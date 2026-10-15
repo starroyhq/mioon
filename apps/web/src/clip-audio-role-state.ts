@@ -19,3 +19,8 @@ export function clipAudioRoleCapabilityMatches(workspace: unknown, inspection: u
 export async function readClipAudioRoleCapability(workspace: unknown, read: () => Promise<unknown>, validateInspection: (value: unknown) => boolean, canEdit: (value: unknown) => boolean): Promise<boolean> {
   try { return clipAudioRoleCapabilityMatches(workspace, await read(), validateInspection, canEdit); } catch { return false; }
 }
+
+/** Start the optional probe without delaying project loading or ordinary editing. */
+export function observeClipAudioRoleCapability(workspace: unknown, read: () => Promise<unknown>, validateInspection: (value: unknown) => boolean, canEdit: (value: unknown) => boolean, isCurrent: () => boolean, publish: (editable: boolean) => void): void {
+  void readClipAudioRoleCapability(workspace, read, validateInspection, canEdit).then(editable => { if (isCurrent()) publish(editable); });
+}

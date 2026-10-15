@@ -7,7 +7,7 @@ import { validateCatalogs } from '../packages/i18n/src/index.ts';
 import { audioRoleMessages } from '../packages/i18n/src/catalogs/audio-role.ts';
 import * as roleContract from '../packages/contracts/src/timeline-audio-role.ts';
 import { canEditTimelineAudioRole, isWorkspaceRestoreInspection } from '../packages/contracts/src/workspace-restore.mjs';
-import { clipAudioRoleChanged, clipAudioRoleCapabilityMatches, readClipAudioRoleCapability } from '../apps/web/src/clip-audio-role-state.ts';
+import { clipAudioRoleChanged, clipAudioRoleCapabilityMatches, readClipAudioRoleCapability, observeClipAudioRoleCapability } from '../apps/web/src/clip-audio-role-state.ts';
 import { clipDraftRawSchema } from '../packages/contracts/src/local-drafts.ts';
 import { clipDraftRaw, clipDraftPatch, createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 import { isTimelineRecord } from '../packages/contracts/src/timeline-replacement.mjs';
@@ -91,4 +91,16 @@ test('TSX control labels and handlers cover four locales, explicit clear, invali
  for(const value of ['human','music','sfx','','not-a-role'])selector.props.onChange({target:{value}});assert.deepEqual(events,['human','music','sfx',null]);}
  for(const props of [{editable:false},{blocked:true}]){let writes=0;const selector=nodes(view('en',{...props,onEdit:()=>writes++})).find(x=>x.type==='Select');selector.props.onChange({target:{value:'human'}});assert.equal(writes,0);assert.equal(selector.props.disabled,true);}
  assert.equal(view('en',{kind:'image'}),null);assert.ok(view('en',{kind:'audio'}));
+});
+
+
+test('optional capability observation never delays ordinary load and fences late boot completions', async () => {
+ let complete, current=true;const observed=[],order=[];
+ const pending=new Promise(resolve=>{complete=resolve;});
+ const returned=observeClipAudioRoleCapability({restored:false},()=>{order.push('probe');return pending;},isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>current,value=>observed.push(value));
+ assert.equal(returned,undefined);order.push('ordinary-project-load');assert.deepEqual(order,['probe','ordinary-project-load']);assert.deepEqual(observed,[]);
+ current=false;complete({restored:false,audioRoleCapability:capability});await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,[]);
+ observeClipAudioRoleCapability({restored:false},async()=>({restored:false,audioRoleCapability:capability}),isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>observed.push(value));
+ await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,[true]);
+ const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');assert.match(app,/observeClipAudioRoleCapability\(verifiedWorkspace/);assert.doesNotMatch(app,/await observeClipAudioRoleCapability/);assert.match(app,/bootGuard\.current\.isCurrent\(ticket\) && workspaceRef\.current === verifiedWorkspace/);
 });
