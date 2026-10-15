@@ -35,7 +35,7 @@ test('capability is explicit and fail-closed, with no generic operation inferenc
  for(const result of [normal,null,{...normal,audioRoleCapability:{...capability,editable:false}},{...normal,audioRoleCapability:{...capability,profileId:'future'}},{...normal,audioRoleCapability:{...capability,extra:true}},{...normal,operationPolicy:[{operation:'timeline.clip.update',available:true}]}])assert.equal(matches(normal,result),false);
  assert.equal(await readClipAudioRoleCapability(normal,async()=>{throw Error('legacy unknown input');},isWorkspaceRestoreInspection,canEditTimelineAudioRole),false);
 });
-test('restored capability binds exact verified origin and profile; old generic update support is insufficient',()=>{
+test('restored capability binds exact verified origin and profile; old generic update support is insufficient',async()=>{
  const inspection={restored:true,schemaVersion:39,profile:'restored-local-v8',workspaceOrigin:id(10),restorationId:id(11),createdAt:stamp,
  source:{backupId:id(12),schemaVersion:38,manifestHash:'c'.repeat(64),dbHash:'d'.repeat(64)},heldCounts:[],operationPolicy:[{operation:'timeline.clip.update',available:true,reason:'AVAILABLE'}],backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}};
  assert.equal(isWorkspaceRestoreInspection(inspection),true);
@@ -47,6 +47,8 @@ test('restored capability binds exact verified origin and profile; old generic u
  assert.equal(isWorkspaceRestoreInspection(legacy),true);
  assert.equal(matches(legacy,{...legacy,audioRoleCapability:capability}),false);
  assert.equal(matches(legacy,{...legacy,audioRoleCapability:{...capability,editable:false}}),false);
+ const observed=[];observeClipAudioRoleCapability(legacy,async()=>({...legacy,audioRoleCapability:{...capability,editable:false}}),isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>observed.push(value));await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,['unsupported']);
+ observeClipAudioRoleCapability(legacy,async()=>({...legacy,workspaceOrigin:id(29),audioRoleCapability:{...capability,editable:false}}),isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>observed.push(value));await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,['unsupported','unavailable']);
 });
 test('raw and patch preserve absent/null roles and reject invalid values without coercion',()=>{
  assert.equal(Object.hasOwn(clipDraftRaw(raw),'audioRole'),false);assert.equal(Object.hasOwn(clipDraftPatch(raw),'audioRole'),false);
