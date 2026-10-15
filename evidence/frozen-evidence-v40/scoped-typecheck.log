@@ -1,0 +1,2 @@
+Command: pinned Node24.21 tsc --noEmit --strict --allowJs --checkJs false --module nodenext --moduleResolution nodenext --target es2024 --allowImportingTsExtensions --skipLibCheck --types node packages/business/src/workspace-volume-envelope-validation.ts packages/business/src/workspace-schema-v40.ts packages/business/src/workspace-restore-schema-v41.ts
+Exit status: 0

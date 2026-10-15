@@ -163,9 +163,9 @@ function preflight(db: DatabaseSync): {version: 38 | 40; sequence: Sequence | nu
   if (db.prepare("SELECT 1 FROM pragma_foreign_key_check('edit_tasks','main') LIMIT 1").get()) unsupported('task foreign key violation');
   validateLutObjects(db, objects, version);
   assertCompleteWorkspaceReceiptProtections(db);
-  validateWorkspaceColourRows(db, {allowColour:true,allowMixedImages:true,allowJpegImages:true});
+  validateWorkspaceColourRows(db, {allowColour:true,allowMixedImages:true,allowJpegImages:true,...(version===40?{frozenEvidenceProfile:'workspace40-restored41' as const}:{})});
   validateAnnotationObjects(db, objects, version);
-  validateWorkspaceAudioRoleRows(db, {allowAudioRoles:true});
+  validateWorkspaceAudioRoleRows(db, {allowAudioRoles:true,...(version===40?{frozenEvidenceProfile:'workspace40-restored41' as const}:{})});
   validateWorkspaceVolumeEnvelopeRows(db, {allowVolumeEnvelopes:version===40});
   return {version, sequence: sequence(db)};
 }

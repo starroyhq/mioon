@@ -1,0 +1,6 @@
+92e77f74a200f3a0c432e8d2009f9bf8f660562e39d2703038d119e7d6bc369c  packages/business/src/workspace-frozen-evidence-v40.ts
+9413756f80ffb93e44520c118be78a362b5ba5de629ddf52e4109286260802de  packages/business/src/workspace-audio-role-validation.ts
+6f2b476fbb614e06f7bd34d09659f620d368f30c4ce19f13522373f15e98a810  packages/business/src/workspace-colour-validation.ts
+ac7e73dce8f7b88733c99b0dd1fb7bb01539012070b329cbde072a4656b554bd  packages/business/src/workspace-schema-v40.ts
+3fef9a4794e07b50a8779919d5dfe4563e4d84e4725ca81457198c54de63a2c3  packages/business/src/workspace-restore-schema-v41.ts
+7e4cfe051df7ebe29ab8bf20a6b5c69b162ec7e52a7e10f3ac8813cfbfc5b2dd  tests/workspace-frozen-evidence-v40.test.mjs

@@ -3,8 +3,9 @@
 Based on `72d78150c559a1558580b2288563b7d78e869e18`. This slice enables no
 workspace role, migration path, backup source, operation, mutation, capability,
 Agent authority, UI or processing dispatch. Existing constructors are unchanged.
-Only tests reach the new scanner and exact constructors; the new constructors
-form a dormant dependency graph among themselves.
+Only tests reach the new scanner and exact constructors. A subsequent opt-in
+role/colour helper is imported by the shared scanners but executes only under
+the explicit dormant40/41 option; historical callers do not select it.
 
 ## Scanner interface and evidence
 
@@ -90,7 +91,11 @@ media/resource qualification and full contracts/mutations/history/replay/proof
 admission remain separate prerequisites for any activation. The pre-existing
 processing combined231/232 result is not replaced by these scoped green tests.
 
-## Inherited frozen-role/colour limitation: activation remains blocked
+## Original frozen-role/colour finding (superseded only for dormant40/41)
+
+The bounded [profile-specific correction](FROZEN-EVIDENCE-WORKSPACE40.md) now
+resolves this finding for new40/41 only. Source38 migration and old38/39 retain
+the original outcomes below. Other activation prerequisites remain blocked.
 
 Independent review reproduced a valid retained render snapshot with envelope +
 audioRole:'human', exact production profiles, and frozen video/mp4 metadata. If

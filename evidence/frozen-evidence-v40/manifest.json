@@ -1,0 +1,38 @@
+{
+  "base": "f6caf840114ca4e1431012a358cca9e8ed5cb8fd",
+  "scope": "Dormant40/41 frozen role/colour compatibility only. No activation or historical semantics change.",
+  "node": {
+    "path": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+    "version": "v24.21.0",
+    "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+  },
+  "sources": {
+    "packages/business/src/workspace-frozen-evidence-v40.ts": "92e77f74a200f3a0c432e8d2009f9bf8f660562e39d2703038d119e7d6bc369c",
+    "packages/business/src/workspace-audio-role-validation.ts": "9413756f80ffb93e44520c118be78a362b5ba5de629ddf52e4109286260802de",
+    "packages/business/src/workspace-colour-validation.ts": "6f2b476fbb614e06f7bd34d09659f620d368f30c4ce19f13522373f15e98a810",
+    "packages/business/src/workspace-schema-v40.ts": "ac7e73dce8f7b88733c99b0dd1fb7bb01539012070b329cbde072a4656b554bd",
+    "packages/business/src/workspace-restore-schema-v41.ts": "3fef9a4794e07b50a8779919d5dfe4563e4d84e4725ca81457198c54de63a2c3",
+    "tests/workspace-frozen-evidence-v40.test.mjs": "7e4cfe051df7ebe29ab8bf20a6b5c69b162ec7e52a7e10f3ac8813cfbfc5b2dd"
+  },
+  "unchanged": {
+    "packages/business/src/workspace-schema-v38.ts": true,
+    "packages/business/src/workspace-restore-schema-v39.ts": true,
+    "packages/business/src/workspace-schema-dispatch.ts": true,
+    "packages/business/src/workspace-volume-envelope-validation.ts": true
+  },
+  "tests": {
+    "command": "pinned Node24.21 --test tests/workspace-frozen-evidence-v40.test.mjs tests/workspace-volume-envelope-validation.test.mjs tests/workspace-schema40-dormant.test.mjs",
+    "result": "116/116 pass, exit0; focused-tests.log",
+    "initial_owner_fixture": "115/116: one expectation pinned colour error but envelope scanner rejected first. Fixture now no-envelope to isolate role/colour route. Failure retained in owner-fixture-first.log."
+  },
+  "typecheck": "Strict scoped noEmit passes, exit0; full command in scoped-typecheck.log",
+  "reproduction": "Original retained snapshot reproduction now succeeds for ordinary40 and exact source40 classifier. Original dated evidence left unchanged.",
+  "compatibility": "Default scanner SQL/traversal preserved; old38/39 and source38 migration still reject changed-cache repro. Current MIME/hash are not frozen authority; current asset/project row identity and retained LUT identity remain required.",
+  "limits": "No user workspace or actual media/probe, GUI, installation/build, mutation/dispatcher integration, push or Mac activity; no claim of imported receipt cryptographic authenticity or full activation readiness.",
+  "independent_review": {
+    "final_frozen": "68/68, exit0",
+    "edge_probes": "38/38, exit0",
+    "initial_combined": "154/154 including historical38 suite; its last2 fixtures use disposable synthetic disk workspaces/services/backup, not in-memory-only. No user workspace or media.",
+    "signoff": "Bounded dormant40/41 approval; corrected export owner null-projection blocker. See independent-review.md."
+  }
+}

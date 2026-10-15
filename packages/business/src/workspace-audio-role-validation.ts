@@ -1,3 +1,4 @@
+import {frozenReceiptBindingsV40,type FrozenEvidenceProfile} from './workspace-frozen-evidence-v40.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isClipAudioRole,isTimelineAudioRoleSnapshot,getTimelineAudioRoleIssue,TIMELINE_AUDIO_ROLE_PROFILE} from '../../contracts/src/timeline-audio-role.ts';
 
@@ -20,12 +21,13 @@ export function hasWorkspaceAudioRoleEvidence(root:unknown):boolean {
 
 /** Bounded negative admission before migration writes. SQLite sees escaped and
  * duplicate keys before JSON.parse could discard evidence. No rows are changed. */
-export function validateWorkspaceAudioRoleRows(db:Pick<DatabaseSync,'prepare'>,{allowAudioRoles}:{allowAudioRoles:boolean}):void {
+export function validateWorkspaceAudioRoleRows(db:Pick<DatabaseSync,'prepare'>,{allowAudioRoles,frozenEvidenceProfile}:{allowAudioRoles:boolean;frozenEvidenceProfile?:FrozenEvidenceProfile}):void {
  const names=new Map<string,{type:unknown;sql:unknown}>();
  for(const row of db.prepare("SELECT type,lower(name) AS name,CASE WHEN length(CAST(sql AS BLOB))<=131072 THEN sql END AS sql FROM main.sqlite_schema WHERE name COLLATE NOCASE IN ('timelines','timeline_history','timeline_requests','edit_tasks','exports','workspace_restore_timeline_history','agent_edit_proposals')").iterate()){
   if(typeof row.name!=='string'||names.has(row.name))invalid(allowAudioRoles);names.set(row.name,{type:row.type,sql:row.sql});
  }
- function inspect(root:unknown,owner:unknown,bindings:boolean):void{
+ function inspect(root:unknown,owner:unknown,bindings:boolean,table:string,rowIdentity:unknown):void{
+  const frozen=frozenEvidenceProfile==='workspace40-restored41'?frozenReceiptBindingsV40(db,root,owner,table,rowIdentity,()=>invalid(true)):undefined;
   const pending:{value:unknown;owner:unknown;depth:number}[]=[{value:root,owner,depth:0}];let nodes=0;
   while(pending.length){const entry=pending.pop()!,value=entry.value;if(++nodes>200000||entry.depth>128)invalid(true);
    if(value===null||typeof value!=='object')continue;
@@ -36,9 +38,13 @@ export function validateWorkspaceAudioRoleRows(db:Pick<DatabaseSync,'prepare'>,{
     if(!isClipAudioRole(value.audioRole))invalid(true);
     if(bindings){
      if(typeof value.assetId!=='string'||value.assetId.length!==36||typeof projectId!=='string')invalid(true);
+     const frozenAsset=frozen?.get(value);
+     if(frozenAsset){if(getTimelineAudioRoleIssue(value,frozenAsset))invalid(true);}
+     else {
      const row=db.prepare("SELECT CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 131072 THEN data END AS data FROM main.assets WHERE id=?").get(value.assetId);
      if(!row||row.projectId!==projectId||typeof row.data!=='string')invalid(true);
      let asset:unknown;try{asset=JSON.parse(row.data);}catch{invalid(true);}if(getTimelineAudioRoleIssue(value,asset))invalid(true);
+     }
     }
    }
    if(Object.hasOwn(value,'audioRoleProfile')&&(value.audioRoleProfile!==TIMELINE_AUDIO_ROLE_PROFILE||!isTimelineAudioRoleSnapshot(value)))invalid(true);
@@ -54,7 +60,8 @@ export function validateWorkspaceAudioRoleRows(db:Pick<DatabaseSync,'prepare'>,{
   const owner=columns.has('projectId')?"CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END":'NULL';
   for(const field of fields.filter(field=>columns.has(field))){
    const column=quote(field);
-   const query=`SELECT ${owner} AS owner,CASE WHEN length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN json_valid(${column}) ELSE 0 END AS valid,CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN ${column} END AS value,CASE WHEN length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicates FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 WHEN typeof(${column})!='text' OR length(CAST(${column} AS BLOB))=0 THEN 0 WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE key IN ('audioRole','audioRoleProfile')) ELSE 1 END`;
+   const identity=frozenEvidenceProfile==='workspace40-restored41'&&(table==='timeline_requests'||table==='exports')?`CASE WHEN typeof(${table==='timeline_requests'?'requestId':'id'})='text' AND length(CAST(${table==='timeline_requests'?'requestId':'id'} AS BLOB))<=800 THEN ${table==='timeline_requests'?'requestId':'id'} END`:'';
+   const query=`SELECT ${identity?`${identity} AS rowIdentity,`:''}${owner} AS owner,CASE WHEN length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN json_valid(${column}) ELSE 0 END AS valid,CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN ${column} END AS value,CASE WHEN length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicates FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 WHEN typeof(${column})!='text' OR length(CAST(${column} AS BLOB))=0 THEN 0 WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE key IN ('audioRole','audioRoleProfile')) ELSE 1 END`;
    for(const row of db.prepare(query).iterate()){
     // Malformed legacy JSON stays with its historic reader unless a decoded
     // member token supplies positive role evidence. Never parse oversized cells.
@@ -66,7 +73,7 @@ export function validateWorkspaceAudioRoleRows(db:Pick<DatabaseSync,'prepare'>,{
      if(!evidence)continue;
     }
     if(!allowAudioRoles||typeof row.value!=='string'||row.duplicates!==0)invalid(allowAudioRoles);
-    let value:unknown;try{value=JSON.parse(row.value);}catch{invalid(true);}inspect(value,row.owner,table!=='edit_tasks'&&table!=='agent_edit_proposals');
+    let value:unknown;try{value=JSON.parse(row.value);}catch{invalid(true);}inspect(value,row.owner,table!=='edit_tasks'&&table!=='agent_edit_proposals',table,row.rowIdentity);
    }
   }
  }

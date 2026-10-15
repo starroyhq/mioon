@@ -1,3 +1,4 @@
+import {frozenReceiptBindingsV40,type FrozenEvidenceProfile} from './workspace-frozen-evidence-v40.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isTimelineClipColour,isTimelineColourSnapshot,nullableTimelineClipColourSchema,timelineColourPlanSchema,timelineImageClipColourSchema,timelineMixedColourPlanSchema,TIMELINE_JPEG_CLIP_COLOUR_PROFILE,TIMELINE_JPEG_SOURCE_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_IMAGE_CLIP_COLOUR_PROFILE,TIMELINE_IMAGE_SOURCE_PROFILE,TIMELINE_MIXED_COLOUR_RENDER_PROFILE} from '../../contracts/src/timeline-colour.ts';
 
@@ -22,7 +23,7 @@ const families=[
  ['agent_edit_proposals',['definition']],
 ] as const;
 
-export function validateWorkspaceColourRows(db:Pick<DatabaseSync,'prepare'>,{allowColour,allowMixedImages=false,allowJpegImages=false}:{allowColour:boolean;allowMixedImages?:boolean;allowJpegImages?:boolean}):void {
+export function validateWorkspaceColourRows(db:Pick<DatabaseSync,'prepare'>,{allowColour,allowMixedImages=false,allowJpegImages=false,frozenEvidenceProfile}:{allowColour:boolean;allowMixedImages?:boolean;allowJpegImages?:boolean;frozenEvidenceProfile?:FrozenEvidenceProfile}):void {
  const names=new Map<string,{type:unknown;sql:unknown}>();
  for(const row of db.prepare("SELECT type,lower(name) AS name,CASE WHEN length(CAST(sql AS BLOB))<=131072 THEN sql END AS sql FROM main.sqlite_schema WHERE name COLLATE NOCASE IN ('timelines','timeline_history','timeline_requests','edit_tasks','exports','workspace_restore_timeline_history','agent_edit_proposals')").iterate()) {
   if(typeof row.name!=='string'||names.has(row.name))invalid(allowColour);
@@ -39,7 +40,8 @@ export function validateWorkspaceColourRows(db:Pick<DatabaseSync,'prepare'>,{all
   const row=db.prepare("SELECT CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,CASE WHEN typeof(sha256)='text' AND length(CAST(sha256 AS BLOB))=64 THEN sha256 END AS sha256,CASE WHEN typeof(profile)='text' AND length(CAST(profile AS BLOB))<=80 THEN profile END AS profile FROM main.project_lut_resources WHERE id=?").get(resourceId);
   if(!row)invalid(allowColour);const value={projectId:row.projectId,sha256:row.sha256,profile:row.profile};luts.set(resourceId,value);return value;
  }
- function inspect(root:unknown,projectId:unknown,enforceBindings:boolean):void {
+ function inspect(root:unknown,projectId:unknown,enforceBindings:boolean,table:string,rowIdentity:unknown):void {
+  const frozen=frozenEvidenceProfile==='workspace40-restored41'?frozenReceiptBindingsV40(db,root,projectId,table,rowIdentity,()=>invalid(allowColour)):undefined;
   const pending:{value:unknown;projectId:unknown;tracks:unknown;depth:number}[]=[{value:root,projectId,tracks:undefined,depth:0}];
   while(pending.length){
    const entry=pending.pop()!,value=entry.value;
@@ -61,7 +63,7 @@ export function validateWorkspaceColourRows(db:Pick<DatabaseSync,'prepare'>,{all
     const colour=value.colour;
     if(colour!==null&&enforceBindings){
      if(!uuid(owner)||!uuid(value.assetId))invalid(allowColour);
-     const media=asset(value.assetId);
+     const media=frozen?.get(value)??asset(value.assetId);
      // Source replacement keeps the chosen look but invalidates interpretation.
      // Only the mixed role can retain either profile with source:null across
      // a supported visual MIME change; a non-null declaration is exact.
@@ -105,14 +107,15 @@ export function validateWorkspaceColourRows(db:Pick<DatabaseSync,'prepare'>,{all
    // cross into JS, leaving unrelated old/corrupt JSON to its historic reader.
    // Over-budget values fail closed before either JSON virtual table runs.
    const column=quote(field);
-   const query=`SELECT ${owner} AS owner,CASE WHEN length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicateKeys,CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN ${column} END AS value FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 ELSE CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE key IN ('colour','colourPlan') OR key='profileId' AND atom IN ('mioon-srgb-image-clip-v1','png-rgb8-srgb-v1','mioon-mixed-sdr-render-v2','mioon-jfif-image-clip-v1','jfif-ycbcr8-srgb-v1','mioon-mixed-sdr-render-v3')) ELSE 0 END END`;
+   const identity=frozenEvidenceProfile==='workspace40-restored41'&&(table==='timeline_requests'||table==='exports')?`CASE WHEN typeof(${table==='timeline_requests'?'requestId':'id'})='text' AND length(CAST(${table==='timeline_requests'?'requestId':'id'} AS BLOB))<=800 THEN ${table==='timeline_requests'?'requestId':'id'} END`:'';
+   const query=`SELECT ${identity?`${identity} AS rowIdentity,`:''}${owner} AS owner,CASE WHEN length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicateKeys,CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES} THEN ${column} END AS value FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 ELSE CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE key IN ('colour','colourPlan') OR key='profileId' AND atom IN ('mioon-srgb-image-clip-v1','png-rgb8-srgb-v1','mioon-mixed-sdr-render-v2','mioon-jfif-image-clip-v1','jfif-ycbcr8-srgb-v1','mioon-mixed-sdr-render-v3')) ELSE 0 END END`;
    for(const row of db.prepare(query).iterate()){
     if(!allowColour||typeof row.value!=='string'||row.duplicateKeys!==0)invalid(allowColour);
     let value:unknown;try{value=JSON.parse(row.value);}catch{invalid(allowColour);}
     // An unresolved/not-applied durable intent may legitimately contain a
     // missing resource or stale hash. Validate its shape, never reinterpret
     // that rejected intention as accepted timeline/source ownership.
-    inspect(value,row.owner,table!=='edit_tasks'&&table!=='agent_edit_proposals');
+    inspect(value,row.owner,table!=='edit_tasks'&&table!=='agent_edit_proposals',table,row.rowIdentity);
    }
   }
  }

@@ -141,10 +141,10 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
   if(db.prepare('SELECT 1 FROM temp.sqlite_schema LIMIT 1').get())fail('RESTORE_SCHEMA_UNSUPPORTED');
   const actual=schema(db),fixed=fixedProfilesV40V41();
   if(matches(actual,fixed.ordinary)||matches(actual,fixed.ordinaryMock)){
-   markers(db,false);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true});return Object.freeze({schemaVersion:40,profile:'ordinary'});
+   markers(db,false);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:40,profile:'ordinary'});
   }
   if(matches(actual,fixed.restored)||matches(actual,fixed.restoredMock)){
-   markers(db,true);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true});return Object.freeze({schemaVersion:41,profile:WORKSPACE_RESTORE_PROFILE});
+   markers(db,true);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:41,profile:WORKSPACE_RESTORE_PROFILE});
   }
   fail('RESTORE_SCHEMA_UNSUPPORTED');
  }
