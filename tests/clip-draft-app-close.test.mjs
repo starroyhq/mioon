@@ -1,3 +1,4 @@
+import { translate } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -114,15 +115,31 @@ test('actual lifecycle cleanup retains a newer registered global close handler',
   assert.equal(f.listeners.size, 0);
 });
 
-test('desktop close warning describes unconfirmed local drafts and view without promising cancellation', () => {
+test('desktop close warning describes unconfirmed local drafts and view without promising cancellation', async () => {
   const main = readFileSync(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
   const at = main.indexOf("confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox");
-  const until = main.indexOf('onCancel:', at);
+  const until = main.indexOf('confirmUnknown:', at);
   assert.ok(at >= 0 && until > at);
-  const warning = main.slice(at, until);
-  assert.match(warning, /本地草稿/); assert.match(warning, /视图/);
-  assert.match(warning, /未确认/); assert.match(warning, /不会取消/);
-  assert.match(warning, /buttons: \[action === 'reload' \? '仍然重新载入' : '仍然退出', '继续编辑'\], defaultId: 1, cancelId: 1/);
+  const source = main.slice(at, until);
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    const nt = key => translate(locale, key), dialogs = [];
+    let response = 1;
+    const confirmClose = Function('smokeOutput', 'dialog', 'window', 'nt', `return ({${source}}).confirmClose;`)(false, { showMessageBox: async (_window, options) => { dialogs.push(options); return { response }; } }, {}, nt);
+    for (const action of ['reload', 'quit']) {
+      assert.equal(await confirmClose(action), false, 'Default keep-editing response cannot close');
+      const warning = dialogs.at(-1);
+      assert.equal(warning.title, nt('native.draftTitle'));
+      assert.equal(warning.message, nt(action === 'reload' ? 'native.draftReloadMessage' : 'native.draftQuitMessage'));
+      assert.equal(warning.detail, nt(action === 'reload' ? 'native.draftReloadDetail' : 'native.draftQuitDetail'));
+      assert.deepEqual(warning.buttons, [nt(action === 'reload' ? 'native.reloadAnyway' : 'native.quitAnyway'), nt('native.keepEditing')]);
+      assert.equal(warning.defaultId, 1); assert.equal(warning.cancelId, 1);
+      if (locale === 'zh-Hans') {
+        assert.match(warning.message, /本地草稿/); assert.match(warning.message, /视图/);
+        assert.match(warning.message, /未确认/); assert.match(warning.detail, /不会取消/);
+      }
+      response = 0; assert.equal(await confirmClose(action), true, 'Only the explicit proceed response closes'); response = 1;
+    }
+  }
 });
 
 

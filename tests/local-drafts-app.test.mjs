@@ -1,3 +1,4 @@
+import { message as msg } from '../packages/i18n/src/index.ts';
 import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ function section(start, end) {
 const guardSource = section('  async function guardNavigation(', '  async function guardProjectNavigation(');
 const registrationSource = section('  const registerClipDraft = useCallback(', '  const [agentPage,');
 const mutationSource = section('  async function mutateTimeline(', '  async function selectClip(');
-const compile = (source, name, scope) => Function(...Object.keys(scope), `${source}\nreturn ${name};`)(...Object.values(scope));
+const compile = (source, name, scope) => Function('msg', ...Object.keys(scope), `${source}\nreturn ${name};`)(msg, ...Object.values(scope));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const id = n => `76000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const key = { projectId: id(1), timelineId: id(2), clipId: id(3) };

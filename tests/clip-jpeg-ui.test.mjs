@@ -1,8 +1,9 @@
+import { i18nTestModule } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
-import {createClipLutController, clipLutSourceIssue} from '../apps/web/src/clip-lut-state.ts';
+import {createClipLutController, clipLutSourceIssue, clipLutSourceMessage} from '../apps/web/src/clip-lut-state.ts';
 import {createClipLutRecovery} from '../apps/web/src/clip-lut-recovery.ts';
 import {clipDraftRaw, clipDraftPatch, createClipDraftController} from '../apps/web/src/clip-draft-state.ts';
 import {clipDraftDiskSchema} from '../packages/contracts/src/local-drafts.ts';
@@ -166,9 +167,10 @@ function renderControls(state, ctx) {
   const output = transformSync(readFileSync(new URL('../apps/web/src/ClipLutControls.tsx', import.meta.url), 'utf8'), {loader: 'tsx', format: 'cjs'}).code;
   Function('require', 'module', 'exports', output)(name => {
     if (name === 'react') return react;
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
     if (name === './LookPackControls.tsx') return {default: 'LookPackControls', LookPackDetails: 'LookPackDetails'};
     if (name === './clip-draft-client.ts') return {createClipDraftClient: () => ({get: noop})};
-    if (name === './clip-lut-state.ts') return {createClipLutController: () => controller, clipLutSourceIssue};
+    if (name === './clip-lut-state.ts') return {createClipLutController: () => controller, clipLutSourceIssue, clipLutSourceMessage};
     if (name.startsWith('@mioon/ui/components/')) return {[name.split('/').at(-1).replace(/^./, value => value.toUpperCase())]: name};
     throw Error(`Unexpected ${name}`);
   }, module, module.exports);
