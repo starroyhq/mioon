@@ -1,0 +1,11 @@
+✔ supported 60-second selected clip at the end of a 600-second source completes its one real float pass within the fixed operation budget (46929.89622ms)
+ℹ Owned child ledger: [{"type":"started","pid":24,"kind":"ffprobe"},{"type":"exited","pid":24,"kind":"ffprobe"},{"type":"started","pid":25,"kind":"ffmpeg"},{"type":"exited","pid":25,"kind":"ffmpeg"}]
+ℹ Supported60s independent-clip observation: 43699ms; 23040000 streamed PCM bytes; 38400088 hashed source bytes.
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 50763.373335

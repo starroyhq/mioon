@@ -1,0 +1,12 @@
+{
+  "status": "failed_unsupported_experiment",
+  "baseline": "bdc7325",
+  "selectedSeconds": 600,
+  "deadlineMs": 120000,
+  "observedTestDurationMs": 122213.443123,
+  "errorCode": "TIMELINE_CLIP_LOUDNESS_TIMEOUT",
+  "httpStatus": 503,
+  "testSourceSha256": "ee65c6c760671e18808df93c94e20580fc998a7e69cb0a244104f383eb95fb88",
+  "logSha256": "bce32b5299a96ebeb98d54a33426c5e6b0e369bc998f607485d3cb5490e040d8",
+  "notes": "Original source and red log retained unchanged. Not a successful measurement, not a skipped acceptance gate. Later supported scope is separately limited to 60 selected seconds. No retry of the 600-second experiment."
+}

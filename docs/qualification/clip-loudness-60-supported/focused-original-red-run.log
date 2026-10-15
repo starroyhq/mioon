@@ -1,0 +1,286 @@
+✔ loudness defaults to 125 seconds; other defaults and explicit caller deadlines stay unchanged (44.083621ms)
+✔ client carries workspace and caller cancellation outside strict input without new request ID (3.695913ms)
+✔ strict invalid inputs and unknown operation reject before connection or dispatch (17.987423ms)
+✔ strict bounded responses bind hashes, profile, amplitude and gate semantics without retry (37.260322ms)
+✔ transport loss, malformed JSON and local cancellation do not create receipt uncertainty or retries (4.97648ms)
+✔ an explicit loudness deadline interrupts one request without automatic retry or mutation guidance (35.081574ms)
+✔ optional custom target stays explicit and arithmetic-only suggestions must exactly match it (27.661004ms)
+✔ 8 KiB result guard rejects oversized and executable values without invoking accessors (3.110229ms)
+✔ backend, decoder and malformed-report errors expose no token or executable stderr (3.548484ms)
+✔ input requires explicit selected file/profile, target is optional and never defaulted (22.286944ms)
+✔ complete response bound to artifact and explicit arithmetic target (9.965215ms)
+✔ response rejects expected hash (5.004014ms)
+✔ response rejects actual hash (1.903013ms)
+✔ response rejects snapshot hash (3.329628ms)
+✔ response rejects one hash (2.892247ms)
+✔ response rejects partial decode (2.904194ms)
+✔ response rejects frame duration (1.054564ms)
+✔ response rejects gate blocks (3.905169ms)
+✔ response rejects unqualified sentinel (2.118869ms)
+✔ response rejects missing gate (1.413149ms)
+✔ response rejects impossible mean (1.070243ms)
+✔ response rejects same members different mean (1.851265ms)
+✔ response rejects impossible nesting (0.341171ms)
+✔ response rejects peak logarithm (0.234584ms)
+✔ response rejects lower truepeak (0.204004ms)
+✔ response rejects not stereo (1.859616ms)
+✔ response rejects not48k (1.164975ms)
+✔ response rejects private path (1.25488ms)
+✔ response rejects NaN (0.974157ms)
+✔ response rejects Infinity (0.258628ms)
+✔ response rejects oversized (0.703718ms)
+✔ response rejects extra execution permission (1.215852ms)
+✔ response rejects arbitraryreason (1.969489ms)
+✔ response rejects undefined optional (0.128004ms)
+✔ response rejects bad range (2.22107ms)
+✔ advice cannot be fabricated, clamped, or turned into application authority (4.888464ms)
+✔ digital silence, too-short and below-gate are distinct and never produce gain advice (4.119123ms)
+✔ unmeasured unsupported/NO_AUDIO has no numeric result (4.337318ms)
+✔ unmeasured unsupported/UNSUPPORTED_FORMAT has no numeric result (0.341143ms)
+✔ unmeasured unsupported/INPUT_TOO_LARGE has no numeric result (0.246503ms)
+✔ unmeasured unsupported/DURATION_LIMIT has no numeric result (0.255356ms)
+✔ unmeasured incomplete/BUSY has no numeric result (1.924915ms)
+✔ unmeasured incomplete/TIMEOUT has no numeric result (0.545506ms)
+✔ unmeasured incomplete/RESOURCE_LIMIT has no numeric result (2.380506ms)
+✔ unmeasured incomplete/DECODER_UNAVAILABLE has no numeric result (1.86749ms)
+✔ unmeasured incomplete/INVALID_PCM has no numeric result (1.572528ms)
+✔ unmeasured incomplete/DECODE_FAILED has no numeric result (1.63827ms)
+✔ unmeasured incomplete/CANCELLED has no numeric result (1.328628ms)
+✔ unmeasured incomplete/SHUTDOWN has no numeric result (4.617113ms)
+✔ unmeasured stale/ARTIFACT_CHANGED has no numeric result (1.789776ms)
+✔ direct response rejects accessors, cycles, inherited objects without invoking user code (1.023112ms)
+✔ loudness reuses exact samplePeak probe/decode argument bytes without transforms or file output (114.010843ms)
+✔ strict probe distinguishes no audio from unsupported or malformed MP4 (8.801852ms)
+✔ no-audio and unsupported probes never start ffmpeg (3.190594ms)
+✔ measurement waits for natural EOF and includes the last decoded sample and FIR tail (31.22046ms)
+✔ valid partial PCM cannot become success after a decoder error, cancellation, truncation, or inconsistent receipt (56.937094ms)
+✔ input/deadline rejection precedes permit and child launch (4.140895ms)
+✔ probe subdeadline is capped within a decreasing one-operation deadline (16.768932ms)
+✔ after-permit fence and callback failures retain exact cause and termination uncertainty (1.890585ms)
+✔ real HTTP timeline.export.preflight disconnect aborts only observation, detaches listeners and leaves a new connection healthy (284.263123ms)
+✔ real HTTP timeline.export.capabilities disconnect aborts only observation, detaches listeners and leaves a new connection healthy (60.122261ms)
+✔ real HTTP render disconnect does not cancel or retry its business operation (38.044865ms)
+✔ actual CLI Ctrl+C revokes only its timeline.export.preflight observer and never resubmits (1500.429027ms)
+✔ actual CLI Ctrl+C revokes only its timeline.export.capabilities observer and never resubmits (1334.954451ms)
+✔ already disconnected timeline.export.preflight enters with revoked observer and cleans up on rejection (5.453871ms)
+✔ already disconnected timeline.export.capabilities enters with revoked observer and cleans up on rejection (0.481122ms)
+✔ finished response and later close cannot revoke settled timeline.export.preflight or retain listeners (1.051579ms)
+✔ finished response and later close cannot revoke settled timeline.export.capabilities or retain listeners (0.455656ms)
+✔ only six explicit advisory operations observe disconnect; private capability files do not become business cancellation (3.12826ms)
+✔ observer policy rejects every other file writer and future business/network/paid capability effects (32.38272ms)
+✔ presentation catalog is exhaustive in four locales, with unchanged operation identities (326.905791ms)
+✔ continuous plan discovery has four explicit locales without changing machine definitions (127.676148ms)
+✖ CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact (1117.946057ms)
+✔ MCP offline list/instructions translate while schemas, effects and call envelopes stay exact (7124.425025ms)
+✔ launch locale is stripped before RPC and never causes submission replay (3749.320671ms)
+✔ inspection arguments are strict and authority-free; RPC project scope is separate (11.891718ms)
+✖ every shared operation has a complete explicit frozen effect descriptor; unknown operations fail closed (3.075325ms)
+✔ offline CLI schema and official MCP list/schema expose identical inspection contracts and effects (6833.415315ms)
+✔ shared subject operations cannot enter either protocol built-in Agent catalog or parser (4.414801ms)
+✔ Comfy remote operations have truthful effects and remain outside built-in Agent tools (0.612054ms)
+✔ missing or corrupt owned timeline graph never initializes or reaches media (655.167383ms)
+▶ same-revision metadata, source bytes, ownership and revision drift discard the observation
+  ✔ metadata (1127.254736ms)
+  ✔ revision (834.592147ms)
+  ✔ bytes (1253.513542ms)
+  ✔ foreign (1048.041875ms)
+  ✔ lock (1119.94257ms)
+✔ same-revision metadata, source bytes, ownership and revision drift discard the observation (5386.438968ms)
+✔ native-db audio observation admission is shared and retains noncooperative reads through cancellation (485.23567ms)
+✔ late timeout results cannot decode or publish and a live permit remains held (607.071527ms)
+✔ unconfirmed exact child cleanup keeps shared admission sticky even after late close (1830.254652ms)
+✔ restored direct and composed boundaries refuse before any payload getters or media (1997.816714ms)
+✔ a second source hash failure discards the measured clip (1495.056402ms)
+▶ decoder stderr, private paths and unrecognized code strings never enter safe public failures
+  ✔ FFMPEG_ERROR (660.058031ms)
+  ✔ TIMELINE_CLIP_LOUDNESS_/private/source.wav (933.592221ms)
+✔ decoder stderr, private paths and unrecognized code strings never enter safe public failures (1595.28781ms)
+✔ one selected saved signal is double-hashed, bound and measured without any durable effects (1140.094972ms)
+✔ wrong selection, source hash, timeline identity and extra authority refuse before media (503.096127ms)
+✔ muted and zero gain selections are explicit rejections, never source-only substitutes (649.577801ms)
+✔ unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement (2107.154095ms)
+▶ selected exact sample count rejects one missing or extra sample frame
+  ✔ -1 (1011.860781ms)
+  ✔ 1 (1036.419759ms)
+✔ selected exact sample count rejects one missing or extra sample frame (2051.410936ms)
+✔ source resource admission refuses over 512 MiB before file access (403.985262ms)
+✔ complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed (416.090701ms)
+✔ selected clip default is125s; explicit timeouts and unrelated30s defaults stay intact (31.59052ms)
+✔ typed helper and shared RPC preserve explicit selection and transport-only workspace/cancellation (6.784192ms)
+✔ strict selection and fixed profile reject targets, candidates and authority before dispatch (6.033664ms)
+✔ reports bind exact selected identity, scope, samples and counters without retry (42.51974ms)
+✔ 8KiB reader rejects declared, streamed and error-body overflow before unbounded JSON decoding (7.751051ms)
+✔ bounded reader handles split UTF8, exact envelope limit and rejects invalid bytes/JSON or absent streams (4.401995ms)
+✔ pending streamed response cancels on caller abort or deadline; owned body is retired without retry (24.874785ms)
+✔ transport loss and safe backend errors carry no mutation receipt/retry authority or credentials (5.031436ms)
+✔ strict catalog operation is observation only with no persisted request or scope-changing options (20.043329ms)
+✔ measurement schema preserves fixed algorithm states and exact clip output bounds (18.249918ms)
+✔ response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings (2.993201ms)
+✔ four locale operation discovery text is present and never silently grants application (1.616407ms)
+✔ independent descriptor has one segment and preserves source trim, gain and clip-local fades under rebase (35.569903ms)
+✔ timeline placement cannot add leading silence, extra segments, or change selected PCM mapping (28.474557ms)
+✔ muted, zero gain and image selections reject without a source probe (4.248814ms)
+✔ hidden video embedded sound is measured; actual audio mismatch and genuine no-audio are not silence (7.267128ms)
+✔ unknown and multichannel layouts refuse before PCM; supported mono/44.1k retains fixed output (8.767258ms)
+✔ exact sample count, finite PCM and callback cancellation remain enforced (14.125206ms)
+✔ 60 second clip planner stays one pass; longer selections refuse before allocating PCM (0.384204ms)
+✔ adapter preserves the existing synchronous borrowed-chunk callback contract (5.201352ms)
+▶ saved false audio metadata is verified against real video bytes and genuine no-audio is explicitly refused
+  ✔ false metadata with real AAC refuses (2277.747003ms)
+  ✔ verified silent video refuses without fake measurement (2061.534978ms)
+✔ saved false audio metadata is verified against real video bytes and genuine no-audio is explicitly refused (4346.877581ms)
+✔ real selected post-gain/fade clip matches independently assembled PCM reference, not unrelated overlap or leading silence (6915.154034ms)
+▶ real digital silence, short material and low gated signal retain existing meter states
+  ✔ silence (2935.758887ms)
+  ✔ short (2229.932811ms)
+  ✔ quiet (1766.421975ms)
+✔ real digital silence, short material and low gated signal retain existing meter states (6938.362254ms)
+▶ real owned decoder cancellation and native-owner drain retire exact children without changing saved state
+  ✔ observer (1497.367863ms)
+  ✔ owner (1426.674509ms)
+✔ real owned decoder cancellation and native-owner drain retire exact children without changing saved state (2927.624122ms)
+✔ supported 60-second selected clip at the end of a 600-second source completes its one real float pass within the fixed operation budget (47437.342293ms)
+ℹ Owned child ledger: [{"type":"started","pid":349,"kind":"ffprobe"},{"type":"exited","pid":349,"kind":"ffprobe"},{"type":"started","pid":350,"kind":"ffmpeg"},{"type":"exited","pid":350,"kind":"ffmpeg"}]
+ℹ Supported60s independent-clip observation: 44682ms; 23040000 streamed PCM bytes; 38400088 hashed source bytes.
+✔ actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline (4185.047401ms)
+✔ actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry (8153.849197ms)
+✔ actual HTTP cancellation disconnects only loudness observation and leaves server healthy (49.272091ms)
+✔ actual CLI cancellation disconnects only loudness observation and leaves server healthy (1901.669351ms)
+✔ actual MCP cancellation disconnects only loudness observation and leaves server healthy (2140.302299ms)
+✔ HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags (13085.314684ms)
+✔ full-mix default is125s; explicit timeouts and unrelated30s defaults stay intact (36.731935ms)
+✔ typed helper and shared RPC preserve explicit target and transport-only workspace/cancellation (8.371158ms)
+✔ missing explicit profiles/target and authority/path/URL fields reject before any dispatch (26.485021ms)
+✔ reports bind request/revision/profiles/target and actual candidate/gain/work evidence without retry (67.191283ms)
+✔ 64KiB reader rejects declared, streamed and error-body overflow before unbounded JSON decoding (7.498235ms)
+✔ bounded reader handles split UTF8, exact envelope limit and rejects invalid bytes/JSON or absent streams (7.449699ms)
+✔ pending streamed response cancels on caller abort or deadline; owned body is retired without retry (26.476826ms)
+✔ transport loss and safe backend errors carry no mutation receipt/retry authority or credentials (3.479853ms)
+✔ full mix requires explicit target, profiles and current revision; no path or edit request (17.919898ms)
+✔ complete actual candidate report remains readonly even when both targets pass (6.534601ms)
+✔ full mix rejects apply permission (0.583215ms)
+✔ full mix rejects candidate permission (1.121364ms)
+✔ full mix rejects AAC tolerance (1.827888ms)
+✔ full mix rejects candidate sample loss (0.964909ms)
+✔ full mix rejects range (1.531325ms)
+✔ full mix rejects revision (1.241212ms)
+✔ full mix rejects hash (1.662463ms)
+✔ full mix rejects singlehash (1.155077ms)
+✔ full mix rejects pcm (0.865945ms)
+✔ full mix rejects passes (1.039718ms)
+✔ full mix rejects partial (0.643816ms)
+✔ full mix rejects worklimit (1.581173ms)
+✔ full mix rejects duplicate sources (0.518954ms)
+✔ full mix rejects duplicate gains (0.632601ms)
+✔ full mix rejects wrong source (0.421881ms)
+✔ full mix rejects clamp (1.436097ms)
+✔ full mix rejects gain max (1.083438ms)
+✔ full mix rejects multiplier (0.434064ms)
+✔ full mix rejects arithmetic (0.566953ms)
+✔ full mix rejects target flag (1.923684ms)
+✔ full mix rejects TP flag (0.741584ms)
+✔ full mix rejects reserve (0.805767ms)
+✔ full mix rejects private path (0.560078ms)
+✔ full mix rejects NaN (0.263347ms)
+✔ silent original has explicit absent candidate and only one complete PCM pass (5.761778ms)
+✔ gain constraint unavailability is explicit, never a clamped measured result (3.713403ms)
+✔ guard rejects accessors, sparse arrays, cycles and toJSON without invoking them (1.10342ms)
+✔ shared filter literals retain legacy omitted fades, stream fallback, gain and selected output trim exactly (3.2577ms)
+✖ renderer has no argv or non-audio behavior changes relative to frozen b9e7d1e source (23.362829ms)
+✔ typed fade extraction preserves the old helper body byte-for-byte and its public import path (8.384147ms)
+✔ global image/muted/zero-gain edges retain every original reseek and include silent gaps (16.30892ms)
+✔ actual selected index, gain/fades, bounded seek and restrictions use one probe per unique source (6.592541ms)
+✔ borrowed arbitrary chunks stream sequentially into a caller-owned continuous sink without a whole PCM allocation (233.084928ms)
+✔ resource planner charges per-input original segments and one-frame overread before any media effect (3.236707ms)
+✔ invalid input, effects, paths, source bounds and unsupported actual streams never silently become silence (2.046608ms)
+✔ natural EOF must have the exact finite stereo count for every segment (6.989675ms)
+✔ fences, cancellation, synchronous sink and termination doubt retain the exact original failure (7.034456ms)
+✔ stored false video with real audio is rejected before any mixed PCM or candidate can be published (0.549618ms)
+✔ stored true video with no actual audio rejects the same exact presence mismatch (0.868732ms)
+✔ legitimate stored false video is probed once without audio work, including a hidden video (3.909478ms)
+ℹ tests 192
+ℹ suites 0
+ℹ pass 189
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 157800.262407
+
+✖ failing tests:
+
+test at tests/i18n-command-presentation.test.mjs:61:1
+✖ CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact (1117.946057ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  ... Skipped lines
+  
+    {
+      data: {
+        connection: [
+          'MIOON_CONNECTION_FILE: Electron descriptor, reread for every request',
+          'MIOON_BASE_URL + MIOON_TOKEN_FILE: local Web backend and private token file',
+  ...
+          'asset.disposition.set',
+  +       'asset.annotation.list',
+  +       'asset.annotation.set',
+          'asset.waveform.request',
+          'asset.waveform.get',
+          'timeline.export.preflight',
+          'timeline.export.samplePeak',
+          'timeline.export.loudness',
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/tests/i18n-command-presentation.test.mjs:70:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { ok: true, data: { name: 'mioon', version: '0.4.1', usage: [Array], options: [Object], connection: [Array], exitCodes: [Object], operations: [Array], safety: 'No automatic submit/retry, no invented request IDs, no remote cancellation on Ctrl+C or timeout. Replay exact idempotent requests after an uncertain response.' } },
+    expected: { ok: true, data: { name: 'mioon', version: '0.4.1', usage: [Array], options: [Object], connection: [Array], exitCodes: [Object], operations: [Array], safety: 'No automatic submit/retry, no invented request IDs, no remote cancellation on Ctrl+C or timeout. Replay exact idempotent requests after an uncertain response.' } },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/inspection-contracts.test.mjs:63:1
+✖ every shared operation has a complete explicit frozen effect descriptor; unknown operations fail closed (3.075325ms)
+  AssertionError [ERR_ASSERTION]: timeline.colour.source.inspect
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/tests/inspection-contracts.test.mjs:78:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/timeline-mix-loudness-decoder.test.mjs:39:1
+✖ renderer has no argv or non-audio behavior changes relative to frozen b9e7d1e source (23.362829ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'b88331d4d982d89e1acf1612c4756af5930b3b9d8f35b88db9058355aeb3908b'
+  - 'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/tests/timeline-mix-loudness-decoder.test.mjs:47:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'b88331d4d982d89e1acf1612c4756af5930b3b9d8f35b88db9058355aeb3908b',
+    expected: 'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

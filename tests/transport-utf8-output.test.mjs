@@ -155,6 +155,9 @@ const textSites = {
   'tests/export-loudness-transports.test.mjs': 3,
   // CLI JSON stdout/stderr + SDK stderr continuously decode; SDK stdout remains protocol-owned.
   'tests/timeline-mix-loudness-transports.test.mjs': 3,
+  'tests/timeline-clip-loudness-transports.test.mjs': 3,
+  // One shared stdout/stderr loop site plus the official MCP stderr site.
+  'tests/asset-annotation-transports.test.mjs': 2,
   // Actual CLI stdout/stderr and official MCP stderr are bounded UTF-8 text.
   'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.

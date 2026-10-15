@@ -8,7 +8,8 @@
     "./connection": "./src/connection.mjs",
     "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts",
     "./download": "./src/download.mjs",
-    "./timeline-loudness-apply": "./src/timeline-loudness-apply.ts"
+    "./timeline-loudness-apply": "./src/timeline-loudness-apply.ts",
+    "./timeline-clip-loudness": "./src/timeline-clip-loudness.ts"
   },
   "dependencies": {
     "@mioon/contracts": "workspace:*",

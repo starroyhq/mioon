@@ -33,6 +33,8 @@ import {createExportSamplePeakServices} from './export-sample-peak.ts';
 import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
 import {createExportLoudnessServices} from './export-loudness.ts';
 import {createExportLoudnessDecoder} from './export-loudness-decoder.ts';
+import {createTimelineClipLoudnessServices} from './timeline-clip-loudness.ts';
+import {createTimelineClipLoudnessDecoder} from './timeline-clip-loudness-decoder.ts';
 import {createTimelineMixLoudnessServices} from './timeline-mix-loudness.ts';
 import {createTimelineMixLoudnessDecoder} from './timeline-mix-loudness-decoder.ts';
 import {ownsStoreLock} from './db.mjs';
@@ -161,6 +163,19 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   decode:createExportLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
+ const clipLoudness=restored?{...inactive(),handlers:{'timeline.clip.loudness':disabled}}:createTimelineClipLoudnessServices(store,{signal:ownerSignal,runtime:{
+  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  readSavedTimeline:projectId=>{
+   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
+   try{const {timeline}=readTimelinePreflightSnapshot(store,projectId);if(!timeline)return null;
+    const assets=readTimelineSourceGraph(db,projectId,timeline);validateTimeline(timeline,assets,{structureOnly:true});
+    return {timeline,assets:[...assets.values()]};
+   }finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
+  },
+  validateSource:validateManagedSource,hash:verifiedManagedHash,
+  decode:createTimelineClipLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
+  terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
+ }});
  const mixLoudness=restored?{...inactive(),handlers:{'timeline.loudness.prepare':disabled}}:createTimelineMixLoudnessServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:projectId=>{
@@ -250,6 +265,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...samplePeak.handlers,
  ...loudness.handlers,
  ...mixLoudness.handlers,
+ ...clipLoudness.handlers,
  ...loudnessApply.handlers,
  ...audioPreview.handlers,
  ...colourSource.handlers,
@@ -361,7 +377,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   checkpoint(signal);
   const operation=(async()=>{
    if(restored){
-    if(op==='asset.annotation.set'||op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.audioPreview.continuousPlan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
+    if(op==='asset.annotation.set'||op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.clip.loudness'||op==='timeline.audioPreview.plan'||op==='timeline.audioPreview.continuousPlan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
@@ -394,7 +410,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   restoredLifetime?.abort();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
+  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
   const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;

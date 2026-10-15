@@ -54,8 +54,10 @@ import {exportLoudnessSchemas} from './export-loudness.ts';
 export * from './export-loudness.ts';
 import {timelineLoudnessApplySchemas} from './timeline-loudness-apply.ts';
 export * from './timeline-loudness-apply.ts';
+import {timelineClipLoudnessSchemas} from './timeline-clip-loudness.ts';
 import {timelineMixLoudnessSchemas} from './timeline-mix-loudness.ts';
 export * from './timeline-mix-loudness.ts';
+export * from './timeline-clip-loudness.ts';
 import {assertOperationEffectCoverage} from './operation-effects.mjs';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.mjs';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.mjs';
@@ -114,6 +116,7 @@ export const schemas={
 ...exportSamplePeakSchemas,
 ...exportLoudnessSchemas,
 ...timelineMixLoudnessSchemas,
+...timelineClipLoudnessSchemas,
 ...timelineLoudnessApplySchemas,
 ...audioPreviewSchemas,
 ...continuousAudioSchemas,
@@ -205,6 +208,7 @@ Object.assign(descriptions,{
  'timeline.export.samplePeak':'已导出文件解码样本峰值：显式完整解码一个已成功导出的托管文件，返回绑定实际核验文件哈希的临时测量；单次有界本地计算，不排队、不保存、不重试、不修改项目或导出、不调用供应商；结果不保证其他播放或制作阶段的表现',
  'timeline.export.loudness':'已导出文件响度与真峰值估计：按显式文件哈希和固定测量配置完整解码一个已成功导出的托管 MP4，返回临时结果；仅显式自定义目标产生算术建议，不验证当前时间线、不授权应用增益；有界本地只读计算，不排队、不保存、不重试、不调用模型或供应商、不修改或阻止导出',
  'timeline.loudness.apply':'显式应用整片响度候选：按固定请求身份、版本、来源快照和候选摘要重新完整测量，仅在两个目标通过后原子修改可听片段增益并保存一次撤销历史及原始回执；旧请求先重放，不重新测量，不接受客户端增益，不自动限幅或切换导出模式，不调用模型或供应商。恢复副本仅可读取被保留历史回执，不允许新应用',
+ 'timeline.clip.loudness':'显式测量一个最多60秒（1800帧）的完整已保存选中片段，超过时拒绝且不自动截短；测量片段在源裁切、增益和淡入淡出后的独立声音；不混入其他轨道。绑定精确版本、片段及源哈希，固定配置、有界本地只读解码。无目标、候选、应用、持久报告、媒体写入、队列、自动重试或供应商调用',
  'timeline.loudness.prepare':'显式按已保存时间线版本、固定混音和测量配置及用户自选 LUFS/dBTP 目标，完整测量编码前浮点混音与实际固定增益候选；结果临时且 applyAllowed 始终为 false。有界高资源本地只读计算，不写文件或数据库、不排队、不默认目标、不编辑、不导出、不重试、不调用模型或供应商',
  'asset.waveform.request':'显式请求本地源音频波形缓存；重复请求复用排队、运行或就绪结果，失败或中断须显式retry；运行有界本地解码并写入可淘汰缓存，不调用生成供应商、不编辑素材或时间线',
  'asset.waveform.get':'只读查询指定项目素材的源音频波形；30fps源范围使用排他出点，最多返回2048个归一化峰值；不启动解码、不探测媒体、不修复或写入缓存；不表示时间线混音结果',
