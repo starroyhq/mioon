@@ -1,3 +1,4 @@
+import * as i18n from '../helpers/i18n.ts';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as rangeContract from '@mioon/contracts/timeline-export-range';
@@ -16,6 +17,8 @@ export function component(file) {
     const module = { exports: {} }; cache.set(name, module.exports);
     const source = readFileSync(new URL(`../../apps/web/src/${name}`, import.meta.url), 'utf8');
     Function('module', 'exports', 'require', transformSync(source, { loader: name.endsWith('.tsx') ? 'tsx' : name.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code)(module, module.exports, key => {
+      if (key === './i18n/I18nProvider.tsx') return i18n.i18nTestModule();
+      if (key.endsWith('/packages/i18n/src/index.ts')) return i18n;
       if (key === 'react') return react;
       if (key === '@mioon/contracts/timeline-export-range') return rangeContract;
       if (key === '@mioon/contracts/timeline-export-float') return floatContract;

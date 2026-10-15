@@ -1,25 +1,30 @@
+import { translate } from '../../../packages/i18n/src/index.ts';
+import { useI18n } from './i18n/I18nProvider.tsx';
+import { creationParameter } from './creation-i18n.ts';
 import React from 'react';
 
 /** The exact server-frozen workflow is visible before private UI approval. */
 export function ComfyImageReviewDetails({ review }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const execution = review.execution;
   return <div className="image-generation-comfy-details" data-testid="image-comfy-review-details">
-    <div className="image-generation-review-details"><span>{review.configuration.profileId} · ComfyUI v0.39.0</span><span>种子 {execution.seed} · 20 steps · CFG 8 · euler / normal · denoise 1</span><span>负向描述为空 · 固定 7 个内置节点</span><span className="image-generation-id">远端任务 {execution.promptId}</span><span className="image-generation-id">工作流 SHA-256 {execution.graphHash}</span></div>
-    <details><summary>完整冻结工作流（审批后按此发送）</summary><pre className="image-generation-frozen-graph" data-testid="image-comfy-review-graph">{JSON.stringify(execution.graph, null, 2)}</pre></details>
-    <p className="image-generation-charge">批准后向所列本机地址提交最多 1 次，可能占用 GPU、内存与磁盘。停止观察或关闭应用不会取消远端工作，GPU 工作可能继续。该地址与模型名称不保证免费、可信或完全离线。保留原始描述，不会自动重试。</p>
+    <div className="image-generation-review-details"><span>{review.configuration.profileId} · ComfyUI v0.39.0</span><span>{t('image.comfy.details.executionParameters', { seed: creationParameter(execution.seed) })}</span><span>{t('image.comfy.details.fixedNodes')}</span><span className="image-generation-id">{t('image.comfy.details.remoteTaskIdentity', { promptId: creationParameter(execution.promptId) })}</span><span className="image-generation-id">{t('image.comfy.details.workflowHash', { graphHash: creationParameter(execution.graphHash) })}</span></div>
+    <details><summary>{t('image.comfy.details.frozenWorkflow')}</summary><pre className="image-generation-frozen-graph" data-testid="image-comfy-review-graph">{JSON.stringify(execution.graph, null, 2)}</pre></details>
+    <p className="image-generation-charge">{t('image.comfy.details.approvalDisclosure')}</p>
   </div>;
 }
 
 export function ComfyImageTaskDetails({ task, review, remoteState }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   return <div className="image-generation-comfy-details" data-testid="image-comfy-task-details">
-    <div className="image-generation-review-details"><span>{task.model}</span>{review ? <><span>{review.destination}</span><span>原审批配置 r{review.settingsRevision} · {review.configuration.profileId}</span><span className="image-generation-id">远端任务 {review.execution.promptId}</span><span className="image-generation-id">冻结工作流 SHA-256 {review.execution.graphHash}</span></> : <span>此页未载入任务关联的原始审批，当前连接设置不代表此任务。</span>}</div>
-    <p>远端身份状态：{remoteStatusLabel(remoteState?.remote)}</p>
-    <p data-testid="image-comfy-graph-status">完整工作流：{remoteState?.remote?.contentVerified === true ? '已核验与冻结工作流一致' : '尚未核验；仅任务 ID 或排队状态不能证明内容一致'}</p>
-    {remoteState?.observation && <p data-testid="image-comfy-observation-status">{{ queued: '本次查询等待执行', running: '正在查询并取回', finished: '本次查询已结束；以核验结果为准', interrupted: '本次查询已中断；需要再次明确查询，不会重提生成' }[remoteState.observation.state]}{remoteState.observation.errorCode ? '。未能取回可核验结果，请查看身份与内容状态。' : ''}</p>}
-    <p>“查询并取回”只查询此任务并核验后取回结果，不重提生成。关闭面板或停止读取不会停止 ComfyUI 的 GPU 工作。</p>
+    <div className="image-generation-review-details"><span>{task.model}</span>{review ? <><span>{review.destination}</span><span>{t('image.comfy.details.originalConfiguration', { settingsRevision: creationParameter(review.settingsRevision), profileId: creationParameter(review.configuration.profileId) })}</span><span className="image-generation-id">{t('image.comfy.details.remoteTaskIdentity', { promptId: creationParameter(review.execution.promptId) })}</span><span className="image-generation-id">{t('image.comfy.details.frozenWorkflowHash', { graphHash: creationParameter(review.execution.graphHash) })}</span></> : <span>{t('image.comfy.details.originalReviewNotLoaded')}</span>}</div>
+    <p>{t('image.comfy.details.remoteIdentityStatus', { value: creationParameter(remoteStatusLabel(remoteState?.remote, t)) })}</p>
+    <p data-testid="image-comfy-graph-status">{t('image.comfy.details.completeWorkflowStatus', { value: creationParameter(remoteState?.remote?.contentVerified === true ? t('image.comfy.details.workflowVerified') : t('image.comfy.details.workflowUnverified')) })}</p>
+    {remoteState?.observation && <p data-testid="image-comfy-observation-status">{{ queued: t('image.comfy.details.observationQueued'), running: t('image.comfy.details.observing'), finished: t('image.comfy.details.observationComplete'), interrupted: t('image.comfy.details.observationInterrupted') }[remoteState.observation.state]}{remoteState.observation.errorCode ? t('image.comfy.details.noVerifiableResult') : ''}</p>}
+    <p>{t('image.comfy.details.observationScope')}</p>
   </div>;
 }
 
-export function remoteStatusLabel(remote) {
-  return ({ prepared: '已保存身份，尚未发送', submitted: '已记录发送边界；是否送达待确认', submission_unknown: '发送结果未知', queued: '已找到相同任务 ID · 等待执行', running: '已找到相同任务 ID · 正在执行', completed: '已找到已完成任务', failed: '已找到失败任务', unavailable: '未取得可核验证据；不证明未执行' }[remote?.state] || '尚未核验');
+export function remoteStatusLabel(remote, t = (key, params) => translate('zh-Hans', key, params)) {
+  return ({ prepared: t('image.comfy.details.identitySaved'), submitted: t('image.comfy.details.dispatchBoundary'), submission_unknown: t('image.comfy.details.dispatchUnknown'), queued: t('image.comfy.details.sameTaskQueued'), running: t('image.comfy.details.sameTaskRunning'), completed: t('image.comfy.details.completedTaskFound'), failed: t('image.comfy.details.failedTaskFound'), unavailable: t('image.comfy.details.noEvidence') }[remote?.state] || t('image.comfy.details.unverified'));
 }

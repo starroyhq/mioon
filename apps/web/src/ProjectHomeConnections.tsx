@@ -1,11 +1,12 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
 
 export type HomeConnectionSlot = 'agent' | 'official' | 'custom' | 'comfy';
-const slots: readonly { id: HomeConnectionSlot; label: string }[] = [
-  { id: 'agent', label: 'Agent' }, { id: 'official', label: 'OpenAI 图像' },
-  { id: 'custom', label: '兼容图像服务' }, { id: 'comfy', label: '本机 ComfyUI' },
+const slots: readonly { id: HomeConnectionSlot; label: 'shell.agentLabel' | 'shell.openaiImage' | 'shell.compatibleImage' | 'shell.localComfy' }[] = [
+  { id: 'agent', label: 'shell.agentLabel' }, { id: 'official', label: 'shell.openaiImage' },
+  { id: 'custom', label: 'shell.compatibleImage' }, { id: 'comfy', label: 'shell.localComfy' },
 ];
 
 export default function ProjectHomeConnections({ selected, onSelect, panes }: {
@@ -13,12 +14,13 @@ export default function ProjectHomeConnections({ selected, onSelect, panes }: {
   onSelect: (slot: HomeConnectionSlot) => void;
   panes: Readonly<Record<HomeConnectionSlot, ReactNode>>;
 }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const opened = useRef(new Set<HomeConnectionSlot>());
   opened.current.add(selected);
-  return <section className="project-home-connections" aria-label="全局连接设置">
-    <p>设置属于当前工作区，不需要先打开项目。查看设置不会发起生成；未保存的连接输入在离开前需要确认。</p>
+  return <section className="project-home-connections" aria-label={t('shell.globalConnections')}>
+    <p>{t('shell.connectionScope')}</p>
     <Tabs value={selected} onValueChange={value => { if (slots.some(slot => slot.id === value)) onSelect(value as HomeConnectionSlot); }}>
-      <TabsList aria-label="连接类型">{slots.map(slot => <TabsTrigger key={slot.id} value={slot.id}>{slot.label}</TabsTrigger>)}</TabsList>
+      <TabsList aria-label={t('shell.connectionType')}>{slots.map(slot => <TabsTrigger key={slot.id} value={slot.id}>{t(slot.label)}</TabsTrigger>)}</TabsList>
     </Tabs>
     {slots.filter(slot => opened.current.has(slot.id)).map(slot => <React.Fragment key={slot.id}>{panes[slot.id]}</React.Fragment>)}
   </section>;

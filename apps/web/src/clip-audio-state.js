@@ -1,3 +1,4 @@
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 const fadeKeys = ['fadeInFrames', 'fadeOutFrames'];
 const owns = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 
@@ -20,12 +21,14 @@ function frameValue(value) {
   return Number(value);
 }
 
-export function clipAudioIssue(draft, asset) {
+export function clipAudioMessage(draft, asset) {
   const fades = fadeKeys.map(key => owns(draft, key) ? frameValue(draft[key]) : 0);
-  if (fades.some(value => !Number.isSafeInteger(value) || value < 0)) return '淡入与淡出帧数必须为大于或等于 0 的整数。';
+  if (fades.some(value => !Number.isSafeInteger(value) || value < 0)) return message('audio.clip.integerFrames');
   const duration = frameValue(draft.durationFrames);
-  if (!Number.isSafeInteger(duration) || duration < 1 || duration > 18000) return '请先将片段持续帧数设为 1–18000 的整数。';
-  if (fades.some(value => value > duration) || fades[0] + fades[1] > duration) return `淡入与淡出合计不能超过片段时长（${duration} 帧）。缩短片段后，请同时检查并调整两项。`;
-  if (fades.some(value => value > 0) && !supportsClipAudioFades(asset)) return '只有已确认含音轨的视频或音频素材可以设置非零音频淡入/淡出。';
-  return '';
+  if (!Number.isSafeInteger(duration) || duration < 1 || duration > 18000) return message('audio.clip.durationFirst');
+  if (fades.some(value => value > duration) || fades[0] + fades[1] > duration) return message('audio.clip.totalTooLong', { duration });
+  if (fades.some(value => value > 0) && !supportsClipAudioFades(asset)) return message('audio.clip.requiresAudio');
+  return null;
 }
+
+export function clipAudioIssue(draft, asset) { return renderMessage('zh-Hans', clipAudioMessage(draft, asset)); }

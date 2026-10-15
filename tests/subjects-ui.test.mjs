@@ -1,3 +1,5 @@
+import { i18nTestModule, renderMessage } from './helpers/i18n.ts';
+import { subjectsMessages } from '../packages/i18n/src/catalogs/subjects.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -69,7 +71,7 @@ test('unknown and wrong acknowledgements retain original drafts and pending lane
     const f = await fixture({ hasPending: () => pending, save: async () => { calls++; pending = true; return answer; } });
     f.controller.updateCreate({ name: 'Hero', assetId }); await f.controller.create(); await f.controller.read();
     assert.equal(f.controller.getState().createDraft.name, 'Hero'); assert.equal(f.controller.getState().uncertain, true);
-    await f.controller.create(); assert.equal(calls, 1); assert.match(f.controller.getState().mutationError, /确认/);
+    await f.controller.create(); assert.equal(calls, 1); assert.match(renderMessage('zh-Hans', f.controller.getState().mutationError), /确认/);
   }
 });
 
@@ -209,7 +211,7 @@ test('eight active bindings prevent adding a ninth but allow editing existing an
 
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function harness(filename) {
-  const slots = []; let cursor = 0, effects = []; const h = { visible: true };
+  const slots = []; let cursor = 0, effects = []; const h = { visible: true, locale: 'zh-Hans' };
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useRef: value => { const index = cursor++; return slots[index] ||= { current: value }; },
     useState: value => { const index = cursor++; if (!slots[index]) slots[index] = { value }; return [slots[index].value, next => { slots[index].value = typeof next === 'function' ? next(slots[index].value) : next; }]; },
@@ -221,7 +223,7 @@ function harness(filename) {
   function load(file) {
     if (modules[file]) return modules[file];
     const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), code = transformSync(source, { loader: file.endsWith('jsx') ? 'jsx' : 'js', format: 'cjs' }).code, module = { exports: {} };
-    Function('require', 'module', 'exports', code)(name => name === 'react' ? { ...react, default: react } : name.endsWith('subject-state.js') ? subjectState : name.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.js') ? load('use-subjects.js') : name.endsWith('api.js') ? { assetUrl: asset => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+    Function('require', 'module', 'exports', code)(name => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.js') ? subjectState : name.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.js') ? load('use-subjects.js') : name.endsWith('api.js') ? { assetUrl: asset => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
     return modules[file] = module.exports;
   }
   const component = load(filename);
@@ -269,14 +271,101 @@ test('library composition retains both panes and never changes source/range sele
   assert.doesNotMatch(library, /setQuickAssetId|setSelectedClipId|sourceRangeScope/);
   const componentSources = ['SubjectLibrary.jsx', 'ShotSubjectBindings.jsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
   for (const component of componentSources) {
-    assert.match(component, /策划关联不会自动用于生成；生成输入需另行选择版本/);
+    assert.match(component, /subjects.library.planningNote/);
+    assert.equal(subjectsMessages['subjects.library.planningNote']['zh-Hans'], '策划关联不会自动用于生成；生成输入需另行选择版本');
     assert.doesNotMatch(component, /尚不作为生成输入/);
   }
-  assert.match(componentSources[0], /策划关联此主体的镜头/);
-  assert.match(componentSources[0], /策划关联的镜头需要逐个确认新版本/);
-  assert.match(componentSources[0], /已读取的策划关联中没有镜头/);
+  assert.match(componentSources[0], /subjects.binding.heading/);
+  assert.equal(subjectsMessages['subjects.binding.heading']['zh-Hans'], '策划关联此主体的镜头');
+  assert.match(componentSources[0], /subjects.version.retained/);
+  assert.match(subjectsMessages['subjects.version.retained']['zh-Hans'], /策划关联的镜头需要逐个确认新版本/);
+  assert.match(componentSources[0], /subjects.binding.noneLoaded/);
+  assert.match(subjectsMessages['subjects.binding.noneLoaded']['zh-Hans'], /已读取的策划关联中没有镜头/);
   assert.doesNotMatch(componentSources[0], /使用此主体的镜头|使用中的镜头/);
   const components = componentSources.join('\n');
   assert.doesNotMatch(components, /generation\.submit|asset\.import|<video|<Dialog|referenceAssetIds\s*=/);
   assert.doesNotMatch(components, /更早版本/); assert.match(library, /const libraryScope = project\?\.id/);
+});
+
+test('subject library live relabeling preserves one controller, filters, selected subject and every draft', async () => {
+  const f = await fixture();
+  f.controller.selectSubject(subjectId); await flush();
+  f.controller.updateCreate({ name: 'User text 简繁 English 日本語', assetId });
+  f.controller.updateVersion(subjectId, id(4, 2));
+  const state = f.controller.getState(), create = state.createDraft, versionDraft = state.versionDrafts[subjectId];
+  const props = { subjects: { state, controller: f.controller }, assets: [image(), image(2)] };
+  const h = harness('SubjectLibrary.jsx');
+  let tree = h.render(props);
+  tree.find(node => node.props?.['aria-label'] === subjectsMessages['subjects.library.search']['zh-Hans']).props.onChange({ target: { value: 'Hero' } });
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    h.locale = locale; tree = h.render(props);
+    const section = byId(tree, 'subject-library');
+    assert.equal(section.props['aria-label'], subjectsMessages['subjects.library.label'][locale]);
+    const search = tree.find(node => node.props?.['aria-label'] === subjectsMessages['subjects.library.search'][locale]);
+    assert.equal(search.props.value, 'Hero');
+    assert.equal(byId(tree, 'subject-name').props.value, 'User text 简繁 English 日本語');
+    assert.equal(f.controller.getState(), state);
+    assert.equal(state.createDraft, create); assert.equal(state.versionDrafts[subjectId], versionDraft);
+    assert.equal(state.selectedSubjectId, subjectId); assert.equal(f.writes.length, 0);
+  }
+});
+
+test('read failures store a safe descriptor separately from original diagnostics and relabel without another read', async () => {
+  let calls = 0;
+  const raw = 'PRIVATE_PROVIDER_DETAIL /original/path 不可自动翻译';
+  const f = await fixture({ read: async () => { calls++; throw Error(raw); } });
+  const state = f.controller.getState(), notice = state.list.error;
+  assert.equal(notice.key, 'subjects.read.failed'); assert.equal(Object.isFrozen(notice), true);
+  assert.equal(state.list.diagnostic, raw); assert.equal(calls, 1);
+  const h = harness('SubjectLibrary.jsx');
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    h.locale = locale;
+    const tree = h.render({ subjects: { state, controller: f.controller } });
+    const alerts = tree.filter(node => node.props?.role === 'alert');
+    assert.ok(JSON.stringify(alerts).includes(subjectsMessages['subjects.read.failed'][locale]));
+    assert.equal(JSON.stringify(alerts).includes(raw), false);
+    assert.equal(state.list.error, notice); assert.equal(calls, 1);
+  }
+});
+
+test('pending mutation notice relabels while retaining exact request identity and unsaved draft', async () => {
+  let pending = false; const requests = [];
+  const f = await fixture({ hasPending: () => pending, save: async (operation, input) => { requests.push({ operation, input }); pending = true; return null; } });
+  f.controller.updateCreate({ name: 'Unchanged draft', assetId }); await f.controller.create();
+  const state = f.controller.getState(), draft = state.createDraft, notice = state.mutationError;
+  const h = harness('SubjectLibrary.jsx');
+  assert.equal(notice.key, 'subjects.mutation.unconfirmed');
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    h.locale = locale;
+    const tree = h.render({ state }, 'SubjectNotice');
+    assert.ok(JSON.stringify(tree).includes(subjectsMessages['subjects.mutation.unconfirmed'][locale]));
+    assert.equal(state.createDraft, draft); assert.equal(state.mutationError, notice);
+    assert.equal(state.uncertain, true); assert.equal(requests.length, 1);
+    assert.equal(requests[0].input.requestId, 'subject-request-1');
+  }
+});
+
+test('shot binding review and selected historical draft relabel without changing bound version targets', async () => {
+  const f = await fixture(); f.remote.subject = subject(2); f.remote.versions = [version(), version(2)];
+  f.remote.bindings = [binding({ subjectRevision: 2, headVersionId: versionId(2), needsReview: true })];
+  await f.controller.read(); await f.controller.readBindings(shotId); await f.controller.readVersions(subjectId);
+  f.controller.chooseBinding(shotId, subjectId, versionId(1));
+  const state = f.controller.getState(), row = state.bindings[shotId].items[0], draft = state.bindingDrafts[shotId];
+  const h = harness('ShotSubjectBindings.jsx'), review = harness('ShotSubjectBindings.jsx');
+  const reviewProps = { binding: row, state, controller: f.controller, assets: [image(), image(2)], scope: state.scope };
+  const retainedKeep = byId(review.render(reviewProps, 'BoundSubject'), `subject-keep-version-${row.id}`).props.onClick;
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    h.locale = locale; review.locale = locale;
+    const tree = h.render({ shot: { id: shotId, projectId }, subjects: { state, controller: f.controller }, assets: [image(), image(2)] });
+    const rows = review.render(reviewProps, 'BoundSubject');
+    assert.equal(byId(tree, 'shot-subjects').props['aria-label'], subjectsMessages['subjects.binding.sectionLabel'][locale]);
+    assert.equal(byId(tree, 'shot-subject-version').props.value, versionId(1));
+    assert.equal(nodes(byId(rows, `subject-review-pinned-${row.id}`)).find(node => node.type === 'SubjectImage').props.version.id, versionId(1));
+    assert.equal(nodes(byId(rows, `subject-review-head-${row.id}`)).find(node => node.type === 'SubjectImage').props.version.id, versionId(2));
+    assert.ok(JSON.stringify(byId(rows, `subject-keep-version-${row.id}`).props.children).includes(subjectsMessages['subjects.binding.keepVersion'][locale].replace('{version}', 'V1')));
+    assert.equal(state.bindingDrafts[shotId], draft); assert.equal(state.bindings[shotId].items[0], row); assert.equal(f.writes.length, 0);
+  }
+  retainedKeep(); await flush();
+  assert.equal(f.writes.length, 1); assert.equal(f.writes[0].input.subjectVersionId, versionId(1));
+  assert.equal(f.writes[0].input.expectedRevision, row.revision);
 });

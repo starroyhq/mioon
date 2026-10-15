@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -25,7 +26,7 @@ function section(source, start, end) {
   return source.slice(a, b);
 }
 const compile = (source, name, env) => Function(...Object.keys(env), `${source}\nreturn ${name};`)(...Object.values(env));
-const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '<TopbarSaveStatus ');
+const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '<details className="topbar-status"');
 const homeBoundary = section(app, '  if (!workbenchReady) return <ProjectHome ', '  return <main className={`workbench');
 const refreshSource = section(app, '  const refresh = useCallback(', '  async function revealImageAsset(');
 const readySource = section(app, '  function projectSessionReady()', '  const workbenchReady =');
@@ -45,6 +46,8 @@ const baseRoot = dirname(dirname(uiRequire.resolve('@base-ui/react/tabs')));
 const tabSource = readFileSync(join(baseRoot, 'tabs/tab/TabsTab.js'), 'utf8');
 const tabClickSource = section(tabSource, '  function activate(event) {', '  function onFocus(event) {');
 const fixture = `
+  import { createI18nTestContext } from ${JSON.stringify(join(root, 'tests/helpers/i18n.ts'))};
+  const { t, renderMessage } = createI18nTestContext();
   import React from 'react';
   import { renderToStaticMarkup } from 'react-dom/server';
   import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
@@ -104,7 +107,7 @@ function assertDisabled(html, expected) {
 
 function harness({ projectId = null, mode = 'canvas', loading = false, ready = Boolean(projectId), restored = false } = {}) {
   const calls = [], view = defaultWorkspaceState(); view.activeMode = mode;
-  const env = { nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 },
+  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 },
     viewRef: { current: view }, viewReady: { current: ready }, dataRef: { current: projectId ? { ...emptyData, project: { id: projectId } } : emptyData },
     workspaceRef: { current: { restored, ...(restored ? { workspaceOrigin: B } : {}) } }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
     dirtyRef: { current: false }, subtitlesRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null }, subjectsRef: { current: null }, agentDraft: { current: false }, imageDraft: { current: false },

@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -74,13 +75,13 @@ const readySource = section('  function projectSessionReady()', '  const workben
 const bridge = section('  function readAssetUsageNavigation()', '  function timelineFormatContext()');
 function appHarness() {
   const f = fixture(), calls = [], gate = held(); let predicate;
-  const env = { deriveTimelineAssetUsage, locateTimelineAssetUse, matchesTimelineAssetUse, canPublishProjectOpen,
+  const env = { msg, ...createI18nTestContext(), deriveTimelineAssetUsage, locateTimelineAssetUse, matchesTimelineAssetUse, canPublishProjectOpen,
     openedProject: { current: projectOpenAttempt(f.state.projectId, f.state.projectEpoch, f.state.workspaceScope) },
     revealTimelineAssetUse: (...args) => calls.push(['scroll', ...args]),
     currentProject: { current: f.state.projectId }, dataRef: { current: { project: { id: f.state.projectId }, timeline: f.timeline, assets: f.assets } },
     importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, projectEpoch: { current: 1 }, navigationEpoch: { current: 2 }, panelIntent: { current: 3 }, assetUsageAttempt: { current: 0 },
     workspaceRef: { current: { restored: false } }, workspaceOriginScope: value => value.restored ? 'restored:' + value.workspaceOrigin : 'normal', assetUsageAvailability: { current: { ready: true } }, isBusy: () => false,
-    guardNavigation: (message, dirty, current) => { assert.match(message, /定位此素材/); assert.equal(dirty, false); predicate = current; return gate.promise; },
+    guardNavigation: (message, dirty, current) => { assert.match(renderCoreMessage('zh-Hans', message), /定位此素材/); assert.equal(dirty, false); predicate = current; return gate.promise; },
     setPropertiesPage: value => calls.push(['properties', value]), setRightDockTab: value => calls.push(['dock', value]),
     viewRef: { current: { activeMode: 'canvas', editing: {} } },
     updateView: (area, value) => { calls.push(['view', area, value]); if (area === 'activeMode') env.viewRef.current.activeMode = value; else Object.assign(env.viewRef.current[area], value); },

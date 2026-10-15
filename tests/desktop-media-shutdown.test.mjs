@@ -1,3 +1,8 @@
+import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
+import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
+import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
+import { resolveLocale } from '../packages/i18n/src/locale.ts';
+import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
@@ -448,7 +453,7 @@ async function mainStartupHarness({ validate, settings } = {}) {
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
     whenReady: () => new Promise(() => {}), quit: () => { counts.quits++; }, exit: code => counts.exits.push(code) });
-  const context = vm.createContext({ app, process: { platform: 'linux', env: {}, on() {} }, path,
+  const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'linux', env: {}, on() {} }, path,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     createDesktopStartup: () => createDesktopStartup({ terminate: async () => [] }),
@@ -459,7 +464,7 @@ async function mainStartupHarness({ validate, settings } = {}) {
     MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
-    ipcMain: { handle: (channel, handler) => { assert.ok([PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function'); } },
+    ipcMain: { handle: (channel, handler) => { assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function'); } },
     stopBackendForQuit, removeConnectionOnShutdown: async () => { counts.cleanup++; },
     dialog: { showMessageBox: async message => { counts.notices.push(message); return { response: 0 }; } }
   });
@@ -540,7 +545,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
   const nativeAuthority = {command:async () => {throw Error('No audition command is expected in this lifecycle fixture');}};
   let enterStart; const started = new Promise(resolve => { enterStart = resolve; });
   port.postMessage = message => { messages.push(message); };
-  const sandbox = { process: { parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
+  const sandbox = { comfyModuleModeFromEnvironment, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: code => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {}, startServer: options => { assert.equal(options.localDraftChannel,'development'); assert.equal(options.nativeAudioPreview,nativeAuthority); enterStart(options); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },

@@ -1,3 +1,5 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -31,7 +33,7 @@ function section(start, end) {
 }
 function environment(options = {}) {
   const calls = [], registry = createSettingsNavigationRegistry();
-  const env = {
+  const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
     ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace,
     editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
     nativeProjectEntry: { open: async projectId => { calls.push(['nativeEntry.open', projectId]); return true; },
@@ -285,7 +287,7 @@ test('create with failed list read keeps uncertainty visible and does not retry 
   const h = harness({ rpc: async operation => { assert.equal(operation, 'project.list'); throw Error('list unavailable'); } });
   assert.equal(await h.createProject('新项目', ''), false); await tick();
   assert.equal(callsOf(h, 'run').length, 1); assert.equal(h.env.currentProject.current, null);
-  assert.match(h.env.projectListStatus.error, /可能已创建/); assert.match(h.env.projectListStatus.error, /不要直接重复创建/);
+  assert.match(renderCoreMessage('zh-Hans', h.env.projectListStatus.error), /可能已创建/); assert.match(renderCoreMessage('zh-Hans', h.env.projectListStatus.error), /不要直接重复创建/);
 });
 
 test('create holds its synchronous latch through the post-acknowledgement project-list read', async () => {
@@ -390,7 +392,7 @@ function boundaryRenderer() {
   presentation = h => {
     const mounted = [];
     const stub = name => () => { mounted.push(name); return ui.React.createElement('section', { 'data-stub': name }); };
-    const env = { ...h.env, ...h, ...ui, restored: h.env.workspaceRef.current.restored, workspace: h.env.workspaceRef.current,
+    const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, ...h, ...ui, restored: h.env.workspaceRef.current.restored, workspace: h.env.workspaceRef.current,
       lastProjectStatus: null, setHomeConnection() {}, geometry: { narrow: false, style: {} }, workspaceMode: 'canvas', mobilePanel: 'canvas',
       assetsCollapsed: false, inspectorCollapsed: false, timelineCollapsed: false,
       Icon: () => null, Login: stub('Login'), RestoredUnavailable: stub('RestoredUnavailable'),
@@ -450,7 +452,7 @@ test('actual App shares authenticated settled project readiness between workbenc
     h.env.currentProject.current = id(1); h.env.projectEpoch.current = 1;
     h.env.openedProject.current = opening.projectOpenAttempt(id(1), 1, 'normal'); h.env.viewReady.current = true;
     h.env.data = h.env.dataRef.current = snapshot(id(1)); change(h.env);
-    const env = { ...h.env, modeLayout, workspaceMode: 'canvas',
+    const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, modeLayout, workspaceMode: 'canvas',
       useRef: initial => ({ current: initial }), useState: initial => [initial, () => {}],
       usePanelGeometry: (...args) => { observations.push(args); return { narrow: false, style: {} }; },
     };

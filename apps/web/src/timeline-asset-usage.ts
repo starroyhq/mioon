@@ -7,6 +7,8 @@ export interface TimelineAssetUse {
   readonly clipId: string;
   readonly trackId: string;
   readonly clipName: string;
+  /** Presentation sidecar for absent legacy names; never infer from user text. */
+  readonly clipNameMissing?: true;
   readonly trackName: string;
   readonly startFrame: number;
   readonly durationFrames: number;
@@ -146,7 +148,7 @@ export function deriveTimelineAssetUsage({ projectId, assets, timeline, ready }:
     // Name text is preserved verbatim and rendered by React as text. Legacy
     // missing names receive a label without modifying the saved record.
     track.uses.push(Object.freeze({ projectId, timelineId, timelineRevision, assetId, clipId, trackId,
-      clipName: typeof name === 'string' ? name : '未命名片段', trackName: track.name, startFrame, durationFrames: duration, sourceInFrame, sourceIdentity: identity }));
+      clipName: typeof name === 'string' ? name : '未命名片段', ...(typeof name === 'string' ? {} : { clipNameMissing: true as const }), trackName: track.name, startFrame, durationFrames: duration, sourceInFrame, sourceIdentity: identity }));
   }
   if (observedDuration !== durationFrames) return unknown();
 
@@ -171,7 +173,7 @@ export function deriveTimelineAssetUsage({ projectId, assets, timeline, ready }:
 function sameUse(left: TimelineAssetUse, right: TimelineAssetUse): boolean {
   return left.projectId === right.projectId && left.timelineId === right.timelineId && left.timelineRevision === right.timelineRevision &&
     left.assetId === right.assetId && left.clipId === right.clipId && left.trackId === right.trackId &&
-    left.clipName === right.clipName && left.trackName === right.trackName && left.startFrame === right.startFrame &&
+    left.clipName === right.clipName && left.clipNameMissing === right.clipNameMissing && left.trackName === right.trackName && left.startFrame === right.startFrame &&
     left.durationFrames === right.durationFrames && left.sourceInFrame === right.sourceInFrame && left.sourceIdentity === right.sourceIdentity;
 }
 

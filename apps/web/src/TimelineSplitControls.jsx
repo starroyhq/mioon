@@ -1,10 +1,13 @@
 import React from 'react';
 import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.jsx';
+import { useI18n } from './i18n/I18nProvider.tsx';
 
 export default function TimelineSplitControls({ state, onSplit }) {
-  return <div className="timeline-split-controls" role="group" aria-label="分割所选片段">
-    <Button variant="ghost" className="button small" data-testid="timeline-split" disabled={!state.canSplit} onClick={onSplit} aria-keyshortcuts="Control+B Meta+B" aria-label={`分割所选片段：${state.clipName}，播放头 ${state.atFrame} 帧`} title={state.blockedReason || `分割为 ${state.leftDuration} + ${state.rightDuration} 帧 · Ctrl/⌘+B · 不移动其他片段`}><Icon name="scissors" size={13} />分割</Button>
-    <span className="timeline-split-target" data-testid="timeline-split-target" title={state.blockedReason || `${state.clipName} · 在第 ${state.atFrame} 帧分割`}><span>{state.clipName}</span><b> @ {state.atFrame}f</b></span>
+  const { t, renderMessage } = useI18n();
+  const blocked = renderMessage(state.blockedMessage), name = state.clipSelected === false ? t('timeline.split.unselected') : state.clipName;
+  return <div className="timeline-split-controls" role="group" aria-label={t('timeline.split.group')}>
+    <Button variant="ghost" className="button small" data-testid="timeline-split" disabled={!state.canSplit} onClick={onSplit} aria-keyshortcuts="Control+B Meta+B" aria-label={t('timeline.split.aria', { name, frame: state.atFrame })} title={blocked || t('timeline.split.hint', { left: state.leftDuration ?? 0, right: state.rightDuration ?? 0 })}><Icon name="scissors" size={13} />{t('timeline.split.action')}</Button>
+    <span className="timeline-split-target" data-testid="timeline-split-target" title={blocked || t('timeline.split.target', { name, frame: state.atFrame })}><span>{name}</span><b> @ {state.atFrame}f</b></span>
   </div>;
 }

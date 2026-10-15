@@ -1,3 +1,4 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { workspacePendingKey, workspaceIntentDisposition, sameWorkspaceIntent, removeExactWorkspacePending } from './workspace-origin.js';
 import { migratePendingStorage } from './storage-migration.js';
 import { LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS, isSubjectReference, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
@@ -13,26 +14,26 @@ export function readPending(projectId, key, options = {}) {
   const raw = sessionStorage.getItem(storageKey(projectId, key, options));
   if (!raw) return null;
   const entry = JSON.parse(raw);
-  if (!entry.input?.requestId || !(isMutationOperation(entry.operation) || ['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(entry.operation) || TIMELINE_MUTATION_OPERATIONS.includes(entry.operation)) || entry.projectId !== projectId || entry.key !== key || entry.expectedWorkspaceOrigin !== options.expectedWorkspaceOrigin) throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
+  if (!entry.input?.requestId || !(isMutationOperation(entry.operation) || ['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(entry.operation) || TIMELINE_MUTATION_OPERATIONS.includes(entry.operation)) || entry.projectId !== projectId || entry.key !== key || entry.expectedWorkspaceOrigin !== options.expectedWorkspaceOrigin) throw Object.assign(new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。'), { displayMessage: localizedMessage('tasks.localError.pendingCorrupt') });
   return entry;
 }
 export function writePending(entry) {
   migratePendingStorage();
   try { sessionStorage.setItem(storageKey(entry.projectId, entry.key, entry), JSON.stringify(entry)); }
-  catch { throw new Error('浏览器无法保存请求恢复记录。请允许此站点使用会话存储后再提交。'); }
+  catch { throw Object.assign(new Error('浏览器无法保存请求恢复记录。请允许此站点使用会话存储后再提交。'), { displayMessage: localizedMessage('tasks.localError.pendingStorage') }); }
 }
 export function prepareSubmission(entry, { replay = false } = {}) {
   const existing = readPending(entry.projectId, entry.key, entry);
   if (existing) {
     if (entry.expectedWorkspaceOrigin !== undefined && (!replay || existing.operation !== entry.operation || canonical(existing.input) !== canonical(entry.input)))
-      throw Object.assign(new Error('当前恢复分支有原请求待确认，请在任务中心核对同一请求。'), { code: 'MUTATION_PENDING' });
+      throw Object.assign(new Error('当前恢复分支有原请求待确认，请在任务中心核对同一请求。'), { code: 'MUTATION_PENDING', displayMessage: localizedMessage('tasks.localError.restoredPending') });
     assertSubjectPending(existing); return existing;
   }
   assertSubjectPending(entry);
   writePending(entry);
   // Verify persistence before the caller is allowed to perform the side effect.
   const persisted = readPending(entry.projectId, entry.key, entry);
-  if (!persisted) throw new Error('请求恢复记录未能保存，已阻止提交。');
+  if (!persisted) throw Object.assign(new Error('请求恢复记录未能保存，已阻止提交。'), { displayMessage: localizedMessage('tasks.localError.pendingNotSaved') });
   return persisted;
 }
 // This renderer-only pin is saved alongside, never added to the wire input.
@@ -44,13 +45,13 @@ function assertSubjectPending(entry) {
     if (entry.subjectRetry !== true || !isSubjectReference(reference) || reference.subjectVersion.projectId !== entry.projectId ||
       getSubjectGenerationSnapshotIssue(snapshot, { projectId: entry.projectId, requireProfilePin: true }) ||
       canonical(snapshot.subjectReference) !== canonical(reference))
-      throw Object.assign(new Error('主体重试的原始快照记录不完整。请先核对原任务，不会重建请求或重新选择图片。'), { code: 'SUBJECT_SUBMISSION_MISMATCH' });
+      throw Object.assign(new Error('主体重试的原始快照记录不完整。请先核对原任务，不会重建请求或重新选择图片。'), { code: 'SUBJECT_SUBMISSION_MISMATCH', displayMessage: localizedMessage('tasks.localError.subjectRetryPin') });
     return;
   }
   if (entry.operation !== 'generation.submit' || !Object.hasOwn(entry.input ?? {}, 'subjectVersionId')) return;
   const reference = entry.expectedSubjectReference;
   if (!isSubjectReference(reference) || reference.subjectVersionId !== entry.input.subjectVersionId || reference.subjectVersion.projectId !== entry.projectId)
-    throw Object.assign(new Error('主体参考的原始确认记录不完整。请先核对原任务，不会生成新的提交编号。'), { code: 'SUBJECT_SUBMISSION_MISMATCH' });
+    throw Object.assign(new Error('主体参考的原始确认记录不完整。请先核对原任务，不会生成新的提交编号。'), { code: 'SUBJECT_SUBMISSION_MISMATCH', displayMessage: localizedMessage('tasks.localError.subjectPin') });
 }
 const subjectClaim = snapshot => snapshot && typeof snapshot === 'object' && (Object.hasOwn(snapshot, 'subjectReference') || Object.hasOwn(snapshot, 'subjectVersionId') ||
   ['referenceAssets', 'referenceBindings'].some(field => Array.isArray(snapshot[field]) && snapshot[field].some(item => item?.role === 'subject_reference')));
@@ -65,7 +66,7 @@ export function prepareRequestReplay(entry) {
   const stored = readPending(entry.projectId, entry.key, entry);
   if (!stored || stored.operation !== entry.operation || stored.input.projectId !== entry.projectId ||
     entry.input.projectId !== entry.projectId || canonical(stored.input) !== canonical(entry.input))
-    throw Object.assign(new Error('原请求记录已变化或不再可用，已阻止恢复。请重新打开原项目的任务面板核对。'), { code: 'MUTATION_REPLAY_MISMATCH' });
+    throw Object.assign(new Error('原请求记录已变化或不再可用，已阻止恢复。请重新打开原项目的任务面板核对。'), { code: 'MUTATION_REPLAY_MISMATCH', displayMessage: localizedMessage('tasks.localError.replayUnavailable') });
   return stored;
 }
 export function clearPending(projectId, key, expected) {
@@ -106,7 +107,7 @@ export function pendingForProject(projectId, { strict = false, workspace, active
       // Validate the enumerated slot before following entry.key. Corrupted
       // metadata must not redirect a strict scan to another (possibly empty) slot.
       if (raw?.projectId !== projectId || storageKey(projectId, raw?.key, raw || {}) !== key)
-        throw new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。');
+        throw Object.assign(new Error('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。'), { displayMessage: localizedMessage('tasks.localError.pendingCorrupt') });
       const entry = strict ? readPending(projectId, raw.key, raw) : raw;
       if (entry?.input?.requestId && storageKey(projectId, entry.key, entry) === key &&
         (!activeOnly || !workspaceIntentDisposition(entry, workspace).held)) result.push(entry);

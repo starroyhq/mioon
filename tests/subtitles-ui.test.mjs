@@ -1,3 +1,5 @@
+import { i18nTestModule, message, renderMessage, translate } from './helpers/i18n.ts';
+import * as i18n from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -136,7 +138,7 @@ function componentHarness(filename, imports = {}) {
   let slots = [], cursor = 0, visible = true, props, tree, confirm = async () => true;
   const hooks = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn, deps) => { const i = cursor++, prior = slots[i]; if (!prior || deps.some((value, n) => value !== prior.deps[n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; } } };
   const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), module = { exports: {} };
-  const require = name => name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args) => confirm(...args) } : name.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.js') ? subtitles : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
+  const require = name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args) => confirm(...args) } : name.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.js') ? subtitles : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(require, module, module.exports);
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   return { render(next = props) { props = next; cursor = 0; tree = module.exports.default(props); return tree; }, find: testId => nodes(tree).find(node => node.props?.['data-testid'] === testId), nodes: () => nodes(tree),
@@ -151,7 +153,7 @@ test('actual Inspector input/save/discard handlers preserve literal text, reacha
   ui.render(props()); ui.find('subtitle-text').props.onChange({ target: { value: 'discard me' } }); ui.render(props()); ui.find('subtitle-discard').props.onClick();
   assert.equal(h.controller.getState().draft.text, '原样 {a}%\\\nEnglish'); assert.ok(ui.find('subtitle-render-status').props.children.join('').includes('旧快照'));
   const footer = ui.nodes().find(node => node.type === 'footer'); assert.ok(footer); assert.ok(footer.props.children.flat().some(node => node.props?.['data-testid'] === 'subtitle-save'));
-  assert.ok(ui.source.includes('不是最终画面预览')); assert.ok(!ui.source.includes('maxLength='));
+  assert.ok(ui.source.includes('subtitles.ui.renderNote')); assert.ok(translate('zh-Hans', 'subtitles.ui.renderNote').includes('不是最终画面预览')); assert.ok(!ui.source.includes('maxLength='));
 });
 
 test('actual Inspector retained handlers reject hidden, changed selection, unmount, and late remove confirmation', async () => {
@@ -174,7 +176,7 @@ test('actual lane buttons select and add once, reject hidden/unmounted and super
 
 const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const section = (start, end) => app.slice(app.indexOf(start), app.indexOf(end));
-const compile = (source, name, scope) => Function(...Object.keys(scope), `${source}; return ${name};`)(...Object.values(scope));
+const compile = (source, name, scope) => { const env = { msg: message, ...scope }; return Function(...Object.keys(env), `${source}; return ${name};`)(...Object.values(env)); };
 
 test('actual App subtitle selection keeps other Properties/Agent drafts and requires explicit subtitle discard', async () => {
   const h = fixture(), updates = [], untouched = { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' };

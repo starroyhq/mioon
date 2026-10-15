@@ -1,3 +1,5 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -66,7 +68,7 @@ function ui() {
 // real React elements and shared controls for SSR and Base UI handler checks.
 function harness(patch = {}) {
   const actual = ui(), slots = [], calls = [], effects = [];
-  let cursor = 0, mounted = true;
+  let cursor = 0, mounted = true, language = 'zh-Hans';
   const react = { ...actual.React,
     useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], value => { if (mounted) slots[index] = typeof value === 'function' ? value(slots[index]) : value; }]; },
     useRef(initial) { const index = cursor++; return slots[index] ||= { current: initial }; },
@@ -86,6 +88,9 @@ function harness(patch = {}) {
   };
   const module = { exports: {} };
   Function('require', 'module', 'exports', 'fetch', 'localStorage', 'sessionStorage', transformSync(readFileSync(sourceFile, 'utf8'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
+    if (name === './i18n/I18nProvider.tsx') return { useI18n: () => createI18nTestContext(language) };
+    if (name === '../../../packages/i18n/src/index.ts') return i18nCore;
+    if (name === './LanguageControl.tsx') return { __esModule: true, default: 'LanguageControl' };
     if (name === 'react') return react;
     if (name.endsWith('.css')) return {};
     const key = { '@mioon/ui/components/button': 'Button', '@mioon/ui/components/input': 'Input', '@mioon/ui/components/textarea': 'Textarea', '@mioon/ui/components/label': 'Label' }[name];
@@ -94,6 +99,7 @@ function harness(patch = {}) {
   }, module, module.exports, forbidden, new Proxy({}, { get: forbidden, set: forbidden }), new Proxy({}, { get: forbidden, set: forbidden }));
   const h = { calls, props: defaults({ onPage: value => calls.push(['page', value]), onOpen: value => calls.push(['open', value]),
     onRetry: () => calls.push(['retry']), onRefresh: () => calls.push(['refresh']), onCreate: async (...args) => { calls.push(['create', ...args]); return true; }, ...patch }) };
+  h.setLanguage = value => { language = value; };
   h.flushEffects = () => { for (const run of effects.splice(0)) run(); };
   h.render = (next = {}) => {
     assert.equal(mounted, true, 'Disposed harness cannot rerender');
@@ -321,4 +327,30 @@ componentTest('native create intent effect opens once and retained inputs surviv
   assert.equal(find(h.render(), 'project-home-description').props.value, 'retained description');
   assert.deepEqual(h.calls, []);
   h.unmount(); h.flushEffects();
+});
+
+
+componentTest('four-language live rendering retains draft fields, form ownership, and unknown pending outcome', async () => {
+  const answer = deferred(), requests = [], reports = [];
+  const h = harness({ onCreate: (...args) => { requests.push(args); return answer.promise; }, onCreateStateChange: state => reports.push(state) });
+  showForm(h); fill(h, ' 用户项目 <literal> ', ' 日本語の内容 stays unchanged ');
+  const initial = h.render(), inputId = find(initial, 'project-home-name').props.id;
+  const work = submit(h), reportCount = reports.length;
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    h.setLanguage(locale); const tree = h.render();
+    assert.equal(find(tree, 'project-home-name').props.id, inputId);
+    assert.equal(find(tree, 'project-home-name').props.value, ' 用户项目 <literal> ');
+    assert.equal(find(tree, 'project-home-description').props.value, ' 日本語の内容 stays unchanged ');
+    assert.equal(find(tree, 'project-home-name').props.disabled, true);
+    assert.equal(requests.length, 1); assert.equal(reports.length, reportCount, 'Language is presentation only, not a new draft version');
+    assert.ok(text(tree).includes(i18nCore.translate(locale, 'projects.home')));
+  }
+  answer.resolve(false); await work;
+  assert.deepEqual(requests, [['用户项目 <literal>', '日本語の内容 stays unchanged']]);
+  for (const locale of ['en', 'ja', 'zh-Hant', 'zh-Hans']) {
+    h.setLanguage(locale); const tree = h.render();
+    assert.equal(find(tree, 'project-home-name').props.value, ' 用户项目 <literal> ');
+    assert.ok(text(tree).includes(i18nCore.translate(locale, 'projects.createRetained')));
+  }
+  assert.equal(requests.length, 1);
 });

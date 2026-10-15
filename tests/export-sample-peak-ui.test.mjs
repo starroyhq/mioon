@@ -1,3 +1,4 @@
+import * as i18n from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -63,7 +64,7 @@ test('classic TSX real shared controls show exact feature name with compact expl
 test('ready shows overall and distinct left/right decoded peaks plus verified hash and timestamp', () => {
   assert.match(rendered.ready, /总体：-6.0206 dBFS/); assert.match(rendered.ready, /左声道：-6.0206 dBFS/); assert.match(rendered.ready, /右声道：-12.0412 dBFS/);
   assert.match(rendered.ready, /已解码检查此成片/); assert.match(rendered.ready, /<time dateTime="2026-10-13T04:20:00.000Z"/); assert.match(rendered.ready, /SHA-256：a{64}/);
-  assert.match(rendered.ready, /总体 0.5；左 0.5；右 0.25/); assert.match(rendered.ready, /冻结版本：rev 4/); assert.match(rendered.ready, /<details><summary>检查文件详情/);
+  assert.match(rendered.ready, /总体 0.5；左 0.5；右 0.25/); assert.match(rendered.ready, /冻结修订版：4/); assert.match(rendered.ready, /<details><summary>检查文件详情/);
 });
 test('silence uses explicit minus-infinity while over-one warning remains advisory and textual', () => {
   assert.equal((rendered.silent.match(/−∞ dBFS（数字静音）/g) || []).length, 3); assert.doesNotMatch(rendered.silent, /null|Infinity|NaN/);
@@ -86,7 +87,7 @@ test('nonready statuses keep numeric claims absent and explicit recheck availabl
 test('named, unnamed and range rows share action; previews/storyboard/pending do not, downloads remain byte-for-byte intact', () => {
   assert.equal((rendered.history.match(/data-testid="export-sample-peak-check"/g) || []).length, 2);
   assert.equal((rendered.history.match(/data-testid="download-export"/g) || []).length, 4);
-  assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /rev 4 · 旧快照/); assert.match(rendered.history, /export-history-range/);
+  assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /修订版 4 · 旧快照/); assert.match(rendered.history, /export-history-range/);
   const links = html => html.match(/<a\b[^>]*data-testid="download-export"[^>]*>/g);
   assert.deepEqual(links(rendered.history), links(rendered.withoutFeature));
 });
@@ -129,7 +130,7 @@ test('actual action and cancel callbacks do no work until clicked and retain che
   const tree = (type, props, ...children) => ({ type, props: { ...props, children } });
   const react = { createElement: tree }; react.default = react; const module = { exports: {} };
   Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(module, module.exports,
-    name => name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : { EXPORT_SAMPLE_PEAK_LABEL, EXPORT_SAMPLE_PEAK_LIMITATION: 'limitation', EXPORT_SAMPLE_PEAK_RESTORED: 'restored', exportSamplePeakStatusMessage: () => 'checking' });
+    name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : { EXPORT_SAMPLE_PEAK_LABEL, EXPORT_SAMPLE_PEAK_LIMITATION: 'limitation', EXPORT_SAMPLE_PEAK_RESTORED: 'restored', exportSamplePeakStatusMessage: () => 'checking' });
   const f = fixture(), calls = []; const state = { ...f.state(), phase: 'checking', targetId: f.target().exportId, targetKey: f.target().key };
   const result = module.exports.default({ exportId: f.target().exportId, samplePeak: { state, controller: { check: (...args) => calls.push(['check', ...args]), cancel: () => calls.push(['cancel']) } } });
   const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value && typeof value === 'object' ? [value, ...flatten(value.props?.children)] : [];

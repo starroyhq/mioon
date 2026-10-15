@@ -1,3 +1,6 @@
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
+import * as i18n from '../packages/i18n/src/index.ts';
+import { i18nTestModule, createI18nTestContext } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -37,7 +40,7 @@ const deferred = () => { let resolve; return { promise: new Promise(r => { resol
 
 function harness(file, initial) {
   let cursor = 0, layouts = [], effects = [], tree, props = initial, dirty = false;
-  const slots = [], modules = new Map(), h = { visible: true };
+  const slots = [], modules = new Map(), h = { visible: true, locale: 'zh-Hans' };
   const effect = (queue, callback, deps) => { const i = cursor++, old = slots[i]; if (old && equalDeps(old.deps, deps)) return; slots[i] = { callback, deps, cleanup: old?.cleanup }; queue.push(i); };
   const react = {
     createElement: (type, properties, ...children) => typeof type === 'function' && type === modules.get('RecoveryStorageDetails.tsx')?.default ? type({ ...properties, children }) : ({ type, props: { ...properties, children } }),
@@ -51,6 +54,9 @@ function harness(file, initial) {
     const module = { exports: {} }, code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code;
     Function('module', 'exports', 'require', code)(module, module.exports, name => {
       if (name === 'react') return react;
+      if (name === './i18n/I18nProvider.tsx') return { useI18n: () => i18nTestModule(h.locale).useI18n() };
+      if (name.endsWith('/packages/i18n/src/index.ts')) return i18n;
+      if (name === './creation-i18n.ts') return creationI18n;
       if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
       if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
@@ -194,7 +200,7 @@ function reviewHarness({ retry = false } = {}) {
   const snapshot = { ...subjectVideo.subjectVideoSnapshot(shot(), original, assets), providerId: p.id, model: p.models[0], inputProfileId: p.inputProfiles[0].profileId, inputProfileVersion: p.inputProfiles[0].profileVersion, providerRegion: p.providerRegion };
   delete snapshot.id;
   const job = { id: id(66), snapshot }, state = { epoch: 1, review: null, sent: [], notices: [] };
-  const scope = { ...settings, ...subjectVideo, providers: [p], dataRef: { current: { shots: [shot()], jobs: [job], assets: structuredClone(assets) } },
+  const scope = { ...settings, ...subjectVideo, msg: i18n.message, ...createI18nTestContext(), providers: [p], dataRef: { current: { shots: [shot()], jobs: [job], assets: structuredClone(assets) } },
     generationOptionsRef: { current: { [shotId]: { providerId: p.id, model: p.models[0], inputMode: 'subject', subjectReference: original } } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'view' } },
     context: () => ({ epoch: state.epoch }), isCurrent: value => value.epoch === state.epoch,
@@ -290,7 +296,7 @@ test('actual App subject retry captures original public snapshot beside unchange
   const p = provider('mock'), calls = [], notices = [];
   const original = { ...subjectVideo.subjectVideoSnapshot(shot(), reference(), assets), providerId: p.id, model: p.models[0], shotId, shotRevision: 1 }; delete original.id;
   const job = { id: id(88), shotId, providerId: p.id, model: p.models[0], snapshot: structuredClone(original) };
-  const scope = { captureTaskWorkspaceIntent, readTaskRevealContext: () => ({ active: true, projectId, projectEpoch: 0, navigationEpoch: 0, panelIntent: 0, workspaceScope: 'test-workspace' }), openTasks() {}, providers: [p], checkGeneration: () => true, subjectVideoIdentity: subjectVideo.subjectVideoIdentity,
+  const scope = { msg: i18n.message, ...createI18nTestContext(), captureTaskWorkspaceIntent, readTaskRevealContext: () => ({ active: true, projectId, projectEpoch: 0, navigationEpoch: 0, panelIntent: 0, workspaceScope: 'test-workspace' }), openTasks() {}, providers: [p], checkGeneration: () => true, subjectVideoIdentity: subjectVideo.subjectVideoIdentity,
     run: (...args) => { calls.push(args); return Promise.resolve({ id: id(89) }); }, requestId: () => 'frozen-subject-retry-request', notify: message => notices.push(message) };
   const methods = Function(...Object.keys(scope), `${code}; return { submitGeneration, retryGeneration };`)(...Object.values(scope));
   methods.retryGeneration(job);
@@ -300,7 +306,7 @@ test('actual App subject retry captures original public snapshot beside unchange
   assert.equal(calls[0][4].subjectRetry, true); assert.deepEqual(calls[0][4].expectedRetrySnapshot, original);
   assert.deepEqual(calls[0][4].expectedSubjectReference, original.subjectReference);
   await methods.submitGeneration({ shot: { ...original, id: shotId }, providerId: p.id, model: p.models[0], inputMode: 'subject', retryJobId: job.id });
-  assert.equal(calls.length, 1); assert.match(notices.at(-1), /原主体任务快照缺失/);
+  assert.equal(calls.length, 1); assert.match(i18n.renderMessage('zh-Hans', notices.at(-1)), /原主体任务快照缺失/);
   const legacy = { ...job, snapshot: { prompt: 'Legacy prompt', referenceAssetIds: [], duration: 4, aspectRatio: '9:16' } };
   methods.retryGeneration(legacy); assert.equal(calls.length, 2); assert.equal(calls[1].length, 4);
   assert.deepEqual(calls[1][2], { jobId: job.id, requestId: 'frozen-subject-retry-request' });
@@ -317,4 +323,39 @@ test('TaskCenter routes marked or observed subject retries to strict recovery an
   rows[0].props.onReplay(); rows[1].props.onReplay(); rows[2].props.onReplay();
   assert.deepEqual(calls[0][4], { replay: true, subjectRetry: true }); assert.deepEqual(calls[1][4], { replay: true });
   assert.deepEqual(calls[0][2], entries[0].input); assert.deepEqual(calls[2][4], { replay: true, subjectRetry: true });
+});
+
+test('subject selection and immutable provenance relabel live in all four locales without reselecting or refetching', () => {
+  const selected = reference(), props = selectionProps({ inputMode: 'subject', subjectId, subjectReference: selected });
+  const before = JSON.stringify(selected), h = harness('SubjectVideoSelection.jsx', props);
+  const oldChoice = h.find('subject-video-version').props.onChange;
+  const summary = harness('SubjectVideoSummary.jsx', { reference: selected, assets, latestSubject: subject(2) });
+  for (const locale of i18n.LOCALES) {
+    h.locale = locale; h.render(); summary.locale = locale; summary.render();
+    assert.equal(h.find('subject-video-selection').props['aria-label'], i18n.translate(locale, 'subjects.video.sectionLabel'));
+    assert.ok(h.text().includes(i18n.renderMessage(locale, subjectVideo.ARK_SUBJECT_WARNING_MESSAGE)));
+    assert.ok(summary.text().includes(i18n.translate(locale, 'subjects.source.import')));
+    assert.equal(h.find('subject-video-version').props.value, selected.subjectVersionId);
+    assert.equal(JSON.stringify(selected), before);
+    assert.ok(summary.text().includes(JSON.stringify(selected.subjectVersion.provenance, null, 2)));
+    assert.equal(props.reads.length, 0); assert.equal(props.changes.length, 0);
+  }
+  // A pure language change must not change the interaction identity of the bound action.
+  oldChoice({ target: { value: version().id } });
+  assert.equal(props.changes.length, 1);
+  assert.equal(props.changes[0].subjectReference.subjectVersionId, selected.subjectVersionId);
+});
+
+test('subject warning and reason descriptor sidecars preserve exact legacy meaning and all locales', () => {
+  const conflicts = [[shot(), {}], [shot(), { boundReference: true }], [shot({ referenceAssetIds: [asset().id] }), {}], [shot(), { savedShot: shot({ lastFrameAssetId: asset().id }) }]];
+  for (const [value, options] of conflicts) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoConflictDescriptor(value, options)), subjectVideo.subjectVideoConflictIssue(value, options));
+  const references = [[null, assets, projectId], [{}, assets, projectId], [reference(), assets, id(999)], [reference(), [], projectId], [reference(), [asset(1, { sha256: 'f'.repeat(64) })], projectId], [reference(), assets, projectId]];
+  for (const values of references) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoReferenceDescriptor(...values)), subjectVideo.subjectVideoReferenceIssue(...values));
+  for (const provenance of [null, { kind: 'user-import' }, { kind: 'extracted-frame' }, { kind: 'synthetic-mock' }, { kind: 'generated', imageSource: {} }, { kind: 'generated' }, { kind: 'export' }, { kind: 'future-kind' }]) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoSourceDescriptor({ provenance })), subjectVideo.subjectVideoSourceLabel({ provenance }));
+  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.ARK_SUBJECT_WARNING_MESSAGE), subjectVideo.ARK_SUBJECT_WARNING);
+  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE), subjectVideo.MOCK_SUBJECT_WARNING);
+  for (const locale of i18n.LOCALES) for (const value of [subjectVideo.ARK_SUBJECT_WARNING_MESSAGE, subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE, ...conflicts.map(([value, options]) => subjectVideo.subjectVideoConflictDescriptor(value, options)).filter(Boolean), ...references.map(values => subjectVideo.subjectVideoReferenceDescriptor(...values)).filter(Boolean)]) {
+    assert.ok(i18n.renderMessage(locale, value));
+    if (locale !== 'zh-Hans') assert.notEqual(i18n.renderMessage(locale, value), i18n.renderMessage('zh-Hans', value));
+  }
 });

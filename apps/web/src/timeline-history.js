@@ -1,15 +1,16 @@
-const operationLabels = {
-  'timeline.track.add': '添加轨道',
-  'timeline.track.update': '修改轨道',
-  'timeline.clip.add': '添加片段',
-  'timeline.clip.update': '修改片段',
-  'timeline.clip.replaceSource': '替换片段来源',
-  'timeline.clip.remove': '移除片段',
-  'timeline.clip.split': '分割片段',
-  'timeline.subtitle.add': '新增字幕',
-  'timeline.subtitle.update': '修改字幕',
-  'timeline.subtitle.remove': '移除字幕',
-  'timeline.seed': '从分镜建立时间线',
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
+const operationMessages = {
+  'timeline.track.add': message('timeline.history.trackAdd'),
+  'timeline.track.update': message('timeline.history.trackUpdate'),
+  'timeline.clip.add': message('timeline.history.clipAdd'),
+  'timeline.clip.update': message('timeline.history.clipUpdate'),
+  'timeline.clip.replaceSource': message('timeline.history.clipReplace'),
+  'timeline.clip.remove': message('timeline.history.clipRemove'),
+  'timeline.clip.split': message('timeline.history.clipSplit'),
+  'timeline.subtitle.add': message('timeline.history.subtitleAdd'),
+  'timeline.subtitle.update': message('timeline.history.subtitleUpdate'),
+  'timeline.subtitle.remove': message('timeline.history.subtitleRemove'),
+  'timeline.seed': message('timeline.view.seed'),
 };
 
 /** Only a history snapshot paired with the displayed aggregate may enable edits. */
@@ -23,20 +24,23 @@ export function timelineHistoryState({ projectId, timeline, history, busy = fals
     && history.canUndo === (history.cursor > 0) && history.canRedo === (history.cursor < history.length)
     && (history.canUndo ? history.undoEntry?.id : history.undoEntry === null)
     && (history.canRedo ? history.redoEntry?.id : history.redoEntry === null));
-  const blockedReason = pending ? '上一条时间线操作待确认，请先到任务面板恢复请求'
-    : busy ? '正在同步时间线，请稍候'
-    : dirty ? '请先保存或放弃时间线的未保存修改'
-    : !online ? '连接中断，等待重新同步时间线'
-    : !synced ? '正在同步时间线历史'
-    : '';
+  const blockedMessage = pending ? message('timeline.history.pending')
+    : busy ? message('timeline.history.busy')
+    : dirty ? message('timeline.history.dirty')
+    : !online ? message('timeline.history.offline')
+    : !synced ? message('timeline.history.syncing')
+    : null;
+  const blockedReason = renderMessage('zh-Hans', blockedMessage);
+  const undoMessage = synced && history.undoEntry ? operationMessages[history.undoEntry.operation] || message('timeline.history.edit') : null;
+  const redoMessage = synced && history.redoEntry ? operationMessages[history.redoEntry.operation] || message('timeline.history.edit') : null;
   return {
     synced,
     cursor: synced ? history.cursor : null,
     length: synced ? history.length : null,
     canUndo: Boolean(synced && timeline && !blockedReason && history.canUndo),
     canRedo: Boolean(synced && timeline && !blockedReason && history.canRedo),
-    undoLabel: synced && history.undoEntry ? operationLabels[history.undoEntry.operation] || '时间线编辑' : '',
-    redoLabel: synced && history.redoEntry ? operationLabels[history.redoEntry.operation] || '时间线编辑' : '',
-    blockedReason,
+    undoLabel: renderMessage('zh-Hans', undoMessage),
+    redoLabel: renderMessage('zh-Hans', redoMessage),
+    blockedReason, blockedMessage, undoMessage, redoMessage,
   };
 }

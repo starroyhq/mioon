@@ -1,3 +1,4 @@
+import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 /** Supported-CUA UI acceptance; imported only after the fresh app is running. */
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
@@ -14,7 +15,7 @@ export async function mutationBrowserHarness(tab) {
  const capture=async name=>{await writeFile(path.join(out,name),await tab.getScreenshot({emit:false}));report.screenshots.push(name);await save();};
  const mutations=async()=>(await q.requests()).filter(entry=>operations.has(entry.operation));
  const closeJobs=async()=>{const button=tab.playwright.getByRole('button',{name:'关闭生成任务',exact:true});if(await button.isVisible())await button.click();};
- const showJobs=async()=>{if(!await tab.playwright.getByTestId('pending-submission').isVisible())await tab.playwright.getByTestId('jobs-button').click();};
+ const showJobs=async()=>{if(!await tab.playwright.getByTestId('pending-submission').isVisible())await clickWorkbenchAction(tab, 'jobs-button');};
  const replay=async()=>{await showJobs();await tab.playwright.getByTestId('resume-pending').click();await tab.playwright.getByTestId('pending-submission').waitFor({state:'hidden',timeoutMs:15000});};
  const inspectShot=async(id)=>{await closeJobs();if(!await tab.playwright.getByTestId('storyboard').isVisible())await tab.playwright.getByRole('button',{name:'展开分镜',exact:true}).click();await tab.playwright.getByTestId(`storyboard-shot-${id}`).getByRole('button',{name:/选择分镜/}).click();await tab.playwright.getByTestId('shot-inspector').waitFor({state:'visible',timeoutMs:10000});};
  return {...q,tab,report,save,log,capture,mutations,closeJobs,showJobs,replay,inspectShot,initial:await q.audit()};
@@ -27,7 +28,7 @@ export async function runMutationCreateRecovery(h) {
  assert.match(await h.tab.playwright.getByTestId('mutation-recovery-storage').innerText(),/当前浏览器会话/);
  await h.capture('01-created-shot-lost-ack-retains-exact-request.jpg');
  await h.closeJobs();await h.tab.playwright.getByTestId('add-shot').click();await h.tab.playwright.getByTestId('pending-submission').waitFor({state:'visible',timeoutMs:10000});assert.equal((await h.mutations()).length,calls+1);
- await h.restart();await h.tab.reload();await h.tab.playwright.getByTestId('jobs-button').waitFor({state:'visible',timeoutMs:15000});assert.equal((await h.mutations()).length,calls+1);
+ await h.restart();await h.tab.reload();await h.tab.playwright.getByTestId('workbench-actions').waitFor({state:'visible',timeoutMs:15000});assert.equal((await h.mutations()).length,calls+1);
  await h.showJobs();await h.capture('02-backend-restart-retains-session-receipt-no-auto-post.jpg');await h.replay();
  const requests=await h.mutations();assert.equal(requests.length,calls+2);assert.deepEqual(requests[calls].input,requests[calls+1].input);assert.deepEqual(business(await h.audit()),business(committed));
  h.createdShot=lost.result.data;await h.closeJobs();await h.inspectShot(h.createdShot.id);await h.capture('03-explicit-replay-one-shot-original-id.jpg');

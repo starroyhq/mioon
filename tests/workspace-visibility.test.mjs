@@ -1,3 +1,6 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -35,7 +38,7 @@ function treeNodes(tree) {
 function createHarness(file, exportName = 'default') {
   const slots = [], frames = new Map(), elements = new Map(), modules = new Map();
   let cursor = 0, layouts = [], effects = [], nextFrame = 0, tree;
-  const h = { ancestorVisible: undefined };
+  const h = { ancestorVisible: undefined, locale: 'zh-Hans' };
   function effect(kind, callback, dependencies) {
     const index = cursor++, previous = slots[index];
     if (previous && dependencies?.length === previous.dependencies?.length && dependencies.every((value, i) => Object.is(value, previous.dependencies[i]))) return;
@@ -57,6 +60,9 @@ function createHarness(file, exportName = 'default') {
   const ui = new Proxy({ useConfirmation: () => async () => true }, { get: (target, key) => target[key] ?? String(key) });
   const mocks = {
     react,
+    './i18n/I18nProvider.tsx': { useI18n: () => createI18nTestContext(h.locale) },
+    '../../../packages/i18n/src/index.ts': i18nCore,
+    './creation-i18n.ts': creationI18n,
     '@mioon/contracts': contracts,
     '@mioon/contracts/local-shot-text': { LOCAL_SHOT_TEXT_LIMITS },
     './local-shot-text-state.ts': { useLocalShotText: ({ context }) => {
@@ -72,7 +78,7 @@ function createHarness(file, exportName = 'default') {
     './api.js': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob: () => false, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
     './Timeline.jsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.js': { referenceForShot: () => null },
-    './generation-settings.js': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String },
+    './generation-settings.js': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
     './VideoFrameControls.jsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
     './ProviderSettings.jsx': { default: 'ProviderSettings', __esModule: true },
     './SubjectVideoSelection.jsx': { default: 'SubjectVideoSelection', __esModule: true },
@@ -263,4 +269,18 @@ test('collapsing Inspector preserves the draft and an already requested save-and
   resolveSave({ ...props.shot, prompt: 'Edited while visible', revision: 2 }); await work;
   assert.equal(generated.length, 1); assert.equal(generated[0][0].prompt, 'Edited while visible');
   h.render(props); assert.equal(h.find('shot-prompt').props.value, 'Edited while visible');
+});
+
+test('language-only updates preserve the exact media decoder, playback position and source identity', () => {
+  const h = createHarness('Nodes.jsx', 'Media');
+  const props = { asset: asset('video'), controls: true };
+  h.render(props); const element = h.mediaNode().props.ref.current, originalKey = h.mediaNode().props.key;
+  element.currentTime = 7.125; element.paused = false;
+  const baselineLoads = element.loads, baselinePauses = element.pauses;
+  for (const locale of i18nCore.LOCALES) {
+    h.locale = locale; h.render(props);
+    assert.equal(h.mediaNode().props.ref.current, element); assert.equal(h.mediaNode().props.key, originalKey);
+    assert.equal(element.currentTime, 7.125); assert.equal(element.src, props.asset.url); assert.equal(element.paused, false);
+    assert.equal(element.loads, baselineLoads); assert.equal(element.pauses, baselinePauses);
+  }
 });

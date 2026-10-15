@@ -1,3 +1,4 @@
+import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 /** Supported own-cloud CUA acceptance against the ordinary authenticated server.
  * No renderer mocks, new provider POSTs, browser security changes or real keys.
  */
@@ -16,7 +17,7 @@ export async function runRunwayParityBrowserAcceptance({ tab, runtime, outDir })
   const capture = async name => { await writeFile(path.join(outDir, name), await tab.screenshot({ fullPage: true })); report.screenshots.push(name); };
   const store = openStore(path.join(runtime, 'workspace'), { lock: false });
   try {
-    await tab.playwright.getByTestId('jobs-button').click();
+    await clickWorkbenchAction(tab, 'jobs-button');
     const job = tab.playwright.getByTestId(`job-${fixture.jobId}`);
     await job.waitFor({ state: 'visible', timeoutMs: 10000 });
     assert.match(await job.innerText(), /服务商可能已接受任务并计费/);
@@ -35,8 +36,8 @@ export async function runRunwayParityBrowserAcceptance({ tab, runtime, outDir })
     assert.equal(await tab.playwright.getByTestId(`retry-job-${fixture.jobId}`).count(), 0);
     record('UI reconciliation retains one unknown job and one original POST, no new generation');
     await capture('02-reconciled-still-unknown.jpg');
-    await tab.reload(); await tab.playwright.getByTestId('jobs-button').waitFor({ state: 'visible', timeoutMs: 10000 });
-    await tab.playwright.getByTestId('jobs-button').click(); await job.waitFor({ state: 'visible', timeoutMs: 10000 });
+    await tab.reload(); await tab.playwright.getByTestId('workbench-actions').waitFor({ state: 'visible', timeoutMs: 10000 });
+    await clickWorkbenchAction(tab, 'jobs-button'); await job.waitFor({ state: 'visible', timeoutMs: 10000 });
     assert.match(await job.innerText(), /提交 1 次/); assert.equal(await tab.playwright.getByTestId(`retry-job-${fixture.jobId}`).count(), 0);
     assert.equal(http.allLiveDisabled, true);
     record('Reload preserves the warning; all live providers remain disabled in the browser runtime');

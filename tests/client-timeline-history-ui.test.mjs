@@ -18,7 +18,7 @@ const keyEvent = patch => ({ key: 'z', ctrlKey: true, metaKey: false, shiftKey: 
 const targetMatching = expected => ({ closest(selector) { assert.ok(selector.includes(expected), expected); return this; } });
 
 test('coherent history exposes current counts and operation labels', () => {
-  assert.deepEqual(timelineHistoryState(fixture()), { synced: true, cursor: 2, length: 3, canUndo: true, canRedo: true, undoLabel: '修改片段', redoLabel: '移除片段', blockedReason: '' });
+  assert.deepEqual(timelineHistoryState(fixture()), { synced: true, cursor: 2, length: 3, canUndo: true, canRedo: true, undoLabel: '修改片段', redoLabel: '移除片段', blockedReason: '', blockedMessage: null, undoMessage: { key: 'timeline.history.clipUpdate' }, redoMessage: { key: 'timeline.history.clipRemove' } });
 });
 
 test('beginning and end of history enable only possible traversal', () => {

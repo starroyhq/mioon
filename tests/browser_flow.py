@@ -1,6 +1,7 @@
 """Actual Chromium user-flow and MCP-result visual evidence; no UI state mocks."""
 import json, os, pathlib, shutil, socket, subprocess, tempfile, time, urllib.request
 from playwright.sync_api import sync_playwright, expect
+from browser_workbench_actions import workbench_action
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=pathlib.Path(os.environ.get('MIOON_BROWSER_EVIDENCE',str(ROOT/'evidence'/'browser')));OUT.mkdir(parents=True,exist_ok=True)
 TOKEN='browser-local-test-token-2026-only'
@@ -126,13 +127,13 @@ with sync_playwright() as p:
         expect(page.get_by_text('服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交。',exact=True)).to_be_visible(timeout=15000)
         screenshot(page,'A7-unknown-submission.png');page.get_by_role('button',name='关闭生成任务').click()
         log('A7: UI visibly preserves unknown submission warning, no automatic second submit')
-        page.get_by_test_id('export-button').click();expect(page.get_by_role('dialog',name='导出记录')).to_be_visible()
+        workbench_action(page, 'export-button').click();expect(page.get_by_role('dialog',name='导出记录')).to_be_visible()
         expect(page.get_by_test_id('download-export')).to_be_visible(timeout=90000)
         screenshot(page,'A8-export-ready.png')
         with page.expect_download() as download_info:page.get_by_test_id('download-export').click()
         download=download_info.value;download.save_as(str(OUT/'browser-export-portrait.mp4'))
         log('A8/A10: actual UI export and download completed',file='browser-export-portrait.mp4')
-        page.get_by_role('button',name='关闭对话框').click();page.get_by_test_id('jobs-button').click();page.get_by_role('button',name='关闭生成任务').click()
+        page.get_by_role('button',name='关闭对话框').click();workbench_action(page, 'jobs-button').click();page.get_by_role('button',name='关闭生成任务').click()
         state=rpc(base,'project.get',{'projectId':pid});(OUT/'project-state.json').write_text(json.dumps(state,ensure_ascii=False,indent=2))
         (OUT/'browser-errors.json').write_text(json.dumps(errors,indent=2));assert not errors,errors
         context.close()

@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
 import test from 'node:test';
 import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
@@ -13,7 +14,7 @@ const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url),
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
 const runSource = section('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(');
 const structureSource = section('async function addStructure()', 'async function addNode(');
-function compile(code, name, scope) { return Function(...Object.keys(scope), `${code}; return ${name};`)(...Object.values(scope)); }
+function compile(code, name, scope) { scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...scope }; return Function(...Object.keys(scope), `${code}; return ${name};`)(...Object.values(scope)); }
 function storage(t) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage'), values = new Map();
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { get length() { return values.size; }, key: i => [...values.keys()][i], getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, String(v)), removeItem: k => values.delete(k) } });
@@ -31,7 +32,7 @@ function harness(t, dispatch) {
     isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, clearPending, pendingForProject,
     isReferenceOperation: () => false, setPending: value => { state.pending = value; },
     rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return dispatch(operation, input, state); },
-    refresh: async id => { state.refreshes.push(id); }, notify: (message, type) => state.notices.push({ message, type }),
+    refresh: async id => { state.refreshes.push(id); }, notify: (message, type) => state.notices.push({ message: renderCoreMessage('zh-Hans', message), type }),
     openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; }, readableError: error => error.message,
     requestCounter: { current: 0 }, dataRef: { current: { project: { id: 'project-a' }, shots: [{ id: 'shot-a', projectId: 'project-a' }], nodes: [] } }, setData: () => {},
   };
@@ -102,7 +103,7 @@ function structureHarness({ results = [{ id: 'first' }, null], afterGuard, after
     guardNavigation: async () => { afterGuard?.(state, currentProject); return true; },
     context: () => ({ projectId: currentProject.current }), isCurrent: captured => captured.projectId === currentProject.current,
     markBusy: () => {}, run: async (...args) => { calls.push(args); const result = results[calls.length - 1]; afterRun?.(state, currentProject, calls.length); return result; },
-    notify: (...args) => notices.push(args), refresh: async () => state, inspect: async () => true, revealCanvas: () => {}, readableError: error => error.message,
+    notify: (value, ...args) => notices.push([renderCoreMessage('zh-Hans', value), ...args]), refresh: async () => state, inspect: async () => true, revealCanvas: () => {}, readableError: error => error.message,
   };
   return { run: compile(structureSource, 'addStructure', scope), calls, notices, currentProject, state };
 }

@@ -1,3 +1,5 @@
+import { exportHistoryStatusMessage } from './export-display.ts';
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React from 'react';
 import type { ReactNode } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
@@ -24,26 +26,27 @@ export interface TimelineDeliveryHistoryProps {
 
 /** Frozen timeline rows stay independent of today's project title/settings. */
 export default function TimelineDeliveryHistory({ item, samplePeak, loudness, frozenDelivery, timelineRevision, statusLabel, held = false, filmIcon, downloadIcon }: TimelineDeliveryHistoryProps) {
+  const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const delivery = namedTimelineDeliveryHistory(item, frozenDelivery);
-  if (!delivery || hasInvalidExportRangeHistory(item)) return <div className="export-card" data-testid="named-delivery-invalid"><div className="export-icon">{filmIcon}</div><div className="export-detail"><strong>时间线导出记录</strong><p className="notice warning">成片记录不完整，暂时不能下载。</p>{held && <span className="restored-held-label" data-testid="restored-export-held">历史记录 · 暂停执行，原状态保留</span>}</div></div>;
+  if (!delivery || hasInvalidExportRangeHistory(item)) return <div className="export-card" data-testid="named-delivery-invalid"><div className="export-icon">{filmIcon}</div><div className="export-detail"><strong>{t('export.history.title')}</strong><p className="notice warning">{t('export.history.invalidDelivery')}</p>{held && <span className="restored-held-label" data-testid="restored-export-held">{t('export.history.held')}</span>}</div></div>;
   const output = delivery.output;
   const snapshot = item !== null && typeof item === 'object' && 'snapshot' in item ? item.snapshot : undefined;
   return <div className="export-card" data-testid="named-delivery-history">
     <div className="export-icon">{filmIcon}</div>
     <div className="export-detail">
       <strong title={delivery.name} data-testid="delivery-history-name">{delivery.name}</strong>
-      {held && <span className="restored-held-label" data-testid="restored-export-held">历史记录 · 暂停执行，原状态保留</span>}
-      <span>{statusLabel} · <time dateTime={delivery.createdAt}>{new Date(delivery.createdAt).toLocaleString('zh-CN')}</time></span>
-      {delivery.error && <p className="job-error">{delivery.error}</p>}
-      <small>时间线导出 · rev {delivery.revision}{delivery.revision !== timelineRevision ? ' · 旧快照' : ' · 当前'}</small>
+      {held && <span className="restored-held-label" data-testid="restored-export-held">{t('export.history.held')}</span>}
+      <span>{exportHistoryStatusMessage(delivery.status, locale)} · <time dateTime={delivery.createdAt}>{formatDate(delivery.createdAt, { dateStyle: 'medium', timeStyle: 'medium' })}</time></span>
+      {delivery.error && <p className="job-error">{t('export.history.safeError')}</p>}
+      <small>{t('export.history.timelineRevision', { revision: delivery.revision, snapshot: t(delivery.revision !== timelineRevision ? 'export.history.old' : 'export.history.current') })}</small>
       <ExportSamplePeak exportId={delivery.id} samplePeak={samplePeak} />
       <ExportLoudness exportId={delivery.id} loudness={loudness} />
       <ExportRangeSummary input={snapshot} snapshot testId="export-history-range" />
-      {output ? <small className="export-frozen-settings" data-testid="export-history-settings">成片 · {output.dimensions} · {output.fps} fps · {output.rate}{output.upscale ? ' · 放大输出，不增加细节' : ''}{output.rate !== '原有编码设置' ? ' · AAC 128 kb/s' : ''}</small> : <small>冻结成片规格不可用</small>}
+      {output ? <small className="export-frozen-settings" data-testid="export-history-settings">{t(snapshot && typeof snapshot === 'object' && Object.hasOwn(snapshot, 'delivery') ? 'export.history.output' : 'export.history.legacyOutput', { dimensions: output.dimensions, fps: output.fps, rate: renderMessage(output.rateMessage) || t('export.history.legacyRate'), upscale: output.upscale ? t('export.history.upscale') : '' })}</small> : <small>{t('export.history.frozenUnavailable')}</small>}
     </div>
     {delivery.downloadHref
-      ? <Button variant="ghost" className="button primary small" render={<a href={delivery.downloadHref} download data-testid="download-export" />}>{downloadIcon}下载</Button>
-      : held ? <Badge className="small-badge neutral">已保留 · 暂停</Badge>
-        : delivery.status === 'failed' ? <Badge className="small-badge warn">失败</Badge> : <span className="spinner" />}
+      ? <Button variant="ghost" className="button primary small" render={<a href={delivery.downloadHref} download data-testid="download-export" />}>{downloadIcon}{t('export.history.download')}</Button>
+      : held ? <Badge className="small-badge neutral">{t('export.history.retained')}</Badge>
+        : delivery.status === 'failed' ? <Badge className="small-badge warn">{t('export.history.failed')}</Badge> : <span className="spinner" />}
   </div>;
 }

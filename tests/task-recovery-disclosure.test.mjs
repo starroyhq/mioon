@@ -1,3 +1,5 @@
+import { message } from './helpers/i18n.ts';
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -41,6 +43,7 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
     if (modules.has(file)) return modules.get(file);
     const module = { exports: {} };
     const resolve = name => {
+    const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
       if (name === 'react') return react;
       if (file === 'RecoveryStorageDetails.tsx') assert.fail(`Unexpected disclosure dependency: ${name}`);
       if (name === '@mioon/contracts') return { ...contracts, DURABLE_EDIT_OPERATIONS: operations };
@@ -116,8 +119,8 @@ test('existing TaskCenter explicit recover, acknowledge, legacy replay, reconcil
   for (const fence of [unknownFence, appliedFence, retryFence]) { assert.equal(typeof fence, 'function'); assert.equal(fence(), true); }
   assert.deepEqual(h.calls, [
     ['onRecover', unknown, false, unknownFence], ['onRecover', applied, true, appliedFence], ['onAdopt', entry],
-    ['run', entry.key, entry.operation, entry.input, '原请求已恢复并确认', { replay: true }],
-    ['run', `reconcile:${uncertain.id}`, 'job.reconcile', { jobId: uncertain.id, providerJobId: 'provider-original' }, '已核对已有任务状态，没有重新提交生成'],
+    ['run', entry.key, entry.operation, entry.input, message('tasks.center.originalRecovered'), { replay: true }],
+    ['run', `reconcile:${uncertain.id}`, 'job.reconcile', { jobId: uncertain.id, providerJobId: 'provider-original' }, message('tasks.center.existingStatusChecked')],
     ['retryGeneration', failed, retryFence],
   ]);
   assert.equal(all.some(node => ['Dialog', 'DialogContent', 'DialogTitle'].includes(node.type) || node.props.role === 'dialog' || node.props['aria-modal']), false);
@@ -153,7 +156,7 @@ test('existing cancellation and inspect callbacks still honor confirmation and c
     const before = h.calls.length;
     await nodes(tree).find(node => node.type === 'Button' && text(node) === '停止等待').props.onClick();
     assert.equal(h.calls.length - before, executed ? 1 : 0);
-    if (executed) assert.deepEqual(h.calls.at(-1), ['run', `cancel:${running.id}`, 'job.cancel', { jobId: running.id }, '已请求停止。请查看任务记录中的实际取消范围。']);
+    if (executed) assert.deepEqual(h.calls.at(-1), ['run', `cancel:${running.id}`, 'job.cancel', { jobId: running.id }, message('tasks.center.stopRequested')]);
   }
   const inspected = [], tree = h.render({ jobs: [running], onInspectJob: (...args) => inspected.push(args) });
   const inspect = nodes(tree).find(node => node.type === 'Button' && text(node) === '查看镜头').props.onClick;

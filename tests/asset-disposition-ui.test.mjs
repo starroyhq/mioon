@@ -1,3 +1,4 @@
+import { i18nTestModule, renderMessage as renderI18nMessage, message as msg } from './helpers/i18n.ts';
 import test from 'node:test';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
@@ -100,7 +101,7 @@ test('two windows use independent disposition CAS and a loser rereads before a f
   await left.set(assetId(1), 'favorite'); await right.set(assetId(1), 'rejected');
   assert.equal(writes.length, 2); assert.equal(writes[1].expectedRevision, 0);
   assert.equal(dispositionRow(right.getState(), assetId(1)).disposition, 'favorite');
-  assert.match(right.getState().mutationError, /未获确认/);
+  assert.match(renderI18nMessage('zh-Hans', right.getState().mutationError), /未获确认/);
   await right.set(assetId(1), 'rejected'); assert.equal(writes[2].expectedRevision, 1);
   assert.equal(dispositionRow(right.getState(), assetId(1)).revision, 2);
 });
@@ -183,7 +184,7 @@ const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'u
 test('actual App recovery replays the exact key and refreshes current marks separately from historical ACK', async t => {
   storage(t); let lost = true, refreshes = 0, markRefreshes = 0; const calls = [], busy = new Set();
   const input = { projectId, assetId: assetId(1), expectedRevision: 0, disposition: 'favorite' };
-  const scope = { shotTextRef: { current: null }, context: () => ({ projectId, epoch: 1 }), currentProject: { current: projectId }, isCurrent: () => true,
+  const scope = { msg, localizedError: value => Object.assign(new Error(renderI18nMessage('zh-Hans', value)), { displayMessage: value }), shotTextRef: { current: null }, context: () => ({ projectId, epoch: 1 }), currentProject: { current: projectId }, isCurrent: () => true,
     isBusy: key => busy.has(key), markBusy: (_id, key, value) => value ? busy.add(key) : busy.delete(key),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, validateMutationResponse, mutationNotApplied, prepareSubmission, clearPending, pendingForProject,
@@ -212,7 +213,7 @@ function controlHarness() {
     useLayoutEffect: (fn, deps) => { const index = cursor++; if (!slots[index] || deps.some((value, i) => value !== slots[index].deps[i])) { const previous = slots[index]; slots[index] = { fn, deps, cleanup: previous?.cleanup }; effects.push(index); } },
   };
   const module = { exports: {} };
-  Function('require', 'module', 'exports', code)(id => id === 'react' ? { ...react, default: react } : id.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => h.visible } : id.endsWith('asset-disposition-state.js') ? { dispositionLabels: { neutral: '未标记', favorite: '收藏', rejected: '拒选' }, dispositionRow } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)(id => id.endsWith('/i18n/I18nProvider.tsx') ? i18nTestModule() : id === 'react' ? { ...react, default: react } : id.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => h.visible } : id.endsWith('asset-disposition-state.js') ? { dispositionLabels: { neutral: '未标记', favorite: '收藏', rejected: '拒选' }, dispositionRow } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   h.render = props => { cursor = 0; effects = []; const tree = module.exports.default(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return nodes(tree); };
   h.unmount = () => slots.forEach(slot => slot.cleanup?.());
   return h;
@@ -250,10 +251,11 @@ test('shared library keeps an excluded source editable and resets filters withou
   const usageCode = transformSync(readFileSync(new URL('../apps/web/src/AssetTimelineUsage.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   Function('require', 'module', 'exports', usageCode)(id => {
     if (id === 'react') return { ...react, default: react };
+    if (id.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (id === '@mioon/ui/components/button') return { Button: 'Button' };
     throw Error(`Unexpected usage control import: ${id}`);
   }, usageModule, usageModule.exports);
-  Function('require', 'module', 'exports', code)(id => id === 'react' ? { ...react, default: react } : id.endsWith('AssetTimelineUsage.tsx') ? usageModule.exports : id.endsWith('asset-disposition-state.js') ? { dispositionCounts, dispositionFilters, filterLibraryAssets } : id.endsWith('AssetDispositionControls.jsx') ? { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) } : id.endsWith('Timeline.jsx') ? { assetKind: () => 'video', dragAsset() {} } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)(id => id.endsWith('/i18n/I18nProvider.tsx') ? i18nTestModule() : id === 'react' ? { ...react, default: react } : id.endsWith('AssetTimelineUsage.tsx') ? usageModule.exports : id.endsWith('asset-disposition-state.js') ? { dispositionCounts, dispositionFilters, filterLibraryAssets } : id.endsWith('AssetDispositionControls.jsx') ? { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) } : id.endsWith('Timeline.jsx') ? { assetKind: () => 'video', dragAsset() {} } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const render = props => { cursor = 0; const result = module.exports.default(props); for (const [index, fn] of effects) { slots[index].cleanup?.(); slots[index].cleanup = fn(); } effects.clear(); return nodes(result); };
   const assets = [asset(1), asset(2)], state = { scope: local.scope, entries: { [assetId(1)]: { phase: 'ready', row: row(1, 1, 'favorite') }, [assetId(2)]: { phase: 'ready', row: row(2, 1, 'rejected') } } };
   const props = { assets, filter: 'all', search: '', onFilter: value => changes.push(['type', value]), onSearch: value => changes.push(['search', value]), busy: {}, project: { id: projectId }, selectedAsset: assets[1], dispositions: { state, controller: {} }, inUseAssetIds: new Set([assetId(2)]) };

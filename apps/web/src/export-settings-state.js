@@ -1,3 +1,4 @@
+import { message } from '../../../packages/i18n/src/index.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, timelineExportSettingsSchema, resolveTimelineExportDelivery, isTimelineExportDelivery } from '@mioon/contracts';
 
 // This is per-export UI state only. Never write it to project/workspace storage,
@@ -19,11 +20,15 @@ export function exportRateLabel(settings, effective) {
   const labels = { compact: '紧凑', standard: '标准', high: '高画质' };
   return `${labels[settings.rateControl.quality]} · CRF ${effective.rateControl.crf}`;
 }
+export function exportRateMessage(settings) {
+  if (settings.rateControl.mode === 'bitrate') return message('export.settings.rateTarget', { rate: settings.rateControl.targetKbps / 1000 });
+  return message(({ compact: 'export.settings.compact', standard: 'export.settings.standard', high: 'export.settings.high' })[settings.rateControl.quality]);
+}
 export function describeExportDelivery(delivery, timeline) {
   if (!timeline || !delivery || !isTimelineExportDelivery(delivery, timeline, delivery.exportSettings)) return null;
   const { effective, exportSettings } = delivery;
   return { width: effective.width, height: effective.height, fps: effective.fps,
-    dimensions: `${effective.width} × ${effective.height}`, rate: exportRateLabel(exportSettings, effective),
+    dimensions: `${effective.width} × ${effective.height}`, rate: exportRateLabel(exportSettings, effective), rateMessage: exportRateMessage(exportSettings),
     upscale: effective.width > timeline.width || effective.height > timeline.height,
     bitrate: exportSettings.rateControl.mode === 'bitrate' };
 }

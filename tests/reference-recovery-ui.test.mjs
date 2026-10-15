@@ -1,3 +1,4 @@
+import { message as msg, renderMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import { transformSync } from 'esbuild';
 import assert from 'node:assert/strict';
@@ -56,7 +57,7 @@ function harness(dispatch, { projectSnapshot } = {}) {
   const currentProject = { current: projectId }, projectEpoch = { current: 1 }, busy = new Set();
   const dataRef = { current: snapshot() }, viewRef = { current: defaultWorkspaceState() };
   viewRef.current.canvas.selectedId = id(7);
-  const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, workspaceRef: { current: { restored: false } }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse,
+  const scope = { msg, localizedError: value => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }), ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, workspaceRef: { current: { restored: false } }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse,
     REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, shotTextRef: { current: null }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === state.epoch,
@@ -65,8 +66,8 @@ function harness(dispatch, { projectSnapshot } = {}) {
     requestCounter: { current: 0 }, setData: update => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; state.dataWrites.push(clone(dataRef.current)); },
     setPending: entries => { state.pending = entries; state.pendingUpdates.push(clone(entries)); },
     openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; },
-    readableError: error => error.message, clipReplacementErrorMessage: error => error.message,
-    notify: (message, type) => state.notices.push({ message, type }), refresh: async owner => { state.refreshes.push(owner); },
+    readableError: error => error.message, clipReplacementErrorDescriptor: error => error.message,
+    notify: (message, type) => state.notices.push({ message: renderMessage('zh-Hans', message), type }), refresh: async owner => { state.refreshes.push(owner); },
     rpc: async (operation, input) => {
       if (projectSnapshot && operation === 'project.get') { state.refreshes.push(input.projectId); return projectSnapshot(input.projectId); }
       if (projectSnapshot && operation === 'provider.list') return [];

@@ -1,3 +1,4 @@
+import { createI18nTestContext, message } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -14,7 +15,7 @@ const projectId='11111111-1111-4111-8111-111111111111',shotId='22222222-2222-422
 function harness() {
  const state={projectReady:true,dock:'tasks',page:'subtitle',mode:'editing',confirm:[],reveal:[],notice:[],auth:[],refresh:[],ack:[],busy:[],draft:{name:'unsaved',startFrame:7}};
  const refs={importSession:{current:{active:true}},viewReady:{current:true},taskWorkspaceState:{current:{visible:true,connected:true}},currentProject:{current:projectId},projectEpoch:{current:2},navigationEpoch:{current:3},panelIntent:{current:4},workspaceRef:{current:{id:'original'}},taskShotAttempt:{current:0},dataRef:{current:{project:{id:projectId},jobs:[{id:jobId,shotId,projectId,status:'succeeded'}],shots:[{id:shotId,projectId}],timelineHistory:{revision:1}}}};
- const deps={...refs,projectSessionReady:()=>state.projectReady,captureTaskWorkspaceIntent,navigateTaskShot,workspaceOriginScope:w=>w.id,
+ const deps={message,msg:message,...createI18nTestContext(),...refs,projectSessionReady:()=>state.projectReady,captureTaskWorkspaceIntent,navigateTaskShot,workspaceOriginScope:w=>w.id,
   guardNavigation:async(message,extra,canDiscard)=>{state.confirm.push({message,extra,canDiscard});return canDiscard();},
   setRightDockTab:value=>{state.dock=typeof value==='function'?value(state.dock):value;},setPropertiesPage:value=>{state.page=value;},
   setPanelOpen:(...args)=>{state.reveal.push(args);refs.panelIntent.current++;},updateView:(section,value)=>{state.reveal.push([section,value]);if(section==='activeMode')state.mode=value;},
@@ -107,7 +108,7 @@ test('paid retry keeps its Tasks review and rejects a revoked pane before submis
  const code=section('  function retryGeneration(', '  async function createProject('),snapshot={title:'Fixed original',duration:4,aspectRatio:'16:9',referenceAssetIds:[]};
  const job={id:jobId,shotId,projectId,providerId:'synthetic-paid-adapter',model:'fixed-test-model',snapshot};
  const state={reviews:[],submitted:[],notices:[]},realConfirmRef={current:null};let viewCurrent=true;
- const deps={providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
+ const deps={message,msg:message,...createI18nTestContext(),providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
   dataRef:{current:{shots:[{id:shotId,projectId}],jobs:[job],assets:[]}},generationReviewScope:{current:{key:'tasks'}},realConfirmRef,
   setRealConfirm:value=>state.reviews.push(value),context:()=>({projectId,epoch:1}),isCurrent:()=>true,
   generationReferenceIdentity:()=> 'fixed-source',generationReferences:()=>({references:[]}),generationOptionsRef:{current:{}},generationSelection:()=>({}),

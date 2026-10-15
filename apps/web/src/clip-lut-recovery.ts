@@ -27,9 +27,18 @@ export interface ClipLutRecovery {
   complete(value: ClipLutRecoveryMetadata): Promise<void>;
 }
 export type ClipLutRecoveryLock = <T>(name: string, action: () => Promise<T>) => Promise<T>;
-const unavailable = (): Error => Error('无法安全读写浏览器的 LUT 恢复记录，已阻止导入。请允许此站点的本地存储后重新检查；不要清除待确认记录。');
-const conflict = (): Error => Error('LUT 恢复记录已变化或存在另一条待确认请求。请重新检查并恢复原请求，不会覆盖记录。');
-const corrupt = (): Error => Error('LUT 恢复记录损坏、重复或超出限制，已停止导入且保留原记录；请勿清除记录后重复导入。');
+export type ClipLutRecoveryErrorCode = 'LUT_RECOVERY_UNAVAILABLE' | 'LUT_RECOVERY_CONFLICT' | 'LUT_RECOVERY_CORRUPT';
+/** Application-owned error identity. Never infer control flow from translated or
+ * third-party diagnostic text. The original message remains diagnostic evidence. */
+export class ClipLutRecoveryError extends Error {
+  readonly code: ClipLutRecoveryErrorCode;
+  constructor(code: ClipLutRecoveryErrorCode, diagnostic: string) {
+    super(diagnostic); this.name = 'ClipLutRecoveryError'; this.code = code;
+  }
+}
+const unavailable = (): ClipLutRecoveryError => new ClipLutRecoveryError('LUT_RECOVERY_UNAVAILABLE', '无法安全读写浏览器的 LUT 恢复记录，已阻止导入。请允许此站点的本地存储后重新检查；不要清除待确认记录。');
+const conflict = (): ClipLutRecoveryError => new ClipLutRecoveryError('LUT_RECOVERY_CONFLICT', 'LUT 恢复记录已变化或存在另一条待确认请求。请重新检查并恢复原请求，不会覆盖记录。');
+const corrupt = (): ClipLutRecoveryError => new ClipLutRecoveryError('LUT_RECOVERY_CORRUPT', 'LUT 恢复记录损坏、重复或超出限制，已停止导入且保留原记录；请勿清除记录后重复导入。');
 export function clipLutRecoveryKey(identity: ClipLutRecoveryIdentity): string {
   if (!hash.safeParse(identity.workspaceScope).success || !id.safeParse(identity.projectId).success) throw unavailable();
   return `mioon.lut-import.pending.v1:${identity.workspaceScope}:${identity.projectId}`;
@@ -61,7 +70,7 @@ export function createClipLutRecovery({ storage = () => globalThis.localStorage,
   async function access<T>(identity: ClipLutRecoveryIdentity, action: (store: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>, key: string) => T): Promise<T> {
     const key = clipLutRecoveryKey(identity);
     try { return await lock(key, async () => action(storage(), key)); }
-    catch (error) { if (error instanceof Error && /^(LUT |无法安全)/u.test(error.message)) throw error; throw unavailable(); }
+    catch (error) { if (error instanceof ClipLutRecoveryError) throw error; throw unavailable(); }
   }
   const read = (identity: ClipLutRecoveryIdentity) => access(identity, (store, key) => decode(store.getItem(key), identity));
   return {

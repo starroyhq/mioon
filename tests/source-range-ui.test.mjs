@@ -1,9 +1,10 @@
+import { i18nTestModule, message, renderMessage, translate } from './helpers/i18n.ts';
 import test from 'node:test';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { createSourceRangeController, sourceFrameCount, sourcePositionFrame, sourceRangeIssue, sourceRangeAddPlan } from '../apps/web/src/source-range-state.js';
+import { createSourceRangeController, sourceFrameCount, sourcePositionFrame, sourceRangeIssue, sourceRangeMessage, sourceRangeAddPlan } from '../apps/web/src/source-range-state.js';
 import { assertMutationOwner, prepareMutation, validateMutationResponse, isMutationOperation, mutationNotApplied } from '../apps/web/src/mutation-submissions.js';
 import { readPending, clearPending, prepareSubmission, pendingForProject } from '../apps/web/src/submissions.js';
 
@@ -142,7 +143,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('async function previewSource('), app.indexOf('async function addSavedSourceRange('));
   const updates = [], calls = []; let accept = false;
-  const scope = { subtitlesRef: { current: { controller: { hasUnsaved: () => false } } }, setPropertiesPage: () => {}, viewRef: { current: { activeMode: 'editing', editing: { quickAssetId: null } } }, setPreviewAsset: () => {}, context: () => ({ projectId: 'project-a' }), guardNavigation: async () => { calls.push('guard'); return accept; }, isCurrent: () => true, dataRef: { current: { assets: [asset()] } }, navigationEpoch: { current: 0 }, updateView: (...args) => updates.push(args) };
+  const scope = { msg: message, subtitlesRef: { current: { controller: { hasUnsaved: () => false } } }, setPropertiesPage: () => {}, viewRef: { current: { activeMode: 'editing', editing: { quickAssetId: null } } }, setPreviewAsset: () => {}, context: () => ({ projectId: 'project-a' }), guardNavigation: async () => { calls.push('guard'); return accept; }, isCurrent: () => true, dataRef: { current: { assets: [asset()] } }, navigationEpoch: { current: 0 }, updateView: (...args) => updates.push(args) };
   const preview = Function(...Object.keys(scope), `${source};return previewSource`)(...Object.values(scope));
   await preview(asset()); assert.equal(calls.length, 1); assert.deepEqual(updates, []);
   accept = true; await preview(asset()); assert.deepEqual(updates, [['editing', { quickAssetId: 'asset-a', selectedClipId: null, previewKind: 'source' }]]);
@@ -159,14 +160,14 @@ test('source range controls use full source bounds and retain timeline caps sepa
   const createElement = (type, props, ...children) => ({ type, props: { ...props, children } });
   const module = { exports: {} };
   const hooks = { createElement, useRef: value => ({ current: value }), useLayoutEffect: fn => fn() };
-  const require = id => id === 'react' ? { ...hooks, default: hooks } : id.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => true } : id.endsWith('.css') ? {} : id.endsWith('icons.jsx') ? { default: 'Icon', __esModule: true } : id.endsWith('source-range-state.js') ? { SOURCE_RANGE_FPS: 30, sourceFrameCount, sourceRangeIssue, sourceRangeAddPlan, supportsSourceRange: () => true } : new Proxy({}, { get: (_, key) => String(key) });
+  const require = id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === 'react' ? { ...hooks, default: hooks } : id.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => true } : id.endsWith('.css') ? {} : id.endsWith('icons.jsx') ? { default: 'Icon', __esModule: true } : id.endsWith('source-range-state.js') ? { SOURCE_RANGE_FPS: 30, sourceFrameCount, sourceRangeIssue, sourceRangeMessage, sourceRangeAddPlan, supportsSourceRange: () => true } : new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', code)(require, module, module.exports);
   const rendered = module.exports.default({ asset: asset(), state: { scope: 'source-a', row: row(1, { inFrame: 20000, outFrame: 20120 }), draft: { inFrame: 20000, outFrame: 20120 }, position: 20000 }, controller: { getState: () => ({ scope: 'source-a' }), snapshot: () => ({ projectId: 'project-a', assetId: 'asset-a', revision: 1, inFrame: 20000, outFrame: 20120 }) }, timeline: timeline() });
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   const all = nodes(rendered), find = id => all.find(node => node.props?.['data-testid'] === id);
   assert.equal(find('source-range-in').props.max, 35999); assert.equal(find('source-range-out').props.max, 36000);
   assert.equal(find('source-range-add').props.disabled, false);
-  assert.match(source, /不是原生帧率或 VFR/); assert.match(source, /关闭并重建原生窗口可能丢失凭据/);
+  assert.match(source, /timeline.range.timebase/); assert.match(translate('zh-Hans', 'timeline.range.timebase', { fps: 30 }), /不是原生帧率或 VFR/); assert.match(source, /timeline.range.recovery/); assert.match(translate('zh-Hans', 'timeline.range.recovery'), /关闭并重建原生窗口可能丢失凭据/);
   const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8');
   assert.match(inspector, /data-testid="clip-source-in"[^>]*sourceFrameCount/);
   assert.match(inspector, /data-testid="clip-start"[^>]*max="17999"/);
@@ -179,7 +180,7 @@ test('retained source inspector handlers reject another asset epoch, hidden pane
   const slots = []; let cursor = 0, visible = true, scope = 'asset-a:1', cleanups = [], tree;
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useRef: value => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn, deps) => { const i = cursor++, prior = slots[i]; if (!prior || deps.some((value, n) => value !== prior.deps[n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; cleanups.push(slots[i]); } } };
   const module = { exports: {} }, actions = [];
-  const require = id => id === 'react' ? { ...react, default: react } : id.endsWith('.css') ? {} : id.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => visible } : id.endsWith('icons.jsx') ? { default: 'Icon', __esModule: true } : id.endsWith('source-range-state.js') ? { SOURCE_RANGE_FPS: 30, sourceFrameCount, sourceRangeIssue, sourceRangeAddPlan, supportsSourceRange: () => true } : new Proxy({}, { get: (_, key) => String(key) });
+  const require = id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === 'react' ? { ...react, default: react } : id.endsWith('.css') ? {} : id.endsWith('workspace-visibility.jsx') ? { useWorkspaceVisibility: () => visible } : id.endsWith('icons.jsx') ? { default: 'Icon', __esModule: true } : id.endsWith('source-range-state.js') ? { SOURCE_RANGE_FPS: 30, sourceFrameCount, sourceRangeIssue, sourceRangeMessage, sourceRangeAddPlan, supportsSourceRange: () => true } : new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', code)(require, module, module.exports);
   const controller = { getState: () => ({ scope }), snapshot: () => ({ scope, projectId: 'project-a', assetId: 'asset-a', revision: 1, inFrame: 20, outFrame: 120 }), ...Object.fromEntries(['edit', 'save', 'discard', 'read', 'seek'].map(name => [name, (...args) => actions.push([name, ...args])])) };
   const props = () => ({ asset: asset(), state: { scope, row: row(1, { inFrame: 20, outFrame: 120 }), draft: { inFrame: 20, outFrame: 120 }, position: 50, dirty: true }, controller, timeline: timeline(), onAdd: snapshot => actions.push(['add', snapshot]) });
@@ -208,7 +209,7 @@ test('actual App range replay uses its original request and triggers latest scop
   let remote = row(), historical, generation = {}, controller;
   const calls = [], busy = new Set(), notices = [];
   const currentProject = { current: 'project-a' };
-  const scope = {
+  const scope = { msg: message,
     shotTextRef: { current: null }, currentProject, context: () => ({ projectId: currentProject.current, epoch: 1 }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: (key, project) => busy.has(`${project}:${key}`), markBusy: (project, key, value) => value ? busy.add(`${project}:${key}`) : busy.delete(`${project}:${key}`),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,

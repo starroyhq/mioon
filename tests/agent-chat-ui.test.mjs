@@ -1,3 +1,7 @@
+import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
+import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
+import { createI18nTestContext, message } from './helpers/i18n.ts';
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as timing from '../apps/web/src/agent-timeline-context.js';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
@@ -179,7 +183,7 @@ const transformed = transformSync(source, { loader: 'jsx', format: 'cjs' }).code
 const element = (type, props = {}, ...children) => { const properties = { ...props, children: children.length === 1 ? children[0] : children }; return typeof type === 'function' && type.name === 'AgentRunActivity' ? type(properties) : { type, props: properties }; };
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
-function uiHarness(client, receipts = memoryReceipts()) {
+function uiHarness(client, receipts = memoryReceipts(), languageStore) {
   const slots = [], dom = new Map(); let cursor = 0, effects = [], tree, closes = 0, settingsOpened = 0, currentProject = projectId, visible = true, hasDraft = false;
   const react = { createElement: element,
     useState(initial) { const i = cursor++; slots[i] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, next => { slots[i].value = typeof next === 'function' ? next(slots[i].value) : next; }]; },
@@ -189,6 +193,7 @@ function uiHarness(client, receipts = memoryReceipts()) {
   }; react.default = react;
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   const resolve = id => {
+    const i18nDependency = creationTestDependency(id, languageStore); if (i18nDependency) return i18nDependency;
     if (id === './agent-timeline-context.js') return timing;
     if (id === './agent-timeline-gain-context.ts') return gainContext;
     if (id === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
@@ -245,8 +250,10 @@ test('integration preserves settings entry, the shared right dock, bounded histo
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /data-testid="agent-chat-open"/); assert.match(app, /data-testid="agent-settings-open"/); assert.match(app, /<AgentWorkspace nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry\.current} navigationRegistry={settingsNavigation\.current} projectId={data.project\?\.id}/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
-  assert.match(source, /inspecting \? '新消息范围：当前项目只读检查'/); assert.match(source, /新消息范围：仅文字聊天/); assert.match(source, /不会发送/); assert.match(source, /保存在本地应用数据库/); assert.match(source, /并非密钥保险库加密/); assert.match(source, /请勿输入密钥或其他秘密/);
-  assert.doesNotMatch(source, /dangerouslySetInnerHTML|<a\s|<img\s|<iframe|fetch\(|rpc\(|localStorage|sessionStorage/);
+  assert.match(source, /inspecting \? t\('agent.chat.inspectionScope'\)/);
+  const displayCopy = source + Object.entries(creationUiMessages).filter(([key]) => source.includes(`'${key}'`)).map(([, value]) => JSON.stringify(value['zh-Hans'])).join('\n');
+  for (const copy of ['新消息范围：当前项目只读检查', '新消息范围：仅文字聊天', '不会发送', '保存在本地应用数据库', '并非密钥保险库加密', '请勿输入密钥或其他秘密']) assert.ok(displayCopy.includes(copy), copy);
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML|<a\s|<img\s|<iframe|fetch\(|rpc\(|\blocalStorage\b|\bsessionStorage\b/);
 });
 
 test('receipt metadata handles prototype-shaped project IDs as own data, without prototype inheritance', () => {
@@ -391,11 +398,11 @@ const navigationProjectId = '77000000-0000-4000-8000-000000000001', navigationNe
 function projectNavigation({ draft = true, imageDraft = false, dirty = false, confirmation = true } = {}) {
   const calls = [], currentProject = { current: navigationProjectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty }, formatState = {}, workspaceRef = { current: { restored: false } };
   const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
-  const guardEnv = { nativeWindow: null, localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef: { current: null }, deliveryNameRef: { current: null }, subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft: () => calls.push(['discardSubtitles']) } } }, setSubtitleDirty: value => calls.push(['subtitleDirty', value]), context, dirtyRef, timelineFormatRef: { current: { controller: { getState: () => formatState, hasUnsaved: () => false, discardDraft: () => calls.push(['discardFormat']) } } }, confirm: async message => { calls.push(['confirm', message]); return confirmation; }, isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOriginScope(captured.workspace) === workspaceOriginScope(workspaceRef.current),
+  const guardEnv = { message, msg: message, ...createI18nTestContext(), nativeWindow: null, localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef: { current: null }, deliveryNameRef: { current: null }, subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft: () => calls.push(['discardSubtitles']) } } }, setSubtitleDirty: value => calls.push(['subtitleDirty', value]), context, dirtyRef, timelineFormatRef: { current: { controller: { getState: () => formatState, hasUnsaved: () => false, discardDraft: () => calls.push(['discardFormat']) } } }, confirm: async message => { calls.push(['confirm', message]); return confirmation; }, isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOriginScope(captured.workspace) === workspaceOriginScope(workspaceRef.current),
     setShotDirty: value => calls.push(['shotDirty', value]), setClipDirty: value => calls.push(['clipDirty', value]), setSourceDirty: value => calls.push(['sourceDirty', value]), setSubjectDirty: value => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: scope => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
   const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${guardSource}\n${projectGuardSource}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
-  const env = { nativeWindow: null, nativeProjectEntry: null, workspaceRef, workspaceOriginScope, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
+  const env = { message, msg: message, ...createI18nTestContext(), nativeWindow: null, nativeProjectEntry: null, workspaceRef, workspaceOriginScope, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     context, isCurrent: guardEnv.isCurrent, confirm: guardEnv.confirm, notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message,
     openedProject: { current: projectOpenAttempt(navigationProjectId, 0, 'normal') }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: { project: { id: navigationProjectId } } }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, updateView: () => {}, URL,
@@ -410,7 +417,7 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
 test('actual App project guard Cancel retains unsent chat and current project without clearing any panel', async () => {
   const f = projectNavigation({ confirmation: false }); assert.equal(await f.selectProject(navigationNextId), false);
   assert.equal(f.currentProject.current, navigationProjectId); assert.equal(f.env.agentDraft.current, true);
-  assert.equal(f.calls.length, 1); assert.equal(f.calls[0][0], 'confirm'); assert.match(f.calls[0][1], /未发送的草稿/); assert.match(f.calls[0][1], /已发送的回复可能继续/);
+  assert.equal(f.calls.length, 1); assert.equal(f.calls[0][0], 'confirm'); assert.match(createI18nTestContext().renderMessage(f.calls[0][1]), /未发送的草稿/); assert.match(createI18nTestContext().renderMessage(f.calls[0][1]), /已发送的回复可能继续/);
 });
 
 test('actual App project guard Confirm permits project-key isolation; no draft or merely running reply needs no prompt', async () => {
@@ -426,9 +433,9 @@ test('actual App project guard Confirm permits project-key isolation; no draft o
 test('actual App image draft guard Cancel preserves project and Confirm changes it without stopping accepted work', async () => {
   const cancelled = projectNavigation({ draft: false, imageDraft: true, confirmation: false });
   assert.equal(await cancelled.selectProject(navigationNextId), false); assert.equal(cancelled.currentProject.current, navigationProjectId); assert.equal(cancelled.env.imageDraft.current, true);
-  assert.equal(cancelled.calls.length, 1); assert.match(cancelled.calls[0][1], /图像工坊有未发送的草稿/);
+  assert.equal(cancelled.calls.length, 1); assert.match(createI18nTestContext().renderMessage(cancelled.calls[0][1]), /图像工坊有未发送的草稿/);
   const confirmed = projectNavigation({ draft: false, imageDraft: true }); assert.equal(await confirmed.selectProject(navigationNextId), true); assert.equal(confirmed.currentProject.current, navigationNextId); assert.equal(confirmed.calls.filter(call => call[0] === 'confirm').length, 1);
-  const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject(navigationNextId); assert.match(both.calls[0][1], /Agent 和图像工坊都有未发送的草稿/);
+  const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject(navigationNextId); assert.match(createI18nTestContext().renderMessage(both.calls[0][1]), /Agent 和图像工坊都有未发送的草稿/);
   assert.doesNotMatch(projectSource, /image\.task\.|image\.generate|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   assert.equal(confirmed.calls.find(call => call[0] === 'setRightDockTab')[1]('image'), 'image');
 });
@@ -459,7 +466,7 @@ function workspaceHarness(exportName = 'default') {
   const slots = []; let cursor = 0, effects = [], visible = true;
   const react = { createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children), useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, id => id === 'react' ? react : id === './AgentPanel.jsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.jsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' });
+  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentPanel.jsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.jsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
   return { render(props) { cursor = 0; effects = []; const tree = module.exports[exportName](props); for (const i of effects) slots[i].callback(); return tree; }, setAncestorVisible(value) { visible = value; } };
 }
 
@@ -615,7 +622,7 @@ test('history paging retains only one 16-run page and at most 32 back cursors wi
   const state = f.session.getState(); assert.equal(state.history.page.runs.length, 16); assert.equal(state.history.trail.length, 32); assert.equal(state.history.before, durableId(376));
   assert.deepEqual(state.snapshot.runs, safeAgentChatSnapshot(snapshot({ revision: 40, runs: latest, historyCursor: latest[0].id }), projectId).runs); assert.equal(state.draft, 'A typed question'); assert.equal(state.consent, consent);
   await f.session.newer(); assert.equal(f.session.getState().history.before, durableId(392)); assert.equal(f.session.getState().history.trail.length, 31);
-  f.session.closeHistory(); assert.deepEqual(f.session.getState().history, { phase: 'closed', page: null, before: null, trail: [], message: '' }); assert.equal(f.calls.some(call => ['start', 'stop'].includes(call[0])), false); f.session.dispose();
+  f.session.closeHistory(); assert.deepEqual(f.session.getState().history, { phase: 'closed', page: null, before: null, trail: [], message: '', displayMessage: null }); assert.equal(f.calls.some(call => ['start', 'stop'].includes(call[0])), false); f.session.dispose();
 });
 
 test('history paging and double clicks do not detach the live stream or overwrite its draft and output', async () => {
@@ -678,4 +685,24 @@ test('actual project switch during an older-page read discards the old result an
   h.render(); await flush(); h.render(); const oldOlder = h.find('agent-chat-history-older').props.onClick; oldOlder(); h.render();
   const oldClose = h.find('agent-chat-history-close').props.onClick; h.render('project-two'); await flush(); h.render(); held.resolve(page(savedRows(84))); await flush(); oldOlder(); oldClose(); h.render();
   assert.equal(h.find('agent-chat-page').props['data-project-id'], 'project-two'); assert.equal(h.find('agent-chat-history-page'), undefined); assert.equal(h.find('agent-chat-archive'), undefined); assert.equal(h.find('agent-chat-prompt').props.value, ''); assert.equal(f.calls.filter(call => call[0] === 'history').length, 1); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+});
+
+test('four-language changes relabel the mounted Agent without clearing exact typed text, consent, or issuing requests', async () => {
+  const store = createLanguageStore({ systemLanguages: ['zh-Hans'] });
+  const f = fixture(), h = uiHarness(f.client, memoryReceipts(), store);
+  h.render(); await flush(); h.render();
+  const prompt = '  原文 / exact <script> / 日本語\n不改写  ';
+  h.change('agent-chat-prompt', prompt); h.change('agent-chat-consent', true);
+  const before = f.calls.map(call => [...call]);
+  for (const locale of ['zh-Hant', 'en', 'ja', 'zh-Hans']) {
+    await store.setPreference(locale); h.render(); await flush(); h.render();
+    assert.equal(h.find('agent-chat-page').props['aria-label'], createI18nTestContext(locale).t('agent.chat.conversationAria'));
+    assert.equal(h.find('agent-chat-prompt').props.value, prompt);
+    assert.equal(h.find('agent-chat-consent').props.checked, true);
+    assert.deepEqual(f.calls, before);
+  }
+  h.form().props.onSubmit({ preventDefault() {} }); await flush(); h.render();
+  const sends = f.calls.filter(call => call[0] === 'start'); assert.equal(sends.length, 1);
+  assert.equal(sends[0][2].message, prompt);
+  h.unmount(); store.dispose();
 });

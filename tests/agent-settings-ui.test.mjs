@@ -1,3 +1,6 @@
+import * as i18n from '../packages/i18n/src/index.ts';
+import { createI18nTestContext as localeDisplay } from './helpers/i18n.ts';
+const localizedSource = source => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -190,7 +193,7 @@ const element = (type, props = {}, ...children) => ({ type, props: { ...props, c
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (a, b) => a?.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
 function uiHarness(client) {
-  const slots = [], dom = new Map(); let cursor = 0, effects = [], tree, closes = 0, visible = true;
+  const slots = [], dom = new Map(); let cursor = 0, effects = [], tree, closes = 0, visible = true, locale = 'zh-Hans';
   const react = { createElement: element,
     useState(initial) { const i = cursor++; slots[i] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, next => { slots[i].value = typeof next === 'function' ? next(slots[i].value) : next; }]; },
     useMemo(callback, deps) { const i = cursor++; if (!slots[i] || !depsEqual(deps, slots[i].deps)) slots[i] = { value: callback(), deps }; return slots[i].value; },
@@ -199,6 +202,8 @@ function uiHarness(client) {
   }; react.default = react;
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   Function('module', 'exports', 'require', transformed)(module, module.exports, id => {
+    if (id === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) };
+    if (id === '../../../packages/i18n/src/index.ts') return i18n;
     if (id === 'react') return react;
     if (id === './settings-navigation-state.ts') return navigation;
     if (id === './agent-settings.js') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
@@ -214,6 +219,7 @@ function uiHarness(client) {
     key(value) { const input = h.find('agent-settings-key'); input.props.ref.current.value = value; input.props.onChange({ target: { value } }); h.render(); },
     change(id, value) { h.find(id).props.onChange({ target: { value } }); h.render(); },
     setVisible(value) { visible = value; h.render(); },
+    setLocale(value) { locale = value; return h.render(); },
     get closes() { return closes; },
     unmount() { for (const slot of slots) slot.cleanup?.(); },
   }; return h;
@@ -250,8 +256,8 @@ test('settings integration stays in the shared dock, uses local controls and has
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
   assert.match(source, /from '\.\/WorkspaceControls\.jsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
-  assert.match(source, /连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围/);
-  assert.doesNotMatch(source, /尚无工具执行/); assert.match(source, /尚未验证连接/);
+  assert.match(localizedSource(source), /连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围/);
+  assert.doesNotMatch(source, /尚无工具执行/); assert.match(localizedSource(source), /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
   assert.doesNotMatch(app, /showAgentSettings|showAgentChat/);
   assert.match(source, /useWorkspaceVisibility/);
@@ -351,4 +357,23 @@ test('settings save accepted while hidden stays attached without retry and repor
   h.change('agent-settings-protocol', 'responses'); h.form().props.onSubmit({ preventDefault() {} }); h.setVisible(false);
   held.resolve(snapshot({ revision: 1, configuration: { ...configuration, protocol: 'responses' } })); await flush(); h.setVisible(true); h.render();
   assert.equal(h.find('agent-settings-page').props['data-phase'], 'saved'); assert.equal(h.find('agent-settings-protocol').props.value, 'responses'); assert.equal(f.calls.length, 1); h.unmount();
+});
+
+test('four-language rerenders preserve Agent draft, password DOM, pending save and request identity', async () => {
+  const held = deferred(), f = fixture({ write: () => held.promise }); let reads = 0;
+  const originalRead = f.client.read; f.client.read = () => { reads++; return originalRead(); };
+  const h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-settings-model', 'user-model-unchanged'); h.key('synthetic-language-only');
+  const dom = h.find('agent-settings-key').props.ref.current;
+  for (const locale of i18n.LOCALES) {
+    h.setLocale(locale);
+    assert.equal(h.find('agent-settings-page').props['aria-label'], i18n.translate(locale, 'agent.settings.title'));
+    assert.equal(h.find('agent-settings-model').props.value, 'user-model-unchanged');
+    assert.equal(h.find('agent-settings-key').props.ref.current, dom);
+    assert.equal(dom.value, 'synthetic-language-only'); assert.equal(reads, 1); assert.equal(f.calls.length, 0);
+  }
+  h.form().props.onSubmit({ preventDefault() {} }); const request = structuredClone(f.calls[0]);
+  for (const locale of i18n.LOCALES) { h.setLocale(locale); assert.equal(h.find('agent-settings-page').props['data-phase'], 'saving'); assert.deepEqual(f.calls, [request]); assert.equal(reads, 1); }
+  held.resolve(snapshot({ revision: 1, configuration: request.configuration, secret: { configured: true, storage: 'session' } })); await flush();
+  for (const locale of i18n.LOCALES) { const tree = h.setLocale(locale); assert.ok(JSON.stringify(tree).includes(i18n.translate(locale, 'agent.settings.notice.savedSession'))); }
+  h.unmount(); f.session.dispose();
 });

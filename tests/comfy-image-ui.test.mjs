@@ -1,3 +1,7 @@
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
+import * as i18n from '../packages/i18n/src/index.ts';
+import { createI18nTestContext as localeDisplay } from './helpers/i18n.ts';
+const localizedSource = source => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -140,21 +144,23 @@ test('Comfy UI exposes separate prepare/observe/full graph, shared controls and 
   const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
   for (const name of ['ImageGeneration.jsx', 'ComfyImageSettings.jsx', 'ComfyImageDetails.jsx']) assert.doesNotThrow(() => transformSync(read(name), { loader: 'jsx', format: 'esm' }));
   const compose = read('ImageGeneration.jsx'), details = read('ComfyImageDetails.jsx'), settings = read('ComfyImageSettings.jsx');
-  for (const text of ['image-provider-comfy', 'prepareComfy()', 'image-observe-remote', 'observeRemote(task)', 'image-recover-result', 'recoverResult', 'ComfyImageReviewDetails', '批准此冻结工作流并运行']) assert.ok(compose.includes(text), text);
-  for (const text of ['execution.seed', 'execution.graphHash', 'JSON.stringify(execution.graph', 'contentVerified', 'remote?.state', 'GPU 工作可能继续', '不保证免费、可信或完全离线']) assert.ok(details.includes(text), text);
-  for (const text of ['<Label', '<Input', '<WorkbenchSelect', 'useWorkspaceVisibility', 'visibilitychange', 'contextKey', '检查连接与已安装模型', '不探测服务', '不会下载模型']) assert.ok(settings.includes(text), text);
+  for (const text of ['image-provider-comfy', 'prepareComfy()', 'image-observe-remote', 'observeRemote(task)', 'image-recover-result', 'recoverResult', 'ComfyImageReviewDetails', '批准此冻结工作流并运行']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(compose) : compose).includes(text), text);
+  for (const text of ['execution.seed', 'execution.graphHash', 'JSON.stringify(execution.graph', 'contentVerified', 'remote?.state', 'GPU 工作可能继续', '不保证免费、可信或完全离线']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(details) : details).includes(text), text);
+  for (const text of ['<Label', '<Input', '<WorkbenchSelect', 'useWorkspaceVisibility', 'visibilitychange', 'contextKey', '检查连接与已安装模型', '不探测服务', '不会下载模型']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(settings) : settings).includes(text), text);
   assert.doesNotMatch(settings, /type="password"|secret|install\(|download\(|<input\b|<label\b/); assert.doesNotMatch(details, /\blow\b|moderation|task\.remote/);
 });
 
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function componentHarness(filename, resolve, props) {
-  const slots = []; let index = 0, effects = [], ancestor = true, tree, currentProps = props;
+  const slots = []; let index = 0, effects = [], ancestor = true, tree, currentProps = props, locale = 'zh-Hans';
   const equal = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   // This legacy element-tree harness expands only the slot's render prop.
   // Registry ownership and cleanup are covered by dedicated navigation tests.
   const react = { createElement(type, props, ...children) { if (type === 'SettingsNavigationSlot') return children[0](() => {}); return { type, props: { ...props, children } }; }, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(fn, deps) { const slot = index++; if (!slots[slot] || !equal(slots[slot].deps, deps)) slots[slot] = { value: fn(), deps }; return slots[slot].value; }, useLayoutEffect(fn, deps) { const slot = index++, old = slots[slot]; if (old && equal(old.deps, deps)) return; slots[slot] = { fn, deps, cleanup: old?.cleanup }; effects.push(slot); } }; react.default = react;
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
   const require = name => {
+    if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) };
+    if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n;
     if (name === './editor-settings-scope.ts') {
       const settingsModule = { exports: {} };
       const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code;
@@ -163,7 +169,7 @@ function componentHarness(filename, resolve, props) {
     }
     if (name === './native-close-sources.ts') return nativeCloseSources; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' }; if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => ancestor }; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive; if (name === './icons.jsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; return resolve(name); };
   Function('module', 'exports', 'require', transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
-  const ui = { render(patch = {}) { currentProps = { ...currentProps, ...patch }; index = 0; effects = []; tree = module.exports.default(currentProps); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].fn(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, hide(value) { ancestor = !value; return ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
+  const ui = { render(patch = {}) { currentProps = { ...currentProps, ...patch }; index = 0; effects = []; tree = module.exports.default(currentProps); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].fn(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, hide(value) { ancestor = !value; return ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, setLocale(value) { locale = value; return ui.render(); }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
 }
 
 test('actual Comfy settings controls use shared components and stale project/hidden callbacks cannot check or save', async () => {
@@ -179,7 +185,7 @@ test('actual Comfy settings controls use shared components and stale project/hid
 
 test('actual Comfy review shows exact graph, seed, independent status and no OpenAI option claims', () => {
   const source = readFileSync(new URL('../apps/web/src/ComfyImageDetails.jsx', import.meta.url), 'utf8'); const module = { exports: {} }, react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => { assert.equal(name, 'react'); return react; });
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay() }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n; assert.equal(name, 'react'); return react; });
   const saved = review(), tree = module.exports.ComfyImageReviewDetails({ review: saved }); const graph = nodes(tree).find(n => n.props['data-testid'] === 'image-comfy-review-graph'); assert.deepEqual(JSON.parse(graph.props.children.join('')), saved.execution.graph); assert.match(JSON.stringify(tree), /87654/); assert.doesNotMatch(JSON.stringify(tree), /quality|moderation|1024|low/);
   const status = module.exports.ComfyImageTaskDetails({ task: task(), review: saved, remoteState: remoteResponse({ remote: remote({ state: 'running' }) }) }); const text = JSON.stringify(status); assert.match(text, /已找到相同任务 ID/); assert.match(text, /尚未核验；仅任务 ID/); assert.doesNotMatch(text, /已核验与冻结工作流一致/);
 });
@@ -367,4 +373,18 @@ test('actual unavailable-module composer retains old preview/details/recovery an
     ui.click('image-generate'); ui.click('image-review-approve'); ui.click('image-observe-remote'); await flush(); assert.equal(f.approvals.length, 0); assert.equal(f.calls.some(([op]) => ['image.generate', 'image.review.prepare', 'image.task.observeRemote'].includes(op)), false);
     ui.unmount(); f.session.dispose();
   }
+});
+
+test('four-language rerenders preserve Comfy draft and never probe, save, or reload on locale changes', async () => {
+  const logic = await import('../apps/web/src/comfy-image-settings.js'), f = settingsFixture();
+  const ui = componentHarness('ComfyImageSettings.jsx', name => { if (name === './comfy-image-settings.js') return logic; throw Error(name); }, { active: true, contextKey: projectId, client: f.client });
+  ui.render(); await flush(); ui.render(); ui.change('comfy-image-settings-base-url', 'http://127.0.0.1:8288');
+  const calls = structuredClone(f.calls);
+  for (const locale of i18n.LOCALES) {
+    const tree = ui.setLocale(locale); assert.equal(ui.find('comfy-image-settings-page').props['aria-label'], i18n.translate(locale, 'connections.comfy.aria'));
+    assert.equal(ui.find('comfy-image-settings-base-url').props.value, 'http://127.0.0.1:8288'); assert.deepEqual(f.calls, calls);
+    assert.ok(JSON.stringify(tree).includes(i18n.translate(locale, 'connections.comfy.checkScope')));
+    assert.ok(JSON.stringify(tree).includes(i18n.translate(locale, 'connections.comfy.enableScope')));
+  }
+  ui.unmount(); f.session.dispose();
 });

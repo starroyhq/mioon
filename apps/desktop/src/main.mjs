@@ -1,8 +1,12 @@
+import { createAppLanguageHost } from './app-language-host.ts';
+import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
+import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
+import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
 import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage, ipcMain } from 'electron';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { prepareDesktopStorage, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown } from './config.mjs';
+import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown } from './config.mjs';
 import desktopIdentity from '../identity.cjs';
 import { BackendSupervisor } from './supervisor.mjs';
 import { stopBackendForQuit } from './shutdown.mjs';
@@ -31,6 +35,9 @@ if (process.platform === 'linux') {
   app.setDesktopName(`${identity.appId}.desktop`);
   app.commandLine.appendSwitch('class', identity.appId);
 }
+let languageHost;
+const systemLanguages = () => { try { return app.getPreferredSystemLanguages(); } catch { return [process.env.LC_ALL || process.env.LANG || 'en']; } };
+setNativeLanguageReader(() => languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()));
 let paths, startupStorageError;
 try { paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
 catch (error) { startupStorageError = error; }
@@ -56,15 +63,15 @@ async function toolsFromUser(startup) {
     startup.checkpoint();
     if (error?.code?.startsWith('STORAGE_')) throw error;
     if (smokeOutput) throw error;
-    const result = await dialog.showMessageBox({ type: 'warning', title: '配置视频工具',
-      message: '需要你已安装的 FFmpeg 和 ffprobe',
-      detail: '本应用包含 Electron / Node / SQLite，但不捆绑 FFmpeg。请选择从可信来源安装的 ffmpeg 和 ffprobe 可执行文件。仅保存所选路径，不修改原始素材。\n\n' + error.message,
-      buttons: ['选择工具', '退出'], defaultId: 0, cancelId: 1 });
+    const result = await dialog.showMessageBox({ type: 'warning', title: nt('native.toolsTitle'),
+      message: nt('native.toolsMessage'),
+      detail: nt('native.toolsDetail') + '\n\n' + nt('native.originalDiagnostic', { detail: error.message }),
+      buttons: [nt('native.chooseTools'), nt('native.quit')], defaultId: 0, cancelId: 1 });
     startup.checkpoint();
     if (result.response !== 0) throw new Error('未配置 FFmpeg');
   }
   const choose = async name => {
-    const result = await dialog.showOpenDialog({ title: `选择 ${name} 可执行文件`, properties: ['openFile'] });
+    const result = await dialog.showOpenDialog({ title: nt('native.chooseExecutable', { name }), buttonLabel: nt('native.chooseTools'), properties: ['openFile'] });
     startup.checkpoint();
     if (result.canceled || result.filePaths.length !== 1) throw new Error(`未选择 ${name}`);
     return result.filePaths[0];
@@ -199,20 +206,20 @@ function prepareOwnedWindow(window, context, owner) {
       return document?.window === window && document.backendId === owner.backendId
         ? context.audioHost?.retireOwnerForReload({ ...document, contents }, signal) ?? false : false;
     },
-    confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox(window, { type: 'warning', title: '本地草稿或视图尚未确认保存',
-      message: `部分本地草稿或视图位置尚未确认保存，仍要${action === 'reload' ? '重新载入' : '退出'}？`,
-      detail: `${action === 'reload' ? '重新载入' : '直接退出'}可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。可以继续编辑并核对保存状态。`,
-      buttons: [action === 'reload' ? '仍然重新载入' : '仍然退出', '继续编辑'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
-    confirmUnknown: () => dialog.showMessageBox(window, { type: 'warning', title: '此窗口还有结果未知的操作',
-      message: '了解风险并关闭此窗口？',
-      detail: '操作可能已经在后台完成。关闭只放弃本窗口的未确认线索，不代表失败或取消，不会删除已保存数据或重发请求。重新导入可能产生重复素材。建议保留窗口，先核对原项目与记录；本次选择仅用于这一次关闭。',
-      buttons: ['了解风险并关闭', '保留窗口'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
-    confirmDiscard: action => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBox(window, { type: 'question', title: '尚有未保存的修改',
-      message: `放弃未保存的修改和未发送的输入并${action === 'reload' ? '重新载入' : '退出'}？`, detail: `包括 Agent、图像工坊和连接设置中的未保存输入。${action === 'reload' ? '重新载入' : '退出'}不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行。`,
-      buttons: ['放弃修改', '继续编辑'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
-    onBlocked: reason => smokeOutput ? undefined : dialog.showMessageBox(window, { type: 'warning', title: '暂时无法安全离开',
-      message: reason === 'blocked' ? '还有读取、保存、发送或待核对的状态，请先在原面板处理。' : reason === 'changed' ? '确认期间的输入或状态已变化，本次操作已取消。' : '暂时无法确认当前输入的保存状态，本次操作已取消。',
-      detail: '当前操作未继续，窗口和本地服务仍保留。不会放弃输入、保存连接设置或自动重试请求。', buttons: ['继续编辑'], defaultId: 0, cancelId: 0 }),
+    confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox(window, { type: 'warning', title: nt('native.draftTitle'),
+      message: nt(action === 'reload' ? 'native.draftReloadMessage' : 'native.draftQuitMessage'),
+      detail: nt(action === 'reload' ? 'native.draftReloadDetail' : 'native.draftQuitDetail'),
+      buttons: [action === 'reload' ? nt('native.reloadAnyway') : nt('native.quitAnyway'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+    confirmUnknown: () => dialog.showMessageBox(window, { type: 'warning', title: nt('native.unknownTitle'),
+      message: nt('native.unknownMessage'),
+      detail: nt('native.unknownDetail'),
+      buttons: [nt('native.understandClose'), nt('native.keepWindow')], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+    confirmDiscard: action => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : dialog.showMessageBox(window, { type: 'question', title: nt('native.unsavedTitle'),
+      message: nt(action === 'reload' ? 'native.discardReloadMessage' : 'native.discardQuitMessage'), detail: nt(action === 'reload' ? 'native.discardReloadDetail' : 'native.discardQuitDetail'),
+      buttons: [nt('native.discard'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+    onBlocked: reason => smokeOutput ? undefined : dialog.showMessageBox(window, { type: 'warning', title: nt('native.leaveBlockedTitle'),
+      message: reason === 'blocked' ? nt('native.leaveBlocked') : reason === 'changed' ? nt('native.leaveChanged') : nt('native.leaveUnverified'),
+      detail: nt('native.leaveDetail'), buttons: [nt('native.keepEditing')], defaultId: 0, cancelId: 0 }),
     onCancel: () => { if (ownsWindow(window, context)) { quitCoordinator.cancel(window); restartCoordinator.cancel(window); } },
     requestQuit: () => ownsWindow(window, context) ? requestApplicationQuit(window) : false
   }));
@@ -251,10 +258,10 @@ async function backendFailed(failedBackend = backend, incident = windowContext?.
   if (restarting || quitting || backend !== failedBackend || !incident?.claimPrompt()) return;
   const failedContext = windowContext;
   if (backend?.hasUnconfirmedMedia) return quitFailed({ code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
-  const { response } = await dialog.showMessageBox({ type: 'error', title: '本地服务已停止',
-    message: '本地服务意外退出。已保存的数据会在重启时恢复。',
-    detail: '未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
-    buttons: ['重启本地服务', '退出'], defaultId: 0, cancelId: 1 });
+  const { response } = await dialog.showMessageBox({ type: 'error', title: nt('native.serviceStoppedTitle'),
+    message: nt('native.serviceStopped'),
+    detail: nt('native.serviceStoppedDetail'),
+    buttons: [nt('native.restartService'), nt('native.quit')], defaultId: 0, cancelId: 1 });
   if (backend !== failedBackend || windowContext !== failedContext || quitting) return;
   if (response === 0) { try { await restart(); } catch (error) { await fatal(error); } }
   else app.quit();
@@ -263,17 +270,17 @@ async function backendFailed(failedBackend = backend, incident = windowContext?.
 const rendererFailed = createProjectRendererRecovery({
   isCurrent: (window, context) => ownsWindow(window, context) && quitRouter.allowsWindows && !context.incident.failed,
   capture: window => windowAdmissions.get(window)?.captureRecoveryDecision(),
-  prompt: window => dialog.showMessageBox(window, { type: 'warning', title: '界面需要重新载入',
-    message: '工作区界面没有响应。后台任务仍由本地服务管理。',
-    detail: '如果界面进程已经崩溃，未保存的输入可能已经丢失。重新载入只恢复当前界面，不会重新提交任务或生成请求。',
-    buttons: ['重新载入界面', '退出应用', '保留窗口'], defaultId: 0, cancelId: 2 }).then(result => result.response),
+  prompt: window => dialog.showMessageBox(window, { type: 'warning', title: nt('native.rendererTitle'),
+    message: nt('native.rendererMessage'),
+    detail: nt('native.rendererDetail'),
+    buttons: [nt('native.reload'), nt('native.quitApplication'), nt('native.keepWindow')], defaultId: 0, cancelId: 2 }).then(result => result.response),
 });
 async function initialWindowFailed(window, context) {
   const proof = initialWindowLoads.get(window)?.captureFailure();
   if (!proof) return rendererFailed(window, context, 'load-error');
-  const { response } = await dialog.showMessageBox(window, { type: 'error', title: '窗口尚未载入',
-    message: '此窗口还未打开任何项目界面。', detail: '可以重试固定入口，或关闭这个尚未载入的空窗口。其他窗口与后台任务会保留。',
-    buttons: ['重试载入', '关闭空窗口', '保留窗口'], defaultId: 0, cancelId: 2 });
+  const { response } = await dialog.showMessageBox(window, { type: 'error', title: nt('native.emptyWindowTitle'),
+    message: nt('native.emptyWindowMessage'), detail: nt('native.emptyWindowDetail'),
+    buttons: [nt('native.retryLoad'), nt('native.closeEmpty'), nt('native.keepWindow')], defaultId: 0, cancelId: 2 });
   if (!ownsWindow(window, context) || !proof.isCurrent()) return;
   if (response === 0 && quitRouter.allowsWindows && !context.incident.failed) { try { await proof.retry(); } catch { if (ownsWindow(window, context)) await initialWindowFailed(window, context); } }
   else if (response === 1) proof.close();
@@ -287,34 +294,46 @@ async function fatal(error) {
     process.exitCode = 1;
   } else {
     await dialog.showMessageBox(error?.code?.startsWith('STORAGE_') ? storageFailureDialog(error) :
-      { type: 'error', title: '无法启动 Mioon', message: '应用无法启动。', detail: error.message, buttons: ['退出'] });
+      { type: 'error', title: nt('native.cannotStartTitle'), message: nt('native.cannotStartMessage'), detail: nt('native.originalDiagnostic', { detail: error.message }), buttons: [nt('native.quit')] });
   }
   app.quit();
 }
 
 function installMenu() {
   const template = [];
-  if (process.platform === 'darwin') template.push({ role: 'appMenu' });
-  template.push({ label: '应用', submenu: [
-    { label: '新建项目', click: () => windowHost?.requestProjectEntry('new', BrowserWindow.getFocusedWindow()) },
-    { label: '打开项目', click: () => windowHost?.requestProjectEntry('open', BrowserWindow.getFocusedWindow()) },
-    { label: '连接设置', click: () => windowHost?.showSettings('agent') },
-    { label: '重新载入界面', accelerator: 'CmdOrCtrl+R', click: () => {
+  if (process.platform === 'darwin') template.push({ label: identity.productName, submenu: [
+    { role: 'about', label: nt('native.about') }, { type: 'separator' }, { role: 'services', label: nt('native.services') },
+    { type: 'separator' }, { role: 'hide', label: nt('native.hide') }, { role: 'hideOthers', label: nt('native.hideOthers') },
+    { role: 'unhide', label: nt('native.showAll') }, { type: 'separator' }, { role: 'quit', label: nt('native.quit') },
+  ] });
+  template.push({ label: nt('native.application'), submenu: [
+    { label: nt('native.newProject'), click: () => windowHost?.requestProjectEntry('new', BrowserWindow.getFocusedWindow()) },
+    { label: nt('native.openProject'), click: () => windowHost?.requestProjectEntry('open', BrowserWindow.getFocusedWindow()) },
+    { label: nt('native.connections'), click: () => windowHost?.showSettings('agent') },
+    { label: nt('native.reload'), accelerator: 'CmdOrCtrl+R', click: () => {
       const window = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
       if (ownsWindow(window, windowContext) && !windowContext.incident.failed) {
         if (initialWindowLoads.get(window)?.failed) void initialWindowFailed(window, windowContext).catch(fatal);
         else void windowAdmissions.get(window)?.captureRecoveryDecision().reload().catch(fatal);
       }
     } },
-    { label: '重启本地服务', click: () => confirmOwnedWindowRestart({
+    { label: nt('native.restartService'), click: () => confirmOwnedWindowRestart({
       getOwner: () => windowContext || startupOperation, canRequest: () => quitRouter.allowsWindows && !restarting,
-      confirm: () => dialog.showMessageBox({ type: 'question', message: '重启本地服务？',
-        detail: '所有窗口都需通过关闭检查后才停止服务。已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求。',
-        buttons: ['重启', '取消'], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
+      confirm: () => dialog.showMessageBox({ type: 'question', message: nt('native.restartQuestion'),
+        detail: nt('native.restartDetail'),
+        buttons: [nt('native.restart'), nt('native.cancel')], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
       restart,
     }).catch(fatal) },
-    { type: 'separator' }, { role: 'quit', label: '退出' }
-  ] }, { role: 'editMenu', label: '编辑' }, { role: 'windowMenu', label: '窗口' });
+    { type: 'separator' }, { role: 'quit', label: nt('native.quit') }
+  ] }, { label: nt('native.edit'), submenu: [
+    { role: 'undo', label: nt('native.undo') }, { role: 'redo', label: nt('native.redo') }, { type: 'separator' },
+    { role: 'cut', label: nt('native.cut') }, { role: 'copy', label: nt('native.copy') }, { role: 'paste', label: nt('native.paste') },
+    ...(process.platform === 'darwin' ? [{ role: 'pasteAndMatchStyle', label: nt('native.pasteMatch') }] : []),
+    { role: 'delete', label: nt('native.delete') }, { role: 'selectAll', label: nt('native.selectAll') },
+  ] }, { label: nt('native.window'), submenu: [
+    { role: 'minimize', label: nt('native.minimize') }, { role: 'zoom', label: nt('native.zoom') },
+    ...(process.platform === 'darwin' ? [{ type: 'separator' }, { role: 'front', label: nt('native.front') }] : [{ role: 'close', label: nt('native.closeWindow') }]),
+  ] });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -324,10 +343,10 @@ const quitCoordinator = new MultiWindowQuitCoordinator({ getWindows: () => windo
     quitting = true;
     windowHost?.dispose(); windowHost = null;
     windowContext = null;
-    const onUnconfirmed = () => smokeOutput ? undefined : dialog.showMessageBox({ type: 'error', title: '正在等待本地进程退出',
-      message: '本地进程尚未确认退出，应用将继续等待。',
-      detail: '当前不会重启服务或继续发送终止信号。确认本地进程退出后，应用会完成清理并退出。',
-      buttons: ['知道了'] });
+    const onUnconfirmed = () => smokeOutput ? undefined : dialog.showMessageBox({ type: 'error', title: nt('native.waitExitTitle'),
+      message: nt('native.waitExitMessage'),
+      detail: nt('native.waitExitDetail'),
+      buttons: [nt('native.acknowledge')] });
     // Abort validation before observing backend state so late validation cannot
     // create a utility. The two owned drains proceed together inside the budget.
     const startupDrain = startupOperation?.abort({ onUnconfirmed });
@@ -349,6 +368,10 @@ const restartCoordinator = new MultiWindowRestartCoordinator({
 });
 const quitRouter = createProjectWindowQuitRouter({ quit: quitCoordinator, restart: restartCoordinator, onPendingChange: () => windowHost?.refresh() });
 function requestApplicationQuit(source) { return quitRouter.request(source).catch(quitFailed); }
+ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
+  if (!languageHost) throw new Error('App language preferences are not available.');
+  return languageHost.dispatch(event, request);
+});
 ipcMain.handle(NATIVE_AUDIO_CHANNEL, (event, request) => nativeAudioHost?.dispatch(event, request) ?? null);
 ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
@@ -360,12 +383,12 @@ async function quitFailed(error) {
   // Never route a failed quit back through fatal() -> app.quit(). In particular,
   // an unconfirmed owned process must remain supervised, not be abandoned.
   if (!smokeOutput) await dialog.showMessageBox(error?.code === 'BACKEND_MEDIA_EXIT_UNCONFIRMED' ? {
-    type: 'error', title: '无法确认媒体进程退出', message: '本地服务已退出，但媒体子进程可能仍在运行。',
-    detail: '应用无法安全核验这些进程，因此不会自动重启服务或按记录的进程编号强制终止。退出应用前或再次使用前，请在系统任务管理器中检查 FFmpeg 和 ffprobe 是否仍在运行。',
-    buttons: ['退出应用']
-  } : { type: 'error', title: '退出清理未完成', message: '本地服务或应用清理未正常完成。',
-    detail: backend?.child ? '应用将保留对本地服务的管理，请稍后再尝试退出。' : '已保存的数据保持原样，下次启动时将尝试恢复。',
-    buttons: ['知道了'] });
+    type: 'error', title: nt('native.mediaExitTitle'), message: nt('native.mediaExitMessage'),
+    detail: nt('native.mediaExitDetail'),
+    buttons: [nt('native.quitApplication')]
+  } : { type: 'error', title: nt('native.cleanupTitle'), message: nt('native.cleanupMessage'),
+    detail: backend?.child ? nt('native.cleanupManaged') : nt('native.cleanupPreserved'),
+    buttons: [nt('native.acknowledge')] });
   if (!backend?.child) app.exit(1);
   })();
 }
@@ -389,6 +412,22 @@ else {
   process.on('SIGTERM', () => app.quit());
   process.on('SIGINT', () => app.quit());
   app.whenReady().then(async () => {
+    languageHost = createAppLanguageHost({ systemLanguages,
+      storage: { read: () => readAppLanguagePreference(paths), write: text => writeAppLanguagePreference(paths, text) },
+      isTrusted: event => {
+        const window = windowHost?.windowForContents(event.sender);
+        const owner = windowHost?.ownerForContents(event.sender);
+        return Boolean(window && owner && ownsWindow(window, windowContext) && owner.isCurrent() &&
+          event.senderFrame === window.webContents.mainFrame && event.senderFrame === owner.frame && event.senderFrame?.url === owner.url);
+      },
+      broadcast: (channel, state) => {
+        for (const window of windowHost?.windows() || []) {
+          try { if (windowHost.isTrustedDocument(window)) window.webContents.send(channel, state); }
+          catch { /* A disappearing window cannot block other windows or reject a saved preference. */ }
+        }
+      },
+      onChanged: () => installMenu(),
+    });
     installMenu();
     const report = await start();
     if (smokeOutput) {

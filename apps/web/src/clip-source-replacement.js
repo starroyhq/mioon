@@ -1,3 +1,4 @@
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import { sourceFrameCount } from '@mioon/contracts';
 import { clipAudioIssue } from './clip-audio-state.js';
 import { clipVersionOf } from './timeline-source-freshness.ts';
@@ -15,15 +16,17 @@ const versionKeys = ['id', 'projectId', 'assetId', 'shotId', 'number', 'jobId', 
 const sourceSnapshot = asset => Object.fromEntries(metadataKeys.filter(key => Object.hasOwn(asset, key)).map(key => [key, asset[key]]));
 const selectedClip = context => context?.timeline?.clips?.find(clip => clip.id === context.clipId);
 
-export function clipReplacementBlockedReason(context) {
-  if (!context?.projectId || !context.scope || context.timeline?.projectId !== context.projectId || !context.timeline.id || !Number.isSafeInteger(context.timeline.revision) || context.timeline.revision < 1 || !selectedClip(context)) return '项目或所选片段已变化，请重新选择片段。';
-  if (context.dirty) return '请先保存或放弃片段的未保存修改，再替换来源。';
-  if (!context.connected) return '请等待连接恢复后再核对来源。';
-  if (context.pending) return '上一条时间线请求结果待确认，请先在任务面板恢复同一请求。';
-  if (context.busy) return '正在保存时间线，请稍后再核对来源。';
-  if (context.visible === false) return '请在片段属性中核对并确认替换。';
-  return '';
+export function clipReplacementBlockedMessage(context) {
+  if (!context?.projectId || !context.scope || context.timeline?.projectId !== context.projectId || !context.timeline.id || !Number.isSafeInteger(context.timeline.revision) || context.timeline.revision < 1 || !selectedClip(context)) return message('timeline.replace.error.owner');
+  if (context.dirty) return message('timeline.replace.error.dirty');
+  if (!context.connected) return message('timeline.replace.error.offline');
+  if (context.pending) return message('timeline.replace.error.pending');
+  if (context.busy) return message('timeline.replace.error.busy');
+  if (context.visible === false) return message('timeline.replace.error.hidden');
+  return null;
 }
+
+export function clipReplacementBlockedReason(context) { return renderMessage('zh-Hans', clipReplacementBlockedMessage(context)); }
 
 export function clipReplacementCompatibility(clip, previous, candidate, projectId) {
   if (!clip || !previous || !candidate || previous.id !== clip.assetId || previous.projectId !== projectId || candidate.projectId !== projectId) return '来源必须属于当前项目。';
@@ -71,27 +74,31 @@ export function createClipReplacementReview(context, candidateKey) {
     input: { clipId: clip.id, assetId: candidate.assetId, ...(candidate.versionId ? { versionId: candidate.versionId } : {}) } });
 }
 
-export function clipReplacementReviewIssue(review, context, { contentOnly = false } = {}) {
-  if (!review || !context || review.scope !== context.scope || review.projectId !== context.projectId || review.clipId !== context.clipId || review.timelineId !== context.timeline?.id || context.timeline?.projectId !== review.projectId) return '项目或所选片段已变化，请重新选择并核对。';
-  if (review.expectedRevision !== context.timeline.revision || !same(review.clip, selectedClip(context))) return '时间线或片段已变化。本次核对已失效，请重新选择并核对。';
+export function clipReplacementReviewMessage(review, context, { contentOnly = false } = {}) {
+  if (!review || !context || review.scope !== context.scope || review.projectId !== context.projectId || review.clipId !== context.clipId || review.timelineId !== context.timeline?.id || context.timeline?.projectId !== review.projectId) return message('timeline.replace.error.reviewOwner');
+  if (review.expectedRevision !== context.timeline.revision || !same(review.clip, selectedClip(context))) return message('timeline.replace.error.reviewStale');
   const previous = context.assets?.find(asset => asset.id === review.clip.assetId);
   const candidate = clipReplacementCandidates(context).find(item => item.key === review.candidate?.key);
-  if (!previous || !same(review.previous, sourceSnapshot(previous)) || !candidate || !same(review.candidate, candidate)) return '来源或候选素材信息已变化。本次核对已失效，请重新选择并核对。';
+  if (!previous || !same(review.previous, sourceSnapshot(previous)) || !candidate || !same(review.candidate, candidate)) return message('timeline.replace.error.candidateStale');
   const input = { clipId: review.clipId, assetId: candidate.assetId, ...(candidate.versionId ? { versionId: candidate.versionId } : {}) };
-  if (!same(review.input, input)) return '替换参数与核对内容不一致，请重新选择并核对。';
-  return contentOnly ? '' : clipReplacementBlockedReason(context);
+  if (!same(review.input, input)) return message('timeline.replace.error.inputMismatch');
+  return contentOnly ? null : clipReplacementBlockedMessage(context);
 }
 
-export function clipReplacementErrorMessage(error) {
-  if (error?.code === 'UNAUTHORIZED') return '会话已过期，请重新登录后重新核对。';
-  if (['CONFLICT', 'REVISION_CONFLICT'].includes(error?.code)) return '时间线已变化，未按本次核对替换。请重新选择并核对。';
-  if (error?.code === 'SOURCE_UNCHANGED') return '所选素材已是当前来源，未新增历史记录。';
-  if (error?.code === 'INVALID_CLIP_TYPE') return '新旧来源必须同为视频、音频或图片，请重新选择。';
-  if (['INVALID_VERSION', 'NOT_FOUND', 'INVALID_ASSET', 'ASSET_NOT_FOUND', 'SOURCE_UNAVAILABLE', 'TIMELINE_SOURCE_UNAVAILABLE'].includes(error?.code)) return '新来源或版本不可用，请重新选择并核对。';
-  if (['SOURCE_BOUNDS', 'SOURCE_TOO_SHORT', 'SOURCE_RANGE_EXCEEDED', 'INVALID_SOURCE_RANGE'].includes(error?.code)) return '新来源无法保留原入点与片段时长，未进行自动裁短。';
-  if (['INVALID_AUDIO_FADE', 'INVALID_FADE', 'AUDIO_UNAVAILABLE', 'FADE_AUDIO_UNSUPPORTED'].includes(error?.code)) return '新来源无法保留已有音频淡入/淡出，请重新核对。';
-  return '替换未完成，请检查片段与来源后重新选择并核对。';
+export function clipReplacementReviewIssue(review, context, options = {}) { return renderMessage('zh-Hans', clipReplacementReviewMessage(review, context, options)); }
+
+export function clipReplacementErrorDescriptor(error) {
+  if (error?.code === 'UNAUTHORIZED') return message('timeline.replace.error.unauthorized');
+  if (['CONFLICT', 'REVISION_CONFLICT'].includes(error?.code)) return message('timeline.replace.error.conflict');
+  if (error?.code === 'SOURCE_UNCHANGED') return message('timeline.replace.error.unchanged');
+  if (error?.code === 'INVALID_CLIP_TYPE') return message('timeline.replace.error.invalidKind');
+  if (['INVALID_VERSION', 'NOT_FOUND', 'INVALID_ASSET', 'ASSET_NOT_FOUND', 'SOURCE_UNAVAILABLE', 'TIMELINE_SOURCE_UNAVAILABLE'].includes(error?.code)) return message('timeline.replace.error.unavailable');
+  if (['SOURCE_BOUNDS', 'SOURCE_TOO_SHORT', 'SOURCE_RANGE_EXCEEDED', 'INVALID_SOURCE_RANGE'].includes(error?.code)) return message('timeline.replace.error.bounds');
+  if (['INVALID_AUDIO_FADE', 'INVALID_FADE', 'AUDIO_UNAVAILABLE', 'FADE_AUDIO_UNSUPPORTED'].includes(error?.code)) return message('timeline.replace.error.fades');
+  return message('timeline.replace.error.failed');
 }
+
+export function clipReplacementErrorMessage(error) { return renderMessage('zh-Hans', clipReplacementErrorDescriptor(error)); }
 
 export function clipReplacementAcknowledged(review, timeline) {
   if (!review || !timeline || timeline.id !== review.timelineId || timeline.projectId !== review.projectId || timeline.revision !== review.expectedRevision + 1 || !Array.isArray(timeline.clips)) return false;
@@ -135,7 +142,7 @@ export function createClipReplacementController({ submit, getContext, onChange =
       if (changedOwner) { epoch++; state = initialState(); onChange(state); return; }
       if (state.phase === 'review') {
         const issue = clipReplacementReviewIssue(state.review, context, { contentOnly: true });
-        if (issue) emit({ phase: 'stale', error: issue });
+        if (issue) emit({ phase: 'stale', error: issue, errorMessage: clipReplacementReviewMessage(state.review, context, { contentOnly: true }) });
       }
     },
     begin(expected = state) {
@@ -172,12 +179,12 @@ export function createClipReplacementController({ submit, getContext, onChange =
         if (result?.status === 'applied' && clipReplacementAcknowledged(review, result.timeline)) {
           emit({ phase: 'applied', error: '' }); return result;
         }
-        if (result?.status === 'rejected') emit({ phase: 'error', error: clipReplacementErrorMessage(result.error) });
-        else emit({ phase: 'unknown', error: '替换结果尚未确认。请在任务面板恢复同一请求，不要重复替换。' });
+        if (result?.status === 'rejected') emit({ phase: 'error', error: clipReplacementErrorMessage(result.error), errorMessage: clipReplacementErrorDescriptor(result.error) });
+        else emit({ phase: 'unknown', error: '替换结果尚未确认。请在任务面板恢复同一请求，不要重复替换。', errorMessage: message('timeline.replace.error.unknown') });
       } catch {
         // Only App can verify a request-bound non-application proof. A thrown
         // transport error, including a definitive 4xx, is not that proof.
-        if (owns(owner)) emit({ phase: 'unknown', error: '替换结果尚未确认。请在任务面板恢复同一请求，不要重复替换。' });
+        if (owns(owner)) emit({ phase: 'unknown', error: '替换结果尚未确认。请在任务面板恢复同一请求，不要重复替换。', errorMessage: message('timeline.replace.error.unknown') });
       }
       return null;
     },

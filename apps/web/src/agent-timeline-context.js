@@ -1,7 +1,8 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { isAgentTimelineMoveReviewTarget, isAgentTimelineMoveProposal, agentTimelineMoveTargetFromTimeline, agentTimelineMoveReviewTarget, isAgentTimelineGainProposal, agentTimelineGainTargetFromTimeline, agentTimelineGainReviewTarget } from '@mioon/contracts';
 
-import { createAgentTimelineGainBrowser, agentTimelineGainApprovalIssue } from './agent-timeline-gain-context.ts';
-export { AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_POLICY, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineGainOutboundConsent, agentTimelineGainBlockedReason } from './agent-timeline-gain-context.ts';
+import { createAgentTimelineGainBrowser, agentTimelineGainApprovalIssue, agentTimelineGainApprovalIssueDescriptor } from './agent-timeline-gain-context.ts';
+export { AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_POLICY, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineGainOutboundConsent, agentTimelineGainBlockedReason, agentTimelineGainBlockedDescriptor } from './agent-timeline-gain-context.ts';
 export { isAgentTimelineMoveProposal, isAgentTimelineGainProposal };
 export const { safeAgentTimelineGainProposal, makeAgentTimelineGainSelection } = createAgentTimelineGainBrowser({ isAgentTimelineGainProposal, agentTimelineGainTargetFromTimeline, agentTimelineGainReviewTarget });
 
@@ -55,3 +56,17 @@ export function makeAgentTimelineClipSelection(timeline, clipId, projectId) {
     return target ? safeAgentTimelineTarget(agentTimelineMoveReviewTarget(target), projectId) : null;
   } catch { return null; }
 }
+
+// Display-only companions keep legacy diagnostics and business identities unchanged.
+export function agentTimelineApprovalIssueDescriptor(proposal, { target, blockedReason = '', contextMode } = {}) {
+  if (proposal?.operation !== 'timeline.clip.update') return null;
+  if (isAgentTimelineGainProposal(proposal)) return agentTimelineGainApprovalIssueDescriptor(proposal, { target, blockedReason, contextMode });
+  if (!isAgentTimelineMoveProposal(proposal)) return localizedMessage('agent.move.state.invalidProposal');
+  if (blockedReason) return localizedMessage('agent.gain.state.checkTimelineState');
+  if (contextMode !== AGENT_TIMELINE_CONTEXT) return localizedMessage('agent.move.state.selectMoveScope');
+  if (!target) return localizedMessage('agent.move.state.selectOriginalClip');
+  if (publicFields.some(key => proposal.target[key] !== target[key]) || timingFields.some(key => proposal.diff.before[key] !== target[key])) return localizedMessage('agent.move.state.targetMismatch');
+  return null;
+}
+
+export const agentTimelineFrameDescriptor = (frame, fps = 30) => localizedMessage('agent.move.state.frameTime', { frame: frame, framefps: (frame / fps).toFixed(3) });

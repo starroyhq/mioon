@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
 import { rulerFrameForKey } from '../apps/web/src/timeline-keyboard.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,10 +38,15 @@ function installRegistrySource(source) {
   return result;
 }
 
-// The sole local Dialog extension is the optional, default-off portal lifetime
-// prop. Undo exactly these three reviewed edits before checking every byte and
-// the pinned upstream hash. No other component or source range is exempted.
+// Undo only the documented portal-lifetime and localized close-label changes
+// before checking every remaining byte and the pinned upstream hash.
 function normalizeDialogKeepMounted(source) {
+  assert.equal(source.split('import { useUiLanguage } from "./ui-language.tsx"\n').length - 1, 1);
+  source = source.replace('import { useUiLanguage } from "./ui-language.tsx"\n', '');
+  assert.equal(source.split('  const language = useUiLanguage();\n').length - 1, 2);
+  source = source.replaceAll('  const language = useUiLanguage();\n', '');
+  assert.equal(source.split('{language.close}').length - 1, 2);
+  source = source.replaceAll('{language.close}', 'Close');
   const substitutions = [
     ['  showCloseButton = true,\n  keepMounted = false,\n  ...props', '  showCloseButton = true,\n  ...props'],
     ['  showCloseButton?: boolean\n  keepMounted?: boolean\n})', '  showCloseButton?: boolean\n})'],
@@ -85,6 +91,7 @@ test('DialogContent defaults to the upstream portal lifetime and forwards only e
   const module = { exports: {} };
   Function('require', 'module', 'exports', transformSync(component('dialog'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
     if (name === 'react') return React;
+    if (name === './ui-language.tsx') return { useUiLanguage: () => ({ close: translate('zh-Hans', 'common.close') }) };
     if (name === '@base-ui/react/dialog') return { Dialog: primitives };
     if (name === '@mioon/ui/lib/utils') return { cn: (...values) => values.filter(Boolean).join(' ') };
     if (name === '@mioon/ui/components/button') return { Button: props => React.createElement('button', props) };
@@ -137,7 +144,7 @@ test('dialog, select and menu preserve primitive portals and accessible composit
   assert.match(component('dialog'), /<DialogPrimitive\.Title/);
   assert.match(component('dialog'), /<DialogPrimitive\.Description/);
   assert.match(component('dialog'), /<DialogPrimitive\.Close/);
-  assert.match(component('dialog'), /className="sr-only">Close/);
+  assert.match(component('dialog'), /className="sr-only">\{language\.close\}/);
   assert.match(component('select'), /<SelectPrimitive\.Portal/);
   assert.match(component('select'), /<SelectPrimitive\.ItemIndicator/);
   assert.match(component('dropdown-menu'), /<MenuPrimitive\.Portal/);
@@ -244,7 +251,7 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   }
   const app = readFileSync(resolve(renderer, 'App.jsx'), 'utf8');
   const main = readFileSync(resolve(renderer, 'main.jsx'), 'utf8');
-  assert.match(main, /<ConfirmationProvider>/);
+  assert.match(main, /<ConfirmationProvider labels=\{\{ title: t\('common.confirmTitle'\), cancel: t\('common.cancel'\), continue: t\('common.continue'\) \}\} renderMessage=\{renderMessage\}>/);
   assert.match(app, /async function inspect\(/);
   assert.match(app, /async function selectClip\(/);
   assert.match(app, /if \(!await inspect\(shot\.id\)\) return;/);
@@ -254,7 +261,8 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.doesNotMatch(taskCenter, /Dialog(?:Content|Title|Description)?|aria-modal/);
   const taskWorkspace = readFileSync(resolve(renderer, 'TaskWorkspace.tsx'), 'utf8');
   assert.match(taskWorkspace, /data-testid="task-workspace"/);
-  assert.match(taskWorkspace, /<h2 id="task-workspace-heading">任务中心<\/h2>/);
+  assert.match(taskWorkspace, /<h2 id="task-workspace-heading">\{t\('tasks.workspace.heading'\)\}<\/h2>/);
+  assert.equal(translate('zh-Hans', 'tasks.workspace.heading'), '任务中心');
   assert.match(app, /<DropdownMenuContent/);
   assert.match(app, /data-testid="workspace-canvas"/);
   assert.match(app, /data-testid="workspace-editing"/);
@@ -305,7 +313,8 @@ test('timeline ruler keyboard navigation stays inside integer-frame bounds', () 
 
 test('project menu labels are grouped for Base UI MenuGroupContext', () => {
   const app = readFileSync(resolve(root, 'apps/web/src/App.jsx'), 'utf8');
-  assert.match(app, /<DropdownMenuGroup><DropdownMenuLabel>你的项目<\/DropdownMenuLabel>/);
+  assert.match(app, /<DropdownMenuGroup><DropdownMenuLabel>\{t\('projects.yourProjects'\)\}<\/DropdownMenuLabel>/);
+  assert.equal(translate('zh-Hans', 'projects.yourProjects'), '你的项目');
   assert.match(app, /<\/DropdownMenuGroup><DropdownMenuSeparator/);
 });
 

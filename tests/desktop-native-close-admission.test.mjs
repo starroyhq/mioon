@@ -1,3 +1,4 @@
+import { nativeText } from '../apps/desktop/src/app-language-text.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -55,7 +56,7 @@ function fixture(t, options = {}) {
     }
     return !dirty && !blocked;
   }
-  const sandbox = vm.createContext({
+  const sandbox = vm.createContext({ nt: nativeText,
     __mioonNativeCloseAdmission: { inspect: options.inspect ?? inspect, commit: options.commit ?? commit, cancel: options.cancel ?? cancel },
     __mioonFlushWorkspacePreferences: () => options.flush?.() ?? true,
   });
@@ -566,7 +567,7 @@ test('main routes user reload through admission and only proved initial empty lo
   assert.match(source, /await windowHost\.loadFor\(window\)/);
   assert.doesNotMatch(source, /requestReload/);
   const window = {}, startupError = Object.assign(Error('Startup failed'), { code: 'ERR_ABORTED' });
-  const context = vm.createContext({ ownsWindowContext: () => true, ownsWindow: () => true, initialWindowLoads: new WeakMap(),
+  const context = vm.createContext({ nt: nativeText, ownsWindowContext: () => true, ownsWindow: () => true, initialWindowLoads: new WeakMap(),
     windowHost: { ensureLauncher: () => window, loadFor: async target => { assert.equal(target, window); throw startupError; } } });
   vm.runInContext(source, context);
   context.context = { ready: { url: 'http://127.0.0.1:45000' } };
@@ -757,8 +758,9 @@ test('main captures incident-bound recovery before asking and discloses possible
   const coordinator = await readFile(new URL('../apps/desktop/src/project-window-recovery.ts', import.meta.url), 'utf8');
   assert.ok(coordinator.indexOf('options.capture(window)') < coordinator.indexOf('await options.prompt(window)'));
   assert.ok(coordinator.indexOf('recovery.claimPrompt()') < coordinator.indexOf('await options.prompt(window)'));
-  assert.match(recovery, /未保存的输入可能已经丢失/);
-  assert.match(recovery, /不会重新提交任务或生成请求/);
+  assert.ok(recovery.includes("detail: nt('native.rendererDetail')"));
+  assert.match(nativeText('native.rendererDetail'), /未保存的输入可能已经丢失/);
+  assert.match(nativeText('native.rendererDetail'), /不会重新提交任务或生成请求/);
   assert.match(coordinator, /if \(result === 0\) await recovery\.reload\(\)/);
 });
 
@@ -846,7 +848,7 @@ test('cancel/Escape in the actual recovery dialog retains window, backend and un
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   let dialogOptions;
-  const context = vm.createContext({ createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
+  const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async (parent, options) => { assert.equal(parent, f.win); dialogOptions = options; return { response: options.cancelId }; } },
     app: { quit() { assert.fail('Cancel cannot quit'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
   vm.runInContext(main.slice(from, to), context);
@@ -862,7 +864,7 @@ test('the actual recovery dialog authorizes Exit only for explicit response one'
   f.win.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 });
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
-  const context = vm.createContext({ createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
+  const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async () => ({ response: 1 }) },
     app: { quit() { assert.fail('Explicit recovery must use its captured scoped decision'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
   vm.runInContext(main.slice(from, to), context);
@@ -875,7 +877,7 @@ async function recoveryDialogHarness(t, f, show, isCurrent = () => true) {
   const main = await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const calls = [], pending = [], errors = [];
-  const context = vm.createContext({ createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
+  const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => isCurrent() && !f.win.destroyed,
     dialog: { showMessageBox: (parent, options) => { assert.equal(parent, f.win); calls.push(options); return show(calls.length, options); } },
     window: f.win, ownerContext: {incident: {failed: false}} });
@@ -942,7 +944,7 @@ async function reloadMenuHarness(f, isCurrent = () => true) {
   const from = main.indexOf('function installMenu()'), to = main.indexOf('\nconst quitCoordinator', from);
   let menu;
   const errors = [];
-  const context = vm.createContext({ process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => f.win}, initialWindowLoads: new WeakMap(), win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
+  const context = vm.createContext({ nt: nativeText, process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => f.win}, initialWindowLoads: new WeakMap(), win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } }, fatal: error => errors.push(error) });
   vm.runInContext(main.slice(from, to) + '\ninstallMenu();', context);
@@ -981,7 +983,7 @@ async function actualMainAdmissionCallbacks(dialog, window = {}, owner = () => t
   const from = main.indexOf('windowAdmissions.set(window, installNativeCloseAdmission(window, {');
   const to = main.indexOf("\n  window.on('closed'", from);
   let callbacks;
-  const context = vm.createContext({ window, context: { ready: { url: 'http://127.0.0.1:45000' } },
+  const context = vm.createContext({ nt: nativeText, window, context: { ready: { url: 'http://127.0.0.1:45000' } },
     owner: {url: 'http://127.0.0.1:45000'}, initialLoad: {consumeClose: () => false}, windowHost: {closeStateChanged() {}},
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window, value) => { callbacks = value; return {}; },
     ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined,

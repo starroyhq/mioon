@@ -1,3 +1,4 @@
+import * as i18n from './helpers/i18n.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,7 +18,7 @@ function component() {
   const tree = (type, props, ...children) => ({ type, props: { ...props, children } }), react = { createElement: tree }; react.default = react;
   const module = { exports: {} };
   Function('module','exports','require',transformSync(source('TimelineMixLoudness.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(module,module.exports,
-    name => name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : name === '@mioon/ui/components/input' ? { Input: 'Input' } : stateModule);
+    name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : name === '@mioon/ui/components/input' ? { Input: 'Input' } : stateModule);
   return module.exports.default;
 }
 let rendered;
@@ -63,8 +64,8 @@ test('original and actual rerendered candidate remain distinct with measured tar
   assert.match(rendered.ready, /报告不授予应用权限/); assert.match(rendered.ready, /不保证 AAC 编码后的峰值/);
 });
 test('unavailable, preparing, cancelled and failed observations never display a fabricated candidate', () => {
-  assert.match(rendered.silent, /数字静音，综合响度不可用/); assert.match(rendered.silent, /原混音没有可用的综合响度/); assert.match(rendered.silent, /−∞ dBTP/);
-  assert.match(rendered.tooShort, /短于 400 毫秒，综合响度不可用/); assert.match(rendered.outOfRange, /超出支持范围，未夹紧或修改增益/);
+  assert.match(rendered.silent, /数字静音：综合响度不可用/); assert.match(rendered.silent, /原混音没有可用的综合响度/); assert.match(rendered.silent, /−∞ dBTP/);
+  assert.match(rendered.tooShort, /短于 400 毫秒：综合响度不可用/); assert.match(rendered.outOfRange, /超出支持范围，未夹紧或修改增益/);
   assert.match(rendered.preparing, /取消本次观察/); assert.match(rendered.cancelled, /只读观察已取消/); assert.match(rendered.error, /本次未排队/);
   assert.match(rendered.invalid, /aria-invalid="true"/); assert.match(rendered.invalid, /role="alert"/);
   for (const name of ['silent','tooShort','outOfRange','preparing','cancelled','error']) assert.doesNotMatch(rendered[name], /data-testid="timeline-mix-loudness-candidate"|NaN|Infinity/);

@@ -1,3 +1,6 @@
+import { i18nTestModule, message, translate } from './helpers/i18n.ts';
+import * as i18n from '../packages/i18n/src/index.ts';
+import * as preflightState from '../apps/web/src/export-preflight-state.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -124,7 +127,7 @@ test('current auth and RPC errors are readable, path-free, fail closed; obsolete
 const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 function appFunction(begin, end, scope) {
   const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start);
-  return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope));
+  return Function(...Object.keys({ msg: message, ...scope }), `return (${appSource.slice(start, stop).trim()});`)(...Object.values({ msg: message, ...scope }));
 }
 function appHarness(f, { restored = false, localState = { baselineConflict: false, candidate: null } } = {}) {
   const calls = [], notices = [], views = [], panels = [], pending = [], jobs = [], exports = [], submitOptions = [];
@@ -194,14 +197,14 @@ const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree &&
 const panelSource = readFileSync(new URL('../apps/web/src/TimelineExportPreflight.jsx', import.meta.url), 'utf8');
 function renderPanel(props) {
   const module = { exports: {} }, react = { createElement: element }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : name.endsWith('export-preflight-state.js') ? { preflightIssueMessage } : name.endsWith('icons.jsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
+  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.js') ? preflightState : name.endsWith('icons.jsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
   return module.exports.default({ canCheck: true, onCheck() {}, onExport() {}, ...props });
 }
 
 test('accessible topbar export action opens recovery even when a candidate, baseline conflict or invalid name blocks Check', () => {
   const first = appSource.indexOf('  const canOpenExport ='), last = appSource.indexOf('  const pendingTimelineExport =', first);
   assert.ok(first >= 0 && last > first, 'Opening and checking must have explicit independent gates');
-  const buttonSource = appSource.match(/<Button\b[^>]*data-testid="export-timeline"[^>]*>[\s\S]*?<\/Button>/)?.[0];
+  const buttonSource = appSource.match(/<DropdownMenuItem\b[^>]*data-testid="export-timeline"[^>]*>[\s\S]*?<\/DropdownMenuItem>/)?.[0];
   assert.ok(buttonSource); assert.match(buttonSource, /disabled=\{!canOpenExport\}/); assert.match(buttonSource, /onClick=\{openTimelineExport\}/);
   const gate = patch => {
     const env = { data: { project: { id: projectId } }, timeline: { id: timelineId, revision: 4 }, loading: false,
@@ -212,8 +215,8 @@ test('accessible topbar export action opens recovery even when a candidate, base
     { localDelivery: { state: { candidate: null, baselineConflict: true } } }, { deliveryName: { error: 'Invalid name' } }, { exportRange: { error: 'Invalid range' } }, { online: false }]) {
     const flags = gate(patch); assert.deepEqual(flags, { canOpenExport: true, canCheckExport: false });
     const f = fixture(), h = appHarness(f), module = { exports: {} };
-    Function('module', 'React', 'Button', 'Icon', 'canOpenExport', 'openTimelineExport', transformSync(`module.exports = (${buttonSource});`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'Button', 'Icon', flags.canOpenExport, h.open);
-    const button = module.exports; assert.equal(button.type, 'Button'); assert.equal(button.props.disabled, false); assert.equal(textOf(button), '导出时间线');
+    Function('module', 'React', 'DropdownMenuItem', 'Icon', 'canOpenExport', 'openTimelineExport', 't', transformSync(`module.exports = (${buttonSource});`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'DropdownMenuItem', 'Icon', flags.canOpenExport, h.open, (key, params) => translate('zh-Hans', key, params));
+    const button = module.exports; assert.equal(button.type, 'DropdownMenuItem'); assert.equal(button.props.disabled, false); assert.equal(textOf(button), '导出时间线');
     button.props.onClick(); assert.deepEqual(h.panels, [['tab', 'delivery'], ['inspector', true]]); assert.deepEqual(h.exports, [false]);
     assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
   }
@@ -225,21 +228,27 @@ test('blocked Check retains accessible recovery controls and pending copy points
   const module = { exports: {} }, disclosure = { exports: {} }, rangeSummary = { exports: {} };
   const react = { createElement: (type, props, ...children) => [disclosure.exports.default, rangeSummary.exports.default].includes(type) ? type({ ...props, children }) : element(type, props, ...children) }; react.default = react;
   Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(disclosure, disclosure.exports, name => {
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
+    if (name.endsWith('packages/i18n/src/index.ts')) return i18n;
     assert.equal(name, 'react'); return react;
   });
   Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/ExportRangeSummary.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(rangeSummary, rangeSummary.exports, name => {
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
+    if (name.endsWith('packages/i18n/src/index.ts')) return i18n;
     if (name === 'react') return react;
     if (name === '@mioon/contracts/timeline-export-range') return rangeContracts;
     assert.equal(name, './export-range-state.ts'); return rangeState;
   });
   Function('module', 'exports', 'require', transformSync(recoverySource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, name => {
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
+    if (name.endsWith('packages/i18n/src/index.ts')) return i18n;
     if (name === 'react') return react;
     if (name === './RecoveryStorageDetails.tsx') return disclosure.exports;
     if (name === './ExportRangeSummary.tsx') return rangeSummary.exports;
     assert.equal(name, '@mioon/ui/components/button'); return { Button: 'Button' };
   });
   const events = [], recovery = module.exports.default({ state: { phase: 'ready', busy: false,
-    candidate: { timelineId, baseRevision: 4, raw: { deliveryName: 'Saved draft' }, updatedAt: '2026-10-12T00:00:00.000Z' },
+    candidate: { draftId: id(41), timelineId, baseRevision: 4, raw: { deliveryName: 'Saved draft' }, updatedAt: '2026-10-12T00:00:00.000Z' },
     intent: { intentId: id(40), timelineId, baseRevision: 4, input: { requestId: 'original-request', deliveryName: 'Original delivery' }, outcome: { status: 'pending' } } },
     controller: { restore: () => events.push('restore'), recover: () => events.push('recover') } });
   const tree = renderPanel({ recovery, canCheck: false, deliveryNameError: 'Invalid name', pendingExport: true });

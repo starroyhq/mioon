@@ -1,3 +1,5 @@
+import { translate } from '../../../packages/i18n/src/index.ts';
+import type { Locale } from '../../../packages/i18n/src/index.ts';
 import { EXPORT_LOUDNESS_PROFILE, isExportLoudnessResponse, exportLoudnessReason } from '@mioon/contracts/export-loudness';
 import type { ExportLoudnessInput, ExportLoudnessResponse, ExportLoudnessTarget } from '@mioon/contracts/export-loudness';
 import { isExportSamplePeakFrameCountCompatible } from '@mioon/contracts/export-sample-peak';
@@ -15,16 +17,16 @@ const object = (value: unknown): value is Record<string, unknown> => value !== n
 const canonical = (value: unknown): string => JSON.stringify(value, (_, item: unknown) => object(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 
 /** Empty fields request measurement alone; no platform target is assumed. */
-export function parseExportLoudnessTarget(draft: ExportLoudnessDraft): Readonly<{ target?: ExportLoudnessTarget; error: string }> {
+export function parseExportLoudnessTarget(draft: ExportLoudnessDraft, locale: Locale = 'zh-Hans'): Readonly<{ target?: ExportLoudnessTarget; error: string }> {
   const lufs = draft.integratedLufs.trim(), peak = draft.truePeakCeilingDbtp.trim();
   if (!lufs && !peak) return { error: '' };
-  if (!lufs || !peak) return { error: '请同时填写目标响度和真峰值上限，或将两项都留空以仅测量。' };
+  if (!lufs || !peak) return { error: translate(locale, 'audio.loudness.target.both') };
   const decimal = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/u;
   const integratedLufs = Number(lufs), truePeakCeilingDbtp = Number(peak);
   if (!decimal.test(lufs) || !Number.isFinite(integratedLufs) || integratedLufs < -60 || integratedLufs > -5)
-    return { error: '目标响度须为 −60 至 −5 LUFS 的有限数值。' };
+    return { error: translate(locale, 'audio.loudness.target.lufsInvalid') };
   if (!decimal.test(peak) || !Number.isFinite(truePeakCeilingDbtp) || truePeakCeilingDbtp < -20 || truePeakCeilingDbtp > 0)
-    return { error: '真峰值上限须为 −20 至 0 dBTP 的有限数值。' };
+    return { error: translate(locale, 'audio.loudness.target.peakInvalid') };
   return { target: Object.freeze({ integratedLufs, truePeakCeilingDbtp }), error: '' };
 }
 export type ExportLoudnessPhase = 'idle' | 'measuring' | 'ready' | 'unsupported' | 'incomplete' | 'stale' | 'error' | 'cancelled';
@@ -43,6 +45,7 @@ export interface ExportLoudnessState {
   readonly phase: ExportLoudnessPhase;
   readonly report: ExportLoudnessResponse | null;
   readonly error: string;
+  readonly errorCode?: string;
 }
 export interface ExportLoudnessControllerOptions {
   read: (input: ExportLoudnessInput, options: ExportSamplePeakReadOptions) => Promise<unknown>;
@@ -70,19 +73,19 @@ export function exportLoudnessViewState(state: ExportLoudnessState, context: Exp
     ...(clear ? { draft: blankDraft(), draftVersion: state.draftVersion + 1, report: null, error: '', targetId: target?.exportId ?? null,
       targetKey: target?.key ?? null, phase: target ? 'stale' : 'idle' } : state.phase === 'measuring' && !sameExecution ? { report: null, error: '', phase: 'cancelled' } : {}) });
 }
-export function exportLoudnessErrorMessage(error: unknown): string {
+export function exportLoudnessErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
   const code = object(error) ? error.code : null;
-  if (code === 'UNAUTHORIZED') return '会话已过期，请重新登录后明确重新测量。';
-  if (code === 'RESTORE_OPERATION_UNAVAILABLE') return EXPORT_LOUDNESS_RESTORED;
-  if (code === 'BACKEND_PROTOCOL_ERROR') return '测量响应不完整或与此导出文件、目标不匹配，请重新测量。';
-  return '测量未完成，请确认连接后重新测量。';
+  if (code === 'UNAUTHORIZED') return translate(locale, 'audio.loudness.export.unauthorized');
+  if (code === 'RESTORE_OPERATION_UNAVAILABLE') return translate(locale, 'audio.loudness.export.restored');
+  if (code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'audio.loudness.export.protocol');
+  return translate(locale, 'audio.loudness.export.failed');
 }
-export function exportLoudnessStatusMessage(state: ExportLoudnessState): string {
-  if (state.phase === 'measuring') return '正在测量此已导出文件的响度与真峰值…';
-  if (state.phase === 'cancelled') return '本次测量观察已取消，需要时请明确重新测量。';
-  if (state.error) return state.error;
-  if (state.report?.reason) return exportLoudnessReason(state.report.reason.code).message;
-  if (state.phase === 'stale') return '导出文件记录已变化，请重新测量。';
+export function exportLoudnessStatusMessage(state: ExportLoudnessState, locale: Locale = 'zh-Hans'): string {
+  if (state.phase === 'measuring') return translate(locale, 'audio.loudness.export.measuring');
+  if (state.phase === 'cancelled') return translate(locale, 'audio.loudness.export.cancelled');
+  if (state.error) return exportLoudnessErrorMessage({ code: state.errorCode }, locale);
+  if (state.report?.reason) return translate(locale, `audio.loudness.reason.${state.report.reason.code}`);
+  if (state.phase === 'stale') return translate(locale, 'audio.loudness.export.stale');
   return '';
 }
 function freezeObservation(value: unknown): void {
@@ -162,7 +165,7 @@ export function createExportLoudnessController({ read, isRenderRecord, getContex
         return report;
       } catch (error: unknown) {
         if (!current(attempt, target, scope, capturedVersion)) return null;
-        emit({ phase: 'error', report: null, error: exportLoudnessErrorMessage(error) });
+        emit({ phase: 'error', report: null, error: exportLoudnessErrorMessage(error), errorCode: object(error) && typeof error.code === 'string' ? error.code : '' });
         if (object(error) && error.code === 'UNAUTHORIZED') onUnauthorized();
         return null;
       } finally { if (active === abort) active = null; }

@@ -1,27 +1,31 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React from 'react';
 import { Button } from '@mioon/ui/components/button';
-import { WAVEFORM_BACKGROUND_NOTICE, WAVEFORM_DISCLOSURE, WAVEFORM_LIMITS, waveformCoverageWidth, waveformPath, waveformStatusText } from './waveform-state.js';
+import { WAVEFORM_LIMITS, waveformCoverageWidth, waveformPath, waveformStatusMessage } from './waveform-state.js';
 
 export function TimelineWaveformControls({ state, disabled }) {
+  const { t, renderMessage } = useI18n();
+  const disclosure = t('audio.waveform.disclosure'), background = t('audio.waveform.background');
   const entries = [...state.entries.values()];
   const visibleKeys = new Set(state.windows.slice(0, WAVEFORM_LIMITS.entries).map(item => item.key));
   const visibleEntries = entries.filter(entry => visibleKeys.has(entry.key));
   const clipped = visibleEntries.some(entry => entry.status === 'ready' && entry.clipped);
   const loading = !state.readOnly && visibleEntries.some(entry => ['loading', 'queued', 'running'].includes(entry.status));
   const issue = visibleEntries.find(entry => ['error', 'interrupted', 'unsupported', 'missing'].includes(entry.status) && entry.phase === 'idle');
-  const status = state.readOnly ? '仅查看已保存波形；新解码及历史任务执行不可用' : !state.enabled ? '本次会话默认关闭' : state.windows.length > WAVEFORM_LIMITS.entries ? '仅显示前32个可见片段波形' : state.autoLimitReached && issue?.status === 'missing' ? '已达64个素材，请手动重试' : loading ? '仅分析可见片段…' : issue ? waveformStatusText(issue) : state.windows.length ? '原始源音轨 · 固定满刻度' : '当前视区无已确认音轨';
+  const status = state.readOnly ? t('audio.waveform.readOnly') : !state.enabled ? t('audio.waveform.defaultOff') : state.windows.length > WAVEFORM_LIMITS.entries ? t('audio.waveform.visibleLimit') : state.autoLimitReached && issue?.status === 'missing' ? t('audio.waveform.attemptLimit') : loading ? t('audio.waveform.visibleOnly') : issue ? renderMessage(waveformStatusMessage(issue)) : state.windows.length ? t('audio.waveform.sourceScale') : t('audio.waveform.noAudio');
   return <div className="timeline-waveform-controls">
-    <Button variant="ghost" className={`button small timeline-waveform-toggle ${state.enabled ? 'active' : ''}`} data-testid="timeline-waveform-toggle" aria-pressed={state.enabled} aria-describedby="timeline-waveform-disclosure" disabled={disabled} title={state.readOnly ? status : `${WAVEFORM_DISCLOSURE}。${WAVEFORM_BACKGROUND_NOTICE}`} onClick={() => state.setEnabled(!state.enabled)}>{state.readOnly ? '已有波形' : '波形'}{state.enabled ? '开' : '关'}</Button>
-    <span className="timeline-waveform-status" role="status" aria-live="polite" data-testid="timeline-waveform-status" title={`${status}。${WAVEFORM_DISCLOSURE}。${WAVEFORM_BACKGROUND_NOTICE}`}>{status}</span>
-    {state.enabled && clipped && <span className="timeline-waveform-clipped" data-testid="timeline-waveform-clipped" title="原始源音轨检测到满刻度峰值；不反映片段音量、静音或淡入/淡出">满刻度峰值</span>}
-    {state.enabled && state.retryable && <Button variant="ghost" className="button small timeline-waveform-retry" data-testid="timeline-waveform-retry" title="先查询状态，仅在仍未完成时重试可见片段" onClick={state.retry}>重试波形</Button>}
-    <span className="sr-only" id="timeline-waveform-disclosure">{WAVEFORM_DISCLOSURE}。{WAVEFORM_BACKGROUND_NOTICE} 每次打开项目默认关闭，仅在手动开启后按可见片段分析。</span>
+    <Button variant="ghost" className={`button small timeline-waveform-toggle ${state.enabled ? 'active' : ''}`} data-testid="timeline-waveform-toggle" aria-pressed={state.enabled} aria-describedby="timeline-waveform-disclosure" disabled={disabled} title={state.readOnly ? status : `${disclosure}. ${background}`} onClick={() => state.setEnabled(!state.enabled)}>{t(state.readOnly ? (state.enabled ? 'audio.waveform.savedOn' : 'audio.waveform.savedOff') : (state.enabled ? 'audio.waveform.on' : 'audio.waveform.off'))}</Button>
+    <span className="timeline-waveform-status" role="status" aria-live="polite" data-testid="timeline-waveform-status" title={`${status}. ${disclosure}. ${background}`}>{status}</span>
+    {state.enabled && clipped && <span className="timeline-waveform-clipped" data-testid="timeline-waveform-clipped" title={t('audio.waveform.clippedHint')}>{t('audio.waveform.clipped')}</span>}
+    {state.enabled && state.retryable && <Button variant="ghost" className="button small timeline-waveform-retry" data-testid="timeline-waveform-retry" title={t('audio.waveform.retryHint')} onClick={state.retry}>{t('audio.waveform.retry')}</Button>}
+    <span className="sr-only" id="timeline-waveform-disclosure">{disclosure}. {background} {t('audio.waveform.defaultDisclosure')}</span>
   </div>;
 }
 
 export default function TimelineWaveform({ window: range, entry }) {
+  const { renderMessage } = useI18n();
   if (!range) return null;
-  const status = waveformStatusText(entry);
+  const status = renderMessage(waveformStatusMessage(entry));
   // Crop to actual decoded time without rescaling the requested bin spacing.
   const width = entry?.status === 'ready' ? waveformCoverageWidth(range, entry.decodedSampleFrames) : range.width;
   return <span className={`timeline-waveform ${entry?.status === 'ready' ? 'is-ready' : 'is-pending'}`} style={{ left: range.left, width }} data-testid={`timeline-waveform-${range.clipId}`} data-waveform-status={entry?.status || 'missing'} aria-hidden="true" title={status}>

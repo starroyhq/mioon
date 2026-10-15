@@ -38,12 +38,12 @@ const overrides = new Map([
   ['@mioon/business/agent/settings-file', data('export const createAgentSettingsFile = ' + forbidden.toString())],
   ['@mioon/contracts/private-storage', data('export const validatePrivateDirectory = ' + forbidden.toString())],
 ]);
-const approved = new Set(['apps/desktop/src/secret-store-linux.mjs', 'apps/desktop/src/secret-store.mjs', 'apps/desktop/src/image-secret-store.mjs',
+const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.mjs', 'apps/desktop/src/secret-store.mjs', 'apps/desktop/src/image-secret-store.mjs',
   'apps/desktop/src/image-secret-broker.mjs', 'apps/desktop/src/secret-broker.mjs', 'apps/desktop/src/supervisor.mjs',
   'apps/desktop/src/security.mjs', 'apps/desktop/src/timeline-delivery-download.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.mjs', 'packages/business/src/agent/settings.mjs', 'packages/business/src/agent/config.mjs',
   'packages/business/src/agent/presets.mjs']);
-const reviewedTypeScript = new Set(['apps/desktop/src/timeline-delivery-download.ts',
+const reviewedTypeScript = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/timeline-delivery-download.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts']);
 const urls = new Map();
 function moduleUrl(name) {
@@ -145,13 +145,13 @@ test('audited imports and codec construction make no native calls; Images client
   assert.ok(['status', 'encrypt', 'decrypt'].every(method => f.calls.includes(method)));
 });
 
-test('import fixture permits only three reviewed erased adapters and refuses runtime Electron or unknown source paths', () => {
+test('import fixture permits only reviewed erased adapters and pure native messages and refuses runtime Electron or unknown source paths', () => {
   const name = 'apps/desktop/src/timeline-delivery-download.ts';
   const original = readFileSync(new URL(name, root), 'utf8');
   assert.match(original, /import type \{[^}]*\} from 'electron'/);
   const erased = stripTypeScriptTypes(original, {mode: 'strip'});
   assert.doesNotMatch(erased, /from ['"]electron['"]/);
-  assert.deepEqual([...erased.matchAll(/\bfrom\s+(['"])([^'"]+)\1/g)].map(match => match[2]), ['node:path', '@mioon/contracts/timeline-delivery']);
+  assert.deepEqual([...erased.matchAll(/\bfrom\s+(['"])([^'"]+)\1/g)].map(match => match[2]), ['./app-language-text.ts', 'node:path', '@mioon/contracts/timeline-delivery']);
   assert.equal(overrides.has('electron'), false);
   assert.equal(overrides.has('@mioon/contracts/arbitrary'), false);
   for (const unreviewed of ['apps/desktop/src/main.mjs', 'apps/desktop/src/backend.mjs', 'packages/contracts/src/timeline-delivery.ts', 'apps/desktop/src/../src/not-approved.ts']) {
@@ -159,7 +159,7 @@ test('import fixture permits only three reviewed erased adapters and refuses run
   }
   assert.equal(deliveryParser.calls, 0);
   assert.equal(nativeAudioContracts.calls, 0);
-  assert.deepEqual([...reviewedTypeScript].sort(), ['apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/timeline-delivery-download.ts']);
+  assert.deepEqual([...reviewedTypeScript].sort(), ['apps/desktop/src/app-language-text.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'packages/i18n/src/catalogs/native.ts']);
   for (const adapter of reviewedTypeScript) assert.ok(urls.has(adapter));
 });
 

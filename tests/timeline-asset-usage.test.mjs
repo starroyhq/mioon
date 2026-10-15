@@ -260,6 +260,10 @@ test('names remain literal text, with a fallback only for genuinely absent legac
   assert.equal(result.usesByAssetId[firstAssetId][0].trackName, input.timeline.tracks[0].name);
   delete input.timeline.clips[0].name;
   assert.equal(deriveTimelineAssetUsage(input).usesByAssetId[firstAssetId][0].clipName, '未命名片段');
+  assert.equal(deriveTimelineAssetUsage(input).usesByAssetId[firstAssetId][0].clipNameMissing, true);
+  input.timeline.clips[0].name = '未命名片段';
+  assert.equal(deriveTimelineAssetUsage(input).usesByAssetId[firstAssetId][0].clipNameMissing, undefined, 'A matching user name is not a localization marker');
+  delete input.timeline.clips[0].name;
   assert.equal(Object.hasOwn(input.timeline.clips[0], 'name'), false);
 });
 

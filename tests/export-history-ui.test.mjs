@@ -1,3 +1,4 @@
+import { formatDate } from './helpers/i18n.ts';
 import test, {before} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -41,8 +42,8 @@ test('export history preserves its empty-state text and original single wrapper'
   assert.doesNotMatch(rendered.empty, /download-export|role="dialog"|export-card/);
 });
 test('failed and pending outcomes keep the exact errors, badge and non-download behavior', () => {
-  assert.match(rendered.statuses, /等待生成/); assert.match(rendered.statuses, /提交状态待确认/);
-  assert.match(rendered.statuses, /字符串失败 &lt;unsafe&gt;/); assert.match(rendered.statuses, /对象失败 &amp; detail/);
+  assert.match(rendered.statuses, /排队中/); assert.match(rendered.statuses, /提交状态待确认/);
+  assert.equal((rendered.statuses.match(/此导出遇到问题，请核对原记录与当前状态。/g) || []).length, 2); assert.doesNotMatch(rendered.statuses, /字符串失败|对象失败|unsafe|&amp; detail/);
   assert.equal((rendered.statuses.match(/class="spinner"/g) || []).length, 3);
   assert.match(rendered.statuses, /small-badge warn/); assert.doesNotMatch(rendered.statuses, /download-export/);
 });
@@ -52,11 +53,11 @@ test('all three ready statuses preserve the URL precedence, asset fallback and d
   assert.match(rendered.success, /href="\/media\/asset-two"/); assert.match(rendered.success, /href="\/media\/asset-three"/);
   assert.doesNotMatch(rendered.success, /href="\/media\/asset-one"/);
   assert.equal((rendered.success.match(/download="片名.mp4"/g) || []).length, 3);
-  assert.ok(rendered.success.includes(new Date(date).toLocaleString('zh-CN')));
+  assert.ok(rendered.success.includes(formatDate('zh-Hans', date, { dateStyle: 'medium', timeStyle: 'medium' })));
 });
 test('snapshot labels preserve preview/export/storyboard and strict revision comparison', () => {
-  assert.match(rendered.snapshots, /时间线预览 · rev 7 · 当前/); assert.match(rendered.snapshots, /时间线导出 · rev 6 · 旧快照/);
-  assert.match(rendered.snapshots, /时间线导出 · rev 7 · 旧快照/); assert.match(rendered.snapshots, /分镜顺序导出 · 2 个镜头/);
+  assert.match(rendered.snapshots, /时间线预览 · 修订版 7 · 当前/); assert.match(rendered.snapshots, /时间线导出 · 修订版 6 · 旧快照/);
+  assert.match(rendered.snapshots, /时间线导出 · 修订版 7 · 旧快照/); assert.match(rendered.snapshots, /分镜顺序导出 · 2 个镜头/);
   assert.match(rendered.snapshots, /分镜顺序导出 · 0 个镜头/);
 });
 test('display and download fallback names remain intentionally different', () => {
@@ -64,7 +65,7 @@ test('display and download fallback names remain intentionally different', () =>
 });
 test('project/error text and download attributes stay React-escaped without changing encoded media URLs', () => {
   assert.match(rendered.escaped, /&lt;script&gt;/); assert.match(rendered.escaped, /&quot; &amp; 单引号&#x27;/);
-  assert.match(rendered.escaped, /&lt;img src=x onerror=alert\(1\)&gt;/); assert.doesNotMatch(rendered.escaped, /<script>|<img src=x/);
+  assert.match(rendered.escaped, /此导出遇到问题，请核对原记录与当前状态。/); assert.doesNotMatch(rendered.escaped, /onerror|src=x/); assert.doesNotMatch(rendered.escaped, /<script>|<img src=x/);
   assert.match(rendered.escaped, /href="\/media\/synthetic\?download=1&amp;label=%22%E4%B8%AD%22"/);
 });
 test('presentation uses supplied order and never mutates frozen input rows', () => {
@@ -81,7 +82,7 @@ test('App keeps history inside the controlled visible right dock with project id
   assert.doesNotMatch(app, /showExports && <Modal|<Modal title="导出记录"/);
   // Other existing dialogs keep their accessible close behavior.
   assert.match(app, /<Dialog open onOpenChange=\{open => \{ if \(!open\) onClose\(\); \}\}>/);
-  assert.match(app, /<DialogTitle>\{title\}<\/DialogTitle>/); assert.match(app, /aria-label="关闭对话框"/);
+  assert.match(app, /<DialogTitle>\{title\}<\/DialogTitle>/); assert.match(app, /aria-label=\{t\('shell\.closeDialog'\)\}/);
   assert.match(app, /setRightDockTab\(value => value === 'tasks' \? 'properties' : value\); setShowExports\(false\); setComparisonId\(null\)/);
   assert.doesNotMatch(app, /className="export-card"/);
 });

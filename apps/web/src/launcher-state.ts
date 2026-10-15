@@ -1,3 +1,5 @@
+import { message as msg } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { isProjectWindowId } from '../../desktop/src/project-window-protocol.ts';
 import type { ProjectWindowContext } from './desktop-window-client.ts';
 import type { ProjectHomeProject } from './ProjectHome.tsx';
@@ -84,22 +86,22 @@ export interface LauncherState {
   readonly projects: readonly LauncherProject[];
   readonly workspace: LauncherWorkspace | null;
   readonly listBusy: boolean;
-  readonly listError: string;
+  readonly listError: string | DisplayMessage;
   readonly phase: 'home' | 'opening' | 'error';
   readonly openingProjectId: string | null;
-  readonly error: string;
-  readonly notice: string;
+  readonly error: string | DisplayMessage;
+  readonly notice: string | DisplayMessage;
   readonly creating: boolean;
   readonly createUnknown: boolean;
   readonly version: number;
 }
 const initialState = (): LauncherState => ({ projects: [], workspace: null, listBusy: true, listError: '', phase: 'home', openingProjectId: null, error: '', notice: '', creating: false, createUnknown: false, version: 0 });
-export function launcherCreateDisabledReason(context: ProjectWindowContext, state: LauncherState): string {
-  if (context.quitting) return '应用正在退出，暂不能新建项目。';
-  if (state.phase === 'opening') return '正在核对编辑窗口，暂不能新建项目。';
-  if (state.createUnknown) return '上次新建结果未确认。请保留此窗口并刷新列表核对；重新启动后也请先核对，避免重复创建。';
-  if (!state.workspace) return '工作区身份尚未核对，暂不能新建项目。';
-  if (state.workspace.restored) return '恢复分支暂不支持新建项目。';
+export function launcherCreateDisabledReason(context: ProjectWindowContext, state: LauncherState): string | DisplayMessage {
+  if (context.quitting) return msg('projects.quittingCreate');
+  if (state.phase === 'opening') return msg('projects.checkingEditorCreateBlocked');
+  if (state.createUnknown) return msg('projects.createUnknownRestart');
+  if (!state.workspace) return msg('projects.workspaceNotChecked');
+  if (state.workspace.restored) return msg('projects.restoredCreateUnavailable');
   return '';
 }
 

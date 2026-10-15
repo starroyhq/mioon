@@ -1,3 +1,5 @@
+import { translate } from '../../../packages/i18n/src/index.ts';
+import type { Locale } from '../../../packages/i18n/src/index.ts';
 import { timelineRenderDeliveryFields } from '@mioon/contracts/timeline-delivery';
 import { isExportSamplePeakResponse, isExportSamplePeakFrameCountCompatible, exportSamplePeakReason } from '@mioon/contracts/export-sample-peak';
 import type { ExportSamplePeakInput, ExportSamplePeakResponse, ExportSamplePeakArtifact } from '@mioon/contracts/export-sample-peak';
@@ -40,6 +42,7 @@ export interface ExportSamplePeakState {
   readonly executionScope: string;
   readonly report: ExportSamplePeakResponse | null;
   readonly error: string;
+  readonly errorCode?: string;
 }
 export interface ExportSamplePeakReadOptions { readonly signal: AbortSignal; readonly expectedWorkspaceOrigin?: string }
 export interface ExportSamplePeakControllerOptions {
@@ -95,19 +98,19 @@ export function exportSamplePeakViewState(state: ExportSamplePeakState, context:
   return Object.freeze(visibleState);
 }
 
-export function exportSamplePeakErrorMessage(error: unknown): string {
+export function exportSamplePeakErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
   const code = object(error) ? error.code : null;
-  if (code === 'UNAUTHORIZED') return '会话已过期，请重新登录后明确重新检查。';
-  if (code === 'RESTORE_OPERATION_UNAVAILABLE') return EXPORT_SAMPLE_PEAK_RESTORED;
-  if (code === 'BACKEND_PROTOCOL_ERROR') return '检查响应不完整或与此导出文件不匹配，请重新检查。';
-  return '检查未完成，请确认连接后重新检查。';
+  if (code === 'UNAUTHORIZED') return translate(locale, 'audio.loudness.peak.unauthorized');
+  if (code === 'RESTORE_OPERATION_UNAVAILABLE') return translate(locale, 'audio.loudness.peak.restored');
+  if (code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'audio.loudness.peak.protocol');
+  return translate(locale, 'audio.loudness.peak.failed');
 }
-export function exportSamplePeakStatusMessage(state: ExportSamplePeakState): string {
-  if (state.phase === 'checking') return '正在检查已导出文件解码样本峰值…';
-  if (state.phase === 'cancelled') return '本次检查已取消，需要时请重新检查。';
-  if (state.error) return state.error;
-  if (state.report?.reason) return exportSamplePeakReason(state.report.reason.code).message;
-  if (state.phase === 'stale') return '导出文件记录已变化，请重新检查。';
+export function exportSamplePeakStatusMessage(state: ExportSamplePeakState, locale: Locale = 'zh-Hans'): string {
+  if (state.phase === 'checking') return translate(locale, 'audio.loudness.peak.checking');
+  if (state.phase === 'cancelled') return translate(locale, 'audio.loudness.peak.cancelled');
+  if (state.error) return exportSamplePeakErrorMessage({ code: state.errorCode }, locale);
+  if (state.report?.reason) return translate(locale, `audio.loudness.peak.reason.${state.report.reason.code}`);
+  if (state.phase === 'stale') return translate(locale, 'audio.loudness.peak.stale');
   return '';
 }
 const initial = (): ExportSamplePeakState => ({ scope: null, projectId: null, connected: false, visible: false, restored: false, targets: [], targetId: null, targetKey: null, phase: 'idle', executionScope: '', report: null, error: '' });
@@ -166,7 +169,7 @@ export function createExportSamplePeakController({ read, isRenderRecord, getCont
         return report;
       } catch (error: unknown) {
         if (!current(attempt, target, scope)) return null;
-        emit({ phase: 'error', report: null, error: exportSamplePeakErrorMessage(error) });
+        emit({ phase: 'error', report: null, error: exportSamplePeakErrorMessage(error), errorCode: object(error) && typeof error.code === 'string' ? error.code : '' });
         if (object(error) && error.code === 'UNAUTHORIZED') onUnauthorized();
         return null;
       } finally { if (active === abort) active = null; }

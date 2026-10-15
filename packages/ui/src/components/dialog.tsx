@@ -6,6 +6,7 @@ import { cn } from "@mioon/ui/lib/utils"
 
 import { Button } from "@mioon/ui/components/button"
 import { XIcon } from "lucide-react"
+import { useUiLanguage } from "./ui-language.tsx"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -49,6 +50,7 @@ function DialogContent({
   showCloseButton?: boolean
   keepMounted?: boolean
 }) {
+  const language = useUiLanguage();
   return (
     <DialogPortal keepMounted={keepMounted}>
       <DialogOverlay />
@@ -73,7 +75,7 @@ function DialogContent({
             }
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{language.close}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
@@ -99,6 +101,7 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  const language = useUiLanguage();
   return (
     <div
       data-slot="dialog-footer"
@@ -111,7 +114,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close render={<Button variant="outline" />}>
-          Close
+          {language.close}
         </DialogPrimitive.Close>
       )}
     </div>

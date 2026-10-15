@@ -1,18 +1,22 @@
+import { message } from '../../../packages/i18n/src/index.ts';
 import { isSubjectListResponse, isSubjectMutationResponse } from '@mioon/contracts';
 
 export const subjectKinds = Object.freeze([['character', '角色'], ['product', '产品'], ['location', '场景'], ['look', '风格']]);
 export const subjectKindLabel = kind => subjectKinds.find(([value]) => value === kind)?.[1] || kind;
+const subjectKindKeys = Object.freeze({ character: 'subjects.kind.character', product: 'subjects.kind.product', location: 'subjects.kind.location', look: 'subjects.kind.look' });
+export const subjectKindDescriptor = kind => Object.hasOwn(subjectKindKeys, kind) ? message(subjectKindKeys[kind]) : kind;
 export const subjectRole = kind => kind === 'look' ? 'style' : 'subject';
 export const subjectPageSize = 20;
 export const subjectImage = (asset, projectId) => Boolean(asset?.id && asset.projectId === projectId && ['image/png', 'image/jpeg', 'image/webp'].includes(asset.mimeType));
 export const filterSubjects = (items, { kind = 'all', search = '' } = {}) => items.filter(item => (kind === 'all' || item.kind === kind) && item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
 export const activeSubjectBindings = entry => (entry?.items || []).filter(row => row.subjectVersionId !== null);
 export const subjectDraftDirty = state => Boolean(state?.createDraft && (state.createDraft.name || state.createDraft.assetId || state.createDraft.kind !== 'character') || Object.values(state?.versionDrafts || {}).some(draft => draft.assetId) || Object.values(state?.bindingDrafts || {}).some(draft => draft?.subjectId));
-const page = () => ({ phase: 'idle', items: [], nextCursor: null, cursor: null, history: [], error: '' });
+const page = () => ({ phase: 'idle', items: [], nextCursor: null, cursor: null, history: [], error: null, diagnostic: '' });
 const createDraft = () => ({ name: '', kind: 'character', assetId: '', serial: 0 });
-const initialState = () => ({ scope: null, projectId: null, assets: [], shotIds: [], list: page(), subjects: {}, selectedSubjectId: '', activeShotId: null, versions: {}, bindings: {}, uses: {}, createDraft: createDraft(), versionDrafts: {}, bindingDrafts: {}, saving: null, uncertain: false, mutationError: '' });
-const message = error => error?.message || '读取失败，请重新读取。';
-const protocolError = () => new Error('主体响应不完整或不匹配，当前状态尚未确认。请重新读取。');
+const initialState = () => ({ scope: null, projectId: null, assets: [], shotIds: [], list: page(), subjects: {}, selectedSubjectId: '', activeShotId: null, versions: {}, bindings: {}, uses: {}, createDraft: createDraft(), versionDrafts: {}, bindingDrafts: {}, saving: null, uncertain: false, mutationError: null, mutationDiagnostic: '' });
+const diagnostic = error => typeof error?.message === 'string' ? error.message : '';
+const readErrorDescriptor = error => message(error?.code === 'SUBJECT_RESPONSE_INVALID' ? 'subjects.read.protocol' : 'subjects.read.failed');
+const protocolError = () => Object.assign(new Error('主体响应不完整或不匹配，当前状态尚未确认。请重新读取。'), { code: 'SUBJECT_RESPONSE_INVALID' });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const freeze = value => { const copy = structuredClone(value); const deep = item => { if (item && typeof item === 'object') { Object.values(item).forEach(deep); Object.freeze(item); } return item; }; return deep(copy); };
 
@@ -60,7 +64,7 @@ export function createSubjectController({ read, save, hasPending = () => false, 
     const livePage = () => (isList ? state.list : isVersions ? state.versions[target] : isUses ? state.uses[target] : state.bindings[target]) || page();
     const cursor = options.cursor ?? null, history = options.history || [];
     const install = value => isList ? emit({ list: value }) : isVersions ? emit({ versions: { ...state.versions, [target]: value } }) : isUses ? emit({ uses: { ...state.uses, [target]: value } }) : emit({ bindings: { ...state.bindings, [target]: value } });
-    install({ ...previous, phase: 'loading', error: '' });
+    install({ ...previous, phase: 'loading', error: null, diagnostic: '' });
     const input = { projectId: owner.projectId, ...(isVersions ? { subjectId: target } : !isList ? isUses ? { subjectId: target } : { shotId: target } : {}), limit: subjectPageSize, ...(cursor ? { cursor } : {}) };
     try {
       const result = await read(operation, input);
@@ -82,11 +86,11 @@ export function createSubjectController({ read, save, hasPending = () => false, 
         const allIds = new Set([...(options.append ? latest.items : []), ...items].map(item => item.id));
         if (!result.nextCursor && Object.keys(known).some(id => !allIds.has(id))) throw protocolError();
       }
-      const value = { phase: 'ready', items: options.append ? [...latest.items, ...items] : items, nextCursor: result.nextCursor, cursor, history, error: '',
+      const value = { phase: 'ready', items: options.append ? [...latest.items, ...items] : items, nextCursor: result.nextCursor, cursor, history, error: null, diagnostic: '',
         ...(!isList ? { known: { ...latest.known, ...Object.fromEntries(items.map(item => [item.id, item])) } } : {}) };
       install(value); return value;
     } catch (error) {
-      if (current(owner) && generations.get(key) === generation) install({ ...livePage(), phase: 'error', error: message(error) });
+      if (current(owner) && generations.get(key) === generation) install({ ...livePage(), phase: 'error', error: readErrorDescriptor(error), diagnostic: diagnostic(error) });
       return null;
     }
   }
@@ -109,7 +113,7 @@ export function createSubjectController({ read, save, hasPending = () => false, 
   async function submit(operation, input, draftCurrent, clearDraft) {
     if (!state.scope || state.saving || pending() || !canSave() || !draftCurrent()) return null;
     const owner = captured(), exact = freeze({ ...input, requestId: requestId() });
-    emit({ saving: operation, mutationError: '', uncertain: false });
+    emit({ saving: operation, mutationError: null, mutationDiagnostic: '', uncertain: false });
     // Any earlier GET cannot install a pre-write view after the acknowledgement.
     for (const key of generations.keys()) nextGeneration(key);
     let acknowledged = null;
@@ -117,7 +121,7 @@ export function createSubjectController({ read, save, hasPending = () => false, 
       const result = await save(operation, exact, { canExecute: () => current(owner) && draftCurrent() });
       if (!current(owner)) return null;
       if (!isSubjectMutationResponse(operation, exact, result)) {
-        emit({ mutationError: '修改尚未获得完整确认，草稿仍保留。请在任务中心核对原请求。', uncertain: pending() });
+        emit({ mutationError: message('subjects.mutation.unconfirmed'), uncertain: pending() });
       } else {
         if (operation !== 'subject.binding.set') emit({ subjects: installSubjects([result]) });
         else {
@@ -131,7 +135,7 @@ export function createSubjectController({ read, save, hasPending = () => false, 
         acknowledged = result;
       }
     } catch (error) {
-      if (current(owner)) emit({ mutationError: message(error), uncertain: pending() });
+      if (current(owner)) emit({ mutationError: message('subjects.mutation.failed'), mutationDiagnostic: diagnostic(error), uncertain: pending() });
     } finally {
       if (current(owner)) { emit({ saving: null, uncertain: pending() }); await refresh(); }
     }
@@ -151,7 +155,7 @@ export function createSubjectController({ read, save, hasPending = () => false, 
       if (changed) { void readPage('subject.list'); if (state.selectedSubjectId) void readPage('subject.version.list', state.selectedSubjectId); }
     },
     read: refresh,
-    syncPending() { const uncertain = pending(); if (state.uncertain !== uncertain) emit({ uncertain, ...(!uncertain && !state.saving ? { mutationError: '' } : {}) }); },
+    syncPending() { const uncertain = pending(); if (state.uncertain !== uncertain) emit({ uncertain, ...(!uncertain && !state.saving ? { mutationError: null, mutationDiagnostic: '' } : {}) }); },
     discardDrafts(scope = state.scope) { if (!validScope(scope)) return false; emit({ createDraft: createDraft(), versionDrafts: {}, bindingDrafts: {} }); return true; },
     updateCreate(patch, scope = state.scope) {
       if (!validScope(scope) || state.saving) return;

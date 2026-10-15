@@ -1,3 +1,4 @@
+import { message } from '../../../packages/i18n/src/index.ts';
 import { canonicalImageInput, comfyImageConfigurationSchema, comfyImageSettingsResultSchema, normalizeComfyImageBaseUrl, getComfyImageDestination, comfyImageCheckResultSchema, comfyConnectorAvailabilitySchema } from '@mioon/contracts';
 
 const copy = value => structuredClone(value);
@@ -30,7 +31,7 @@ export function createComfyImageSettingsClient({ fetchImpl = (...args) => global
   }
   return { readAvailability: () => request('/api/images/comfy-availability', 'GET'), read: () => request('/api/images/comfy-settings', 'GET'), write: input => request('/api/images/comfy-settings', 'PUT', input), check: input => request('/api/images/comfy-check', 'POST', input) };
 }
-export const initialComfyImageSettingsState = () => ({ phase: 'loading', availability: null, availabilityPhase: 'loading', snapshot: null, draft: null, check: null, recovery: null, message: '' });
+export const initialComfyImageSettingsState = () => ({ phase: 'loading', availability: null, availabilityPhase: 'loading', snapshot: null, draft: null, check: null, recovery: null, message: '', displayMessages: [] });
 export const comfyImageSettingsEditable = state => Boolean(state.snapshot) && !['loading', 'saving', 'reconciling', 'checking'].includes(state.phase);
 export const comfyImageSettingsCanSave = state => comfyImageSettingsEditable(state) && !state.recovery && state.phase !== 'blocked';
 export const comfyImageSettingsDirty = state => Boolean(state.snapshot && canonicalImageInput(state.draft) !== canonicalImageInput(state.snapshot.configuration));
@@ -63,49 +64,63 @@ export function createComfyImageSettingsSession({ client = createComfyImageSetti
   async function read(recover = false) {
     if (!active || ['saving', 'reconciling', 'checking'].includes(state.phase)) return false;
     void readAvailability();
-    const token = ++epoch; publish({ phase: recover ? 'reconciling' : 'loading', message: '' });
+    const token = ++epoch; publish({ phase: recover ? 'reconciling' : 'loading', message: '', displayMessages: [] });
     try {
       const safe = safeComfyImageSettings(await client.read()); if (!current(token)) return false;
-      receive(safe); publish({ snapshot: safe, draft: recover && state.draft ? state.draft : copy(safe.configuration), phase: recover ? 'review' : 'ready', recovery: recover ? state.recovery || 'unknown' : null, check: null, message: recover ? '已读取当前保存状态。草稿保留，请核对后继续；没有检查服务或重试保存。' : '' }); return true;
-    } catch { if (current(token)) publish({ phase: recover ? 'blocked' : 'load_error', message: '暂时无法读取本地连接设置。不会覆盖已有设置，请重新读取。' }); return false; }
+      receive(safe); publish({ snapshot: safe, draft: recover && state.draft ? state.draft : copy(safe.configuration), phase: recover ? 'review' : 'ready', recovery: recover ? state.recovery || 'unknown' : null, check: null, message: recover ? '已读取当前保存状态。草稿保留，请核对后继续；没有检查服务或重试保存。' : '', displayMessages: (recover ? [message('connections.comfy.notice.review')] : []) }); return true;
+    } catch { if (current(token)) publish({ phase: recover ? 'blocked' : 'load_error', message: '暂时无法读取本地连接设置。不会覆盖已有设置，请重新读取。', displayMessages: [message('connections.comfy.notice.loadError')] }); return false; }
   }
   async function save() {
     if (!active || !visible || !comfyImageSettingsCanSave(state)) return false;
     let configuration;
     try { configuration = { ...state.draft, baseUrl: state.draft.baseUrl === '' ? '' : normalizeComfyImageBaseUrl(state.draft.baseUrl) }; if (!comfyImageConfigurationSchema.safeParse(configuration).success) throw failure(); }
-    catch { publish({ phase: 'error', message: '请填写明确的本机 HTTP 地址与端口，并从检查返回的名单选择 checkpoint；或同时清空地址与模型并关闭连接。' }); return false; }
-    const token = ++epoch, revision = state.snapshot.revision; publish({ phase: 'saving', draft: copy(configuration), message: '' });
+    catch { publish({ phase: 'error', message: '请填写明确的本机 HTTP 地址与端口，并从检查返回的名单选择 checkpoint；或同时清空地址与模型并关闭连接。', displayMessages: [message('connections.comfy.issue.configuration')] }); return false; }
+    const token = ++epoch, revision = state.snapshot.revision; publish({ phase: 'saving', draft: copy(configuration), message: '', displayMessages: [] });
     try {
       const safe = safeComfyImageSettings(await client.write({ expectedRevision: revision, configuration: copy(configuration) })); if (!current(token)) return false;
       if (safe.revision !== revision + 1 || canonicalImageInput(safe.configuration) !== canonicalImageInput(configuration)) throw failure('INVALID_RESPONSE');
-      receive(safe); publish({ snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, message: '本地连接设置已保存。没有探测服务或生成图像；每次生成仍需准备并审批。' }); return true;
+      receive(safe); publish({ snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, message: '本地连接设置已保存。没有探测服务或生成图像；每次生成仍需准备并审批。', displayMessages: [message('connections.comfy.notice.saved')] }); return true;
     } catch (error) {
       if (!current(token)) return false;
-      if (['UNAUTHORIZED', 'IMAGE_SETTINGS_VALIDATION', 'COMFY_ENDPOINT_INVALID', 'COMFY_ENDPOINT_DENIED', 'COMFY_SETTINGS_VALIDATION', 'COMFY_SETTINGS_DESTINATION_DENIED'].includes(error?.code)) { publish({ phase: 'error', message: '此次设置未被接受。请检查本机地址、端口与 checkpoint；必要时重新登录。' }); return false; }
-      const recovery = ['IMAGE_SETTINGS_CONFLICT', 'COMFY_SETTINGS_CONFLICT'].includes(error?.code) ? 'conflict' : 'unknown'; publish({ phase: 'reconciling', recovery, message: '正在读取当前保存状态，不会重试保存或检查服务。' });
-      try { const safe = safeComfyImageSettings(await client.read()); if (!current(token)) return false; receive(safe); publish({ snapshot: safe, phase: 'review', check: null, message: recovery === 'conflict' ? '设置已在其他窗口变化。草稿保留，请核对后继续。' : '保存结果尚未确认。已读取当前设置，请核对；不会自动重试。' }); }
-      catch { if (current(token)) publish({ phase: 'blocked', message: '暂时无法核实保存结果。草稿保留，请重新读取后再保存。' }); }
+      if (['UNAUTHORIZED', 'IMAGE_SETTINGS_VALIDATION', 'COMFY_ENDPOINT_INVALID', 'COMFY_ENDPOINT_DENIED', 'COMFY_SETTINGS_VALIDATION', 'COMFY_SETTINGS_DESTINATION_DENIED'].includes(error?.code)) { publish({ phase: 'error', message: '此次设置未被接受。请检查本机地址、端口与 checkpoint；必要时重新登录。', displayMessages: [message('connections.comfy.notice.rejected')] }); return false; }
+      const recovery = ['IMAGE_SETTINGS_CONFLICT', 'COMFY_SETTINGS_CONFLICT'].includes(error?.code) ? 'conflict' : 'unknown'; publish({ phase: 'reconciling', recovery, message: '正在读取当前保存状态，不会重试保存或检查服务。', displayMessages: [message('connections.comfy.notice.rereading')] });
+      try { const safe = safeComfyImageSettings(await client.read()); if (!current(token)) return false; receive(safe); publish({ snapshot: safe, phase: 'review', check: null, message: recovery === 'conflict' ? '设置已在其他窗口变化。草稿保留，请核对后继续。' : '保存结果尚未确认。已读取当前设置，请核对；不会自动重试。', displayMessages: (recovery === 'conflict' ? [message('connections.comfy.notice.conflict')] : [message('connections.comfy.notice.unknown')]) }); }
+      catch { if (current(token)) publish({ phase: 'blocked', message: '暂时无法核实保存结果。草稿保留，请重新读取后再保存。', displayMessages: [message('connections.notice.blocked')] }); }
       return false;
     }
   }
   async function checkConnection() {
     if (!editable() || state.recovery || !comfyConnectorAvailable(state.availability)) return false;
-    let baseUrl; try { baseUrl = normalizeComfyImageBaseUrl(state.draft.baseUrl); } catch { publish({ message: '请填写 HTTP 127.0.0.1 或 [::1] 与明确端口。没有发起检查。' }); return false; }
-    const token = ++epoch; publish({ phase: 'checking', check: null, message: '' });
+    let baseUrl; try { baseUrl = normalizeComfyImageBaseUrl(state.draft.baseUrl); } catch { publish({ message: '请填写 HTTP 127.0.0.1 或 [::1] 与明确端口。没有发起检查。', displayMessages: [message('connections.comfy.issue.endpoint')] }); return false; }
+    const token = ++epoch; publish({ phase: 'checking', check: null, message: '', displayMessages: [] });
     try { const check = safeComfyImageCheck(await client.check({ baseUrl, model: state.draft.model }), baseUrl); if (!current(token)) return false;
       // Refresh only local readiness metadata after the explicitly requested check.
       const snapshot = safeComfyImageSettings(await client.read()); if (!current(token)) return false; receive(snapshot);
       const changed = snapshot.revision !== state.snapshot.revision || canonicalImageInput(snapshot.configuration) !== canonicalImageInput(state.snapshot.configuration);
-      publish({ snapshot, phase: changed ? 'review' : 'ready', recovery: changed ? 'conflict' : null, check, message: changed ? '检查完成，但保存设置已在其他窗口变化。草稿保留，请核对后继续。' : '检查完成；没有保存设置或生成图像。' }); return true; }
-    catch { if (current(token)) publish({ phase: 'error', check: null, message: '无法核验当前连接或依赖。没有生成图像，也不会自动重试检查。' }); return false; }
+      publish({ snapshot, phase: changed ? 'review' : 'ready', recovery: changed ? 'conflict' : null, check, message: changed ? '检查完成，但保存设置已在其他窗口变化。草稿保留，请核对后继续。' : '检查完成；没有保存设置或生成图像。', displayMessages: (changed ? [message('connections.comfy.notice.checkedConflict')] : [message('connections.comfy.notice.checked')]) }); return true; }
+    catch { if (current(token)) publish({ phase: 'error', check: null, message: '无法核验当前连接或依赖。没有生成图像，也不会自动重试检查。', displayMessages: [message('connections.comfy.notice.checkError')] }); return false; }
   }
   return { getState: () => copy(state), load: () => read(), reload: () => read(Boolean(state.snapshot)), refreshAvailability: () => editable() ? readAvailability() : false, save, checkConnection,
     setEnabled(enabled) { if (!editable() || typeof enabled !== 'boolean') return false; publish({ draft: { ...state.draft, enabled } }); return true; },
     setBaseUrl(baseUrl) { if (!editable() || typeof baseUrl !== 'string') return false; publish({ draft: { ...state.draft, baseUrl, model: '' }, check: null }); return true; },
     selectModel(model) { if (!editable() || !state.check?.checkpoints.includes(model)) return false; publish({ draft: { ...state.draft, model } }); return true; },
-    acknowledge() { if (!editable() || state.phase !== 'review' || !state.recovery) return false; publish({ recovery: null, phase: 'ready', message: '草稿已保留。请重新核对后明确保存。' }); return true; },
-    useLatest() { if (!editable() || state.phase === 'blocked') return false; publish({ draft: copy(state.snapshot.configuration), check: null, recovery: null, phase: 'ready', message: '已使用当前已保存设置。连接仍未重新检查。' }); return true; },
+    acknowledge() { if (!editable() || state.phase !== 'review' || !state.recovery) return false; publish({ recovery: null, phase: 'ready', message: '草稿已保留。请重新核对后明确保存。', displayMessages: [message('connections.comfy.notice.keepDraft')] }); return true; },
+    useLatest() { if (!editable() || state.phase === 'blocked') return false; publish({ draft: copy(state.snapshot.configuration), check: null, recovery: null, phase: 'ready', message: '已使用当前已保存设置。连接仍未重新检查。', displayMessages: [message('connections.comfy.notice.useSaved')] }); return true; },
     setVisible(value) { visible = Boolean(value); },
     dispose() { active = false; epoch++; availabilityEpoch++; state = initialComfyImageSettingsState(); },
   };
+}
+
+// Display descriptors are transient UI metadata. Legacy diagnostics and request payloads remain unchanged.
+export function comfyConnectorAvailabilityDescriptor(value) {
+  if (!comfyConnectorAvailabilitySchema.safeParse(value).success) return message('connections.comfy.moduleUnknown');
+  if (value.state === 'not_provided') return message('connections.comfy.moduleMissing');
+  if (value.state === 'not_loaded') return message('connections.comfy.moduleUnloaded');
+  return message('connections.comfy.moduleAvailable');
+}
+
+export function comfyImageCheckDescriptor(check) {
+  if (!check) return message('connections.comfy.checkNone');
+  if (check.ok && check.checkpoints.length) return message('connections.comfy.checkPassed');
+  return message('connections.comfy.checkEmpty');
 }

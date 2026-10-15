@@ -28,6 +28,7 @@ mcp-token
 server.lock
 mcp-connection.json
 desktop-config.json
+app-preferences.json
 desktop-identity.json
 # Exact runtime atomic-write names, including interrupted replacements
 access-token.tmp
@@ -40,6 +41,7 @@ mcp-connection.json.tmp
 .mcp-connection.json.*.tmp
 desktop-config.json.tmp
 .desktop-config.json.*.tmp
+.app-preferences.json.*.tmp
 .desktop-identity.json.*.tmp
 **/agent-settings/settings.json
 **/agent-settings/.settings-*.tmp

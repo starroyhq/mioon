@@ -1,3 +1,4 @@
+import { message } from '../packages/i18n/src/index.ts';
 import {timelineAudioPreviewPosition} from '../apps/web/src/use-timeline-audio-preview.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,7 +14,7 @@ const root=fileURLToPath(new URL('..',import.meta.url));
 const fixture=()=>({projectId:'project',timeline:{id:'timeline',revision:5,clips:[{id:'clip',name:'Frozen source',startFrame:10,durationFrames:50}]},history:{projectId:'project',timelineId:'timeline',revision:5,cursor:1,length:1,canUndo:true,canRedo:false,undoEntry:{id:'entry',operation:'timeline.clip.split'},redoEntry:null},selectedClipId:'clip',playhead:30,mode:'editing'});
 const event=patch=>({key:'b',ctrlKey:true,metaKey:false,altKey:false,shiftKey:false,repeat:false,isComposing:false,defaultPrevented:false,target:null,...patch});
 test('split state names exact selected clip and cut point with matching durations',()=>{
- assert.deepEqual(timelineSplitState(fixture()),{canSplit:true,blockedReason:'',clipId:'clip',clipName:'Frozen source',atFrame:30,leftDuration:20,rightDuration:30});
+ assert.deepEqual(timelineSplitState(fixture()),{canSplit:true,blockedReason:'',blockedMessage:null,clipSelected:true,clipId:'clip',clipName:'Frozen source',atFrame:30,leftDuration:20,rightDuration:30});
  assert.equal(timelineHistoryState(fixture()).undoLabel,'分割片段');
 });
 test('strict integer interior, selected clip, correct workspace and clip limit gate splitting',()=>{
@@ -72,7 +73,7 @@ test('actual App subtitle selection suppresses splitting a previously selected m
  for(const propertiesPage of ['subtitle','inspector'])for(const sounding of [false,true]){
   const state=fixture(),calls=[],events=[];
   const audioPreview={state:{plan:sounding?{}:null,positionFrame:sounding?35:null},controller:{revoke(){events.push('revoke');}}};
-  const scope={propertiesPage,audioPreview,timelineAudioPreviewPosition,currentProject:{current:state.projectId},dataRef:{current:{project:{id:state.projectId},timeline:state.timeline,timelineHistory:state.history}},viewRef:{current:{activeMode:'editing',editing:{selectedClipId:state.selectedClipId,playhead:state.playhead}}},timelineSplitState,isBusy:()=>false,timelinePending:false,clipDirty:false,subtitleDirty:false,online:true,auth:true,loading:false,notify(){},mutateTimeline:async(...args)=>{events.push('mutate');calls.push(args);return {};}};
+  const scope={msg:message,propertiesPage,audioPreview,timelineAudioPreviewPosition,currentProject:{current:state.projectId},dataRef:{current:{project:{id:state.projectId},timeline:state.timeline,timelineHistory:state.history}},viewRef:{current:{activeMode:'editing',editing:{selectedClipId:state.selectedClipId,playhead:state.playhead}}},timelineSplitState,isBusy:()=>false,timelinePending:false,clipDirty:false,subtitleDirty:false,online:true,auth:true,loading:false,notify(){},mutateTimeline:async(...args)=>{events.push('mutate');calls.push(args);return {};}};
   const split=Function(...Object.keys(scope),`${source};return splitTimelineClip;`)(...Object.values(scope));await split();
   assert.deepEqual(calls,propertiesPage==='subtitle'?[]:[['timeline.clip.split',{clipId:'clip',atFrame:sounding?35:30}]]);
   assert.deepEqual(events,propertiesPage==='subtitle'?[]:['revoke','mutate']);

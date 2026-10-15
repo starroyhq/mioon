@@ -11,7 +11,7 @@ const renderer = join(root, 'apps/web/src');
 const require = createRequire(import.meta.url);
 const entrySource = readFileSync(process.env.MIOON_PROJECT_ENTRY_SOURCE || join(renderer, 'ProjectEntry.tsx'), 'utf8');
 const css = readFileSync(join(renderer, 'styles.css'), 'utf8');
-const output = buildSync({ stdin: { contents: entrySource + '\nexport { React, Dialog, DialogContent, ProjectHome };', loader: 'tsx', resolveDir: renderer },
+const output = buildSync({ stdin: { contents: entrySource.replace("import { useI18n } from './i18n/I18nProvider.tsx';", "import { createI18nTestContext } from '../../../tests/helpers/i18n.ts'; const useI18n = () => createI18nTestContext();") + '\nexport { React, Dialog, DialogContent, ProjectHome };', loader: 'tsx', resolveDir: renderer },
   bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'transform', loader: { '.css': 'empty' },
   define: { 'process.env.NODE_ENV': '"production"' } });
 const module = { exports: {} };
@@ -38,7 +38,11 @@ function fixture(patch = {}) {
 function dialogParts(tree) {
   assert.equal(tree.type, Dialog);
   const content = tree.props.children; assert.equal(content.type, DialogContent);
-  const portal = content.type(content.props), [overlay, popup] = portal.props.children;
+  const internals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+  const previous = internals.H;
+  internals.H = { useContext: context => context._currentValue };
+  let portal; try { portal = content.type(content.props); } finally { internals.H = previous; }
+  const [overlay, popup] = portal.props.children;
   return { content, portal, overlay: overlay.type(overlay.props), popup };
 }
 

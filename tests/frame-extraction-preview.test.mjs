@@ -1,3 +1,5 @@
+import { i18nTestModule } from './helpers/i18n.ts';
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -21,7 +23,7 @@ function harness() {
     useLayoutEffect: (fn, deps) => effect(layouts, fn, deps), useEffect: (fn, deps) => effect(effects, fn, deps),
   }; react.default = react;
   const module = { exports: {} };
-  Function('require', 'module', 'exports', code)(id => id === 'react' ? react : id === './export-settings-state.js' ? exportSettings : id === './source-range-state.js' ? ranges : id === './api.js' ? { assetUrl: asset => asset?.url || '', statusText: String } : id === './Timeline.jsx' ? { assetKind: asset => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.jsx' ? { disposeMedia: element => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.jsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)(id => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === 'react' ? react : id === './export-settings-state.js' ? exportSettings : id === './source-range-state.js' ? ranges : id === './api.js' ? { assetUrl: asset => asset?.url || '', statusText: String } : id === './Timeline.jsx' ? { assetKind: asset => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.jsx' ? { disposeMedia: element => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.jsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const renderComponent = (name, component, properties) => { if (!components.has(name)) components.set(name, []); active = components.get(name); cursor = 0; return component(properties); };
   const cleanup = name => { components.get(name)?.forEach(slot => slot.cleanup?.()); components.delete(name); };
   const flush = queue => { for (const [slots, index] of queue) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } };

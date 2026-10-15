@@ -1,3 +1,4 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { AGENT_PROTOCOLS, deriveAgentEndpoint, agentConfiguration, agentConfigurationEqual, isAgentProtocol, safeAgentSettings } from './agent-settings.js';
 
 import { AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineAvailable, safeAgentTimelinePolicy, safeAgentTimelineTarget, agentEditAvailable, safeAgentEditPolicy, safeAgentEditTarget, agentEditTargetKey, agentInspectionAvailable, agentRunContextMode, agentRunProvenanceEqual, agentRunActivityCompatible, safeAgentInspectionPolicy, safeAgentRunInspection, agentChatOutboundConsent } from './agent-tool-state.js';
@@ -194,8 +195,8 @@ export function createAgentChatReceipts(storage) {
     },
   };
 }
-const initialHistoryState = () => ({ phase: 'closed', page: null, before: null, trail: [], message: '' });
-export const initialAgentChatState = () => ({ phase: 'loading', snapshot: null, draft: '', contextMode: AGENT_TYPED_CONTEXT, editTarget: null, timelineTarget: null, timelineBlockedReason: '', timelineGainTarget: null, timelineGainBlockedReason: '', consent: null, message: '', sessionLost: false, pending: null, abandonRequest: null, recoveredRun: null, history: initialHistoryState() });
+const initialHistoryState = () => ({ phase: 'closed', page: null, before: null, trail: [], message: '', displayMessage: null });
+export const initialAgentChatState = () => ({ phase: 'loading', snapshot: null, draft: '', contextMode: AGENT_TYPED_CONTEXT, editTarget: null, timelineTarget: null, timelineBlockedReason: '', timelineGainTarget: null, timelineGainBlockedReason: '', consent: null, message: '', displayMessage: null, sessionLost: false, pending: null, abandonRequest: null, recoveredRun: null, history: initialHistoryState() });
 export const activeAgentChatRun = state => state?.snapshot?.runs.find(run => run.status === 'running') || null;
 export function agentChatConsentKey(snapshot, contextMode = AGENT_TYPED_CONTEXT, editTarget) {
   if (!snapshot) return null;
@@ -237,11 +238,11 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
       const envelope = await request(signal => client.run(projectId, runId, instanceId, signal));
       if (!valid(epoch)) return;
       const snapshot = mergeRun(envelope);
-      publish({ snapshot, phase: envelope.run.status === 'running' ? 'detached' : 'ready', consent: null, message: envelope.run.status === 'running' ? '连接已中断，回复可能仍在继续。重新读取只恢复显示，不会重复发送。' : '' });
+      publish({ snapshot, phase: envelope.run.status === 'running' ? 'detached' : 'ready', consent: null, message: envelope.run.status === 'running' ? '连接已中断，回复可能仍在继续。重新读取只恢复显示，不会重复发送。' : '', displayMessage: envelope.run.status === 'running' ? localizedMessage('agent.chat.state.displayDetached') : null });
     } catch (error) {
       if (!valid(epoch)) return;
       if (error.code === 'AGENT_CHAT_SESSION_EXPIRED') { await load(); return; }
-      publish({ phase: 'unknown', consent: null, message: '暂时无法确认运行状态。已收到的文字保留；只会读取状态，不会重新发送。' });
+      publish({ phase: 'unknown', consent: null, message: '暂时无法确认运行状态。已收到的文字保留；只会读取状态，不会重新发送。', displayMessage: localizedMessage('agent.chat.state.runStateUnknown') });
     }
   }
   function attach(run) {
@@ -259,7 +260,7 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
           if (event.revision < state.snapshot.revision || (event.type === 'delta' && event.id !== previous.lastEventId + 1)) throw failure('INVALID_RESPONSE');
           const next = event.type === 'delta' ? { ...previous, assistantText: boundedText(previous.assistantText + event.text, AGENT_CHAT_OUTPUT_BYTES), lastEventId: event.id } : event.run;
           const snapshot = mergeRun({ instanceId, threadId: state.snapshot.threadId, projectId, revision: event.revision, run: next });
-          publish({ snapshot, phase: next.status === 'running' ? 'streaming' : 'ready', consent: null, message: '' });
+          publish({ snapshot, phase: next.status === 'running' ? 'streaming' : 'ready', consent: null, message: '', displayMessage: null });
           if (next.status !== 'running') abort.abort();
         } });
       } catch { /* Read the canonical run after an incomplete stream. */ }
@@ -313,25 +314,25 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
         recoveredRun: accepted && !snapshot.runs.some(run => run.id === accepted.id) ? accepted : null,
         ...(clearDraft ? { draft: '' } : {}),
         phase: unresolved ? 'unknown' : activeAgentChatRun({ snapshot }) ? 'streaming' : 'ready',
-        message: unresolved ? '未收到发送确认，尚未找到原请求。查不到不能证明请求未被接受；待确认标识在当前页面会话内保留，后端重启后仍可核对。请重新读取，不会自动重发，远端仍可能已计算或计费。' : sessionLost ? agentChatErrorText('AGENT_CHAT_SESSION_EXPIRED') : accepted ? '已读取原请求并确认其保存状态，没有重新发送。' : '' });
+        message: unresolved ? '未收到发送确认，尚未找到原请求。查不到不能证明请求未被接受；待确认标识在当前页面会话内保留，后端重启后仍可核对。请重新读取，不会自动重发，远端仍可能已计算或计费。' : sessionLost ? agentChatErrorText('AGENT_CHAT_SESSION_EXPIRED') : accepted ? '已读取原请求并确认其保存状态，没有重新发送。' : '', displayMessage: unresolved ? localizedMessage('agent.chat.state.unacknowledgedOriginal') : sessionLost ? agentChatErrorDescriptor('AGENT_CHAT_SESSION_EXPIRED') : accepted ? localizedMessage('agent.chat.state.originalConfirmed') : null });
       if (!unresolved) { const running = activeAgentChatRun(state); if (running) attach(running); }
       return true;
-    } catch (error) { if (valid(epoch)) publish({ phase: state.snapshot ? 'unknown' : 'load_error', message: ['UNAUTHORIZED', 'AGENT_CHAT_STORAGE_UNAVAILABLE'].includes(error.code) ? agentChatErrorText(error.code) : '暂时无法读取或确认对话。草稿与待确认标识保留；重新读取不会发起模型请求。', consent: null }); return false; }
+    } catch (error) { if (valid(epoch)) publish({ phase: state.snapshot ? 'unknown' : 'load_error', message: ['UNAUTHORIZED', 'AGENT_CHAT_STORAGE_UNAVAILABLE'].includes(error.code) ? agentChatErrorText(error.code) : '暂时无法读取或确认对话。草稿与待确认标识保留；重新读取不会发起模型请求。', displayMessage: ['UNAUTHORIZED', 'AGENT_CHAT_STORAGE_UNAVAILABLE'].includes(error.code) ? agentChatErrorDescriptor(error.code) : localizedMessage('agent.chat.state.conversationReadUnknown'), consent: null }); return false; }
   }
   async function historyPage(before, trail) {
     if (!active || !visible || !state.snapshot || !uuid(before) || state.history.phase === 'loading') return false;
     resetHistory(); const epoch = historySerial, snapshot = state.snapshot;
     const abort = new AbortController(); historyAbort = abort; pendingReads.add(abort);
-    publish({ history: { ...state.history, phase: 'loading', message: '' } });
+    publish({ history: { ...state.history, phase: 'loading', message: '', displayMessage: null } });
     try {
       const page = safeAgentChatHistory(await client.history(projectId, before, abort.signal), projectId, snapshot.instanceId, snapshot.threadId, before);
       if (!active || !visible || epoch !== historySerial || abort.signal.aborted) return false;
       // Browsing never mutates live runs, consent, pending sends or the draft.
       if (page.revision < snapshot.revision || page.runs.some(run => snapshot.runs.some(latest => latest.id === run.id || latest.requestId === run.requestId)) || (page.historyCursor && trail.includes(page.historyCursor))) throw failure('INVALID_RESPONSE');
-      publish({ history: { phase: 'ready', page, before, trail: trail.slice(-MAX_HISTORY_CURSORS), message: '' } });
+      publish({ history: { phase: 'ready', page, before, trail: trail.slice(-MAX_HISTORY_CURSORS), message: '', displayMessage: null } });
       return true;
     } catch (error) {
-      if (active && visible && epoch === historySerial && !abort.signal.aborted) publish({ history: { ...state.history, phase: 'error', message: error.code === 'AGENT_CHAT_STORAGE_UNAVAILABLE' ? agentChatErrorText(error.code) : '暂时无法读取更早记录。当前回复与草稿仍保留，请返回最近对话后重新读取。' } });
+      if (active && visible && epoch === historySerial && !abort.signal.aborted) publish({ history: { ...state.history, phase: 'error', message: error.code === 'AGENT_CHAT_STORAGE_UNAVAILABLE' ? agentChatErrorText(error.code) : '暂时无法读取更早记录。当前回复与草稿仍保留，请返回最近对话后重新读取。', displayMessage: error.code === 'AGENT_CHAT_STORAGE_UNAVAILABLE' ? agentChatErrorDescriptor(error.code) : localizedMessage('agent.chat.state.historyReadUnavailable') } });
       return false;
     } finally { pendingReads.delete(abort); if (historyAbort === abort) historyAbort = null; }
   }
@@ -344,7 +345,7 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
     abandonPending(id) {
       if (!active || !visible || state.phase !== 'unknown' || !state.snapshot || state.pending?.requestId !== id || state.abandonRequest !== id) return false;
       receipt({ instanceId: state.snapshot.instanceId });
-      publish({ pending: null, abandonRequest: null, consent: null, phase: activeAgentChatRun(state) ? 'detached' : 'ready', message: '已按你的选择结束本地待确认状态，草稿保留。这不会停止或撤回原请求；再次发送可能造成重复回复或费用，请先核对历史并重新确认。' });
+      publish({ pending: null, abandonRequest: null, consent: null, phase: activeAgentChatRun(state) ? 'detached' : 'ready', message: '已按你的选择结束本地待确认状态，草稿保留。这不会停止或撤回原请求；再次发送可能造成重复回复或费用，请先核对历史并重新确认。', displayMessage: localizedMessage('agent.chat.state.pendingEnded') });
       return true;
     },
     earlier() {
@@ -391,7 +392,7 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
       const input = { requestId: id, instanceId: snapshot.instanceId, expectedSettingsRevision: snapshot.settings.revision, expectedConversationRevision: snapshot.revision, message,
         consent: agentChatOutboundConsent(snapshot, contextMode, deriveAgentEndpoint(configuration), editTarget) };
       receipt({ instanceId: snapshot.instanceId, requestId: id });
-      publish({ phase: 'submitting', pending: { requestId: id, userText: message, configuration, contextMode, ...([AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(contextMode) ? { editTarget } : {}) }, consent: null, message: '' });
+      publish({ phase: 'submitting', pending: { requestId: id, userText: message, configuration, contextMode, ...([AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(contextMode) ? { editTarget } : {}) }, consent: null, message: '', displayMessage: null });
       try {
         const envelope = await request(signal => client.start(projectId, input, signal));
         if (!valid(epoch)) return false;
@@ -403,13 +404,13 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
       } catch (error) {
         if (!valid(epoch)) return false;
         if (['NETWORK', 'INVALID_RESPONSE', 'AGENT_CHAT_STORAGE_UNAVAILABLE'].includes(error.code)) {
-          publish({ phase: 'unknown', message: '未收到发送确认。正在读取原请求状态，不会重新发送。' });
+          publish({ phase: 'unknown', message: '未收到发送确认。正在读取原请求状态，不会重新发送。', displayMessage: localizedMessage('agent.chat.state.checkingSubmission') });
           await load();
         } else {
           receipt({ instanceId: snapshot.instanceId });
-          publish({ phase: 'ready', pending: null, message: agentChatErrorText(error.code) });
+          publish({ phase: 'ready', pending: null, message: agentChatErrorText(error.code), displayMessage: agentChatErrorDescriptor(error.code) });
           if (['AGENT_CHAT_SETTINGS_CONFLICT', 'AGENT_CHAT_CONVERSATION_CONFLICT', 'AGENT_CHAT_CONSENT_REQUIRED', 'AGENT_CHAT_ACTIVE_RUN', 'AGENT_CHAT_SESSION_EXPIRED'].includes(error.code)) {
-            await load(); if (active && error.code !== 'AGENT_CHAT_SESSION_EXPIRED') publish({ message: agentChatErrorText(error.code) });
+            await load(); if (active && error.code !== 'AGENT_CHAT_SESSION_EXPIRED') publish({ message: agentChatErrorText(error.code), displayMessage: agentChatErrorDescriptor(error.code) });
           }
         }
         return false;
@@ -419,19 +420,66 @@ export function createAgentChatSession({ projectId, client = createAgentChatClie
       const run = activeAgentChatRun(state);
       if (!active || !visible || !run || ['submitting', 'stopping', 'loading'].includes(state.phase)) return false;
       detach(); const epoch = serial, instanceId = state.snapshot.instanceId;
-      publish({ phase: 'stopping', consent: null, message: '正在请求停止后续步骤。已发生的计算或费用无法撤回。' });
+      publish({ phase: 'stopping', consent: null, message: '正在请求停止后续步骤。已发生的计算或费用无法撤回。', displayMessage: localizedMessage('agent.chat.state.requestingStop') });
       try {
         const envelope = await request(signal => client.stop(projectId, run.id, instanceId, signal));
         if (!valid(epoch)) return false;
         const snapshot = mergeRun(envelope);
-        publish({ ...finishState(snapshot), message: envelope.run.status === 'stopped' ? '已停止后续步骤，已收到的文字和读取结果保留；远端仍可能已计算或计费。' : '停止请求已返回，运行状态如下；已发生的费用无法撤回。' });
+        publish({ ...finishState(snapshot), message: envelope.run.status === 'stopped' ? '已停止后续步骤，已收到的文字和读取结果保留；远端仍可能已计算或计费。' : '停止请求已返回，运行状态如下；已发生的费用无法撤回。', displayMessage: envelope.run.status === 'stopped' ? localizedMessage('agent.chat.state.stoppedLaterSteps') : localizedMessage('agent.chat.state.stopResponseReceived') });
         attach(envelope.run); return true;
       } catch (error) {
         if (!valid(epoch)) return false;
-        publish({ phase: 'unknown', message: '未确认停止结果；远端可能仍在运行或计费。正在读取状态，不会重复提交停止。' });
+        publish({ phase: 'unknown', message: '未确认停止结果；远端可能仍在运行或计费。正在读取状态，不会重复提交停止。', displayMessage: localizedMessage('agent.chat.state.stopUnconfirmed') });
         await recoverStream(run.id, instanceId, epoch); return false;
       }
     },
     dispose() { if (!active) return; active = false; detach(); resetHistory(); for (const controller of pendingReads) controller.abort(); pendingReads.clear(); state = initialAgentChatState(); },
   };
+}
+
+// Display-only companions keep legacy diagnostics and business identities unchanged.
+export const agentChatErrorDescriptor = code => ({ __proto__: null,
+  UNAUTHORIZED: localizedMessage('agent.chat.state.unauthorized'),
+  AGENT_CHAT_SESSION_EXPIRED: localizedMessage('agent.chat.state.sessionExpired'),
+  AGENT_CHAT_STORAGE_LIMIT: localizedMessage('agent.chat.state.storageFull'),
+  AGENT_CHAT_STORAGE_UNAVAILABLE: localizedMessage('agent.chat.state.storageUnavailable'),
+  AGENT_CHAT_INTERRUPTED: localizedMessage('agent.chat.state.interrupted'),
+  AGENT_CHAT_SETTINGS_CONFLICT: localizedMessage('agent.chat.state.settingsConflict'),
+  AGENT_CHAT_CONVERSATION_CONFLICT: localizedMessage('agent.chat.state.conversationConflict'),
+  AGENT_CHAT_CONSENT_REQUIRED: localizedMessage('agent.chat.state.consentChanged'),
+  AGENT_CHAT_ACTIVE_RUN: localizedMessage('agent.chat.state.activeRun'),
+  AGENT_CHAT_CREDENTIAL_UNAVAILABLE: localizedMessage('agent.chat.state.credentialUnavailable'),
+  AGENT_CHAT_BUSY: localizedMessage('agent.chat.state.busy'),
+  AGENT_CHAT_RUN_EXPIRED: localizedMessage('agent.chat.state.runExpired'),
+  AGENT_CHAT_NOT_FOUND: localizedMessage('agent.chat.state.runNotFound'),
+  AGENT_CHAT_CLOSED: localizedMessage('agent.chat.state.serviceClosed'),
+  AGENT_CHAT_VALIDATION: localizedMessage('agent.chat.state.validation'),
+  AGENT_CHAT_PROFILE_UNSUPPORTED: localizedMessage('agent.chat.state.unsupportedProfile'),
+  AGENT_CHAT_KEY_REQUIRED: localizedMessage('agent.chat.state.keyRequired'),
+  AGENT_CHAT_NETWORK_DENIED: localizedMessage('agent.chat.state.networkDenied'),
+  AGENT_CHAT_CONNECT_FAILED: localizedMessage('agent.chat.state.connectionFailed'),
+  AGENT_CHAT_TIMEOUT: localizedMessage('agent.chat.state.timeout'),
+  AGENT_CHAT_ABORTED: localizedMessage('agent.chat.state.aborted'),
+  AGENT_CHAT_HTTP_ERROR: localizedMessage('agent.chat.state.httpError'),
+  AGENT_CHAT_PROTOCOL_ERROR: localizedMessage('agent.chat.state.protocolError'),
+  AGENT_CHAT_TRUNCATED: localizedMessage('agent.chat.state.truncated'),
+  AGENT_CHAT_LIMIT: localizedMessage('agent.chat.state.limitReached'),
+  AGENT_CHAT_TOOLS_UNSUPPORTED: localizedMessage('agent.chat.state.unauthorizedTool'),
+  AGENT_CHAT_INSPECTION_UNAVAILABLE: localizedMessage('agent.chat.state.inspectionUnavailable'),
+  AGENT_CHAT_REASONING_UNSUPPORTED: localizedMessage('agent.chat.state.reasoningUnsupported'),
+  AGENT_EDIT_VALIDATION: localizedMessage('agent.chat.state.editValidation'),
+  AGENT_EDIT_NOT_FOUND: localizedMessage('agent.chat.state.editTargetNotFound'),
+  AGENT_EDIT_CONFLICT: localizedMessage('agent.chat.state.editRevisionConflict'),
+  AGENT_EDIT_STORAGE_LIMIT: localizedMessage('agent.chat.state.proposalStorageFull'),
+  AGENT_EDIT_STORAGE_UNAVAILABLE: localizedMessage('agent.chat.state.proposalStorageUnavailable'),
+  AGENT_CHAT_EDIT_UNAVAILABLE: localizedMessage('agent.chat.state.editScopeUnavailable'),
+  AGENT_CHAT_EDIT_CONFLICT: localizedMessage('agent.chat.state.editTargetChanged'),
+  AGENT_CHAT_PROVIDER_ERROR: localizedMessage('agent.chat.state.providerError'),
+}[code] || localizedMessage('agent.chat.state.incompleteFallback'));
+
+export function agentChatPromptIssueDescriptor(message) {
+  if (typeof message !== 'string' || !message.trim()) return localizedMessage('agent.chat.state.promptRequired');
+  if (bytes(message) > AGENT_CHAT_PROMPT_BYTES) return localizedMessage('agent.chat.state.promptByteLimit');
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(message)) return localizedMessage('agent.chat.state.promptControlCharacters');
+  return null;
 }

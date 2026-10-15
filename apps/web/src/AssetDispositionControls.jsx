@@ -1,3 +1,4 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { WorkbenchTooltip } from './WorkspaceControls.jsx';
@@ -15,14 +16,15 @@ export function useDispositionInteraction(scope, controller, target = null) {
   return { visible, admit: action => { if (visible && live.current === token && scope && controller?.getState().scope === scope) return action(); } };
 }
 export default function AssetDispositionControls({ asset, state, controller, blocked, prefix = 'asset' }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const row = dispositionRow(state, asset.id), entry = state?.entries?.[asset.id];
   const interaction = useDispositionInteraction(state?.scope, controller, asset.id);
   const disabled = !interaction.visible || !row || blocked || Boolean(state?.savingAssetId || state?.uncertain);
-  const status = state?.savingAssetId === asset.id ? '正在保存标记…' : row ? dispositionLabels[row.disposition] : entry?.phase === 'loading' ? '标记读取中' : '标记状态未知';
+  const status = state?.savingAssetId === asset.id ? t('assets.mark.saving') : row ? renderMessage(dispositionLabels[row.disposition]) : entry?.phase === 'loading' ? t('assets.mark.loading') : t('assets.mark.unknown');
   return <div className="asset-disposition-controls" data-no-asset-drag draggable={false} onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
     <span className={`asset-disposition-label ${row?.disposition || 'unknown'}`} data-testid={`${prefix}-disposition-status-${asset.id}`} role="status">{status}</span>
-    <div className="asset-disposition-buttons" role="group" aria-label={`${asset.name} 的素材标记`}>
-      {[['favorite', '收藏'], ['rejected', '拒选'], ['neutral', '清除标记']].map(([value, label]) => <WorkbenchTooltip key={value} content={value === 'rejected' ? '拒选仅作筛选标记，已有片段保持不变' : value === 'neutral' ? '恢复为未标记素材' : '标为收藏'}><Button variant="ghost" size="sm" type="button" draggable={false} data-testid={`${prefix}-disposition-${value}-${asset.id}`} aria-label={`${label} ${asset.name}`} aria-pressed={Boolean(row && row.disposition === value)} disabled={disabled || row?.disposition === value} onClick={event => { event.stopPropagation(); interaction.admit(() => controller.set(asset.id, value, state.scope)); }}>{label}</Button></WorkbenchTooltip>)}
+    <div className="asset-disposition-buttons" role="group" aria-label={t('assets.mark.named', { name: asset.name })}>
+      {[['favorite', t('assets.mark.favorite')], ['rejected', t('assets.mark.rejected')], ['neutral', t('assets.mark.clear')]].map(([value, label]) => <WorkbenchTooltip key={value} content={value === 'rejected' ? t('assets.mark.rejectHint') : value === 'neutral' ? t('assets.mark.clearHint') : t('assets.mark.favoriteHint')}><Button variant="ghost" size="sm" type="button" draggable={false} data-testid={`${prefix}-disposition-${value}-${asset.id}`} aria-label={t('assets.mark.actionNamed', { action: label, name: asset.name })} aria-pressed={Boolean(row && row.disposition === value)} disabled={disabled || row?.disposition === value} onClick={event => { event.stopPropagation(); interaction.admit(() => controller.set(asset.id, value, state.scope)); }}>{label}</Button></WorkbenchTooltip>)}
     </div>
   </div>;
 }

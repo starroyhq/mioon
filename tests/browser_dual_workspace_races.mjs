@@ -1,3 +1,4 @@
+import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 /** Browser-only UI through CUA; explicit local fault fixture loses/holds actual
  * accepted backend responses. No fake domain data, paid calls or browser eval writes. */
 import assert from 'node:assert/strict';
@@ -29,8 +30,8 @@ export async function runDualWorkspaceRaceAcceptance({tab,fixture,outDir}){
   await mode('editing');const beforeDrop=await read(),beforeDropHistory=await history();await fault('timeline.track.add','drop');await tab.playwright.getByTestId('add-video-track').click();
   await tab.playwright.getByTestId('resume-pending').waitFor({state:'visible',timeoutMs:10000});await closeOverlays();
   const dropped=await waitState(data=>data.timeline.tracks.length===beforeDrop.timeline.tracks.length+1);assert.equal(dropped.timeline.revision,beforeDrop.timeline.revision+1);
-  await mode('canvas');await project(fixture.second.name);await tab.playwright.getByTestId('jobs-button').click();assert.equal(await tab.playwright.getByTestId('resume-pending').count(),0);await closeOverlays();
-  await project(fixture.project.name);assert.equal(await tab.playwright.getByTestId('workbench').getAttribute('data-workspace-mode'),'canvas');await tab.playwright.getByTestId('jobs-button').click();await tab.playwright.getByTestId('resume-pending').waitFor({state:'visible',timeoutMs:10000});await capture('05-lost-response-project-recovery.jpg');
+  await mode('canvas');await project(fixture.second.name);await clickWorkbenchAction(tab, 'jobs-button');assert.equal(await tab.playwright.getByTestId('resume-pending').count(),0);await closeOverlays();
+  await project(fixture.project.name);assert.equal(await tab.playwright.getByTestId('workbench').getAttribute('data-workspace-mode'),'canvas');await clickWorkbenchAction(tab, 'jobs-button');await tab.playwright.getByTestId('resume-pending').waitFor({state:'visible',timeoutMs:10000});await capture('05-lost-response-project-recovery.jpg');
   await tab.playwright.getByTestId('resume-pending').click();await tab.playwright.getByTestId('resume-pending').waitFor({state:'detached',timeoutMs:10000});await closeOverlays();
   const recovered=await read();equal(recovered.timeline,dropped.timeline);assert.equal((await history()).length,beforeDropHistory.length+1);assert.equal(await tab.playwright.getByTestId('workbench').getAttribute('data-workspace-mode'),'canvas');
   await log('Lost accepted timeline response survives mode/project switches; other project has no pending record; exact replay neither duplicates nor navigates',{revision:recovered.timeline.revision});
@@ -59,7 +60,7 @@ export async function runDualWorkspaceRaceAcceptance({tab,fixture,outDir}){
   // Generation and typed-reference pending use the same durable log. A real
   // accepted typed detach is replayed while Canvas navigation stays independent.
   await mode('canvas');await tab.playwright.getByRole('tab',{name:'创作参数',exact:true}).click();const beforeReference=await read();await fault('reference.detach','drop');await tab.playwright.getByTestId('detach-reference').click();await tab.playwright.getByTestId('confirm-action').click();await closeOverlays();
-  await mode('editing');await mode('canvas');await tab.playwright.getByTestId('jobs-button').click();await tab.playwright.getByTestId('resume-pending').waitFor({state:'visible',timeoutMs:10000});await tab.playwright.getByTestId('resume-pending').click();await tab.playwright.getByTestId('resume-pending').waitFor({state:'detached',timeoutMs:10000});await closeOverlays();
+  await mode('editing');await mode('canvas');await clickWorkbenchAction(tab, 'jobs-button');await tab.playwright.getByTestId('resume-pending').waitFor({state:'visible',timeoutMs:10000});await tab.playwright.getByTestId('resume-pending').click();await tab.playwright.getByTestId('resume-pending').waitFor({state:'detached',timeoutMs:10000});await closeOverlays();
   const afterReference=await read();assert.equal(afterReference.edges.some(e=>e.id===fixture.edge.edge?.id||e.id===beforeReference.edges.find(e=>e.kind==='reference')?.id),false);equal(afterReference.versions,beforeReference.versions);equal(afterReference.timeline,beforeReference.timeline);
   await log('A lost typed-reference response also survives mode switches and exact recovery without touching immutable versions or timeline');
   await capture('06-race-safe-canvas.jpg');result.result='passed';result.finishedAt=new Date().toISOString();await save();return result;

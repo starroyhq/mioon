@@ -1,3 +1,4 @@
+import { translate } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ const css = read('styles.css');
 test('the clip inspector leads with the fields people edit most and keeps source and replacement after them', () => {
   const source = read('TimelineInspector.jsx');
   const order = ['id="clip-name"', 'id="clip-track"', 'id="clip-start"', 'id="clip-source-in"', '<div className="clip-source">',
-    '画面位置与尺寸', '<ClipAudioControls', '<ClipSourceReplacement', '<div className="clip-form-actions">'];
+    "timeline.inspector.rect", '<ClipAudioControls', '<ClipSourceReplacement', '<div className="clip-form-actions">'];
   const at = order.map(marker => source.indexOf(marker));
   assert.ok(at.every(index => index >= 0), `missing markers: ${order.filter((_, i) => at[i] < 0)}`);
   assert.deepEqual([...at].sort((a, b) => a - b), at, 'inspector sections are out of order');
@@ -42,15 +43,21 @@ test('selecting a shot, node or clip leaves the Tasks and Delivery pages for Pro
 
 test('the generate button explains why it is idle while the title or prompt text still has to be saved', () => {
   const inspector = read('Inspector.jsx');
-  assert.match(inspector, /data-testid="generation-save-first"[^>]*>[\s\S]*?先点上方“保存标题和提示词”，再生成镜头。/);
-  assert.match(inspector, /dirty && !textBlocksLegacy \? '保存并生成镜头' : '生成镜头'/);
+  assert.match(inspector, /data-testid="generation-save-first"[^>]*>[\s\S]*?inspector\.saveTextFirst/);
+  assert.match(inspector, /dirty && !textBlocksLegacy \? t\('inspector.saveGenerate'\) : t\('inspector.generateShot'\)/);
 });
 
 test('an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard', () => {
   const app = read('App.jsx'), preview = read('Preview.jsx'), preflight = read('TimelineExportPreflight.jsx');
   // The topbar button stays an always-open entrance to recovery (export-preflight-ui pins its exact source).
-  assert.match(app, /<Button variant="ghost" className="button primary" data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}>/);
+  assert.match(app, /<DropdownMenuItem data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}>/);
   assert.match(preflight, /Array\.isArray\(timeline\?\.clips\) && timeline\.clips\.length === 0 && <p className="notice warning" data-testid="preflight-empty-timeline">/);
   assert.match(app, /<Preview [^]*?canSeed=\{Boolean\(sortedShots\.length && selectedCount === sortedShots\.length\)\} seedBusy=\{timelineBusy\} onSeed=\{\(\) => mutateTimeline\('timeline\.seed', \{\}, timeline\?\.revision\)\}/);
-  assert.match(preview, /canSeed && onSeed && !timeline\?\.clips\?\.length && <Button[^>]*data-testid="preview-seed-timeline"[^>]*>[^]*?从分镜建立时间线/);
+  assert.match(preview, /canSeed && onSeed && !timeline\?\.clips\?\.length && <Button[^>]*data-testid="preview-seed-timeline"[^>]*>[^]*?timeline\.preview\.seed/);
+});
+
+test('localized layout labels retain the original semantic copy', () => {
+  assert.equal(translate('zh-Hans', 'inspector.saveTextFirst'), '先点上方“保存标题和提示词”，再生成镜头。');
+  assert.equal(translate('zh-Hans', 'inspector.saveGenerate'), '保存并生成镜头');
+  assert.equal(translate('zh-Hans', 'timeline.preview.seed'), '从分镜建立时间线');
 });

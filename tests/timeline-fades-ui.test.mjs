@@ -1,3 +1,5 @@
+import { i18nTestModule } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -53,6 +55,8 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
     const module = { exports: {} };
     Function('require', 'module', 'exports', code)(id => {
       if (id === 'react') return react;
+      if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
+      if (id === '../../../packages/i18n/src/index.ts') return i18nCore;
       if (id === './clip-audio-state.js') return audio;
       if (id === './timeline-format-state.js') return timelineFormat;
       if (id === './clip-draft-state.ts') return clipDraft;
@@ -247,8 +251,8 @@ test('keyed project unmount fences late fade acknowledgments and retained form s
 
 test('source playback copy stays explicit about dry audio and the shared render path', () => {
   const source = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
-  assert.match(source, /源素材原声 · 不应用片段音量或淡入\/淡出/);
-  assert.match(source, /音频淡入\/淡出均使用与导出相同的本地渲染/);
+  assert.match(source, /timeline.preview.sourceUnprocessed/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /源素材原声 · 不应用片段音量或淡入\/淡出/);
+  assert.match(source, /timeline.preview.renderDetail/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.renderDetail'), /音频淡入\/淡出均使用与导出相同的本地渲染/);
 });
 
 test('real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline', async () => {

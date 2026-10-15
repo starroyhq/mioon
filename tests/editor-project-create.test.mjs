@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -24,7 +25,7 @@ function appFixture(options = {}) {
   const inputs = createEditorWindowInputs(), busy = new Set(), calls = [];
   let refreshCalls = 0;
   const read = navigation => inputs.read({ busy, navigation, defaultSettings: TIMELINE_EXPORT_DEFAULT_SETTINGS });
-  const env = {
+  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
     nativeWindow: options.web ? null : { context: { role: 'editor', initialProjectId: id(1) } }, editorInputs: { current: inputs },
     nativeProjectEntry: options.noEntry ? null : { show: mode => { calls.push(['scoped-entry', mode]); return Promise.resolve(true); } },
     projectCreateFlight: { current: null }, currentProject: { current: id(1) }, importSession: { current: { active: true, selection: 0 } },

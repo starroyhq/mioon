@@ -1,3 +1,5 @@
+import { message, renderMessage, translate } from '../../../packages/i18n/src/index.ts';
+import type { Locale } from '../../../packages/i18n/src/types.ts';
 // A timeline clip freezes the generated version it was created from. When its shot later selects another version the
 // clip keeps playing the old one, so the storyboard export and the timeline export silently disagree. These helpers
 // find such clips so the timeline and inspector can say so; nothing here changes a clip.
@@ -5,7 +7,7 @@ export interface FreshnessClip { id: string; assetId?: string | null; shotId?: s
 export interface FreshnessShot { id: string; title?: string; selectedVersionId?: string | null }
 export interface FreshnessVersion { id: string; assetId?: string | null; shotId?: string; number?: number }
 export interface StaleClipSource {
-  clipId: string; shotId: string; shotTitle: string;
+  clipId: string; shotId: string; shotTitle: string; shotTitleMissing?: boolean;
   versionId: string; versionNumber: number | null;
   selectedVersionId: string; selectedVersionNumber: number | null;
 }
@@ -28,14 +30,14 @@ export function staleClipSources(clips: readonly FreshnessClip[], shots: readonl
     if (!origin) continue;
     const shot = shotById.get(origin.shotId);
     if (!shot?.selectedVersionId || shot.selectedVersionId === origin.versionId) continue;
-    stale.set(clip.id, { clipId: clip.id, shotId: shot.id, shotTitle: shot.title || '镜头',
+    stale.set(clip.id, { clipId: clip.id, shotId: shot.id, shotTitle: shot.title || '镜头', ...(!shot.title ? { shotTitleMissing: true } : {}),
       versionId: origin.versionId, versionNumber: numberOf(origin.versionId),
       selectedVersionId: shot.selectedVersionId, selectedVersionNumber: numberOf(shot.selectedVersionId) });
   }
   return stale;
 }
 
-export function staleSourceSentence(stale: StaleClipSource): string {
-  const label = (number: number | null) => number === null ? '其他版本' : `V${number}`;
-  return `镜头「${stale.shotTitle}」已改选 ${label(stale.selectedVersionNumber)}，此片段仍是 ${label(stale.versionNumber)}。`;
+export function staleSourceSentence(stale: StaleClipSource, locale: Locale = 'zh-Hans'): string {
+  const label = (number: number | null) => number === null ? translate(locale, 'timeline.source.otherVersion') : `V${number}`;
+  return renderMessage(locale, message('timeline.source.stale', { title: stale.shotTitleMissing ? translate(locale, 'timeline.source.unnamedShot') : stale.shotTitle, selected: label(stale.selectedVersionNumber), original: label(stale.versionNumber) }));
 }

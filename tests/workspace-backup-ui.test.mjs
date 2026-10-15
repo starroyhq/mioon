@@ -1,3 +1,4 @@
+import * as i18n from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -123,7 +124,7 @@ function component(visible = true) {
   const react = { createElement: element, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [value, () => {}] }; react.default = react;
   const module = { exports: {} };
   Function('module', 'exports', 'require', transformSync(read('WorkspaceBackupPanel.jsx'), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports,
-    key => key === 'react' ? react : key === './workspace-backup-ui.js' ? backup : key === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => visible } : key.endsWith('.md?raw') ? { __esModule: true, default: 'Bundled offline backup guide' } : primitive);
+    key => key === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : key === '../../../packages/i18n/src/index.ts' ? i18n : key === 'react' ? react : key === './workspace-backup-ui.js' ? backup : key === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => visible } : key.endsWith('.md?raw') ? { __esModule: true, default: 'Bundled offline backup guide' } : primitive);
   return module.exports;
 }
 

@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -23,7 +24,7 @@ function fixture() {
   state.layout.editing.inspectorCollapsed = true;
   const asset = { id: 'asset-one', name: 'Synthetic image', mimeType: 'image/png' };
   const timeline = { revision: 5, tracks: [{ id: 'video-one', kind: 'video' }], clips: [] };
-  const env = {
+  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
     panelIntent: { current: 0 }, currentProject: { current: 'project-one' },
     guardNavigation: async () => true,
     dataRef: { current: { assets: [asset], timeline } },

@@ -1,3 +1,6 @@
+import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
+import { message, createI18nTestContext } from './helpers/i18n.ts';
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -73,7 +76,7 @@ test('actual TaskCenter renders an inline named dock with keyboard-scrollable bo
 
 // Render the real TaskCenter, TSX hook/shell, durable and pending cards. Hook
 // slots model commit/cleanup so retained handlers can be invoked after hiding.
-function harness() {
+function harness(languageStore) {
   const modules = new Map(), slots = [], calls = [];
   let cursor = 0, effects = [];
   const h = { visible: true, current: true, scope: 'project:1:tasks', captureCalls: 0, calls };
@@ -89,6 +92,7 @@ function harness() {
     if (modules.has(file)) return modules.get(file);
     const module = { exports: {} };
     const resolve = name => {
+    const i18nDependency = creationTestDependency(name, languageStore); if (i18nDependency) return i18nDependency;
       if (name === 'react') return react;
       if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === './TaskWorkspace.css') return {};
@@ -149,9 +153,9 @@ test('mount, rerender and disclosure expansion execute nothing; explicit current
   assert.ok(durable.every(call => call[3]() === true));
   assert.deepEqual(h.calls.find(call => call[0] === 'onAdopt'), ['onAdopt', f.entry]);
   assert.deepEqual(h.calls.filter(call => call[0] === 'run'), [
-    ['run', f.entry.key, f.entry.operation, f.entry.input, '原请求已恢复并确认', { replay: true }],
-    ['run', `reconcile:${f.uncertain.id}`, 'job.reconcile', { jobId: f.uncertain.id, providerJobId: 'provider-original' }, '已核对已有任务状态，没有重新提交生成'],
-    ['run', `cancel:${f.running.id}`, 'job.cancel', { jobId: f.running.id }, '已请求停止。请查看任务记录中的实际取消范围。'],
+    ['run', f.entry.key, f.entry.operation, f.entry.input, message('tasks.center.originalRecovered'), { replay: true }],
+    ['run', `reconcile:${f.uncertain.id}`, 'job.reconcile', { jobId: f.uncertain.id, providerJobId: 'provider-original' }, message('tasks.center.existingStatusChecked')],
+    ['run', `cancel:${f.running.id}`, 'job.cancel', { jobId: f.running.id }, message('tasks.center.stopRequested')],
   ]);
   for (const name of ['retryGeneration', 'onInspectJob']) {
     const call = h.calls.find(call => call[0] === name); assert.equal(call[1], f.failed); assert.equal(call[2](), true);
@@ -219,4 +223,36 @@ test('narrow-dock styles keep only the body scrollable and wrap long IDs and sha
   assert.doesNotMatch(shell, /workspace-visibility\.jsx|TaskWorkspace\.css/);
   assert.match(taskCenter, /useTaskWorkspaceInteraction\(captureView, taskViewScope, Boolean\(useWorkspaceVisibility\(\)\)\)/);
   assert.doesNotMatch(taskCenter, /components\/dialog|onClose|setShowJobs|\binspect\(/);
+});
+
+test('pending task confirmation relabels across four languages while retaining its exact original cancellation target', async () => {
+  const store = createLanguageStore({ systemLanguages: ['zh-Hans'] }), h = harness(store), f = actionFixture();
+  let resolve, descriptor; const waiting = new Promise(done => { resolve = done; });
+  const props = { ...f.props, confirm: value => { descriptor = value; return waiting; } };
+  const tree = h.render(props), action = button(tree, '停止等待').props.onClick();
+  assert.deepEqual(descriptor, message('tasks.center.stopWaitConfirmation')); assert.deepEqual(h.calls, []);
+  for (const locale of ['zh-Hant', 'en', 'ja', 'zh-Hans']) {
+    await store.setPreference(locale); const next = h.render(props);
+    assert.ok(JSON.stringify(next).includes(createI18nTestContext(locale).t('tasks.center.stopWaiting')));
+    assert.equal(createI18nTestContext(locale).renderMessage(descriptor), createI18nTestContext(locale).t('tasks.center.stopWaitConfirmation'));
+    assert.deepEqual(h.calls, []);
+  }
+  resolve(true); await action;
+  assert.deepEqual(h.calls, [['run', `cancel:${f.running.id}`, 'job.cancel', { jobId: f.running.id }, message('tasks.center.stopRequested')]]);
+  h.unmount(); store.dispose();
+});
+
+
+test('local task list error descriptors relabel without leaking raw diagnostics or reloading', async () => {
+  const store = createLanguageStore({ storage: { getItem: () => null, setItem() {} }, systemLanguages: ['zh-Hans'] });
+  const h = harness(store), error = { message: 'RAW PRIVATE DIAGNOSTIC', displayMessage: message('tasks.localError.taskProtocol') };
+  const props = { tasks: { phase: 'error', error, items: [], uncertain: [], busy: [] } };
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    await store.setPreference(locale);
+    const tree = h.render(props), ctx = createI18nTestContext(locale);
+    assert.equal(text(find(tree, 'task-list-error-detail')), ctx.renderMessage(error.displayMessage));
+    assert.doesNotMatch(text(tree), /RAW PRIVATE DIAGNOSTIC/);
+    assert.equal(h.calls.length, 0);
+  }
+  h.unmount(); store.dispose();
 });

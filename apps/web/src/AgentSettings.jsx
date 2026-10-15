@@ -1,3 +1,5 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
+import { message } from '../../../packages/i18n/src/index.ts';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
 import { Button } from '@mioon/ui/components/button';
@@ -8,16 +10,17 @@ import Icon from './icons.jsx';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 import { closeSettingsAfterPermission, createSettingsNavigationReporter } from './settings-navigation-state.ts';
 import { AGENT_PROTOCOLS, agentEndpointPreview, agentBindingChanged, agentSettingsBusy, agentSettingsCanSave, agentSettingsDirty, agentSettingsEditable,
-  createAgentSettingsSession, initialAgentSettingsState } from './agent-settings.js';
+  agentPresetLabel, agentPlatformLabel, agentPresetNote, createAgentSettingsSession, initialAgentSettingsState } from './agent-settings.js';
 
-const storageLabel = mode => ({ none: '未保存密钥', session: '仅本次运行', persistent: '系统加密保存' }[mode] || '未保存密钥');
-const storageReason = storage => ({
-  WEB_SESSION_ONLY: '当前为服务器模式，密钥仅保存在服务器内存；服务器退出后清除。',
-  LINUX_BASIC_TEXT: '系统仅提供 basic_text，不能安全持久保存；密钥仅在本次应用运行中保留。',
-  OS_SECRET_STORE_UNAVAILABLE: '系统安全存储不可用，不能持久保存；可选择仅本次运行。',
-}[storage?.reasonCode] || (storage?.persistentAvailable ? '系统安全存储可用；持久密钥经系统加密保存在项目数据之外。' : '当前无法持久保存密钥；仅本次运行可用。'));
+const storageLabel = (mode, t) => ({ none: t('connections.storage.none'), session: t('connections.storage.session'), persistent: t('connections.storage.persistent') }[mode] || t('connections.storage.none'));
+const storageReason = (storage, t) => ({
+  WEB_SESSION_ONLY: t('connections.storage.webReason'),
+  LINUX_BASIC_TEXT: t('connections.storage.basicReason'),
+  OS_SECRET_STORE_UNAVAILABLE: t('connections.storage.unavailableReason'),
+}[storage?.reasonCode] || (storage?.persistentAvailable ? t('connections.storage.availableReason') : t('connections.storage.fallbackReason')));
 
 export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavigationStateChange }) {
+  const { t, renderMessage } = useI18n();
   const [state, setState] = useState(initialAgentSettingsState);
   const [hasKey, setHasKey] = useState(false);
   const [keyNotice, setKeyNotice] = useState('');
@@ -43,14 +46,14 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
   }, []);
   useLayoutEffect(() => {
     interactionRef.current = interaction; session.current?.setVisible(visible); reportNavigation(session.current?.getState() || state);
-    if (!visible && keyInput.current?.value) { clearKey(); setKeyNotice('隐藏设置时已清空新输入的密钥；连接草稿仍保留。需要替换密钥时请重新输入。'); }
+    if (!visible && keyInput.current?.value) { clearKey(); setKeyNotice(message('agent.settings.keyHidden')); }
   }, [interaction]);
   const usable = () => !dismissed.current && visible && interactionRef.current === interaction;
   const dismiss = () => {
     if (!usable()) return;
     const captured = interactionRef.current, version = navigation.current.getState().version;
     return closeSettingsAfterPermission(beforeClose, () => usable() && interactionRef.current === captured && navigation.current.getState().version === version, () => {
-      if (keyInput.current?.value) setKeyNotice('离开设置时已清空新输入的密钥；连接草稿仍保留。'); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onClose();
+      if (keyInput.current?.value) setKeyNotice(message('agent.settings.keyLeft')); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onClose();
     });
   };
   const withClearKey = action => { if (!usable()) return; clearKey(); action(); };
@@ -74,73 +77,74 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
   const endpoint = agentEndpointPreview(draft);
   const modelHints = platform?.supportedModelHints?.[draft?.protocol] || [];
   const modelNeedsReview = modelHints.length > 0 && !modelHints.includes(draft.model);
-  const protocolNote = platform?.protocolNotes?.[draft?.protocol];
-  return <section className="agent-settings-page" data-testid="agent-settings-page" data-phase={phase} aria-label="Agent 连接设置" hidden={!visible} inert={!visible}>
+  const protocolNote = draft?.protocol === 'responses' && draft?.presetId === 'qwen' ? t('agent.settings.presets.qwenResponses') : '';
+  const statusMessage = state.displayMessages?.map(renderMessage).join(' ') || '';
+  return <section className="agent-settings-page" data-testid="agent-settings-page" data-phase={phase} aria-label={t('agent.settings.title')} hidden={!visible} inert={!visible}>
       <header className="modal-header agent-settings-header">
         <div className="agent-settings-heading"><span className="agent-settings-symbol"><Icon name="sparkle" size={22} /></span><div>
-          <div className="agent-settings-eyebrow">AGENT · CONNECTION</div><h2>Agent 连接设置</h2>
-          <p>连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围。</p>
+          <div className="agent-settings-eyebrow">{t('agent.settings.eyebrow')}</div><h2>{t('agent.settings.title')}</h2>
+          <p>{t('agent.settings.intro')}</p>
         </div></div>
-        <Button type="button" variant="ghost" className="icon-button" aria-label={closeLabel ?? '返回 Agent 对话'} data-testid="agent-settings-back" disabled={!visible} onClick={dismiss}><Icon name="left" /></Button>
+        <Button type="button" variant="ghost" className="icon-button" aria-label={closeLabel ?? t('agent.settings.backAgent')} data-testid="agent-settings-back" disabled={!visible} onClick={dismiss}><Icon name="left" /></Button>
       </header>
       <form noValidate autoComplete="off" onSubmit={submit} className="agent-settings-form">
         <div className="agent-settings-body">
-          <div className="agent-settings-disclosure"><Icon name="info" size={15} /><span>保存仅更新本机工作台设置，不发起模型请求，也不发送项目内容。</span><Badge className="small-badge neutral">尚未验证连接</Badge></div>
-          {!snapshot ? <div className="agent-settings-loading" role="status">{phase === 'loading' ? <><span className="spinner" />正在读取连接设置…</> : <><Icon name="info" size={24} /><p data-testid="agent-settings-error" role="alert">{state.message}</p><Button type="button" variant="ghost" className="button" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.load(); }}>重新读取</Button></>}</div> : <>
+          <div className="agent-settings-disclosure"><Icon name="info" size={15} /><span>{t('agent.settings.saveScope')}</span><Badge className="small-badge neutral">{t('agent.settings.unverified')}</Badge></div>
+          {!snapshot ? <div className="agent-settings-loading" role="status">{phase === 'loading' ? <><span className="spinner" />{t('agent.settings.loading')}</> : <><Icon name="info" size={24} /><p data-testid="agent-settings-error" role="alert">{statusMessage}</p><Button type="button" variant="ghost" className="button" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.load(); }}>{t('connections.reload')}</Button></>}</div> : <>
             <section className="agent-settings-section" aria-labelledby="agent-connection-heading">
-              <div className="agent-settings-section-title"><h3 id="agent-connection-heading">模型服务</h3><span>预设是起点，地址与模型均可编辑</span></div>
+              <div className="agent-settings-section-title"><h3 id="agent-connection-heading">{t('agent.settings.modelService')}</h3><span>{t('agent.settings.presetHelp')}</span></div>
               <div className="agent-settings-grid">
-                <div className="agent-settings-field"><Label htmlFor="agent-preset">服务商预设</Label>
+                <div className="agent-settings-field"><Label htmlFor="agent-preset">{t('agent.settings.preset')}</Label>
                   <WorkbenchSelect id="agent-preset" data-testid="agent-settings-preset" value={draft.presetId} disabled={!editable} onChange={event => withClearKey(() => session.current?.selectPreset(event.target.value))}>
-                    {snapshot.presets.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    {snapshot.presets.map(item => <option key={item.id} value={item.id}>{agentPresetLabel(item, t)}</option>)}
                   </WorkbenchSelect>
                 </div>
-                <div className="agent-settings-field"><Label htmlFor="agent-platform">平台 / 地区</Label>
+                <div className="agent-settings-field"><Label htmlFor="agent-platform">{t('agent.settings.platform')}</Label>
                   <WorkbenchSelect id="agent-platform" data-testid="agent-settings-platform" value={draft.platformId} disabled={!editable} onChange={event => withClearKey(() => session.current?.selectPlatform(event.target.value))}>
-                    {(preset?.platforms || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    {(preset?.platforms || []).map(item => <option key={item.id} value={item.id}>{agentPlatformLabel(preset.id, item, t)}</option>)}
                   </WorkbenchSelect>
                 </div>
-                <div className="agent-settings-field agent-settings-full"><Label htmlFor="agent-protocol">API 协议</Label>
+                <div className="agent-settings-field agent-settings-full"><Label htmlFor="agent-protocol">{t('agent.settings.protocol')}</Label>
                   <WorkbenchSelect id="agent-protocol" data-testid="agent-settings-protocol" value={draft.protocol} disabled={!editable} onChange={event => { if (usable()) session.current?.edit({ protocol: event.target.value }); }}>
                     {(platform?.availableProtocols || []).map(protocol => <option key={protocol} value={protocol}>{AGENT_PROTOCOLS[protocol].label}</option>)}
                   </WorkbenchSelect>
-                  <p className="agent-settings-help">手动选择协议；不会自动探测、回退或更换模型。切换后需重新确认聊天发送。</p>
+                  <p className="agent-settings-help">{t('agent.settings.protocolHelp')}</p>
                 </div>
-                <div className="agent-settings-field agent-settings-full"><Label htmlFor="agent-base-url">服务地址 <span>Base URL</span></Label>
+                <div className="agent-settings-field agent-settings-full"><Label htmlFor="agent-base-url">{t('agent.settings.baseUrl')}{' '}<span>Base URL</span></Label>
                   <Input id="agent-base-url" data-testid="agent-settings-base-url" value={draft.baseUrl} onChange={event => changeBinding({ baseUrl: event.target.value })} disabled={!editable} maxLength={2048} placeholder={platform?.baseUrlTemplate || 'https://api.example.com/v1'} type="url" spellCheck={false} autoCapitalize="none" aria-describedby="agent-endpoint-help" />
-                  <p id="agent-endpoint-help" className="agent-settings-help">填写 API 基础地址，不含 /chat/completions 或 /responses。远程服务使用 HTTPS；本地服务请选 Ollama 预设。</p>
+                  <p id="agent-endpoint-help" className="agent-settings-help">{t('agent.settings.endpointHelp')}</p>
                 </div>
-                <div className="agent-settings-field agent-settings-full"><div className="agent-settings-label-row"><Label htmlFor="agent-model">模型名称 <span>Model ID</span></Label><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-reset" disabled={!editable || !defaultsChanged} onClick={() => withClearKey(() => session.current?.edit({ baseUrl: platform.baseUrl, model: platform.model, protocol: platform.defaultProtocol }))}><Icon name="refresh" size={12} />恢复此平台预设</Button></div>
-                  <Input id="agent-model" data-testid="agent-settings-model" value={draft.model} onChange={event => { if (usable()) session.current?.edit({ model: event.target.value }); }} disabled={!editable} maxLength={200} placeholder="输入账户可用的模型 ID" spellCheck={false} autoCapitalize="none" />
-                  {draft.protocol === 'responses' && <p className={`agent-settings-help ${modelNeedsReview ? 'agent-settings-model-warning' : ''}`} data-testid="agent-settings-model-guidance">{modelHints.length ? `${modelNeedsReview ? '当前模型不在此协议文本配置中，请手动填写：' : '此协议文本配置：'}${modelHints.join('、')}。` : '自定义服务：请手动填写支持 Responses 的精确模型 ID；兼容性未经验证。'}{protocolNote || '仅支持非思考模式；选择并确认项目只读检查后，每轮最多 1 次只读工具调用、2 次模型请求。镜头标题与画面描述的修改需另选提议模式并逐份批准；不支持媒体生成。'}</p>}
+                <div className="agent-settings-field agent-settings-full"><div className="agent-settings-label-row"><Label htmlFor="agent-model">{t('agent.settings.modelName')}{' '}<span>Model ID</span></Label><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-reset" disabled={!editable || !defaultsChanged} onClick={() => withClearKey(() => session.current?.edit({ baseUrl: platform.baseUrl, model: platform.model, protocol: platform.defaultProtocol }))}><Icon name="refresh" size={12} />{t('agent.settings.restorePreset')}</Button></div>
+                  <Input id="agent-model" data-testid="agent-settings-model" value={draft.model} onChange={event => { if (usable()) session.current?.edit({ model: event.target.value }); }} disabled={!editable} maxLength={200} placeholder={t('agent.settings.modelPlaceholder')} spellCheck={false} autoCapitalize="none" />
+                  {draft.protocol === 'responses' && <p className={`agent-settings-help ${modelNeedsReview ? 'agent-settings-model-warning' : ''}`} data-testid="agent-settings-model-guidance">{modelHints.length ? t(modelNeedsReview ? 'agent.settings.modelReview' : 'agent.settings.modelHints', { models: modelHints.join(', ') }) : t('agent.settings.responsesCustom')}{' '}{protocolNote || t('agent.settings.responsesScope')}</p>}
                 </div>
-                <div className="agent-settings-endpoint agent-settings-full" data-testid="agent-settings-endpoint"><span>{AGENT_PROTOCOLS[draft.protocol]?.label} · 请求地址预览</span><p>{endpoint || '填写完整的 API 基础地址后显示请求地址。'}</p></div>
+                <div className="agent-settings-endpoint agent-settings-full" data-testid="agent-settings-endpoint"><span>{t('agent.settings.endpointPreview', { protocol: AGENT_PROTOCOLS[draft.protocol]?.label || draft.protocol })}</span><p>{endpoint || t('agent.settings.endpointEmpty')}</p></div>
               </div>
-              <div className="agent-settings-preset-note" data-testid="agent-settings-preset-note"><p>{platform?.notes || preset?.description || '请自行确认此地址、账户和模型的对应关系。'}</p><p>预设不代表服务商的所有模型均兼容，也不代表当前账户可用。</p>{Boolean(platform?.sources.length) && <div className="agent-settings-sources">{platform.sources.map(source => snapshot.storage.sessionScope === 'app' ? <span className="agent-settings-source-reference" key={source.url}><span>{source.label} · 可复制到外部浏览器打开</span><span>{source.url}</span></span> : <a href={source.url} key={source.url} target="_blank" rel="noopener noreferrer">{source.label}<Icon name="arrow" size={10} /></a>)}</div>}</div>
+              <div className="agent-settings-preset-note" data-testid="agent-settings-preset-note"><p>{agentPresetNote(preset, platform, t)}</p><p>{t('agent.settings.presetWarning')}</p>{Boolean(platform?.sources.length) && <div className="agent-settings-sources">{platform.sources.map(source => snapshot.storage.sessionScope === 'app' ? <span className="agent-settings-source-reference" key={source.url}><span>{t('agent.settings.sourceCopy', { label: t('agent.settings.officialDocs') })}</span><span>{source.url}</span></span> : <a href={source.url} key={source.url} target="_blank" rel="noopener noreferrer">{t('agent.settings.officialDocs')}<Icon name="arrow" size={10} /></a>)}</div>}</div>
             </section>
             <section className="agent-settings-secret-section" aria-labelledby="agent-secret-heading">
-              <div className="agent-settings-section-title"><h3 id="agent-secret-heading"><Icon name="lock" size={14} />API 密钥</h3><span data-testid="agent-settings-secret-status" data-configured={snapshot.secret.configured} data-storage={snapshot.secret.storage}>{snapshot.secret.configured ? `服务器已保存 · ${storageLabel(snapshot.secret.storage)}` : '服务器未保存密钥'}</span></div>
-              <div className="agent-settings-field"><Label className="sr-only" htmlFor="agent-key">{snapshot.secret.configured ? '替换 API 密钥' : '输入 API 密钥'}</Label>
-                <Input ref={keyInput} id="agent-key" data-testid="agent-settings-key" type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!editable || state.secretAction === 'remove'} placeholder={state.secretAction === 'remove' ? '保存时将移除已有密钥' : snapshot.secret.configured && !changedBinding ? '留空保留已有密钥；输入新密钥以替换' : '输入新密钥（可留空，仅保存连接参数）'} maxLength={8192} onChange={event => { if (usable()) { setHasKey(Boolean(event.target.value)); reportNavigation(session.current?.getState() || state); setKeyNotice(''); } }} aria-describedby="agent-key-help" />
-                <p id="agent-key-help" className="agent-settings-help">已保存的密钥不会回填。新输入仅临时保留，提交或关闭后清空；不会写入浏览器存储。</p>
+              <div className="agent-settings-section-title"><h3 id="agent-secret-heading"><Icon name="lock" size={14} />{t('connections.apiKey')}</h3><span data-testid="agent-settings-secret-status" data-configured={snapshot.secret.configured} data-storage={snapshot.secret.storage}>{snapshot.secret.configured ? t('agent.settings.serverKey', { storage: storageLabel(snapshot.secret.storage, t) }) : t('agent.settings.noServerKey')}</span></div>
+              <div className="agent-settings-field"><Label className="sr-only" htmlFor="agent-key">{snapshot.secret.configured ? t('agent.settings.replaceKey') : t('agent.settings.enterKey')}</Label>
+                <Input ref={keyInput} id="agent-key" data-testid="agent-settings-key" type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!editable || state.secretAction === 'remove'} placeholder={state.secretAction === 'remove' ? t('agent.settings.removePlaceholder') : snapshot.secret.configured && !changedBinding ? t('agent.settings.keepPlaceholder') : t('agent.settings.newKeyPlaceholder')} maxLength={8192} onChange={event => { if (usable()) { setHasKey(Boolean(event.target.value)); reportNavigation(session.current?.getState() || state); setKeyNotice(''); } }} aria-describedby="agent-key-help" />
+                <p id="agent-key-help" className="agent-settings-help">{t('agent.settings.keyHelp')}</p>
               </div>
-              {keyNotice && <p className="agent-settings-binding-warning" role="status" data-testid="agent-settings-key-cleared">{keyNotice}</p>}
-              {changedBinding && <div className="agent-settings-binding-warning" data-testid="agent-settings-binding-warning"><Icon name="info" size={14} /><span>服务商、地区或地址已改变。保存时会清除原密钥；请确认目标后重新输入新密钥。</span></div>}
-              <div className="agent-settings-key-actions"><div className="agent-settings-field"><Label htmlFor="agent-storage">新密钥的保存方式</Label>
+              {keyNotice && <p className="agent-settings-binding-warning" role="status" data-testid="agent-settings-key-cleared">{renderMessage(keyNotice)}</p>}
+              {changedBinding && <div className="agent-settings-binding-warning" data-testid="agent-settings-binding-warning"><Icon name="info" size={14} /><span>{t('agent.settings.bindingWarning')}</span></div>}
+              <div className="agent-settings-key-actions"><div className="agent-settings-field"><Label htmlFor="agent-storage">{t('agent.settings.keyStorage')}</Label>
                 <WorkbenchSelect id="agent-storage" data-testid="agent-settings-storage" value={state.storage} disabled={!editable || state.secretAction === 'remove'} onChange={event => { if (usable()) session.current?.setStorage(event.target.value); }}>
-                  <option value="session">仅本次运行（{snapshot.storage.sessionScope === 'app' ? '应用退出后清除' : '服务器退出后清除'}）</option><option value="persistent" disabled={!snapshot.storage.persistentAvailable}>系统加密保存{!snapshot.storage.persistentAvailable ? '（不可用）' : ''}</option>
+                  <option value="session">{t(snapshot.storage.sessionScope === 'app' ? 'connections.storage.appSession' : 'connections.storage.serverSession')}</option><option value="persistent" disabled={!snapshot.storage.persistentAvailable}>{t(snapshot.storage.persistentAvailable ? 'connections.storage.persistent' : 'connections.storage.persistentUnavailable')}</option>
                 </WorkbenchSelect>
-              </div>{snapshot.secret.configured && <WorkbenchTooltip content={state.secretAction === 'remove' ? '撤销尚未提交的移除操作' : '下一次保存时移除已保存密钥'}><Button type="button" variant="ghost" className={`button small ${state.secretAction === 'remove' ? '' : 'danger-text'}`} data-testid="agent-settings-remove-key" aria-pressed={state.secretAction === 'remove'} disabled={!editable} onClick={() => withClearKey(() => session.current?.removeKey(state.secretAction !== 'remove'))}>{state.secretAction === 'remove' ? '撤销移除' : '移除密钥'}</Button></WorkbenchTooltip>}</div>
-              <p className="agent-settings-storage-note" data-testid="agent-settings-storage-status">{storageReason(snapshot.storage)} {!hasKey && snapshot.secret.configured && !removesKey ? '更改保存方式需重新输入密钥。' : ''}</p>
-              <div className="agent-settings-key-intent" data-testid="agent-settings-key-intent">{hasKey ? `此次保存：${snapshot.secret.configured ? '替换' : '写入'}密钥 · ${storageLabel(state.storage)}` : removesKey && snapshot.secret.configured ? '此次保存：移除已有密钥' : snapshot.secret.configured ? '此次保存：保留已有密钥' : draft.presetId === 'ollama' ? '此次保存：仅连接参数；本地 Ollama 通常无需密钥' : '此次保存：仅连接参数；未配置 API 密钥'}</div>
+              </div>{snapshot.secret.configured && <WorkbenchTooltip content={state.secretAction === 'remove' ? t('agent.settings.undoRemoveHint') : t('agent.settings.removeHint')}><Button type="button" variant="ghost" className={`button small ${state.secretAction === 'remove' ? '' : 'danger-text'}`} data-testid="agent-settings-remove-key" aria-pressed={state.secretAction === 'remove'} disabled={!editable} onClick={() => withClearKey(() => session.current?.removeKey(state.secretAction !== 'remove'))}>{state.secretAction === 'remove' ? t('connections.undoRemove') : t('connections.removeKey')}</Button></WorkbenchTooltip>}</div>
+              <p className="agent-settings-storage-note" data-testid="agent-settings-storage-status">{storageReason(snapshot.storage, t)} {!hasKey && snapshot.secret.configured && !removesKey ? t('agent.settings.reenterStorage') : ''}</p>
+              <div className="agent-settings-key-intent" data-testid="agent-settings-key-intent">{hasKey ? t(snapshot.secret.configured ? 'connections.intentReplace' : 'connections.intentWrite', { storage: storageLabel(state.storage, t) }) : removesKey && snapshot.secret.configured ? t('connections.intentRemove') : snapshot.secret.configured ? t('connections.intentKeep') : draft.presetId === 'ollama' ? t('agent.settings.intentOllama') : t('agent.settings.intentNoKey')}</div>
             </section>
-            {state.message && <div className={`agent-settings-message ${error ? 'is-warning' : phase === 'saved' ? 'is-success' : ''}`} role={error ? 'alert' : 'status'} data-testid={error ? 'agent-settings-error' : 'agent-settings-status'} data-phase={phase}><Icon name={phase === 'saved' ? 'check' : 'info'} size={15} /><div><p>{state.message}</p>{recovery && <>
-              <div className="agent-settings-current" data-testid="agent-settings-current"><span>服务器当前设置</span><strong>{snapshot.configuration.model}</strong><span>{AGENT_PROTOCOLS[snapshot.configuration.protocol].label}</span><span>{agentEndpointPreview(snapshot.configuration)}</span><span>{snapshot.secret.configured ? `已保存密钥 · ${storageLabel(snapshot.secret.storage)}` : '未保存密钥'}</span></div>
-              <div className="agent-settings-recovery-actions">{phase === 'blocked' ? <Button type="button" variant="ghost" className="button small" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.reload(); }}>重新读取状态</Button> : <><Button type="button" variant="ghost" className="button small" data-testid="agent-settings-review" disabled={busy} onClick={() => { if (usable()) session.current?.acknowledge(); }}>已核对，继续编辑草稿</Button><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-use-latest" disabled={busy} onClick={() => withClearKey(() => session.current?.useLatest())}>使用服务器设置</Button></>}</div>
+            {state.message && <div className={`agent-settings-message ${error ? 'is-warning' : phase === 'saved' ? 'is-success' : ''}`} role={error ? 'alert' : 'status'} data-testid={error ? 'agent-settings-error' : 'agent-settings-status'} data-phase={phase}><Icon name={phase === 'saved' ? 'check' : 'info'} size={15} /><div><p>{statusMessage}</p>{recovery && <>
+              <div className="agent-settings-current" data-testid="agent-settings-current"><span>{t('connections.serverSettings')}</span><strong>{snapshot.configuration.model}</strong><span>{AGENT_PROTOCOLS[snapshot.configuration.protocol].label}</span><span>{agentEndpointPreview(snapshot.configuration)}</span><span>{snapshot.secret.configured ? t('connections.savedKey', { storage: storageLabel(snapshot.secret.storage, t) }) : t('connections.storage.none')}</span></div>
+              <div className="agent-settings-recovery-actions">{phase === 'blocked' ? <Button type="button" variant="ghost" className="button small" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.reload(); }}>{t('agent.settings.reloadState')}</Button> : <><Button type="button" variant="ghost" className="button small" data-testid="agent-settings-review" disabled={busy} onClick={() => { if (usable()) session.current?.acknowledge(); }}>{t('agent.settings.reviewDone')}</Button><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-use-latest" disabled={busy} onClick={() => withClearKey(() => session.current?.useLatest())}>{t('agent.settings.useServer')}</Button></>}</div>
             </>}</div></div>}
           </>}
         </div>
-        <footer className="agent-settings-footer"><span>{phase === 'saving' ? `${closeLabel ?? '返回对话'}不会撤回已提交的保存。` : dirty ? '有尚未保存的更改' : '当前仅管理一个连接配置'}</span><div><Button type="button" variant="ghost" className="button" data-testid="agent-settings-cancel" disabled={!visible} onClick={dismiss}>{closeLabel ?? '返回对话'}</Button><Button type="submit" variant="ghost" className="button primary" data-testid="agent-settings-save" disabled={!visible || !agentSettingsCanSave(state) || !dirty}>{phase === 'saving' ? <span className="spinner" /> : <Icon name="check" size={15} />}{phase === 'saving' ? '保存中…' : '保存设置'}</Button></div></footer>
+        <footer className="agent-settings-footer"><span>{phase === 'saving' ? t('agent.settings.leaveSaving', { action: closeLabel ?? t('agent.settings.backChat') }) : dirty ? t('connections.unsaved') : t('agent.settings.singleConnection')}</span><div><Button type="button" variant="ghost" className="button" data-testid="agent-settings-cancel" disabled={!visible} onClick={dismiss}>{closeLabel ?? t('agent.settings.backChat')}</Button><Button type="submit" variant="ghost" className="button primary" data-testid="agent-settings-save" disabled={!visible || !agentSettingsCanSave(state) || !dirty}>{phase === 'saving' ? <span className="spinner" /> : <Icon name="check" size={15} />}{phase === 'saving' ? t('agent.settings.saving') : t('agent.settings.save')}</Button></div></footer>
       </form>
   </section>;
 }

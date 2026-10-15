@@ -1,3 +1,4 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator } from '@mioon/ui/components/dropdown-menu';
@@ -64,7 +65,8 @@ export function PanelBoundary({ name, visible, scope, className = '', children, 
 }
 
 export function PanelRecall({ name, label, icon, onClick }) {
-  return <Button variant="ghost" className={`dock-recall recall-${name}`} data-testid={`reopen-${name}`} aria-label={`展开${label}`} aria-controls={`dock-${name}`} aria-expanded={false} onClick={event => {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  return <Button variant="ghost" className={`dock-recall recall-${name}`} data-testid={`reopen-${name}`} aria-label={t('shell.panel.expand', { label })} aria-controls={`dock-${name}`} aria-expanded={false} onClick={event => {
     const trigger = event.currentTarget, panel = document.getElementById(`dock-${name}`), owner = panel?.dataset.panelScope;
     onClick();
     requestAnimationFrame(() => {
@@ -74,6 +76,7 @@ export function PanelRecall({ name, label, icon, onClick }) {
 }
 
 export function PanelResizeHandle({ name, field, value, max, scope, enabled = true, onPreview, onCommit }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const bounds = PANEL_BOUNDS[field], horizontal = name === 'timeline', direction = name === 'assets' ? 1 : -1;
   const handle = useRef(null), gesture = useRef(null);
   const latest = useRef({ scope, enabled, onPreview, onCommit }); latest.current = { scope, enabled, onPreview, onCommit };
@@ -89,9 +92,9 @@ export function PanelResizeHandle({ name, field, value, max, scope, enabled = tr
     window.addEventListener('keydown', key, true); window.addEventListener('blur', blur); window.addEventListener('pagehide', blur);
     return () => { gesture.current = null; window.removeEventListener('keydown', key, true); window.removeEventListener('blur', blur); window.removeEventListener('pagehide', blur); };
   }, []);
-  const label = name === 'assets' ? '素材库宽度' : name === 'inspector' ? '属性面板宽度' : '时间线高度';
+  const label = name === 'assets' ? t('shell.panel.assetsWidth') : name === 'inspector' ? t('shell.panel.inspectorWidth') : t('shell.panel.timelineHeight');
   function commit(next) { cancel(); if (latest.current.enabled) latest.current.onCommit(field, clamp(next, bounds.min, max)); }
-  return <div ref={handle} className={`dock-resize resize-${name}`} data-testid={`resize-${name}`} role="separator" aria-label={`调整${label}`} aria-orientation={horizontal ? 'horizontal' : 'vertical'} aria-controls={`dock-${name}`} aria-valuemin={bounds.min} aria-valuemax={Math.round(max)} aria-valuenow={clamp(value, bounds.min, max)} aria-valuetext={`${clamp(value, bounds.min, max)} 像素`} tabIndex={enabled ? 0 : -1} title={`拖动调整${label} · 方向键 10px · Shift 50px · 双击重置`} hidden={!enabled}
+  return <div ref={handle} className={`dock-resize resize-${name}`} data-testid={`resize-${name}`} role="separator" aria-label={t('shell.panel.resize', { label })} aria-orientation={horizontal ? 'horizontal' : 'vertical'} aria-controls={`dock-${name}`} aria-valuemin={bounds.min} aria-valuemax={Math.round(max)} aria-valuenow={clamp(value, bounds.min, max)} aria-valuetext={t('shell.panel.pixels', { count: clamp(value, bounds.min, max) })} tabIndex={enabled ? 0 : -1} title={t('shell.panel.resizeHint', { label })} hidden={!enabled}
     onPointerDown={event => { if (!enabled || event.button !== 0) return; event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); gesture.current = { pointerId: event.pointerId, scope, origin: horizontal ? event.clientY : event.clientX, initial: value, value }; event.currentTarget.setPointerCapture(event.pointerId); }}
     onPointerMove={event => { const active = gesture.current; if (!active || active.pointerId !== event.pointerId || active.scope !== latest.current.scope || !latest.current.enabled) return; const position = horizontal ? event.clientY : event.clientX; active.value = clamp(active.initial + direction * (position - active.origin), bounds.min, max); latest.current.onPreview(field, active.value); }}
     onPointerUp={event => { const active = gesture.current; if (!active || active.pointerId !== event.pointerId) return; gesture.current = null; latest.current.onPreview(field, null); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); if (active.scope === latest.current.scope && latest.current.enabled && active.value !== active.initial) latest.current.onCommit(field, active.value); }}
@@ -105,9 +108,10 @@ export function PanelResizeHandle({ name, field, value, max, scope, enabled = tr
 }
 
 export function PanelsMenu({ mode, assetsCollapsed, inspectorCollapsed, timelineCollapsed, storyboardOpen, onPanel, onReset, disabled }) {
-  return <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="button quiet panels-trigger" data-testid="panels-menu" disabled={disabled} />}><Icon name="grid" size={15} /><span>面板</span></DropdownMenuTrigger><DropdownMenuContent align="end" className="workspace-panels-menu"><DropdownMenuGroup><DropdownMenuLabel>{mode === 'canvas' ? '画板面板' : '剪辑面板'}</DropdownMenuLabel>
-    <DropdownMenuCheckboxItem checked={!assetsCollapsed} data-testid="menu-panel-assets" onCheckedChange={open => onPanel('assets', open)}>素材库</DropdownMenuCheckboxItem>
-    <DropdownMenuCheckboxItem checked={!inspectorCollapsed} data-testid="menu-panel-inspector" onCheckedChange={open => onPanel('inspector', open)}>属性</DropdownMenuCheckboxItem>
-    {mode === 'editing' ? <DropdownMenuCheckboxItem checked={!timelineCollapsed} data-testid="menu-panel-timeline" onCheckedChange={open => onPanel('timeline', open)}>多轨时间线</DropdownMenuCheckboxItem> : <DropdownMenuCheckboxItem checked={storyboardOpen} data-testid="menu-panel-storyboard" onCheckedChange={open => onPanel('storyboard', open)}>分镜顺序</DropdownMenuCheckboxItem>}
-    </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem data-testid="reset-panel-layout" onClick={onReset}><Icon name="refresh" size={14} />重置当前工作区布局</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  return <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="button quiet panels-trigger" data-testid="panels-menu" disabled={disabled} />}><Icon name="grid" size={15} /><span>{t('shell.panel.menu')}</span></DropdownMenuTrigger><DropdownMenuContent align="end" className="workspace-panels-menu"><DropdownMenuGroup><DropdownMenuLabel>{mode === 'canvas' ? t('shell.panel.canvas') : t('shell.panel.editing')}</DropdownMenuLabel>
+    <DropdownMenuCheckboxItem checked={!assetsCollapsed} data-testid="menu-panel-assets" onCheckedChange={open => onPanel('assets', open)}>{t('assets.library')}</DropdownMenuCheckboxItem>
+    <DropdownMenuCheckboxItem checked={!inspectorCollapsed} data-testid="menu-panel-inspector" onCheckedChange={open => onPanel('inspector', open)}>{t('shell.properties')}</DropdownMenuCheckboxItem>
+    {mode === 'editing' ? <DropdownMenuCheckboxItem checked={!timelineCollapsed} data-testid="menu-panel-timeline" onCheckedChange={open => onPanel('timeline', open)}>{t('shell.panel.multitrack')}</DropdownMenuCheckboxItem> : <DropdownMenuCheckboxItem checked={storyboardOpen} data-testid="menu-panel-storyboard" onCheckedChange={open => onPanel('storyboard', open)}>{t('storyboard.order')}</DropdownMenuCheckboxItem>}
+    </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem data-testid="reset-panel-layout" onClick={onReset}><Icon name="refresh" size={14} />{t('shell.panel.reset')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
 }

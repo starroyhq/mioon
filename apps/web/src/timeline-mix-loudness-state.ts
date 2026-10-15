@@ -1,3 +1,5 @@
+import { translate } from '../../../packages/i18n/src/index.ts';
+import type { Locale } from '../../../packages/i18n/src/index.ts';
 import { EXPORT_LOUDNESS_PROFILE } from '@mioon/contracts/export-loudness';
 import type { ExportLoudnessTarget } from '@mioon/contracts/export-loudness';
 import { TIMELINE_MIX_LOUDNESS_PROFILE, TIMELINE_MIX_LOUDNESS_LIMITS, isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-loudness';
@@ -29,6 +31,7 @@ export interface TimelineMixLoudnessState extends TimelineMixLoudnessContext {
   readonly phase: TimelineMixLoudnessPhase;
   readonly report: TimelineMixLoudnessResponse | null;
   readonly error: string;
+  readonly errorCode?: string;
 }
 export interface TimelineMixLoudnessReadOptions { readonly signal: AbortSignal; readonly expectedWorkspaceOrigin?: string }
 export interface TimelineMixLoudnessControllerOptions {
@@ -51,10 +54,10 @@ export function timelineMixLoudnessAvailable(context: TimelineMixLoudnessContext
     context.sourceIdentity && context.connected && context.visible && !context.restored && !context.hasUnsavedDrafts && !context.pending);
 }
 /** Both targets are required. There is deliberately no measurement-only/default-target path. */
-export function parseTimelineMixLoudnessTarget(draft: ExportLoudnessDraft): Readonly<{ target?: ExportLoudnessTarget; error: string }> {
-  if (!draft.integratedLufs.trim() || !draft.truePeakCeilingDbtp.trim()) return { error: '请明确填写目标响度和真峰值上限，再准备候选。' };
-  const parsed = parseExportLoudnessTarget(draft);
-  return parsed.target ? parsed : { error: parsed.error || '请明确填写目标响度和真峰值上限，再准备候选。' };
+export function parseTimelineMixLoudnessTarget(draft: ExportLoudnessDraft, locale: Locale = 'zh-Hans'): Readonly<{ target?: ExportLoudnessTarget; error: string }> {
+  if (!draft.integratedLufs.trim() || !draft.truePeakCeilingDbtp.trim()) return { error: translate(locale, 'audio.loudness.mix.required') };
+  const parsed = parseExportLoudnessTarget(draft, locale);
+  return parsed.target ? parsed : { error: parsed.error || translate(locale, 'audio.loudness.mix.required') };
 }
 /** Suppress a prior report during the render before its context effect runs. */
 export function timelineMixLoudnessViewState(state: TimelineMixLoudnessState, context: TimelineMixLoudnessContext): TimelineMixLoudnessState {
@@ -64,29 +67,29 @@ export function timelineMixLoudnessViewState(state: TimelineMixLoudnessState, co
     phase: state.phase === 'idle' ? 'idle' : state.phase === 'preparing' ? 'cancelled' : 'stale', report: null, error: '' });
 }
 const codeOf = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
-export function timelineMixLoudnessErrorMessage(error: unknown): string {
+export function timelineMixLoudnessErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
   const code = codeOf(error);
-  if (code === 'UNAUTHORIZED') return '会话已过期，请重新登录后明确重新准备。';
-  if (code.startsWith('RESTORE_')) return '恢复分支暂不支持当前整片浮点混音测量。';
-  if (code === 'TIMELINE_MIX_LOUDNESS_REVISION_CONFLICT' || code === 'TIMELINE_MIX_LOUDNESS_STALE') return '已保存时间线或来源已变化，结果已丢弃，请重新准备。';
-  if (code === 'TIMELINE_MIX_LOUDNESS_BUSY') return '另一个音频检查仍在运行或清理，本次未排队，请稍后明确重试。';
-  if (code === 'TIMELINE_MIX_LOUDNESS_TIMEOUT') return '整片测量超过 120 秒预算，未保留部分结果。';
-  if (['TIMELINE_MIX_LOUDNESS_SOURCE_LIMIT', 'TIMELINE_MIX_LOUDNESS_RESOURCE_LIMIT', 'TIMELINE_MIX_LOUDNESS_BUDGET'].includes(code)) return '整片测量达到来源或解码资源上限，未省略音轨或缩短范围。';
-  if (code === 'TIMELINE_MIX_LOUDNESS_UNSUPPORTED_FORMAT') return '当前时间线含暂不支持的音频格式，未省略该音轨。';
-  if (code === 'TIMELINE_MIX_LOUDNESS_SOURCE_BOUNDS') return '已保存片段超出来源音频范围，请核对来源后重新准备。';
-  if (['TIMELINE_MIX_LOUDNESS_INVALID_PCM', 'TIMELINE_MIX_LOUDNESS_SAMPLE_COUNT_MISMATCH', 'TIMELINE_MIX_LOUDNESS_DECODE_FAILED'].includes(code)) return '声音未能完整解码或样本数量不符，未获得整片测量。';
-  if (code === 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED') return '当前连接不拥有工作区，暂时不能准备整片混音。';
-  if (code === 'TIMELINE_MIX_LOUDNESS_UNAVAILABLE') return '当前已保存时间线暂时无法测量，请核对时间线和来源。';
-  if (code === 'BACKEND_PROTOCOL_ERROR') return '测量响应不完整或与当前整片时间线、目标不匹配，请重新准备。';
-  if (code === 'OPERATION_CANCELLED') return '本次整片测量已停止，需要时请明确重新准备。';
-  if (code === 'MEDIA_TERMINATION_UNCONFIRMED' || /(?:SHUTDOWN_FAILED|STOP_TIMEOUT)$/u.test(code)) return '上一音频检查尚未确认结束，请等待资源释放后明确重试。';
-  return '整片测量未完成，请确认连接后重新准备。';
+  if (code === 'UNAUTHORIZED') return translate(locale, 'audio.loudness.mix.unauthorized');
+  if (code.startsWith('RESTORE_')) return translate(locale, 'audio.loudness.mix.restored');
+  if (code === 'TIMELINE_MIX_LOUDNESS_REVISION_CONFLICT' || code === 'TIMELINE_MIX_LOUDNESS_STALE') return translate(locale, 'audio.loudness.mix.changed');
+  if (code === 'TIMELINE_MIX_LOUDNESS_BUSY') return translate(locale, 'audio.loudness.mix.busy');
+  if (code === 'TIMELINE_MIX_LOUDNESS_TIMEOUT') return translate(locale, 'audio.loudness.mix.timeout');
+  if (['TIMELINE_MIX_LOUDNESS_SOURCE_LIMIT', 'TIMELINE_MIX_LOUDNESS_RESOURCE_LIMIT', 'TIMELINE_MIX_LOUDNESS_BUDGET'].includes(code)) return translate(locale, 'audio.loudness.mix.resource');
+  if (code === 'TIMELINE_MIX_LOUDNESS_UNSUPPORTED_FORMAT') return translate(locale, 'audio.loudness.mix.format');
+  if (code === 'TIMELINE_MIX_LOUDNESS_SOURCE_BOUNDS') return translate(locale, 'audio.loudness.mix.bounds');
+  if (['TIMELINE_MIX_LOUDNESS_INVALID_PCM', 'TIMELINE_MIX_LOUDNESS_SAMPLE_COUNT_MISMATCH', 'TIMELINE_MIX_LOUDNESS_DECODE_FAILED'].includes(code)) return translate(locale, 'audio.loudness.mix.decode');
+  if (code === 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED') return translate(locale, 'audio.loudness.mix.owner');
+  if (code === 'TIMELINE_MIX_LOUDNESS_UNAVAILABLE') return translate(locale, 'audio.loudness.mix.failed');
+  if (code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'audio.loudness.mix.protocol');
+  if (code === 'OPERATION_CANCELLED') return translate(locale, 'audio.loudness.mix.stopped');
+  if (code === 'MEDIA_TERMINATION_UNCONFIRMED' || /(?:SHUTDOWN_FAILED|STOP_TIMEOUT)$/u.test(code)) return translate(locale, 'audio.loudness.mix.cleanup');
+  return translate(locale, 'audio.loudness.mix.incomplete');
 }
-export function timelineMixLoudnessStatusMessage(state: TimelineMixLoudnessState): string {
-  if (state.phase === 'preparing') return '正在完整测量原混音，并重新渲染固定增益候选…';
-  if (state.error) return state.error;
-  if (state.phase === 'cancelled') return '本次只读观察已取消，未修改时间线；需要时请明确重新准备。';
-  if (state.phase === 'stale') return '当前身份或显示范围已变化，原结果已清除，请重新准备。';
+export function timelineMixLoudnessStatusMessage(state: TimelineMixLoudnessState, locale: Locale = 'zh-Hans'): string {
+  if (state.phase === 'preparing') return translate(locale, 'audio.loudness.mix.preparing');
+  if (state.error) return timelineMixLoudnessErrorMessage({ code: state.errorCode }, locale);
+  if (state.phase === 'cancelled') return translate(locale, 'audio.loudness.mix.cancelled');
+  if (state.phase === 'stale') return translate(locale, 'audio.loudness.mix.stale');
   return '';
 }
 function freeze(value: unknown): void {
@@ -148,7 +151,7 @@ export function createTimelineMixLoudnessController(options: TimelineMixLoudness
         emit({ phase: 'ready', report, error: '' }); return report;
       } catch (error: unknown) {
         if (!current(attempt, captured, abort)) return null;
-        emit({ phase: 'error', report: null, error: timelineMixLoudnessErrorMessage(error) });
+        emit({ phase: 'error', report: null, error: timelineMixLoudnessErrorMessage(error), errorCode: codeOf(error) });
         if (codeOf(error) === 'UNAUTHORIZED') options.onUnauthorized?.();
         return null;
       } finally { if (active === abort) active = null; }

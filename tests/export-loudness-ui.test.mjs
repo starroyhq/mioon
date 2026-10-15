@@ -1,3 +1,4 @@
+import * as i18n from './helpers/i18n.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -58,7 +59,7 @@ test('ready keeps exact file/range/revision/profile/hashes inside collapsed deta
   assert.match(rendered.ready, /综合响度：-20.00 LUFS/); assert.match(rendered.ready, /真峰值估算：-4.44 dBTP/); assert.match(rendered.ready, /解码样本峰值：-6.02 dBFS/);
   assert.match(rendered.ready, /完整冻结时间线的已导出文件/); assert.match(rendered.range, /所选范围的已导出文件/); assert.doesNotMatch(rendered.range, /完整冻结时间线/);
   assert.match(rendered.ready, /<details><summary>测量文件与算法详情/); assert.match(rendered.ready, /SHA-256：a{64}/); assert.match(rendered.ready, /快照 SHA-256：d{64}/);
-  assert.match(rendered.ready, /bs1770-5-48k-stereo-fir4x-v1/); assert.match(rendered.range, /冻结范围：第 15 帧（含）至第 45 帧（不含）/); assert.match(rendered.ready, /rev 4/);
+  assert.match(rendered.ready, /bs1770-5-48k-stereo-fir4x-v1/); assert.match(rendered.range, /冻结范围：第 15 帧（含）至第 45 帧（不含）/); assert.match(rendered.ready, /修订版 4/);
   assert.match(rendered.ready, /48 kHz · 双声道/); assert.doesNotMatch(rendered.ready, /data-testid="export-loudness-captured-target"|data-testid="export-loudness-advice"/);
 });
 test('custom target shows exact needed gain and peak-room conflict, never a clamped gain or application control', () => {
@@ -87,7 +88,7 @@ test('invalid draft, cancelled, nonready, restored and disconnected states remai
 });
 test('named and unnamed frozen exports share row control, other render kinds do not; download links stay unchanged', () => {
   assert.equal((rendered.history.match(/data-testid="export-loudness-measure"/g) || []).length, 2);
-  assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /rev 4 · 旧快照/);
+  assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /修订版 4 · 旧快照/);
   const links = html => html.match(/<a\b[^>]*data-testid="download-export"[^>]*>/g);
   assert.deepEqual(links(rendered.history), links(rendered.withoutFeature));
 });
@@ -100,7 +101,7 @@ function component() {
   const tree = (type, props, ...children) => ({ type, props: { ...props, children } }), react = { createElement: tree }; react.default = react;
   const module = { exports: {} };
   Function('module','exports','require',transformSync(source('ExportLoudness.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(module,module.exports,
-    name => name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : name === '@mioon/ui/components/input' ? { Input: 'Input' } : loudnessState);
+    name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : name === '@mioon/ui/components/input' ? { Input: 'Input' } : loudnessState);
   return module.exports.default;
 }
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value && typeof value === 'object' ? [value, ...flatten(value.props?.children)] : [];

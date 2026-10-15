@@ -1,3 +1,4 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { ApiError, rpc, requestId as newRequestId } from './api.js';
 import { createImageRejectionCloseLatch } from './native-close-sources.ts';
 import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_REVIEW_LIMITS, IMAGE_EDIT_LIMITS, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
@@ -39,7 +40,7 @@ export function imageInputIssue(draft) {
   return '';
 }
 export function initialImageGenerationState() {
-  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, comfyAvailability: null, comfyAvailabilityPhase: 'idle', remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
+  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, comfyAvailability: null, comfyAvailabilityPhase: 'idle', remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', displayMessage: null, storageBlocked: false, pollPaused: false, actionTaskId: null };
 }
 export const imageDraftDirty = state => Boolean(state.draft.name || state.draft.prompt || state.target || state.mode === 'edit' || state.inputImage);
 // Metadata only: eligibility here is a chooser hint. The backend alone verifies
@@ -164,7 +165,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       const serialized = JSON.stringify(next); target.setItem(`${PREFIX}${projectId}`, serialized);
       if (target.getItem(`${PREFIX}${projectId}`) !== serialized) throw problem('LOCAL_STORAGE_UNAVAILABLE');
       emit({ pending: next }); return true;
-    } catch { emit({ storageBlocked: true, phase: 'unknown', message: '无法核验本地审批记录，本次不会继续发送。请重新打开面板后核对。' }); return false; }
+    } catch { emit({ storageBlocked: true, phase: 'unknown', message: '无法核验本地审批记录，本次不会继续发送。请重新打开面板后核对。', displayMessage: localizedMessage('image.state.reviewRecordUnverifiable') }); return false; }
   }
   function clearPending(pending) {
     // Late acknowledgements from an old project lifetime never remove a newer intent.
@@ -174,7 +175,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (saved && canonicalImageInput(saved) !== canonicalImageInput(pending)) throw problem('LOCAL_STORAGE_CHANGED');
       target?.removeItem(`${PREFIX}${projectId}`);
       if (target?.getItem(`${PREFIX}${projectId}`)) throw problem('LOCAL_STORAGE_UNAVAILABLE');
-    } catch { emit({ storageBlocked: true, phase: 'unknown', message: '原请求已确认，但无法更新本地请求记录。请重新打开面板后核对。' }); return false; }
+    } catch { emit({ storageBlocked: true, phase: 'unknown', message: '原请求已确认，但无法更新本地请求记录。请重新打开面板后核对。', displayMessage: localizedMessage('image.state.requestRecordUpdateFailed') }); return false; }
     emit({ pending: null }); return true;
   }
   try {
@@ -184,7 +185,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       state.pending = pending; state.phase = 'unknown';
       if (pending.operation === 'image.generate') { state.draft = { name: pending.input.name, prompt: pending.input.prompt }; state.providerId = pending.input.providerId; state.mode = pending.input.purpose === 'edit' ? 'edit' : 'text'; state.inputImage = pending.input.inputImage ? copy(pending.input.inputImage) : null; state.sourcePreview = pending.sourceImage ? copy(pending.sourceImage) : null; state.target = pending.input.groupId ? { groupId: pending.input.groupId, expectedRevision: pending.input.expectedRevision } : null; }
     }
-  } catch { state.storageBlocked = true; state.message = '无法读取本地请求记录。为避免重复生成，暂不能提交。'; }
+  } catch { state.storageBlocked = true; state.message = '无法读取本地请求记录。为避免重复生成，暂不能提交。'; state.displayMessage = localizedMessage('image.state.requestStorageBlocked'); }
   function mergeTask(task) {
     const previous = state.tasks.find(item => item.id === task.id);
     task = newestTask(previous, task);
@@ -210,17 +211,17 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
         if (!owned(epoch)) return;
         if (!isImageReviewResponse(review) || review.projectId !== projectId || !pendingMatchesReview(pending, review)) throw problem('INVALID_RESPONSE');
         mergeReview(review);
-        if (review.state === 'rejected' && clearPending(pending)) { emit({ phase: 'ready', message: '原请求已被拒绝，没有重新生成。' }); return; }
-        if (review.state === 'pending') { emit({ phase: 'unknown', message: '原始描述仍在等待审批。只有明确点击批准才会发送，不会自动继续。' }); return; }
+        if (review.state === 'rejected' && clearPending(pending)) { emit({ phase: 'ready', message: '原请求已被拒绝，没有重新生成。', displayMessage: localizedMessage('image.state.originalRejected') }); return; }
+        if (review.state === 'pending') { emit({ phase: 'unknown', message: '原始描述仍在等待审批。只有明确点击批准才会发送，不会自动继续。', displayMessage: localizedMessage('image.state.waitingForApproval') }); return; }
       }
-      if (pending.sourceIssue === 'IMAGE_SOURCE_INVALID') { emit({ phase: 'unknown', message: '源图核验报告问题。请核对 PNG 是否不透明、8 位、非交错、最多 8 MiB 且每边不超过 1024 像素，并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发。' }); return; }
-      emit({ phase: 'unknown', message: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? '尚未确认本地运行准备结果；没有批准运行。请重新读取，或明确放弃此未批准请求。' : '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。' }); return;
+      if (pending.sourceIssue === 'IMAGE_SOURCE_INVALID') { emit({ phase: 'unknown', message: '源图核验报告问题。请核对 PNG 是否不透明、8 位、非交错、最多 8 MiB 且每边不超过 1024 像素，并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发。', displayMessage: localizedMessage('image.state.sourceUnknownHeld') }); return; }
+      emit({ phase: 'unknown', message: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? '尚未确认本地运行准备结果；没有批准运行。请重新读取，或明确放弃此未批准请求。' : '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。', displayMessage: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? localizedMessage('image.state.comfyPreparationUnknown') : localizedMessage('image.state.paidPreparationUnknown') : localizedMessage('image.state.originalNotFoundUnknown') }); return;
     }
     const latest = safeTask(await call('image.task.get', { projectId, taskId: receipt.response.id }), projectId);
     if (!owned(epoch)) return;
     if (pending.sourceImage && canonicalImageInput(pending.sourceImage) !== canonicalImageInput(latest.sourceImage) || taskIdentity(latest) !== taskIdentity(receipt.response) || latest.revision < receipt.response.revision) throw problem('INVALID_RESPONSE');
     mergeTask(latest);
-    if (clearPending(pending)) emit({ phase: 'ready', ...(pending.operation === 'image.generate' ? { ...(!pending.preserveDraft ? clearedDraft() : {}), selectedGroupId: latest.groupId, versionCursor: null, versionTrail: [] } : {}), message: '已找到原请求，没有重新生成。' });
+    if (clearPending(pending)) emit({ phase: 'ready', ...(pending.operation === 'image.generate' ? { ...(!pending.preserveDraft ? clearedDraft() : {}), selectedGroupId: latest.groupId, versionCursor: null, versionTrail: [] } : {}), message: '已找到原请求，没有重新生成。', displayMessage: localizedMessage('image.state.originalFound') });
   }
   async function refreshComfyAvailability() {
     if (disposed || !visible) return false;
@@ -254,7 +255,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       }
       if (settingsReader) {
         try { const latest = safeImageSettings(await settingsReader()); if (!owned(epoch)) return false; emit({ settings: latest }); }
-        catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，Mock 与已保存记录仍可使用。' }); }
+        catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，Mock 与已保存记录仍可使用。', displayMessage: localizedMessage('image.state.settingsUnverifiable') }); }
       }
       if (customSettingsReader) {
         try { const latest = safeImageSettings(await customSettingsReader(), 'custom'); if (!owned(epoch)) return false; emit({ customSettings: latest }); }
@@ -317,7 +318,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       }
       if (!owned(epoch)) return false;
       for (const task of tasks.items.filter(item => item.providerId === 'comfy-local')) {
-        try { await observations.read(task.id, imageTaskReview(state, task)); } catch { if (owned(epoch)) emit({ message: '暂时无法读取此任务的本地远端身份记录。没有查询 ComfyUI 或重新提交生成。' }); }
+        try { await observations.read(task.id, imageTaskReview(state, task)); } catch { if (owned(epoch)) emit({ message: '暂时无法读取此任务的本地远端身份记录。没有查询 ComfyUI 或重新提交生成。', displayMessage: localizedMessage('image.state.remoteIdentityReadFailed') }); }
         if (!owned(epoch)) return false;
       }
       const monotonicTasks = tasks.items.map(task => newestTask(state.tasks.find(item => item.id === task.id), task));
@@ -329,29 +330,29 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       }
       return true;
     } catch {
-      if (owned(epoch)) emit({ historyPhase: 'read_error', phase: state.pending ? 'unknown' : 'read_error', message: state.pending ? '原请求的结果仍待确认。只会重新读取本地记录，不会自动重发。' : '暂时无法读取图像记录。草稿保留，可重新读取。' });
+      if (owned(epoch)) emit({ historyPhase: 'read_error', phase: state.pending ? 'unknown' : 'read_error', message: state.pending ? '原请求的结果仍待确认。只会重新读取本地记录，不会自动重发。' : '暂时无法读取图像记录。草稿保留，可重新读取。', displayMessage: state.pending ? localizedMessage('image.state.originalOutcomeUnconfirmed') : localizedMessage('image.state.recordsUnavailable') });
       return false;
     } finally { if (reading === epoch) reading = false; if (owned(epoch)) schedule(); }
   }
   async function dispatch(operation, input) {
     if (disposed || !visible || state.pending || state.storageBlocked || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId) return false;
     const pending = { version: 1, operation, input: copy(input) };
-    try { savePending(pending); } catch { emit({ message: '无法保存本地请求凭据，本次尚未发送。请恢复页面存储后再试。' }); return false; }
-    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', actionTaskId: input.taskId || null });
+    try { savePending(pending); } catch { emit({ message: '无法保存本地请求凭据，本次尚未发送。请恢复页面存储后再试。', displayMessage: localizedMessage('image.state.receiptSaveFailed') }); return false; }
+    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', displayMessage: null, actionTaskId: input.taskId || null });
     try {
       const result = await call(operation, copy(input));
       if (disposed || state.pending !== pending) return false;
       if (!isImageMutationResponse(operation, input, result)) throw problem('INVALID_RESPONSE');
       mergeTask(safeTask(result, projectId));
-      if (clearPending(pending)) emit({ phase: 'ready', ...(operation === 'image.generate' ? { ...clearedDraft(), selectedGroupId: result.groupId, groupCursor: null, groupTrail: [], versionCursor: null, versionTrail: [] } : {}), message: operation === 'image.generate' ? input.purpose === 'edit' ? '请求已保存。Mock 编辑只生成静态测试卡片，不会实际修改源图。' : '请求已保存。Mock 仅生成确定性测试图案。' : '操作已确认。' });
+      if (clearPending(pending)) emit({ phase: 'ready', ...(operation === 'image.generate' ? { ...clearedDraft(), selectedGroupId: result.groupId, groupCursor: null, groupTrail: [], versionCursor: null, versionTrail: [] } : {}), message: operation === 'image.generate' ? input.purpose === 'edit' ? '请求已保存。Mock 编辑只生成静态测试卡片，不会实际修改源图。' : '请求已保存。Mock 仅生成确定性测试图案。' : '操作已确认。', displayMessage: operation === 'image.generate' ? input.purpose === 'edit' ? localizedMessage('image.state.mockEditSaved') : localizedMessage('image.state.mockGenerationSaved') : localizedMessage('image.state.operationConfirmed') });
     } catch (error) {
       if (disposed || state.pending !== pending) return false;
       // Only an operation-bound, authoritative rejection may release the intent.
       const rejected = await notAccepted(error, operation, input);
       if (disposed || state.pending !== pending) return false;
-      if (error?.code === 'IMAGE_SOURCE_INVALID' && input.purpose === 'edit' && input.providerId === 'mock') { if (updatePending(pending, { ...pending, sourceIssue: 'IMAGE_SOURCE_INVALID' })) emit({ phase: 'unknown', message: '源图核验报告问题。原请求结果仍未知，原始标识已保留；请重新读取核对，不会重发。' }); }
-      else if (rejected && clearPending(pending)) emit({ phase: 'ready', message: rejectionMessage(error.code) });
-      else emit({ phase: 'unknown', message: '尚未确认原请求是否已接受。正在核对本地记录，不会重新生成。' });
+      if (error?.code === 'IMAGE_SOURCE_INVALID' && input.purpose === 'edit' && input.providerId === 'mock') { if (updatePending(pending, { ...pending, sourceIssue: 'IMAGE_SOURCE_INVALID' })) emit({ phase: 'unknown', message: '源图核验报告问题。原请求结果仍未知，原始标识已保留；请重新读取核对，不会重发。', displayMessage: localizedMessage('image.state.sourceIssueUnknown') }); }
+      else if (rejected && clearPending(pending)) emit({ phase: 'ready', message: rejectionMessage(error.code), displayMessage: rejectionDescriptor(error.code) });
+      else emit({ phase: 'unknown', message: '尚未确认原请求是否已接受。正在核对本地记录，不会重新生成。', displayMessage: localizedMessage('image.state.acceptanceUnconfirmed') });
     } finally {
       if (!disposed) { emit({ actionTaskId: null }); if (visible) await load(); }
     }
@@ -371,27 +372,27 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     if (disposed || !visible || state.pending !== pending || !reviewUsable(review) || !pendingMatchesReview(pending, review)) return false;
     const next = { ...pending, reviewId: review.id, approvalAttempted: true, ...(review.sourceImage ? { sourceImage: copy(review.sourceImage) } : {}) };
     if (!updatePending(pending, next)) return false;
-    emit({ phase: 'submitting', reviewActionId: review.id, message: '' });
+    emit({ phase: 'submitting', reviewActionId: review.id, message: '', displayMessage: null });
     try {
       const result = await reviewClient.approve(copy(review));
       if (disposed || state.pending !== next) return false;
       if (!isImageMutationResponse('image.generate', next.input, result) || canonicalImageInput(result.sourceImage) !== canonicalImageInput(review.sourceImage)) throw problem('INVALID_RESPONSE');
       mergeTask(safeTask(result, projectId));
-      if (clearPending(next)) emit({ phase: 'ready', ...(!next.preserveDraft ? clearedDraft() : {}), selectedGroupId: result.groupId, groupCursor: null, groupTrail: [], versionCursor: null, versionTrail: [], message: review.input.providerId === 'comfy-local' ? '本地运行请求已保存。最多提交一次；关闭面板不会取消远端 GPU 工作。' : '付费请求已保存。最多发送一次，不会自动重试。' });
+      if (clearPending(next)) emit({ phase: 'ready', ...(!next.preserveDraft ? clearedDraft() : {}), selectedGroupId: result.groupId, groupCursor: null, groupTrail: [], versionCursor: null, versionTrail: [], message: review.input.providerId === 'comfy-local' ? '本地运行请求已保存。最多提交一次；关闭面板不会取消远端 GPU 工作。' : '付费请求已保存。最多发送一次，不会自动重试。', displayMessage: review.input.providerId === 'comfy-local' ? localizedMessage('image.state.comfyRunSaved') : localizedMessage('image.state.paidRequestSaved') });
     } catch (error) {
-      if (!disposed && state.pending === next) emit({ phase: 'unknown', message: review.input.purpose === 'edit' && error?.code === 'IMAGE_SOURCE_INVALID' ? '源图无法通过当前后端核验。此审批不能继续发送；请重新读取原请求，并明确拒绝仍待批准的审批后再选择源图。不会自动重试。' : review.input.providerId === 'comfy-local' ? '尚未确认本地运行审批结果。只读取原请求，不会自动重新批准、提交或查询远端。' : '尚未确认付费审批结果。只会读取原请求，不会自动重新批准或生成。' });
+      if (!disposed && state.pending === next) emit({ phase: 'unknown', message: review.input.purpose === 'edit' && error?.code === 'IMAGE_SOURCE_INVALID' ? '源图无法通过当前后端核验。此审批不能继续发送；请重新读取原请求，并明确拒绝仍待批准的审批后再选择源图。不会自动重试。' : review.input.providerId === 'comfy-local' ? '尚未确认本地运行审批结果。只读取原请求，不会自动重新批准、提交或查询远端。' : '尚未确认付费审批结果。只会读取原请求，不会自动重新批准或生成。', displayMessage: review.input.purpose === 'edit' && error?.code === 'IMAGE_SOURCE_INVALID' ? localizedMessage('image.state.editApprovalSourceInvalid') : review.input.providerId === 'comfy-local' ? localizedMessage('image.state.comfyApprovalUnknown') : localizedMessage('image.state.paidApprovalUnknown') });
     } finally { if (!disposed) { emit({ reviewActionId: null }); if (visible) await load(); } }
     return !state.pending;
   }
   async function generatePaid(authorization) {
     if (disposed || !visible || !paidProvider(state.providerId) || !imageCanGenerate(state)) return false;
-    if (authorization !== undefined && canonicalImageInput(authorization) !== canonicalImageInput(imagePaidAuthorization(state))) { emit({ message: '描述或连接配置已变化。请核对当前完整地址、模型与配置版本后重新点击付费生成。' }); return false; }
+    if (authorization !== undefined && canonicalImageInput(authorization) !== canonicalImageInput(imagePaidAuthorization(state))) { emit({ message: '描述或连接配置已变化。请核对当前完整地址、模型与配置版本后重新点击付费生成。', displayMessage: localizedMessage('image.state.paidAuthorizationChanged') }); return false; }
     const selected = imageSelectedSettings(state), custom = state.providerId === 'openai-compatible';
     const input = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: state.providerId, model: selected.configuration.model, options: { ...IMAGE_FIXED_OPTIONS }, requestId: requestId(), ...editInput(state), ...(state.target || {}) };
     if (!imageSchemas['image.generate'].safeParse(input).success) return false;
     const pending = { version: custom ? 2 : 1, operation: 'image.generate', input, settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, ...(custom ? { configuration: copy(selected.configuration), destination: getCustomImageDestination(selected.configuration.baseUrl) } : {}) }, interaction = interactionEpoch;
-    try { savePending(pending); } catch { emit({ message: '无法保存原始付费请求，本次尚未发送。' }); return false; }
-    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '' });
+    try { savePending(pending); } catch { emit({ message: '无法保存原始付费请求，本次尚未发送。', displayMessage: localizedMessage('image.state.paidRequestSaveFailed') }); return false; }
+    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', displayMessage: null });
     const prepareInput = { input: copy(input), settingsRevision: pending.settingsRevision };
     try {
       const review = await call('image.review.prepare', prepareInput);
@@ -400,12 +401,12 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       mergeReview(review);
       const next = { ...pending, reviewId: review.id, ...(review.sourceImage ? { sourceImage: copy(review.sourceImage) } : {}) };
       if (!updatePending(pending, next)) return false;
-      if (!visible || interactionEpoch !== interaction || !reviewUsable(review)) { emit({ phase: 'unknown', message: '审批内容已保存。页面或配置已变化，请回到原请求并重新明确批准；不会自动发送。' }); return false; }
-      if (input.purpose === 'edit') { emit({ phase: 'unknown', message: '源图已通过后端核验，编辑请求已准备。请核对下方固定源图、完整描述和发送目标，再单独批准；目前未发送。' }); return true; }
+      if (!visible || interactionEpoch !== interaction || !reviewUsable(review)) { emit({ phase: 'unknown', message: '审批内容已保存。页面或配置已变化，请回到原请求并重新明确批准；不会自动发送。', displayMessage: localizedMessage('image.state.preparedScopeChanged') }); return false; }
+      if (input.purpose === 'edit') { emit({ phase: 'unknown', message: '源图已通过后端核验，编辑请求已准备。请核对下方固定源图、完整描述和发送目标，再单独批准；目前未发送。', displayMessage: localizedMessage('image.state.editPrepared') }); return true; }
       return await approveSaved(review, next);
     } catch (error) {
       if (disposed || state.pending !== pending) return false;
-      emit({ phase: 'unknown', message: input.purpose === 'edit' && error?.code === 'IMAGE_SOURCE_INVALID' ? '源图未通过后端核验。原始准备请求仍保留，尚未批准或发送。请重新读取；没有已保存审批时，可明确放弃此未批准请求后重新选择源图。' : '审批准备结果待核对。尚未发起付费审批，不会自动重试。' });
+      emit({ phase: 'unknown', message: input.purpose === 'edit' && error?.code === 'IMAGE_SOURCE_INVALID' ? '源图未通过后端核验。原始准备请求仍保留，尚未批准或发送。请重新读取；没有已保存审批时，可明确放弃此未批准请求后重新选择源图。' : '审批准备结果待核对。尚未发起付费审批，不会自动重试。', displayMessage: input.purpose === 'edit' && error?.code === 'IMAGE_SOURCE_INVALID' ? localizedMessage('image.state.preparationSourceInvalid') : localizedMessage('image.state.paidPreparationPending') });
       return false;
     }
     finally { if (!disposed && state.phase === 'submitting') emit({ phase: 'unknown' }); if (!disposed && visible && !state.reviewActionId) await load(); }
@@ -416,8 +417,8 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     const input = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'comfy-local', model: selected.configuration.model, options: { ...COMFY_IMAGE_OPTIONS }, requestId: requestId(), ...editInput(state), ...(state.target || {}) };
     if (!imageSchemas['image.generate'].safeParse(input).success) return false;
     const pending = { version: 3, operation: 'image.generate', input, settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, configuration: copy(selected.configuration), destination: getComfyImageDestination(selected.configuration.baseUrl), execution: null };
-    try { savePending(pending); } catch { emit({ message: '无法保存本地运行请求凭据，没有准备或发送生成。' }); return false; }
-    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '' });
+    try { savePending(pending); } catch { emit({ message: '无法保存本地运行请求凭据，没有准备或发送生成。', displayMessage: localizedMessage('image.state.comfyReceiptSaveFailed') }); return false; }
+    stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', displayMessage: null });
     try {
       const prepareInput = { input: copy(input), settingsRevision: pending.settingsRevision };
       const review = await call('image.review.prepare', prepareInput);
@@ -425,15 +426,15 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (!isImageReviewPreparationResponse(prepareInput, review) || !pendingMatchesReview(pending, review) || review.state !== 'pending') throw problem('INVALID_RESPONSE');
       mergeReview(review);
       if (!updatePending(pending, { ...pending, reviewId: review.id, execution: copy(review.execution) })) return false;
-      emit({ phase: 'unknown', message: '本地运行请求已准备。请核对下方实际地址、种子和完整冻结工作流，再单独批准；目前未发送生成。' }); return true;
-    } catch { if (!disposed) emit({ phase: 'unknown', message: '准备结果待核对。尚未批准运行，不会自动重试。请重新读取已保存审批。' }); return false; }
+      emit({ phase: 'unknown', message: '本地运行请求已准备。请核对下方实际地址、种子和完整冻结工作流，再单独批准；目前未发送生成。', displayMessage: localizedMessage('image.state.comfyPrepared') }); return true;
+    } catch { if (!disposed) emit({ phase: 'unknown', message: '准备结果待核对。尚未批准运行，不会自动重试。请重新读取已保存审批。', displayMessage: localizedMessage('image.state.comfyPreparationPending') }); return false; }
     finally { if (!disposed && state.phase === 'submitting') emit({ phase: 'unknown' }); if (!disposed && visible) await load(); }
   }
   async function chooseTarget(groupId) {
     if (disposed || !visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || reading || state.phase === 'targeting') return false;
     const group = groupId ? state.groups.find(item => item.id === groupId) : null;
     if (groupId && (!group || group.activeTaskId)) return false;
-    if (!groupId) { interactionEpoch++; emit({ ...clearedDraft(), targetRequest: null, message: '' }); return true; }
+    if (!groupId) { interactionEpoch++; emit({ ...clearedDraft(), targetRequest: null, message: '', displayMessage: null }); return true; }
     const epoch = ++selectionEpoch; let reloadHistory = false;
     emit({ phase: 'targeting', targetRequest: null }); stopTimer();
     try {
@@ -445,9 +446,9 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       if (task && task.groupId !== groupId) throw problem('INVALID_RESPONSE');
       reloadHistory = state.selectedGroupId !== groupId || state.versionCursor !== null;
       interactionEpoch++;
-      emit({ mode: 'text', inputImage: null, sourcePreview: null, draft: { name: group.name, prompt: task?.prompt || '' }, target: { groupId, expectedRevision: group.revision }, selectedGroupId: groupId, versionCursor: null, versionTrail: [], message: '已载入历史描述。这是按描述重新生成，不会读取旧图；点击生成才会创建此组的新版本。' });
+      emit({ mode: 'text', inputImage: null, sourcePreview: null, draft: { name: group.name, prompt: task?.prompt || '' }, target: { groupId, expectedRevision: group.revision }, selectedGroupId: groupId, versionCursor: null, versionTrail: [], message: '已载入历史描述。这是按描述重新生成，不会读取旧图；点击生成才会创建此组的新版本。', displayMessage: localizedMessage('image.state.historicalPromptLoaded') });
       return true;
-    } catch { if (!disposed && selectionEpoch === epoch) emit({ message: '无法读取此组的原始描述，未改变草稿。' }); return false; }
+    } catch { if (!disposed && selectionEpoch === epoch) emit({ message: '无法读取此组的原始描述，未改变草稿。', displayMessage: localizedMessage('image.state.historicalPromptUnavailable') }); return false; }
     finally { if (!disposed && selectionEpoch === epoch) { emit({ phase: state.pending ? 'unknown' : 'ready' }); if (reloadHistory && visible) await load(); else schedule(); } }
   }
   const composerEditable = () => !disposed && visible && !state.pending && !state.remotePending && !state.remoteActionTaskId && !state.actionTaskId && !state.reviewActionId && state.phase !== 'targeting';
@@ -456,7 +457,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     const review = state.reviews.find(item => item.id === reviewId && item.state === 'pending' && item.projectId === projectId && item.input.purpose === 'edit');
     if (!review) return false;
     interactionEpoch++;
-    emit({ mode: 'edit', providerId: review.input.providerId, draft: { name: review.input.name, prompt: review.input.prompt }, inputImage: copy(review.input.inputImage), sourcePreview: copy(review.sourceImage), target: review.input.groupId ? { groupId: review.input.groupId, expectedRevision: review.input.expectedRevision } : null, targetRequest: null, ...(review.input.groupId ? { selectedGroupId: review.input.groupId } : {}), message: '已载入这份固定编辑请求。请核对源图、描述与发送目标，再单独批准。' }); if (review.input.groupId) void load(); return true;
+    emit({ mode: 'edit', providerId: review.input.providerId, draft: { name: review.input.name, prompt: review.input.prompt }, inputImage: copy(review.input.inputImage), sourcePreview: copy(review.sourceImage), target: review.input.groupId ? { groupId: review.input.groupId, expectedRevision: review.input.expectedRevision } : null, targetRequest: null, ...(review.input.groupId ? { selectedGroupId: review.input.groupId } : {}), message: '已载入这份固定编辑请求。请核对源图、描述与发送目标，再单独批准。', displayMessage: localizedMessage('image.state.fixedEditLoaded') }); if (review.input.groupId) void load(); return true;
   }
   return {
     getState: () => copy(state), getNativeCloseState: rejectionClose.getState, load, generatePaid, prepareComfy,
@@ -464,12 +465,12 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     setCustomSettings(value) { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom'); if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
     setComfyAvailability(value) { if (disposed) return false; availabilityEpoch++; let comfyAvailability = null; try { comfyAvailability = safeComfyConnectorAvailability(value); } catch {} emit({ comfyAvailability, comfyAvailabilityPhase: comfyAvailability ? 'ready' : 'error' }); return Boolean(comfyAvailability); },
     setComfySettings(value) { if (disposed) return false; const comfySettings = safeComfyImageSettings(value); if (canonicalImageInput(state.comfySettings) !== canonicalImageInput(comfySettings)) interactionEpoch++; emit({ comfySettings }); return true; },
-    selectMode(mode) { if (!composerEditable() || !['text', 'edit'].includes(mode)) return false; interactionEpoch++; emit({ mode, targetRequest: null, message: '' }); return true; },
+    selectMode(mode) { if (!composerEditable() || !['text', 'edit'].includes(mode)) return false; interactionEpoch++; emit({ mode, targetRequest: null, message: '', displayMessage: null }); return true; },
     selectSource(asset) {
       if (!composerEditable() || state.mode !== 'edit') return false;
       if (asset && imageEditSourceIssue(asset, projectId)) return false;
       interactionEpoch++;
-      emit({ inputImage: asset ? { assetId: asset.id, sha256: asset.sha256 } : null, sourcePreview: asset ? { assetId: asset.id, sha256: asset.sha256, name: asset.name, mimeType: asset.mimeType, width: asset.width, height: asset.height, byteLength: asset.sizeBytes } : null, targetRequest: null, message: '' }); return true;
+      emit({ inputImage: asset ? { assetId: asset.id, sha256: asset.sha256 } : null, sourcePreview: asset ? { assetId: asset.id, sha256: asset.sha256, name: asset.name, mimeType: asset.mimeType, width: asset.width, height: asset.height, byteLength: asset.sizeBytes } : null, targetRequest: null, message: '', displayMessage: null }); return true;
     },
     requestEditReview(review) { if (!composerEditable() || !state.reviews.some(item => item.id === review?.id && canonicalImageInput(item) === canonicalImageInput(review))) return false; if (imageDraftDirty(state)) { emit({ targetRequest: { reviewId: review.id } }); return false; } return chooseEditReview(review.id); },
     selectProvider(providerId) { if (disposed || !visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || !['mock', 'openai', 'openai-compatible', 'comfy-local'].includes(providerId)) return false; interactionEpoch++; emit({ providerId }); return true; },
@@ -479,7 +480,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
       let pending = state.pending;
       if (!pending) {
         pending = { version: review.input.providerId === 'comfy-local' ? 3 : review.input.providerId === 'openai-compatible' ? 2 : 1, operation: 'image.generate', input: copy(review.input), settingsRevision: review.settingsRevision, reviewId: review.id, approvalAttempted: false, preserveDraft: review.input.purpose !== 'edit', ...(review.sourceImage ? { sourceImage: copy(review.sourceImage) } : {}), ...(['openai-compatible', 'comfy-local'].includes(review.input.providerId) ? { configuration: copy(review.configuration), destination: review.destination } : {}), ...(review.input.providerId === 'comfy-local' ? { execution: copy(review.execution) } : {}) };
-        try { savePending(pending); } catch { emit({ message: '无法保存原始审批请求，本次未发送。' }); return false; }
+        try { savePending(pending); } catch { emit({ message: '无法保存原始审批请求，本次未发送。', displayMessage: localizedMessage('image.state.approvalRequestSaveFailed') }); return false; }
         emit({ pending });
       }
       stopTimer(); readEpoch++; reading = false;
@@ -495,14 +496,14 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
         if (!isImageReviewResponse(result) || result.id !== review.id || reviewIdentity(result) !== reviewIdentity(review) || result.state !== 'rejected') throw problem('INVALID_RESPONSE');
         mergeReview(result);
         if (state.pending?.reviewId === result.id) clearPending(state.pending);
-        emit({ phase: state.pending ? 'unknown' : 'ready', message: '已拒绝此原始请求，不会生成图像。' }); return true;
-      } catch { if (!disposed) emit({ message: '拒绝结果待确认。只会重新读取，不会自动重试。' }); return false; }
+        emit({ phase: state.pending ? 'unknown' : 'ready', message: '已拒绝此原始请求，不会生成图像。', displayMessage: localizedMessage('image.state.requestRejected') }); return true;
+      } catch { if (!disposed) emit({ message: '拒绝结果待确认。只会重新读取，不会自动重试。', displayMessage: localizedMessage('image.state.rejectionUnknown') }); return false; }
       finally { if (!disposed) { emit({ reviewActionId: null }); if (visible) await load(); } }
     },
     abandonUnapproved() {
       const pending = state.pending;
       if (disposed || !visible || state.phase === 'submitting' || state.reviewActionId || !pending || !reviewedProvider(pending.input.providerId) || pending.approvalAttempted || pending.reviewId) return false;
-      if (clearPending(pending)) { emit({ phase: 'ready', message: '已放弃本页尚未批准的请求。若准备记录随后出现，仍需明确批准或拒绝。' }); return true; } return false;
+      if (clearPending(pending)) { emit({ phase: 'ready', message: '已放弃本页尚未批准的请求。若准备记录随后出现，仍需明确批准或拒绝。', displayMessage: localizedMessage('image.state.unapprovedAbandoned') }); return true; } return false;
     },
     edit(field, value) { if (!disposed && visible && !state.pending && !state.remotePending && !state.remoteActionTaskId && !state.actionTaskId && !state.reviewActionId && state.phase !== 'targeting' && ['name', 'prompt'].includes(field) && !(field === 'name' && state.target)) { interactionEpoch++; emit({ draft: { ...state.draft, [field]: value }, targetRequest: null }); return true; } return false; },
     async generate() {
@@ -534,4 +535,46 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     setVisible(value) { if (disposed) return; const changed = visible !== Boolean(value); visible = Boolean(value); observations.setVisible(visible); if (changed) interactionEpoch++; if (!visible) { stopTimer(); selectionEpoch++; if (state.phase === 'targeting') emit({ phase: 'ready' }); } else if (changed) { polls = 0; void load(); } },
     dispose() { rejectionClose.dispose(); observations.dispose(); disposed = true; availabilityEpoch++; readEpoch++; selectionEpoch++; interactionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
   };
+}
+
+// Display-only companions keep legacy diagnostics and business identities unchanged.
+export const imageTaskLabelDescriptor = state => ({ __proto__: null, queued: localizedMessage('image.state.queued'), dispatching: localizedMessage('image.state.dispatching'), receiving: localizedMessage('image.state.receiving'), persisting: localizedMessage('image.state.saving'), succeeded: localizedMessage('image.state.succeeded'), cancelled_before_dispatch: localizedMessage('image.state.cancelledBeforeDispatch'), interrupted_before_dispatch: localizedMessage('image.state.interruptedBeforeDispatch'), failed: localizedMessage('image.state.failed'), outcome_unknown: localizedMessage('image.state.outcomeUnknown'), local_result_error: localizedMessage('image.state.localResultError') }[state] || localizedMessage('image.state.statusUnconfirmed'));
+
+export const imageTaskMessageDescriptor = state => ({ __proto__: null, interrupted_before_dispatch: localizedMessage('image.state.interruptedDisclosure'), outcome_unknown: localizedMessage('image.state.unknownDisclosure'), local_result_error: localizedMessage('image.state.localRecoveryDisclosure'), cancelled_before_dispatch: localizedMessage('image.state.cancellationConfirmed'), failed: localizedMessage('image.state.requestEnded') }[state] || null);
+
+const customPreDispatchDescriptors = Object.freeze({
+  IMAGE_NETWORK_DENIED: localizedMessage('image.state.customNetworkDenied'),
+  IMAGE_CONNECTION_FAILED: localizedMessage('image.state.customConnectionFailed'),
+  IMAGE_TIMEOUT: localizedMessage('image.state.customTimeout'),
+  IMAGE_DISPATCH_BLOCKED: localizedMessage('image.state.customDispatchBlocked'),
+  IMAGE_SETTINGS_CONFLICT: localizedMessage('image.state.customSettingsConflict'),
+  IMAGE_SETTINGS_NOT_CONFIGURED: localizedMessage('image.state.customUnconfigured'),
+  IMAGE_SETTINGS_DISABLED: localizedMessage('image.state.customDisabled'),
+});
+
+const rejectionDescriptor = code => ({ __proto__: null, IMAGE_SOURCE_INVALID: localizedMessage('image.state.sourceRejected'), IMAGE_LIVE_DISABLED: localizedMessage('image.state.liveDisabled'), IMAGE_GROUP_BUSY: localizedMessage('image.state.groupBusy'), IMAGE_REVISION_CONFLICT: localizedMessage('image.state.revisionConflict'), IMAGE_QUEUE_FULL: localizedMessage('image.state.queueFull'), IMAGE_CAPACITY: localizedMessage('image.state.capacityReached'), IMAGE_STATE_CONFLICT: localizedMessage('image.state.stateConflict'), IMAGE_RESULT_INVALID: localizedMessage('image.state.invalidLocalResult') }[code] || localizedMessage('image.state.notAcceptedFallback'));
+
+export function imageInputIssueDescriptor(draft) {
+  if (!draft.name.trim()) return localizedMessage('image.state.nameRequired');
+  if (draft.name.length > 120) return localizedMessage('image.state.nameLimit');
+  if (!draft.prompt.trim()) return localizedMessage('image.state.promptRequired');
+  if (draft.prompt.length > IMAGE_LIMITS.promptCharacters || new TextEncoder().encode(draft.prompt).length > IMAGE_LIMITS.promptBytes) return localizedMessage('image.state.promptLimit', { promptCharacters: IMAGE_LIMITS.promptCharacters });
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(draft.prompt)) return localizedMessage('image.state.promptControlCharacters');
+  return null;
+}
+
+export function imageEditSourceIssueDescriptor(asset, projectId) {
+  if (!asset || asset.projectId !== projectId || !imageEditInputImageSchema.safeParse({ assetId: asset.id, sha256: asset.sha256 }).success) return localizedMessage('image.state.invalidAssetIdentity');
+  if (asset.mimeType !== 'image/png') return localizedMessage('image.state.pngOnly');
+  if (!['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(asset.provenance)) return localizedMessage('image.state.unsupportedSourceOrigin');
+  if (!Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 || asset.sizeBytes > IMAGE_EDIT_LIMITS.sourceBytes) return localizedMessage('image.state.sourceByteLimit');
+  if (![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return localizedMessage('image.state.sourceDimensions');
+  return null;
+}
+
+export const imageEditDraftIssueDescriptor = state => state.mode !== 'edit' ? null : !['mock', 'openai'].includes(state.providerId) ? localizedMessage('image.state.editProvidersOnly') : !imageEditInputImageSchema.safeParse(state.inputImage).success ? localizedMessage('image.state.sourceRequired') : null;
+
+export function imageTaskConnectionDescriptors(task) {
+  if (task?.providerId !== 'openai-compatible' || task.state !== 'failed' || task.dispatched !== false || !Object.hasOwn(customPreDispatchDescriptors, task.errorCode)) return [];
+  return [customPreDispatchDescriptors[task.errorCode], localizedMessage('image.state.customNotDispatched', { value: '' })];
 }

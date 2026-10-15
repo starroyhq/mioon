@@ -1,3 +1,6 @@
+import { agentChatErrorDescriptor, agentChatPromptIssueDescriptor } from './agent-chat.js';
+import { useI18n } from './i18n/I18nProvider.tsx';
+import { creationParameter, agentTimelineFrameDisplay } from './creation-i18n.ts';
 import { useNativeSettingsActivity } from './editor-settings-scope.ts';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
@@ -18,23 +21,24 @@ import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 import { AGENT_PROTOCOLS, deriveAgentEndpoint, AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainAvailable, agentTimelineAvailable, agentChatCurrentTarget, agentEditAvailable, agentInspectionAvailable, AGENT_CHAT_PROMPT_BYTES, activeAgentChatRun, agentChatCanSend, agentChatConsentKey, agentChatErrorText,
   agentChatPromptIssue, createAgentChatSession, initialAgentChatState } from './agent-chat.js';
 
-const runLabel = status => ({ running: '正在回复', completed: '回复结束', stopped: '已停止 · 保留部分文字', failed: '回复失败', interrupted: '回复中断' }[status] || '状态未知');
-const phaseLabel = phase => ({ loading: '正在读取对话', submitting: '正在确认发送', streaming: '正在接收运行进度', stopping: '正在请求停止', detached: '显示连接已断开', unknown: '运行状态待确认', load_error: '读取失败', ready: '等待你的消息' }[phase] || '状态待确认');
+const runLabel = (status, t) => ({ running: t('agent.chat.replyRunning'), completed: t('agent.chat.replyComplete'), stopped: t('agent.chat.replyStopped'), failed: t('agent.chat.replyFailed'), interrupted: t('agent.chat.replyInterrupted') }[status] || t('agent.chat.statusUnknown'));
+const phaseLabel = (phase, t) => ({ loading: t('agent.chat.loadingConversation'), submitting: t('agent.chat.confirmingSend'), streaming: t('agent.chat.receivingProgress'), stopping: t('agent.chat.requestingStop'), detached: t('agent.chat.displayDisconnected'), unknown: t('agent.chat.runUnconfirmed'), load_error: t('agent.chat.loadFailed'), ready: t('agent.chat.waitingForMessage') }[phase] || t('agent.chat.statusUnconfirmed'));
 
-function renderRun(run, kind = 'recent', visible = true) {
+function renderRun(run, kind, visible, t, renderMessage) {
   return <article className="agent-chat-turn" key={`${kind}-${run.id}`} data-run-id={run.id} data-history-kind={kind} data-status={run.status}>
-          <div className="agent-chat-message is-user"><div className="agent-chat-speaker">你</div><p>{run.userText}</p></div>
-          <div className="agent-chat-message is-assistant"><div className="agent-chat-speaker"><Icon name="sparkle" size={12} />Agent<span>{runLabel(run.status)}</span></div>
+          <div className="agent-chat-message is-user"><div className="agent-chat-speaker">{t('agent.chat.you')}</div><p>{run.userText}</p></div>
+          <div className="agent-chat-message is-assistant"><div className="agent-chat-speaker"><Icon name="sparkle" size={12} />Agent<span>{runLabel(run.status, t)}</span></div>
             <AgentRunActivity run={run} visible={visible} />
-            <p data-testid={kind === 'recent' ? 'agent-chat-response' : 'agent-chat-history-response'}>{run.assistantText || (run.status === 'running' ? '等待第一段文字…' : '没有收到回复文字。')}</p>
-            {run.status === 'interrupted' && <div className="agent-chat-run-error" role="status" data-testid="agent-chat-interrupted">已保存的回复中断，不会自动续接或重新发送；远端仍可能已计算或计费。</div>}
-            {run.error && <div className="agent-chat-run-error" role="status">{agentChatErrorText(run.error.code)}</div>}
+            <p data-testid={kind === 'recent' ? 'agent-chat-response' : 'agent-chat-history-response'}>{run.assistantText || (run.status === 'running' ? t('agent.chat.awaitingFirstText') : t('agent.chat.noReplyText'))}</p>
+            {run.status === 'interrupted' && <div className="agent-chat-run-error" role="status" data-testid="agent-chat-interrupted">{t('agent.chat.interruptedDisclosure')}</div>}
+            {run.error && <div className="agent-chat-run-error" role="status">{renderMessage(agentChatErrorDescriptor(run.error.code))}</div>}
             <div className="agent-chat-run-model" data-testid="agent-chat-run-destination">{AGENT_PROTOCOLS[run.configuration.protocol].label} · {run.configuration.model} · {deriveAgentEndpoint(run.configuration)}</div>
           </div>
         </article>;
 }
 
-export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', selectedTimelineGainClip = null, timelineGainBlockedReason = '', onApplied, onClose, onSettings, onDraftChange = () => {} }) {
+export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, projectId, projectName, selectedShot = null, selectedTimelineClip = null, timelineEditBlockedReason = '', timelineEditBlockedDescriptor = null, selectedTimelineGainClip = null, timelineGainBlockedReason = '', timelineGainBlockedDescriptor = null, onApplied, onClose, onSettings, onDraftChange = () => {} }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [state, setState] = useState(initialAgentChatState);
   const [disclosure, setDisclosure] = useState({ key: null, expanded: true, reviewed: false });
   const disclosureIdentity = useRef(null);
@@ -101,7 +105,7 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
   const blockedRunIds = snapshot?.runs.filter(run => run.status !== 'completed').map(run => run.id) || [];
   const ready = visible && phase === 'ready', canSend = visible && agentChatCanSend(state);
   const promptBytes = new TextEncoder().encode(state.draft).length;
-  const promptIssue = state.draft ? agentChatPromptIssue(state.draft) : '';
+  const promptIssue = state.draft ? renderMessage(agentChatPromptIssueDescriptor(state.draft)) : '';
   const lastRun = snapshot?.runs.at(-1);
   useLayoutEffect(() => {
     if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
@@ -115,125 +119,125 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
       setDisclosure({ key, expanded: false, reviewed: true });
   }
   function submit(event) { event.preventDefault(); void send(); }
-  return <section className="agent-chat-page" data-testid="agent-chat-page" data-project-id={projectId} data-phase={phase} aria-label="Agent 文字对话" hidden={!visible} inert={!visible}>
+  return <section className="agent-chat-page" data-testid="agent-chat-page" data-project-id={projectId} data-phase={phase} aria-label={t('agent.chat.conversationAria')} hidden={!visible} inert={!visible}>
       <header className="modal-header agent-chat-header">
         <div className="agent-chat-heading"><span className="agent-chat-symbol"><Icon name="sparkle" size={21} /></span><div>
-          <div className="agent-chat-eyebrow">AGENT · CONVERSATION</div><h2>聊聊你的创作想法</h2>
-          <p>{gaining ? '新消息范围：选中片段音量提议' : moving ? '新消息范围：选中片段移动提议' : editing ? '新消息范围：选中镜头修改提议' : inspecting ? '新消息范围：当前项目只读检查' : '新消息范围：仅文字聊天'}</p>
+          <div className="agent-chat-eyebrow">{t('agent.chat.conversationEyebrow')}</div><h2>{t('agent.chat.conversationHeading')}</h2>
+          <p>{gaining ? t('agent.chat.gainScope') : moving ? t('agent.chat.moveScope') : editing ? t('agent.chat.shotScope') : inspecting ? t('agent.chat.inspectionScope') : t('agent.chat.chatScope')}</p>
         </div></div>
-        <div className="agent-chat-header-actions"><WorkbenchTooltip content="连接设置（保留聊天草稿）"><Button type="button" variant="ghost" className="icon-button" aria-label="Agent 连接设置" data-testid="agent-chat-settings" disabled={!visible} onClick={() => dismiss(true)}><Icon name="settings" size={17} /></Button></WorkbenchTooltip><Button type="button" variant="ghost" className="icon-button" aria-label="收起 Agent 面板" data-testid="agent-chat-close" disabled={!visible} onClick={() => dismiss(false)}><Icon name="close" /></Button></div>
+        <div className="agent-chat-header-actions"><WorkbenchTooltip content={t('agent.chat.settingsKeepDraft')}><Button type="button" variant="ghost" className="icon-button" aria-label={t('agent.chat.connectionSettings')} data-testid="agent-chat-settings" disabled={!visible} onClick={() => dismiss(true)}><Icon name="settings" size={17} /></Button></WorkbenchTooltip><Button type="button" variant="ghost" className="icon-button" aria-label={t('agent.chat.collapsePanel')} data-testid="agent-chat-close" disabled={!visible} onClick={() => dismiss(false)}><Icon name="close" /></Button></div>
       </header>
-      <div className="agent-chat-project"><Icon name="folder" size={13} /><strong>{projectName || '当前项目'}</strong><span className="agent-chat-project-id" title={projectId}>{projectId}</span><span className="agent-chat-local-label">{inspecting || editing || moving || gaining ? '本次选择的项目范围' : '仅文字聊天不会发送此标签'}</span></div>
+      <div className="agent-chat-project"><Icon name="folder" size={13} /><strong>{projectName || t('agent.chat.currentProject')}</strong><span className="agent-chat-project-id" title={projectId}>{projectId}</span><span className="agent-chat-local-label">{inspecting || editing || moving || gaining ? t('agent.chat.selectedProjectScope') : t('agent.chat.chatDoesNotSendLabel')}</span></div>
       <Collapsible className="agent-chat-session-note agent-chat-persistence-note" data-testid="agent-chat-persistence">
-        <div className="agent-chat-storage-summary"><Icon name="info" size={13} /><p>记录保存在本地应用数据库，并非密钥保险库加密。请勿输入密钥或其他秘密。</p>{snapshot?.mode === 'simulated' && <Badge className="small-badge neutral" data-testid="agent-chat-simulated">模拟测试 · 无真实模型调用</Badge>}</div>
-        <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible} data-testid="agent-chat-details-toggle">存储与运行说明</CollapsibleTrigger>
+        <div className="agent-chat-storage-summary"><Icon name="info" size={13} /><p>{t('agent.chat.localStorageDisclosure')}</p>{snapshot?.mode === 'simulated' && <Badge className="small-badge neutral" data-testid="agent-chat-simulated">{t('agent.chat.simulatedRun')}</Badge>}</div>
+        <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible} data-testid="agent-chat-details-toggle">{t('agent.chat.storageAndExecution')}</CollapsibleTrigger>
         <CollapsibleContent className="agent-chat-details" data-testid="agent-chat-details">
-          <p>已发送文字、回复及读取结果会保存在本地。切换页签、收起面板或重新读取保留草稿；刷新页面或退出应用会丢失未发送草稿。切换项目前会确认放弃草稿。</p>
-          <p>从最近 16 轮中最多选取 12 轮已完成对话。仅文字聊天会排除所有项目读取和修改提议轮次，与固定提示和本条输入合计最多 32 KiB；项目检查的首次上下文最多 20 KiB，镜头或片段提议的首次上下文最多 30 KiB。更早历史仅供查阅，不扩大上下文。</p>
-          {snapshot?.inspection && <p data-testid="agent-chat-inspection-policy">只读工具定义 v{snapshot.inspection.schemaVersion} · 目录 {snapshot.inspection.catalogHash.slice(0, 12)}</p>}
-          <p>项目检查仅限 project.inspect、asset.inspect、shot.inspect、timeline.inspect 的固定只读范围：已保存项目、素材、镜头及时间线文字与元数据。每轮最多读取一次、结果最多 8 KiB；不发送媒体、路径、凭据或未保存编辑。文字中可能包含你保存的私人内容，请先核对。</p>
-          <p>选中镜头修改提议只发送所选已保存镜头的完整标题与画面描述，不含属性面板的未保存草稿。每轮最多 2 次模型请求、1 次提议工具调用，工具只创建待审阅提议。null 保持字段不变，空画面描述会清空，标题不能为空；提议不能在审阅时编辑或自动重新基于新版本生成。</p>
-          <p>选中片段移动提议只发送一个已保存片段的名称和时间、当前轨道名称和类型、30fps 以及同轨其他片段的有界数值占用区间。不发送其他轨道、媒体、源路径或未保存草稿。工具只提议 startFrame，批准后仅在原轨道非波纹移动。</p>
-          <p>隐藏窗口、切换页签、收起面板或切换项目后，已接受的限界运行可能继续。停止可阻止后续步骤，无法撤回已发生的计算或费用；重启后不会自动续接或重新发送。</p>
+          <p>{t('agent.chat.draftPersistence')}</p>
+          <p>{t('agent.chat.contextLimits')}</p>
+          {snapshot?.inspection && <p data-testid="agent-chat-inspection-policy">{t('agent.chat.readOnlyToolVersion', { schemaVersion: creationParameter(snapshot.inspection.schemaVersion), catalogHash: creationParameter(snapshot.inspection.catalogHash.slice(0, 12)) })}</p>}
+          <p>{t('agent.chat.inspectionDisclosure')}</p>
+          <p>{t('agent.chat.shotProposalDisclosure')}</p>
+          <p>{t('agent.chat.moveProposalDisclosure')}</p>
+          <p>{t('agent.chat.hiddenRunDisclosure')}</p>
         </CollapsibleContent>
       </Collapsible>
       <div className="agent-chat-scroll" ref={scroll} data-testid="agent-chat-history" onScroll={event => { const element = event.currentTarget; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 64; }}>
-        {state.sessionLost && <div className="agent-chat-warning" role="status" data-testid="agent-chat-session-lost">后端已重新启动。已保存的历史仍保留；中断的回复不会自动续接或重发。</div>}
-        {!snapshot ? <div className="agent-chat-empty"><Icon name="sparkle" size={26} /><h3>{phase === 'loading' ? '正在读取已保存的对话…' : '对话暂不可用'}</h3><p>打开窗口只读取状态，不会连接模型。</p></div> : !snapshot.runs.length && !pending ? <div className="agent-chat-empty"><Icon name="sparkle" size={26} /><h3>从一个想法开始</h3><p>{gaining ? '可请 Agent 把一个已保存有声片段的音量调到 40% 等数值。先核对发送范围，再审阅固定倍率；明确批准后才会应用。' : moving ? '可请 Agent 为一个已保存时间线片段提出同轨移动。先核对发送范围，再审阅固定前后时间；明确批准后才会应用。' : editing ? '可请 Agent 为当前选中镜头的已保存标题或画面描述提出修改，审阅差异并明确批准后才会应用。' : inspecting ? '可请求查看本项目已保存的文字与元数据。不会查看媒体画面或执行修改。' : '可以讨论叙事、镜头语言或台词。需要项目资料时，请先选择只读检查。'}</p></div> : null}
-        {(snapshot?.historyCursor || state.history.phase !== 'closed') && <section className="agent-chat-archive" data-testid="agent-chat-archive" aria-label="更早的已保存对话">
-          <div className="agent-chat-archive-heading"><strong>更早的已保存对话</strong><span>每页最多 16 轮</span></div>
-          <p>仅供查阅。查看更早记录不会把它们加入发送上下文；下方最近对话、当前回复与草稿保持独立。</p>
+        {state.sessionLost && <div className="agent-chat-warning" role="status" data-testid="agent-chat-session-lost">{t('agent.chat.backendRestarted')}</div>}
+        {!snapshot ? <div className="agent-chat-empty"><Icon name="sparkle" size={26} /><h3>{phase === 'loading' ? t('agent.chat.loadingSavedConversation') : t('agent.chat.conversationUnavailable')}</h3><p>{t('agent.chat.openReadsOnly')}</p></div> : !snapshot.runs.length && !pending ? <div className="agent-chat-empty"><Icon name="sparkle" size={26} /><h3>{t('agent.chat.startWithIdea')}</h3><p>{gaining ? t('agent.chat.gainEmptyHint') : moving ? t('agent.chat.moveEmptyHint') : editing ? t('agent.chat.shotEmptyHint') : inspecting ? t('agent.chat.inspectionEmptyHint') : t('agent.chat.chatEmptyHint')}</p></div> : null}
+        {(snapshot?.historyCursor || state.history.phase !== 'closed') && <section className="agent-chat-archive" data-testid="agent-chat-archive" aria-label={t('agent.chat.olderSavedConversation')}>
+          <div className="agent-chat-archive-heading"><strong>{t('agent.chat.olderSavedConversation')}</strong><span>{t('agent.chat.historyPageLimit')}</span></div>
+          <p>{t('agent.chat.historyReadOnly')}</p>
           <div className="agent-chat-archive-controls">
-            <Button type="button" variant="ghost" className="button" data-testid="agent-chat-history-older" disabled={!visible || state.history.phase === 'loading' || !(state.history.page ? state.history.page.historyCursor : snapshot?.historyCursor)} onClick={() => { if (usable()) void session.current?.earlier(); }}>{state.history.phase === 'loading' ? '正在读取…' : state.history.page ? '更早一页' : '查看更早记录'}</Button>
-            {state.history.page && <Button type="button" variant="ghost" className="button" data-testid="agent-chat-history-newer" disabled={!visible || state.history.phase === 'loading' || !state.history.trail.length} onClick={() => { if (usable()) void session.current?.newer(); }}>较新一页</Button>}
-            {state.history.phase !== 'closed' && <Button type="button" variant="ghost" className="button" data-testid="agent-chat-history-close" disabled={!visible} onClick={() => { if (usable()) session.current?.closeHistory(); }}>收起历史</Button>}
+            <Button type="button" variant="ghost" className="button" data-testid="agent-chat-history-older" disabled={!visible || state.history.phase === 'loading' || !(state.history.page ? state.history.page.historyCursor : snapshot?.historyCursor)} onClick={() => { if (usable()) void session.current?.earlier(); }}>{state.history.phase === 'loading' ? t('agent.chat.loading') : state.history.page ? t('agent.chat.olderPage') : t('agent.chat.viewOlderHistory')}</Button>
+            {state.history.page && <Button type="button" variant="ghost" className="button" data-testid="agent-chat-history-newer" disabled={!visible || state.history.phase === 'loading' || !state.history.trail.length} onClick={() => { if (usable()) void session.current?.newer(); }}>{t('agent.chat.newerPage')}</Button>}
+            {state.history.phase !== 'closed' && <Button type="button" variant="ghost" className="button" data-testid="agent-chat-history-close" disabled={!visible} onClick={() => { if (usable()) session.current?.closeHistory(); }}>{t('agent.chat.collapseHistory')}</Button>}
           </div>
-          {state.history.message && <p role="status" data-testid="agent-chat-history-error">{state.history.message}</p>}
-          {state.history.page && <div className="agent-chat-archive-page" ref={archiveScroll} data-testid="agent-chat-history-page" aria-label="已保存历史页" aria-busy={state.history.phase === 'loading'} tabIndex={visible ? 0 : -1}>
-            {state.history.page.runs.map(run => renderRun(run, 'archive', visible))}
-            {!state.history.page.historyCursor && <p role="status">已到最早保存的记录。</p>}
+          {state.history.message && <p role="status" data-testid="agent-chat-history-error">{renderMessage(state.history.displayMessage)}</p>}
+          {state.history.page && <div className="agent-chat-archive-page" ref={archiveScroll} data-testid="agent-chat-history-page" aria-label={t('agent.chat.savedHistoryPage')} aria-busy={state.history.phase === 'loading'} tabIndex={visible ? 0 : -1}>
+            {state.history.page.runs.map(run => renderRun(run, 'archive', visible, t, renderMessage))}
+            {!state.history.page.historyCursor && <p role="status">{t('agent.chat.oldestRecordReached')}</p>}
           </div>}
         </section>}
-        {state.recoveredRun && <section className="agent-chat-archive" data-testid="agent-chat-recovered-request" aria-label="已确认的原请求"><p>已找到原请求，未重新发送。这条记录不在最近 16 轮中，仅供查阅。</p>{renderRun(state.recoveredRun, 'recovered', visible)}</section>}
-        {snapshot?.runs.map(run => renderRun(run, 'recent', visible))}
-        {state.pending && <div className="agent-chat-pending" data-testid="agent-chat-pending"><div className="agent-chat-speaker">发送待确认</div>{state.pending.userText && <p>{state.pending.userText}</p>}<span>正在核对原请求。请勿重复发送同一消息。</span>
+        {state.recoveredRun && <section className="agent-chat-archive" data-testid="agent-chat-recovered-request" aria-label={t('agent.chat.confirmedOriginalRequest')}><p>{t('agent.chat.originalRequestFound')}</p>{renderRun(state.recoveredRun, 'recovered', visible, t, renderMessage)}</section>}
+        {snapshot?.runs.map(run => renderRun(run, 'recent', visible, t, renderMessage))}
+        {state.pending && <div className="agent-chat-pending" data-testid="agent-chat-pending"><div className="agent-chat-speaker">{t('agent.chat.sendUnconfirmed')}</div>{state.pending.userText && <p>{state.pending.userText}</p>}<span>{t('agent.chat.checkingOriginalRequest')}</span>
           {phase === 'unknown' && snapshot && <div className="agent-chat-archive-controls">
-            {!state.abandonRequest ? <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset" disabled={!visible} onClick={() => { if (usable()) session.current?.confirmAbandonPending(true); }}>结束本地待确认状态…</Button> : <>
-              <p role="alert" data-testid="agent-chat-pending-reset-warning">原请求可能已被接受，结束此状态不会停止它或撤回费用。草稿保留，但再次发送可能造成重复回复或计费。确定继续？</p>
-              <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset-confirm" disabled={!visible} onClick={() => { if (usable()) session.current?.abandonPending(state.pending.requestId); }}>我理解风险，结束待确认</Button>
-              <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset-cancel" disabled={!visible} onClick={() => { if (usable()) session.current?.confirmAbandonPending(false); }}>继续核对</Button>
+            {!state.abandonRequest ? <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset" disabled={!visible} onClick={() => { if (usable()) session.current?.confirmAbandonPending(true); }}>{t('agent.chat.endPendingState')}</Button> : <>
+              <p role="alert" data-testid="agent-chat-pending-reset-warning">{t('agent.chat.endPendingWarning')}</p>
+              <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset-confirm" disabled={!visible} onClick={() => { if (usable()) session.current?.abandonPending(state.pending.requestId); }}>{t('agent.chat.acceptEndPending')}</Button>
+              <Button type="button" variant="ghost" className="button" data-testid="agent-chat-pending-reset-cancel" disabled={!visible} onClick={() => { if (usable()) session.current?.confirmAbandonPending(false); }}>{t('agent.chat.keepChecking')}</Button>
             </>}
           </div>}
         </div>}
-        <AgentEditProposal nativeCloseRegistry={nativeCloseRegistry} projectId={projectId} refreshKey={proposalRefresh} blockedRunIds={blockedRunIds} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} contextMode={state.contextMode} onApplied={onApplied} />
-        {state.message && <div className={`agent-chat-notice ${['unknown', 'load_error', 'detached'].includes(phase) ? 'is-warning' : ''}`} role="status" data-testid="agent-chat-notice">{state.message}</div>}
+        <AgentEditProposal nativeCloseRegistry={nativeCloseRegistry} projectId={projectId} refreshKey={proposalRefresh} blockedRunIds={blockedRunIds} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} timelineEditBlockedDescriptor={timelineEditBlockedDescriptor} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} timelineGainBlockedDescriptor={timelineGainBlockedDescriptor} contextMode={state.contextMode} onApplied={onApplied} />
+        {state.message && <div className={`agent-chat-notice ${['unknown', 'load_error', 'detached'].includes(phase) ? 'is-warning' : ''}`} role="status" data-testid="agent-chat-notice">{renderMessage(state.displayMessage)}</div>}
       </div>
       <form className="agent-chat-composer" onSubmit={submit} noValidate>
         <div className="agent-chat-composer-options">
         <fieldset className="agent-chat-context-mode" disabled={!ready || pending} data-testid="agent-chat-context-mode">
-          <legend>本次发送的范围</legend>
-          <Label htmlFor="agent-chat-mode-typed"><Input id="agent-chat-mode-typed" data-testid="agent-chat-mode-typed" type="radio" name="agent-chat-context-mode" value={AGENT_TYPED_CONTEXT} checked={state.contextMode === AGENT_TYPED_CONTEXT} disabled={!ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TYPED_CONTEXT); }} /><span>仅文字聊天</span></Label>
-          <Label htmlFor="agent-chat-mode-project"><Input id="agent-chat-mode-project" data-testid="agent-chat-mode-project" type="radio" name="agent-chat-context-mode" value={AGENT_PROJECT_CONTEXT} checked={inspecting} disabled={!inspectionAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_PROJECT_CONTEXT); }} /><span>当前项目只读检查</span></Label>
-          <Label htmlFor="agent-chat-mode-edit"><Input id="agent-chat-mode-edit" data-testid="agent-chat-mode-edit" type="radio" name="agent-chat-context-mode" value={AGENT_EDIT_CONTEXT} checked={editing} disabled={!editAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_EDIT_CONTEXT); }} /><span>选中镜头修改提议</span></Label>
-          <Label htmlFor="agent-chat-mode-timeline"><Input id="agent-chat-mode-timeline" data-testid="agent-chat-mode-timeline" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_CONTEXT} checked={moving} disabled={!timelineAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_CONTEXT); }} /><span>选中片段移动提议</span></Label>
-          <Label htmlFor="agent-chat-mode-gain"><Input id="agent-chat-mode-gain" data-testid="agent-chat-mode-gain" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_GAIN_CONTEXT} checked={gaining} disabled={!gainAvailable || !selectedTimelineGainClip || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_GAIN_CONTEXT); }} /><span>选中片段音量提议</span></Label>
-          {!gainAvailable && <span className="agent-chat-mode-unavailable">片段音量提议暂不可用</span>}
-          {gainAvailable && !selectedTimelineGainClip && <span className="agent-chat-mode-unavailable">音量提议需要选中已保存且已知含音频的片段</span>}
-          {!timelineAvailable && <span className="agent-chat-mode-unavailable">片段移动提议暂不可用</span>}
-          {!editAvailable && <span className="agent-chat-mode-unavailable">镜头修改提议暂不可用</span>}
-          {!inspectionAvailable && <span className="agent-chat-mode-unavailable">项目只读检查暂不可用</span>}
+          <legend>{t('agent.chat.sendingScope')}</legend>
+          <Label htmlFor="agent-chat-mode-typed"><Input id="agent-chat-mode-typed" data-testid="agent-chat-mode-typed" type="radio" name="agent-chat-context-mode" value={AGENT_TYPED_CONTEXT} checked={state.contextMode === AGENT_TYPED_CONTEXT} disabled={!ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TYPED_CONTEXT); }} /><span>{t('agent.chat.textChatOnly')}</span></Label>
+          <Label htmlFor="agent-chat-mode-project"><Input id="agent-chat-mode-project" data-testid="agent-chat-mode-project" type="radio" name="agent-chat-context-mode" value={AGENT_PROJECT_CONTEXT} checked={inspecting} disabled={!inspectionAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_PROJECT_CONTEXT); }} /><span>{t('agent.chat.readOnlyProject')}</span></Label>
+          <Label htmlFor="agent-chat-mode-edit"><Input id="agent-chat-mode-edit" data-testid="agent-chat-mode-edit" type="radio" name="agent-chat-context-mode" value={AGENT_EDIT_CONTEXT} checked={editing} disabled={!editAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_EDIT_CONTEXT); }} /><span>{t('agent.chat.selectedShotProposal')}</span></Label>
+          <Label htmlFor="agent-chat-mode-timeline"><Input id="agent-chat-mode-timeline" data-testid="agent-chat-mode-timeline" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_CONTEXT} checked={moving} disabled={!timelineAvailable || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_CONTEXT); }} /><span>{t('agent.chat.selectedMoveProposal')}</span></Label>
+          <Label htmlFor="agent-chat-mode-gain"><Input id="agent-chat-mode-gain" data-testid="agent-chat-mode-gain" type="radio" name="agent-chat-context-mode" value={AGENT_TIMELINE_GAIN_CONTEXT} checked={gaining} disabled={!gainAvailable || !selectedTimelineGainClip || !ready || pending} onChange={event => { if (usable() && event.target.checked) session.current?.setContextMode(AGENT_TIMELINE_GAIN_CONTEXT); }} /><span>{t('agent.chat.selectedGainProposal')}</span></Label>
+          {!gainAvailable && <span className="agent-chat-mode-unavailable">{t('agent.chat.gainUnavailable')}</span>}
+          {gainAvailable && !selectedTimelineGainClip && <span className="agent-chat-mode-unavailable">{t('agent.chat.gainRequiresAudio')}</span>}
+          {!timelineAvailable && <span className="agent-chat-mode-unavailable">{t('agent.chat.moveUnavailable')}</span>}
+          {!editAvailable && <span className="agent-chat-mode-unavailable">{t('agent.chat.shotUnavailable')}</span>}
+          {!inspectionAvailable && <span className="agent-chat-mode-unavailable">{t('agent.chat.inspectionUnavailable')}</span>}
         </fieldset>
-        {editing && <section className="agent-edit-selected" data-testid="agent-edit-selected-target" aria-label="本次发送的已保存镜头文字">
-          <strong>使用当前选中的已保存镜头</strong>
-          {state.editTarget ? <><p data-testid="agent-edit-target-summary">镜头 {state.editTarget.shotId} · 基准版本 {state.editTarget.expectedRevision}</p>
-            <p>范围：完整已保存标题与画面描述，不含未保存草稿。</p>
+        {editing && <section className="agent-edit-selected" data-testid="agent-edit-selected-target" aria-label={t('agent.chat.savedShotTextScope')}>
+          <strong>{t('agent.chat.useSelectedSavedShot')}</strong>
+          {state.editTarget ? <><p data-testid="agent-edit-target-summary">{t('agent.chat.shotRevision', { shotId: creationParameter(state.editTarget.shotId), expectedRevision: creationParameter(state.editTarget.expectedRevision) })}</p>
+            <p>{t('agent.chat.savedShotScope')}</p>
             <Collapsible className="agent-edit-selected-disclosure" data-testid="agent-edit-selected-disclosure" open={disclosureOpen} onOpenChange={open => {
               if (usable() && disclosureIdentity.current === disclosureKey && (open || canCompactDisclosure)) setDisclosure({ key: disclosureKey, expanded: open, reviewed: disclosureReviewed || sendConsented });
             }}>
-              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-edit-selected-details-toggle" disabled={!visible || !canCompactDisclosure}>{disclosureOpen ? '完整发送文字与工具限额' : '展开已核对的完整文字与工具限额'}</CollapsibleTrigger>
+              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-edit-selected-details-toggle" disabled={!visible || !canCompactDisclosure}>{disclosureOpen ? t('agent.chat.fullTextLimits') : t('agent.chat.expandReviewedText')}</CollapsibleTrigger>
               <CollapsibleContent keepMounted className="agent-edit-selected-details" data-testid="agent-edit-selected-details">
-                <p>以下是将发给模型的完整已保存文字。属性面板里的未保存输入不在其中；切换镜头或保存内容变化后需重新确认。</p>
-                <div className="agent-edit-selected-text"><span>已保存标题</span><pre data-testid="agent-edit-selected-title">{state.editTarget.title}</pre><span>已保存画面描述</span><pre data-testid="agent-edit-selected-prompt">{state.editTarget.prompt || '（空）'}</pre></div>
-                {snapshot?.edit && <p data-testid="agent-edit-policy">提议工具 v{snapshot.edit.schemaVersion} · 目录 {snapshot.edit.catalogHash.slice(0, 12)} · 标题最多 150 字符 / 600 字节，画面描述最多 5000 字符 / 20000 字节</p>}
+                <p>{t('agent.chat.savedTextDisclosure')}</p>
+                <div className="agent-edit-selected-text"><span>{t('agent.chat.savedTitle')}</span><pre data-testid="agent-edit-selected-title">{state.editTarget.title}</pre><span>{t('agent.chat.savedDescription')}</span><pre data-testid="agent-edit-selected-prompt">{state.editTarget.prompt || t('agent.chat.emptyValue')}</pre></div>
+                {snapshot?.edit && <p data-testid="agent-edit-policy">{t('agent.chat.shotToolLimits', { schemaVersion: creationParameter(snapshot.edit.schemaVersion), catalogHash: creationParameter(snapshot.edit.catalogHash.slice(0, 12)) })}</p>}
               </CollapsibleContent>
             </Collapsible>
-          </> : <p role="status">请先在画板中选择一个已保存镜头。标题或画面描述超出安全长度限制时不能发送。</p>}
+          </> : <p role="status">{t('agent.chat.selectSavedShot')}</p>}
         </section>}
-        {moving && <section className="agent-edit-selected agent-timeline-selected" data-testid="agent-timeline-selected-target" aria-label="本次发送的已保存片段时间范围">
-          <strong>只移动当前轨道上的一个已保存片段</strong>
+        {moving && <section className="agent-edit-selected agent-timeline-selected" data-testid="agent-timeline-selected-target" aria-label={t('agent.chat.savedTimingScope')}>
+          <strong>{t('agent.chat.moveOneSavedClip')}</strong>
           {state.timelineTarget ? <>
-            <p data-testid="agent-timeline-target-summary">{state.timelineTarget.clipName} · {state.timelineTarget.trackName}（{state.timelineTarget.trackKind === 'audio' ? '音频轨道' : '视频轨道'}）· 基准版本 {state.timelineTarget.expectedRevision}</p>
-            <p data-testid="agent-timeline-selected-time">{agentTimelineFrameText(state.timelineTarget.startFrame)} → {agentTimelineFrameText(state.timelineTarget.endFrame)} · 时长 {agentTimelineFrameText(state.timelineTarget.durationFrames)}</p>
+            <p data-testid="agent-timeline-target-summary">{t('agent.chat.clipTargetSummary', { clipName: creationParameter(state.timelineTarget.clipName), trackName: creationParameter(state.timelineTarget.trackName), value: creationParameter(state.timelineTarget.trackKind === 'audio' ? t('agent.chat.audioTrack') : t('agent.chat.videoTrack')), expectedRevision: creationParameter(state.timelineTarget.expectedRevision) })}</p>
+            <p data-testid="agent-timeline-selected-time">{t('agent.chat.clipTiming', { value: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.startFrame, 30, t)), value2: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.endFrame, 30, t)), value3: creationParameter(agentTimelineFrameDisplay(state.timelineTarget.durationFrames, 30, t)) })}</p>
             <Collapsible className="agent-edit-selected-disclosure" data-testid="agent-timeline-selected-disclosure" open={disclosureOpen} onOpenChange={open => {
               if (usable() && disclosureIdentity.current === disclosureKey && (open || canCompactDisclosure)) setDisclosure({ key: disclosureKey, expanded: open, reviewed: disclosureReviewed || sendConsented });
             }}>
-              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-timeline-selected-details-toggle" disabled={!visible || !canCompactDisclosure}>{disclosureOpen ? '完整发送范围与工具限额' : '展开已核对的发送范围与工具限额'}</CollapsibleTrigger>
+              <CollapsibleTrigger className="agent-chat-details-trigger" data-testid="agent-timeline-selected-details-toggle" disabled={!visible || !canCompactDisclosure}>{disclosureOpen ? t('agent.chat.fullScopeLimits') : t('agent.chat.expandReviewedScope')}</CollapsibleTrigger>
               <CollapsibleContent keepMounted className="agent-edit-selected-details" data-testid="agent-timeline-selected-details">
-                <p>发给模型的项目资料仅为上方片段名称和时间、轨道名称和类型、30fps，以及以下同轨其他片段的开始/结束帧。结束帧为排他端点。</p>
-                <div className="agent-timeline-intervals" data-testid="agent-timeline-occupied-intervals" tabIndex={visible ? 0 : -1} aria-label="将发送的同轨其他片段数值区间">{state.timelineTarget.occupiedIntervals.length ? <ol>{state.timelineTarget.occupiedIntervals.map((interval, index) => <li key={index}>{interval.startFrame} → {interval.endFrame} 帧</li>)}</ol> : <p>同轨没有其他片段。</p>}</div>
-                <p>同轨其他区间 {state.timelineTarget.occupiedIntervals.length} 个，最多 99 个。最大结束位置 18000 帧 / 600 秒；仅提议新的开始帧，不换轨、不裁切、不改变时长，也不自动移动其他片段。</p>
-                <p>片段源、画面几何、音量及淡入淡出保持不变；移动末尾片段可能改变时间线总时长。重叠、超界、字幕范围或保存版本冲突由服务端阻止，不会自动修正。</p>
-                {snapshot?.timelineEdit && <p data-testid="agent-timeline-policy">提议工具 v{snapshot.timelineEdit.schemaVersion} · 目录 {snapshot.timelineEdit.catalogHash.slice(0, 12)} · 最多 2 次模型请求 / 1 次提议 / 8 KiB 结果</p>}
-                <Collapsible><CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>本地核对身份（不发送给模型）</CollapsibleTrigger><CollapsibleContent><p>项目 {projectId}</p><p>时间线 {state.timelineTarget.timelineId} · 片段 {state.timelineTarget.clipId} · 轨道 {state.timelineTarget.trackId}</p></CollapsibleContent></Collapsible>
+                <p>{t('agent.chat.moveDataDisclosure')}</p>
+                <div className="agent-timeline-intervals" data-testid="agent-timeline-occupied-intervals" tabIndex={visible ? 0 : -1} aria-label={t('agent.chat.sentOccupiedIntervals')}>{state.timelineTarget.occupiedIntervals.length ? <ol>{state.timelineTarget.occupiedIntervals.map((interval, index) => <li key={index}>{t('agent.chat.frameInterval', { startFrame: creationParameter(interval.startFrame), endFrame: creationParameter(interval.endFrame) })}</li>)}</ol> : <p>{t('agent.chat.noOtherClips')}</p>}</div>
+                <p>{t('agent.chat.moveBounds', { count: state.timelineTarget.occupiedIntervals.length })}</p>
+                <p>{t('agent.chat.movePreservedAndConflicts')}</p>
+                {snapshot?.timelineEdit && <p data-testid="agent-timeline-policy">{t('agent.chat.proposalToolLimits', { schemaVersion: creationParameter(snapshot.timelineEdit.schemaVersion), catalogHash: creationParameter(snapshot.timelineEdit.catalogHash.slice(0, 12)) })}</p>}
+                <Collapsible><CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>{t('agent.chat.localIdentity')}</CollapsibleTrigger><CollapsibleContent><p>{t('agent.chat.projectId', { projectId: creationParameter(projectId) })}</p><p>{t('agent.chat.timelineClipTrackIds', { timelineId: creationParameter(state.timelineTarget.timelineId), clipId: creationParameter(state.timelineTarget.clipId), trackId: creationParameter(state.timelineTarget.trackId) })}</p></CollapsibleContent></Collapsible>
               </CollapsibleContent>
             </Collapsible>
-          </> : <p role="status">请先在时间线中选中一个已保存片段。片段和同轨区间必须符合安全范围。</p>}
-          {timelineEditBlockedReason && <p role="status" data-testid="agent-timeline-context-blocked">{timelineEditBlockedReason}</p>}
+          </> : <p role="status">{t('agent.chat.selectSavedClip')}</p>}
+          {timelineEditBlockedReason && <p role="status" data-testid="agent-timeline-context-blocked">{timelineEditBlockedDescriptor ? renderMessage(timelineEditBlockedDescriptor) : t('agent.gain.state.checkTimelineState')}</p>}
         </section>}
-        {gaining && <AgentTimelineGainSelection target={state.timelineGainTarget} policy={snapshot?.timelineGainEdit} blockedReason={timelineGainBlockedReason} visible={visible} />}
-        {configuration && <div className="agent-chat-destination" data-testid="agent-chat-destination"><div><span>发送目标</span><strong>{configuration.model || '未填写模型'}</strong><span data-testid="agent-chat-protocol">{AGENT_PROTOCOLS[configuration.protocol].label}</span></div><p>{configuration.baseUrl ? deriveAgentEndpoint(configuration) : '未填写服务地址'}</p><p className="agent-chat-context" data-testid="agent-chat-context">{gaining ? AGENT_GAIN_SEND_CONTEXT : moving ? '发送本条输入、范围内已完成的纯聊天文字，以及上方明确展示的已保存片段与同轨数值时间范围。不含其他轨道、媒体、路径、ID、源身份或未保存草稿；最多 2 次模型请求、1 次仅 startFrame 的提议工具调用、8 KiB 结果。续接关闭工具，提议不会自动应用。' : editing ? '发送本条输入、范围内已完成的纯聊天文字，以及上方一个镜头的完整已保存标题和画面描述。仅允许 shot.update 的 title、prompt 提议，不发送其他镜头、媒体、未保存草稿或项目读取及修改提议轮次。最多 2 次模型请求、1 次提议工具调用、8 KiB 结果；续接关闭工具，提议不会自动应用。' : inspecting ? `发送本条输入、范围内的已完成对话，以及上方项目“${projectName || projectId}”的一次已保存文字与元数据读取结果。最多 2 次模型请求、1 次只读工具调用、8 KiB 结果；仅一次续接，续接时关闭工具。` : '仅发送本条输入及范围内的已完成纯聊天文字。不含项目名称、ID、记录、媒体或项目读取轮次。'}</p></div>}
+        {gaining && <AgentTimelineGainSelection target={state.timelineGainTarget} policy={snapshot?.timelineGainEdit} blockedReason={timelineGainBlockedReason} blockedDescriptor={timelineGainBlockedDescriptor} visible={visible} />}
+        {configuration && <div className="agent-chat-destination" data-testid="agent-chat-destination"><div><span>{t('agent.chat.destination')}</span><strong>{configuration.model || t('agent.chat.missingModel')}</strong><span data-testid="agent-chat-protocol">{AGENT_PROTOCOLS[configuration.protocol].label}</span></div><p>{configuration.baseUrl ? deriveAgentEndpoint(configuration) : t('agent.chat.missingEndpoint')}</p><p className="agent-chat-context" data-testid="agent-chat-context">{gaining ? renderMessage(AGENT_GAIN_SEND_CONTEXT) : moving ? t('agent.chat.moveSendDisclosure') : editing ? t('agent.chat.shotSendDisclosure') : inspecting ? t('agent.chat.inspectionSendDisclosure', { value: creationParameter(projectName || projectId) }) : t('agent.chat.chatSendDisclosure')}</p></div>}
         </div>
         <div className="agent-chat-composer-input">
-        <Label className="agent-chat-consent" htmlFor="agent-chat-consent"><Input id="agent-chat-consent" data-testid="agent-chat-consent" type="checkbox" checked={Boolean(snapshot && state.consent !== null && state.consent === agentChatConsentKey(snapshot, state.contextMode, selectedTarget))} disabled={!ready || pending || (editing && !state.editTarget) || (moving && (!state.timelineTarget || Boolean(timelineEditBlockedReason))) || (gaining && (!state.timelineGainTarget || Boolean(timelineGainBlockedReason)))} onChange={event => { if (usable()) session.current?.approve(event.target.checked); }} /><span>{gaining ? AGENT_GAIN_SEND_CONSENT : moving ? '我授权按以上项目、片段、保存版本、所展示的片段及同轨数值时间范围、协议、地址、模型和限额发送本条输入与纯聊天上下文，并保存记录；最多 2 次模型请求可能计费。这里只允许提出移动差异，应用仍需我另行明确批准。' : editing ? '我授权按以上项目、镜头、已保存版本、完整文字、协议、地址、模型和工具限额发送本条输入、范围内纯聊天上下文及镜头文字，并保存本次记录；最多 2 次模型请求可能计费。此授权只允许提出差异，应用还需我另行明确批准。' : inspecting ? '我授权本次按以上协议、地址、模型和项目范围发送数据并保存记录；允许一次读取及关闭工具后的有限续接，不逐次询问。最多 2 次模型请求可能计费。' : '我确认按以上协议、地址和模型发送本条输入及纯聊天上下文，并保存记录。一次模型请求可能计费。'}隐藏面板、页签或切换项目后，已接受的运行仍可能继续。</span></Label>
-        <Label className="sr-only" htmlFor="agent-chat-prompt">给 Agent 的消息</Label>
-        <Textarea id="agent-chat-prompt" ref={composer} data-testid="agent-chat-prompt" value={state.draft} rows={3} maxLength={AGENT_CHAT_PROMPT_BYTES} disabled={!visible || pending || ['submitting', 'stopping'].includes(phase)} placeholder="输入想讨论的内容…" aria-describedby="agent-chat-input-help" onChange={event => { if (usable()) session.current?.edit(event.target.value); }} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent?.isComposing) { event.preventDefault(); void send(); } }} />
-        <div className="agent-chat-composer-bottom"><div id="agent-chat-input-help"><span className={promptIssue ? 'is-warning' : ''}>{promptIssue || `${promptBytes} / ${AGENT_CHAT_PROMPT_BYTES} 字节 · Ctrl / ⌘ + Enter 发送`}</span><span data-testid="agent-chat-phase" role="status">{phaseLabel(phase)}</span></div><div className="agent-chat-controls">
-          {['unknown', 'load_error', 'detached'].includes(phase) && <Button type="button" variant="ghost" className="button" data-testid="agent-chat-reload" disabled={!visible} onClick={() => { if (usable()) void session.current?.load(); }}><Icon name="refresh" size={13} />重新读取</Button>}
-          {running && <Button type="button" variant="ghost" className="button agent-chat-stop" data-testid="agent-chat-stop" disabled={!visible || ['stopping', 'loading', 'submitting'].includes(phase)} onClick={() => { if (usable()) void session.current?.stop(); }}>停止后续步骤</Button>}
-          {!running && <Button type="submit" variant="ghost" className="button primary" data-testid="agent-chat-send" disabled={!canSend}>{phase === 'submitting' ? <span className="spinner" /> : <Icon name="arrow" size={14} />}发送</Button>}
+        <Label className="agent-chat-consent" htmlFor="agent-chat-consent"><Input id="agent-chat-consent" data-testid="agent-chat-consent" type="checkbox" checked={Boolean(snapshot && state.consent !== null && state.consent === agentChatConsentKey(snapshot, state.contextMode, selectedTarget))} disabled={!ready || pending || (editing && !state.editTarget) || (moving && (!state.timelineTarget || Boolean(timelineEditBlockedReason))) || (gaining && (!state.timelineGainTarget || Boolean(timelineGainBlockedReason)))} onChange={event => { if (usable()) session.current?.approve(event.target.checked); }} /><span>{t('agent.chat.consentAndHiddenNotice', { value: creationParameter(gaining ? renderMessage(AGENT_GAIN_SEND_CONSENT) : moving ? t('agent.chat.moveSendConsent') : editing ? t('agent.chat.shotSendConsent') : inspecting ? t('agent.chat.inspectionSendConsent') : t('agent.chat.chatSendConsent')) })}</span></Label>
+        <Label className="sr-only" htmlFor="agent-chat-prompt">{t('agent.chat.messageLabel')}</Label>
+        <Textarea id="agent-chat-prompt" ref={composer} data-testid="agent-chat-prompt" value={state.draft} rows={3} maxLength={AGENT_CHAT_PROMPT_BYTES} disabled={!visible || pending || ['submitting', 'stopping'].includes(phase)} placeholder={t('agent.chat.messagePlaceholder')} aria-describedby="agent-chat-input-help" onChange={event => { if (usable()) session.current?.edit(event.target.value); }} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent?.isComposing) { event.preventDefault(); void send(); } }} />
+        <div className="agent-chat-composer-bottom"><div id="agent-chat-input-help"><span className={promptIssue ? 'is-warning' : ''}>{promptIssue || t('agent.chat.promptByteCount', { promptBytes: creationParameter(promptBytes), AGENT_CHAT_PROMPT_BYTES: creationParameter(AGENT_CHAT_PROMPT_BYTES) })}</span><span data-testid="agent-chat-phase" role="status">{phaseLabel(phase, t)}</span></div><div className="agent-chat-controls">
+          {['unknown', 'load_error', 'detached'].includes(phase) && <Button type="button" variant="ghost" className="button" data-testid="agent-chat-reload" disabled={!visible} onClick={() => { if (usable()) void session.current?.load(); }}><Icon name="refresh" size={13} />{t('agent.chat.reload')}</Button>}
+          {running && <Button type="button" variant="ghost" className="button agent-chat-stop" data-testid="agent-chat-stop" disabled={!visible || ['stopping', 'loading', 'submitting'].includes(phase)} onClick={() => { if (usable()) void session.current?.stop(); }}>{t('agent.chat.stopLaterSteps')}</Button>}
+          {!running && <Button type="submit" variant="ghost" className="button primary" data-testid="agent-chat-send" disabled={!canSend}>{phase === 'submitting' ? <span className="spinner" /> : <Icon name="arrow" size={14} />}{t('agent.chat.send')}</Button>}
         </div></div>
         </div>
-        <p className="agent-chat-stop-note">停止阻止后续步骤，保留已有文字与结果；无法撤回已发生的费用。重启不会自动续接。</p>
+        <p className="agent-chat-stop-note">{t('agent.chat.stopDisclosure')}</p>
       </form>
   </section>;
 }

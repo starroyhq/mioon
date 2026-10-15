@@ -1,36 +1,39 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
+import { creationParameter, agentTimelineFrameDisplay } from './creation-i18n.ts';
 import React from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible';
 import { AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineFrameText, agentRunContextMode } from './agent-tool-state.js';
 
 import { AgentTimelineGainActivity } from './AgentTimelineGain.tsx';
 
-const statusLabel = (step, stopped, editing) => ({
-  not_started: stopped ? '未发起 · 不会自动继续' : '尚未发起',
-  intent: stopped ? '已记录 · 未继续' : '已记录，等待开始',
-  dispatch_started: step.kind === 'tool' ? (editing ? '正在保存提议，未应用' : '正在读取') : '请求已开始',
-  completed: step.kind === 'tool' ? (editing ? '提议已保存，未自动应用' : '读取完成') : '响应结束',
-  unknown: '状态未知 · 不会自动重试',
-}[step.status] || '状态未知');
+const statusLabel = (step, stopped, editing, t) => ({
+  not_started: stopped ? t('agent.activity.notStartedStopped') : t('agent.activity.notStarted'),
+  intent: stopped ? t('agent.activity.intentStopped') : t('agent.activity.intentWaiting'),
+  dispatch_started: step.kind === 'tool' ? (editing ? t('agent.activity.savingProposal') : t('agent.activity.reading')) : t('agent.activity.requestStarted'),
+  completed: step.kind === 'tool' ? (editing ? t('agent.activity.proposalSaved') : t('agent.activity.readComplete')) : t('agent.activity.responseComplete'),
+  unknown: t('agent.activity.unknownNoRetry'),
+}[step.status] || t('agent.activity.unknown'));
 
 // All model/tool strings stay React text. Results have no links, HTML, fetches,
 // navigation, or action buttons, even when their contents look like commands.
 export default function AgentRunActivity({ run, visible = true }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const inspected = agentRunContextMode(run) === AGENT_PROJECT_CONTEXT, moving = agentRunContextMode(run) === AGENT_TIMELINE_CONTEXT, gaining = agentRunContextMode(run) === AGENT_TIMELINE_GAIN_CONTEXT, editing = gaining || moving || agentRunContextMode(run) === AGENT_EDIT_CONTEXT;
   const stopped = run.status !== 'running';
   return <div className="agent-run-inspection" data-testid="agent-run-inspection" data-context-mode={agentRunContextMode(run)}>
     {gaining ? <AgentTimelineGainActivity target={run.editTarget} sourceCount={run.provenance.sourceRunIds.length} /> : moving ? <Collapsible className="agent-run-provenance" data-testid="agent-run-provenance">
-      <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>片段移动提议 · {run.editTarget.clipName} · 保存版本 {run.editTarget.expectedRevision}</CollapsibleTrigger>
-      <CollapsibleContent><p>本轮授权：{run.editTarget.trackName}上的“{run.editTarget.clipName}”，{agentTimelineFrameText(run.editTarget.startFrame)} → {agentTimelineFrameText(run.editTarget.endFrame)}，以及 {run.editTarget.occupiedIntervals.length} 个同轨其他片段数值区间。{run.provenance.sourceRunIds.length ? `另包含 ${run.provenance.sourceRunIds.length} 轮已完成纯聊天文字。` : ''}</p><p>不含媒体、源身份、其他轨道或未保存编辑；只提出 startFrame 差异，不代表已应用。本轮文字不加入纯聊天上下文，应用状态请查看独立审阅区。</p></CollapsibleContent>
-    </Collapsible> : editing ? <p className="agent-run-provenance" data-testid="agent-run-provenance">本轮授权：项目 {run.provenance.projectId} 的镜头 {run.editTarget.shotId}、保存版本 {run.editTarget.expectedRevision} 的完整标题和画面描述。{run.provenance.sourceRunIds.length ? `另包含 ${run.provenance.sourceRunIds.length} 轮已完成纯聊天文字。` : ''}不包含未保存编辑；本轮文字不加入纯聊天上下文。工具只提议，不代表已应用，请查看独立审阅区的保存状态。</p> : inspected ? <Collapsible className="agent-run-provenance" data-testid="agent-run-provenance">
-      <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>本轮授权项目资料 · 不加入纯聊天上下文</CollapsibleTrigger>
-      <CollapsibleContent><p>本轮授权：项目 {run.provenance.projectId} 的已保存文字与元数据{run.provenance.sourceRunIds.length ? `，引用 ${run.provenance.sourceRunIds.length} 轮已完成对话` : ''}。这类回复不会加入后续“仅文字聊天”的上下文；授权范围不代表所有资料均已读取。</p></CollapsibleContent>
-    </Collapsible> : <p className="agent-run-provenance" data-testid="agent-run-provenance">本轮上下文：仅聊天文字，不含项目读取对话。</p>}
-    {run.activity?.length > 0 && <ol className="agent-run-activity" data-testid="agent-run-activity" aria-label="本轮运行活动">
+      <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>{t('agent.activity.moveSummary', { clipName: creationParameter(run.editTarget.clipName), expectedRevision: creationParameter(run.editTarget.expectedRevision) })}</CollapsibleTrigger>
+      <CollapsibleContent><p>{t('agent.activity.moveAuthorization', { trackName: creationParameter(run.editTarget.trackName), clipName: creationParameter(run.editTarget.clipName), value: creationParameter(agentTimelineFrameDisplay(run.editTarget.startFrame, 30, t)), value2: creationParameter(agentTimelineFrameDisplay(run.editTarget.endFrame, 30, t)), count: run.editTarget.occupiedIntervals.length, value3: creationParameter(run.provenance.sourceRunIds.length ? t('agent.activity.chatTurnCount', { count: run.provenance.sourceRunIds.length }) : '') })}</p><p>{t('agent.activity.moveProvenance')}</p></CollapsibleContent>
+    </Collapsible> : editing ? <p className="agent-run-provenance" data-testid="agent-run-provenance">{t('agent.activity.shotAuthorization', { projectId: creationParameter(run.provenance.projectId), shotId: creationParameter(run.editTarget.shotId), expectedRevision: creationParameter(run.editTarget.expectedRevision), value: creationParameter(run.provenance.sourceRunIds.length ? t('agent.activity.chatTurnCount', { count: run.provenance.sourceRunIds.length }) : '') })}</p> : inspected ? <Collapsible className="agent-run-provenance" data-testid="agent-run-provenance">
+      <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible}>{t('agent.activity.projectAuthorizationHeading')}</CollapsibleTrigger>
+      <CollapsibleContent><p>{t('agent.activity.projectAuthorization', { projectId: creationParameter(run.provenance.projectId), value: creationParameter(run.provenance.sourceRunIds.length ? t('agent.activity.referencedTurns', { count: run.provenance.sourceRunIds.length }) : '') })}</p></CollapsibleContent>
+    </Collapsible> : <p className="agent-run-provenance" data-testid="agent-run-provenance">{t('agent.activity.chatContext')}</p>}
+    {run.activity?.length > 0 && <ol className="agent-run-activity" data-testid="agent-run-activity" aria-label={t('agent.activity.activityAria')}>
       {run.activity.map(step => <li key={step.id} data-step-id={step.id} data-kind={step.kind} data-status={step.status}>
-        <div className="agent-run-step-heading"><strong>{step.kind === 'model' ? `模型请求 ${step.ordinal} / 2${step.ordinal === 2 ? ' · 工具已关闭' : ''}` : step.operation}</strong><span role="status">{statusLabel(step, stopped, editing)}</span></div>
-        {step.kind === 'tool' && <p className="agent-run-tool-name">{step.name} · {gaining ? '仅所选片段的音量提议，尚需明确批准' : moving ? '仅所选片段的同轨移动提议，尚需明确批准' : editing ? '仅所选镜头的修改提议，尚需明确批准' : '本轮项目范围内只读'}</p>}
+        <div className="agent-run-step-heading"><strong>{step.kind === 'model' ? t('agent.activity.modelRequestOrdinal', { ordinal: creationParameter(step.ordinal), value: creationParameter(step.ordinal === 2 ? t('agent.activity.toolsDisabled') : '') }) : step.operation}</strong><span role="status">{statusLabel(step, stopped, editing, t)}</span></div>
+        {step.kind === 'tool' && <p className="agent-run-tool-name">{step.name} · {gaining ? t('agent.activity.gainProposalScope') : moving ? t('agent.activity.moveProposalScope') : editing ? t('agent.activity.shotProposalScope') : t('agent.activity.readOnlyScope')}</p>}
         {step.resultJson !== undefined && <Collapsible className="agent-run-result">
-          <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible} data-testid="agent-tool-result-toggle">{editing ? '查看已保存的提议回执' : '查看已保存的读取结果'}</CollapsibleTrigger>
+          <CollapsibleTrigger className="agent-chat-details-trigger" disabled={!visible} data-testid="agent-tool-result-toggle">{editing ? t('agent.activity.viewProposalReceipt') : t('agent.activity.viewReadResult')}</CollapsibleTrigger>
           <CollapsibleContent><pre data-testid="agent-tool-result">{step.resultJson}</pre></CollapsibleContent>
         </Collapsible>}
       </li>)}

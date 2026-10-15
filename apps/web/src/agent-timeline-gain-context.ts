@@ -1,3 +1,5 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { AGENT_TIMELINE_GAIN_CONTEXT, isAgentTimelineGainReviewTarget, isAgentTimelineGainSource } from '../../../packages/contracts/src/agent-timeline-gain.ts';
 import type { AgentTimelineGainProposal, AgentTimelineGainReviewTarget } from '../../../packages/contracts/src/agent-timeline-gain.ts';
 
@@ -92,4 +94,21 @@ export function agentTimelineGainBlockedReason({ connected, dirty, recoveredDraf
   if (dirty || recoveredDraft) return '请先保存或放弃属性面板及已恢复的本地片段草稿，再审阅片段音量。草稿不会自动发送、清除或标记为已保存。';
   if (pending) return '有时间线操作正在处理或待确认，请先在任务中心核对。';
   return '';
+}
+
+// Display-only companions keep legacy diagnostics and business identities unchanged.
+export function agentTimelineGainApprovalIssueDescriptor(proposal: AgentTimelineGainProposal, { target, blockedReason = '', contextMode }: { target?: unknown; blockedReason?: string; contextMode?: unknown } = {}): DisplayMessage | null {
+  if (blockedReason) return localizedMessage('agent.gain.state.checkTimelineState');
+  if (contextMode !== AGENT_TIMELINE_GAIN_CONTEXT) return localizedMessage('agent.gain.state.selectGainScope');
+  if (!isAgentTimelineGainReviewTarget(target, { projectId: proposal.projectId })) return localizedMessage('agent.gain.state.selectOriginalAudioClip');
+  if (publicFields.some(key => proposal.target[key] !== target[key]) || proposal.diff.before.gain !== target.gain)
+    return localizedMessage('agent.gain.state.targetMismatch');
+  return null;
+}
+
+export function agentTimelineGainBlockedDescriptor({ connected, dirty, recoveredDraft, pending }: { connected: boolean; dirty: boolean; recoveredDraft: boolean; pending: boolean }): DisplayMessage | null {
+  if (!connected) return localizedMessage('agent.gain.state.waitForProject');
+  if (dirty || recoveredDraft) return localizedMessage('agent.gain.state.resolveDrafts');
+  if (pending) return localizedMessage('agent.gain.state.pendingTimelineOperation');
+  return null;
 }

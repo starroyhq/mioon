@@ -20,6 +20,7 @@ import traceback
 import urllib.request
 
 from playwright.sync_api import expect, sync_playwright
+from browser_workbench_actions import workbench_action
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = pathlib.Path(os.environ.get('MIOON_UI_EVIDENCE', str(ROOT / 'evidence/v3-ui-components')))
@@ -176,7 +177,7 @@ def new_project_dialog(page, state, requests):
 
 
 def jobs_dialog(page, state, requests):
-    trigger = page.get_by_test_id('jobs-button')
+    trigger = workbench_action(page, 'jobs-button')
     trigger.focus()
     trigger.press('Enter')
     dialog = page.get_by_role('dialog', name='生成任务', exact=True)
@@ -185,12 +186,13 @@ def jobs_dialog(page, state, requests):
     page.screenshot(path=str(OUT / '03-jobs-drawer-keyboard.png'), full_page=True)
     page.keyboard.press('Escape')
     expect(dialog).not_to_be_visible()
-    expect(trigger).to_be_focused()
+    expect(page.get_by_test_id('workbench-actions')).to_be_focused()
+    trigger = workbench_action(page, 'jobs-button')
     trigger.press('Enter')
     expect(dialog).to_be_visible()
     page.get_by_role('button', name='关闭生成任务', exact=True).press('Enter')
     expect(dialog).not_to_be_visible()
-    expect(trigger).to_be_focused()
+    expect(page.get_by_test_id('workbench-actions')).to_be_focused()
     assert not mutations(requests)
     return {'focusVisits': visits, 'focusRestored': True, 'reopened': True}
 

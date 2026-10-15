@@ -1,11 +1,13 @@
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import { TIMELINE_OUTPUT_PRESETS, timelineOutputPreset, isTimelineMutationResponse, isTimelineFormatReadResponse } from '@mioon/contracts';
 
 export { TIMELINE_OUTPUT_PRESETS };
-const reasons = Object.freeze({ CLIPS_PRESENT: '时间线已有片段', HISTORY_PRESENT: '时间线已有编辑历史', REQUEST_HISTORY: '时间线已有编辑请求记录', EXPORT_HISTORY: '时间线已有预览或导出记录', PENDING_EDIT: '项目有待确认的编辑请求' });
-export const timelineFormatReason = code => reasons[code] || '服务器暂不允许修改输出规格';
+const reasonKeys = Object.freeze({ CLIPS_PRESENT: 'timeline.format.clips', HISTORY_PRESENT: 'timeline.format.history', REQUEST_HISTORY: 'timeline.format.requests', EXPORT_HISTORY: 'timeline.format.exports', PENDING_EDIT: 'timeline.format.editPending' });
+export const timelineFormatReasonMessage = code => message(reasonKeys[code] || 'timeline.format.blocked');
+export const timelineFormatReason = code => renderMessage('zh-Hans', timelineFormatReasonMessage(code));
 const protocolError = () => Object.assign(new Error('输出规格响应不完整，请重新核对。'), { code: 'BACKEND_PROTOCOL_ERROR' });
 const sameVersion = (a, b) => a?.projectRevision === b?.projectRevision && a?.timelineId === b?.timelineId && a?.timelineRevision === b?.timelineRevision;
-const initial = () => ({ scope: null, projectId: null, connected: false, pending: true, saved: null, base: null, draftPresetId: null, dirty: false, conflict: false, phase: 'idle', error: '', submitting: false, uncertain: null });
+const initial = () => ({ scope: null, projectId: null, connected: false, pending: true, saved: null, base: null, draftPresetId: null, dirty: false, conflict: false, phase: 'idle', error: '', errorMessage: null, submitting: false, uncertain: null });
 export const validTimelineFormat = (value, projectId) => isTimelineFormatReadResponse(value, { projectId });
 export function timelineFormatAcknowledged(intent, timeline) {
   return Boolean(isTimelineMutationResponse('timeline.format.set', intent.input, timeline) &&
@@ -14,12 +16,14 @@ export function timelineFormatAcknowledged(intent, timeline) {
 export function timelineFormatCanSave(state) {
   return Boolean(state?.connected && !state.pending && state.phase === 'ready' && state.saved?.eligible && state.dirty && !state.conflict && !state.submitting && !state.uncertain);
 }
-export function timelineRectIssue(rect, timeline) {
+export function timelineRectMessage(rect, timeline) {
   const { x, y, width, height } = Object.fromEntries(Object.entries(rect || {}).map(([key, value]) => [key, Number(value)]));
-  if (![x, y, width, height].every(value => Number.isSafeInteger(value) && value % 2 === 0) || x < 0 || y < 0 || width < 2 || height < 2) return '画面位置与尺寸必须是有效偶数像素。';
-  if (x + width > timeline.width || y + height > timeline.height) return '画面矩形不能超出当前时间线输出尺寸。';
-  return '';
+  if (![x, y, width, height].every(value => Number.isSafeInteger(value) && value % 2 === 0) || x < 0 || y < 0 || width < 2 || height < 2) return message('timeline.inspector.rectInvalid');
+  if (x + width > timeline.width || y + height > timeline.height) return message('timeline.inspector.rectBounds');
+  return null;
 }
+
+export function timelineRectIssue(rect, timeline) { return renderMessage('zh-Hans', timelineRectMessage(rect, timeline)); }
 
 // A format draft belongs to a project epoch, not a selected clip, workspace
 // mode, dock tab, or inspector reset. No read, visibility change, or recovery
@@ -48,7 +52,7 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
       if (expectedScope !== state.scope || !state.projectId || !state.connected) return null;
       invalidate();
       const captured = { projectId: state.projectId, scope: state.scope, generation }, abort = new AbortController(); activeRead = abort;
-      emit({ phase: 'loading', error: state.uncertain ? state.error : '' });
+      emit({ phase: 'loading', error: state.uncertain ? state.error : '', errorMessage: state.uncertain ? state.errorMessage : null });
       try {
         const value = await read({ projectId: captured.projectId }, { signal: abort.signal });
         if (!owned(captured) || captured.generation !== generation || !state.connected) return null;
@@ -56,13 +60,13 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
         const live = getContext?.();
         if (live && (live.projectRevision > value.projectRevision || live.timelineRevision > value.timelineRevision)) { emit({ phase: 'stale' }); return null; }
         const saved = structuredClone(value);
-        emit({ saved, phase: 'ready', error: state.uncertain ? state.error : '', ...(state.dirty || state.submitting || state.uncertain
+        emit({ saved, phase: 'ready', error: state.uncertain ? state.error : '', errorMessage: state.uncertain ? state.errorMessage : null, ...(state.dirty || state.submitting || state.uncertain
           ? { conflict: !sameVersion(state.base, saved) }
           : { base: saved, draftPresetId: saved.presetId, conflict: false }) });
         return saved;
       } catch (error) {
         if (!owned(captured) || captured.generation !== generation) return null;
-        emit({ phase: 'error', error: error.code === 'UNAUTHORIZED' ? '会话已过期，请重新登录。' : '无法核对输出规格，请检查连接后重试。' });
+        emit({ phase: 'error', errorMessage: message(error.code === 'UNAUTHORIZED' ? 'timeline.format.unauthorized' : 'timeline.format.readFailed'), error: error.code === 'UNAUTHORIZED' ? '会话已过期，请重新登录。' : '无法核对输出规格，请检查连接后重试。' });
         if (error.code === 'UNAUTHORIZED') onUnauthorized();
         return null;
       } finally { if (activeRead === abort) activeRead = null; }
@@ -86,7 +90,7 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
       if (expectedScope !== state.scope || !visible || !timelineFormatCanSave(state)) return null;
       const intent = Object.freeze({ scope: state.scope, projectId: state.projectId, timelineId: state.base.timelineId, serial,
         input: Object.freeze({ projectId: state.projectId, expectedProjectRevision: state.base.projectRevision, expectedRevision: state.base.timelineRevision, requestId: createRequestId(), presetId: state.draftPresetId }) });
-      emit({ submitting: true, error: '' });
+      emit({ submitting: true, error: '', errorMessage: null });
       let result;
       try {
         result = await submit(intent);
@@ -104,7 +108,7 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
       } catch (error) { result = { status: 'unknown', error }; }
       if (!owned(intent)) return null;
       const unknown = result?.status !== 'rejected' && !sameInput(resolved.get(intent.input.requestId), intent.input);
-      emit({ submitting: false, uncertain: unknown ? intent : null, error: unknown ? '提交结果待确认。请在任务中心恢复同一请求，不能新建请求重试。' : '请求未应用，草稿仍保留。请重新核对已保存的规格。' });
+      emit({ submitting: false, uncertain: unknown ? intent : null, errorMessage: message(unknown ? 'timeline.format.unknown' : 'timeline.format.notApplied'), error: unknown ? '提交结果待确认。请在任务中心恢复同一请求，不能新建请求重试。' : '请求未应用，草稿仍保留。请重新核对已保存的规格。' });
       await controller.load();
       return null;
     },
@@ -112,7 +116,7 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
       if (task.operation !== 'timeline.format.set' || !['applied', 'not_applied'].includes(task.status) || task.projectId !== state.projectId) return;
       resolved.set(task.requestId, task.input);
       const intent = state.uncertain;
-      if (intent && task.requestId === intent.input.requestId && sameInput(task.input, intent.input)) emit({ uncertain: null, error: '', conflict: !sameVersion(state.base, state.saved) });
+      if (intent && task.requestId === intent.input.requestId && sameInput(task.input, intent.input)) emit({ uncertain: null, error: '', errorMessage: null, conflict: !sameVersion(state.base, state.saved) });
       // Keep the current draft even when recovered history happens to match it.
       void controller.load();
     },

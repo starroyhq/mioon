@@ -1,5 +1,8 @@
+import { message } from '../../../packages/i18n/src/index.ts';
 import { workspaceOriginScope } from './workspace-origin.js';
 
+export const RESTORE_DISABLED_MESSAGE = message('recovery.restored.disabledReason');
+export const RESTORE_BACKUP_MESSAGE = message('recovery.restored.backupReason');
 export const RESTORE_DISABLED_REASON = '恢复分支第一版暂不支持新生成、Agent、Comfy、抽帧或波形解码。历史任务保持原状态并暂停执行。';
 export const RESTORE_BACKUP_REASON = '此恢复分支暂不能再次创建可恢复备份；请保留原始备份。新成片可本地导出。';
 export function workspaceOperationReason(workspace, operation) {

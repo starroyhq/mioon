@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -33,7 +34,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
   const state = { dock, page, mobile: 'canvas', view: { activeMode: mode,
     canvas: { selectedId: selectedShotId, inspectorTab: 'settings', highlightedVersionId: null },
     editing: { selectedClipId: key.clipId, quickAssetId, playhead: 12, previewKind: 'timeline' } } };
-  const env = {
+  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
     nativeWindow: null,
     selectedId: selectedShotId, selectedClipId: key.clipId, workspaceMode: mode, quickAssetId,
     currentProject: { current: key.projectId }, navigationEpoch: { current: 5 }, panelIntent: { current: 2 },

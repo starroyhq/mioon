@@ -1,3 +1,5 @@
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { AUDIO_PREVIEW_LIMITS, type AudioPreviewPlan, type AudioPreviewPlanInput } from '@mioon/contracts/timeline-audio-preview';
 import { createTimelineAudioPreviewClient, TimelineAudioPreviewError, type AudioPreviewPrepareOptions, type AudioPreviewReadOptions, type PreparedAudioPreview } from './timeline-audio-preview-client.ts';
@@ -30,6 +32,7 @@ export interface TimelineAudioPreviewState extends TimelineAudioPreviewContext {
   preparedSources: number;
   totalSources: number;
   error: string;
+  errorMessage?: DisplayMessage | null;
 }
 export interface TimelineAudioPreviewControllerOptions {
   readPlan: (input: AudioPreviewPlanInput, options: AudioPreviewReadOptions) => Promise<unknown>;
@@ -58,29 +61,30 @@ const canPrepare = (context: TimelineAudioPreviewContext): boolean => Boolean(co
   Number.isSafeInteger(context.revision) && (context.revision ?? 0) > 0 && Number.isSafeInteger(context.durationFrames) && context.durationFrames > 0 &&
   context.durationFrames <= AUDIO_PREVIEW_LIMITS.timelineFrames && context.sourceIdentity.length > 0 && context.connected && context.visible && !context.restored);
 const codeOf = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
-export function timelineAudioPreviewErrorMessage(error: unknown): string {
+export function timelineAudioPreviewErrorDescriptor(error: unknown): DisplayMessage {
   const code = codeOf(error);
-  if (code === 'NATIVE_AUDIO_CLEANUP_UNCONFIRMED') return '上一窗口的声音资源尚未确认释放，当前试听已被阻止。';
-  if (code === 'NATIVE_AUDIO_BUSY') return '另一个窗口正在等待声音资源，请稍后明确准备。';
-  if (code === 'NATIVE_AUDIO_UNAVAILABLE') return '当前原生试听身份无法确认，未开始解码，请重新打开此编辑器后再试。';
-  if (code === 'UNAUTHORIZED') return '会话已过期，请重新登录后明确准备声音。';
-  if (code === 'AUDIO_PREVIEW_MEMORY_LIMIT' || code === 'AUDIO_PREVIEW_HASH_LIMIT') return '此完整区间超出声音试听容量，未省略音轨。可使用单独的已渲染视频预览。';
-  if (code === 'AUDIO_PREVIEW_TIMEOUT') return '声音准备超过 120 秒预算，未保留部分音轨。请重新准备。';
-  if (code === 'AUDIO_PREVIEW_BUSY') return '另一声音准备尚未结束，请稍后明确重试。';
-  if (code === 'AUDIO_PREVIEW_SOURCE_LIMIT') return '此区间的来源文件超出声音试听限制，未省略音轨。';
-  if (code === 'AUDIO_PREVIEW_REVISION_CONFLICT' || code === 'AUDIO_PREVIEW_SOURCE_CHANGED' || code === 'AUDIO_PREVIEW_STALE') return '已保存时间线或来源已变化，请重新准备。';
-  if (code === 'AUDIO_PREVIEW_AUDIO_UNKNOWN') return '来源的音频信息尚不明确，完整区间未能准备。';
-  if (code === 'AUDIO_PREVIEW_UNSUPPORTED_FORMAT') return '此区间包含暂不支持的音频格式，未省略该音轨。';
-  if (code === 'AUDIO_PREVIEW_SOURCE_BOUNDS') return '已保存片段超出当前来源的音频范围，请核对来源后重新准备。';
-  if (code === 'AUDIO_PREVIEW_INVALID_PCM' || code === 'AUDIO_PREVIEW_TRUNCATED_PCM' || code === 'AUDIO_PREVIEW_DECODE_FAILED') return '来源声音解码不完整或无效，完整区间未能准备。';
-  if (code === 'AUDIO_PREVIEW_BUDGET') return '此区间涉及的原始片段超出声音解码预算，完整区间未能准备。可使用单独的已渲染视频预览。';
-  if (code === 'AUDIO_PREVIEW_SHUTDOWN_FAILED' || code === 'AUDIO_PREVIEW_STOP_TIMEOUT') return '上一声音解码尚未确认结束，请等待释放后明确重试。';
-  if (code === 'AUDIO_PREVIEW_CONTEXT_CLOSED') return '试听音频时钟在准备过程中已关闭，请明确重新准备。';
-  if (code === 'AUDIO_PREVIEW_SAMPLE_RATE') return '当前音频设备无法建立 48 kHz 试听时钟。';
-  if (code === 'AUDIO_PREVIEW_UNSUPPORTED' || code.startsWith('RESTORE_')) return '此环境暂不支持已保存时间线声音试听。';
-  if (code === 'AUDIO_PREVIEW_PROTOCOL' || code === 'AUDIO_PREVIEW_INVALID_GRAPH') return '声音响应不完整或与当前区间不匹配，请重新准备。';
-  return '声音试听未完成，请确认连接与音频设备后重新准备。';
+  if (code === 'NATIVE_AUDIO_CLEANUP_UNCONFIRMED') return message('audio.preview.nativeBlocked');
+  if (code === 'NATIVE_AUDIO_BUSY') return message('audio.preview.error.nativeBusy');
+  if (code === 'NATIVE_AUDIO_UNAVAILABLE') return message('audio.preview.error.nativeUnavailable');
+  if (code === 'UNAUTHORIZED') return message('audio.preview.error.unauthorized');
+  if (code === 'AUDIO_PREVIEW_MEMORY_LIMIT' || code === 'AUDIO_PREVIEW_HASH_LIMIT') return message('audio.preview.error.memory');
+  if (code === 'AUDIO_PREVIEW_TIMEOUT') return message('audio.preview.error.timeout');
+  if (code === 'AUDIO_PREVIEW_BUSY') return message('audio.preview.error.busy');
+  if (code === 'AUDIO_PREVIEW_SOURCE_LIMIT') return message('audio.preview.error.sourceLimit');
+  if (code === 'AUDIO_PREVIEW_REVISION_CONFLICT' || code === 'AUDIO_PREVIEW_SOURCE_CHANGED' || code === 'AUDIO_PREVIEW_STALE') return message('audio.preview.error.stale');
+  if (code === 'AUDIO_PREVIEW_AUDIO_UNKNOWN') return message('audio.preview.error.unknownAudio');
+  if (code === 'AUDIO_PREVIEW_UNSUPPORTED_FORMAT') return message('audio.preview.error.format');
+  if (code === 'AUDIO_PREVIEW_SOURCE_BOUNDS') return message('audio.preview.error.bounds');
+  if (code === 'AUDIO_PREVIEW_INVALID_PCM' || code === 'AUDIO_PREVIEW_TRUNCATED_PCM' || code === 'AUDIO_PREVIEW_DECODE_FAILED') return message('audio.preview.error.decode');
+  if (code === 'AUDIO_PREVIEW_BUDGET') return message('audio.preview.error.budget');
+  if (code === 'AUDIO_PREVIEW_SHUTDOWN_FAILED' || code === 'AUDIO_PREVIEW_STOP_TIMEOUT') return message('audio.preview.error.stopPending');
+  if (code === 'AUDIO_PREVIEW_CONTEXT_CLOSED') return message('audio.preview.error.contextClosedPreparing');
+  if (code === 'AUDIO_PREVIEW_SAMPLE_RATE') return message('audio.preview.error.sampleRate');
+  if (code === 'AUDIO_PREVIEW_UNSUPPORTED' || code.startsWith('RESTORE_')) return message('audio.preview.error.unsupported');
+  if (code === 'AUDIO_PREVIEW_PROTOCOL' || code === 'AUDIO_PREVIEW_INVALID_GRAPH') return message('audio.preview.error.protocol');
+  return message('audio.preview.error.failed');
 }
+export function timelineAudioPreviewErrorMessage(error: unknown): string { return renderMessage('zh-Hans', timelineAudioPreviewErrorDescriptor(error)); }
 function contextFromGesture(): AudioContext {
   if (typeof AudioContext !== 'function') throw new TimelineAudioPreviewError('AUDIO_PREVIEW_UNSUPPORTED', '此环境暂不支持声音试听。');
   return new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
@@ -106,7 +110,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
   const preparePcm = options.prepare ?? createTimelineAudioPreviewClient({ readPlan: options.readPlan }).prepare;
   const makeTransport = options.createTransport ?? createTimelineAudioPreviewTransport;
   const emit = (patch: Partial<TimelineAudioPreviewState>): void => { state = Object.freeze({ ...state, ...patch }); options.onChange?.(state); };
-  const clear = (phase: TimelineAudioPreviewPhase, error = ''): void => emit({ phase, error, plan: null, positionFrame: null,
+  const clear = (phase: TimelineAudioPreviewPhase, errorMessage: DisplayMessage | null = null): void => emit({ phase, error: renderMessage('zh-Hans', errorMessage), errorMessage, plan: null, positionFrame: null,
     requestedStartFrame: null, preparedSources: 0, totalSources: 0, nativeAdmission:'none' });
   const retirementState = (): TimelineAudioPreviewState['retirement'] => retiring ? retiring.failed ? 'failed' : 'closing' : 'none';
   const reflectRetirement = (): void => {
@@ -146,13 +150,13 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
     if (!current(attempt) || next.status === 'disposed') return;
     if (next.status === 'stopped') {
       const frame = next.frame; invalidate();
-      const reason = next.reason === 'outside-prepared-interval' ? '已离开准备区间，请明确准备新的最多 20 秒声音。'
-        : next.reason === 'context-suspended' ? '音频设备或系统暂停了试听时钟，请明确重新准备。'
-        : next.reason === 'context-closed' ? '试听音频时钟已关闭，请明确重新准备。'
-        : next.reason === 'audio-output-failed' ? '音频输出设备发生错误，请检查设备后重新准备。'
-        : next.reason === 'resume-failed' ? '音频时钟未能启动，请检查播放权限或设备后重新准备。'
-        : next.reason === 'schedule-failed' ? '完整声音区间未能启动，已释放全部声音，请重新准备。'
-        : '声音播放已停止，请明确重新准备。';
+      const reason = next.reason === 'outside-prepared-interval' ? message('audio.preview.error.outside')
+        : next.reason === 'context-suspended' ? message('audio.preview.error.suspended')
+        : next.reason === 'context-closed' ? message('audio.preview.error.closed')
+        : next.reason === 'audio-output-failed' ? message('audio.preview.error.outputFailed')
+        : next.reason === 'resume-failed' ? message('audio.preview.error.resumeFailed')
+        : next.reason === 'schedule-failed' ? message('audio.preview.error.scheduleFailed')
+        : message('audio.preview.error.stopped');
       clear('error', reason);
       emit({ positionFrame: frame }); return;
     }
@@ -211,7 +215,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
         emit({ phase: 'ready', plan: prepared.plan, positionFrame: startFrame, error: '', nativeAdmission:'none' }); return true;
       } catch (error: unknown) {
         if (!current(attempt)) return false;
-        invalidate(); clear(codeOf(error) === 'AUDIO_PREVIEW_CANCELLED' ? 'cancelled' : 'error', timelineAudioPreviewErrorMessage(error));
+        invalidate(); clear(codeOf(error) === 'AUDIO_PREVIEW_CANCELLED' ? 'cancelled' : 'error', timelineAudioPreviewErrorDescriptor(error));
         if (codeOf(error) === 'UNAUTHORIZED') options.onUnauthorized?.();
         return false;
       } finally { attemptOwner?.settleFlight(); if (active === abort) active = null; }
@@ -237,7 +241,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
       }
       const inside = frame >= plan.range.startFrame && frame <= plan.range.endFrame;
       if (inside) owned.seek(frame);
-      else { invalidate(); clear('cancelled', '已离开准备区间，请明确准备新的最多 20 秒声音。'); }
+      else { invalidate(); clear('cancelled', message('audio.preview.error.outside')); }
       // Exactly one callback for this explicit action; transport RAF never calls it.
       options.onExplicitPosition?.(frame); return inside;
     },

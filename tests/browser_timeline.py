@@ -4,6 +4,7 @@ A route abort intentionally loses one accepted response to exercise exact replay
 """
 import json, os, pathlib, shutil, socket, subprocess, tempfile, time, urllib.request
 from playwright.sync_api import sync_playwright, expect
+from browser_workbench_actions import workbench_action
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=pathlib.Path(os.environ.get('MIOON_BROWSER_EVIDENCE',str(ROOT/'evidence/v3-browser'))); OUT.mkdir(parents=True,exist_ok=True)
 TOKEN='v2-browser-local-test-token-no-live-provider'
@@ -71,7 +72,7 @@ with sync_playwright() as p:
             expect(page.get_by_label(label,exact=True)).to_be_visible()
         page.get_by_test_id('fit-canvas').click();page.wait_for_timeout(500)
         screenshot(page,'01-canvas-regions.png')
-        page.get_by_test_id('region-guide-toggle').click();expect(page.get_by_test_id('region-guide')).to_be_visible();screenshot(page,'02-region-guide.png');page.get_by_role('button',name='关闭区域说明').click()
+        workbench_action(page, 'region-guide-toggle').click();expect(page.get_by_test_id('region-guide')).to_be_visible();screenshot(page,'02-region-guide.png');page.get_by_role('button',name='关闭区域说明').click()
         expect(page.get_by_test_id('timeline-panel')).to_have_count(0)
         log('V2-B1: Canvas regions and in-app guide visible; timeline unmounted',projectId=pid)
         page.get_by_test_id('workspace-editing').click();page.get_by_test_id('preview-timeline-mode').click()
@@ -156,7 +157,7 @@ with sync_playwright() as p:
             else:route.continue_()
         page.route('**/api/rpc',lose);page.get_by_test_id('add-audio-track').click();poll(state,lambda v:len(v['timeline']['tracks'])==count+1)
         expect(page.get_by_test_id('pending-submission')).to_be_visible();page.unroute('**/api/rpc',lose)
-        page.reload();expect(page.get_by_test_id('workbench')).to_be_visible();page.get_by_test_id('jobs-button').click();expect(page.get_by_test_id('resume-pending')).to_be_visible();page.get_by_test_id('resume-pending').click();expect(page.get_by_test_id('pending-submission')).to_have_count(0)
+        page.reload();expect(page.get_by_test_id('workbench')).to_be_visible();workbench_action(page, 'jobs-button').click();expect(page.get_by_test_id('resume-pending')).to_be_visible();page.get_by_test_id('resume-pending').click();expect(page.get_by_test_id('pending-submission')).to_have_count(0)
         assert len(state()['timeline']['tracks'])==count+1 and len(lost)==1;dismiss(page)
         log('V2-B9: accepted mutation response loss survives reload; exact replay creates only one track',requestId=lost[0]['input']['requestId'])
         before_exports=len(state()['exports']);page.get_by_test_id('timeline-render-preview').click()
@@ -166,7 +167,7 @@ with sync_playwright() as p:
         v=page.get_by_test_id('timeline-preview-video');v.evaluate('(v)=>{v.muted=true;return v.play()}');page.wait_for_timeout(350);assert v.evaluate('(v)=>v.currentTime')>0;v.evaluate('(v)=>v.pause()')
         page.get_by_test_id('timeline-playhead').fill('180');page.get_by_test_id('timeline-playhead').press('Tab');poll(lambda:v.evaluate('(v)=>v.currentTime'),lambda x:abs(x-6)<.1)
         screenshot(page,'06-updated-multitrack-preview.png');log('V2-B10: render updated timeline, real playback and seek from exact frame succeed',revision=current['revision'])
-        before_exports=len(rendered['exports']);page.get_by_test_id('export-timeline').click();expect(page.get_by_role('dialog',name='导出记录')).to_be_visible()
+        before_exports=len(rendered['exports']);workbench_action(page, 'export-timeline').click();expect(page.get_by_role('dialog',name='导出记录')).to_be_visible()
         final=poll(state,lambda v:len(v['exports'])==before_exports+1 and v['exports'][-1]['status']=='succeeded',120)
         downloads=page.get_by_test_id('download-export');expect(downloads.first).to_be_visible(timeout=10000)
         with page.expect_download() as info:downloads.first.click()
@@ -192,7 +193,7 @@ with sync_playwright() as p:
         overlay=next(c for c in manifest['preview']['snapshot']['timeline']['clips'] if c.get('rect',{}).get('width')==280)
         page.get_by_test_id('timeline-clip-'+overlay['id']).click();page.get_by_test_id('preview-timeline-mode').click();showcase_video=page.get_by_test_id('timeline-preview-video');showcase_video.evaluate('(v)=>{v.muted=true;return v.play()}');poll(lambda:showcase_video.evaluate('(v)=>v.readyState'),lambda r:r>=3);showcase_video.evaluate('(v)=>v.pause()');page.get_by_test_id('timeline-playhead').fill('90');page.get_by_test_id('timeline-playhead').press('Tab')
         poll(lambda:page.get_by_test_id('timeline-preview-video').evaluate('(v)=>({t:v.currentTime,ready:v.readyState,seeking:v.seeking})'),lambda v:abs(v['t']-3)<.1 and v['ready']>=3 and not v['seeking'])
-        screenshot(page,'deliverable-preview.png');page.get_by_test_id('region-guide-toggle').click();screenshot(page,'deliverable-region-guide.png');page.get_by_role('button',name='关闭区域说明').click()
+        screenshot(page,'deliverable-preview.png');workbench_action(page, 'region-guide-toggle').click();screenshot(page,'deliverable-region-guide.png');page.get_by_role('button',name='关闭区域说明').click()
         page.set_viewport_size({'width':1366,'height':900});page.wait_for_timeout(300);screenshot(page,'deliverable-1366.png')
         bounds=page.locator('[data-testid="timeline-panel"]').bounding_box();assert bounds['height']>180 and bounds['y']+bounds['height']<=905,bounds
         assert not errors,errors;log('V2-B13: pristine canvas/preview/region overview captured; 1366×900 desktop timeline remains usable')

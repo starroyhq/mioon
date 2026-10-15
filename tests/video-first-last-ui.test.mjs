@@ -1,3 +1,6 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -35,8 +38,8 @@ const equalDeps = (a, b) => a?.length === b?.length && a.every((value, i) => Obj
 // Deterministic real-component events/effects. Native desktop layout is separate QA.
 function harness(patch = {}) {
   const slots = [], modules = new Map(), saves = [], generated = [], confirmations = [];
-  let cursor = 0, layouts = [], effects = [], tree, needsRender = false, unmounted = false;
-  const h = { visible: true, confirm: async message => { confirmations.push(message); return true; }, saves, generated, confirmations };
+  let cursor = 0, layouts = [], effects = [], tree, needsRender = false, unmounted = false, locale = 'zh-Hans';
+  const h = { visible: true, confirm: async message => { confirmations.push(renderCoreMessage('zh-Hans', message)); return true; }, saves, generated, confirmations };
   let props = { shot: shot(), project: { id: projectId }, assets, versions: [], jobs: [], providers: [provider()], busy: {}, tab: 'settings', generationOptions: { providerId: 'mock', model: provider().models[0], inputMode: 'image' },
     onDirtyChange() {}, setTab() {}, onOpenJobs() {}, onCompare() {}, onAddVersion() {}, onSelectVersion() {},
     onGenerationOptionsChange: (_, next) => { props = { ...props, generationOptions: next }; },
@@ -56,6 +59,9 @@ function harness(patch = {}) {
     const module = { exports: {} };
     Function('require', 'module', 'exports', code)(name => {
       if (name === 'react') return react;
+      if (name === './i18n/I18nProvider.tsx') return { useI18n: () => createI18nTestContext(locale) };
+      if (name === './creation-i18n.ts') return creationI18n;
+      if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
       if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
         assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
         return { state: {}, controller: { setContext() {} } };
@@ -90,6 +96,7 @@ function harness(patch = {}) {
     render(next = {}) { assert.equal(unmounted, false); props = { ...props, ...next }; let tries = 0; do { needsRender = false; cursor = 0; layouts = []; effects = []; tree = Component(props); flush(layouts); flush(effects); assert.ok(++tries < 20); } while (needsRender); return tree; },
     find(testId) { return nodes(tree).find(node => node.props?.['data-testid'] === testId || node.props?.id === testId); },
     all: () => nodes(tree), text: () => text(tree), props: () => props,
+    setLanguage(next) { locale = next; return h.render(); },
     edit(testId, value) { h.find(testId).props.onChange({ target: { value } }); h.render(); },
     click(testId) { return h.find(testId).props.onClick(); },
     reset() { nodes(tree).find(node => node.type === 'Button' && text(node) === '放弃修改').props.onClick(); h.render(); },
@@ -168,6 +175,38 @@ test('text mode explicitly confirms clearing both frames and never invents null 
     assert.deepEqual(h.saves[0].draft.referenceAssetIds, []);
     assert.equal(Object.hasOwn(h.saves[0].draft, 'lastFrameAssetId'), hasTail);
     if (hasTail) assert.equal(h.saves[0].draft.lastFrameAssetId, null);
+  }
+});
+
+test('all four languages update an open frame confirmation while retaining the exact unsaved draft and approval', async () => {
+  for (const operation of ['clear-last-frame', 'clear-manual-references', 'input-mode-select']) {
+    const pending = deferred(), h = harness({ shot: shot({ lastFrameAssetId: tailId }) }), prompts = [];
+    const title = '用户原始标题 <not a key>', prompt = 'Unchanged prompt 日本語';
+    h.edit('shot-title', title); h.edit('shot-prompt', prompt);
+    h.confirm = value => { prompts.push(value); return pending.promise; };
+    const work = operation === 'input-mode-select' ? h.find(operation).props.onChange({ target: { value: 'text' } }) : h.click(operation);
+    assert.equal(prompts.length, 1); assert.equal(typeof prompts[0], 'object', 'Confirmation owns a descriptor, not a resolved string');
+    const expectedKey = operation === 'input-mode-select' ? 'inspector.confirm.textMode' : operation === 'clear-manual-references' ? 'inspector.confirm.clearManual' : 'inspector.confirm.clearLastFrame';
+    assert.equal(prompts[0].key, expectedKey);
+    const originalPrompt = structuredClone(prompts[0]), labels = new Set(), confirmations = new Set();
+    for (const locale of i18nCore.LOCALES) {
+      h.setLanguage(locale);
+      assert.equal(h.find('shot-title').props.value, title); assert.equal(h.find('shot-prompt').props.value, prompt);
+      assert.equal(h.find(`last-frame-choice-${tailId}`).props['aria-pressed'], true);
+      assert.equal(h.props().shot.revision, 1); assert.equal(h.saves.length, 0); assert.equal(h.generated.length, 0);
+      assert.equal(h.find('input-mode-select').props.value, 'image');
+      assert.equal(text(h.find('clear-last-frame')), i18nCore.translate(locale, 'timeline.references.clear'));
+      labels.add(text(h.find('clear-last-frame'))); confirmations.add(i18nCore.renderMessage(locale, prompts[0]));
+      assert.deepEqual(prompts[0], originalPrompt); assert.equal(prompts.length, 1);
+    }
+    assert.equal(labels.size, 4); assert.equal(confirmations.size, 4);
+    pending.resolve(true); await work; h.render();
+    assert.equal(operation === 'clear-manual-references' ? h.find('clear-manual-references') : h.find('clear-last-frame'), undefined, 'The same approval remains valid after language-only updates');
+    assert.equal(h.find('shot-title').props.value, title); assert.equal(h.find('shot-prompt').props.value, prompt);
+    await h.click('save-shot'); assert.equal(h.saves.length, 1); assert.equal(h.generated.length, 0);
+    assert.equal(h.saves[0].revision, 1); assert.equal(h.saves[0].draft.title, title); assert.equal(h.saves[0].draft.prompt, prompt);
+    assert.equal(h.saves[0].draft.lastFrameAssetId, operation === 'clear-manual-references' ? tailId : null);
+    assert.deepEqual(h.saves[0].draft.referenceAssetIds, operation === 'clear-last-frame' ? [firstId] : []);
   }
 });
 
@@ -252,11 +291,11 @@ test('actual App confirmation sends once and rejects changed content, navigation
     const old = { ...shot(), referenceAssets: [assets[0]] }; delete old.id;
     const job = { id: id(44), snapshot: old };
     const state = { epoch: 0, notices: [], submitted: [], review: null };
-    const scope = { dataRef: { current: { shots: [current], assets: structuredClone(assets), jobs: [job] } }, providers: [p],
+    const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), dataRef: { current: { shots: [current], assets: structuredClone(assets), jobs: [job] } }, providers: [p],
       generationOptionsRef: { current: { [shotId]: { providerId: p.id, model: p.models[0], inputMode: 'image' } } },
       realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'original' } },
       context: () => ({ epoch: state.epoch }), isCurrent: value => value.epoch === state.epoch,
-      setRealConfirm: value => { state.review = value; }, notify: message => state.notices.push(message), submitGeneration: args => state.submitted.push(args),
+      setRealConfirm: value => { state.review = value; }, notify: message => state.notices.push(renderCoreMessage('zh-Hans', message)), submitGeneration: args => state.submitted.push(args),
       generationSelection: settings.generationSelection, generationReferences: settings.generationReferences, generationReferenceIdentity: settings.generationReferenceIdentity };
     const api = Function(...Object.keys(scope), `${functions}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope));
     api.reviewGeneration({ shot: frozen ? { ...old, id: shotId } : current, providerId: p.id, model: p.models[0], inputMode: 'image', ...(frozen ? { retryJobId: job.id } : {}) });
@@ -289,11 +328,11 @@ function mutationRunner(t, result) {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const code = app.slice(app.indexOf('  async function runSession('), app.indexOf('  async function inspect('));
   const state = { result, calls: [], notices: [], pending: [] }, locks = new Set();
-  const scope = { ...contracts, ...submissions, ...mutations, shotTextRef: { current: null }, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },
+  const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...contracts, ...submissions, ...mutations, shotTextRef: { current: null }, dataRef: { current: { project: { id: projectId }, shots: [shot()], nodes: [] } }, currentProject: { current: projectId },
     context: () => ({ projectId, epoch: 1 }), isCurrent: () => true,
     isBusy: key => locks.has(key), markBusy: (_, key, busy) => busy ? locks.add(key) : locks.delete(key),
     setPending: value => { state.pending = value; }, rpc: async (operation, input) => { state.calls.push({ operation, input: structuredClone(input) }); return state.result; },
-    refresh: async () => {}, notify: message => state.notices.push(message), openTasks() {}, setAuth() {}, readableError: error => error.message,
+    refresh: async () => {}, notify: message => state.notices.push(renderCoreMessage('zh-Hans', message)), openTasks() {}, setAuth() {}, readableError: error => error.message,
   };
   Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
   return { state, scope, values, run: Function(...Object.keys(scope), `${code}; return runSession;`)(...Object.values(scope)) };

@@ -1,3 +1,4 @@
+import * as i18n from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -36,10 +37,14 @@ function recoveryView(state, controller, confirm, pending = false, refs = []) {
   const disclosure = { exports: {} };
   const react = { createElement: (type, props, ...children) => type === disclosure.exports.default ? type({ ...props, children }) : ({ type, props: { ...props, children } }), useRef: initial => refs[cursor++] ||= { current: initial } }; react.default = react;
   Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/RecoveryStorageDetails.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(name => {
+    if (name === './i18n/I18nProvider.tsx') return i18n.i18nTestModule();
+    if (name === '../../../packages/i18n/src/index.ts') return i18n;
     assert.equal(name, 'react'); return react;
   }, disclosure, disclosure.exports);
   const module = { exports: {} };
   Function('require', 'module', 'exports', transformSync(file, { loader: 'tsx', format: 'cjs' }).code)(name => {
+    if (name === './i18n/I18nProvider.tsx') return i18n.i18nTestModule();
+    if (name === '../../../packages/i18n/src/index.ts') return i18n;
     if (name === 'react') return react;
     if (name === './RecoveryStorageDetails.tsx') return disclosure.exports;
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
@@ -225,11 +230,11 @@ test('HTTP adapter uses same-origin sidecar only and rejects malformed/unsupport
 test('recovery is embedded in the existing right inspector with explicit restore and local plaintext warning', () => {
   const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8');
   const view = readFileSync(new URL('../apps/web/src/ClipDraftRecovery.tsx', import.meta.url), 'utf8');
-  assert.match(inspector, /<ClipDraftRecovery state=\{state\}/); assert.match(view, /仅片段属性，本地明文；最后未确认输入可能丢失/);
-  assert.match(view, /恢复到属性表单/); assert.doesNotMatch(view, /mutateTimeline|edit_tasks|role="dialog"/);
+  assert.match(inspector, /<ClipDraftRecovery state=\{state\}/); assert.match(view, /recovery\.clip\.shortDisclosure/); assert.match(i18n.translate('zh-Hans', 'recovery.clip.shortDisclosure'), /仅片段属性，本地明文；最后未确认输入可能丢失/);
+  assert.match(view, /recovery\.clip\.restore/); assert.equal(i18n.translate('zh-Hans', 'recovery.clip.restore'), '恢复到属性表单'); assert.doesNotMatch(view, /mutateTimeline|edit_tasks|role="dialog"/);
   assert.doesNotMatch(inspector, /setBaseRevision|same\(latest, baseline/);
   assert.match(inspector, /data-testid="remove-clip" disabled=\{busy \|\| dirty \|\| state.submitting \|\| Boolean\(state.candidate\)\}/);
-  assert.match(inspector, /先保存或放弃片段草稿，再移除此片段/);
+  assert.match(inspector, /timeline\.inspector\.saveBeforeRemove/); assert.equal(i18n.translate('zh-Hans', 'timeline.inspector.saveBeforeRemove'), '先保存或放弃片段草稿，再移除此片段。');
 });
 
 test('a delayed reread cannot resurrect a candidate after its exact DELETE is confirmed', async t => {
@@ -454,7 +459,7 @@ for (const outcome of ['cancel', 'confirm', 'new input', 'changed back', 'pendin
     assert.ok(abandon, 'The actual Inspector recovery UI exposes an explicit local-only exit');
     assert.equal(Boolean(abandon.props.disabled), false);
     const calls = structuredClone(h.calls), clicking = abandon.props.onClick();
-    assert.equal(prompts.length, 1); assert.match(prompts[0], /当前输入/); assert.match(prompts[0], /保留|仍/);
+    assert.equal(prompts.length, 1); assert.match(i18n.renderMessage('zh-Hans', prompts[0]), /当前输入/); assert.match(i18n.renderMessage('zh-Hans', prompts[0]), /保留|仍/);
     assert.equal(h.controller.getState().dirty, true, 'Opening confirmation alone must not abandon input');
     if (outcome === 'new input' || outcome === 'changed back') h.controller.edit('name', 'Typed after dialog opened');
     if (outcome === 'changed back') h.controller.edit('name', 'Input at confirmation');

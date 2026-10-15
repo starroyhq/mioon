@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "file": "apps/web/src/clip-draft-client.ts",
+      "category": "cjk-source",
+      "hash": "b2933bccf081c42fd11e1b777ab44f00849457ac05f97c01d30e4882b7b23bfe",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DRAFT_PROTOCOL_UNKNOWN maps through recoveryErrorMessage to recovery.notice.protocol; GUI consumer: clip-draft-state.ts failure()/errorDisplay → ClipDraftRecovery.tsx. The localized primary notice explicitly preserves the incomplete/mismatched acknowledgement, current input and original requests, and prohibits automatic overwrites/retries. Reviewed original literal: '本地草稿服务返回无效确认；未替换当前输入。'."
+    },
+    {
+      "file": "apps/web/src/clip-draft-client.ts",
+      "category": "cjk-source",
+      "hash": "071727c4eb6530c5a8631efb1e5e3dead40c14c25b91d95374c346074b1d5dc5",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DRAFT_TIMEOUT_UNKNOWN maps through recoveryErrorMessage to recovery.notice.timeout; GUI consumer: clip-draft-state.ts failure()/errorDisplay → ClipDraftRecovery.tsx. The localized primary notice explicitly distinguishes transport timeout from outcome confirmation and states that disconnecting does not cancel saves, deletions or the original operation. Current input and original requests remain retained. Reviewed original literal: '本地草稿请求超时，结果仍待确认。中断连接不会取消草稿保存或删除。'."
+    },
+    {
+      "file": "apps/web/src/clip-draft-client.ts",
+      "category": "cjk-source",
+      "hash": "64eacdf9fb0bbcbf97a37a7a3f1b1e52969043247d4cb4c6f3184e1f3ad138e6",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DRAFT_NETWORK_UNKNOWN maps through recoveryErrorMessage to recovery.notice.network; GUI consumer: clip-draft-state.ts failure()/errorDisplay → ClipDraftRecovery.tsx. The localized primary notice states that no acknowledgement arrived, outcome may still be pending, original input/request is retained and no automatic retry occurs. Reviewed original literal: '本地草稿请求未收到确认；写入结果可能仍待确认。'."
+    },
+    {
+      "file": "apps/web/src/clip-draft-client.ts",
+      "category": "cjk-source",
+      "hash": "be40f2cf9b703cc97bff09a693770a5382b8ecf017e8eaca77aae93e24568bbe",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DRAFT_WRITE_UNSUPPORTED maps through recoveryErrorMessage to recovery.clip.unsupported; GUI consumer: clip-draft-state.ts failure()/errorDisplay → ClipDraftRecovery.tsx. The localized primary notice explicitly states that restored branches do not support local drafts; it never implies storage or request authority is available. Reviewed original literal: '恢复分支暂不支持本地片段草稿。'."
+    },
+    {
+      "file": "apps/web/src/local-delivery-client.ts",
+      "category": "cjk-source",
+      "hash": "cb502a83cc652157e8ad129ffcd01476ab1a020cc0fc1e976cc24803663de26c",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DELIVERY_PROTOCOL_UNKNOWN maps through recoveryErrorMessage to recovery.notice.protocol; GUI consumer: local-delivery-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → DeliveryDraftRecovery.tsx. The localized primary notice explicitly preserves the incomplete/mismatched acknowledgement, current input and original requests, and prohibits automatic overwrites/retries. Reviewed original literal: '本地交付确认不完整。当前名称与原导出请求仍保留，请重新核对。'."
+    },
+    {
+      "file": "apps/web/src/local-delivery-client.ts",
+      "category": "cjk-source",
+      "hash": "6b5be1e86e47dc69f6999d2ea8db6260cae5e01d1a5ab067598af7663b523499",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DELIVERY_TIMEOUT_UNKNOWN maps through recoveryErrorMessage to recovery.notice.timeout; GUI consumer: local-delivery-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → DeliveryDraftRecovery.tsx. The localized primary notice explicitly distinguishes transport timeout from outcome confirmation and states that disconnecting does not cancel saves, deletions or the original operation. Current input and original requests remain retained. Reviewed original literal: '本地交付请求超时，结果仍待确认。'."
+    },
+    {
+      "file": "apps/web/src/local-delivery-client.ts",
+      "category": "cjk-source",
+      "hash": "658474f71ed438c8ecf17446eef0339b86445e211ff6b6162d1858e2262161c8",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DELIVERY_TIMEOUT_UNKNOWN maps through recoveryErrorMessage to recovery.notice.timeout; GUI consumer: local-delivery-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → DeliveryDraftRecovery.tsx. The localized primary notice explicitly distinguishes transport timeout from outcome confirmation and states that disconnecting does not cancel saves, deletions or the original operation. Current input and original requests remain retained. Reviewed original literal: '本地交付请求超时，结果仍待确认。中断连接不会取消保存或原导出请求。'."
+    },
+    {
+      "file": "apps/web/src/local-delivery-client.ts",
+      "category": "cjk-source",
+      "hash": "cf9ec4f60d6dd33eaaa535dc0d0b7a2e58fb3cfd0d2898016451103ebfe71c7e",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DELIVERY_NETWORK_UNKNOWN maps through recoveryErrorMessage to recovery.notice.network; GUI consumer: local-delivery-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → DeliveryDraftRecovery.tsx. The localized primary notice states that no acknowledgement arrived, outcome may still be pending, original input/request is retained and no automatic retry occurs. Reviewed original literal: '本地交付请求未收到确认。不会自动重试，原请求结果可能仍待确认。'."
+    },
+    {
+      "file": "apps/web/src/local-delivery-client.ts",
+      "category": "cjk-source",
+      "hash": "ad398e45cbe78a223112bc13fe3c290a00f18ce000aa75a3270dc32a22af3295",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_DELIVERY_TIMEOUT_UNKNOWN maps through recoveryErrorMessage to recovery.notice.timeout; GUI consumer: local-delivery-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → DeliveryDraftRecovery.tsx. The localized primary notice explicitly distinguishes transport timeout from outcome confirmation and states that disconnecting does not cancel saves, deletions or the original operation. Current input and original requests remain retained. Reviewed original literal: '本地交付请求超时，原请求结果仍待确认。'."
+    },
+    {
+      "file": "apps/web/src/local-shot-text-client.ts",
+      "category": "cjk-source",
+      "hash": "47df17e9f63fa1b62f14baf2f7231c6b732da583117d18bf854cec6a6a2bbd62",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_SHOT_TEXT_PROTOCOL_UNKNOWN maps through recoveryErrorMessage to recovery.notice.protocol; GUI consumer: local-shot-text-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → ShotTextDraftRecovery.tsx. The localized primary notice explicitly preserves the incomplete/mismatched acknowledgement, current input and original requests, and prohibits automatic overwrites/retries. Reviewed original literal: '本地镜头文字确认不完整。当前名称与原文字保存请求仍保留，请重新核对。'."
+    },
+    {
+      "file": "apps/web/src/local-shot-text-client.ts",
+      "category": "cjk-source",
+      "hash": "5b6047a9db317ddb2e9d60cccc24ab5e96396a4eb4b6bb938b7dddc8dd235b48",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_SHOT_TEXT_TIMEOUT_UNKNOWN maps through recoveryErrorMessage to recovery.notice.timeout; GUI consumer: local-shot-text-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → ShotTextDraftRecovery.tsx. The localized primary notice explicitly distinguishes transport timeout from outcome confirmation and states that disconnecting does not cancel saves, deletions or the original operation. Current input and original requests remain retained. Reviewed original literal: '本地镜头文字请求超时，结果仍待确认。'."
+    },
+    {
+      "file": "apps/web/src/local-shot-text-client.ts",
+      "category": "cjk-source",
+      "hash": "c1bf349d544e53225ec459a3fc7f69e364673d3644069925c7812a15d7744d06",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_SHOT_TEXT_TIMEOUT_UNKNOWN maps through recoveryErrorMessage to recovery.notice.timeout; GUI consumer: local-shot-text-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → ShotTextDraftRecovery.tsx. The localized primary notice explicitly distinguishes transport timeout from outcome confirmation and states that disconnecting does not cancel saves, deletions or the original operation. Current input and original requests remain retained. Reviewed original literal: '本地镜头文字请求超时，结果仍待确认。中断连接不会取消保存或原文字保存请求。'."
+    },
+    {
+      "file": "apps/web/src/local-shot-text-client.ts",
+      "category": "cjk-source",
+      "hash": "b3809eb18c53c562e358a0d0c63497e584ede938dd2f2ec072cfdf942853174b",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_SHOT_TEXT_NETWORK_UNKNOWN maps through recoveryErrorMessage to recovery.notice.network; GUI consumer: local-shot-text-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → ShotTextDraftRecovery.tsx. The localized primary notice states that no acknowledgement arrived, outcome may still be pending, original input/request is retained and no automatic retry occurs. Reviewed original literal: '本地镜头文字请求未收到确认。不会自动重试，原请求结果可能仍待确认。'."
+    },
+    {
+      "file": "apps/web/src/local-shot-text-client.ts",
+      "category": "cjk-source",
+      "hash": "5f1be2f52972b86e2d672b66761115354c809f6779ef857d10bcc537bb51e3bb",
+      "owner": "delivery",
+      "reason": "Original typed transport diagnostic retained on Error.message for compatibility; never used for classification or rendered as primary text. Stable LOCAL_SHOT_TEXT_TIMEOUT_UNKNOWN maps through recoveryErrorMessage to recovery.notice.timeout; GUI consumer: local-shot-text-state.ts draftFailure()/intentFailure(), draftErrorDisplay/intentErrorDisplay → ShotTextDraftRecovery.tsx. The localized primary notice explicitly distinguishes transport timeout from outcome confirmation and states that disconnecting does not cancel saves, deletions or the original operation. Current input and original requests remain retained. Reviewed original literal: '本地镜头文字请求超时，原请求结果仍待确认。'."
+    }
+  ]
+}

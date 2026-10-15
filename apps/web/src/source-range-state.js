@@ -1,3 +1,5 @@
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
+import { TimelineUiError, timelineFailure } from './timeline-notices.ts';
 import { SOURCE_RANGE_FPS, sourceFrameCount, isSourceRangeResponse } from '@mioon/contracts';
 import { MAX_TIMELINE_FRAME } from './timeline-snapping.js';
 
@@ -20,14 +22,15 @@ export function sourcePositionFrame(seconds, count, intendedFrame = null) {
   const frame = sourceSeekMatchesTime(seconds, intendedFrame) ? intendedFrame : Math.floor(seconds * SOURCE_RANGE_FPS + 1e-6);
   return Math.max(0, Math.min(count ?? Number.MAX_SAFE_INTEGER, frame));
 }
-export function sourceRangeIssue(range, count) {
-  if (!Number.isSafeInteger(count) || count < 1) return '素材时长未知，无法设置源范围。';
-  if (!range || range.inFrame === '' || range.outFrame === '') return '请填写整数入点和出点。';
+export function sourceRangeMessage(range, count) {
+  if (!Number.isSafeInteger(count) || count < 1) return message('timeline.range.error.durationUnknown');
+  if (!range || range.inFrame === '' || range.outFrame === '') return message('timeline.range.error.required');
   const start = Number(range.inFrame), end = Number(range.outFrame);
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return '入点和出点必须为整数帧。';
-  if (start < 0 || start >= end || end > count) return `范围必须满足 0 ≤ 入点 < 出点 ≤ ${count}。`;
-  return '';
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return message('timeline.range.error.integer');
+  if (start < 0 || start >= end || end > count) return message('timeline.range.error.bounds', { count });
+  return null;
 }
+export function sourceRangeIssue(range, count) { return renderMessage('zh-Hans', sourceRangeMessage(range, count)); }
 function validRow(row, context) {
   return isSourceRangeResponse(row) && row.assetId === context.asset.id && row.projectId === context.projectId && row.sourceFrameCount === sourceFrameCount(context.asset.duration);
 }
@@ -46,9 +49,9 @@ export function createSourceRangeController({ read, save, onChange = () => {} })
   const emit = patch => { state = { ...state, ...patch }; onChange(state); return state; };
   const owns = token => token === epoch && context !== null;
   function mergeRow(row, { acknowledgedSerial } = {}) {
-    if (!validRow(row, context)) throw new Error('源范围响应无效，草稿仍保留。');
+    if (!validRow(row, context)) throw new TimelineUiError(message('timeline.range.error.invalidReply'));
     if (state.row && row.revision < state.row.revision) return false;
-    if (state.row?.revision === row.revision && !sameSourceRange(state.row.range, row.range)) throw new Error('源范围确认不一致，请重新核对。');
+    if (state.row?.revision === row.revision && !sameSourceRange(state.row.range, row.range)) throw new TimelineUiError(message('timeline.range.error.inconsistentReply'));
     const draft = cloneRange(row.range) || { inFrame: 0, outFrame: row.sourceFrameCount ?? '' };
     if (acknowledgedSerial !== undefined) {
       emit({ row: copyRow(row), baseRevision: row.revision, conflict: false, error: '',
@@ -69,7 +72,7 @@ export function createSourceRangeController({ read, save, onChange = () => {} })
       if (!owns(owner) || generation !== readGeneration) return null;
       mergeRow(row); return row;
     } catch (error) {
-      if (owns(owner) && generation === readGeneration) emit({ error: error.message || '无法读取源范围，草稿仍保留。' });
+      if (owns(owner) && generation === readGeneration) emit({ ...timelineFailure('error', error, message('timeline.range.error.readFailed')) });
       return null;
     } finally { if (owns(owner) && generation === readGeneration) emit({ loading: false }); }
   }
@@ -113,17 +116,17 @@ export function createSourceRangeController({ read, save, onChange = () => {} })
         const row = await save(input);
         if (!owns(owner)) return null;
         if (!row) {
-          emit({ dirty: true, error: '保存尚未确认；草稿已保留。请检查任务中的原请求或重新读取范围。' });
+          emit({ dirty: true, error: '保存尚未确认；草稿已保留。请检查任务中的原请求或重新读取范围。', errorMessage: message('timeline.range.error.saveUnconfirmed') });
           await load();
           return null;
         }
         readGeneration++;
-        if (!validRow(row, captured) || row.revision !== input.expectedRevision + 1 || row.range?.inFrame !== input.inFrame || row.range?.outFrame !== input.outFrame) throw new Error('保存确认与原请求不一致；草稿已保留。');
+        if (!validRow(row, captured) || row.revision !== input.expectedRevision + 1 || row.range?.inFrame !== input.inFrame || row.range?.outFrame !== input.outFrame) throw new TimelineUiError(message('timeline.range.error.saveMismatch'));
         const merged = mergeRow(row, { acknowledgedSerial: serial });
-        if (!merged) emit({ dirty: true, conflict: true, error: '范围已出现更新版本；已保留当前输入，请核对后继续。' });
+        if (!merged) emit({ dirty: true, conflict: true, error: '范围已出现更新版本；已保留当前输入，请核对后继续。', errorMessage: message('timeline.range.error.newerRange') });
         return row;
       } catch (error) {
-        if (owns(owner)) emit({ dirty: true, error: error.message || '保存未完成，草稿已保留。' });
+        if (owns(owner)) emit({ dirty: true, ...timelineFailure('error', error, message('timeline.range.error.saveFailed')) });
         return null;
       } finally { if (owns(owner)) emit({ saving: false, loading: false }); }
     },
@@ -135,19 +138,19 @@ export function createSourceRangeController({ read, save, onChange = () => {} })
 }
 
 export function sourceRangeAddPlan({ snapshot, asset, timeline, blocked = false }) {
-  let reason = '';
-  if (blocked) reason = '请先确认正在处理的范围或时间线请求。';
-  else if (!snapshot || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 1) reason = '请先明确保存源范围，且确保没有未保存修改。';
-  else if (!asset || !supportsSourceRange(asset) || asset.id !== snapshot.assetId || asset.projectId !== snapshot.projectId || timeline?.projectId !== snapshot.projectId) reason = '源素材或时间线已变化，请重新选择。';
-  else if (!Number.isSafeInteger(snapshot.inFrame) || !Number.isSafeInteger(snapshot.outFrame)) reason = '已保存范围必须使用整数帧。';
-  else reason = sourceRangeIssue(snapshot, sourceFrameCount(asset.duration));
+  let reason = '', reasonMessage = null;
+  if (blocked) { reason = '请先确认正在处理的范围或时间线请求。'; reasonMessage = message('timeline.range.error.pending'); }
+  else if (!snapshot || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 1) { reason = '请先明确保存源范围，且确保没有未保存修改。'; reasonMessage = message('timeline.range.error.saveFirst'); }
+  else if (!asset || !supportsSourceRange(asset) || asset.id !== snapshot.assetId || asset.projectId !== snapshot.projectId || timeline?.projectId !== snapshot.projectId) { reason = '源素材或时间线已变化，请重新选择。'; reasonMessage = message('timeline.range.error.changed'); }
+  else if (!Number.isSafeInteger(snapshot.inFrame) || !Number.isSafeInteger(snapshot.outFrame)) { reason = '已保存范围必须使用整数帧。'; reasonMessage = message('timeline.range.error.savedInteger'); }
+  else { reasonMessage = sourceRangeMessage(snapshot, sourceFrameCount(asset.duration)); reason = renderMessage('zh-Hans', reasonMessage); }
   const kind = asset?.mimeType?.startsWith('audio/') ? 'audio' : 'video';
   const track = timeline?.tracks?.find(item => item.kind === kind);
   const startFrame = track ? Math.max(0, ...timeline.clips.filter(clip => clip.trackId === track.id).map(clip => clip.startFrame + clip.durationFrames)) : 0;
   const durationFrames = snapshot ? snapshot.outFrame - snapshot.inFrame : 0;
-  if (!reason && !track) reason = `请先创建兼容的${kind === 'audio' ? '音频' : '画面'}轨道。`;
-  if (!reason && (!Number.isSafeInteger(startFrame + durationFrames) || startFrame + durationFrames > MAX_TIMELINE_FRAME)) reason = '追加后的终点超过时间线 18000 帧上限；请缩短已保存范围或调整轨道。';
-  if (!reason && timeline.clips.length >= 100) reason = '时间线最多容纳 100 个片段。';
-  return { valid: !reason, reason, startFrame, durationFrames, track, expectedRevision: timeline?.revision,
+  if (!reason && !track) { reasonMessage = message(kind === 'audio' ? 'timeline.range.error.audioTrack' : 'timeline.range.error.videoTrack'); reason = renderMessage('zh-Hans', reasonMessage); }
+  if (!reason && (!Number.isSafeInteger(startFrame + durationFrames) || startFrame + durationFrames > MAX_TIMELINE_FRAME)) { reason = '追加后的终点超过时间线 18000 帧上限；请缩短已保存范围或调整轨道。'; reasonMessage = message('timeline.range.error.tooLong'); }
+  if (!reason && timeline.clips.length >= 100) { reason = '时间线最多容纳 100 个片段。'; reasonMessage = message('timeline.range.error.clipLimit'); }
+  return { valid: !reason, reason, reasonMessage, startFrame, durationFrames, track, expectedRevision: timeline?.revision,
     input: reason ? null : Object.freeze({ trackId: track.id, assetId: asset.id, name: asset.name, startFrame, durationFrames, sourceInFrame: snapshot.inFrame }) };
 }

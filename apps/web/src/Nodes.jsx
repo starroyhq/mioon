@@ -1,8 +1,10 @@
+import { statusDescriptor, providerDisplayName } from './creation-i18n.ts';
+import { useI18n } from './i18n/I18nProvider.tsx';
 import { Button } from '@mioon/ui/components/button';
 import React, { memo, useLayoutEffect, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import Icon from './icons.jsx';
-import { activeJob, assetUrl, statusText, versionUrl } from './api.js';
+import { activeJob, assetUrl, versionUrl } from './api.js';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, VISUAL_SOURCE_HANDLE, VISUAL_TARGET_HANDLE } from './reference-connections.js';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 
@@ -15,6 +17,7 @@ export function disposeMedia(element) {
 }
 
 export function Media({ asset, version, className = '', controls = false, ...props }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const media = useRef(null);
   const visible = useWorkspaceVisibility();
   const visibleRef = useRef(visible);
@@ -49,37 +52,40 @@ export function Media({ asset, version, className = '', controls = false, ...pro
     onPlaying: event => guardPlayback(event, props.onPlaying),
     onTimeUpdate: event => guardPlayback(event, props.onTimeUpdate),
   };
-  if (!url) return <div className={`media-placeholder ${className}`}><Icon name="film" size={32} /><span>等待你的第一个画面</span></div>;
-  if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio ref={media} key={sourceKey} className="nodrag nowheel" src={url} controls preload="metadata" {...playbackProps} /> : <span>音频素材</span>}</div>;
-  return video ? <video ref={media} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...playbackProps} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || '镜头参考图'} loading="lazy" {...props} />;
+  if (!url) return <div className={`media-placeholder ${className}`}><Icon name="film" size={32} /><span>{t('assets.waitFirstVisual')}</span></div>;
+  if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio ref={media} key={sourceKey} className="nodrag nowheel" src={url} controls preload="metadata" {...playbackProps} /> : <span>{t('assets.audioAsset')}</span>}</div>;
+  return video ? <video ref={media} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...playbackProps} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || t('assets.shotReference')} loading="lazy" {...props} />;
 }
 const ShotNode = memo(function ShotNode({ data, selected }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const { record, asset, version, job, index, onInspect, onGenerate } = data;
   const generating = !data.generationUnavailableReason && job && activeJob(job);
   return <article className={`canvas-node shot-node ${selected ? 'is-selected' : ''}`} data-testid={`shot-node-${record.id}`}>
-    <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label="镜头视觉连线输入，不参与生成" title="视觉连线 · 不参与生成" />
-    <Handle id={REFERENCE_TARGET_HANDLE} type="target" position={Position.Left} className="reference-handle" style={{ top: 66 }} aria-label="首帧参考输入" title="将图片的首帧输出连接到这里" isConnectable={!data.referenceBusy && !data.referenceConnection && !record.referenceAssetIds?.length} />
-    <span className="reference-port-label target-label">首帧输入</span>
+    <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.shotVisualInput')} title={t('shell.node.visualOnly')} />
+    <Handle id={REFERENCE_TARGET_HANDLE} type="target" position={Position.Left} className="reference-handle" style={{ top: 66 }} aria-label={t('shell.node.referenceInput')} title={t('shell.node.referenceInputHint')} isConnectable={!data.referenceBusy && !data.referenceConnection && !record.referenceAssetIds?.length} />
+    <span className="reference-port-label target-label">{t('shell.node.firstFrameInput')}</span>
     <header className="node-header"><span className="node-number">{String(index + 1).padStart(2, '0')}</span><span className="node-title">{record.title}</span><Icon name="film" size={15} /></header>
-    <div className="shot-media"><Media asset={asset} version={version} controls={Boolean(version)} /><span className="media-corner">{record.aspectRatio} · {record.duration}s</span>{version && <span className={`version-tag ${version.isMock ? 'mock' : ''}`}>V{version.number}{version.isMock ? ' · 模拟' : ''}</span>}{generating && <div className="node-generating"><span className="spinner" />{statusText(job.status)}<span>{Math.round(job.progress || 0)}%</span></div>}</div>
-    <div className="node-body"><p>{record.prompt || '写下这个镜头的画面、动作与光线…'}</p><div className="node-meta"><span className={`status-dot ${version ? 'green' : generating ? 'orange' : ''}`} /><span>{generating ? statusText(job.status) : version ? '已选用版本' : '待生成'}</span><span className="spacer" /><span>{record.referenceAssetIds?.length || 0} 张参考</span></div></div>
-    {data.referenceConnection && <Button variant="ghost" className="node-bound-reference nodrag" onClick={() => onInspect(record.id, 'settings')} title={data.referenceSourceLabel}><Icon name="link" size={12} /><span>首帧 · {data.referenceSourceLabel}</span></Button>}
-    <footer className="node-footer"><Button variant="ghost" className="node-link nodrag" onClick={() => onInspect(record.id, 'versions')}><Icon name="layers" size={14} />{data.versionCount || 0} 个版本</Button><Button variant="ghost" className="node-generate nodrag" aria-label={`生成 ${record.title}`} title={data.generationUnavailableReason || (data.generationLabel ? `使用 ${data.generationLabel} 生成；参数与右侧设置一致` : '在右侧选择生成服务商')} disabled={Boolean(data.generationUnavailableReason) || generating || data.busy || data.referenceBusy} onClick={() => onGenerate(record)}><Icon name="sparkle" size={13} />生成</Button></footer>
-    <Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label="镜头视觉连线输出，不参与生成" title="视觉连线 · 不参与生成" />
+    <div className="shot-media"><Media asset={asset} version={version} controls={Boolean(version)} /><span className="media-corner">{record.aspectRatio} · {record.duration}s</span>{version && <span className={`version-tag ${version.isMock ? 'mock' : ''}`}>V{version.number}{version.isMock ? t('shell.node.mock') : ''}</span>}{generating && <div className="node-generating"><span className="spinner" />{renderMessage(statusDescriptor(job.status))}<span>{Math.round(job.progress || 0)}%</span></div>}</div>
+    <div className="node-body"><p>{record.prompt || t('shell.node.promptPlaceholder')}</p><div className="node-meta"><span className={`status-dot ${version ? 'green' : generating ? 'orange' : ''}`} /><span>{generating ? renderMessage(statusDescriptor(job.status)) : version ? t('shell.node.versionSelected') : t('shell.node.awaitingGeneration')}</span><span className="spacer" /><span>{t('shell.node.referenceCount', { count: record.referenceAssetIds?.length || 0 })}</span></div></div>
+    {data.referenceConnection && <Button variant="ghost" className="node-bound-reference nodrag" onClick={() => onInspect(record.id, 'settings')} title={renderMessage(data.referenceSourceLabel)}><Icon name="link" size={12} /><span>{t('shell.node.firstFrameSource', { name: renderMessage(data.referenceSourceLabel) })}</span></Button>}
+    <footer className="node-footer"><Button variant="ghost" className="node-link nodrag" onClick={() => onInspect(record.id, 'versions')}><Icon name="layers" size={14} />{t('shell.node.versionCount', { count: data.versionCount || 0 })}</Button><Button variant="ghost" className="node-generate nodrag" aria-label={t('shell.node.generateNamed', { name: record.title })} title={renderMessage(data.generationUnavailableReason) || (data.generationProvider ? t('shell.node.generateProvider', { provider: providerDisplayName(data.generationProvider, t) }) : t('shell.node.chooseProvider'))} disabled={Boolean(data.generationUnavailableReason) || generating || data.busy || data.referenceBusy} onClick={() => onGenerate(record)}><Icon name="sparkle" size={13} />{t('shell.generate')}</Button></footer>
+    <Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label={t('shell.node.shotVisualOutput')} title={t('shell.node.visualOnly')} />
   </article>;
 });
 const AssetNode = memo(function AssetNode({ data, selected }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const { record, asset } = data;
   return <article className={`canvas-node asset-node ${selected ? 'is-selected' : ''}`} data-testid={`asset-node-${record.id}`}>
-    <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label="素材视觉连线输入，不参与生成" title="视觉连线 · 不参与生成" />
-    <header className="node-header"><span className="type-icon"><Icon name={record.type === 'video' ? 'film' : record.type === 'audio' ? 'music' : 'image'} size={16} /></span><span className="node-title">{record.label || asset?.name || '参考素材'}</span><span className="tiny-label">{record.type.toUpperCase()}</span></header>
+    <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.assetVisualInput')} title={t('shell.node.visualOnly')} />
+    <header className="node-header"><span className="type-icon"><Icon name={record.type === 'video' ? 'film' : record.type === 'audio' ? 'music' : 'image'} size={16} /></span><span className="node-title">{record.label || asset?.name || t('assets.reference')}</span><span className="tiny-label">{t(record.type === 'video' ? 'assets.video' : record.type === 'audio' ? 'assets.audio' : 'assets.image')}</span></header>
     <div className="asset-node-media"><Media asset={asset} controls={record.type !== 'image'} /></div>
-    <footer className="asset-node-footer"><span>参考素材</span><span>{asset?.width && asset?.height ? `${asset.width} × ${asset.height}` : record.type.toUpperCase()}</span></footer>
-    {data.canReference && <><Button variant="ghost" className="node-reference-action nodrag" data-testid={`connect-reference-${record.id}`} onClick={() => data.onInspect(record.id)}><Icon name="link" size={13} />连接首帧到镜头<Icon name="arrow" size={12} /></Button><Handle id={REFERENCE_SOURCE_HANDLE} type="source" position={Position.Right} className="reference-handle" style={{ top: 66 }} aria-label="首帧参考输出" title="连接到镜头的首帧输入，作为生成参考图" isConnectable={!data.referenceBusy} /><span className="reference-port-label source-label">首帧输出</span></>}
-    <Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label="素材视觉连线输出，不参与生成" title="视觉连线 · 不参与生成" />
+    <footer className="asset-node-footer"><span>{t('assets.reference')}</span><span>{asset?.width && asset?.height ? `${asset.width} × ${asset.height}` : t(record.type === 'video' ? 'assets.video' : record.type === 'audio' ? 'assets.audio' : 'assets.image')}</span></footer>
+    {data.canReference && <><Button variant="ghost" className="node-reference-action nodrag" data-testid={`connect-reference-${record.id}`} onClick={() => data.onInspect(record.id)}><Icon name="link" size={13} />{t('shell.node.connectReference')}<Icon name="arrow" size={12} /></Button><Handle id={REFERENCE_SOURCE_HANDLE} type="source" position={Position.Right} className="reference-handle" style={{ top: 66 }} aria-label={t('shell.node.referenceOutput')} title={t('shell.node.referenceOutputHint')} isConnectable={!data.referenceBusy} /><span className="reference-port-label source-label">{t('shell.node.firstFrameOutput')}</span></>}
+    <Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label={t('shell.node.assetVisualOutput')} title={t('shell.node.visualOnly')} />
   </article>;
 });
 const TextNode = memo(function TextNode({ data, selected }) {
-  return <article className={`canvas-node text-node ${selected ? 'is-selected' : ''}`} data-testid={`text-node-${data.record.id}`}><Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label="笔记视觉连线输入，不参与生成" title="视觉连线 · 不参与生成" /><header className="node-header"><span className="type-icon"><Icon name="text" size={16} /></span><span className="node-title">{data.record.label || '创作笔记'}</span><span className="tiny-label">TEXT</span></header><div className="text-node-content">{data.record.text || '一个想法，一段情绪，一条故事线。\n\n选中卡片，在右侧写下你的灵感。'}</div><Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label="笔记视觉连线输出，不参与生成" title="视觉连线 · 不参与生成" /></article>;
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  return <article className={`canvas-node text-node ${selected ? 'is-selected' : ''}`} data-testid={`text-node-${data.record.id}`}><Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.noteVisualInput')} title={t('shell.node.visualOnly')} /><header className="node-header"><span className="type-icon"><Icon name="text" size={16} /></span><span className="node-title">{data.record.label || t('projects.default.note')}</span><span className="tiny-label">{t('shell.node.textType')}</span></header><div className="text-node-content">{data.record.text || t('shell.node.notePlaceholder')}</div><Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label={t('shell.node.noteVisualOutput')} title={t('shell.node.visualOnly')} /></article>;
 });
 export const nodeTypes = { shot: ShotNode, image: AssetNode, video: AssetNode, audio: AssetNode, text: TextNode };

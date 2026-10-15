@@ -1,0 +1,11 @@
+{
+  "name": "@mioon/i18n",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./locale": "./src/locale.ts",
+    "./preference": "./src/preference.ts"
+  }
+}

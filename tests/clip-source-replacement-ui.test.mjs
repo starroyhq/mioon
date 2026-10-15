@@ -1,3 +1,4 @@
+import { i18nTestModule, message, translate, renderMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -191,7 +192,7 @@ function componentHarness(patch = {}) {
   }; react.default = react;
   const source = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.jsx', import.meta.url), 'utf8');
   const module = { exports: {} };
-  Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './clip-source-replacement.js' ? replacement : name === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(name => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === './clip-source-replacement.js' ? replacement : name === './workspace-visibility.jsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const h = { calls, responses, opened,
     render(next = {}) { props = { ...props, ...next }; let attempts = 0; do { needsRender = false; cursor = 0; effects = []; tree = module.exports.default(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback(); } assert.ok(++attempts < 15); } while (needsRender); return tree; },
     find(testId) { return nodes(tree).find(node => node.props?.['data-testid'] === testId || node.props?.id === testId); },
@@ -272,7 +273,7 @@ test('actual parent replacement cannot use retained project metadata before sess
 
 function runHarness(rpc) {
   const currentProject = { current: projectId }, calls = [], notices = [], busy = new Set(), dataRef = { current: { project: { id: projectId }, timeline: timeline() } };
-  const deps = { ...submissions, shotTextRef: { current: null }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage,
+  const deps = { msg: message, ...submissions, shotTextRef: { current: null }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage, clipReplacementErrorDescriptor: replacement.clipReplacementErrorDescriptor,
     readableError: error => error.message, context: () => ({ projectId }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: key => busy.has(key), markBusy: (_project, key, value) => value ? busy.add(key) : busy.delete(key),
     isReferenceOperation: () => false, currentProject, dataRef, requestCounter: { current: 0 }, setData: value => { if (typeof value === 'function') value(dataRef.current); },
@@ -312,7 +313,7 @@ test('actual App legacy session runner clears replacement only for a matching re
   await h.run('timeline:mutation', 'timeline.clip.replaceSource', input); assert.ok(submissions.readPending(projectId, 'timeline:mutation'));
   details = { mutationOutcome: 'not_applied', requestId: input.requestId };
   await h.run('timeline:mutation', 'timeline.clip.replaceSource', input, undefined, { replay: true });
-  assert.equal(submissions.readPending(projectId, 'timeline:mutation'), null); assert.match(h.notices.at(-1)[0], /未进行自动裁短/);
+  assert.equal(submissions.readPending(projectId, 'timeline:mutation'), null); assert.match(renderMessage('zh-Hans', h.notices.at(-1)[0]), /未进行自动裁短/);
 });
 
 test('source wiring uses the existing inline inspector, stable mutation key, session replay and no asset-only version inference', () => {
@@ -340,6 +341,7 @@ test('replacement history names the explicit source edit for undo and redo', () 
 
 test('retained acknowledgement copy is historical after later edits or undo', () => {
   const source = readFileSync(new URL('../apps/web/src/ClipSourceReplacement.jsx', import.meta.url), 'utf8');
-  assert.match(source, /本次来源替换已确认。后续编辑或撤销可能改变当前片段，请以上方来源为准/);
+  assert.match(source, /t\('timeline\.replace\.applied'\)/);
+  assert.match(translate('zh-Hans', 'timeline.replace.applied'), /本次来源替换已确认。后续编辑或撤销可能改变当前片段，请以上方来源为准/);
   assert.doesNotMatch(source, /来源替换已确认，可通过时间线撤销恢复/);
 });

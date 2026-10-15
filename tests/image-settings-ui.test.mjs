@@ -1,3 +1,6 @@
+import * as i18n from '../packages/i18n/src/index.ts';
+import { createI18nTestContext as localeDisplay } from './helpers/i18n.ts';
+const localizedSource = source => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -64,12 +67,12 @@ const source = readFileSync(new URL('../apps/web/src/ImageSettings.jsx', import.
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const equalDeps = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
 function renderer(f) {
-  let index = 0, effects = [], active = true, contextKey = 'project-one', ancestor = true, tree, dirty = false; const slots = [];
+  let index = 0, effects = [], active = true, contextKey = 'project-one', ancestor = true, tree, dirty = false, locale = 'zh-Hans'; const slots = [];
   const react = { createElement(type, props = {}, ...children) { if (props?.ref && !props.ref.current) props.ref.current = { value: '' }; return { type, props: { ...props, children } }; }, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(callback, deps) { const slot = index++; if (!slots[slot] || !equalDeps(slots[slot].deps, deps)) slots[slot] = { value: callback(), deps }; return slots[slot].value; }, useLayoutEffect(callback, deps) { const slot = index++, old = slots[slot]; if (old && equalDeps(old.deps, deps)) return; slots[slot] = { callback, deps, cleanup: old?.cleanup }; effects.push(slot); } }; react.default = react;
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
-  const require = name => { if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './image-settings.js') return logic; if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => ancestor }; if (name === './icons.jsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive; throw Error(name); };
+  const require = name => { if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) }; if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === 'react') return react; if (name === './settings-navigation-state.ts') return navigation; if (name === './image-settings.js') return logic; if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => ancestor }; if (name === './icons.jsx') return { default: 'Icon' }; if (name.endsWith('.css')) return {}; if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive; throw Error(name); };
   Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, require);
-  const ui = { render() { index = 0; effects = []; tree = module.exports.default({ active, contextKey, client: f.client, slot: f.slot, onSelectSlot: () => { active = false; }, onClose: () => { active = false; }, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, key(value) { const field = ui.find(f.slot === 'custom' ? 'custom-image-settings-key' : 'image-settings-key'); field.props.ref.current.value = value; field.props.onChange({ target: { value } }); ui.render(); }, show(value) { active = value; ui.render(); }, collapse(value) { ancestor = !value; ui.render(); }, project(value) { contextKey = value; ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, get dirty() { return dirty; }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
+  const ui = { render() { index = 0; effects = []; tree = module.exports.default({ active, contextKey, client: f.client, slot: f.slot, onSelectSlot: () => { active = false; }, onClose: () => { active = false; }, onDirtyChange: value => { dirty = value; } }); for (const slot of effects) { slots[slot].cleanup?.(); slots[slot].cleanup = slots[slot].callback(); } return tree; }, find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); }, form() { return nodes(tree).find(node => node.type === 'form'); }, key(value) { const field = ui.find(f.slot === 'custom' ? 'custom-image-settings-key' : 'image-settings-key'); field.props.ref.current.value = value; field.props.onChange({ target: { value } }); ui.render(); }, show(value) { active = value; ui.render(); }, collapse(value) { ancestor = !value; ui.render(); }, project(value) { contextKey = value; ui.render(); }, change(id, value) { ui.find(id).props.onChange({ target: { value, checked: value } }); ui.render(); }, click(id) { ui.find(id).props.onClick(); ui.render(); }, get dirty() { return dirty; }, setLocale(value) { locale = value; return ui.render(); }, unmount() { for (const slot of slots) slot.cleanup?.(); } }; return ui;
 }
 
 test('actual password input clears before save dispatch and remains outside rendered/session state', async () => {
@@ -107,7 +110,7 @@ test('actual hidden, collapsed, project-switched and closed settings clear key w
 });
 
 test('settings remains a natural dock with no modal, secret cache or arbitrary provider fields', () => {
-  assert.doesNotThrow(() => transformSync(source, { loader: 'jsx', format: 'esm' })); assert.doesNotMatch(source, /Dialog|localStorage|sessionStorage|console\.|dangerouslySetInnerHTML|value=\{(?:key|secret)/); assert.match(source, /type="password"/); assert.match(source, /hidden=\{!visible\} inert=\{!visible\}/); assert.match(source, /basic_text/); assert.match(source, /最多|一次配置/);
+  assert.doesNotThrow(() => transformSync(source, { loader: 'jsx', format: 'esm' })); assert.doesNotMatch(source, /Dialog|localStorage|sessionStorage|console\.|dangerouslySetInnerHTML|value=\{(?:key|secret)/); assert.match(source, /type="password"/); assert.match(source, /hidden=\{!visible\} inert=\{!visible\}/); assert.match(localizedSource(source), /basic_text/); assert.match(localizedSource(source), /最多|一次配置/);
 });
 
 test('private review client binds exact receipt and posts once only to authenticated approval route', async () => {
@@ -180,4 +183,21 @@ test('actual custom settings reuse shared controls, expose resolved destination 
     if (transition === 'slot') ui.click('custom-image-settings-slot-official'); if (transition === 'hide') ui.show(false); if (transition === 'collapse') ui.collapse(true); if (transition === 'project') ui.project('new-project');
     assert.equal(ui.find('custom-image-settings-key').props.ref.current.value, ''); assert.equal(ui.find('custom-image-settings-base-url').props.value, 'https://NEW.example.com:443/prefix/'); assert.equal(ui.find('custom-image-settings-model').props.value, 'new-model'); oldSubmit({ preventDefault() {} }); assert.equal(f.calls.length, 0); ui.unmount(); f.session.dispose();
   }
+});
+
+test('four-language rerenders preserve image connection draft, password DOM and single pending save', async () => {
+  const held = deferred(), f = fixture({ write: () => held.promise }); let reads = 0;
+  const originalRead = f.client.read; f.client.read = () => { reads++; return originalRead(); };
+  const ui = renderer(f); ui.render(); await flush(); ui.render(); ui.change('image-settings-enable', true); ui.change('image-settings-storage', 'session'); ui.key('synthetic-language-only');
+  const dom = ui.find('image-settings-key').props.ref.current;
+  for (const locale of i18n.LOCALES) {
+    ui.setLocale(locale); assert.equal(ui.find('image-settings-page').props['aria-label'], i18n.translate(locale, 'image.settings.aria'));
+    assert.equal(ui.find('image-settings-enable').props.checked, true); assert.equal(ui.find('image-settings-storage').props.value, 'session');
+    assert.equal(ui.find('image-settings-key').props.ref.current, dom); assert.equal(dom.value, 'synthetic-language-only'); assert.equal(reads, 1); assert.equal(f.calls.length, 0);
+  }
+  ui.form().props.onSubmit({ preventDefault() {} }); const request = structuredClone(f.calls[0]);
+  for (const locale of i18n.LOCALES) { ui.setLocale(locale); assert.equal(ui.find('image-settings-page').props['data-phase'], 'saving'); assert.deepEqual(f.calls, [request]); assert.equal(reads, 1); }
+  held.resolve(snapshot({ revision: 1, configuration: request.configuration, secret: { configured: true, storage: 'session' } })); await flush();
+  for (const locale of i18n.LOCALES) { const tree = ui.setLocale(locale); assert.ok(JSON.stringify(tree).includes(i18n.translate(locale, 'image.settings.notice.savedSession'))); }
+  ui.unmount(); f.session.dispose();
 });

@@ -1,9 +1,10 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { workspaceOriginScope, workspaceOriginOptions, assertWorkspaceIntent } from './workspace-origin.js';
 import { taskWorkspaceBinding, taskListWorkspaceBindings, requireTaskWorkspace } from './workspace-task-origin.js';
 import { EDIT_TASK_LIMITS, editTaskLane } from '@mioon/contracts';
 import { createEditTaskClient, isDurableEditOperation, taskInputKey, taskProtocolError, validateTaskEnvelope, validateTaskList } from './edit-task-client.js';
 
-const fail = (code, message) => Object.assign(new Error(message), { code });
+const fail = (code, message, displayMessage) => Object.assign(new Error(message), { code, displayMessage });
 const terminal = task => ['applied', 'not_applied'].includes(task.status);
 const laneFor = editTaskLane;
 const immutableFields = ['id', 'projectId', 'operation', 'requestId', 'digest', 'lane', 'origin', 'createdAt'];
@@ -70,7 +71,7 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
         const bindings = taskListWorkspaceBindings(page, value.workspace);
         for (const [id, binding] of bindings) contexts.set(id, binding);
         if (epoch !== value.epoch) return getState(projectId);
-        if (instanceId && instanceId !== page.instanceId) throw fail('TASK_SERVER_CHANGED', '服务已重启，请重新载入任务列表后再编辑。');
+        if (instanceId && instanceId !== page.instanceId) throw fail('TASK_SERVER_CHANGED', '服务已重启，请重新载入任务列表后再编辑。', localizedMessage('tasks.localError.serverChanged'));
         instanceId = page.instanceId; items.push(...page.items);
         if (items.length > EDIT_TASK_LIMITS.rows || cursors.size >= Math.ceil(EDIT_TASK_LIMITS.rows / 50) + 1) throw taskProtocolError();
         cursor = page.nextCursor;
@@ -92,8 +93,8 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     return value.phase !== 'ready' || value.busy.has(lane) || [...value.tasks.values()].some(task => !task.acknowledged && !value.restore.get(task.id)?.held && (!lane || task.lane === lane));
   }
   function assertReady(projectId, lane) {
-    if (state(projectId).phase !== 'ready') throw fail('TASK_LIST_UNAVAILABLE', '任务恢复列表尚未核对完成。请先在任务中心重新载入，再继续编辑。');
-    if (blocked(projectId, lane)) throw fail('MUTATION_PENDING', '此类编辑有请求待确认。草稿仍保留，请先在任务中心恢复原请求。');
+    if (state(projectId).phase !== 'ready') throw fail('TASK_LIST_UNAVAILABLE', '任务恢复列表尚未核对完成。请先在任务中心重新载入，再继续编辑。', localizedMessage('tasks.localError.listUnverified'));
+    if (blocked(projectId, lane)) throw fail('MUTATION_PENDING', '此类编辑有请求待确认。草稿仍保留，请先在任务中心恢复原请求。', localizedMessage('tasks.localError.lanePending'));
   }
   async function execute(response, value = state(response.task.projectId)) {
     const task = response.task, invocation = requireTaskWorkspace(value.restore.get(task.id), value.workspace);
@@ -103,7 +104,7 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     } catch (error) { publish(task.projectId, value); throw error; }
   }
   async function submit({ projectId, operation, input, expectedWorkspaceOrigin }, { canExecute = () => true } = {}) {
-    if (!isDurableEditOperation(operation) || input.projectId !== projectId) throw fail('MUTATION_PROJECT_MISMATCH', '项目或请求已变化，已阻止提交。');
+    if (!isDurableEditOperation(operation) || input.projectId !== projectId) throw fail('MUTATION_PROJECT_MISMATCH', '项目或请求已变化，已阻止提交。', localizedMessage('tasks.localError.requestChanged'));
     const lane = laneFor(operation), exact = frozen(input), value = state(projectId);
     assertReady(projectId, lane);
     const invocation = assertWorkspaceIntent(workspaceOriginOptions(expectedWorkspaceOrigin), value.workspace);

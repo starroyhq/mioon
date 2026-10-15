@@ -1,3 +1,4 @@
+import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink,mkdir} from 'node:fs/promises';
 import path from 'node:path';
@@ -29,7 +30,7 @@ export async function runLifecycleBrowserAcceptance({tab,fixture,outDir}){
   await log('Actual video and audio playback stop on workspace unmount; switching projects leaves the second playhead at zero and returns paused',{media:checks});
   await mode('canvas');await tab.playwright.getByTestId(`shot-node-${fixture.shot.id}`).getByText(fixture.shot.title,{exact:true}).click();await tab.playwright.getByRole('tab',{name:'创作参数',exact:true}).click();const beforeGeneration=await read();
   await fault('generation.submit');await tab.playwright.getByTestId('generate-shot').click();const accepted=await wait(data=>data.jobs.length===beforeGeneration.jobs.length+1);const job=accepted.jobs.find(j=>!beforeGeneration.jobs.some(old=>old.id===j.id));
-  await project(fixture.second.name);await tab.playwright.getByTestId('jobs-button').click();assert.equal(await tab.playwright.getByTestId(`job-${job.id}`).count(),0);assert.equal(await tab.playwright.getByTestId('resume-pending').count(),0);await tab.playwright.getByRole('button',{name:'关闭生成任务',exact:true}).click();await release();await tab.getAXState({emit:false});
+  await project(fixture.second.name);await clickWorkbenchAction(tab, 'jobs-button');assert.equal(await tab.playwright.getByTestId(`job-${job.id}`).count(),0);assert.equal(await tab.playwright.getByTestId('resume-pending').count(),0);await tab.playwright.getByRole('button',{name:'关闭生成任务',exact:true}).click();await release();await tab.getAXState({emit:false});
   assert.ok((await tab.playwright.getByTestId('project-switcher').innerText()).includes(fixture.second.name));assert.equal(await getMode(),'editing');assert.equal(await tab.playwright.getByTestId('timeline-playhead').getAttribute('value'),'0');assert.equal(await tab.playwright.getByRole('button',{name:'关闭生成任务',exact:true}).count(),0);
   await project(fixture.project.name);assert.equal(await getMode(),'canvas');const completed=await wait(data=>data.jobs.find(j=>j.id===job.id)?.status==='succeeded');const exact=completed.jobs.find(j=>j.id===job.id);assert.equal(exact.submissionCount,1);equal(completed.timeline,beforeGeneration.timeline);assert.equal(completed.jobs.length,beforeGeneration.jobs.length+1);
   await log('Held generation submission and late completion remain project-scoped, never reopen Jobs or change mode, and submit exactly once',{jobId:job.id});

@@ -1,3 +1,6 @@
+import { message as displayMessage } from '../../../packages/i18n/src/index.ts';
+import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
+import { recoveryErrorMessage } from './recovery-display.ts';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createLocalShotTextSchemas, localShotTextDraftPutSchema, isLocalShotTextMutationResponse, LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import type { LocalShotTextDraftPut, LocalShotTextDraftDelete, LocalShotTextDraftRaw, LocalShotTextDraftValue, LocalShotTextEnvelope, LocalShotTextIntent, LocalShotTextPrepare, LocalShotTextUpdateInput } from '@mioon/contracts/local-shot-text';
@@ -30,10 +33,10 @@ export type LocalShotTextSupported = Extract<LocalShotTextEnvelope, { supported:
 export interface LocalShotTextState {
   scope: string; projectId: string | null; shotId: string | null; phase: 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'unsupported';
   raw: LocalShotTextDraftRaw; dirty: boolean; baseline: { baseRevision: number; baseText: LocalShotTextDraftRaw } | null; baselineConflict: boolean;
-  candidate: LocalShotTextDraftValue | null; savedAt: string | null; draftFailure: LocalShotTextFailure | null; draftError: string;
+  candidate: LocalShotTextDraftValue | null; savedAt: string | null; draftFailure: LocalShotTextFailure | null; draftError: string; draftErrorDisplay?: MessageDescriptor;
   autosavePaused: boolean; leaveWithoutSaving: boolean; draftRetry: 'same' | 'current' | null; retainedDraftWrite: LocalShotTextDraftPut | null;
   retainedDeletion: LocalShotTextDraftDelete | null; retainedPreparation: LocalShotTextPrepare | null; intent: LocalShotTextIntent | null; intentPhase: 'idle' | 'preparing' | 'pending' | 'executing' | 'applied' | 'not_applied' | 'error';
-  intentUncertain: boolean; intentFailure: LocalShotTextFailure | null; intentError: string; busy: boolean; pending: boolean;
+  intentUncertain: boolean; intentFailure: LocalShotTextFailure | null; intentError: string; intentErrorDisplay?: MessageDescriptor; busy: boolean; pending: boolean;
   projectPendingIntent: { shotId: string; intentId: string } | null;
 }
 export interface LocalShotTextAccepted {
@@ -71,9 +74,9 @@ export function createLocalShotTextController({ context: initial, getContext, cl
   const baselineOf = () => context.baseRevision ? { baseRevision: context.baseRevision, baseText: copy(context.baseText) } : null;
   const initialState = (): LocalShotTextState => ({ scope: context.scope, projectId: context.projectId, shotId: context.shotId,
     phase: context.restored ? 'unsupported' : 'loading', raw: copy(context.raw), dirty: context.textDirty, baseline: context.textDirty ? baselineOf() : null,
-    baselineConflict: false, candidate: null, savedAt: null, draftFailure: null, draftError: '', autosavePaused: uncertainWrites.has(keyOf(envelope ?? context)) || uncertainDeletions.has(keyOf(envelope ?? context)), leaveWithoutSaving: false,
+    baselineConflict: false, candidate: null, savedAt: null, draftFailure: null, draftError: '', draftErrorDisplay: undefined, autosavePaused: uncertainWrites.has(keyOf(envelope ?? context)) || uncertainDeletions.has(keyOf(envelope ?? context)), leaveWithoutSaving: false,
     draftRetry: uncertainWrites.has(keyOf(envelope ?? context)) ? 'same' : null, retainedDeletion: copy(uncertainDeletions.get(keyOf(envelope ?? context)) ?? null), retainedDraftWrite: copy(uncertainWrites.get(keyOf(envelope ?? context)) ?? null), retainedPreparation: copy(uncertain.get(keyOf(envelope ?? context)) ?? null),
-    intent: null, intentPhase: 'idle', intentUncertain: uncertain.has(keyOf(envelope ?? context)), intentFailure: null, intentError: '', busy: false, pending: uncertain.has(keyOf(envelope ?? context)), projectPendingIntent: null });
+    intent: null, intentPhase: 'idle', intentUncertain: uncertain.has(keyOf(envelope ?? context)), intentFailure: null, intentError: '', intentErrorDisplay: undefined, busy: false, pending: uncertain.has(keyOf(envelope ?? context)), projectPendingIntent: null });
   let state = initialState();
   function emit(patch: Partial<LocalShotTextState>) {
     state = { ...state, ...patch, retainedDraftWrite: copy(uncertainWrites.get(keyOf(envelope ?? context)) ?? null), retainedPreparation: copy(uncertain.get(keyOf(envelope ?? context)) ?? null), retainedDeletion: copy(uncertainDeletions.get(keyOf(envelope ?? context)) ?? null) };
@@ -85,9 +88,9 @@ export function createLocalShotTextController({ context: initial, getContext, cl
   const sync = () => { if (getContext) controller.setContext(getContext()); };
   function draftFailure(error: unknown, retry: 'same' | 'current' | null = uncertainWrites.has(keyOf(envelope ?? context)) ? 'same' : state.draftFailure ? state.draftRetry : 'current') {
     const observed = localShotTextFailure(error);
-    emit({ phase: 'error', autosavePaused: true, draftRetry: retry, draftFailure: state.draftFailure?.kind === 'unknown' ? state.draftFailure : observed, draftError: message(error) });
+    emit({ phase: 'error', autosavePaused: true, draftRetry: retry, draftFailure: state.draftFailure?.kind === 'unknown' ? state.draftFailure : observed, draftError: message(error), draftErrorDisplay: recoveryErrorMessage(error) });
   }
-  function intentFailure(error: unknown, unknown = false) { emit({ intentPhase: 'error', intentFailure: localShotTextFailure(error), intentError: message(error), intentUncertain: unknown }); }
+  function intentFailure(error: unknown, unknown = false) { emit({ intentPhase: 'error', intentFailure: localShotTextFailure(error), intentError: message(error), intentErrorDisplay: recoveryErrorMessage(error), intentUncertain: unknown }); }
   function validateEnvelope(value: LocalShotTextEnvelope, projectId: string, shotId: string): LocalShotTextSupported {
     const parsed = schemas.envelope.safeParse(value);
     if (!parsed.success || !parsed.data.supported || parsed.data.projectId !== projectId || parsed.data.shotId !== shotId) throw localShotTextProtocolError();
@@ -153,7 +156,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
     const input: LocalShotTextDraftPut = { ...authority(previous), expectedDraftRevision: previous.draftRevision, draftId: previous.draft?.draftId ?? createId(), ...baseline, raw };
     if (!localShotTextDraftPutSchema.safeParse(input).success) { draftFailure(new LocalShotTextRequestError('文字超过本地草稿上限或包含无效 Unicode；尚未发送保存请求，原输入保留，不会截断。', 'LOCAL_SHOT_TEXT_LOCAL_VALIDATION', 400), 'current'); return false; }
     if (!uncertainWrites.has(key) && uncertainWrites.size >= LOCAL_SHOT_TEXT_LIMITS.slots) { draftFailure(new LocalShotTextRequestError('当前会话的待确认草稿已达上限；尚未发送本次保存请求。', 'LOCAL_SHOT_TEXT_LOCAL_RETRY_LIMIT', 400), 'current'); return false; }
-    uncertainWrites.set(key, copy(input)); readSerial++; emit({ phase: 'saving', baseline, draftError: '' });
+    uncertainWrites.set(key, copy(input)); readSerial++; emit({ phase: 'saving', baseline, draftError: '', draftErrorDisplay: undefined });
     const work = (async () => {
       try {
         const result = await transport.put(input); sync(); if (!belongs(owner)) return false;
@@ -161,7 +164,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
         if (!next.draft || next.draft.draftId !== input.draftId || !draftMatches(next.draft, raw, baseline)) throw localShotTextProtocolError();
         receive(next, previous, 'draft'); uncertainWrites.delete(key);
         emit({ phase: serial === savedSerial ? 'saved' : 'ready', savedAt: next.draft.updatedAt,
-          ...(explicitRetry && serial !== savedSerial ? { autosavePaused: true, draftRetry: 'current' as const, draftError: '原文字已确认保存。较新的输入仍保留，请明确保存当前文字。' } : {}) }); return serial === savedSerial;
+          ...(explicitRetry && serial !== savedSerial ? { autosavePaused: true, draftRetry: 'current' as const, draftError: '原文字已确认保存。较新的输入仍保留，请明确保存当前文字。', draftErrorDisplay: displayMessage('recovery.text.newerInput') } : {}) }); return serial === savedSerial;
       } catch (error) { sync(); const refused = localShotTextFailure(error).kind === 'refused'; if (refused && belongs(owner)) uncertainWrites.delete(key); if (belongs(owner)) draftFailure(error, refused ? 'current' : 'same'); return false; }
     })();
     saving = work; try { return await work; } finally { if (saving === work) saving = null; if (belongs(owner) && serial !== savedSerial && !explicitRetry) schedule(); }
@@ -187,9 +190,9 @@ export function createLocalShotTextController({ context: initial, getContext, cl
       const current = !recovered && isCurrent(token) && context.visible && !context.busy;
       const acknowledged = onAccepted?.({ response: result.response, intent: copy(settled.intent), capture: token, recovered }) === true;
       if (current && acknowledged) emit({ dirty: false, baseline: null, savedAt: settled.draft?.updatedAt ?? null, phase: settled.draft ? 'saved' : 'ready' });
-      emit({ intentFailure: null, intentError: '' }); return result.response;
+      emit({ intentFailure: null, intentError: '', intentErrorDisplay: undefined }); return result.response;
     }
-    emit({ intentError: settled.intent.outcome.status === 'not_applied' ? `服务器已确认原请求未应用（${settled.intent.outcome.code}）。当前文字仍保留，请核对后再保存。` : '原请求结果仍待确认；不会自动重试。' }); return null;
+    emit({ intentError: settled.intent.outcome.status === 'not_applied' ? `服务器已确认原请求未应用（${settled.intent.outcome.code}）。当前文字仍保留，请核对后再保存。` : '原请求结果仍待确认；不会自动重试。', intentErrorDisplay: settled.intent.outcome.status === 'not_applied' ? displayMessage('recovery.text.notAppliedCode', { code: settled.intent.outcome.code }) : displayMessage('recovery.notice.pending') }); return null;
   }
   const controller = {
     getState: () => state, capture, isCurrent, load, flush, canPrepare,
@@ -239,14 +242,14 @@ export function createLocalShotTextController({ context: initial, getContext, cl
         await load(); if (!isCurrent(token) || !loaded || !envelope || !context.visible || !context.connected || context.busy || operation || saving || preparationUnconfirmed()) return false;
         const previous = copy(envelope), key = keyOf(previous), retained = uncertainWrites.get(key);
         if (mode === 'current' && !retained) {
-          emit({ autosavePaused: false, draftFailure: null, draftRetry: null, leaveWithoutSaving: false, draftError: '' });
+          emit({ autosavePaused: false, draftFailure: null, draftRetry: null, leaveWithoutSaving: false, draftError: '', draftErrorDisplay: undefined });
           if (state.candidate && previousCandidate === null && beforeRead && beforeRead.workspaceScope === previous.workspaceScope && beforeRead.draftRevision === previous.draftRevision && sameLocalShotTextValue(beforeRead.draft, previous.draft)) emit({ candidate: null });
-          if (state.candidate) { emit({ draftError: '已重新核对记录；请选择恢复已保存文字或明确保留当前文字。' }); return false; }
+          if (state.candidate) { emit({ draftError: '已重新核对记录；请选择恢复已保存文字或明确保留当前文字。', draftErrorDisplay: displayMessage('recovery.text.chooseDraft') }); return false; }
           return await flush(true, true);
         }
         if (!retained || previous.workspaceScope !== retained.workspaceScope) { draftFailure(localShotTextProtocolError(), 'same'); return false; }
         const original = { ...copy(retained), instanceId: previous.instanceId }, savedSerial = serial, baseline = { baseRevision: retained.baseRevision, baseText: retained.baseText };
-        readSerial++; emit({ phase: 'saving', draftError: '' });
+        readSerial++; emit({ phase: 'saving', draftError: '', draftErrorDisplay: undefined });
         const work = (async () => {
           try {
             const result = await transport.put(original); sync(); if (!belongs(owner)) return false;
@@ -254,7 +257,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
             if (next.workspaceScope !== original.workspaceScope || next.instanceId !== original.instanceId || next.draftRevision !== original.expectedDraftRevision + 1 || !next.draft || next.draft.draftId !== original.draftId || !draftMatches(next.draft, original.raw, baseline)) throw localShotTextProtocolError();
             receive(next, previous); uncertainWrites.delete(key); const current = savedSerial === serial && draftMatches(next.draft);
             emit({ phase: current ? 'saved' : 'ready', candidate: null, savedAt: next.draft.updatedAt, autosavePaused: !current, draftFailure: null, draftRetry: current ? null : 'current', leaveWithoutSaving: false,
-              draftError: current ? '' : '原文字已确认保存。较新的当前输入仍未保存；请明确保存当前文字，不会自动覆盖。' }); return current;
+              draftError: current ? '' : '原文字已确认保存。较新的当前输入仍未保存；请明确保存当前文字，不会自动覆盖。', draftErrorDisplay: current ? undefined : displayMessage('recovery.text.newerUnsaved') }); return current;
           } catch (error) { if (belongs(owner)) draftFailure(error, 'same'); return false; }
         })(); saving = work; try { return await work; } finally { if (saving === work) saving = null; }
       } finally { if (retrying === lock) retrying = null; if (belongs(owner)) emit({ busy: false }); }
@@ -291,7 +294,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
           const result = await transport.discard(original); sync(); if (!belongs(owner)) return false;
           const next = validateEnvelope(result, original.projectId, original.shotId);
           if (next.draft !== null) throw localShotTextProtocolError(); receive(next, previous, 'draft'); uncertainDeletions.delete(keyOf(original));
-          emit({ candidate: null, savedAt: null, phase: 'ready', autosavePaused: true, draftFailure: null, draftRetry: 'current', draftError: '同一草稿删除已确认。当前输入仍保留，请明确选择是否保存当前文字草稿。' }); return true;
+          emit({ candidate: null, savedAt: null, phase: 'ready', autosavePaused: true, draftFailure: null, draftRetry: 'current', draftError: '同一草稿删除已确认。当前输入仍保留，请明确选择是否保存当前文字草稿。', draftErrorDisplay: displayMessage('recovery.text.deleted') }); return true;
         } catch (error) { if (belongs(owner)) draftFailure(error, null); return false; }
       } finally { if (retrying === lock) retrying = null; if (belongs(owner)) emit({ busy: false }); }
     },
@@ -304,11 +307,11 @@ export function createLocalShotTextController({ context: initial, getContext, cl
       uncertainDeletions.delete(keyOf(retained));
       // The user accepts the authoritative current state. This is not an ACK
       // of the old deletion and cannot erase a newer saved draft or launch PUT.
-      emit({ autosavePaused: true, draftFailure: null, draftRetry: 'current', draftError: '已接受核对后的当前草稿状态，原删除结果仍不作成功确认。当前输入未自动写入，请明确选择下一步。' }); return true;
+      emit({ autosavePaused: true, draftFailure: null, draftRetry: 'current', draftError: '已接受核对后的当前草稿状态，原删除结果仍不作成功确认。当前输入未自动写入，请明确选择下一步。', draftErrorDisplay: displayMessage('recovery.text.acceptedState') }); return true;
     },
     allowLeaveWithoutSaving(token = capture()): boolean {
       if (!isCurrent(token) || operation || saving || !state.draftFailure || state.draftFailure.kind !== 'refused') return false;
-      if (timer) clearTimeout(timer); timer = undefined; emit({ leaveWithoutSaving: true, autosavePaused: true, draftError: '已选择不保存当前本地文字；离开或关闭后，这些输入可能丢失。原文字保存请求不会因此取消。' }); return true;
+      if (timer) clearTimeout(timer); timer = undefined; emit({ leaveWithoutSaving: true, autosavePaused: true, draftError: '已选择不保存当前本地文字；离开或关闭后，这些输入可能丢失。原文字保存请求不会因此取消。', draftErrorDisplay: displayMessage('recovery.text.leaveNotice') }); return true;
     },
     abandonCurrentInput(token = capture()): boolean {
       if (!isCurrent(token) || operation || saving || retrying) return false;
@@ -320,13 +323,13 @@ export function createLocalShotTextController({ context: initial, getContext, cl
       const token = capture(), owner = generation, baseline = copy(state.baseline), raw = copy(state.raw);
       const patch = { ...(raw.title !== baseline.baseText.title ? { title: raw.title } : {}), ...(raw.prompt !== baseline.baseText.prompt ? { prompt: raw.prompt } : {}) };
       const input: LocalShotTextUpdateInput = { requestId: createId(), shotId: context.shotId, expectedRevision: baseline.baseRevision, patch };
-      if (!isShotUpdateInput(input) || Object.keys(patch).length === 0) { emit({ intentError: '请填写有效的镜头名称与提示词后，再保存标题和提示词。' }); return null; }
+      if (!isShotUpdateInput(input) || Object.keys(patch).length === 0) { emit({ intentError: '请填写有效的镜头名称与提示词后，再保存标题和提示词。', intentErrorDisplay: displayMessage('recovery.text.invalidSave') }); return null; }
       if (!await flush(true) || !isCurrent(token) || !canPrepare() || !envelope) return null;
       const previous = copy(envelope), exact = copy(input), intentId = createId(); if (!previous.draft || !draftMatches(previous.draft, raw, baseline)) return null;
       const draft = { draftId: previous.draft.draftId, revision: previous.draftRevision, raw: copy(previous.draft.raw) };
       const preparedInput: LocalShotTextPrepare = { ...authority(previous), expectedIntentRevision: previous.intentRevision, expectedIntentId: previous.intent?.intentId ?? null, intentId, ...baseline, draft, input: exact };
       if (!schemas.prepare.safeParse(preparedInput).success) { intentFailure(localShotTextProtocolError()); return null; }
-      const key = keyOf(previous), lock = {}; operation = lock; readSerial++; uncertain.set(key, copy(preparedInput)); emit({ busy: true, intentPhase: 'preparing', intentUncertain: true, intentError: '', intentFailure: null });
+      const key = keyOf(previous), lock = {}; operation = lock; readSerial++; uncertain.set(key, copy(preparedInput)); emit({ busy: true, intentPhase: 'preparing', intentUncertain: true, intentError: '', intentErrorDisplay: undefined, intentFailure: null });
       try {
         let result: LocalShotTextEnvelope;
         try { result = await transport.prepare(preparedInput); }
@@ -345,7 +348,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
       if (!previous.intent && !retained || previous.intent && !pendingIntent(previous.intent) && !retained) return null;
       if (state.projectPendingIntent && state.projectPendingIntent.shotId !== context.shotId) return null;
       if (retained && previous.workspaceScope !== retained.workspaceScope) { intentFailure(localShotTextProtocolError(), true); return null; }
-      const owner = generation, lock = {}; operation = lock; readSerial++; emit({ busy: true, intentError: '' });
+      const owner = generation, lock = {}; operation = lock; readSerial++; emit({ busy: true, intentError: '', intentErrorDisplay: undefined });
       try {
         if (retained && previous.intent?.intentId !== retained.intentId) {
           if (previous.workspaceScope !== retained.workspaceScope || previous.intentRevision !== retained.expectedIntentRevision || (previous.intent?.intentId ?? null) !== retained.expectedIntentId) throw localShotTextProtocolError();

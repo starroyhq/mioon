@@ -1,4 +1,5 @@
-import { findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
+import { message } from '../../../packages/i18n/src/index.ts';
+import { isSubjectReference, findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
 import { ARK_SUBJECT_MODEL, subjectVideoConflictIssue, subjectVideoReferenceIssue, subjectVideoSnapshot } from './subject-video.js';
 
 export const providerStatus = provider => provider?.status || (!provider?.configured ? 'not_configured' : !provider?.enabled ? 'disabled' : 'available');
@@ -14,7 +15,7 @@ export function providerModels(provider) {
 // server. The browser never guesses a region or supplies its own clock.
 export function generationProfileSelection(provider, model) {
   const region = typeof provider?.providerRegion === 'string' ? provider.providerRegion : '';
-  const unavailable = (state, message) => ({ state, message, region, profile: null, evaluation: null, evaluatedAsOf: null });
+  const unavailable = (state, diagnostic) => ({ state, message: diagnostic, displayMessage: message(profileStateKeys[state]), region, profile: null, evaluation: null, evaluatedAsOf: null });
   if (!provider) return unavailable('unloaded', '服务商信息未加载或不可用，输入限制尚未确认。');
   if (!model) return unavailable('unselected', '尚未选择模型，输入限制尚未确认。');
   if (!providerModels(provider).some(item => item.id === model)) return unavailable('unknown_model', '未识别所选精确模型，不能沿用其他模型的输入限制。');
@@ -33,7 +34,7 @@ export function generationProfileSelection(provider, model) {
   const evaluations = Array.isArray(provider.inputProfileEvaluations) ? provider.inputProfileEvaluations.filter(item => item?.profileId === profile.profileId) : [];
   const evaluation = evaluations[0];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || evaluations.length !== 1 || evaluation.evaluatedAsOf !== date || !Array.isArray(evaluation.issues) || !Array.isArray(evaluation.warnings) || evaluation.ok !== (evaluation.issues.length === 0)) return unavailable('missing_evaluation', '尚未取得服务器的输入配置评估，不能确认当前可提交；请刷新后核对。');
-  return { state: evaluation.ok ? 'ready' : 'blocked', message: evaluation.issues[0]?.message || '', region, profile, evaluation, evaluatedAsOf: date };
+  return { state: evaluation.ok ? 'ready' : 'blocked', message: evaluation.issues[0]?.message || '', displayMessage: generationIssueDescriptor(evaluation.issues[0]), region, profile, evaluation, evaluatedAsOf: date };
 }
 
 export function subjectVideoProfileIssue(provider, model) {
@@ -145,4 +146,134 @@ export function generationInputIssue(shot, provider, model, assets, inputMode, {
   const snapshot = { ...shot, model, referenceAssetIds: selection.references.map(item => item.assetId), referenceAssets: references };
   if (!frozen && shot.lastFrameAssetId) snapshot.referenceBindings = selection.references.map(({ role, assetId }, index) => ({ role, assetId, sha256: references[index].sha256 }));
   return generationIssueMessage(getGenerationIssue(snapshot, provider));
+}
+
+// Presentation-only descriptors. Existing validation strings and frozen task data are unchanged.
+const subjectContentKeys = ['sha256', 'mimeType', 'width', 'height'];
+const profileStateKeys = Object.freeze({ unloaded: 'connections.generation.profileUnloaded', unselected: 'connections.generation.profileUnselected', unknown_model: 'connections.generation.profileUnknownModel', unknown_region: 'connections.generation.profileRegion', unknown_version: 'connections.generation.profileVersion', missing_profile: 'connections.generation.profileMissing', incomplete_profile: 'connections.generation.profileIncomplete', missing_evaluation: 'connections.generation.profileEvaluation' });
+export const providerStatusDescriptor = provider => { const status = providerStatus(provider); return message(status === 'available' ? 'connections.generation.available' : status === 'disabled' ? 'connections.disabled' : status === 'not_configured' ? 'connections.generation.notConfigured' : 'connections.generation.unavailable'); };
+export function providerAvailabilityDescriptor(provider) {
+ if (!provider) return message('connections.generation.providerMissing');
+ const status = providerStatus(provider);
+ return status === 'available' ? null : message(status === 'disabled' ? 'connections.generation.providerDisabled' : status === 'not_configured' ? 'connections.generation.providerIncomplete' : 'connections.generation.providerUnavailable', { provider: provider.id || '—' });
+}
+export const inputModeDescriptor = mode => mode === 'text' ? message('connections.generation.textMode') : mode === 'image' ? message('connections.generation.imageMode') : mode === 'subject' ? message('connections.generation.subjectMode') : null;
+const generationIssueKeys = Object.freeze({
+  INVALID_INPUT: 'connections.generation.issue.inputRecord',
+  UNSUPPORTED_MODEL: 'connections.generation.issue.modelUnsupported',
+  UNSUPPORTED_PARAMETERS: 'connections.generation.issue.parametersUnsupported',
+  UNSUPPORTED_ASPECT_RATIO: 'connections.generation.issue.parametersUnsupported',
+  UNSUPPORTED_DURATION: 'connections.generation.issue.parametersUnsupported',
+  UNSUPPORTED_INPUT: 'connections.generation.issue.inputUnsupported',
+  INVALID_PROMPT: 'connections.generation.issue.promptInvalid',
+  UNSUPPORTED_PARAMETER: 'connections.generation.issue.parameterInvalid',
+  INVALID_PARAMETER: 'connections.generation.issue.parameterInvalid',
+  INVALID_PARAMETERS: 'connections.generation.issue.parameterInvalid',
+  INVALID_OPTIONS: 'connections.generation.issue.parameterInvalid',
+  INVALID_SEED: 'connections.generation.issue.parameterInvalid',
+  PROVIDER_REGION_CHANGED: 'connections.generation.issue.regionChanged',
+  UNSUPPORTED_REGION: 'connections.generation.issue.regionUnsupported',
+  UNKNOWN_INPUT_PROFILE: 'connections.generation.issue.profileUnknown',
+  INVALID_ASSET_ID: 'connections.generation.issue.referenceInvalid',
+  INVALID_REFERENCE: 'connections.generation.issue.referenceInvalid',
+  INVALID_REFERENCE_MIME: 'connections.generation.issue.mime',
+  INVALID_REFERENCE_ORDER: 'connections.generation.issue.bindingMismatch',
+  REFERENCE_BINDING_MISMATCH: 'connections.generation.issue.bindingMismatch',
+  REFERENCE_ASPECT_RATIO_OUT_OF_RANGE: 'connections.generation.issue.dimensions',
+  REFERENCE_PAYLOAD_LIMIT: 'connections.generation.issue.tooLarge',
+  UNSUPPORTED_REFERENCE_DURATION: 'connections.generation.issue.referenceInvalid',
+  AS_OF_DATE_REQUIRED: 'connections.generation.issue.evaluationDate',
+  INVALID_AS_OF_DATE: 'connections.generation.issue.evaluationDate',
+  UNSUPPORTED_SCHEMA_VERSION: 'connections.generation.issue.schemaUnsupported',
+  UNKNOWN_FIELD: 'connections.generation.issue.schemaUnsupported',
+  UNKNOWN_PROVIDER: 'connections.generation.providerMissing',
+
+  "REFERENCE_METADATA_UNAVAILABLE": "connections.generation.issue.metadataIncomplete",
+  "INVALID_REFERENCE_SIZE": "connections.generation.issue.size",
+  "INVALID_REFERENCE_HASH": "connections.generation.issue.hash",
+  "REFERENCE_TOO_LARGE": "connections.generation.issue.tooLarge",
+  "REFERENCE_DATA_URI_TOO_LARGE": "connections.generation.issue.dataUri",
+  "INVALID_REFERENCE_DIMENSIONS": "connections.generation.issue.dimensions",
+  "REFERENCE_ASPECT_RATIO_MISMATCH": "connections.generation.issue.aspect",
+  "UNSUPPORTED_INPUT_ROLE": "connections.generation.issue.roleUnsupported",
+  "UNKNOWN_INPUT_ROLE": "connections.generation.issue.roleUnknown",
+  "UNSUPPORTED_ROLE_COMBINATION": "connections.generation.issue.combination",
+  "ROLE_COUNT_EXCEEDED": "connections.generation.issue.roleCount",
+  "INVALID_REFERENCE_COUNT": "connections.generation.issue.count",
+  "UNSUPPORTED_REFERENCE_MIME": "connections.generation.issue.mime",
+  "DUPLICATE_REFERENCE": "connections.generation.issue.duplicate",
+  "MODEL_LIFECYCLE_REVALIDATION_REQUIRED": "connections.generation.issue.lifecycle",
+  "INVALID_REFERENCES": "connections.generation.issue.referenceInvalid"
+});
+export function generationIssueDescriptor(issue) {
+ if (!issue) return null;
+ if (Array.isArray(issue.path) && issue.path.length === 1 && issue.path[0] === 'lastFrameAssetId') {
+   if (issue.code === 'UNSUPPORTED_ROLE_COMBINATION') return message('generation.frame.tailNeedsFirst');
+   if (issue.code === 'DUPLICATE_REFERENCE') return message('generation.frame.distinctFrames');
+   if (issue.code === 'INVALID_LAST_FRAME') return message('generation.frame.invalidTail');
+ }
+ const key = Object.hasOwn(generationIssueKeys, issue.code) ? generationIssueKeys[issue.code] : null;
+ return key ? message(key) : message('connections.generation.issue.unknown', { code: typeof issue.code === 'string' && /^[A-Z][A-Z0-9_]{0,99}$/.test(issue.code) ? issue.code : 'UNKNOWN' });
+}
+export function subjectVideoProfileDescriptor(provider, model) {
+  if (provider?.id !== 'mock' && !(provider?.id === 'ark' && model === ARK_SUBJECT_MODEL)) return message('connections.generation.subjectProvider');
+  const selection = generationProfileSelection(provider, model);
+  if (selection.state !== 'ready') return selection.displayMessage || message('connections.generation.subjectProfile');
+  if (selection.profile.profileVersion !== SUBJECT_REFERENCE_PROFILE_VERSION || !selection.profile.inputs.roles.subject_reference?.implemented || !selection.profile.inputs.combinations?.some(roles => roles.length === 1 && roles[0] === 'subject_reference')) return message('connections.generation.subjectUnsupported');
+  return providerAvailabilityDescriptor(provider);
+}
+
+export function generationInputIssueDescriptor(shot, provider, model, assets, inputMode, { frozen = false, subjectReference, boundReference = false, savedShot } = {}) {
+  if (!provider) return message('connections.generation.providerMissing');
+  if (!frozen && inputMode === 'subject') {
+    const issue = subjectVideoConflictDescriptor(shot, { savedShot, boundReference }) || subjectVideoProfileDescriptor(provider, model) || subjectVideoReferenceDescriptor(subjectReference, assets, shot.projectId);
+    if (issue) return issue;
+    const selected = generationProfileSelection(provider, model);
+    const snapshot = { ...subjectVideoSnapshot(shot, subjectReference, assets), providerId: provider.id, model,
+      inputProfileId: selected.profile.profileId, inputProfileVersion: selected.profile.profileVersion, providerRegion: selected.region };
+    return generationIssueDescriptor(getGenerationIssue(snapshot, provider));
+  }
+  if (frozen && shot.subjectReference) {
+    const issue = subjectVideoProfileDescriptor(provider, model) || subjectVideoReferenceDescriptor(shot.subjectReference, assets, shot.projectId);
+    if (issue) return issue;
+  }
+  const selection = generationReferences(shot, { frozen });
+  if (!selection.ok) return frozen ? message('connections.generation.issue.frozenInvalid') : generationIssueDescriptor(selection.issues[0]);
+  const references = selection.references.map(({ assetId, role }, index) => {
+    const asset = assets.find(item => item.id === assetId);
+    if (!asset) return null;
+    if (frozen) {
+      const pinned = shot.referenceAssets?.[index];
+      if (!pinned || pinned.id !== assetId) return null;
+      return { ...pinned, ...(pinned.sizeBytes === undefined ? { sizeBytes: asset.sizeBytes } : {}) };
+    }
+    return { ...asset, ...(asset.role === undefined ? { role } : {}) };
+  });
+  if (references.some(asset => !asset)) return message('connections.generation.issue.referencesMissing');
+  if (frozen && references.some((asset, index) => {
+    const current = assets.find(item => item.id === selection.references[index].assetId);
+    return ['sha256', 'mimeType', 'width', 'height', 'relativePath', 'sizeBytes'].some(key => Object.hasOwn(asset, key) && asset[key] !== current[key]);
+  })) return message('connections.generation.issue.referencesChanged');
+  if (inputMode === 'image' && !references.length) return message('connections.generation.issue.firstFrame');
+  if (inputMode === 'text' && references.length) return message('connections.generation.issue.clearFrames');
+  const snapshot = { ...shot, model, referenceAssetIds: selection.references.map(item => item.assetId), referenceAssets: references };
+  if (!frozen && shot.lastFrameAssetId) snapshot.referenceBindings = selection.references.map(({ role, assetId }, index) => ({ role, assetId, sha256: references[index].sha256 }));
+  return generationIssueDescriptor(getGenerationIssue(snapshot, provider));
+}
+
+export function subjectVideoConflictDescriptor(shot = {}, { savedShot = shot, boundReference = false } = {}) {
+  if (boundReference) return message('connections.generation.issue.subjectBound');
+  if ([shot, savedShot].some(value => value?.referenceAssetIds?.length || value?.lastFrameAssetId)) return message('connections.generation.issue.subjectFrames');
+  return '';
+}
+
+export function subjectVideoReferenceDescriptor(reference, assets = [], projectId) {
+  if (!reference) return message('connections.generation.issue.subjectMissing');
+  if (!isSubjectReference(reference)) return message('connections.generation.issue.subjectInvalid');
+  const version = reference.subjectVersion;
+  if (projectId && version.projectId !== projectId) return message('connections.generation.issue.subjectProject');
+  const asset = assets.find(item => item.id === version.assetId && item.projectId === version.projectId);
+  if (!asset) return message('connections.generation.issue.subjectAssetMissing');
+  if (subjectContentKeys.some(key => asset[key] !== version[key])) return message('connections.generation.issue.subjectAssetChanged');
+  return '';
 }

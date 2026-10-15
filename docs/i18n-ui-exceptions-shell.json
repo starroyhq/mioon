@@ -1,0 +1,390 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "file": "apps/web/src/App.jsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/App.jsx",
+      "category": "visible-jsx",
+      "hash": "7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762",
+      "owner": "shell",
+      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+    },
+    {
+      "file": "apps/web/src/App.jsx",
+      "category": "visible-jsx",
+      "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
+      "owner": "shell",
+      "reason": "Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged."
+    },
+    {
+      "file": "apps/web/src/AssetLibrary.jsx",
+      "category": "visible-jsx",
+      "hash": "3d58fa5abb4028f92a0f0ef0ba59673cf63947c91343bfb1f0cdbf340d77de40",
+      "owner": "shell",
+      "reason": "Recognized media file-format identifiers in supported-format help; these technical format names are unchanged across locales."
+    },
+    {
+      "file": "apps/web/src/AssetLibrary.jsx",
+      "category": "visible-jsx",
+      "hash": "42f41f732c0f6e4d420f4ee1e990ec1d0b57eea2f02f53b467023d259a8861b7",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/AssetLibrary.jsx",
+      "category": "visible-jsx",
+      "hash": "88257caa59056a524c7ce0534ecfcf1199c2d349188d803fb96fe6cc13e4078d",
+      "owner": "shell",
+      "reason": "Technical file-size unit suffix beside formatNumber(asset.sizeBytes / 1024). The existing display conversion is retained; raw byte counts and stored asset metadata are unchanged."
+    },
+    {
+      "file": "apps/web/src/Inspector.jsx",
+      "category": "visible-jsx",
+      "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
+      "owner": "shell",
+      "reason": "Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged."
+    },
+    {
+      "file": "apps/web/src/Inspector.jsx",
+      "category": "visible-jsx",
+      "hash": "9d85cf107e1cb413d933adda1be6abe2949fa55d48ac8b7f99c301f6e7f92be9",
+      "owner": "shell",
+      "reason": "Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged."
+    },
+    {
+      "file": "apps/web/src/Nodes.jsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/Nodes.jsx",
+      "category": "visible-jsx",
+      "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
+      "owner": "shell",
+      "reason": "Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged."
+    },
+    {
+      "file": "apps/web/src/ProjectHome.tsx",
+      "category": "visible-jsx",
+      "hash": "6128287041610e3e584b5cc1268df57e8d98f6dc1e16744caf935453325b9b78",
+      "owner": "shell",
+      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+    },
+    {
+      "file": "apps/web/src/ProjectHome.tsx",
+      "category": "visible-jsx",
+      "hash": "e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235",
+      "owner": "shell",
+      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+    },
+    {
+      "file": "apps/web/src/SettingsRoot.tsx",
+      "category": "visible-jsx",
+      "hash": "e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235",
+      "owner": "shell",
+      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+    },
+    {
+      "file": "apps/web/src/ShotSubjectBindings.jsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/ShotSubjectBindings.jsx",
+      "category": "visible-jsx",
+      "hash": "42f41f732c0f6e4d420f4ee1e990ec1d0b57eea2f02f53b467023d259a8861b7",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/ShotSubjectBindings.jsx",
+      "category": "visible-jsx",
+      "hash": "fac2308f9842a83e682a3bfc6f2dcb465706a6771c79b23b0a791999ec2c89c8",
+      "owner": "shell",
+      "reason": "Technical version prefix in V${head.number} and V${pinned.number}, passed to localized review/use/keep messages. It identifies the existing pinned/candidate version; no title, user text, subject binding or version identity is translated."
+    },
+    {
+      "file": "apps/web/src/SubjectLibrary.jsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/SubjectLibrary.jsx",
+      "category": "visible-jsx",
+      "hash": "42f41f732c0f6e4d420f4ee1e990ec1d0b57eea2f02f53b467023d259a8861b7",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/SubjectVideoSelection.jsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/SubjectVideoSummary.jsx",
+      "category": "visible-jsx",
+      "hash": "15685ac4975b28d247da667351e23ac3dd9884df0c8706d3376ce4ad7a751e3c",
+      "owner": "shell",
+      "reason": "Cryptographic hash algorithm identifier accompanying immutable source provenance; algorithm and hash contents must remain exact."
+    },
+    {
+      "file": "apps/web/src/asset-disposition-state.js",
+      "category": "cjk-source",
+      "hash": "296fc3a77e873d37e7365a47ec2e5ccf256956d2c0157ca30a2602e7b95619f4",
+      "owner": "shell",
+      "reason": "Preserved original protocol Error.message. protocolError attaches assets.mark.protocolError as displayMessage; AssetDispositionControls.jsx and AssetLibrary.jsx render descriptor state, never this diagnostic."
+    },
+    {
+      "file": "apps/web/src/desktop-window-client.ts",
+      "category": "cjk-source",
+      "hash": "323aaffec9232e73e103b2e4261418d6285a11273bf7bec97353362b5c3acdc0",
+      "owner": "shell",
+      "reason": "Preserved original preload/protocol identity diagnostic. DesktopRoot.tsx catches bridge/context failure and renders shell.windowUnconfirmed plus shell.keepWindow; invalid native identity never falls back to Web or renders this raw string. ProjectEntry uses its own outcome descriptors for later open failures."
+    },
+    {
+      "file": "apps/web/src/editor-native-window.ts",
+      "category": "cjk-source",
+      "hash": "35408e6a0552d01adcf18eb0684589c88361b671baebef2d44e1bce65e45df56",
+      "owner": "shell",
+      "reason": "Preserved original editor-role invariant Error.message. Its displayMessage is shell.error.editorProject; App.readableError forwards that descriptor to the boot/error presentation without changing native role contracts."
+    },
+    {
+      "file": "apps/web/src/editor-window-inputs.ts",
+      "category": "cjk-source",
+      "hash": "c7705ecc66f9af68e07300c206ef448b4a94f5f5eb410681adcdaa64b2eb460e",
+      "owner": "shell",
+      "reason": "Preserved original exact-create-ACK diagnostic in the legacy native input validator. Current App.jsx routes native creation immediately to ProjectEntry; its createLauncherClient validates the same name/description and project-entry-state.ts renders projects.createUnknownRefresh on a mismatched ACK while retaining the original create latch. The original diagnostic is not current GUI copy."
+    },
+    {
+      "file": "apps/web/src/last-project-client.ts",
+      "category": "cjk-source",
+      "hash": "0d7bbda8a41cf37dbe5c03f8a7b968d9101fc73861f3987358551147e1eb54f8",
+      "owner": "shell",
+      "reason": "Preserved LastProjectRequestError diagnostic. last-project-state.ts classifies by stable code/status/kind and exposes phase/uncertain/identityBlocked; LastProjectStatus.tsx renders projects.locatorUnconfirmed, projects.locatorUncertain or projects.locatorIdentityChanged. NativeLocatorStatus.tsx renders projects.locatorUnconfirmed from the retained owner status, never raw Error.message."
+    },
+    {
+      "file": "apps/web/src/last-project-navigation.ts",
+      "category": "cjk-source",
+      "hash": "7fce4936ef28dd1d10e44c0454f9b28cc224ad650883611c7d250de7f380c342",
+      "owner": "shell",
+      "reason": "Preserved original diagnostic for stable LAST_PROJECT_SCOPE_MISMATCH. App.readableError maps the code to shell.error.lastProjectScope, retaining changed-workspace/reopen guidance."
+    },
+    {
+      "file": "apps/web/src/last-project-navigation.ts",
+      "category": "cjk-source",
+      "hash": "8658cdaee10aafe45b923284d2b8ce207225bfdca803aa483a6205fd8fa78961",
+      "owner": "shell",
+      "reason": "Preserved original boot identity diagnostic for LAST_PROJECT_SCOPE_MISMATCH. App.readableError maps this code to shell.error.lastProjectScope; no foreign cache is adopted."
+    },
+    {
+      "file": "apps/web/src/last-project-navigation.ts",
+      "category": "cjk-source",
+      "hash": "94d191dc34a8e18ab884274339022d1b08a8dda18f28e0b6f18410584d7441c2",
+      "owner": "shell",
+      "reason": "Preserved original diagnostic for stable LAST_PROJECT_SCOPE_MISMATCH. App.readableError maps this code to shell.error.lastProjectScope; the original record and identity fence are unchanged."
+    },
+    {
+      "file": "apps/web/src/launcher-state.ts",
+      "category": "cjk-source",
+      "hash": "0cd8985d66f1cf817fe872ae5968668b3023594bc8a28dbb9151cd0706b57ec7",
+      "owner": "shell",
+      "reason": "Preserved LauncherCreateError diagnostic with stable outcome=unknown. project-entry-state.ts chooses projects.createUnknownRefresh; ProjectHome.tsx renders that descriptor while retaining the original create latch."
+    },
+    {
+      "file": "apps/web/src/launcher-state.ts",
+      "category": "cjk-source",
+      "hash": "23f33d487dfc1b1e695e836a58c22ff63969fe2bf3110269a57374e89b80330f",
+      "owner": "shell",
+      "reason": "Preserved parse/identity diagnostic, not displayed verbatim. project-entry-state.ts maps failed reads to projects.listUnavailable and malformed create ACKs to projects.createUnknownRefresh; ProjectHome.tsx renders those descriptors."
+    },
+    {
+      "file": "apps/web/src/launcher-state.ts",
+      "category": "cjk-source",
+      "hash": "4c1df3bcf066c7972274f3af798a1486e1dc20f5ac4c3b308b03453376b2735e",
+      "owner": "shell",
+      "reason": "Preserved LauncherCreateError diagnostic with stable outcome=rejected. project-entry-state.ts chooses projects.createRejectedRetained; ProjectHome.tsx renders that descriptor without resetting draft input."
+    },
+    {
+      "file": "apps/web/src/storage-migration.js",
+      "category": "cjk-source",
+      "hash": "78e656b666dc5c13960903314ee7f9c6bd94702f1cac7a8ea8e41d6b6289b130",
+      "owner": "shell",
+      "reason": "Preserved original STORAGE_MIGRATION_BLOCKED diagnostic. App.readableError maps this exact stable code to shell.error.storageMigration, retaining old-record preservation, old-window closure, storage-conflict inspection and duplicate-submission avoidance guidance."
+    },
+    {
+      "file": "apps/web/src/subject-state.js",
+      "category": "cjk-source",
+      "hash": "5e943b1245d48488a8d467bf18cb4b8429d1898f6343cccbb663b67cd77ef95d",
+      "owner": "shell",
+      "reason": "Legacy subjectKinds label for stable location enum, retained for existing non-display compatibility. SubjectLibrary.jsx, ShotSubjectBindings.jsx and SubjectVideoSummary.jsx render subjectKindDescriptor and subjects.kind.location instead."
+    },
+    {
+      "file": "apps/web/src/subject-state.js",
+      "category": "cjk-source",
+      "hash": "6cd8cef1b31282782b9393590b84e0b4fa429ca2a33074aab9f225d6528a8620",
+      "owner": "shell",
+      "reason": "Preserved original diagnostic with stable SUBJECT_RESPONSE_INVALID. subject-state.js readErrorDescriptor selects subjects.read.protocol; SubjectLibrary.jsx and ShotSubjectBindings.jsx render entry.error descriptors, not entry.diagnostic."
+    },
+    {
+      "file": "apps/web/src/subject-state.js",
+      "category": "cjk-source",
+      "hash": "9b3572b33ccad442e27273c354e8f01a4d740fbd511ad6d0f94ac97f848347a6",
+      "owner": "shell",
+      "reason": "Legacy subjectKinds label for stable look enum, retained for existing non-display compatibility. SubjectLibrary.jsx, ShotSubjectBindings.jsx and SubjectVideoSummary.jsx render subjectKindDescriptor and subjects.kind.look instead."
+    },
+    {
+      "file": "apps/web/src/subject-state.js",
+      "category": "cjk-source",
+      "hash": "af94e6493f2a1734f007a0910c530e53b4a14b566b740ab66f7aa54d8434f99c",
+      "owner": "shell",
+      "reason": "Legacy subjectKinds label for stable character enum, retained for existing non-display compatibility. SubjectLibrary.jsx, ShotSubjectBindings.jsx and SubjectVideoSummary.jsx render subjectKindDescriptor and subjects.kind.character instead."
+    },
+    {
+      "file": "apps/web/src/subject-state.js",
+      "category": "cjk-source",
+      "hash": "d460f6753e5c6bfd85b442fd1aa6e9744184c307fdd80038ece9004add183969",
+      "owner": "shell",
+      "reason": "Legacy subjectKinds label for stable product enum, retained for existing non-display compatibility. SubjectLibrary.jsx, ShotSubjectBindings.jsx and SubjectVideoSummary.jsx render subjectKindDescriptor and subjects.kind.product instead."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "0aaf3ba669bca82ee55b9fd21a04b75a4bddaf0d70923a60d695b210c091be50",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoConflictDescriptor exposes subjects.conflict.boundFrame; SubjectVideoSelection.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "14715a65b791a5eb9ce0641f98c37969cd17db9dd547796849cf790c03cf5629",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.recorded; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "1a750764950c5080de4fa0bd34be1964f8f6416557df21b0f56f506da8d69a71",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoConflictDescriptor exposes subjects.conflict.frames; SubjectVideoSelection.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "381c735c702a5482c3d491ebffe2f587db769bb48e815343260f4711dc58ca40",
+      "owner": "shell",
+      "reason": "Preserved legacy MOCK_SUBJECT_WARNING for existing non-display callers. SubjectVideoSelection.jsx and the App.jsx paid review render MOCK_SUBJECT_WARNING_MESSAGE (subjects.warning.mock), not this pinned string."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "4cf6f6312795c8c84cef6ec03602dfe61c95205d06ab4c4524920f18ee44d864",
+      "owner": "shell",
+      "reason": "Preserved original subjectVideoReferenceIssue output for existing validation/guard callers. Inspector.jsx renders generationInputIssueDescriptor, whose stable structural check selects connections.generation.issue.subjectMissing; it does not render this raw string. Frozen reference and request data remain unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "5980eb26ac2a46ed93f5d55a6dbf934efb3897b7563da6d69ede94ce38610003",
+      "owner": "shell",
+      "reason": "Preserved original subjectVideoReferenceIssue output for existing validation/guard callers. Inspector.jsx renders generationInputIssueDescriptor, whose stable structural check selects connections.generation.issue.subjectInvalid; it does not render this raw string. Frozen reference and request data remain unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "63ffab40e33c03ad82b5bc80c74e13dc90fe70a56b5d909dc260768072899dd1",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.import; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "6bb75428e055024b30cc2f3f322770956a999db45c78e2ff9554975f0c31942e",
+      "owner": "shell",
+      "reason": "Preserved original subjectVideoReferenceIssue output for existing validation/guard callers. Inspector.jsx renders generationInputIssueDescriptor, whose stable structural check selects connections.generation.issue.subjectAssetMissing; it does not render this raw string. Frozen reference and request data remain unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "912f216d16d31e1528904763a9749ea7fa0a64fadccfcb1d59ed99aae5d57522",
+      "owner": "shell",
+      "reason": "Preserved original subjectVideoReferenceIssue output for existing validation/guard callers. Inspector.jsx renders generationInputIssueDescriptor, whose stable structural check selects connections.generation.issue.subjectProject; it does not render this raw string. Frozen reference and request data remain unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "a3775e6bd000123ba0f9e2edb051aba6347e8bf8578147bda55c75f235da4ccb",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.videoGenerated; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "a9fad333b2c60d7aa1af6982b7bd92ad78b6189e642731c561d489360f3fc9a7",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.frame; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "aa3e129c3068eeff3d414996e0b2a047c37d1c9d0b28659244b05d79c21e338f",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.mock; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "b014813855fbc169e620f898459dd05d388df336c510f5de436f0ca415ca5541",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.missing; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "b1599b3f57426366f3e331d4400ddaec1a82d1c33eb6368ed5ce0c6c550a104f",
+      "owner": "shell",
+      "reason": "Preserved original subjectVideoReferenceIssue output for existing validation/guard callers. Inspector.jsx renders generationInputIssueDescriptor, whose stable structural check selects connections.generation.issue.subjectAssetChanged; it does not render this raw string. Frozen reference and request data remain unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "bf178d1ca879e46656c4d1661b87ff48cc686b5c35e8acfef088cd3313d06b93",
+      "owner": "shell",
+      "reason": "Preserved legacy ARK_SUBJECT_WARNING for existing non-display callers. SubjectVideoSelection.jsx and the App.jsx paid review render ARK_SUBJECT_WARNING_MESSAGE (subjects.warning.ark); immutable approval/request identities retain their original data."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "c82c7b9668e5c07815658bfe45090474dce5291d90aacb7112ab2195f509fa29",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.export; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/subject-video.js",
+      "category": "cjk-source",
+      "hash": "dd3c0c8ed133516c573e417d93262a4333bc8fdcc44935871cd644178adae55e",
+      "owner": "shell",
+      "reason": "Preserved legacy subject helper output for non-display callers and compatibility assertions. subjectVideoSourceDescriptor exposes subjects.source.imageGenerated; SubjectVideoSummary.jsx renders the corresponding descriptor. Frozen subject reference/provenance data is unchanged."
+    },
+    {
+      "file": "apps/web/src/timeline-asset-usage.ts",
+      "category": "cjk-source",
+      "hash": "57bdaac9a9568648a3c5430c68bd62015b338573452293e8f47729c809f8506f",
+      "owner": "shell",
+      "reason": "Canonical missing-name fallback is retained in timeline usage records for compatibility. Explicit clipNameMissing marks only generated fallbacks; AssetTimelineUsage.tsx renders assets.usage.unnamedClip. A user-authored identical name is never translated."
+    }
+  ]
+}

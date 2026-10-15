@@ -1,3 +1,4 @@
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as timing from '../apps/web/src/agent-timeline-context.js';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
@@ -174,6 +175,7 @@ function harness(file, options = {}) {
     useLayoutEffect(fn, deps) { const index = cursor++, old = slots[index]; if (old && sameDeps(old.deps, deps)) return; slots[index] = { fn, deps, cleanup: old?.cleanup }; effects.push(index); },
   }; react.default = react;
   const resolve = name => {
+    const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === './agent-timeline-context.js') return timing;
     if (name === './agent-timeline-gain-context.ts') return gainContext;
     if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }

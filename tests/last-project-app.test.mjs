@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -33,7 +34,7 @@ test('initial choice uses valid explicit URL then valid locator then ordinary fa
  assert.equal(chooseInitialProject(projects,id(3),envelope).projectId,id(2));
  assert.equal(chooseInitialProject(projects,null,envelope).source,'remembered');
  assert.equal(chooseInitialProject(projects,null,{...envelope,targetStatus:'missing'}).projectId,id(1));
- assert.match(chooseInitialProject(projects,null,{...envelope,targetStatus:'missing'}).notice,/不可用/);
+ assert.match(renderCoreMessage('zh-Hans',chooseInitialProject(projects,null,{...envelope,targetStatus:'missing'}).notice),/不可用/);
  assert.equal(chooseInitialProject([],null,null).source,'none');
  assert.equal(chooseInitialProject(projects,null,{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'}).source,'fallback');
  assert.deepEqual(envelope,frozen);
@@ -52,7 +53,7 @@ test('boot tickets reject later boots, project changes and StrictMode disposed l
 function selectionHarness({refresh,confirm=true}={}){
  const calls=[],currentProject={current:id(1)},projectEpoch={current:0},navigationEpoch={current:0};
  const view=defaultWorkspaceState();
- const env={nativeWindow:null,editorInitialSelection,notify:(...args)=>calls.push(['notice',...args]),readableError:e=>e.message,workspaceRef:{current:{restored:false}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
+ const env={msg,...createI18nTestContext(),localizedError:value=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args)=>calls.push(['notice',...args]),readableError:e=>e.message,workspaceRef:{current:{restored:false}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},

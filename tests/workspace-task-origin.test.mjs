@@ -1,3 +1,4 @@
+import { LOCALES, renderMessage } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { taskWorkspaceBinding, taskListWorkspaceBindings, requireTaskWorkspace } from '../apps/web/src/workspace-task-origin.js';
@@ -44,4 +45,17 @@ test('ordinary task envelopes cannot silently become restored, and missing resto
   assert.throws(() => taskWorkspaceBinding({ task: {} }, workspace), { code: 'BACKEND_PROTOCOL_ERROR' });
   assert.throws(() => taskWorkspaceBinding({ task: {}, restore: current }, null), { code: 'WORKSPACE_ORIGIN_UNVERIFIED' });
   assert.throws(() => taskListWorkspaceBindings({ items: [], restore: { workspaceOrigin: a, tasks: [] } }, null), { code: 'WORKSPACE_ORIGIN_UNVERIFIED' });
+});
+
+
+test('invalid task workspace identity preserves exact diagnostic and localizes retained-request guidance without changing envelope', () => {
+  const envelope = { task: { id: taskId, input: { requestId: 'original', title: '日本語 繁體 <literal>' } } }, before = structuredClone(envelope);
+  let failure; try { taskWorkspaceBinding(envelope, workspace); } catch (error) { failure = error; }
+  assert.equal(failure.code, 'BACKEND_PROTOCOL_ERROR');
+  assert.equal(failure.message, '任务工作区身份确认无效，原编号和参数仍保留。');
+  assert.equal(failure.displayMessage.key, 'recovery.workspace.taskProtocol');
+  assert.equal(new Set(LOCALES.map(locale => renderMessage(locale, failure.displayMessage))).size, 4);
+  assert.match(renderMessage('en', failure.displayMessage), /original ID and parameters are retained/);
+  assert.match(renderMessage('en', failure.displayMessage), /do not create a replacement request/);
+  assert.deepEqual(envelope, before);
 });

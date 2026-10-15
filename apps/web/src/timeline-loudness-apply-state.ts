@@ -1,3 +1,5 @@
+import { translate, message } from '../../../packages/i18n/src/index.ts';
+import type { Locale, MessageDescriptor } from '../../../packages/i18n/src/index.ts';
 import { isTimelineLoudnessApplicableReport, isTimelineLoudnessApplyInput, timelineLoudnessCandidateDigest, TIMELINE_LOUDNESS_APPLY_OPERATION } from '@mioon/contracts/timeline-loudness-apply';
 import type { TimelineLoudnessApplyInput } from '@mioon/contracts/timeline-loudness-apply';
 import { parseTimelineMixLoudnessTarget, timelineMixLoudnessAvailable } from './timeline-mix-loudness-state.ts';
@@ -23,12 +25,13 @@ export interface TimelineLoudnessApplyState {
   readonly requestId: string | null;
   readonly observationVersion: number | null;
   readonly error: string;
+  readonly errorCode?: string;
 }
 export interface TimelineLoudnessApplyControllerOptions {
   readonly getObservation: () => TimelineMixLoudnessState;
   /** Stable workspace identity, independent of the transient project/view epoch. */
   readonly getRecoveryScope?: () => string | null;
-  readonly confirm: (message: string) => Promise<boolean>;
+  readonly confirm: (message: string | MessageDescriptor) => Promise<boolean>;
   readonly createRequestId: () => string;
   readonly submit: (intent: TimelineLoudnessApplyIntent, canExecute: (preparedTask?: unknown) => boolean) => Promise<TimelineLoudnessApplyOutcome>;
   readonly digest?: (report: unknown) => Promise<string>;
@@ -61,13 +64,15 @@ export function timelineLoudnessPreparedTaskIdentity(value: unknown, input: Time
     exact.target.truePeakCeilingDbtp === input.target.truePeakCeilingDbtp ? `${task.id}:${task.digest}` : null;
 }
 const codeOf = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
-export function timelineLoudnessApplyErrorMessage(error: unknown): string {
+export function timelineLoudnessApplyErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
   const code = codeOf(error);
-  if (['TIMELINE_LOUDNESS_APPLY_STALE', 'TIMELINE_MIX_LOUDNESS_STALE', 'TIMELINE_MIX_LOUDNESS_REVISION_CONFLICT', 'TIMELINE_REVISION_CONFLICT'].includes(code)) return '时间线、来源字节或候选已变化。原报告不能再应用，请重新准备并核对候选。';
-  if (code === 'TIMELINE_LOUDNESS_APPLY_UNSAFE') return '重新测量的候选未同时满足两个目标，未修改增益。请重新准备并核对。';
-  if (code === 'TIMELINE_LOUDNESS_APPLY_UNCHANGED') return '候选没有可保存的增益变化，请重新准备。';
-  if (code.startsWith('RESTORE_')) return '恢复分支不能应用响度候选。';
-  return '本次应用未完成。请先核对任务中心的原请求，再明确重新准备。';
+  if (code === 'LOCAL_IDENTITY_CHANGED') return translate(locale, 'audio.loudness.apply.identityChanged');
+  if (code === 'LOCAL_IDENTITY_UNAVAILABLE') return translate(locale, 'audio.loudness.apply.identityUnavailable');
+  if (['TIMELINE_LOUDNESS_APPLY_STALE', 'TIMELINE_MIX_LOUDNESS_STALE', 'TIMELINE_MIX_LOUDNESS_REVISION_CONFLICT', 'TIMELINE_REVISION_CONFLICT'].includes(code)) return translate(locale, 'audio.loudness.apply.changed');
+  if (code === 'TIMELINE_LOUDNESS_APPLY_UNSAFE') return translate(locale, 'audio.loudness.apply.unsafe');
+  if (code === 'TIMELINE_LOUDNESS_APPLY_UNCHANGED') return translate(locale, 'audio.loudness.apply.unchanged');
+  if (code.startsWith('RESTORE_')) return translate(locale, 'audio.loudness.apply.restored');
+  return translate(locale, 'audio.loudness.apply.failed');
 }
 interface PendingApply {
   readonly attempt: number;
@@ -151,7 +156,7 @@ export function createTimelineLoudnessApplyController(options: TimelineLoudnessA
       if (state.phase === 'submitting') { if (recoveryScopeChanged || !sameBinding(capture, observation)) revoked = true; return; }
       if (['digesting', 'confirming'].includes(state.phase) && recoveryScopeChanged) {
         ++epoch; capture = null; captureRecoveryScope = null; revoked = true;
-        emit({ phase: 'error', requestId: null, error: recoveryIdentityChanged }); return;
+        emit({ phase: 'error', requestId: null, error: recoveryIdentityChanged, errorCode: 'LOCAL_IDENTITY_CHANGED' }); return;
       }
       if (['digesting', 'confirming'].includes(state.phase) &&
         (!sameBinding(capture, observation) || capture.version !== observation.version || capture.report !== observation.report || !timelineLoudnessCanReview(observation))) {
@@ -164,7 +169,7 @@ export function createTimelineLoudnessApplyController(options: TimelineLoudnessA
         expected.report !== live.report || ['error', 'applied'].includes(state.phase) && state.observationVersion === live.version || !sameBinding(expected, live) || !timelineLoudnessCanReview(live) || !live.report || !live.scope || !live.timelineId) return null;
       const recoveryScope = readRecoveryScope(live);
       if (recoveryScope === null) {
-        emit({ phase: 'error', scope: live.scope, projectId: live.projectId, requestId: null, observationVersion: live.version, error: recoveryIdentityUnavailable });
+        emit({ phase: 'error', scope: live.scope, projectId: live.projectId, requestId: null, observationVersion: live.version, error: recoveryIdentityUnavailable, errorCode: 'LOCAL_IDENTITY_UNAVAILABLE' });
         return null;
       }
       const report = live.report, attempt = ++epoch; capture = live; captureRecoveryScope = recoveryScope; revoked = false;
@@ -179,7 +184,7 @@ export function createTimelineLoudnessApplyController(options: TimelineLoudnessA
         const intent: TimelineLoudnessApplyIntent = Object.freeze({ operation: TIMELINE_LOUDNESS_APPLY_OPERATION, scope: live.scope,
           timelineId: live.timelineId, sourceIdentity: live.sourceIdentity, executionScope: live.executionScope, input });
         emit({ phase: 'confirming' });
-        const approved = await options.confirm(`将 rev ${input.expectedRevision} 的 ${report.candidate.gains.length} 个可听片段作为一次编辑应用固定增益 ${report.candidate.requiredGainDb.toFixed(2)} dB（×${report.candidate.gainMultiplier.toFixed(4)}）？目标 ${input.target.integratedLufs} LUFS，真峰值上限 ${input.target.truePeakCeilingDbtp} dBTP，额外预留 0.5 dB。服务器会重新核验来源并完整测量；变化或不安全时不应用。${TIMELINE_LOUDNESS_APPLY_LIMITATION}`);
+        const approved = await options.confirm(message('audio.loudness.apply.confirm', { revision: input.expectedRevision, count: report.candidate.gains.length, gain: report.candidate.requiredGainDb.toFixed(2), multiplier: report.candidate.gainMultiplier.toFixed(4), lufs: input.target.integratedLufs, peak: input.target.truePeakCeilingDbtp }));
         if (!current(attempt, live)) return null;
         if (!approved) { capture = null; emit({ phase: 'idle', requestId: null }); return null; }
         const owner: PendingApply = { attempt, scope: live.scope, input, recoveryScope, observationVersion: live.version,
@@ -209,10 +214,10 @@ export function createTimelineLoudnessApplyController(options: TimelineLoudnessA
         if (disposed || visiblePending !== owner || !sameOwner(state, options.getObservation())) return outcome;
         capture = null;
         if (outcome.status !== 'unknown') visiblePending = null;
-        emit({ phase: outcome.status === 'rejected' ? 'error' : outcome.status, error: outcome.status === 'rejected' ? timelineLoudnessApplyErrorMessage(outcome.error) : '' });
+        emit({ phase: outcome.status === 'rejected' ? 'error' : outcome.status, error: outcome.status === 'rejected' ? timelineLoudnessApplyErrorMessage(outcome.error) : '', errorCode: outcome.status === 'rejected' ? codeOf(outcome.error) : '' });
         return outcome;
       } catch (error) {
-        if (current(attempt, live)) { capture = null; emit({ phase: 'error', error: timelineLoudnessApplyErrorMessage(error) }); }
+        if (current(attempt, live)) { capture = null; emit({ phase: 'error', error: timelineLoudnessApplyErrorMessage(error), errorCode: codeOf(error) }); }
         return null;
       }
     },
@@ -236,7 +241,7 @@ export function createTimelineLoudnessApplyController(options: TimelineLoudnessA
       const owner = owners[0]!; pending.delete(owner.attempt); publishClose();
       if (visiblePending !== owner) return;
       visiblePending = null; capture = null; ++epoch;
-      emit({ phase: value.status === 'applied' ? 'applied' : 'error', error: value.status === 'applied' ? '' : timelineLoudnessApplyErrorMessage({ code: value.errorCode }) });
+      emit({ phase: value.status === 'applied' ? 'applied' : 'error', error: value.status === 'applied' ? '' : timelineLoudnessApplyErrorMessage({ code: value.errorCode }), errorCode: value.status !== 'applied' && typeof value.errorCode === 'string' ? value.errorCode : '' });
     },
     dispose(): void {
       disposed = true; revoked = true; ++epoch; capture = null; visiblePending = null; state = initial(state.version + 1);

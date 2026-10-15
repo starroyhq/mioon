@@ -1,3 +1,6 @@
+import { message } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
+import { TimelineUiError, timelineFailure } from './timeline-notices.ts';
 import { parseLookPackBytes } from '../../../packages/business/src/look-pack.ts';
 import type { LookPackInspection } from '../../../packages/contracts/src/look-pack.ts';
 import { LUT_RESOURCE_LIMITS } from '../../../packages/contracts/src/lut-resources.ts';
@@ -5,7 +8,7 @@ import { LUT_RESOURCE_LIMITS } from '../../../packages/contracts/src/lut-resourc
 export type LookPackFile = Pick<File, 'name' | 'size' | 'arrayBuffer'>;
 export interface LookPackIntakeState {
   phase: 'idle' | 'reading' | 'ready' | 'adopting' | 'adopted' | 'error';
-  name: string; inspection: LookPackInspection | null; acknowledged: boolean; error: string;
+  name: string; inspection: LookPackInspection | null; acknowledged: boolean; error: string; errorMessage?: DisplayMessage;
 }
 const initial = (): LookPackIntakeState => ({ phase: 'idle', name: '', inspection: null, acknowledged: false, error: '' });
 
@@ -28,11 +31,11 @@ export function createLookPackIntake({ getScope, isBlocked, adopt, onChange = ()
       sync(); if (!active || isBlocked() || state.phase === 'adopting') return false;
       const ticket = ++serial; selected = null; emit({ ...initial(), phase: 'reading' });
       try {
-        if (!/\.mioon-look\.cube$/iu.test(file.name) || file.name.length > 200) throw Error('请选择名称不超过 200 字符的 .mioon-look.cube 单 Look 数据包。');
-        if (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > LUT_RESOURCE_LIMITS.sourceBytes) throw Error('单 Look 数据包必须非空且不超过 7 MiB。');
+        if (!/\.mioon-look\.cube$/iu.test(file.name) || file.name.length > 200) throw new TimelineUiError(message('colour.pack.fileName'));
+        if (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > LUT_RESOURCE_LIMITS.sourceBytes) throw new TimelineUiError(message('colour.pack.fileSize'));
         const name = file.name, size = file.size, read = new Uint8Array(await file.arrayBuffer());
         if (!owns(ticket) || isBlocked()) return false;
-        if (read.byteLength !== size) throw Error('文件读取大小已变化，未采用。请重新选择。');
+        if (read.byteLength !== size) throw new TimelineUiError(message('colour.pack.fileChanged'));
         const bytes = read.slice(); // Own the input before asynchronous digest work.
         const inspection = await parseLookPackBytes(bytes);
         if (!owns(ticket) || isBlocked()) return false;
@@ -41,7 +44,7 @@ export function createLookPackIntake({ getScope, isBlocked, adopt, onChange = ()
         selected = { name, size, arrayBuffer: async () => snapshot.slice().buffer };
         emit({ phase: 'ready', name, inspection, acknowledged: false, error: '' }); return true;
       } catch (error) {
-        if (owns(ticket)) emit({ phase: 'error', inspection: null, acknowledged: false, error: error instanceof Error ? error.message : '数据包未通过校验，未采用。' });
+        if (owns(ticket)) emit({ phase: 'error', inspection: null, acknowledged: false, ...timelineFailure('error', error, message('colour.pack.invalid')) });
         return false;
       } finally {
         if (owns(ticket) && state.phase === 'reading') emit({ phase: 'idle', inspection: null, acknowledged: false });
@@ -57,10 +60,10 @@ export function createLookPackIntake({ getScope, isBlocked, adopt, onChange = ()
         // An unknown outcome belongs to the existing original-request recovery
         // controls. Drop this adoption action instead of minting another key.
         selected = null;
-        emit({ phase: success ? 'adopted' : 'error', acknowledged: false, error: success ? '' : '本次采用尚未确认。请查看下方 LUT 导入状态；结果未知时只恢复原请求，不重新采用。' });
+        emit({ phase: success ? 'adopted' : 'error', acknowledged: false, error: success ? '' : '本次采用尚未确认。请查看下方 LUT 导入状态；结果未知时只恢复原请求，不重新采用。', errorMessage: success ? undefined : message('colour.pack.unknown') });
         return success;
       } catch (error) {
-        if (owns(ticket)) { selected = null; emit({ phase: 'error', acknowledged: false, error: error instanceof Error ? error.message : '采用结果尚未确认，请核对原 LUT 导入请求。' }); }
+        if (owns(ticket)) { selected = null; emit({ phase: 'error', acknowledged: false, ...timelineFailure('error', error, message('colour.pack.adoptUnconfirmed')) }); }
         return false;
       }
     },

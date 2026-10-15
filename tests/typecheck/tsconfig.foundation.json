@@ -38,7 +38,8 @@
     "./export-loudness.consumer.mts",
     "./timeline-mix-loudness.consumer.mts",
     "./timeline-loudness-apply.consumer.mts",
-    "./comfy-availability.consumer.mts"
+    "./comfy-availability.consumer.mts",
+    "./i18n.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

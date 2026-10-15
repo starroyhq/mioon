@@ -604,3 +604,40 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 /* A clip whose shot has since selected another version keeps its frozen source; mark it on the timeline and in the inspector. */
 .timeline-clip .clip-stale-mark { position: absolute; top: 3px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: #e0b450; box-shadow: 0 0 0 2px #1b222a; pointer-events: none; }
 .clip-form .clip-source > p.clip-source-stale { color: #e0c27a; }
+
+/* A fixed-height localized header: all actions remain in one keyboard-accessible
+   menu at every width, so resizing never reparents business owners. */
+.dock-workbench .topbar { gap: 10px; }
+.dock-workbench .topbar .brand, .dock-workbench .topbar .topbar-workspace,
+.dock-workbench .topbar .language-control, .dock-workbench .topbar-actions { flex-shrink: 0; }
+.dock-workbench .topbar .project-trigger { flex: 1 1 180px; min-width: 0; max-width: 300px; }
+.dock-workbench .topbar > .language-control { margin-left: auto; flex-wrap: nowrap; max-width: 180px; position: relative; }
+.dock-workbench .topbar > .language-control select { min-width: 0; width: 100%; font-size: 12px; }
+.dock-workbench .topbar > .language-control .language-notice { position: absolute; top: 100%; right: 0; width: min(280px, 80vw); max-height: 160px; overflow: auto; padding: 8px; border: 1px solid #555; background: #20252b; border-radius: 5px; z-index: 30; }
+.dock-workbench .topbar-actions { margin-left: 0; gap: 5px; }
+.dock-workbench .topbar-actions > .workbench-actions-trigger { width: auto; min-height: 30px; gap: 5px; font-size: 12px; }
+.dock-workbench .topbar-actions > .workbench-actions-trigger > span { display: inline; }
+.workbench-actions-menu { min-width: min(280px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: min(520px, calc(100dvh - 80px)); overflow-y: auto; }
+.workbench-actions-menu [role="menuitem"] { white-space: normal; overflow-wrap: anywhere; }
+.topbar-status { position: relative; flex: none; min-width: 0; font-size: 11px; }
+.topbar-status > summary { display: flex; align-items: center; gap: 5px; min-height: 30px; cursor: pointer; white-space: nowrap; list-style: none; }
+.topbar-status > summary::-webkit-details-marker { display: none; }
+.topbar-status-content { position: absolute; top: 100%; right: 0; z-index: 40; display: flex; flex-direction: column; align-items: stretch; gap: 10px; width: min(360px, calc(100vw - 24px)); max-height: min(420px, calc(100dvh - 100px)); overflow: auto; padding: 12px; background: #20252b; border: 1px solid #48515a; border-radius: 8px; box-shadow: 0 8px 30px #0008; }
+.dock-workbench .topbar-status-content .topbar-sync { display: flex; }
+.topbar-status-content :is(.workspace-save-status, .native-locator-status, [data-testid="last-project-status"]) { flex-wrap: wrap; white-space: normal !important; }
+.topbar-status-content [data-testid="last-project-status"] > details > div { position: static !important; width: 100% !important; }
+.dock-workbench.dock-narrow .topbar { grid-template-columns: auto minmax(0,1fr) auto auto; grid-template-rows: 28px 30px; column-gap: 7px; row-gap: 6px; }
+.dock-workbench.dock-narrow .topbar .brand { grid-row: 1; grid-column: 1; }
+.dock-workbench.dock-narrow .topbar .project-trigger { grid-row: 1; grid-column: 2; width: 100%; max-width: none; }
+.dock-workbench.dock-narrow .topbar > .language-control { grid-row: 1; grid-column: 3 / span 2; justify-self: end; margin: 0; max-width: 155px; }
+.dock-workbench.dock-narrow .topbar-workspace { grid-row: 2; grid-column: 1 / span 2; }
+.dock-workbench.dock-narrow .topbar-status { grid-row: 2; grid-column: 3; }
+.dock-workbench.dock-narrow .topbar-status-label { display: none; }
+.dock-workbench.dock-narrow .topbar-actions { grid-row: 2; grid-column: 4; }
+.dock-workbench.dock-narrow .topbar-actions > .workbench-actions-trigger { width: auto; min-height: 28px; padding: 5px 6px; font-size: 11px; }
+@media (max-width: 540px) {
+  .dock-workbench.dock-narrow .topbar .brand-name { display: none; }
+  .dock-workbench.dock-narrow .topbar .project-trigger { justify-content: flex-start; }
+  .dock-workbench.dock-narrow .topbar .language-control select { font-size: 11px; padding: 4px; }
+  .dock-workbench .topbar-status-content { position: fixed; top: 78px; left: 12px; right: 12px; width: auto; }
+}

@@ -220,3 +220,19 @@
 :root[data-desktop-frame="mac-inset"] .project-home .project-home-header :is(a, button, input, select, textarea, [role="tablist"], [role="button"], [tabindex]:not([tabindex="-1"]), summary) {
   -webkit-app-region: no-drag;
 }
+
+/* A native settings window has no project-home-main wrapper. Give the existing
+   section its own scrollport without remounting any settings or secret inputs. */
+.project-home-settings-window > .project-home-settings {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 28px 36px 40px;
+}
+.project-home-settings-window > .project-home-settings > * { max-width: 100%; }
+@media (max-width: 720px) {
+  .project-home-settings-window > .project-home-settings { padding: 24px 20px 32px; }
+}

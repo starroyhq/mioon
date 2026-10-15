@@ -1,3 +1,6 @@
+import { message as displayMessage } from '../../../packages/i18n/src/index.ts';
+import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
+import { recoveryDisplayError, recoveryErrorMessage } from './recovery-display.ts';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createLocalDeliverySchemas, localDeliveryDraftPutSchema, LOCAL_DELIVERY_LIMITS } from '@mioon/contracts/local-delivery';
 import type { LocalDeliveryDraftPut, LocalDeliveryDraftValue, LocalDeliveryEnvelope, LocalDeliveryIntent, LocalDeliveryPrepare, LocalDeliveryRenderInput } from '@mioon/contracts/local-delivery';
@@ -19,10 +22,10 @@ export type LocalDeliverySupported = Extract<LocalDeliveryEnvelope, { supported:
 export interface LocalDeliveryState {
   scope: string; projectId: string | null; phase: 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'unsupported';
   deliveryName: string; dirty: boolean; baseline: { timelineId: string; baseRevision: number } | null; baselineConflict: boolean;
-  candidate: LocalDeliveryDraftValue | null; savedAt: string | null; draftFailure: LocalDeliveryFailure | null; draftError: string;
+  candidate: LocalDeliveryDraftValue | null; savedAt: string | null; draftFailure: LocalDeliveryFailure | null; draftError: string; draftErrorDisplay?: MessageDescriptor;
   autosavePaused: boolean; leaveWithoutSaving: boolean; draftRetry: 'same' | 'current' | null; retainedDraftWrite: LocalDeliveryDraftPut | null;
   retainedPreparation: LocalDeliveryPrepare | null; intent: LocalDeliveryIntent | null; intentPhase: 'idle' | 'preparing' | 'pending' | 'executing' | 'accepted' | 'not_applied' | 'error';
-  intentUncertain: boolean; intentFailure: LocalDeliveryFailure | null; intentError: string; busy: boolean; pending: boolean;
+  intentUncertain: boolean; intentFailure: LocalDeliveryFailure | null; intentError: string; intentErrorDisplay?: MessageDescriptor; busy: boolean; pending: boolean;
 }
 export interface LocalDeliveryAccepted {
   response: unknown; intent: LocalDeliveryIntent; capture: LocalDeliveryCapture; nameCapture: unknown; recovered: boolean;
@@ -56,9 +59,9 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
   const captures = new WeakSet<LocalDeliveryCapture>();
   const initialState = (): LocalDeliveryState => ({ scope: context.scope, projectId: context.projectId, phase: context.restored ? 'unsupported' : 'loading',
     deliveryName: context.deliveryName, dirty: context.dirty, baseline: context.dirty && context.timelineId && context.timelineRevision ? { timelineId: context.timelineId, baseRevision: context.timelineRevision } : null,
-    baselineConflict: false, candidate: null, savedAt: null, draftFailure: null, draftError: '', autosavePaused: Boolean(context.projectId && uncertainDraftWrites.has(context.projectId)), leaveWithoutSaving: false,
+    baselineConflict: false, candidate: null, savedAt: null, draftFailure: null, draftError: '', draftErrorDisplay: undefined, autosavePaused: Boolean(context.projectId && uncertainDraftWrites.has(context.projectId)), leaveWithoutSaving: false,
     draftRetry: context.projectId && uncertainDraftWrites.has(context.projectId) ? 'same' : null, retainedDraftWrite: context.projectId ? copy(uncertainDraftWrites.get(context.projectId) ?? null) : null,
-    retainedPreparation: context.projectId ? copy(uncertain.get(context.projectId) ?? null) : null, intent: null, intentPhase: 'idle', intentUncertain: Boolean(context.projectId && uncertain.has(context.projectId)), intentFailure: null, intentError: '', busy: false, pending: Boolean(context.projectId && uncertain.has(context.projectId)) });
+    retainedPreparation: context.projectId ? copy(uncertain.get(context.projectId) ?? null) : null, intent: null, intentPhase: 'idle', intentUncertain: Boolean(context.projectId && uncertain.has(context.projectId)), intentFailure: null, intentError: '', intentErrorDisplay: undefined, busy: false, pending: Boolean(context.projectId && uncertain.has(context.projectId)) });
   let state = initialState();
   function emit(patch: Partial<LocalDeliveryState>) {
     state = { ...state, ...patch, retainedDraftWrite: context.projectId ? copy(uncertainDraftWrites.get(context.projectId) ?? null) : null, retainedPreparation: context.projectId ? copy(uncertain.get(context.projectId) ?? null) : null }; state.pending = state.intentUncertain || pendingIntent(state.intent) || state.intentPhase === 'preparing' || state.intentPhase === 'executing';
@@ -69,10 +72,10 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
   const sync = () => { if (getContext) controller.setContext(getContext()); };
   function draftFailure(error: unknown, retry: 'same' | 'current' | null = context.projectId && uncertainDraftWrites.has(context.projectId) ? 'same' : state.draftFailure ? state.draftRetry : 'current') {
     const observed = localDeliveryFailure(error);
-    emit({ phase: 'error', autosavePaused: true, draftRetry: retry, draftFailure: state.draftFailure?.kind === 'unknown' ? state.draftFailure : observed, draftError: message(error) });
+    emit({ phase: 'error', autosavePaused: true, draftRetry: retry, draftFailure: state.draftFailure?.kind === 'unknown' ? state.draftFailure : observed, draftError: message(error), draftErrorDisplay: recoveryErrorMessage(error) });
   }
   function intentFailure(error: unknown, unknown = false) {
-    emit({ intentPhase: 'error', intentFailure: localDeliveryFailure(error), intentError: message(error), intentUncertain: unknown });
+    emit({ intentPhase: 'error', intentFailure: localDeliveryFailure(error), intentError: message(error), intentErrorDisplay: recoveryErrorMessage(error), intentUncertain: unknown });
   }
   function validateEnvelope(value: LocalDeliveryEnvelope, projectId: string): LocalDeliverySupported {
     const parsed = schemas.envelope.safeParse(value);
@@ -118,7 +121,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       if (!belongs(owner) || reading !== readSerial) return;
       if (!result.supported) { loaded = false; emit({ phase: 'unsupported' }); return; }
       const next = validateEnvelope(result, projectId);
-      if (previous && next.workspaceScope !== previous.workspaceScope) throw new Error('工作区身份已变化；当前输入与原请求仍保留，请重新打开原工作区核对。');
+      if (previous && next.workspaceScope !== previous.workspaceScope) throw recoveryDisplayError(new Error('工作区身份已变化；当前输入与原请求仍保留，请重新打开原工作区核对。'), displayMessage('recovery.delivery.error.identity'));
       // A read may adopt a restarted server nonce; it never executes anything.
       receive(next, previous ? { ...previous, instanceId: next.instanceId } : null);
       const matches = draftMatches(next.draft);
@@ -142,7 +145,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       draftFailure(new LocalDeliveryRequestError('当前会话已有 128 个项目的名称保存待确认；请先恢复原名称。未发送本次新保存请求。', 'LOCAL_DELIVERY_LOCAL_RETRY_LIMIT', 400), 'current'); return false;
     }
     uncertainDraftWrites.set(previous.projectId, copy(input));
-    readSerial++; emit({ phase: 'saving', baseline, draftError: '' });
+    readSerial++; emit({ phase: 'saving', baseline, draftError: '', draftErrorDisplay: undefined });
     const work = (async () => {
       try {
         const result = await transport.put(input); sync(); if (!belongs(owner)) return false;
@@ -150,7 +153,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
         if (!next.draft || next.draft.draftId !== input.draftId || !draftMatches(next.draft, raw.deliveryName, baseline)) throw localDeliveryProtocolError();
         receive(next, previous, 'draft'); uncertainDraftWrites.delete(previous.projectId);
         emit({ phase: serial === savedSerial ? 'saved' : 'ready', savedAt: next.draft.updatedAt,
-          ...(explicitRetry && serial !== savedSerial ? { autosavePaused: true, draftRetry: 'current' as const, draftError: '本次名称已确认保存。较新的输入仍保留，请明确保存当前名称。' } : {}) }); return serial === savedSerial;
+          ...(explicitRetry && serial !== savedSerial ? { autosavePaused: true, draftRetry: 'current' as const, draftError: '本次名称已确认保存。较新的输入仍保留，请明确保存当前名称。', draftErrorDisplay: displayMessage('recovery.delivery.newerInput') } : {}) }); return serial === savedSerial;
       } catch (error) {
         sync(); const refused = localDeliveryFailure(error).kind === 'refused';
         if (refused && belongs(owner)) uncertainDraftWrites.delete(previous.projectId);
@@ -177,11 +180,11 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
     receive(settled, next); // Execution may keep a pending revision unchanged.
     if (settled.intent.outcome.status === 'accepted') {
       if (!recovered && isCurrent(token)) emit({ dirty: false, baseline: null, savedAt: settled.draft?.updatedAt ?? null, phase: settled.draft ? 'saved' : 'ready' });
-      emit({ intentFailure: null, intentError: '' });
+      emit({ intentFailure: null, intentError: '', intentErrorDisplay: undefined });
       await onAccepted?.({ response: result.response, intent: copy(settled.intent), capture: token, nameCapture, recovered });
       return result.response;
     }
-    emit({ intentError: settled.intent.outcome.status === 'not_applied' ? `服务器已确认原请求未应用（${settled.intent.outcome.code}）。名称仍保留，请核对后重新检查。` : '原请求结果仍待确认；不会自动重试。' });
+    emit({ intentError: settled.intent.outcome.status === 'not_applied' ? `服务器已确认原请求未应用（${settled.intent.outcome.code}）。名称仍保留，请核对后重新检查。` : '原请求结果仍待确认；不会自动重试。', intentErrorDisplay: settled.intent.outcome.status === 'not_applied' ? displayMessage('recovery.delivery.notAppliedCode', { code: settled.intent.outcome.code }) : displayMessage('recovery.notice.pending') });
     return null;
   }
   const controller = {
@@ -239,15 +242,15 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
         // A known refusal sent no successful write. The user explicitly chose
         // to save today's raw input, but never to replace another candidate or
         // adopt a different baseline silently.
-        emit({ autosavePaused: false, draftFailure: null, draftRetry: null, leaveWithoutSaving: false, draftError: '' });
+        emit({ autosavePaused: false, draftFailure: null, draftRetry: null, leaveWithoutSaving: false, draftError: '', draftErrorDisplay: undefined });
         if (state.candidate && previousCandidate === null && beforeRead && beforeRead.workspaceScope === previous.workspaceScope && beforeRead.draftRevision === previous.draftRevision && sameLocalDeliveryValue(beforeRead.draft, previous.draft)) emit({ candidate: null });
-        if (state.candidate) { emit({ draftError: '已重新核对记录；请选择恢复已保存名称或明确保留当前名称。' }); return false; }
+        if (state.candidate) { emit({ draftError: '已重新核对记录；请选择恢复已保存名称或明确保留当前名称。', draftErrorDisplay: displayMessage('recovery.delivery.chooseDraft') }); return false; }
         return await flush(true, true);
       }
       if (!retained || previous.workspaceScope !== retained.workspaceScope) { draftFailure(localDeliveryProtocolError(), 'same'); return false; }
       const original = { ...copy(retained), instanceId: previous.instanceId }, savedSerial = serial;
       const baseline = { timelineId: retained.timelineId, baseRevision: retained.baseRevision };
-      readSerial++; emit({ phase: 'saving', busy: true, draftError: '' });
+      readSerial++; emit({ phase: 'saving', busy: true, draftError: '', draftErrorDisplay: undefined });
       const work = (async () => {
         try {
           const result = await transport.put(original); sync(); if (!belongs(owner)) return false;
@@ -258,7 +261,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
           const current = savedSerial === serial && draftMatches(next.draft);
           emit({ phase: current ? 'saved' : 'ready', candidate: null, savedAt: next.draft.updatedAt, autosavePaused: !current,
             draftFailure: null, draftRetry: current ? null : 'current', leaveWithoutSaving: false,
-            draftError: current ? '' : '原名称已确认保存。较新的当前输入仍未保存；请明确保存当前名称，不会自动覆盖。' });
+            draftError: current ? '' : '原名称已确认保存。较新的当前输入仍未保存；请明确保存当前名称，不会自动覆盖。', draftErrorDisplay: current ? undefined : displayMessage('recovery.delivery.newerUnsaved') });
           return current;
         } catch (error) {
           // A later refusal cannot disprove the earlier uncertain write.
@@ -296,7 +299,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
     allowLeaveWithoutSaving(token = capture()): boolean {
       if (!isCurrent(token) || operation || saving || !state.draftFailure || state.draftFailure.kind !== 'refused') return false;
       if (timer) clearTimeout(timer); timer = undefined;
-      emit({ leaveWithoutSaving: true, autosavePaused: true, draftError: '已选择保留当前输入但不保存到本地；离开或关闭后，这些输入可能丢失。原导出请求不会因此取消。' }); return true;
+      emit({ leaveWithoutSaving: true, autosavePaused: true, draftError: '已选择保留当前输入但不保存到本地；离开或关闭后，这些输入可能丢失。原导出请求不会因此取消。', draftErrorDisplay: displayMessage('recovery.delivery.leaveNotice') }); return true;
     },
     abandonCurrentInput(token = capture()): boolean {
       if (!isCurrent(token) || operation || saving) return false;
@@ -313,7 +316,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       const preparedInput: LocalDeliveryPrepare = { ...authority(previous), expectedIntentRevision: previous.intentRevision, expectedIntentId: previous.intent?.intentId ?? null, intentId,
         timelineId: context.timelineId!, baseRevision: context.timelineRevision!, draft, input: exact };
       if (!schemas.prepare.safeParse(preparedInput).success) { intentFailure(localDeliveryProtocolError()); return null; }
-      const lock = {}; operation = lock; readSerial++; uncertain.set(previous.projectId, copy(preparedInput)); emit({ busy: true, intentPhase: 'preparing', intentUncertain: true, intentError: '', intentFailure: null });
+      const lock = {}; operation = lock; readSerial++; uncertain.set(previous.projectId, copy(preparedInput)); emit({ busy: true, intentPhase: 'preparing', intentUncertain: true, intentError: '', intentErrorDisplay: undefined, intentFailure: null });
       try {
         let result: LocalDeliveryEnvelope;
         try { result = await transport.prepare(preparedInput); }
@@ -336,7 +339,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       const retained = uncertain.get(previous.projectId);
       if (!previous.intent && !retained) return null;
       if (retained && previous.workspaceScope !== retained.workspaceScope) { intentFailure(localDeliveryProtocolError(), true); return null; }
-      const owner = generation, lock = {}; operation = lock; readSerial++; emit({ busy: true, intentError: '' });
+      const owner = generation, lock = {}; operation = lock; readSerial++; emit({ busy: true, intentError: '', intentErrorDisplay: undefined });
       try {
         if (retained && previous.intent?.intentId !== retained.intentId) {
           if (previous.workspaceScope !== retained.workspaceScope || previous.intentRevision !== retained.expectedIntentRevision || (previous.intent?.intentId ?? null) !== retained.expectedIntentId) throw localDeliveryProtocolError();

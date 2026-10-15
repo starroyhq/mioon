@@ -1,3 +1,4 @@
+import { message as msg, renderMessage, translate } from '../../../packages/i18n/src/index.ts';
 export const REFERENCE_SOURCE_HANDLE = 'first-frame-out';
 export const REFERENCE_TARGET_HANDLE = 'first-frame-in';
 export const VISUAL_SOURCE_HANDLE = 'visual-out';
@@ -11,7 +12,8 @@ export const hasPendingReference = (entries = []) => entries.some(entry => isRef
 const referenceName = (value, fallback) => typeof value === 'string' && value.trim() ? value : fallback;
 const hasReferenceId = value => typeof value === 'string' && value.length > 0;
 
-export function referenceSourceDetails({ sourceId, assetId, projectId, nodes = [], assets = [] }) {
+export function referenceSourceDetails({ sourceId, assetId, projectId, nodes = [], assets = [], locale = 'zh-Hans' }) {
+  const t = (key, params) => translate(locale, key, params);
   const scoped = hasReferenceId(projectId);
   // Resolve the edge's stored asset independently; a stale node must never
   // silently replace it or expose a record from another project.
@@ -21,18 +23,19 @@ export function referenceSourceDetails({ sourceId, assetId, projectId, nodes = [
     ? assets.find(item => item.id === assetId && item.projectId === projectId && item.mimeType?.startsWith('image/')) : undefined;
   // SourcePanel only receives one node, so a shortened ID cannot be checked
   // for collisions. Keep the full identity alongside the human-readable name.
-  const sourceName = source ? referenceName(source.label, '未命名图片节点') : '来源节点不可用';
-  const sourceLabel = source ? `${sourceName}（节点 ${source.id}）` : sourceName;
-  const assetLabel = asset ? referenceName(asset.name, '未命名图片素材') : '引用素材不可用，请检查项目';
-  return { source, asset, sourceName, sourceLabel, assetLabel, displayDescription: `来源素材：${assetLabel}；来源节点：${sourceName}`, description: `来源素材：${assetLabel}；来源节点：${sourceLabel}` };
+  const sourceName = source ? referenceName(source.label, t('assets.reference.unnamedNode')) : t('assets.reference.sourceUnavailable');
+  const sourceLabel = source ? t('assets.reference.nodeIdentity', { name: sourceName, id: source.id }) : sourceName;
+  const assetLabel = asset ? referenceName(asset.name, t('assets.reference.unnamedAsset')) : t('assets.reference.assetUnavailable');
+  return { source, asset, sourceName, sourceLabel, assetLabel, displayDescription: t('assets.reference.sourceDetails', { asset: assetLabel, node: sourceName }), description: t('assets.reference.sourceDetails', { asset: assetLabel, node: sourceLabel }) };
 }
 
-export function referenceTargetOptions(shots = [], projectId) {
+export function referenceTargetOptions(shots = [], projectId, locale = 'zh-Hans') {
+  const t = (key, params) => translate(locale, key, params);
   if (!hasReferenceId(projectId)) return [];
   // The caller supplies storyboard order. Number that scoped list, rather than
   // orderIndex values which need not be contiguous, to distinguish equal titles.
   return shots.filter(shot => shot.projectId === projectId && hasReferenceId(shot.id)).map((shot, index) => ({
-    shot, label: `镜头 ${String(index + 1).padStart(2, '0')} · ${referenceName(shot.title, '未命名镜头')}`,
+    shot, label: t('assets.reference.targetOption', { number: String(index + 1).padStart(2, '0'), name: referenceName(shot.title, t('assets.reference.unnamedShot')) }),
   }));
 }
 
@@ -43,24 +46,26 @@ export function isImageReferenceNode(node, assets = [], projectId = node?.projec
   return Boolean(node?.type === 'image' && node.projectId === projectId && asset?.projectId === projectId && asset.mimeType?.startsWith('image/'));
 }
 
-export function referenceAttachIssue({ source, shot, assets = [], edges = [], projectId }) {
-  if (!isImageReferenceNode(source, assets, projectId)) return '首帧连接需要当前项目中已导入的图片节点。';
-  if (!shot || shot.projectId !== projectId) return '请选择当前项目中的目标镜头。';
+export function referenceAttachIssueDescriptor({ source, shot, assets = [], edges = [], projectId }) {
+  if (!isImageReferenceNode(source, assets, projectId)) return msg('assets.reference.requiresImage');
+  if (!shot || shot.projectId !== projectId) return msg('assets.reference.chooseTarget');
   const bound = referenceForShot(edges, shot.id);
-  if (bound) return bound.source === source.id ? '此图片已连接到该镜头。' : '该镜头已有首帧连接。请先在镜头设置中断开，再连接新图片。';
-  if (shot.referenceAssetIds?.length) return '该镜头已手动选择参考图。请打开镜头设置，清除手动参考图并保存后再连接。';
+  if (bound) return bound.source === source.id ? msg('assets.reference.alreadyConnected') : msg('assets.reference.otherConnected');
+  if (shot.referenceAssetIds?.length) return msg('assets.reference.manualSelected');
   return '';
 }
 
-export function canvasEdge(edge, selected = false) {
+export function referenceAttachIssue(input) { return renderMessage('zh-Hans', referenceAttachIssueDescriptor(input)); }
+export function canvasEdge(edge, selected = false, locale = 'zh-Hans') {
+  const t = (key, params) => translate(locale, key, params);
   const reference = isReferenceEdge(edge);
   return {
     id: edge.id, source: edge.source, target: edge.target, selected,
     sourceHandle: reference ? REFERENCE_SOURCE_HANDLE : VISUAL_SOURCE_HANDLE,
     targetHandle: reference ? REFERENCE_TARGET_HANDLE : VISUAL_TARGET_HANDLE,
     type: 'smoothstep', animated: false, interactionWidth: 20,
-    label: reference ? '首帧参考' : '视觉连线 · 不参与生成',
-    ariaLabel: reference ? '首帧参考连接' : '视觉连线，不参与生成',
+    label: reference ? t('assets.reference.firstFrame') : t('shell.node.visualOnly'),
+    ariaLabel: reference ? t('shell.referenceLink') : t('assets.reference.visualOnlyAria'),
     className: reference ? 'reference-edge' : 'visual-edge',
     style: { stroke: reference ? '#b8d68f' : '#758296', strokeWidth: reference ? 2.5 : 1.5, ...(reference ? {} : { strokeDasharray: '5 5' }) },
     labelStyle: { fill: reference ? '#d5ebbb' : '#a9b5c5', fontSize: 10 },

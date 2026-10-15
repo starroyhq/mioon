@@ -1,3 +1,5 @@
+import LanguageControl from './LanguageControl.tsx';
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
@@ -24,6 +26,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
   context: ProjectWindowContext; bridge: ProjectWindowBridge; rpc: LauncherRpc; contractChecks: LauncherContractChecks;
   renderSettings: (props: SettingsRenderProps) => ReactNode;
 }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const confirm = useConfirmation();
   const registry = useRef(createSettingsNavigationRegistry()).current, native = useRef(createNativeCloseRegistry()).current;
   const [, rerender] = useState(0);
@@ -45,14 +48,14 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
       if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
   }, [bridge, navigation, native, registry]);
   useEffect(() => navigation.receive(context), [navigation, context]);
-  return <main className="project-home project-home-settings-window"><header className="project-home-header"><span className="project-home-brand">mioon.</span><span className="project-home-header-label">全局连接设置</span></header>
-    <section className="project-home-settings" aria-label="全局连接设置"><header className="project-home-heading"><div><div className="project-home-eyebrow">当前工作区</div><h1>连接设置</h1><p>设置由此窗口独立保留。关闭其他项目不会清除这里的输入。</p></div></header>
+  return <main className="project-home project-home-settings-window"><header className="project-home-header"><span className="project-home-brand">mioon.</span><span className="project-home-header-label">{t('shell.globalConnections')}</span><LanguageControl /></header>
+    <section className="project-home-settings" aria-label={t('shell.globalConnections')}><header className="project-home-heading"><div><div className="project-home-eyebrow">{t('projects.workspace')}</div><h1>{t('projects.connections')}</h1><p>{t('shell.settingsRetained')}</p></div></header>
       <NativeLocatorStatus context={context} bridge={bridge} recovery />
-      {navigation.notice && <p role="status" className="project-home-notice">{navigation.notice}</p>}
+      {navigation.notice && <p role="status" className="project-home-notice">{renderMessage(navigation.notice)}</p>}
       {workspace === 'ready' ? renderSettings({ selected: navigation.selected, visible, registry, onSelect: slot => { void navigation.select(slot); },
         // Only native P0 decides actual closure. Returning false prevents the
         // form from clearing secrets before the native dialog has decided.
         beforeClose: async () => { window.close(); return false; }, onClose: () => {} })
-        : <p role="status">{workspace === 'pending' ? '正在核对工作区身份…' : workspace === 'restored' ? '恢复分支不提供模型连接设置。' : '工作区身份未确认，请保留此窗口并核对连接。'}</p>}
+        : <p role="status">{workspace === 'pending' ? t('shell.checkingWorkspace') : workspace === 'restored' ? t('shell.restoredConnectionsUnavailable') : t('shell.workspaceUnconfirmed')}</p>}
     </section></main>;
 }

@@ -1,3 +1,4 @@
+import * as i18n from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,7 +15,7 @@ function moduleFor(name, extra = {}) {
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }; react.default = react;
   const module = { exports: {} };
   Function('module','exports','require',transformSync(source(name), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(module,module.exports,
-    name => name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : name === '@mioon/ui/components/label' ? { Label: 'Label' } :
+    name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? react : name === '@mioon/ui/components/button' ? { Button: 'Button' } : name === '@mioon/ui/components/label' ? { Label: 'Label' } :
       name === '@mioon/contracts/timeline-export-float' ? floatModule : extra[name] ?? stateModule);
   return module.exports;
 }

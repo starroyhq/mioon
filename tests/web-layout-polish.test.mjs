@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -24,7 +25,7 @@ test('the default timeline panel shows all four default tracks (subtitle, two vi
 
 test('the library search uses a drawn icon that cannot collide with the placeholder', () => {
   const library = read('AssetLibrary.jsx'), icons = read('icons.jsx');
-  assert.match(library, /<Input aria-label="搜索素材"[\s\S]*?\/><Icon name="search" size=\{14\} \/>/);
+  assert.match(library, /<Input aria-label=\{t\('assets.search'\)\}[\s\S]*?\/><Icon name="search" size=\{14\} \/>/);
   assert.doesNotMatch(library, /⌕/);
   assert.match(icons, /\n  search: </);
   assert.match(css, /\.asset-search>svg\{position:absolute;left:10px;top:50%;margin-top:-7px;[^}]*pointer-events:none\}/);
@@ -32,9 +33,10 @@ test('the library search uses a drawn icon that cannot collide with the placehol
   assert.ok(px(/\.asset-search input\{padding:8px 9px 8px (\d+)px/, 'search input padding') >= 10 + 14 + 2);
 });
 
-test('the narrow top bar places the last-project status in its first row instead of an implicit third row', () => {
-  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar \{ grid-template-columns: auto auto minmax\(0, 1fr\); \}/);
-  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar > \[data-testid="last-project-status"\] \{ grid-row: 1; grid-column: 2;/);
+test('the narrow top bar keeps language and status in explicit rows without an implicit third row', () => {
+  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar \{ grid-template-columns: auto minmax\(0,1fr\) auto auto; grid-template-rows: 28px 30px;/);
+  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar-status \{ grid-row: 2; grid-column: 3;/);
+  assert.match(css, /\.dock-workbench\.dock-narrow \.topbar > \.language-control \{ grid-row: 1; grid-column: 3 \/ span 2;/);
   // The geometry hook measures the header at a fixed 82px, so the narrow rows must not grow.
   assert.match(css, /\.workbench\.workbench-v2\.dock-workbench\.dock-narrow\{grid-template-rows:82px minmax\(0,1fr\) 42px\}/);
 });

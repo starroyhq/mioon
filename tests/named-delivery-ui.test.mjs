@@ -1,3 +1,4 @@
+import { formatDate } from './helpers/i18n.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -66,8 +67,8 @@ test('invalid visible text remains exact and emits an accessible bounded validat
 test('named history shows frozen title/time/revision/dimensions/quality after project rename and revision change', () => {
   for (const html of [rendered.named, rendered.renamedAgain]) {
     assert.match(html, /冻结名称 &lt;script&gt; &quot; &amp; \/ .mp4/);
-    assert.match(html, /rev 4 · 旧快照/); assert.match(html, /1080 × 1920/); assert.match(html, /平均目标 8 Mb\/s/); assert.match(html, /AAC 128 kb\/s/);
-    assert.ok(html.includes(createdAt)); assert.ok(html.includes(new Date(createdAt).toLocaleString('zh-CN')));
+    assert.match(html, /修订版 4 · 旧快照/); assert.match(html, /1080 × 1920/); assert.match(html, /平均目标 8 Mb\/s/); assert.match(html, /AAC 128 kb\/s/);
+    assert.ok(html.includes(createdAt)); assert.ok(html.includes(formatDate('zh-Hans', createdAt, { dateStyle: 'medium', timeStyle: 'medium' })));
     assert.doesNotMatch(html, /项目已改名|另一个新名称|<script>|filename=forged/);
   }
   assert.equal(rendered.named, rendered.renamedAgain);
@@ -84,7 +85,7 @@ test('named downloads use only managed IDs plus exportId and no renderer filenam
 test('held restored rows retain historical labels, successful managed downloads and blocked failed execution', () => {
   assert.match(rendered.heldSuccess, /历史记录 · 暂停执行，原状态保留/); assert.match(rendered.heldSuccess, /download-export/);
   assert.match(rendered.heldFailure, /历史记录 · 暂停执行，原状态保留/); assert.match(rendered.heldFailure, /已保留 · 暂停/);
-  assert.match(rendered.heldFailure, /&lt;unsafe failure&gt;/); assert.doesNotMatch(rendered.heldFailure, /download-export/);
+  assert.match(rendered.heldFailure, /此导出遇到问题，请核对原记录与当前状态。/); assert.doesNotMatch(rendered.heldFailure, /unsafe failure/); assert.doesNotMatch(rendered.heldFailure, /download-export/);
 });
 
 test('name-only rows use frozen timeline geometry without inventing a quality profile', () => {

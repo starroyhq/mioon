@@ -1,3 +1,4 @@
+import { nativeText as nt } from './app-language-text.ts';
 import path from 'node:path';
 import desktopIdentity from '../identity.cjs';
 import {providerEnvironmentKeys} from '@mioon/business';
@@ -39,7 +40,7 @@ export function prepareDesktopStorage(app, override, channel = 'development') {
 export function validateDesktopStorage(paths) {
   if (!validatePrivateDirectory(paths.userData, { allowMissing: true })) return;
   for (const [name, maxBytes] of [['desktop-identity.json', IDENTITY_MAX_BYTES], ['desktop-config.json', CONFIG_MAX_BYTES],
-    ['mcp-token', TOKEN_MAX_BYTES], ['mcp-connection.json', CONNECTION_MAX_BYTES]]) {
+    ['app-preferences.json', 4096], ['mcp-token', TOKEN_MAX_BYTES], ['mcp-connection.json', CONNECTION_MAX_BYTES]]) {
     validateManagedFile(path.join(paths.userData, name), { root: paths.userData, private: true, allowMissing: true, maxBytes });
   }
   const directory = path.join(paths.userData, 'agent-settings');
@@ -50,32 +51,32 @@ export function validateDesktopStorage(paths) {
 }
 
 export function storageFailureDialog(error) {
-  let message = '数据目录未通过隐私检查。';
-  let detail = '数据目录必须属于当前用户且仅供当前用户访问；应用管理的文件不能是符号链接或硬链接。';
-  let recovery = '请先备份已有数据并手动检查权限，或选择一个新的私有目录。MIOON_DESKTOP_USER_DATA 必须使用真实的绝对路径，不能经过符号链接或路径别名。';
+  let message = nt('native.storageMessage');
+  let detail = nt('native.storageDetail');
+  let recovery = nt('native.storageRecovery');
   if (error?.code === 'DESKTOP_CHANNEL_MISMATCH') {
-    message = '数据目录属于另一个应用通道。';
-    detail = '开发版和正式版不能共用同一个数据目录。';
-    recovery = '请使用与该目录匹配的应用通道，或将 MIOON_DESKTOP_USER_DATA 设置为另一个新的私有目录。不要删除或改写现有标识来绕过检查。';
+    message = nt('native.channelMessage');
+    detail = nt('native.channelDetail');
+    recovery = nt('native.channelRecovery');
   } else if (error?.code === 'DESKTOP_IDENTITY_INVALID') {
-    message = '应用数据标识无法读取。';
-    detail = '现有数据标识损坏或格式无效，无法确认它属于哪个应用通道。';
-    recovery = '请先备份并检查现有数据，或将 MIOON_DESKTOP_USER_DATA 设置为一个新的私有目录。';
+    message = nt('native.identityMessage');
+    detail = nt('native.identityDetail');
+    recovery = nt('native.identityRecovery');
   } else if (error?.code === 'DESKTOP_USER_DATA_INVALID') {
-    message = '数据目录路径无效。';
-    detail = 'MIOON_DESKTOP_USER_DATA 必须是绝对路径。';
+    message = nt('native.pathMessage');
+    detail = nt('native.pathDetail');
   } else if (error?.code === 'STORAGE_PRIVACY_UNAVAILABLE') {
-    message = '此平台尚无法验证私有存储权限。';
-    detail = 'Windows 私有存储还需要实现并验证当前用户 ACL 保护；0600/0700 文件模式不能代替 ACL 检查。';
-    recovery = '请使用受支持的本地 POSIX 文件系统。更改目录路径或启用系统密钥库不能绕过此检查。';
+    message = nt('native.privacyMessage');
+    detail = nt('native.privacyDetail');
+    recovery = nt('native.privacyRecovery');
   } else if (error?.reason === 'SYMBOLIC_LINK') {
-    detail = '所选目录或应用文件经过符号链接。请使用真实的绝对路径，不能使用链接或路径别名。';
+    detail = nt('native.linkDetail');
   } else if (error?.reason === 'SIZE_LIMIT') {
-    detail = '已有应用文件超过安全读取大小限制。请先备份并检查该目录，不能直接覆盖它。';
+    detail = nt('native.sizeDetail');
   }
-  return { type: 'error', title: '无法安全启动 Mioon', message,
-    detail: `${detail}\n\n现有数据保持原样，不会自动更改权限。${recovery}`,
-    buttons: ['退出'], defaultId: 0, cancelId: 0 };
+  return { type: 'error', title: nt('native.storageTitle'), message,
+    detail: `${detail}\n\n${nt('native.storagePreserved')}${recovery}`,
+    buttons: [nt('native.quit')], defaultId: 0, cancelId: 0 };
 }
 
 // Linux showErrorBox before ready is stderr-only. A fresh, independently
@@ -215,6 +216,8 @@ export async function writeConnection(paths, { url, token, pid, identity }) {
 }
 
 export async function removeConnection(paths) {
+  // Only transient discovery files belong to the backend lifetime. App-level
+  // language preferences must survive service restart and application quit.
   const files = [['mcp-connection.json', CONNECTION_MAX_BYTES], ['mcp-token', TOKEN_MAX_BYTES]];
   for (const [name, maxBytes] of files) validateManagedFile(path.join(paths.userData, name), { root: paths.userData, allowMissing: true, private: true, maxBytes });
   for (const [name, maxBytes] of files) removePrivateFile(path.join(paths.userData, name), { root: paths.userData, maxBytes });
@@ -230,4 +233,12 @@ export async function removeConnectionOnShutdown(paths, { warn = message => cons
     try { warn('DESKTOP_DISCOVERY_CLEANUP_SKIPPED: Discovery files were preserved because storage privacy checks failed.'); } catch {}
     return false;
   }
+}
+
+// Small independent app preference document, outside workspace backups.
+export function readAppLanguagePreference(paths) {
+  return readPrivateFile(path.join(paths.userData, 'app-preferences.json'), { root: paths.userData, maxBytes: 4096, encoding: 'utf8', allowMissing: true });
+}
+export function writeAppLanguagePreference(paths, text) {
+  writePrivateFileAtomic(path.join(paths.userData, 'app-preferences.json'), text, { root: paths.userData, maxBytes: 4096 });
 }

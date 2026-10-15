@@ -1,3 +1,5 @@
+import { message } from './helpers/i18n.ts';
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
@@ -60,6 +62,7 @@ function harness(file, options = {}) {
     useLayoutEffect(fn, deps) { const index = cursor++, old = slots[index]; if (old && sameDeps(old.deps, deps)) return; slots[index] = { fn, deps, cleanup: old?.cleanup }; effects.push(index); },
   }; react.default = react;
   const resolve = name => {
+    const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === './agent-timeline-context.js') return timing;
     if (name === './agent-timeline-gain-context.ts') return gainContext;
     if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
@@ -239,8 +242,8 @@ test('actual App saved selection and review fences include connection, dirty for
   const from = source.indexOf('  const agentTimelineGainSelection ='), to = source.indexOf('  const agentTimelineBlockedReason =', from);
   const expression = source.slice(from, to);
   const build = (patch = {}) => {
-    const env = { workspaceMode: 'editing', propertiesPage: 'inspector', quickAssetId: null, makeAgentTimelineGainSelection: timing.makeAgentTimelineGainSelection,
-      timeline: savedTimeline(), selectedClipId: clipId, data: { project: { id: projectId }, assets: [savedAsset()] }, agentTimelineGainBlockedReason: gainContext.agentTimelineGainBlockedReason,
+    const env = { msg: message, workspaceMode: 'editing', propertiesPage: 'inspector', quickAssetId: null, makeAgentTimelineGainSelection: timing.makeAgentTimelineGainSelection,
+      timeline: savedTimeline(), selectedClipId: clipId, data: { project: { id: projectId }, assets: [savedAsset()] }, agentTimelineGainBlockedReason: gainContext.agentTimelineGainBlockedReason, agentTimelineGainBlockedDescriptor: gainContext.agentTimelineGainBlockedDescriptor,
       workbenchReady: true, online: true, auth: true, loading: false, inspectorDirty: false, formatDirty: false, agentClipDraftBlocked: false, clipDraftRef: { current: { hasUnsaved: () => false, getState: () => ({ candidate: null }) } }, timelineBusy: false, ...patch };
     return Function(...Object.keys(env), `${expression}; return { selection: agentTimelineGainSelection, reason: gainBlockedReason };`)(...Object.values(env));
   };
@@ -336,7 +339,7 @@ test('real installed React renders the typed gain diff as escaped inert HTML wit
   const require = createRequire(new URL('../apps/web/package.json', import.meta.url)), React = require('react'), { renderToStaticMarkup } = require('react-dom/server');
   const source = readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), module = { exports: {} };
   Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports,
-    name => name === 'react' ? React : name === './agent-timeline-gain-context.ts' ? gainContext : assert.fail(name));
+    name => creationTestDependency(name) || (name === 'react' ? React : name === './agent-timeline-gain-context.ts' ? gainContext : assert.fail(name)));
   const value = proposal({ target: { ...publicTarget, trackMuted: true }, patch: { gain: 2 }, diff: { before: { gain: 0.4000000000000001 }, after: { gain: 2 } } });
   const html = renderToStaticMarkup(React.createElement(module.exports.AgentTimelineGainDiff, { proposal: value, visible: false }));
   assert.match(html, /0.4000000000000001 \(40%\)/); assert.match(html, /2 \(200%\)/); assert.match(html, /tabindex="-1"/);

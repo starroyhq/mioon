@@ -1,3 +1,4 @@
+import { translate, formatNumber } from '../../../packages/i18n/src/index.ts';
 import { isWorkspaceBackupInspection } from '@mioon/contracts';
 
 // This panel only reads bounded database metadata. The offline CLI owns capture.
@@ -19,17 +20,17 @@ export const WORKSPACE_BACKUP_ISSUES = Object.freeze({
   DATABASE_UNAVAILABLE: '数据库暂不可读取，无法完成核对。',
 });
 
-export const workspaceBackupCount = value => Number.isSafeInteger(value) && value >= 0 ? value.toLocaleString('zh-CN') : '未知';
-export function workspaceBackupBytes(value) {
-  if (!Number.isSafeInteger(value) || value < 0) return '未知';
-  for (const [unit, size] of [['GiB', 1024 ** 3], ['MiB', 1024 ** 2], ['KiB', 1024]]) if (value >= size) return `${Number((value / size).toFixed(1))} ${unit}`;
-  return `${value} B`;
+export const workspaceBackupCount = (value, locale = 'zh-Hans') => Number.isSafeInteger(value) && value >= 0 ? formatNumber(locale, value) : translate(locale, 'recovery.common.unknown');
+export function workspaceBackupBytes(value, locale = 'zh-Hans') {
+  if (!Number.isSafeInteger(value) || value < 0) return translate(locale, 'recovery.common.unknown');
+  for (const [unit, size] of [['GiB', 1024 ** 3], ['MiB', 1024 ** 2], ['KiB', 1024]]) if (value >= size) return `${formatNumber(locale, Number((value / size).toFixed(1)))} ${unit}`;
+  return `${formatNumber(locale, value)} B`;
 }
 
-export function workspaceBackupError(error) {
-  if (error?.code === 'UNAUTHORIZED') return '会话已过期，请重新登录后再核对。';
-  if (error?.code === 'BACKEND_PROTOCOL_ERROR') return '返回的核对信息不完整或无法识别，请刷新后重试。';
-  return '暂时无法核对数据库状态。请检查连接后手动重试。';
+export function workspaceBackupError(error, locale = 'zh-Hans') {
+  if (error?.code === 'UNAUTHORIZED') return translate(locale, 'recovery.backup.error.unauthorized');
+  if (error?.code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'recovery.backup.error.protocol');
+  return translate(locale, 'recovery.backup.error.failed');
 }
 
 const initialState = () => ({ scope: null, connected: false, visible: false, version: 0, phase: 'idle', report: null, error: '', checkedAt: null });
@@ -74,7 +75,7 @@ export function createWorkspaceBackupController({ read, validate = isWorkspaceBa
         return report;
       } catch (error) {
         if (!current(captured)) return null;
-        emit({ phase: 'error', report: null, checkedAt: null, error: workspaceBackupError(error) });
+        emit({ phase: 'error', report: null, checkedAt: null, error: workspaceBackupError(error), errorCode: error?.code });
         if (error?.code === 'UNAUTHORIZED') onUnauthorized();
         return null;
       } finally { if (activeRead === abort) activeRead = null; }

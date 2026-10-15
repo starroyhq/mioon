@@ -1,3 +1,7 @@
+import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
+import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
+import { resolveLocale } from '../packages/i18n/src/locale.ts';
+import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -137,7 +141,7 @@ async function harness(t, options = {}) {
       await options.load?.(this.index, this.urls.length, url);
     }
   }
-  const context = vm.createContext({ app, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     ensureDataIdentity: async () => {}, readToolConfig: async () => tools,
@@ -176,9 +180,9 @@ async function harness(t, options = {}) {
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel, handler) {
-      assert.ok([PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
-      if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else r.audioBridge = handler;
+      if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
     installNativeCloseAdmission, stopBackendForQuit,
     writeConnection: async (_, value) => {
@@ -302,7 +306,7 @@ for (const stage of ['cookie', 'connection']) {
     assert.equal(f.get('windowContext'), undefined);
     preparation.resolve(); await f.initial(); await until(() => f.r.finished === 1);
     assert.equal(f.fatals().length, 1);
-    assert.equal(f.fatals()[0].detail, '本地服务在窗口准备完成前已停止。');
+    assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: '本地服务在窗口准备完成前已停止。' }));
     assert.equal(f.r.windows.length, 0);
     assert.equal(f.r.backends.length, 1, 'No replacement can be started by an ownerless recovery reply');
     assert.equal(f.get('windowContext'), null);
@@ -319,7 +323,7 @@ test('unexpected backend exit before the handshake continuation fails before pre
   await f.initial();
   assert.equal(f.fatals().length, 1);
   await until(() => f.r.finished === 1);
-  assert.equal(f.fatals()[0].detail, '本地服务在窗口准备完成前已停止。');
+  assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: '本地服务在窗口准备完成前已停止。' }));
   assert.equal(f.r.dialogs.filter(value => value.title === '本地服务已停止').length, 0);
   assert.equal(f.r.sessions.length, 0); assert.equal(f.r.connections.length, 0); assert.equal(f.r.windows.length, 0);
   assert.equal(f.r.backends.length, 1);
@@ -462,7 +466,7 @@ for (const entry of ['activate', 'renderer', 'menu']) {
     else if (entry === 'renderer') f.get('win').webContents.emit('render-process-gone');
     else f.reload();
     await until(() => f.fatals().length === 1);
-    assert.equal(f.fatals()[0].detail, error.message);
+    assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: error.message }));
     await until(() => f.r.finished === 1);
     assert.equal(f.r.backends.length, 1);
   });
@@ -584,6 +588,6 @@ for (const stage of ['drain', 'remove', 'clear', 'backend-stop', 'unconfirmed-me
     f.activate(); await tick();
     assert.equal(f.r.backends.length, 1); assert.equal(f.r.windows.length, 1);
     assert.equal(f.r.windows[0].destroyed, true);
-    if (!['backend-stop', 'unconfirmed-media'].includes(stage)) assert.equal(f.fatals()[0].detail, error.message);
+    if (!['backend-stop', 'unconfirmed-media'].includes(stage)) assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: error.message }));
   });
 }

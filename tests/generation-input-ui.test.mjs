@@ -1,3 +1,5 @@
+import { generationIssueDescriptor } from '../apps/web/src/generation-settings.js';
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -172,8 +174,9 @@ function disclosureHarness() {
   }; react.default = react;
   const module = { exports: {} };
   Function('module', 'exports', 'require', code)(module, module.exports, name => {
+    const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === 'react') return react;
-    if (name === './generation-settings.js') return { generationProfileSelection };
+    if (name === './generation-settings.js') return { generationProfileSelection, generationIssueDescriptor };
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => h.visible };
     if (name.endsWith('.css')) return {};
     if (name === './icons.jsx') return { default: 'Icon', __esModule: true };

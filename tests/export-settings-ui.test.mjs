@@ -1,3 +1,6 @@
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
+import * as exportDisplay from '../apps/web/src/export-display.ts';
+import * as i18n from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -164,7 +167,7 @@ const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.ur
 function appFunction(begin, end, scope) { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope)); }
 function appHarness(f, { restored = false, localState = { baselineConflict: false, candidate: null } } = {}) {
   const calls = [], panels = [], notices = [], pending = [], submitOptions = []; let ids = 0;
-  const environment = { panelIntent: { current: 0 }, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
+  const environment = { msg: i18n.message, t: i18n.i18nTestModule().useI18n().t, panelIntent: { current: 0 }, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
     setRightDockTab: value => panels.push(value), setPanelOpen: (...args) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
     notify: (...args) => notices.push(args), openTasks() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
     context: () => ({ scope: f.live.scope, projectId: environment.currentProject.current }), isCurrent: captured => captured.scope === f.live.scope && captured.projectId === environment.currentProject.current,
@@ -229,7 +232,7 @@ const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree &&
 function component(file, extra = {}) {
   const module = { exports: {} }, react = { createElement: element, useRef: current => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: value => [value, () => {}] }; react.default = react;
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === 'react' ? react : name === './export-settings-state.js' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.js' ? preflightState : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' });
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.js' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.js' ? preflightState : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' });
   return module.exports.default;
 }
 
@@ -261,7 +264,7 @@ test('history renders the actual frozen settings and output dimensions; old reco
   const custom = { ...legacy, id: id(41), url: '/media/frozen-custom-file', snapshot: { timeline, delivery: resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_1080', rateControl: { mode: 'bitrate', targetKbps: 8000 } })) } };
   assert.equal(settingsState.exportHistoryDelivery(legacy), null);
   const oldTree = View({ orderedExports: [legacy], projectName: '作品', timelineRevision: 4 });
-  assert.match(textOf(oldTree), /时间线导出 · rev 4 · 当前/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
+  assert.match(textOf(oldTree), /时间线导出 · 修订版 4 · 当前/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
   const tree = View({ orderedExports: [custom], projectName: '作品', timelineRevision: 4 });
   assert.match(textOf(tree), /1080 × 1920/); assert.match(textOf(tree), /平均目标 8 Mb\/s/); assert.match(textOf(tree), /放大输出，不增加细节/);
   assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'download-export').props.href, custom.url);

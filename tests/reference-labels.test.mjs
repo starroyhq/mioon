@@ -1,3 +1,4 @@
+import { i18nTestModule, renderMessage as renderI18nMessage, message as msg } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -109,6 +110,7 @@ function harness(name) {
   const module = { exports: {} };
   Function('module', 'exports', 'require', code)(module, module.exports, id => {
     if (id === 'react') return react;
+    if (id.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (id === './reference-connections.js') return references;
     if (id === './WorkspaceControls.jsx') return { WorkbenchSelect: 'WorkbenchSelect' };
     if (id === './icons.jsx') return { default: 'Icon', __esModule: true };

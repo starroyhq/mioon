@@ -1,3 +1,6 @@
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
+import { i18nTestModule, message } from './helpers/i18n.ts';
+import * as i18n from '../packages/i18n/src/index.ts';
 import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -154,7 +157,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name, imports = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [typeof value === 'function' ? value() : value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : imports[key] || primitive);
   return module.exports;
 }
 
@@ -229,7 +232,7 @@ function appFunction(name, end, env) {
   const start = app.indexOf(`  ${name}`), stop = app.indexOf(`  ${end}`, start);
   assert.ok(start >= 0 && stop > start, 'Actual App callback boundaries must remain present');
   assert.equal(app.indexOf(`  ${name}`, start + name.length + 2), -1, 'The extracted callback must have a unique owner');
-  return Function(...Object.keys(env), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values(env));
+  return Function(...Object.keys({ msg: message, ...env }), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values({ msg: message, ...env }));
 }
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');

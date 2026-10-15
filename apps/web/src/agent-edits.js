@@ -1,3 +1,4 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { safeAgentTimelineProposal, safeAgentTimelineTarget, safeAgentTimelineGainProposal, safeAgentTimelineGainTarget, isAgentTimelineGainProposal, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineApprovalIssue, agentTimelineFrameText } from './agent-timeline-context.js';
 export { agentTimelineApprovalIssue, agentTimelineFrameText };
 import { safeAgentEditTarget } from './agent-tool-state.js';
@@ -126,7 +127,7 @@ export function createAgentEditsClient({ fetchImpl = (...args) => globalThis.fet
     },
   };
 }
-export const initialAgentEditsState = () => ({ phase: 'loading', instanceId: null, proposals: [], pinnedIds: [], view: 'unresolved', cursor: null, nextCursor: null, trail: [], busy: null, uncertainIds: [], retryApprovalIds: [], message: '' });
+export const initialAgentEditsState = () => ({ phase: 'loading', instanceId: null, proposals: [], pinnedIds: [], view: 'unresolved', cursor: null, nextCursor: null, trail: [], busy: null, uncertainIds: [], retryApprovalIds: [], message: '', displayMessage: null });
 
 // Durable edit identities live on the server. Recreating this controller performs
 // GETs only; it never reads sessionStorage, fabricates keys or replays approvals.
@@ -137,6 +138,7 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
   const terminal = proposal => ['applied', 'failed', 'rejected', 'cancelled'].includes(proposal.status);
   const projection = () => ({ proposals: [...pageRows, ...[...pins.values()].filter(item => !pageRows.some(row => row.id === item.id))], pinnedIds: [...pins.values()].filter(item => !terminal(item)).map(item => item.id) });
   const pinCapacityMessage = '已有 50 份原操作待核对。请先只读核对或恢复下方保留的原提议，再批准新的提议；原身份与请求不会被丢弃。';
+  const pinCapacityDescriptor = localizedMessage('agent.proposal.state.pinCapacity');
   const publish = patch => { if (active) { state = { ...state, ...patch }; onChange(state); } };
   const valid = epoch => active && epoch === serial;
   const read = async work => { const controller = new AbortController(); reads.add(controller); try { return await work(controller.signal); } finally { reads.delete(controller); } };
@@ -166,7 +168,7 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
   async function load({ view = state.view, cursor = state.cursor, trail = state.trail } = {}) {
     if (!active || !visible || state.busy) return false;
     const samePage = view === state.view && cursor === state.cursor;
-    const epoch = ++serial; retryProofs.clear(); publish({ phase: 'loading', retryApprovalIds: [], message: '' });
+    const epoch = ++serial; retryProofs.clear(); publish({ phase: 'loading', retryApprovalIds: [], message: '', displayMessage: null });
     try {
       const page = safeAgentEditPage(await read(signal => client.list(projectId, { view, cursor, signal })), projectId);
       if (!valid(epoch)) return false;
@@ -202,11 +204,11 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
       pageRows = page.proposals; pins = nextPins;
       publish({ ...page, ...projection(), view, cursor, trail, phase: 'ready', uncertainIds: state.uncertainIds.filter(id => !confirmed.some(item => item.id === id && item.status !== 'pending')) });
       return true;
-    } catch (error) { if (valid(epoch)) publish({ phase: 'error', message: error.code === 'LOCAL_PIN_LIMIT' ? pinCapacityMessage : '暂时无法读取修改提议。已有差异保留；重新读取不会批准或应用修改。' }); return false; }
+    } catch (error) { if (valid(epoch)) publish({ phase: 'error', message: error.code === 'LOCAL_PIN_LIMIT' ? pinCapacityMessage : '暂时无法读取修改提议。已有差异保留；重新读取不会批准或应用修改。', displayMessage: error.code === 'LOCAL_PIN_LIMIT' ? pinCapacityDescriptor : localizedMessage('agent.proposal.state.loadUnavailable') }); return false; }
   }
   async function inspect(proposalId) {
     if (!active || !visible || state.busy) return false;
-    const epoch = ++serial; retryProofs.clear(); publish({ phase: 'loading', retryApprovalIds: [], message: '' });
+    const epoch = ++serial; retryProofs.clear(); publish({ phase: 'loading', retryApprovalIds: [], message: '', displayMessage: null });
     try {
       const result = safeAgentEditEnvelope(await read(signal => client.get(projectId, proposalId, signal)), projectId, proposalId);
       if (!valid(epoch)) return false;
@@ -215,8 +217,8 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
         retryProofs.set(proposalId, { proposal, instanceId: result.instanceId, serial: epoch });
         publish({ retryApprovalIds: [proposalId] });
       }
-      publish({ phase: 'ready', message: proposal.status === 'pending' && state.uncertainIds.includes(proposalId) ? '尚未确认原操作是否被接受。刚刚读取的提议仍待批准，不能据此认定先前请求未被接受；可继续只读核对，或明确重试同一份已保存提议的批准请求。' : '' }); return true;
-    } catch { if (valid(epoch)) publish({ phase: 'error', message: '未能核对原提议。结果仍待确认，没有重新提交。' }); return false; }
+      publish({ phase: 'ready', message: proposal.status === 'pending' && state.uncertainIds.includes(proposalId) ? '尚未确认原操作是否被接受。刚刚读取的提议仍待批准，不能据此认定先前请求未被接受；可继续只读核对，或明确重试同一份已保存提议的批准请求。' : '', displayMessage: proposal.status === 'pending' && state.uncertainIds.includes(proposalId) ? localizedMessage('agent.proposal.state.originalAcceptanceUnknown') : null }); return true;
+    } catch { if (valid(epoch)) publish({ phase: 'error', message: '未能核对原提议。结果仍待确认，没有重新提交。', displayMessage: localizedMessage('agent.proposal.state.inspectFailed') }); return false; }
   }
   async function act(action, expected) {
     if (!active || !visible || state.phase !== 'ready' || state.busy || !state.instanceId || !expected) return false;
@@ -227,20 +229,20 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
         ['approve', 'retry_approval'].includes(action) && Boolean(agentTimelineApprovalIssue(proposal, timelineContext || {})) ||
         retry && (!state.uncertainIds.includes(proposal.id) || !proof || proof.proposal !== proposal || proof.instanceId !== state.instanceId || proof.serial !== serial)) return false;
     for (const [id, item] of pins) if (terminal(item)) pins.delete(id);
-    if (!pins.has(proposal.id) && pins.size >= 50) { publish({ ...projection(), message: pinCapacityMessage }); return false; }
+    if (!pins.has(proposal.id) && pins.size >= 50) { publish({ ...projection(), message: pinCapacityMessage, displayMessage: pinCapacityDescriptor }); return false; }
     pins.set(proposal.id, proposal);
     const epoch = ++serial, instanceId = state.instanceId; retryProofs.clear();
-    publish({ ...projection(), busy: proposal.id, retryApprovalIds: [], message: '', ...(['approve', 'retry_approval'].includes(action) ? { uncertainIds: [...new Set([...state.uncertainIds, proposal.id])] } : {}) });
+    publish({ ...projection(), busy: proposal.id, retryApprovalIds: [], message: '', displayMessage: null, ...(['approve', 'retry_approval'].includes(action) ? { uncertainIds: [...new Set([...state.uncertainIds, proposal.id])] } : {}) });
     try {
       const result = safeAgentEditEnvelope(await read(signal => client.act(projectId, proposal.id, retry ? 'approve' : action, { instanceId, digest: proposal.digest }, signal)), projectId, proposal.id);
       if (!valid(epoch)) return false;
       // A stale epoch acknowledgement cannot silently authorize a new service.
       if (result.instanceId !== instanceId) invalid();
       const updated = merge(result); confirmApplied(updated);
-      publish({ busy: null, phase: 'ready', message: updated.status === 'applied' ? '已确认应用此份不可修改的提议。当前保存内容将单独读取，属性面板中未保存的输入仍保留。' : '' }); return true;
+      publish({ busy: null, phase: 'ready', message: updated.status === 'applied' ? '已确认应用此份不可修改的提议。当前保存内容将单独读取，属性面板中未保存的输入仍保留。' : '', displayMessage: updated.status === 'applied' ? localizedMessage('agent.proposal.state.appliedConfirmed') : null }); return true;
     } catch (error) {
       if (!valid(epoch)) return false;
-      publish({ busy: null, phase: 'ready', uncertainIds: [...new Set([...state.uncertainIds, proposal.id])], message: error.definitive ? '本次操作被保存服务阻止，不能据此判断较早操作的结果。正在只读核对原提议；不会自动重试。' : '没有收到操作确认。这不代表已拒绝或未应用；正在只读核对原提议，不会自动重试。' });
+      publish({ busy: null, phase: 'ready', uncertainIds: [...new Set([...state.uncertainIds, proposal.id])], message: error.definitive ? '本次操作被保存服务阻止，不能据此判断较早操作的结果。正在只读核对原提议；不会自动重试。' : '没有收到操作确认。这不代表已拒绝或未应用；正在只读核对原提议，不会自动重试。', displayMessage: error.definitive ? localizedMessage('agent.proposal.state.operationBlocked') : localizedMessage('agent.proposal.state.acknowledgementMissing') });
       if (visible) await inspect(proposal.id);
       return false;
     }
@@ -257,3 +259,6 @@ export function createAgentEditsSession({ projectId, client = createAgentEditsCl
     dispose() { active = false; serial++; for (const item of reads) item.abort(); reads.clear(); },
   };
 }
+
+// Display-only companions keep legacy diagnostics and business identities unchanged.
+export const agentEditStatusDescriptor = status => ({ __proto__: null, pending: localizedMessage('agent.proposal.state.pending'), approved: localizedMessage('agent.proposal.state.approved'), dispatching: localizedMessage('agent.proposal.state.dispatching'), unknown: localizedMessage('agent.proposal.state.unknown'), applied: localizedMessage('agent.proposal.state.applied'), failed: localizedMessage('agent.proposal.state.failed'), rejected: localizedMessage('agent.proposal.state.rejected'), cancelled: localizedMessage('agent.proposal.state.cancelled') }[status] || localizedMessage('agent.proposal.state.statusUnknown'));

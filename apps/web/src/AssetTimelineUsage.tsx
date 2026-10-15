@@ -1,3 +1,4 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Button } from '@mioon/ui/components/button';
@@ -43,16 +44,17 @@ export function useAssetTimelineUsageFilter<T extends { readonly id: string }>(p
 }
 
 export function AssetTimelineUsageFilters(props: UsageScope & { filter: TimelineUsageFilter; onFilter: (value: TimelineUsageFilter) => void }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const { projectId, usage, filter, onFilter, visible } = props;
   const { admit } = useUsageInteraction(props);
   const ready = Boolean(projectId && usage?.status === 'ready' && usage.projectId === projectId);
   return <div data-testid="asset-timeline-usage-filters">
-    <div className="asset-disposition-filter" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)' }} role="group" aria-label="当前时间线使用筛选">
-      <Button variant="ghost" size="sm" type="button" aria-label="显示全部时间线使用状态" data-testid="asset-usage-filter-all" aria-pressed={filter === 'all'} disabled={!visible || !projectId} onClick={() => admit(() => onFilter('all'))}>全部</Button>
-      <Button variant="ghost" size="sm" type="button" data-testid="asset-usage-filter-unused" aria-pressed={filter === 'unused'} disabled={!visible || !projectId} onClick={() => admit(() => onFilter('unused'))}>未用于本时间线</Button>
+    <div className="asset-disposition-filter" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)' }} role="group" aria-label={t('assets.usage.filter')}>
+      <Button variant="ghost" size="sm" type="button" aria-label={t('assets.usage.showAll')} data-testid="asset-usage-filter-all" aria-pressed={filter === 'all'} disabled={!visible || !projectId} onClick={() => admit(() => onFilter('all'))}>{t('assets.all')}</Button>
+      <Button variant="ghost" size="sm" type="button" data-testid="asset-usage-filter-unused" aria-pressed={filter === 'unused'} disabled={!visible || !projectId} onClick={() => admit(() => onFilter('unused'))}>{t('assets.usage.unused')}</Button>
     </div>
     <div className="asset-disposition-summary" style={{ minHeight: 0 }}>
-      <span role="status" data-testid="asset-usage-snapshot-status">{ready ? `当前时间线 · 已保存 rev ${usage?.timelineRevision}` : '当前时间线使用情况暂不可用，筛选仍保留未知素材。'}</span>
+      <span role="status" data-testid="asset-usage-snapshot-status">{ready ? t('assets.usage.savedRevision', { revision: usage?.timelineRevision ?? '' }) : t('assets.usage.unavailable')}</span>
     </div>
   </div>;
 }
@@ -66,6 +68,7 @@ export interface AssetTimelineUsageProps extends UsageScope {
 }
 
 export default function AssetTimelineUsage(props: AssetTimelineUsageProps) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const { assetId, assetName, projectId, scope, usage, visible, onLocate } = props;
   const uses = assetTimelineUses(usage, projectId, assetId);
   const [expanded, setExpanded] = useState({ scope, usage, assetId, open: false });
@@ -76,20 +79,20 @@ export default function AssetTimelineUsage(props: AssetTimelineUsageProps) {
   const listId = useId();
   return <div className="asset-disposition-controls" data-testid={`asset-timeline-usage-${assetId}`} data-no-asset-drag draggable={false}
     onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
-    {uses === null ? <span className="asset-disposition-label unknown" role="status">当前时间线 · 使用情况未知</span>
-      : uses.length === 0 ? <span className="asset-disposition-label" role="status">当前时间线 · 0 次使用</span>
+    {uses === null ? <span className="asset-disposition-label unknown" role="status">{t('assets.usage.unknown')}</span>
+      : uses.length === 0 ? <span className="asset-disposition-label" role="status">{t('assets.usage.zero')}</span>
         : <Button variant="ghost" size="sm" type="button" draggable={false} className="text-button" style={{ height: 'auto', justifyContent: 'flex-start', padding: 0, fontSize: 10, whiteSpace: 'normal', textAlign: 'left' }}
-          data-testid={`asset-usage-expand-${assetId}`} aria-label={`${assetName} 在当前时间线使用 ${uses.length} 次，${open ? '收起' : '查看'}片段位置`} aria-expanded={open} aria-controls={listId} disabled={!visible}
+          data-testid={`asset-usage-expand-${assetId}`} aria-label={t(open ? 'assets.usage.collapseLabel' : 'assets.usage.expandLabel', { name: assetName, count: uses.length })} aria-expanded={open} aria-controls={listId} disabled={!visible}
           onClick={event => { event.stopPropagation(); admit(() => setExpanded({ scope, usage, assetId, open: !open })); }}>
-          当前时间线 · {uses.length} 次使用 · {open ? '收起' : '展开'}
+          {t(open ? 'assets.usage.collapseSummary' : 'assets.usage.expandSummary', { count: uses.length })}
         </Button>}
-    {uses !== null && uses.length > 0 && <ul id={listId} hidden={!open} aria-label={`${assetName} 的时间线片段位置`} style={{ listStyle: 'none', margin: 0, padding: 0, minWidth: 0 }}>
+    {uses !== null && uses.length > 0 && <ul id={listId} hidden={!open} aria-label={t('assets.usage.locations', { name: assetName })} style={{ listStyle: 'none', margin: 0, padding: 0, minWidth: 0 }}>
       {uses.map(use => <li key={use.clipId}>
         <Button variant="ghost" size="sm" type="button" draggable={false} style={destinationStyle} data-testid={`asset-usage-locate-${use.clipId}`}
-          aria-label={`定位片段 ${use.clipName}，轨道 ${use.trackName}，起点 ${use.startFrame} 帧`} disabled={!visible || !open || !onLocate}
-          title={`${use.clipName} · ${use.trackName} · 起点 ${use.startFrame} 帧 · 长度 ${use.durationFrames} 帧 · 已保存 rev ${use.timelineRevision}`}
+          aria-label={t('assets.usage.locate', { clip: use.clipNameMissing ? t('assets.usage.unnamedClip') : use.clipName, track: use.trackName, frame: use.startFrame })} disabled={!visible || !open || !onLocate}
+          title={t('assets.usage.locationDetails', { clip: use.clipNameMissing ? t('assets.usage.unnamedClip') : use.clipName, track: use.trackName, frame: use.startFrame, duration: use.durationFrames, revision: use.timelineRevision })}
           onClick={event => { event.stopPropagation(); if (open && onLocate) admit(() => onLocate(use, isCurrent)); }}>
-          <span>{use.clipName}</span><span className="asset-disposition-label">{use.trackName} · 起点 {use.startFrame} 帧</span>
+          <span>{use.clipNameMissing ? t('assets.usage.unnamedClip') : use.clipName}</span><span className="asset-disposition-label">{t('assets.usage.start', { track: use.trackName, frame: use.startFrame })}</span>
         </Button>
       </li>)}
     </ul>}

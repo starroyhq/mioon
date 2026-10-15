@@ -1,3 +1,4 @@
+import { i18nTestModule } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -221,6 +222,7 @@ function componentHarness({ hook = false, waveformState } = {}) {
     const module = { exports: {} };
     Function('require', 'module', 'exports', 'document', 'ResizeObserver', 'window', transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'jsx', format: 'cjs' }).code)(id => {
       if (id === 'react') return react;
+    if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
       if (id === './waveform-state.js') return waveform;
       if (id === './api.js') return { rpc: (operation, input) => { const pending = deferred(); requests.push({ operation, input, ...pending }); return pending.promise; }, assetUrl: () => '' };
       if (id === './use-timeline-waveforms.js') return hook ? load('use-timeline-waveforms.js') : { useTimelineWaveforms: () => waveformState };

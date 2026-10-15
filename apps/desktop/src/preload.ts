@@ -14,3 +14,10 @@ contextBridge.exposeInMainWorld('__mioonNativeAudioPreview', createNativeAudioPr
   on: (channel, listener) => { ipcRenderer.on(channel, listener); },
   removeListener: (channel, listener) => { ipcRenderer.removeListener(channel, listener); },
 }));
+
+import { createAppLanguageBridge } from './app-language-preload.ts';
+contextBridge.exposeInMainWorld('__mioonAppLanguage', createAppLanguageBridge({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+  on: (channel, listener) => { ipcRenderer.on(channel, listener); },
+  removeListener: (channel, listener) => { ipcRenderer.removeListener(channel, listener); },
+}));

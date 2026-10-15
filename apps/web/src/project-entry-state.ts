@@ -1,3 +1,5 @@
+import { message as msg } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { isProjectWindowId } from '../../desktop/src/project-window-protocol.ts';
 import type { ProjectWindowOpenResult } from '../../desktop/src/project-window-protocol.ts';
 import type { ProjectWindowBridge, ProjectWindowContext } from './desktop-window-client.ts';
@@ -31,7 +33,7 @@ export interface ProjectEntryConsumption { readonly version: 1; readonly entryTo
 export function createProjectEntryController({ client, bridge, context: initialContext, locator = null, explicitProjectId = null,
   confirm = async () => false, onChange = () => {}, newToken = () => globalThis.crypto.randomUUID(),
 }: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; locator?: LastProjectController | null;
-  explicitProjectId?: string | null; confirm?: (message: string) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
+  explicitProjectId?: string | null; confirm?: (message: string | DisplayMessage) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
   if (initialContext.role !== 'launcher' && initialContext.role !== 'editor') throw new Error('Project entry requires an owned entry window');
   let context = initialContext, active = false, lifetime = 0, readSerial = 0, intent = 0, interactionSerial = 0, localVersion = 0, contextVersion = 0;
   let visible = true, autoConsumed = initialContext.role !== 'launcher' || !initialContext.autoOpen;
@@ -54,7 +56,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   }
   const departureCurrent = (ticket: Departure) => alive(ticket.owner) && available() && !metadata.busy &&
     ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.intent === intent;
-  async function departure(message = '新建项目的输入尚未提交。保留这些输入并打开所选项目？'): Promise<Departure | null> {
+  async function departure(message: string | DisplayMessage = msg('projects.keepCreateOpen')): Promise<Departure | null> {
     if (!available() || metadata.busy) return null;
     const ticket: Departure = Object.freeze({ owner: lifetime, localVersion, intent, metadataVersion: metadata.version });
     if (metadata.dirty && !await confirm(message)) return null;
@@ -64,8 +66,8 @@ export function createProjectEntryController({ client, bridge, context: initialC
     if (!permit || permit.token !== token) return false;
     permit = null;
     emit({ sealed: false, openUnknown: false, phase: result.ok ? 'home' : 'error',
-      error: result.ok ? '' : '窗口暂不能打开。原项目与输入已保留，请核对后明确重试。',
-      notice: result.ok ? (result.targetPhase === 'failed' ? '目标编辑窗口未能完成读取，请在该窗口核对。' : '') : state.notice,
+      error: result.ok ? '' : msg('projects.windowOpenFailed'),
+      notice: result.ok ? (result.targetPhase === 'failed' ? msg('projects.targetWindowFailed') : '') : state.notice,
       ...(result.ok && context.role === 'editor' ? { shown: false } : {}) });
     return result.ok;
   }
@@ -106,7 +108,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
       return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
     } catch {
       if (!alive(owner) || permit?.token !== token) return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
-      emit({ openUnknown: true, phase: 'error', error: '打开窗口的结果尚未确认。请核对窗口状态；不会自动重发打开或新建请求。' });
+      emit({ openUnknown: true, phase: 'error', error: msg('projects.openOutcomeUnknown') });
       await reconcileOpen();
       return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
     }
@@ -129,7 +131,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   }
   async function show(mode: 'open' | 'new'): Promise<boolean> {
     if (!ownerCurrent() || permit || state.creating || state.createUnknown || state.openUnknown) {
-      if (active) emit({ notice: '请先在此窗口核对当前新建或打开请求。现有输入已保留。' });
+      if (active) emit({ notice: msg('projects.checkCurrentRequest') });
       return false;
     }
     interact();
@@ -140,7 +142,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   async function dismiss(): Promise<boolean> {
     if (context.role !== 'editor') return false;
     interact();
-    const ticket = await departure('新建项目的输入尚未提交。保留这些输入并关闭项目选择？');
+    const ticket = await departure(msg('projects.keepCreateClose'));
     if (!ticket || !departureCurrent(ticket)) return false;
     emit({ shown: false }); return true;
   }
@@ -162,7 +164,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
         if (choice.notice) emit({ notice: choice.notice });
         if (choice.projectId) await open(choice.projectId, false);
       }
-    } catch { if (alive(owner) && serial === readSerial) emit({ listBusy: false, listError: '暂时无法读取工作区项目。请核对连接后刷新；现有输入会保留。' }); }
+    } catch { if (alive(owner) && serial === readSerial) emit({ listBusy: false, listError: msg('projects.listUnavailable') }); }
   }
   async function create(name: string, description: string): Promise<boolean> {
     if (!available() || !state.workspace || state.workspace.restored) return false;
@@ -176,11 +178,11 @@ export function createProjectEntryController({ client, bridge, context: initialC
       if (!alive(owner)) return false;
       if (fresh.contextId !== context.contextId || fresh.backendId !== context.backendId || fresh.windowId !== context.windowId ||
           fresh.role !== context.role || fresh.quitting || context.quitting) {
-        emit({ creating: false, notice: '窗口身份或退出状态已变化，未发起新建项目。' }); return false;
+        emit({ creating: false, notice: msg('projects.changedNotCreated') }); return false;
       }
       // An older describe reply cannot erase a newer synchronous host event.
       if (observedContext === contextVersion) updateContext(fresh);
-    } catch { if (alive(owner)) emit({ creating: false, notice: '窗口身份尚未确认，未发起新建项目。请核对后明确重试。' }); return false; }
+    } catch { if (alive(owner)) emit({ creating: false, notice: msg('projects.unconfirmedNotCreated') }); return false; }
     if (!ownerCurrent() || !visible || context.role === 'launcher' && context.editorCount > 0) { emit({ creating: false }); return false; }
     let created;
     try { created = await client.create(name, description); }
@@ -188,13 +190,13 @@ export function createProjectEntryController({ client, bridge, context: initialC
       if (alive(owner)) {
         const rejected = error instanceof LauncherCreateError && error.outcome === 'rejected';
         emit({ creating: false, createUnknown: !rejected, notice: rejected
-          ? '新建请求未被接受。现有输入已保留，请核对后明确重试。'
-          : '新建结果未确认。请保留此窗口并刷新项目列表核对；不要重复创建。' });
+          ? msg('projects.createRejectedRetained')
+          : msg('projects.createUnknownRefresh') });
       }
       return false;
     }
     if (!alive(owner)) return false;
-    emit({ projects: [created, ...state.projects.filter(project => project.id !== created.id)], createdProjectId: created.id, notice: '项目已创建。' });
+    emit({ projects: [created, ...state.projects.filter(project => project.id !== created.id)], createdProjectId: created.id, notice: msg('projects.created') });
     // Keep creating=true until the open permit is sealed. No free input turn
     // exists between the authoritative create ACK and host reservation.
     const opening = ownerCurrent() && visible ? dispatchOpen(created.id, true) : Promise.resolve(false);

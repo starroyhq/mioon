@@ -147,7 +147,7 @@ before(async () => {
 });
 
 test('real shared controls render compact exact half-open window, saved revision, sound-only and separate-video labels', () => {
-  assert.match(rendered.ready, /data-slot="button"/); assert.match(rendered.ready, /仅声音 · 已保存 rev 1/);
+  assert.match(rendered.ready, /data-slot="button"/); assert.match(rendered.ready, /仅声音 · 已保存 修订版 1/);
   assert.match(rendered.ready, /区间 \[00:10:00, 00:30:00\) · 帧 300–900 · 最多 20 秒/);
   assert.match(rendered.ready, /已渲染视频单独播放，不与此声音试听同步/);
   assert.match(rendered.ready, /role="status" aria-live="polite" aria-atomic="true"/);

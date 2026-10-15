@@ -1,3 +1,4 @@
+import { translate } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -103,7 +104,8 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /stored = mutation \? prepareMutation\(entry, \{ replay \}\) : prepareSubmission\(entry, \{ replay \}\)/);
   assert.match(app, /mutation && replay \? null : result/);
-  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8'), /entry\.input, '原请求已恢复并确认', restored \? \{ replay: true, pendingEntry: entry \} : \{ replay: true \}/);
+  assert.match(readFileSync(new URL('../apps/web/src/TaskCenter.jsx', import.meta.url), 'utf8'), /entry\.input, message\('tasks\.center\.originalRecovered'\), restored \? \{ replay: true, pendingEntry: entry \} : \{ replay: true \}/);
+  assert.equal(translate('zh-Hans', 'tasks.center.originalRecovered'), '原请求已恢复并确认');
   // Evaluate the actual App classifier rather than require its former inline
   // `timeline || isReferenceOperation(...)` spelling. Reference proof handling
   // must remain stricter than a generic definitive 4xx after the alias refactor.
@@ -158,16 +160,20 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   assert.match(structure, /owner !== currentProject\.current/);
   assert.match(structure, /dataRef\.current\.shots\.length \|\| dataRef\.current\.nodes\.length/);
   assert.match(structure, /if \(!isCurrent\(captured\)\) return/);
-  assert.match(structure, /if \(!created\).*已确认 \$\{done\}\/3.*其余镜头不会自动创建.*return;/);
+  assert.match(structure, /if \(!created\).*msg\('projects\.structureStopped', \{ count: done \}\).*return;/);
+  assert.match(translate('zh-Hans', 'projects.structureStopped', { count: 1 }), /已确认 1\/3.*其余镜头不会自动创建/);
 });
 
 test('six-op recovery warns about session-only unencrypted receipts without changing generation guarantees', () => {
   const card = readFileSync(new URL('../apps/web/src/PendingSubmission.jsx', import.meta.url), 'utf8');
   assert.match(card, /mutation &&/);
-  assert.match(card, /恢复记录仅存于当前浏览器会话，未经保险库加密/);
-  assert.match(card, /关闭窗口或重建应用会话可能丢失记录/);
+  assert.match(card, /t\('tasks\.pending\.mutationStorage'\)/);
+  const notice = translate('zh-Hans', 'tasks.pending.mutationStorage');
+  assert.match(notice, /恢复记录仅存于当前浏览器会话，未经保险库加密/);
+  assert.match(notice, /关闭窗口或重建应用会话可能丢失记录/);
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), /生成任务状态持久保存/);
+  assert.match(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), /t\('tasks\.workspace\.durableState'\)/);
+  assert.match(translate('zh-Hans', 'tasks.workspace.durableState'), /生成任务状态持久保存/);
 });
 
 test('a colliding legacy receipt can never silently turn a new edit into another operation', t => {

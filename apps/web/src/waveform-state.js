@@ -1,3 +1,4 @@
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import { isWaveformResponse } from '@mioon/contracts';
 
 // Waveforms are a read-only, opt-in view of the first source audio stream.
@@ -32,12 +33,13 @@ export function visibleWaveformWindows({ timeline, assets, pixelsPerFrame, leftF
   });
 }
 
-export function waveformStatusText(entry) {
-  if (!entry) return '等待可见片段';
-  if (entry.held) return `历史状态 ${entry.status} · 恢复分支不解码`;
-  if (entry.status === 'unsupported' && (entry.reason?.code === 'DURATION_LIMIT' || /10分钟|600|duration/i.test(entry.reason?.code || ''))) return '超过10分钟暂不支持波形';
-  return { missing: '波形未生成', loading: '检查波形…', queued: '波形排队中…', running: '本地分析中…', ready: '原始源音轨波形', interrupted: '波形分析已中断，请重试', error: '波形暂不可用，请重试', unsupported: entry.reason?.message || '此素材暂不支持波形' }[entry.status] || '波形暂不可用';
+export function waveformStatusMessage(entry) {
+  if (!entry) return message('audio.waveform.waiting');
+  if (entry.held) return message(({ missing: 'audio.waveform.held.missing', loading: 'audio.waveform.held.loading', queued: 'audio.waveform.held.queued', running: 'audio.waveform.held.running', ready: 'audio.waveform.held.ready', interrupted: 'audio.waveform.held.interrupted', error: 'audio.waveform.held.error', unsupported: 'audio.waveform.held.unsupported' })[entry.status] || 'audio.waveform.held.unavailable');
+  if (entry.status === 'unsupported' && ['DURATION_LIMIT', 'WAVEFORM_DURATION_UNSUPPORTED'].includes(entry.reason?.code)) return message('audio.waveform.durationLimit');
+  return ({ missing: message('audio.waveform.missing'), loading: message('audio.waveform.loading'), queued: message('audio.waveform.queued'), running: message('audio.waveform.running'), ready: message('audio.waveform.ready'), interrupted: message('audio.waveform.interrupted'), error: message('audio.waveform.error'), unsupported: message('audio.waveform.unsupported') })[entry.status] || message('audio.waveform.unavailable');
 }
+export function waveformStatusText(entry) { return renderMessage('zh-Hans', waveformStatusMessage(entry)); }
 
 // Decoder coverage uses exact sample time, independent of editor frame rounding.
 export function waveformCoverageWidth(range, decodedSampleFrames) {

@@ -1,3 +1,7 @@
+import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
+import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
+import { resolveLocale } from '../packages/i18n/src/locale.ts';
+import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -114,7 +118,7 @@ async function harness(t, options = {}) {
       await options.load?.(records.windows.indexOf(this));
     }
   }
-  const context = vm.createContext({ app, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     ensureDataIdentity: async () => {}, readToolConfig: async () => tools,
@@ -158,9 +162,9 @@ async function harness(t, options = {}) {
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel, handler) {
-      assert.ok([PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       records.ipcHandlers ??= new Map(); assert.equal(records.ipcHandlers.has(channel), false); records.ipcHandlers.set(channel, handler);
-      if (channel === PROJECT_WINDOW_CHANNEL) records.bridge = handler; else records.audioBridge = handler;
+      if (channel === PROJECT_WINDOW_CHANNEL) records.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) records.audioBridge = handler;
     } },
     installNativeCloseAdmission, stopBackendForQuit,
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { menu = value; } },
@@ -229,7 +233,7 @@ test('replacement itself failing remains fatal even when both starts reject the 
   assert.equal(runtime.fatals().length, 0);
   replacement.reject(shared); await restarting;
   assert.equal(runtime.fatals().length, 1);
-  assert.equal(runtime.fatals()[0].detail, shared.message);
+  assert.equal(runtime.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: shared.message }));
   await until(() => runtime.records.finished === 1);
 });
 
@@ -239,7 +243,7 @@ for (const code of ['DESKTOP_START_CANCELLED', 'BACKEND_START_CANCELLED', 'MEDIA
     const runtime = await harness(t, { settings: async () => { throw error; } });
     await runtime.initial();
     assert.equal(runtime.fatals().length, 1);
-    assert.equal(runtime.fatals()[0].detail, error.message);
+    assert.equal(runtime.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: error.message }));
   });
 }
 
@@ -266,7 +270,7 @@ for (const action of ['restart', 'quit']) for (const code of ['SETTINGS_CLOSE_FA
     else { runtime.app.quit(); await until(() => runtime.records.finished === 1); }
     old.resolve({ async close() { throw error; } }); await runtime.initial();
     assert.equal(runtime.fatals().length, 1);
-    assert.equal(runtime.fatals()[0].detail, error.message);
+    assert.equal(runtime.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: error.message }));
   });
 }
 
@@ -373,7 +377,7 @@ for (const stage of ['drain', 'remove', 'clear']) {
     await until(() => stage === 'clear' ? r.sessions.length === 1 : r.validations.length === 1);
     await runtime.restart(); old.resolve(tools); await runtime.initial();
     assert.equal(runtime.fatals().length, 1);
-    assert.equal(runtime.fatals()[0].detail, error.message);
+    assert.equal(runtime.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: error.message }));
     assert.equal(r.scopes.length, 1);
     assert.equal(r.windows.length, 0); assert.equal(r.connections.length, 0);
   });

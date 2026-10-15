@@ -1,3 +1,5 @@
+import { translate } from './helpers/i18n.ts';
+import { LOCALES } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
@@ -28,10 +30,12 @@ test('every workspace package uses @mioon and CLI publishes no old command alias
 
 test('login, loading, header and browser title display Mioon rather than prior branding', async () => {
   const app = await read('apps/web/src/App.jsx'), html = await read('apps/web/index.html');
-  assert.equal((app.match(/<\/span>Mioon/g) || []).length, 3);
-  assert.match(app, /aria-label="Mioon 影像工作台"/);
+  assert.equal((app.match(/<\/span>Mioon|className="brand-name">Mioon/g) || []).length, 3);
+  assert.match(app, /aria-label=\{t\('shell.title'\)\}/);
+  for (const locale of LOCALES) { assert.match(translate(locale, 'shell.title'), /Mioon/); assert.match(translate(locale, 'app.title'), /Mioon/); }
+  assert.equal(translate('zh-Hans', 'shell.title'), 'Mioon 影像工作台');
   assert.doesNotMatch(app, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
-  assert.match(html, /<title>Mioon · 影像工作台<\/title>/);
+  assert.match(html, /<title>Mioon<\/title>/);
   assert.match(await read('apps/desktop/src/main.mjs'), /title: identity\.productName/);
 });
 

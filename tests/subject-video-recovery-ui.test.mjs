@@ -1,3 +1,4 @@
+import { message as msg, renderMessage } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import { transformSync } from 'esbuild';
 import assert from 'node:assert/strict';
@@ -101,7 +102,7 @@ function appHarness(t,dispatch,jobs=[]){
  const start=source.indexOf('async function runSession('),end=source.indexOf('async function inspect(',start);
  assert.ok(start>=0&&end>start);const actual=source.slice(start,end);
  const currentProject={current:id(1)},busy=new Set(),state={epoch:0,calls:[],notices:[],refreshes:[],pending:[],showJobs:false};
- const scope={...contracts,...submissions,...mutations,shotTextRef:{current:null},currentProject,
+ const scope={...contracts,...submissions,...mutations,msg,localizedError: displayMessage => Object.assign(new Error(renderMessage('zh-Hans', displayMessage)), { displayMessage }),shotTextRef:{current:null},currentProject,
   context:()=>({projectId:currentProject.current,epoch:state.epoch}),isCurrent:captured=>captured.projectId===currentProject.current&&captured.epoch===state.epoch,
   isBusy:(key,project)=>busy.has(project+key),markBusy:(project,key,value)=>value?busy.add(project+key):busy.delete(project+key),
   rpc:async(operation,input)=>{state.calls.push({operation,input:copy(input)});return dispatch(operation,input);},

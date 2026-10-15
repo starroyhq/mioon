@@ -1,3 +1,5 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -56,6 +58,7 @@ function harness(name) {
     disconnect() { observers.delete(this); }
   }
   const require = id => {
+    if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
     if (id === 'react') return react;
     if (id.startsWith('@mioon/ui/')) return ui;
     if (id === './workspace-layout.js') return layout;

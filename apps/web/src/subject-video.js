@@ -1,3 +1,4 @@
+import { message } from '../../../packages/i18n/src/index.ts';
 import { isSubjectReference } from '@mioon/contracts';
 
 export const SUBJECT_VIDEO_KINDS = ['character', 'product', 'location'];
@@ -64,4 +65,34 @@ export function subjectVideoProfileIdentity(provider, model) {
   return canonical([provider?.id, model, provider?.providerRegion, provider?.inputProfileVersion,
     provider?.inputProfiles?.filter(profile => profile.model === model), provider?.profileEvaluationDate,
     provider?.inputProfileEvaluations]);
+}
+
+// Display-only sidecars. The legacy strings above remain exact for existing callers;
+// no descriptor is added to frozen references, request snapshots, or provenance.
+export const ARK_SUBJECT_WARNING_MESSAGE = message('subjects.warning.ark');
+export const MOCK_SUBJECT_WARNING_MESSAGE = message('subjects.warning.mock');
+export function subjectVideoConflictDescriptor(shot = {}, { savedShot = shot, boundReference = false } = {}) {
+  if (boundReference) return message('subjects.conflict.boundFrame');
+  if ([shot, savedShot].some(value => value?.referenceAssetIds?.length || value?.lastFrameAssetId)) return message('subjects.conflict.frames');
+  return null;
+}
+export function subjectVideoReferenceDescriptor(reference, assets = [], projectId) {
+  if (!reference) return message('subjects.reference.choose');
+  if (!isSubjectReference(reference)) return message('subjects.reference.incomplete');
+  const version = reference.subjectVersion;
+  if (projectId && version.projectId !== projectId) return message('subjects.reference.foreign');
+  const asset = assets.find(item => item.id === version.assetId && item.projectId === version.projectId);
+  if (!asset) return message('subjects.reference.missing');
+  if (contentKeys.some(key => asset[key] !== version[key])) return message('subjects.reference.changed');
+  return null;
+}
+export function subjectVideoSourceDescriptor(version) {
+  const provenance = version?.provenance;
+  if (!provenance) return message('subjects.source.missing');
+  if (provenance.kind === 'user-import') return message('subjects.source.import');
+  if (provenance.kind === 'extracted-frame') return message('subjects.source.frame');
+  if (provenance.kind === 'synthetic-mock') return message('subjects.source.mock');
+  if (provenance.kind === 'generated') return message(provenance.imageSource ? 'subjects.source.imageGenerated' : 'subjects.source.videoGenerated');
+  if (provenance.kind === 'export') return message('subjects.source.export');
+  return message('subjects.source.recorded');
 }

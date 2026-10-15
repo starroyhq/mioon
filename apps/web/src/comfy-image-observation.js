@@ -1,3 +1,4 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { comfyConnectorAvailable } from './comfy-image-settings.js';
 import { ApiError } from './api.js';
 import { canonicalImageInput, comfyRemoteSchemas, isComfyRemoteResponse, isComfyObserveResponse } from '@mioon/contracts';
@@ -23,13 +24,13 @@ async function notAccepted(error, input) {
 export function createComfyObservationSession({ projectId, call, storage, requestId, getAvailability = () => null, onChange = () => {} }) {
   let active = true, visible = true, values = {}, pending = null, actionTaskId = null, storageBlocked = false;
   const store = () => storage === undefined ? globalThis.sessionStorage : storage;
-  const emit = (message = '') => { if (active) onChange({ remotes: copy(values), remotePending: copy(pending), remoteActionTaskId: actionTaskId, remoteStorageBlocked: storageBlocked, ...(message ? { message } : {}) }); };
+  const emit = (message = '', displayMessage = null) => { if (active) onChange({ remotes: copy(values), remotePending: copy(pending), remoteActionTaskId: actionTaskId, remoteStorageBlocked: storageBlocked, ...(message ? { message, displayMessage } : {}) }); };
   try { const saved = store()?.getItem(`${PREFIX}${projectId}`); if (saved) { const value = JSON.parse(saved); if (value.version !== 1 || value.operation !== 'image.task.observeRemote' || !comfyRemoteSchemas[value.operation]?.safeParse(value.input).success || value.input.projectId !== projectId) throw failure(); pending = value; } }
   catch { storageBlocked = true; }
   function clear(expected) {
     if (!active || pending !== expected) return false;
     try { const raw = store()?.getItem(`${PREFIX}${projectId}`); if (raw && canonicalImageInput(JSON.parse(raw)) !== canonicalImageInput(expected)) throw failure(); store()?.removeItem(`${PREFIX}${projectId}`); if (store()?.getItem(`${PREFIX}${projectId}`)) throw failure(); pending = null; emit(); return true; }
-    catch { storageBlocked = true; emit('无法核验本地查询记录。请重新打开面板后核对；没有重新提交生成。'); return false; }
+    catch { storageBlocked = true; emit('无法核验本地查询记录。请重新打开面板后核对；没有重新提交生成。', localizedMessage('image.comfy.observation.recordUnverifiable')); return false; }
   }
   async function read(taskId, review = null) {
     if (!active || !visible) return false;
@@ -51,21 +52,23 @@ export function createComfyObservationSession({ projectId, call, storage, reques
       intent = { version: 1, operation: 'image.task.observeRemote', input: { projectId, taskId: task.id, expectedRevision: values[task.id].remote.revision, requestId: requestId() } };
       if (!comfyRemoteSchemas[intent.operation].safeParse(intent.input).success) return false;
       try { const target = store(); if (!target || target.getItem(`${PREFIX}${projectId}`)) throw failure(); const raw = JSON.stringify(intent); target.setItem(`${PREFIX}${projectId}`, raw); if (target.getItem(`${PREFIX}${projectId}`) !== raw) throw failure(); }
-      catch { storageBlocked = true; emit('无法保存本地查询凭据。没有发起远端查询。'); return false; }
+      catch { storageBlocked = true; emit('无法保存本地查询凭据。没有发起远端查询。', localizedMessage('image.comfy.observation.receiptSaveFailed')); return false; }
       pending = intent;
     }
     // Explicit retry uses the same durable key and exact CAS revision. The backend
     // replays a prior admission ACK without scheduling another external read.
     actionTaskId = task.id; emit();
-    try { const result = await call(intent.operation, copy(intent.input)); if (!active || pending !== intent) return false; if (!isComfyObserveResponse(intent.input, result)) throw failure(); if (!clear(intent)) return false; emit('此查询已接受。只读取保存的生成身份并按证据取回结果，不提交新的生成。'); return true; }
+    try { const result = await call(intent.operation, copy(intent.input)); if (!active || pending !== intent) return false; if (!isComfyObserveResponse(intent.input, result)) throw failure(); if (!clear(intent)) return false; emit('此查询已接受。只读取保存的生成身份并按证据取回结果，不提交新的生成。', localizedMessage('image.comfy.observation.accepted')); return true; }
     catch (error) {
       const rejected = await notAccepted(error, intent.input);
       if (!active || pending !== intent) return false;
-      if (rejected && clear(intent)) emit('此次查询未被接受，查询凭据已核对。请读取当前状态后再明确查询；没有自动重试或提交生成。');
-      else emit('查询是否已接受仍待确认。保留同一个查询标识；重新读取只核对本地记录，不会重提生成。');
+      if (rejected && clear(intent)) emit('此次查询未被接受，查询凭据已核对。请读取当前状态后再明确查询；没有自动重试或提交生成。', localizedMessage('image.comfy.observation.notAccepted'));
+      else emit('查询是否已接受仍待确认。保留同一个查询标识；重新读取只核对本地记录，不会重提生成。', localizedMessage('image.comfy.observation.acceptanceUnknown'));
       return false;
     }
     finally { if (active) { actionTaskId = null; emit(); } }
   }
   return { snapshot: () => ({ remotes: copy(values), remotePending: copy(pending), remoteActionTaskId: actionTaskId, remoteStorageBlocked: storageBlocked }), read, observe, setVisible(value) { visible = Boolean(value); }, dispose() { active = false; } };
 }
+
+// Display-only companions keep legacy diagnostics and business identities unchanged.

@@ -1,0 +1,642 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "file": "apps/web/src/FrameExtractionPanel.jsx",
+      "category": "visible-jsx",
+      "hash": "8f1dc98295ebe9548cb54337e60ab78430b36c6def52988bae8a8f2e9d84a296",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: · image/png ·. Surrounding prose and accessible action labels use the catalog. Display boundary: FrameExtractionPanel.jsx."
+    },
+    {
+      "file": "apps/web/src/FrameExtractionPanel.jsx",
+      "category": "visible-jsx",
+      "hash": "bff286789a1e3149281422056d87dd2585bbe494e92e24cd474bd4f44be879d8",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: KB. Surrounding prose and accessible action labels use the catalog. Display boundary: FrameExtractionPanel.jsx."
+    },
+    {
+      "file": "apps/web/src/FrameExtractionPanel.jsx",
+      "category": "visible-jsx",
+      "hash": "15685ac4975b28d247da667351e23ac3dd9884df0c8706d3376ce4ad7a751e3c",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: SHA-256. Surrounding prose and accessible action labels use the catalog. Display boundary: FrameExtractionPanel.jsx."
+    },
+    {
+      "file": "apps/web/src/SubtitleLane.jsx",
+      "category": "visible-jsx",
+      "hash": "d3f953902233a9ca13e10d7b1352d94f488d00675978bcea6317712eaa4e4161",
+      "owner": "timeline",
+      "reason": "Subtitle track type glyph, not prose. The surrounding region and actions have translated accessible labels. Display boundary: SubtitleLane.jsx."
+    },
+    {
+      "file": "apps/web/src/Timeline.jsx",
+      "category": "visible-jsx",
+      "hash": "d1fd3994ae3ec89e3af3556a9326ea27985ce80d7003915b356f4c02c301bac4",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: f. Surrounding prose and accessible action labels use the catalog. Display boundary: Timeline.jsx."
+    },
+    {
+      "file": "apps/web/src/TimelineFormatPanel.jsx",
+      "category": "visible-jsx",
+      "hash": "072c5172813c0f78893748b9e3606849809f0dd52ffa85739cd7202f8d4c6d8f",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: fps ·. Surrounding prose and accessible action labels use the catalog. Display boundary: TimelineFormatPanel.jsx."
+    },
+    {
+      "file": "apps/web/src/TimelineFormatPanel.jsx",
+      "category": "visible-jsx",
+      "hash": "c72725fe6338cf6c2712b8c729ed31c6eaf1cf6e65dcecca3a13714181a9f5d4",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: 30 fps. Surrounding prose and accessible action labels use the catalog. Display boundary: TimelineFormatPanel.jsx."
+    },
+    {
+      "file": "apps/web/src/TimelineInspector.jsx",
+      "category": "visible-jsx",
+      "hash": "e495f855b57592789e8b2b9366507d2712646fad602b7042b074b4ee5a3d851c",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: (px). Surrounding prose and accessible action labels use the catalog. Display boundary: TimelineInspector.jsx."
+    },
+    {
+      "file": "apps/web/src/TimelineSplitControls.jsx",
+      "category": "visible-jsx",
+      "hash": "d1fd3994ae3ec89e3af3556a9326ea27985ce80d7003915b356f4c02c301bac4",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: f. Surrounding prose and accessible action labels use the catalog. Display boundary: TimelineSplitControls.jsx."
+    },
+    {
+      "file": "apps/web/src/VideoFrameControls.jsx",
+      "category": "visible-jsx",
+      "hash": "15685ac4975b28d247da667351e23ac3dd9884df0c8706d3376ce4ad7a751e3c",
+      "owner": "timeline",
+      "reason": "Technical media/identity token or editing unit, intentionally invariant: SHA-256. Surrounding prose and accessible action labels use the catalog. Display boundary: VideoFrameControls.jsx."
+    },
+    {
+      "file": "apps/web/src/clip-lut-recovery.ts",
+      "category": "cjk-source",
+      "hash": "0d5ce1bdffa9f8d9d2bfd4bf92ea2e0b2b677b789b5584e985218fc741ff1861",
+      "owner": "timeline",
+      "reason": "The exact legacy diagnostic is retained on the Error instance. Classification uses instanceof and the closed code union, not this text; the UI renders colour.recovery.* from the descriptor. Display boundary: ClipLutRecoveryError.code → timelineErrorMessage → recoveryErrorMessage → ClipLutControls.tsx. Compatibility purpose: Typed exception diagnostic compatibility. Reviewed original literal: '无法安全读写浏览器的 LUT 恢复记录，已阻止导入。请允许此站点的本地存储后重新检查；不要清除待确认记录。'."
+    },
+    {
+      "file": "apps/web/src/clip-lut-recovery.ts",
+      "category": "cjk-source",
+      "hash": "33454b0b805273428a59db762397bdea9b3fe3a0b3b85a155a4fabc1bce3c71d",
+      "owner": "timeline",
+      "reason": "The exact legacy diagnostic is retained on the Error instance. Classification uses instanceof and the closed code union, not this text; the UI renders colour.recovery.* from the descriptor. Display boundary: ClipLutRecoveryError.code → timelineErrorMessage → recoveryErrorMessage → ClipLutControls.tsx. Compatibility purpose: Typed exception diagnostic compatibility. Reviewed original literal: 'LUT 恢复记录已变化或存在另一条待确认请求。请重新检查并恢复原请求，不会覆盖记录。'."
+    },
+    {
+      "file": "apps/web/src/clip-lut-recovery.ts",
+      "category": "cjk-source",
+      "hash": "82c8da132435bb92d1d2a82339dfb6a528adc29588ddab9e4911e591f30ab643",
+      "owner": "timeline",
+      "reason": "The exact legacy diagnostic is retained on the Error instance. Classification uses instanceof and the closed code union, not this text; the UI renders colour.recovery.* from the descriptor. Display boundary: ClipLutRecoveryError.code → timelineErrorMessage → recoveryErrorMessage → ClipLutControls.tsx. Compatibility purpose: Typed exception diagnostic compatibility. Reviewed original literal: 'LUT 恢复记录损坏、重复或超出限制，已停止导入且保留原记录；请勿清除记录后重复导入。'."
+    },
+    {
+      "file": "apps/web/src/clip-lut-state.ts",
+      "category": "cjk-source",
+      "hash": "61d78deab76e12190ac5a054e27fd641727773b4f134f54362daf3669bc11cdc",
+      "owner": "timeline",
+      "reason": "Original diagnostics remain available to existing state consumers/tests. Every visible error branch renders the paired descriptor or a safe localized summary; descriptors never enter lut.import input or recovery storage. Display boundary: recoveryErrorMessage/importErrorMessage/errorMessage → ClipLutControls.tsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '原请求记录已保留，但当前不可提交；请恢复连接后核对原请求。'."
+    },
+    {
+      "file": "apps/web/src/clip-lut-state.ts",
+      "category": "cjk-source",
+      "hash": "a05fdb1fe80ffb17d98311ba67236716686ffce5c3a8858e6d4121a10eb6af92",
+      "owner": "timeline",
+      "reason": "Original diagnostics remain available to existing state consumers/tests. Every visible error branch renders the paired descriptor or a safe localized summary; descriptors never enter lut.import input or recovery storage. Display boundary: recoveryErrorMessage/importErrorMessage/errorMessage → ClipLutControls.tsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '原请求已确认，但恢复记录尚未安全清除。'."
+    },
+    {
+      "file": "apps/web/src/clip-lut-state.ts",
+      "category": "cjk-source",
+      "hash": "450569c071b66f47bdb2e8ca930835924c73209018a6380677878bf2a1463032",
+      "owner": "timeline",
+      "reason": "Original diagnostics remain available to existing state consumers/tests. Every visible error branch renders the paired descriptor or a safe localized summary; descriptors never enter lut.import input or recovery storage. Display boundary: recoveryErrorMessage/importErrorMessage/errorMessage → ClipLutControls.tsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '已有导入请求待确认，请重新选择原文件恢复原请求。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "bfe4e1ddd09c21d1645058e3715d9639a0f5d7c1498ca362cd84101a60754221",
+      "owner": "timeline",
+      "reason": "Internal candidate eligibility diagnostic retained for exported helper compatibility. clipReplacementCandidates consumes only its empty/nonempty result, never its wording; rejected candidates are omitted and the UI gives localized no-candidate/blocking copy. Display boundary: clipReplacementCandidates → localized candidate list / timeline.replace.noCandidates in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '来源必须属于当前项目。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "536a10b1a34d3d39111775a703257caa76a105b4abb9e81c32888eb445234565",
+      "owner": "timeline",
+      "reason": "Internal candidate eligibility diagnostic retained for exported helper compatibility. clipReplacementCandidates consumes only its empty/nonempty result, never its wording; rejected candidates are omitted and the UI gives localized no-candidate/blocking copy. Display boundary: clipReplacementCandidates → localized candidate list / timeline.replace.noCandidates in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '不能替换为当前来源；不会生成重复历史。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "4d1db22d3368944854058993b568e626c4eeaebd0f14fdd0fe2121dc75ffcec2",
+      "owner": "timeline",
+      "reason": "Internal candidate eligibility diagnostic retained for exported helper compatibility. clipReplacementCandidates consumes only its empty/nonempty result, never its wording; rejected candidates are omitted and the UI gives localized no-candidate/blocking copy. Display boundary: clipReplacementCandidates → localized candidate list / timeline.replace.noCandidates in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '新旧来源必须同为视频、音频或图片。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "96e32e54f106261cb01204e509120339b8b4ae169c6257261b7defc1c5277660",
+      "owner": "timeline",
+      "reason": "Internal candidate eligibility diagnostic retained for exported helper compatibility. clipReplacementCandidates consumes only its empty/nonempty result, never its wording; rejected candidates are omitted and the UI gives localized no-candidate/blocking copy. Display boundary: clipReplacementCandidates → localized candidate list / timeline.replace.noCandidates in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '片段范围无效，请先检查片段。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "835523d88668ecf7ddc33511fc1d5f8f23a4bead912188bb23c7f557c9ea8ce1",
+      "owner": "timeline",
+      "reason": "Internal candidate eligibility diagnostic retained for exported helper compatibility. clipReplacementCandidates consumes only its empty/nonempty result, never its wording; rejected candidates are omitted and the UI gives localized no-candidate/blocking copy. Display boundary: clipReplacementCandidates → localized candidate list / timeline.replace.noCandidates in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '图片片段的素材入点必须为 0。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "14176781019074d1768188759392b3ee5a411afaee1067db1f5f7e8d3d42eee5",
+      "owner": "timeline",
+      "reason": "Internal candidate eligibility diagnostic retained for exported helper compatibility. clipReplacementCandidates consumes only its empty/nonempty result, never its wording; rejected candidates are omitted and the UI gives localized no-candidate/blocking copy. Display boundary: clipReplacementCandidates → localized candidate list / timeline.replace.noCandidates in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '新来源时长尚未确认，无法保留片段范围。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "36772360a7222eb6f5a4adc460d3ad1df66f714d83e16d975dce88c2a253d516",
+      "owner": "timeline",
+      "reason": "Internal candidate eligibility diagnostic retained for exported helper compatibility. clipReplacementCandidates consumes only its empty/nonempty result, never its wording; rejected candidates are omitted and the UI gives localized no-candidate/blocking copy. Display boundary: clipReplacementCandidates → localized candidate list / timeline.replace.noCandidates in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '新来源不足以覆盖原入点与片段时长；不会自动裁短。'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "97936223d8ec27aebbbec65f35c6832c8692808eb43d1076fa29779738ebbada",
+      "owner": "timeline",
+      "reason": "Legacy label is part of an in-memory immutable candidate review used by canonical stale-review checks. Locale changes must not mutate that review; the UI reconstructs localized asset-only/version labels from explicit source/version fields, never from this text. Display boundary: candidateLabel(candidate) in ClipSourceReplacement.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '· 仅素材'."
+    },
+    {
+      "file": "apps/web/src/clip-source-replacement.js",
+      "category": "cjk-source",
+      "hash": "0e8b516dfbb0b68fc327d51c4392c05b998902880520185d5324ffd7e258a456",
+      "owner": "timeline",
+      "reason": "Original unknown-outcome diagnostic retained in controller error state; errorMessage is emitted alongside it and rendered by the component. App errors use clipReplacementErrorDescriptor; neither UI boundary renders the original string. Display boundary: errorMessage / clipReplacementErrorDescriptor → ClipSourceReplacement.jsx / App.jsx. Compatibility purpose: Pure helper/review/state API compatibility. Reviewed original literal: '替换结果尚未确认。请在任务面板恢复同一请求，不要重复替换。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "577218864fb7d62a4ec409a8fa978cd1bfa00739dff2cd3a4df6edc6f894589d",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '抽帧记录暂时无法核验。请重新读取，原请求仍保留。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "d56ddae3fab82c565922966602e281ca4691a4ad0e5f3ef6f73620214f271582",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '原请求已受理。此回执是受理时的快照，正在读取任务当前状态。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "d83ebfed4527c72560274069b902e45baa3476e02b1a98b9788170d2b00c9ea5",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '原请求已受理；下方显示已核验的任务当前状态。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "cd42a45775ae35e03e7a463fa3e83f89eee5ff130c5772710913da1afdb069ee",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '本次恢复已确认未受理：没有可完整核验的本地 PNG。原任务保留，没有重新解码；请重新读取任务后决定是否明确新建提取。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "0934fcec895d3b9acf90a38a674c446af6d155e87b59d3b53d4abacb2d048e2c",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '本次操作已确认未受理，原任务保持不变。请重新读取任务后，再明确选择下一步。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "980715b7a93015eaee16d908db115fe65347353f2990ba2a3f2224acada172ba",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '是否受理仍待确认。已保留原操作和完整输入；请核对同一请求，不要新建重复提取。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "dd285c0324c7b2af6de746f0a86f2f3d92adfdc58cb3b51184eb1165a346f16f",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '此源时间点已有未完成任务。请先核对下面的原任务，避免重复提取。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "562b35c9704b15dee630d934da13c816d034a1f7c086e412669e29e03a740a95",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '无法创建有效请求标识。尚未提交提取。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "5b489889304a56aba87fcb135e982bd722b9e1d2e6a061d06bade02b75f8c631",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '无法创建有效请求标识。尚未提交操作。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "3eb3466b76408d5cd4a8bdff1a858cccb9b73a9d684d1fa0cdf67eb7e3c4f50b",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '尚未找到原请求回执。原标识和输入仍保留；可再次核对，或明确重发同一请求。'."
+    },
+    {
+      "file": "apps/web/src/frame-extraction.js",
+      "category": "cjk-source",
+      "hash": "fde9ba4847ccba8f1ab76d2252b740dee96f4fd379f486336ccc3990bf59aabe",
+      "owner": "timeline",
+      "reason": "The paired descriptor is emitted at the same state transition. The original accepted-snapshot, unknown, refused, duplicate or read-failure text is retained for existing controller assertions and never used to infer behavior. Frozen RPC inputs, hashes, task records and receipts are unchanged. Display boundary: messageDescriptor/errorMessage → FrameExtractionPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '无法打开此 PNG。当前编辑仍保留。'."
+    },
+    {
+      "file": "apps/web/src/look-pack-intake.ts",
+      "category": "cjk-source",
+      "hash": "92bb69af8d2ce0d1759b6ec3fe2c273afca2e60018b19e7b3464acd292507782",
+      "owner": "timeline",
+      "reason": "The adoption outcome remains uncertain exactly as before. The original diagnostic field is not rendered; colour.pack.unknown/adoptUnconfirmed conveys same-request-only recovery in each language. Display boundary: errorMessage → LookPackControls.tsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '本次采用尚未确认。请查看下方 LUT 导入状态；结果未知时只恢复原请求，不重新采用。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "a20fca8ce6e4f60b5941f1f257ffd51eb1a28e89b2b351bd31179d95e85d60cb",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '保存尚未确认；草稿已保留。请检查任务中的原请求或重新读取范围。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "78c3fb0ac629aebf03d27df3453d9168a58d11cc940b756a93b98ac4f93e963f",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '范围已出现更新版本；已保留当前输入，请核对后继续。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "84bb5fa936cb0e022c605518e0899d46ab2afede228a9ff6991e5593d15a11c7",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '请先确认正在处理的范围或时间线请求。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "a7887e5af9ed63d0a018d01730933277cfd72d7f06974754663467666fa4d441",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '请先明确保存源范围，且确保没有未保存修改。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "083f79370ef0f8154f68f1c59631506a4258ed9102fda7c2b4b9a840857cf612",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '源素材或时间线已变化，请重新选择。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "393ce6571ad899da90f7194589c3da0421c8d227fa2528d6d86bbf05c43e56f8",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '已保存范围必须使用整数帧。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "629b5810ec213ed4efa102c6194478ecd875dae067b7ae5303981508b8625a43",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '追加后的终点超过时间线 18000 帧上限；请缩短已保存范围或调整轨道。'."
+    },
+    {
+      "file": "apps/web/src/source-range-state.js",
+      "category": "cjk-source",
+      "hash": "5a70a2681102d2967e5b99a4c0b4a9955585d68866b25a8825784902d9f9ecd9",
+      "owner": "timeline",
+      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '时间线最多容纳 100 个片段。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "49260984d489f98f731caa146516cd6d6fc0a5e5cfef8416f6c536cbfcc64a5c",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '字幕确认与原请求不一致；草稿仍保留，请在任务中心核对。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "eb2e33ee0e4fe2e5e8e28fda45e605b1ebd82af8595cb78f9105eab0b881db53",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '请先选择字幕或在播放头处新增。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "20d9492841d0300b5487dca80b5b880b92e54880399300b483a0a338e507e0eb",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '开始帧与持续帧数必须填写整数。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "2ac7c80fc3e29e81f0e52b780e335009c3107a77f6485f8b111c9f57786ea83c",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '时间线已有更新版本；请核对后放弃草稿并载入最新字幕。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "31b243b33678edce71233ee78f15b68680c9eeb1460e3400588f7ca50fd3ab72",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '结果待确认。草稿仍保留，请到任务中心恢复同一请求；不要重新提交。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "ca6ea890cd274062b1a470cda731697704984525d9846b5fb2e9ea7662f09675",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '请求未应用，草稿仍保留。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "1b809274a4d33ccd0837f7b2c19e3da003ed04c030be7da28878679703b2469e",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '原请求已应用。草稿仍保留；放弃草稿后可选择时间线上的已保存字幕。'."
+    },
+    {
+      "file": "apps/web/src/subtitle-state.js",
+      "category": "cjk-source",
+      "hash": "161d789fa4a60d5ff43375ade8dbd72c3481aa3fc5cfdacd04e33fbcf110c5e2",
+      "owner": "timeline",
+      "reason": "subtitleDraftIssue preserves shared-contract diagnostic compatibility. Display maps stable issue.code plus whitelisted line/column/codePoint, or emits the paired state error descriptor. Subtitle text and request identity remain literal; protocol exceptions become unknown-outcome warnings rather than raw diagnostics. Display boundary: subtitleDraftMessage and errorMessage → SubtitleInspector.jsx; subtitleAddMessage → SubtitleLane.jsx. Compatibility purpose: Contract/diagnostic compatibility. Reviewed original literal: '原请求已确认未应用，可核对草稿后保存。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "2150bb1387588e2f28c870fd5ce87b2b30b30f597e7026c412f848593af7e348",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '声音试听响应不完整或身份不匹配，请重新准备。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "a8eac874d0c729fdecb5d4f66d3b1f617afffce78b4dd2670029ebe3fd86897c",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '无法确认声音资源已释放。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "9838103a75c820ac8caa35d8db44fea795bbf3473c50504bebc8c8369da4f295",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '本次声音准备已取消。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "cc05e9bf24528731513f7d78a6c56aa4e44acab72d1b0eec4d36d4d71663583c",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '声音准备超过 120 秒预算，请重新准备或选择其他区间。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "706712b9b639f9799afa6deae970c6a4ba93af5dec8499fc522f7d4d9f5fcdcf",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '会话已过期，请重新登录后准备声音。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "6600497c9d2c5c4d8c202a16806096d53336054eabfe5042b10199c0637c9276",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '完整声音区间未能准备，未保留部分音轨。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "54bc641b998ec61af2d826f1fce65c1ea18a7f89e3b2545d3dc2ab878d40a67d",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '当前音频设备无法建立 48 kHz 试听时钟。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "72687e320962dae7e34a23409b6ce78c665382e97ee17e382e80ccc953c80fb6",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '声音准备超过 120 秒预算，请重新准备。'."
+    },
+    {
+      "file": "apps/web/src/timeline-audio-preview-client.ts",
+      "category": "cjk-source",
+      "hash": "2e9b6089de0088048dd59a794fd6bf17ff35357cea4175a503b0151fe67bf0f5",
+      "owner": "timeline",
+      "reason": "The client retains original diagnostic evidence while stable error codes determine cleanup, cancellation, authentication, timeout and source failure display. No original path or arbitrary diagnostic is rendered as primary copy; audio transport/resource ownership is unchanged. Display boundary: TimelineAudioPreviewError.code → timelineAudioPreviewErrorDescriptor → state.errorMessage → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '此环境无法验证声音区间身份。'."
+    },
+    {
+      "file": "apps/web/src/timeline-format-state.js",
+      "category": "cjk-source",
+      "hash": "c16de2b12bb373d0638dbd9677a3f274ff9d5becaadca434c1147cec52604038",
+      "owner": "timeline",
+      "reason": "Read/submit errors carry paired descriptors. The BACKEND_PROTOCOL_ERROR diagnostic is internal and becomes safe read-failure or unknown-outcome copy. Eligibility, draft, revisions and request IDs are unchanged. Display boundary: errorMessage → TimelineFormatPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '输出规格响应不完整，请重新核对。'."
+    },
+    {
+      "file": "apps/web/src/timeline-format-state.js",
+      "category": "cjk-source",
+      "hash": "2345c634e48dbf70b1cc0b8500534e79690dabe72f59035b6d2f628ae8ca8298",
+      "owner": "timeline",
+      "reason": "Read/submit errors carry paired descriptors. The BACKEND_PROTOCOL_ERROR diagnostic is internal and becomes safe read-failure or unknown-outcome copy. Eligibility, draft, revisions and request IDs are unchanged. Display boundary: errorMessage → TimelineFormatPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '会话已过期，请重新登录。'."
+    },
+    {
+      "file": "apps/web/src/timeline-format-state.js",
+      "category": "cjk-source",
+      "hash": "d41c8a2bc500b470d119efa1291b1305beade2f9f9668530cf2f3f3ee660f940",
+      "owner": "timeline",
+      "reason": "Read/submit errors carry paired descriptors. The BACKEND_PROTOCOL_ERROR diagnostic is internal and becomes safe read-failure or unknown-outcome copy. Eligibility, draft, revisions and request IDs are unchanged. Display boundary: errorMessage → TimelineFormatPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '无法核对输出规格，请检查连接后重试。'."
+    },
+    {
+      "file": "apps/web/src/timeline-format-state.js",
+      "category": "cjk-source",
+      "hash": "b49bcfe0d4256382c6cc02deb3cacbde156c26fefbd19e25bdb515e8def1946d",
+      "owner": "timeline",
+      "reason": "Read/submit errors carry paired descriptors. The BACKEND_PROTOCOL_ERROR diagnostic is internal and becomes safe read-failure or unknown-outcome copy. Eligibility, draft, revisions and request IDs are unchanged. Display boundary: errorMessage → TimelineFormatPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '提交结果待确认。请在任务中心恢复同一请求，不能新建请求重试。'."
+    },
+    {
+      "file": "apps/web/src/timeline-format-state.js",
+      "category": "cjk-source",
+      "hash": "f1d9019bdcd5e6a17dc1bdb46db32e2e1371c5c8b209e7496e007884a96bef9d",
+      "owner": "timeline",
+      "reason": "Read/submit errors carry paired descriptors. The BACKEND_PROTOCOL_ERROR diagnostic is internal and becomes safe read-failure or unknown-outcome copy. Eligibility, draft, revisions and request IDs are unchanged. Display boundary: errorMessage → TimelineFormatPanel.jsx. Compatibility purpose: In-memory diagnostic compatibility. Reviewed original literal: '请求未应用，草稿仍保留。请重新核对已保存的规格。'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "51652d66eb7073cfa43d740179b5ea991feb5bdf95968724cd82a25db8690ca1",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '图片默认 90 帧'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "4a3c3003fbe9a5407ec057c569aa2d4ea5e6f24d59811f5d7ea81b45ebc27b92",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '素材时长未知，60 帧仅为示意；不能放置'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "df79ca75ac5a52603d71c754656ff70fbcfd26956a631dddb836e3821185e0b8",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '时间线起点'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "658c7ebadf89b98e2327e292e661a5d91573115b897bdff06e1f3d1f4890c364",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '播放头'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "3ce80774138809cd3bfaa1f1db90b9b0bd06d991ac581294ce8b1fbe0b89e92a",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '片段起点'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "27093e5f2dbeef947ceaded9c3203372a5d1ecbd816cc8837884796d6a42a808",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '片段终点'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "ca6abcf15dc39a48043fcc9382a5d230c4582e93f86f5c06c64738244cf4ec5a",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '素材或轨道已不可用'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "dce7dcc57c8ff599f0b6973c774307e29a9b00d2cf1d39097320f56280bcdace",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '片段类型与目标轨道不兼容'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "7fc3eee28b841d79ba5ef1e027a770166acb5e4ada1d5439f03aba4bc45b59ea",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '片段超过时间线 18000 帧上限'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "939ba51855d1be586a76d9b9991639b41e5eb7f081ba3354836973d512e2a7d4",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '时间线最多容纳 100 个片段'."
+    },
+    {
+      "file": "apps/web/src/timeline-snapping.js",
+      "category": "cjk-source",
+      "hash": "289a825a244f885f52bd3183af3a62fc3e6c45b08241714b04cbcd839225a77b",
+      "owner": "timeline",
+      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '同一轨道不允许重叠'."
+    },
+    {
+      "file": "apps/web/src/timeline-source-freshness.ts",
+      "category": "cjk-source",
+      "hash": "54d2ebbe7cce47c1745983d949d501cbb79d669cd96aebd089af945f36601e1e",
+      "owner": "timeline",
+      "reason": "The historical shape retains its old fallback string only when the actual title is absent; an explicit missing-name flag selects the localized fallback. A user title equal to the same characters is never recognized or translated by string matching. Display boundary: shotTitleMissing → staleSourceSentence(locale) → Timeline.jsx/TimelineInspector.jsx. Compatibility purpose: Explicit missing-name sentinel compatibility. Reviewed original literal: '镜头'."
+    },
+    {
+      "file": "apps/web/src/timeline-split.js",
+      "category": "cjk-source",
+      "hash": "e57f5f875a7f27ad17c3a9e9a413036415929a7be815f6e7e9feddfb209afe3d",
+      "owner": "timeline",
+      "reason": "The old helper clipName sentinel remains for return-shape compatibility. UI uses the explicit selection flag to render timeline.split.unselected; an actual user clip name is not matched against the sentinel. Display boundary: clipSelected → TimelineSplitControls.jsx. Compatibility purpose: Explicit missing-selection sentinel compatibility. Reviewed original literal: '未选择片段'. Valid selected clip names are nonempty under the unchanged contracts clipFields name schema (min 1), so the fallback is only presented for no selection."
+    },
+    {
+      "file": "apps/web/src/use-timeline-audio-preview.ts",
+      "category": "cjk-source",
+      "hash": "4f2c68a67f1ad7976614dc88be4cda11c208dfa1dc2db321ffc567c9d0c3a35d",
+      "owner": "timeline",
+      "reason": "The constructor diagnostic remains associated with its typed stable code and is not rendered directly. Changing locale only relabels the status descriptor; it does not create an AudioContext or restart preparation. Display boundary: AUDIO_PREVIEW_UNSUPPORTED → timelineAudioPreviewErrorDescriptor → TimelineAudioPreview.tsx. Compatibility purpose: Typed transport diagnostic compatibility. Reviewed original literal: '此环境暂不支持声音试听。'."
+    },
+    {
+      "file": "apps/web/src/waveform-state.js",
+      "category": "cjk-source",
+      "hash": "1f4c042b6832ca51ac10c313751e3406e6ef6558eb845f51746082532d15a203",
+      "owner": "timeline",
+      "reason": "Public disclosure constants retain compatibility for tests/other non-UI consumers; the component uses audio.waveform.* catalog copy. Internal errors/duration reasons are displayed only through exact status/code mappings, not raw text. No decoding/retry policy changes with locale. Display boundary: waveformStatusMessage → TimelineWaveform.jsx. Compatibility purpose: Read-only cache diagnostic compatibility. Reviewed original literal: '原始源音轨（首条） · 固定满刻度 · 不反映音量、静音或淡入/淡出'."
+    },
+    {
+      "file": "apps/web/src/waveform-state.js",
+      "category": "cjk-source",
+      "hash": "ed4630134a9a9438a6fb82f40622abe9f528dcf9d3a03df314e7bbae28d8a596",
+      "owner": "timeline",
+      "reason": "Public disclosure constants retain compatibility for tests/other non-UI consumers; the component uses audio.waveform.* catalog copy. Internal errors/duration reasons are displayed only through exact status/code mappings, not raw text. No decoding/retry policy changes with locale. Display boundary: waveformStatusMessage → TimelineWaveform.jsx. Compatibility purpose: Read-only cache diagnostic compatibility. Reviewed original literal: '关闭、收起或切换面板后停止请求；已接受的本地解码可能继续完成。'."
+    },
+    {
+      "file": "apps/web/src/waveform-state.js",
+      "category": "cjk-source",
+      "hash": "cf4eff6da36127933dfaf03b750514c57029e01ed9edd5ee39293eb4d7f61e71",
+      "owner": "timeline",
+      "reason": "Public disclosure constants retain compatibility for tests/other non-UI consumers; the component uses audio.waveform.* catalog copy. Internal errors/duration reasons are displayed only through exact status/code mappings, not raw text. No decoding/retry policy changes with locale. Display boundary: waveformStatusMessage → TimelineWaveform.jsx. Compatibility purpose: Read-only cache diagnostic compatibility. Reviewed original literal: '波形状态返回无效，请重试。'."
+    },
+    {
+      "file": "apps/web/src/waveform-state.js",
+      "category": "cjk-source",
+      "hash": "5832d7064f6f95b73ffebbb592d496fa2c9b2405a7860fc7202b132aefab96a8",
+      "owner": "timeline",
+      "reason": "Public disclosure constants retain compatibility for tests/other non-UI consumers; the component uses audio.waveform.* catalog copy. Internal errors/duration reasons are displayed only through exact status/code mappings, not raw text. No decoding/retry policy changes with locale. Display boundary: waveformStatusMessage → TimelineWaveform.jsx. Compatibility purpose: Read-only cache diagnostic compatibility. Reviewed original literal: '超过10分钟暂不支持波形'."
+    },
+    {
+      "file": "apps/web/src/waveform-state.js",
+      "category": "cjk-source",
+      "hash": "f22df1ffffb7321861e6cabdffd3287de31534b8ee191c65c2dc09f6fa981625",
+      "owner": "timeline",
+      "reason": "Public disclosure constants retain compatibility for tests/other non-UI consumers; the component uses audio.waveform.* catalog copy. Internal errors/duration reasons are displayed only through exact status/code mappings, not raw text. No decoding/retry policy changes with locale. Display boundary: waveformStatusMessage → TimelineWaveform.jsx. Compatibility purpose: Read-only cache diagnostic compatibility. Reviewed original literal: '无法读取波形状态，请重试。'."
+    },
+    {
+      "file": "apps/web/src/ClipSourceReplacement.jsx",
+      "category": "visible-jsx",
+      "hash": "05d21caebc7f9db2c4a7a836a0f48c360ba78c89ff6e3a6b8aa277829e988389",
+      "owner": "timeline",
+      "reason": "Immutable source-version identity notation V followed by the original source version number, not a revision label or prose. The neighboring shot title remains literal user content; all replacement instructions are localized. Reviewed literal template fragment: '· V'."
+    },
+    {
+      "file": "apps/web/src/Preview.jsx",
+      "category": "visible-jsx",
+      "hash": "8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3",
+      "owner": "timeline",
+      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+    },
+    {
+      "file": "apps/web/src/Preview.jsx",
+      "category": "visible-jsx",
+      "hash": "23e3a16cd69e0ea405543ce66c9194e3360e6ae3299a2f4b0e52acf1e401fb74",
+      "owner": "timeline",
+      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps'."
+    },
+    {
+      "file": "apps/web/src/Timeline.jsx",
+      "category": "visible-jsx",
+      "hash": "8170d88edf1074bb37a191df4702b33d3a3944fdac209d0d8d7638ad95aaa4c3",
+      "owner": "timeline",
+      "reason": "Fixed frames-per-second editing/output unit in the original frozen media geometry, not translatable prose. The numeric frame rate and dimensions remain unchanged; surrounding statuses and captions use localized descriptors. Reviewed literal template fragment: 'fps ·'."
+    },
+    {
+      "file": "apps/web/src/Timeline.jsx",
+      "category": "visible-jsx",
+      "hash": "b38fb3f76e4e15f9326ec20a07315e9c7c7f9ad0fed9af2ca8c7e523743d53f1",
+      "owner": "timeline",
+      "reason": "Invariant editing-frame unit suffix on the numeric snap target. Target meaning is localized via preview.snap.labelMessage; placement math and the original frame number remain unchanged. Reviewed literal template fragment: 'f'."
+    }
+  ]
+}

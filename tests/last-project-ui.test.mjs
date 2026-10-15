@@ -1,3 +1,5 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -218,6 +220,9 @@ function view(state, controller, restored = false) {
   const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }; react.default = react;
   const module = { exports: {} };
   Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(name => {
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
+    if (name === '../../../packages/i18n/src/index.ts') return i18nCore;
+    if (name === './LanguageControl.tsx') return { __esModule: true, default: 'LanguageControl' };
     if (name === 'react') return react;
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
     throw new Error(`Unexpected UI dependency: ${name}`);

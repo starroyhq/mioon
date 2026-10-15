@@ -1,3 +1,4 @@
+import { renderMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTimelineLoudnessApplyController, timelineLoudnessCanReview } from '../apps/web/src/timeline-loudness-apply-state.ts';
@@ -25,8 +26,8 @@ async function harness(overrides = {}) {
 test('explicit human apply binds scalar intent, shared report digest and fixed review; attach and polling are passive', async () => {
   const h = await harness(), before = h.getObservation(); h.controller.setObservation(before);
   assert.equal(h.hashes.length, 0); const pending = h.review(); assert.equal(h.hashes[0].value, before.report);
-  await h.confirm(); assert.equal(h.submits.length, 0); assert.match(h.confirms[0].message, /rev 4.*1 个可听片段/);
-  assert.match(h.confirms[0].message, /重新核验来源.*不会自动选择 v2/);
+  await h.confirm(); assert.equal(h.submits.length, 0); assert.match(renderMessage('zh-Hans', h.confirms[0].message), /修订版 4.*1 个可听片段/);
+  assert.match(renderMessage('zh-Hans', h.confirms[0].message), /重新核验来源.*不会自动选择 v2/);
   h.confirms[0].wait.resolve(true); await flush(); const { intent, canExecute } = h.submits[0];
   assert.deepEqual(intent.input, { ...input(), requestId: 'original-apply-request-1', snapshotSha256: 'b'.repeat(64), candidateDigest: digest });
   assert.deepEqual(Object.keys(intent.input).sort(), ['candidateDigest','expectedRevision','measurementProfile','mixProfile','projectId','requestId','snapshotSha256','target']);

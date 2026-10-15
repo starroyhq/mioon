@@ -1,3 +1,5 @@
+import { message } from '../../../packages/i18n/src/index.ts';
+import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { timelineDeliveryNameSchema, timelineDeliveryNameFields, isTimelineDeliveryNameSnapshot } from '@mioon/contracts/timeline-delivery';
 import type { TimelineDeliveryNameInput } from '@mioon/contracts/timeline-delivery';
@@ -114,7 +116,7 @@ const positiveInteger = (value: unknown): value is number => typeof value === 'n
 export function hasNamedTimelineDelivery(value: unknown): boolean {
   return object(value) && value.mode === 'timeline' && value.purpose === 'export' && object(value.snapshot) && Object.hasOwn(value.snapshot, 'deliveryName');
 }
-export interface FrozenDeliveryDescription { dimensions: string; fps: number; rate: string; upscale: boolean }
+export interface FrozenDeliveryDescription { dimensions: string; fps: number; rate: string; rateMessage?: MessageDescriptor; upscale: boolean }
 export type NamedTimelineExportStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 const namedExportStatus = (value: unknown): value is NamedTimelineExportStatus => value === 'queued' || value === 'running' || value === 'succeeded' || value === 'failed';
 export interface NamedTimelineDeliveryHistory {
@@ -122,15 +124,32 @@ export interface NamedTimelineDeliveryHistory {
   error: string | null; output: FrozenDeliveryDescription | null; downloadHref: string | null;
 }
 
+/** Display-only adapter for frozen rate-control metadata. It intentionally
+ * does not import the unchecked legacy settings module, revalidate/change the
+ * accepted history projection, or translate the old source-language rate. */
+function frozenRateMessage(delivery: unknown): MessageDescriptor | undefined {
+  if (!object(delivery) || !object(delivery.exportSettings) || !object(delivery.exportSettings.rateControl)) return undefined;
+  const rate = delivery.exportSettings.rateControl;
+  if (rate.mode === 'bitrate' && (rate.targetKbps === 2000 || rate.targetKbps === 4000 || rate.targetKbps === 8000))
+    return message('export.settings.rateTarget', { rate: rate.targetKbps / 1000 });
+  if (rate.mode === 'crf') {
+    if (rate.quality === 'compact') return message('export.settings.compact');
+    if (rate.quality === 'standard') return message('export.settings.standard');
+    if (rate.quality === 'high') return message('export.settings.high');
+  }
+  return undefined;
+}
+
 /** Validate the narrow display projection supplied by the existing profile
  * validator. Never read current project geometry or editable export settings. */
 function frozenDeliveryDescription(value: unknown, snapshot: Record<string, unknown>): FrozenDeliveryDescription | null {
   const timeline = snapshot.timeline;
   if (!object(timeline) || !positiveInteger(timeline.width) || !positiveInteger(timeline.height) || timeline.fps !== 30) return null;
-  if (!Object.hasOwn(snapshot, 'delivery')) return { dimensions: `${timeline.width} × ${timeline.height}`, fps: timeline.fps, rate: '原有编码设置', upscale: false };
+  if (!Object.hasOwn(snapshot, 'delivery')) return { dimensions: `${timeline.width} × ${timeline.height}`, fps: timeline.fps, rate: '原有编码设置', rateMessage: message('export.history.legacyRate'), upscale: false };
   if (!object(value) || !positiveInteger(value.width) || !positiveInteger(value.height) || value.width > 1920 || value.height > 1920 || value.fps !== 30 || typeof value.rate !== 'string' ||
       !['紧凑 · CRF 28', '标准 · CRF 23', '高画质 · CRF 18', '平均目标 2 Mb/s', '平均目标 4 Mb/s', '平均目标 8 Mb/s'].includes(value.rate)) return null;
-  return { dimensions: `${value.width} × ${value.height}`, fps: value.fps, rate: value.rate, upscale: value.width > timeline.width || value.height > timeline.height };
+  const rateMessage = frozenRateMessage(snapshot.delivery);
+  return { dimensions: `${value.width} × ${value.height}`, fps: value.fps, rate: value.rate, ...(rateMessage ? { rateMessage } : {}), upscale: value.width > timeline.width || value.height > timeline.height };
 }
 
 export function namedTimelineDeliveryHistory(value: unknown, frozenDelivery?: unknown): NamedTimelineDeliveryHistory | null {

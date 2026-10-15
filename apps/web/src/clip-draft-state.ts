@@ -1,3 +1,6 @@
+import { message as displayMessage } from '../../../packages/i18n/src/index.ts';
+import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
+import { recoveryDisplayError, recoveryErrorMessage } from './recovery-display.ts';
 import { clipColourSchema } from '../../../packages/contracts/src/timeline-colour.ts';
 import type { ClipColour } from '../../../packages/contracts/src/timeline-colour.ts';
 import { clipDraftFailure } from './clip-draft-client.ts';
@@ -20,7 +23,7 @@ export interface ClipDraftCapture extends Readonly<ClipDraftKey> { readonly scop
 export type ClipDraftPhase = 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'conflict' | 'unsupported';
 export interface ClipDraftState {
   raw: ClipDraftRaw; dirty: boolean; baseRevision: number; source: ClipDraftSource; conflict: boolean;
-  phase: ClipDraftPhase; error: string; candidate: ClipDraftRecord | null; savedAt: string | null; submitting: boolean; businessPending: boolean;
+  phase: ClipDraftPhase; error: string; errorDisplay?: MessageDescriptor; candidate: ClipDraftRecord | null; savedAt: string | null; submitting: boolean; businessPending: boolean;
   autosavePaused: boolean; failure: ClipDraftFailure | null; retainedRecord: boolean;
 }
 const own = (value: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(value, key);
@@ -77,14 +80,14 @@ export function createClipDraftController({ context: initial, client, validateTi
   let envelope: ClipDraftEnvelope | null = null, timer: ReturnType<typeof setTimeout> | undefined, flight: Promise<void> | null = null;
   let closeFlight: Promise<boolean> | null = null;
   let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false,
-    phase: context.restored ? 'unsupported' : 'loading', error: '', candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
+    phase: context.restored ? 'unsupported' : 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
   const captures = new WeakSet<ClipDraftCapture>();
   const emit = (patch: Partial<ClipDraftState>) => { state = { ...state, ...patch }; if (active) onChange(state); };
-  function pausePersistence(error: unknown, prefix = '', readOnly = false) {
+  function pausePersistence(error: unknown, prefix = '', readOnly = false, display?: MessageDescriptor) {
     const observed = clipDraftFailure(error);
     // A failed reread cannot rewrite evidence about an earlier write.
     const failure = state.failure && (state.failure.kind === 'unknown' || readOnly) ? state.failure : observed;
-    emit({ autosavePaused: true, failure, phase: 'error', error: prefix + message(error) });
+    emit({ autosavePaused: true, failure, phase: 'error', error: prefix + message(error), errorDisplay: display ?? recoveryErrorMessage(error) });
   }
   const belongs = (owner: number) => active && owner === generation;
   const conflict = () => context.timelineRevision !== state.baseRevision || !sameClipDraftValue(context.source, state.source);
@@ -95,23 +98,23 @@ export function createClipDraftController({ context: initial, client, validateTi
   const readyToWrite = () => active && !state.autosavePaused && !deleting && loaded && envelope && context.connected && !context.restored && state.dirty && !state.candidate && !['loading', 'error', 'unsupported'].includes(state.phase);
   function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToWrite() && !flight && !closeFlight) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
   function accept(next: ClipDraftEnvelope, expected: ClipDraftEnvelope | null, write = false) {
-    if (!sameClipDraftValue(next.key, keyOf(context)) || expected && (next.workspaceScope !== expected.workspaceScope || next.instanceId !== expected.instanceId || next.revision !== expected.revision + (write ? 1 : 0))) throw Error('本地草稿确认与当前记录不一致；已停止覆盖。');
-    if (expected && envelope && envelope.revision !== expected.revision && !sameClipDraftValue(envelope, next)) throw Error('另一个本地草稿确认已更新记录；忽略旧回复。');
+    if (!sameClipDraftValue(next.key, keyOf(context)) || expected && (next.workspaceScope !== expected.workspaceScope || next.instanceId !== expected.instanceId || next.revision !== expected.revision + (write ? 1 : 0))) throw recoveryDisplayError(Error('本地草稿确认与当前记录不一致；已停止覆盖。'), displayMessage('recovery.clip.error.ackMismatch'));
+    if (expected && envelope && envelope.revision !== expected.revision && !sameClipDraftValue(envelope, next)) throw recoveryDisplayError(Error('另一个本地草稿确认已更新记录；忽略旧回复。'), displayMessage('recovery.clip.error.newerAck'));
     envelope = copy(next);
   }
   async function load() {
     if (!active || context.restored || flight || deleting || state.submitting) return;
     const owner = generation, reading = ++readSerial, key = keyOf(context), existing = envelope;
-    emit({ phase: 'loading', error: state.autosavePaused ? state.error : '' });
+    emit({ phase: 'loading', error: state.autosavePaused ? state.error : '', errorDisplay: state.autosavePaused ? state.errorDisplay : undefined });
     try {
       const next = await client.get(key);
       if (!belongs(owner) || reading !== readSerial) return;
       if (!next.supported) { loaded = false; emit({ phase: 'unsupported' }); return; }
-      if (existing && (next.workspaceScope !== existing.workspaceScope || next.instanceId !== existing.instanceId)) throw Error('工作区或服务实例已变化。当前输入仍保留；请重新载入页面并明确恢复草稿。');
-      if (existing && next.revision < existing.revision) throw Error('本地草稿返回了旧版本；当前输入仍保留。');
-      if (!sameClipDraftValue(next.key, key)) throw Error('本地草稿归属不匹配；已停止载入。');
+      if (existing && (next.workspaceScope !== existing.workspaceScope || next.instanceId !== existing.instanceId)) throw recoveryDisplayError(Error('工作区或服务实例已变化。当前输入仍保留；请重新载入页面并明确恢复草稿。'), displayMessage('recovery.clip.error.identity'));
+      if (existing && next.revision < existing.revision) throw recoveryDisplayError(Error('本地草稿返回了旧版本；当前输入仍保留。'), displayMessage('recovery.clip.error.oldRevision'));
+      if (!sameClipDraftValue(next.key, key)) throw recoveryDisplayError(Error('本地草稿归属不匹配；已停止载入。'), displayMessage('recovery.clip.error.owner'));
       envelope = copy(next); loaded = true;
-      emit({ candidate: next.draft ? copy(next.draft) : null, phase: next.draft ? 'ready' : 'ready', savedAt: next.draft?.updatedAt ?? null, error: state.autosavePaused ? state.error : next.draft && state.dirty ? '发现另一个已保存草稿。当前输入未被替换；请明确处理已保存草稿。' : '' });
+      emit({ candidate: next.draft ? copy(next.draft) : null, phase: next.draft ? 'ready' : 'ready', savedAt: next.draft?.updatedAt ?? null, error: state.autosavePaused ? state.error : next.draft && state.dirty ? '发现另一个已保存草稿。当前输入未被替换；请明确处理已保存草稿。' : '', errorDisplay: state.autosavePaused ? state.errorDisplay : next.draft && state.dirty ? displayMessage('recovery.clip.otherDraft') : undefined });
       // A read observes one moment. Even an empty slot cannot revoke an older
       // unknown write that may still publish after this GET.
       if (!next.draft && !state.autosavePaused) schedule();
@@ -124,12 +127,12 @@ export function createClipDraftController({ context: initial, client, validateTi
     if (draftMatches()) { emit({ phase: 'saved', savedAt: envelope.draft!.updatedAt }); return; }
     const owner = generation, capturedSerial = serial, previous = copy(envelope), raw = copy(state.raw), source = copy(state.source), baseRevision = state.baseRevision;
     readSerial++;
-    emit({ phase: 'saving', error: '' });
+    emit({ phase: 'saving', error: '', errorDisplay: undefined });
     const work = (async () => {
       try {
         const next = await client.put({ ...keyOf(context), workspaceScope: previous.workspaceScope, instanceId: previous.instanceId, expectedRevision: previous.revision, baseRevision, source, raw });
         if (!belongs(owner)) return;
-        if (!next.draft || next.draft.baseRevision !== baseRevision || !sameClipDraftValue(next.draft.source, source) || !sameClipDraftValue(next.draft.raw, raw)) throw Error('本地草稿保存确认无效；当前输入仍保留。');
+        if (!next.draft || next.draft.baseRevision !== baseRevision || !sameClipDraftValue(next.draft.source, source) || !sameClipDraftValue(next.draft.raw, raw)) throw recoveryDisplayError(Error('本地草稿保存确认无效；当前输入仍保留。'), displayMessage('recovery.clip.error.saveAck'));
         accept(next, previous, true);
         emit({ phase: capturedSerial === serial ? 'saved' : 'ready', savedAt: next.draft.updatedAt, conflict: state.conflict || next.targetStatus !== 'matching' || conflict() });
       } catch (error) { if (belongs(owner)) pausePersistence(error); }
@@ -177,7 +180,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     try {
       const next = await client.remove({ ...expected.key, workspaceScope: expected.workspaceScope, instanceId: expected.instanceId, expectedRevision: expected.revision });
       if (!belongs(owner)) return false;
-      if (next.draft !== null) throw Error('本地草稿未被确认清除；已保留当前输入。');
+      if (next.draft !== null) throw recoveryDisplayError(Error('本地草稿未被确认清除；已保留当前输入。'), displayMessage('recovery.clip.error.clearAck'));
       accept(next, expected, true); return true;
     } finally { if (deleting === deletion) deleting = null; }
   }
@@ -205,7 +208,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false,
         submitting: false, businessPending: false, autosavePaused: true, retainedRecord: true, phase: 'ready',
         failure: localWriteInFlight ? { code: 'LOCAL_DRAFT_WRITE_RETAINED', status: null, kind: 'unknown' } : state.failure,
-        error: '已放弃当前表单输入，未删除草稿记录，也未取消任何请求。已保存或稍后写入的草稿可能再次出现。' });
+        error: '已放弃当前表单输入，未删除草稿记录，也未取消任何请求。已保存或稍后写入的草稿可能再次出现。', errorDisplay: displayMessage('recovery.clip.abandoned') });
       return true;
     },
     setContext(next: ClipDraftContext) {
@@ -225,23 +228,23 @@ export function createClipDraftController({ context: initial, client, validateTi
       if (!isCurrent(token) || !context.visible || state.dirty || !state.candidate || !envelope) return false;
       const candidate = state.candidate; serial++;
       emit({ raw: copy(candidate.raw), baseRevision: candidate.baseRevision, source: copy(candidate.source), dirty: true, candidate: null,
-        conflict: envelope.targetStatus !== 'matching' || context.timelineRevision !== candidate.baseRevision || !sameClipDraftValue(context.source, candidate.source), phase: 'saved', savedAt: candidate.updatedAt, error: state.autosavePaused ? state.error : '' }); return true;
+        conflict: envelope.targetStatus !== 'matching' || context.timelineRevision !== candidate.baseRevision || !sameClipDraftValue(context.source, candidate.source), phase: 'saved', savedAt: candidate.updatedAt, error: state.autosavePaused ? state.error : '', errorDisplay: state.autosavePaused ? state.errorDisplay : undefined }); return true;
     },
     async discard(token: ClipDraftCapture, canDiscard: () => boolean = () => true): Promise<boolean> {
       if (!isCurrent(token) || state.submitting || !canDiscard()) return false;
       if (timer) clearTimeout(timer); timer = undefined;
       const owner = generation;
-      if (context.restored) { serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'unsupported', error: '' }); return true; }
+      if (context.restored) { serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'unsupported', error: '', errorDisplay: undefined }); return true; }
       if (flight) await flight;
       if (!isCurrent(token) || !canDiscard()) { schedule(); return false; }
       try {
         // Unknown writes cannot be forgotten merely because their response failed.
-        if (!loaded || !envelope || state.autosavePaused || state.phase === 'error') { emit({ error: '本地草稿状态尚未确认。可选择“放弃当前输入，保留草稿记录”安全离开；这不会删除或取消原记录。' }); return false; }
+        if (!loaded || !envelope || state.autosavePaused || state.phase === 'error') { emit({ error: '本地草稿状态尚未确认。可选择“放弃当前输入，保留草稿记录”安全离开；这不会删除或取消原记录。', errorDisplay: displayMessage('recovery.clip.leaveUnconfirmed') }); return false; }
         if (envelope.draft && !await clearRecord(copy(envelope), owner)) return false;
         // A DELETE already sent while the target was valid is not cancelled.
         // Its exact ACK may update the local record, but never clear stale input.
         if (!isCurrent(token) || !canDiscard()) { schedule(); return false; }
-        serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'ready', error: '' }); return true;
+        serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return true;
       } catch (error) { if (belongs(owner)) pausePersistence(error); return false; }
     },
     async discardStored(token = capture()): Promise<boolean> {
@@ -250,7 +253,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       try {
         if (!await clearRecord(copy(envelope), owner)) return false;
         if (!belongs(owner) || !sameClipDraftValue(state.candidate, candidate)) return false;
-        emit({ candidate: null, savedAt: null, phase: 'ready', error: state.autosavePaused ? state.error : '' }); schedule(); return true;
+        emit({ candidate: null, savedAt: null, phase: 'ready', error: state.autosavePaused ? state.error : '', errorDisplay: state.autosavePaused ? state.errorDisplay : undefined }); schedule(); return true;
       } catch (error) { if (belongs(owner)) pausePersistence(error); return false; }
     },
     async save(onSave: (clipId: string, patch: Record<string, unknown>, baseRevision: number, options: { canExecute: () => boolean }) => Promise<unknown>): Promise<unknown> {
@@ -262,7 +265,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       if (!belongs(owner)) return null;
       if (savedSerial !== serial || context.busy || !context.visible || !context.connected || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
       const stored = envelope ? copy(envelope) : null, localUnconfirmed = !context.restored && (!loaded || state.autosavePaused || state.phase === 'error');
-      emit({ error: localUnconfirmed ? state.error : '' });
+      emit({ error: localUnconfirmed ? state.error : '', errorDisplay: localUnconfirmed ? state.errorDisplay : undefined });
       try {
         const canExecute = () => belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
         emit({ businessPending: true });
@@ -270,17 +273,17 @@ export function createClipDraftController({ context: initial, client, validateTi
         if (!belongs(owner)) return null;
         if (!result) { emit({ submitting: false, businessPending: false }); return null; }
         const saved = validateTimeline(result, original.projectId) ? acknowledged(result, original, base, source, patch) : null;
-        if (!saved) throw Error('片段保存确认与原始输入不一致；本地草稿仍保留。');
-        if (context.timelineRevision > base + 1 || !sameClipDraftValue(context.source, source)) { emit({ submitting: false, businessPending: false, conflict: true, error: '时间线已有更新；本地草稿仍保留，请核对最新片段。' }); return result; }
-        if (savedSerial !== serial) { emit({ submitting: false, businessPending: false, conflict: true, error: '原输入已保存到时间线。之后的新输入仍保留，请核对更新后的片段。' }); schedule(); return result; }
-        if (localUnconfirmed) { emit({ submitting: false, businessPending: false, conflict: true, error: '片段已保存到时间线，但本地草稿状态尚未确认。当前输入仍保留，请重新核对本地记录。' }); return result; }
+        if (!saved) throw recoveryDisplayError(Error('片段保存确认与原始输入不一致；本地草稿仍保留。'), displayMessage('recovery.clip.error.timelineAck'));
+        if (context.timelineRevision > base + 1 || !sameClipDraftValue(context.source, source)) { emit({ submitting: false, businessPending: false, conflict: true, error: '时间线已有更新；本地草稿仍保留，请核对最新片段。', errorDisplay: displayMessage('recovery.clip.timelineChanged') }); return result; }
+        if (savedSerial !== serial) { emit({ submitting: false, businessPending: false, conflict: true, error: '原输入已保存到时间线。之后的新输入仍保留，请核对更新后的片段。', errorDisplay: displayMessage('recovery.clip.newerInput') }); schedule(); return result; }
+        if (localUnconfirmed) { emit({ submitting: false, businessPending: false, conflict: true, error: '片段已保存到时间线，但本地草稿状态尚未确认。当前输入仍保留，请重新核对本地记录。', errorDisplay: displayMessage('recovery.clip.savedUnconfirmed') }); return result; }
         if (stored?.draft && envelope && sameClipDraftValue(stored, envelope)) {
           try { if (!await clearRecord(stored, owner)) return result; }
-          catch (error) { if (belongs(owner)) { emit({ submitting: false, businessPending: false, conflict: true }); pausePersistence(error, '片段已保存，但本地草稿清除未确认。'); } return result; }
+          catch (error) { if (belongs(owner)) { emit({ submitting: false, businessPending: false, conflict: true }); pausePersistence(error, '片段已保存，但本地草稿清除未确认。', false, displayMessage('recovery.clip.clearUnconfirmed')); } return result; }
         }
         if (!belongs(owner) || savedSerial !== serial) { if (belongs(owner)) emit({ submitting: false, businessPending: false, conflict: true }); return result; }
-        serial++; emit({ raw: clipDraftRaw(saved), dirty: false, baseRevision: base + 1, source, conflict: false, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: context.restored ? 'unsupported' : 'ready', error: '' }); return result;
-      } catch (error) { if (belongs(owner)) emit({ submitting: false, businessPending: false, error: message(error) }); return null; }
+        serial++; emit({ raw: clipDraftRaw(saved), dirty: false, baseRevision: base + 1, source, conflict: false, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: context.restored ? 'unsupported' : 'ready', error: '', errorDisplay: undefined }); return result;
+      } catch (error) { if (belongs(owner)) emit({ submitting: false, businessPending: false, error: message(error), errorDisplay: recoveryErrorMessage(error) }); return null; }
     },
     load, flush, flushForClose,
     activate() { active = true; },

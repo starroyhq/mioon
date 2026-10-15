@@ -1,3 +1,6 @@
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
+import { TimelineUiError, timelineFailure, timelineErrorMessage } from './timeline-notices.ts';
 import { isLookPackInspectResponse, lookPackInspectResponseSchema } from '../../../packages/contracts/src/look-pack-inspection.ts';
 import type { LookPackInspection } from '../../../packages/contracts/src/look-pack.ts';
 import { isLookPackBytes, parseLookPackBytes } from '../../../packages/business/src/look-pack.ts';
@@ -19,9 +22,10 @@ type Range = '' | 'limited' | 'full';
 type Phase = 'idle' | 'loading' | 'ready' | 'error';
 export interface ClipLutImportRecord {
   input: LutImportInput; sha256: string; sizeBytes: number;
-  phase: 'sending' | 'unknown' | 'imported' | 'rejected'; error: string; resource: LutResource | null;
+  phase: 'sending' | 'unknown' | 'imported' | 'rejected'; error: string; errorMessage?: DisplayMessage; resource: LutResource | null;
 }
 export interface ClipLutState {
+  sourceErrorMessage?: DisplayMessage; listErrorMessage?: DisplayMessage; resourceErrorMessage?: DisplayMessage; importErrorMessage?: DisplayMessage; recoveryErrorMessage?: DisplayMessage; packErrorMessage?: DisplayMessage;
   opened: boolean; sourcePhase: Phase; inspection: TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection | null; sourceError: string;
   range: Range; sourceDeclared: boolean; listPhase: Phase; resources: LutResource[]; nextAfter: string | null; listError: string;
   selectedId: string; selected: LutResource | null; resourcePhase: Phase; resourceError: string; lookDeclared: boolean;
@@ -39,27 +43,31 @@ const normalized = (tag: string | null): string => (tag ?? '').trim().toLowerCas
 const absent = (tag: string | null): boolean => ['', 'unknown', 'unspecified', 'reserved'].includes(normalized(tag));
 /** Declarations cannot override known HDR/Log, conflicting colour tags or range.
  * The backend additionally verifies the selected stream and supported format. */
-export function clipLutSourceIssue(value: TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection | null, range: Range): string {
-  if (!value) return '请先检查当前来源。';
-  if ('kind' in value) return timelineAnyImageEvidenceSchema.safeParse(value.evidence).success ? '' : '图片证据无效，请重新检查。';
-  if (value.status === 'unsupported' || timelineColourSourceEvidenceStatus(value.evidence) === 'unsupported') return value.reason || '此来源不支持当前 Rec.709 SDR 流程；HDR / Log、冲突标签、RGB / alpha 与不受支持的像素格式不能通过声明覆盖。';
-  if (value.streamIndex === null || value.evidence.hdrMetadata || [value.evidence.primaries, value.evidence.transfer, value.evidence.matrix].some(tag => !absent(tag) && normalized(tag) !== 'bt709')) return '来源存在 HDR、Log 或非 Rec.709 标签，不能用手动声明覆盖。';
+export function clipLutSourceMessage(value: TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection | null, range: Range): DisplayMessage | null {
+  if (!value) return message('colour.error.inspectFirst');
+  if ('kind' in value) return timelineAnyImageEvidenceSchema.safeParse(value.evidence).success ? null : message('colour.error.invalidImageEvidence');
+  if (value.status === 'unsupported' || timelineColourSourceEvidenceStatus(value.evidence) === 'unsupported') return message('colour.error.unsupportedSource');
+  if (value.streamIndex === null || value.evidence.hdrMetadata || [value.evidence.primaries, value.evidence.transfer, value.evidence.matrix].some(tag => !absent(tag) && normalized(tag) !== 'bt709')) return message('colour.error.conflictingTags');
   const known = normalized(value.evidence.range);
-  if (!absent(known) && !['tv', 'mpeg', 'limited', 'pc', 'jpeg', 'full'].includes(known)) return '来源范围标签不受支持。';
-  if (!range) return '请明确选择源素材的 Limited 或 Full 范围。';
-  if ((['tv', 'mpeg', 'limited'].includes(known) && range !== 'limited') || (['pc', 'jpeg', 'full'].includes(known) && range !== 'full')) return '所选范围与来源已知标签冲突，不能覆盖。';
-  return '';
+  if (!absent(known) && !['tv', 'mpeg', 'limited', 'pc', 'jpeg', 'full'].includes(known)) return message('colour.error.unsupportedRange');
+  if (!range) return message('colour.error.rangeRequired');
+  if ((['tv', 'mpeg', 'limited'].includes(known) && range !== 'limited') || (['pc', 'jpeg', 'full'].includes(known) && range !== 'full')) return message('colour.error.rangeConflict');
+  return null;
+}
+export function clipLutSourceIssue(value: TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection | null, range: Range): string {
+  return renderMessage('zh-Hans', clipLutSourceMessage(value, range));
 }
 const errorMessage = (error: unknown, fallback: string): string => error instanceof Error ? error.message : fallback;
-export function clipLutFileIssue(file: { name: string; size: number }): string {
-  if (!/\.cube$/iu.test(file.name) || !file.name.length || file.name.length > 200) return '请选择名称不超过 200 字符的 .cube 文件。';
-  if (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > LUT_RESOURCE_LIMITS.sourceBytes) return '仅支持非空且不超过 7 MiB 的 .cube 文件；不会自动改写或缩小原文件。';
-  return '';
+export function clipLutFileMessage(file: { name: string; size: number }): DisplayMessage | null {
+  if (!/\.cube$/iu.test(file.name) || !file.name.length || file.name.length > 200) return message('colour.error.fileName');
+  if (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > LUT_RESOURCE_LIMITS.sourceBytes) return message('colour.error.fileSize');
+  return null;
 }
+export function clipLutFileIssue(file: { name: string; size: number }): string { return renderMessage('zh-Hans', clipLutFileMessage(file)); }
 export async function prepareClipLutImport(file: Pick<File, 'name' | 'size' | 'arrayBuffer'>, projectId: string, requestId: string): Promise<ClipLutImportRecord> {
-  const issue = clipLutFileIssue(file); if (issue) throw Error(issue);
+  const issue = clipLutFileMessage(file); if (issue) throw new TimelineUiError(issue);
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (bytes.byteLength !== file.size) throw Error('读取的文件大小已变化，请重新选择文件。');
+  if (bytes.byteLength !== file.size) throw new TimelineUiError(message('colour.error.fileChanged'));
   let binary = ''; for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -88,17 +96,17 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
   const allowed = (): boolean => { sync(); return active && state.opened && !context.blocked; };
   const call = async (operation: string, input: Record<string, unknown>): Promise<unknown> => {
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
-    try { return await Promise.race([rpc(operation, input, { signal: controller.signal }), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { controller.abort(); reject(Error('请求尚未确认，请重试原请求。')); }, timeoutMs); })]); }
+    try { return await Promise.race([rpc(operation, input, { signal: controller.signal }), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { controller.abort(); reject(new TimelineUiError(message('colour.error.requestUnconfirmed'))); }, timeoutMs); })]); }
     finally { if (timer) clearTimeout(timer); }
   };
   async function verifyWorkspace(owner: number): Promise<ClipLutRecoveryIdentity> {
     const key = { projectId: context.projectId, timelineId: context.timelineId, clipId: context.clipId };
     const response = await readWorkspace(key);
-    if (!owns(owner) || context.blocked) throw Error('项目或片段已变化，未提交导入。');
+    if (!owns(owner) || context.blocked) throw new TimelineUiError(message('colour.error.ownerChanged'));
     const result = clipDraftEnvelopeSchema.safeParse(response);
     if (!result.success || !result.data.supported || result.data.targetStatus === 'missing' ||
-        Object.entries(key).some(([name, value]) => result.data.supported && result.data.key[name as keyof ClipDraftKey] !== value)) throw Error('无法核对当前工作区身份，已阻止导入。');
-    if (workspaceScope !== null && workspaceScope !== result.data.workspaceScope) throw Error('工作区身份已变化，已阻止导入。请重新打开项目核对，原恢复记录不会转移。');
+        Object.entries(key).some(([name, value]) => result.data.supported && result.data.key[name as keyof ClipDraftKey] !== value)) throw new TimelineUiError(message('colour.error.workspaceUnverified'));
+    if (workspaceScope !== null && workspaceScope !== result.data.workspaceScope) throw new TimelineUiError(message('colour.error.workspaceChanged'));
     workspaceScope = result.data.workspaceScope;
     return { workspaceScope, projectId: key.projectId };
   }
@@ -110,35 +118,36 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       metadata = clipLutRecoveryMetadata(identity, record); key = clipLutRecoveryKey(identity);
       if (replay) await recovery.verify(metadata); else await recovery.reserve(metadata);
       if (!owns(owner) || context.blocked) {
-        if (owns(owner)) emit({ importing: false, recovery: metadata, recoveryPhase: 'ready', recoveryError: '原请求记录已保留，但当前不可提交；请恢复连接后核对原请求。' });
+        if (owns(owner)) emit({ importing: false, recovery: metadata, recoveryPhase: 'ready', recoveryError: '原请求记录已保留，但当前不可提交；请恢复连接后核对原请求。', recoveryErrorMessage: message('colour.error.recordRetained') });
         return false;
       }
       emit({ recovery: metadata, recoveryPhase: 'ready', recoveryError: '' });
     } catch (error) {
-      if (owns(owner)) emit({ importing: false, recoveryPhase: 'error', recoveryError: errorMessage(error, '无法保存原请求恢复记录，未提交导入。') });
+      if (owns(owner)) emit({ importing: false, recoveryPhase: 'error', ...timelineFailure('recoveryError', error, message('colour.error.recordSaveFailed')) });
       return false;
     }
     record.phase = 'sending'; record.error = ''; imports.set(key, record);
     emit({ importRecord: copy(record) });
     try {
       const value = await call('lut.import', record.input);
-      if (!isLutResponse('lut.import', record.input, value)) throw Error('导入回复与原请求不一致，结果仍待确认。');
+      if (!isLutResponse('lut.import', record.input, value)) throw new TimelineUiError(message('colour.error.replyMismatch'));
       const result = lutImportResponseSchema.parse(value);
-      if (result.resource.sha256 !== record.sha256 || result.resource.sizeBytes !== record.sizeBytes) throw Error('导入回复与原文件指纹不一致，结果仍待确认。');
+      if (result.resource.sha256 !== record.sha256 || result.resource.sizeBytes !== record.sizeBytes) throw new TimelineUiError(message('colour.error.fingerprintMismatch'));
       record.phase = 'imported'; record.resource = result.resource;
     } catch (error) {
       const known = error as { definitive?: boolean; code?: string };
       record.phase = known.definitive === true && ['VALIDATION_ERROR', 'LUT_FORMAT_UNSUPPORTED', 'LUT_SOURCE_TOO_LARGE'].includes(known.code ?? '') ? 'rejected' : 'unknown';
-      record.error = errorMessage(error, '导入结果尚未确认，请仅重试原请求。');
+      Object.assign(record, timelineFailure('error', error, message('colour.error.importUnconfirmed')));
     }
     let retained: ClipLutRecoveryMetadata | null = metadata, cleanupError = '';
+    let cleanupMessage: DisplayMessage | undefined;
     if (record.phase === 'imported' || record.phase === 'rejected') {
       try { await recovery.complete(metadata); retained = null; imports.delete(key); }
-      catch (error) { cleanupError = errorMessage(error, '原请求已确认，但恢复记录尚未安全清除。'); }
+      catch (error) { cleanupError = errorMessage(error, '原请求已确认，但恢复记录尚未安全清除。'); cleanupMessage = timelineErrorMessage(error, message('colour.error.cleanupFailed')); }
     }
     if (owns(owner)) {
       const resource = record.resource;
-      emit({ importing: false, importRecord: copy(record), recovery: retained, recoveryPhase: cleanupError ? 'error' : 'ready', recoveryError: cleanupError,
+      emit({ importing: false, importRecord: copy(record), recovery: retained, recoveryPhase: cleanupError ? 'error' : 'ready', recoveryError: cleanupError, recoveryErrorMessage: cleanupMessage,
         resources: resource && !state.resources.some(item => item.id === resource.id) ? [...state.resources, resource] : state.resources });
     }
     return record.phase === 'imported';
@@ -160,9 +169,9 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
         const identity = await verifyWorkspace(owner), metadata = await recovery.read(identity);
         if (!owns(owner) || serial !== recoverySerial) return;
         const record = imports.get(clipLutRecoveryKey(identity));
-        if (record && (!metadata || !sameClipLutRecovery(metadata, clipLutRecoveryMetadata(identity, record)))) throw Error('LUT 恢复记录已变化，已停止导入；请核对原请求。');
+        if (record && (!metadata || !sameClipLutRecovery(metadata, clipLutRecoveryMetadata(identity, record)))) throw new TimelineUiError(message('colour.error.recoveryChanged'));
         emit({ recoveryPhase: 'ready', recovery: metadata, importRecord: record ? copy(record) : null });
-      } catch (error) { if (owns(owner) && serial === recoverySerial) emit({ recoveryPhase: 'error', recoveryError: errorMessage(error, '无法核对导入恢复记录。') }); }
+      } catch (error) { if (owns(owner) && serial === recoverySerial) emit({ recoveryPhase: 'error', ...timelineFailure('recoveryError', error, message('colour.error.recoveryCheckFailed')) }); }
     },
     async clearConfirmedRecovery(): Promise<boolean> {
       if (!allowed() || state.importing || !state.recovery || !state.importRecord || !['imported', 'rejected'].includes(state.importRecord.phase)) return false;
@@ -173,7 +182,7 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
         await recovery.complete(metadata);
         if (!owns(owner)) return false;
         imports.delete(clipLutRecoveryKey(identity)); emit({ recovery: null, recoveryPhase: 'ready', recoveryError: '' }); return true;
-      } catch (error) { if (owns(owner)) emit({ recoveryError: errorMessage(error, '已确认请求的恢复记录尚未安全清除。') }); return false; }
+      } catch (error) { if (owns(owner)) emit({ ...timelineFailure('recoveryError', error, message('colour.error.confirmedCleanupFailed')) }); return false; }
     },
     async inspectSource(): Promise<void> {
       if (!allowed()) return;
@@ -183,9 +192,9 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
         const image = context.kind === 'image', jpeg = image && context.mimeType === 'image/jpeg';
         const value = await call(jpeg ? 'timeline.colour.jpeg.inspect' : image ? 'timeline.colour.image.inspect' : 'timeline.colour.source.inspect', input);
         if (!owns(owner) || serial !== sourceSerial) return;
-        if (!(jpeg ? isTimelineJpegSourceInspection(value, input) : image ? isTimelineImageSourceInspection(value, input) : isTimelineColourSourceInspection(value, input)) || (value as TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection).assetSha256 !== hash) throw Error('来源检查回复与当前素材或文件指纹不一致。');
+        if (!(jpeg ? isTimelineJpegSourceInspection(value, input) : image ? isTimelineImageSourceInspection(value, input) : isTimelineColourSourceInspection(value, input)) || (value as TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection).assetSha256 !== hash) throw new TimelineUiError(message('colour.error.sourceReplyMismatch'));
         emit({ sourcePhase: 'ready', inspection: copy(value as TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection) });
-      } catch (error) { if (owns(owner) && serial === sourceSerial) emit({ sourcePhase: 'error', sourceError: errorMessage(error, '来源检查失败。') }); }
+      } catch (error) { if (owns(owner) && serial === sourceSerial) emit({ sourcePhase: 'error', ...timelineFailure('sourceError', error, message('colour.error.sourceCheckFailed')) }); }
     },
     chooseRange(value: string): void { if (allowed() && ['', 'limited', 'full'].includes(value)) emit({ range: value as Range, sourceDeclared: false }); },
     declareSource(value: boolean): void { if (allowed()) emit({ sourceDeclared: value }); },
@@ -204,10 +213,10 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       emit({ listPhase: 'loading', listError: '' });
       try {
         const value = await call('lut.list', input); if (!owns(owner) || serial !== listSerial) return;
-        if (!isLutResponse('lut.list', input, value)) throw Error('LUT 列表回复与当前项目不一致。');
+        if (!isLutResponse('lut.list', input, value)) throw new TimelineUiError(message('colour.error.listMismatch'));
         const result = lutListResponseSchema.parse(value), merged = more ? [...state.resources, ...result.items] : result.items;
         emit({ listPhase: 'ready', resources: [...new Map(merged.map(item => [item.id, item])).values()], nextAfter: result.nextAfter });
-      } catch (error) { if (owns(owner) && serial === listSerial) emit({ listPhase: 'error', listError: errorMessage(error, 'LUT 列表读取失败。') }); }
+      } catch (error) { if (owns(owner) && serial === listSerial) emit({ listPhase: 'error', ...timelineFailure('listError', error, message('colour.error.listFailed')) }); }
     },
     async selectResource(resourceId: string): Promise<void> {
       if (!allowed() || resourceId && !state.resources.some(item => item.id === resourceId)) return;
@@ -217,11 +226,11 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       const input = { projectId: context.projectId, lutId: resourceId };
       try {
         const value = await call('lut.inspect', input); if (!owns(owner) || serial !== resourceSerial) return;
-        if (!isLutResponse('lut.inspect', input, value)) throw Error('LUT 核验回复与当前选择不一致。');
+        if (!isLutResponse('lut.inspect', input, value)) throw new TimelineUiError(message('colour.error.resourceMismatch'));
         const resource = lutInspectResponseSchema.parse(value).resource, listed = state.resources.find(item => item.id === resourceId);
-        if (!listed || resource.sha256 !== listed.sha256 || resource.profile !== listed.profile) throw Error('LUT 指纹已变化，请重新读取列表。');
+        if (!listed || resource.sha256 !== listed.sha256 || resource.profile !== listed.profile) throw new TimelineUiError(message('colour.error.resourceChanged'));
         emit({ selected: resource, resourcePhase: 'ready' });
-      } catch (error) { if (owns(owner) && serial === resourceSerial) emit({ resourcePhase: 'error', resourceError: errorMessage(error, 'LUT 核验失败。') }); }
+      } catch (error) { if (owns(owner) && serial === resourceSerial) emit({ resourcePhase: 'error', ...timelineFailure('resourceError', error, message('colour.error.resourceFailed')) }); }
     },
     async inspectSelectedPack(): Promise<void> {
       if (!allowed() || state.resourcePhase !== 'ready' || !state.selected || state.packPhase === 'loading') return;
@@ -231,12 +240,12 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       try {
         const value = await call('lut.look.inspect', input);
         if (!owns(owner) || serial !== resourceSerial) return;
-        if (!isLookPackInspectResponse(value, input)) throw Error('数据包检查回复与所选项目资源不一致。');
+        if (!isLookPackInspectResponse(value, input)) throw new TimelineUiError(message('colour.error.packMismatch'));
         const result = lookPackInspectResponseSchema.parse(value);
-        if (result.resource.sha256 !== selected.sha256 || result.resource.sizeBytes !== selected.sizeBytes) throw Error('数据包资源指纹已变化，请重新读取列表。');
+        if (result.resource.sha256 !== selected.sha256 || result.resource.sizeBytes !== selected.sizeBytes) throw new TimelineUiError(message('colour.error.packChanged'));
         emit({ packPhase: 'ready', pack: result.pack });
       } catch (error) {
-        if (owns(owner) && serial === resourceSerial) emit({ packPhase: 'error', packError: errorMessage(error, '无法核验所选资源的数据包声明。') });
+        if (owns(owner) && serial === resourceSerial) emit({ packPhase: 'error', ...timelineFailure('packError', error, message('colour.error.packFailed')) });
       }
     },
     declareLook(value: boolean): void { if (allowed()) emit({ lookDeclared: value }); },
@@ -256,7 +265,7 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
     removeLook(): boolean { if (!allowed() || !context.colour) return false; edit({ ...context.colour, look: null }); return true; },
     async importFile(file: Pick<File, 'name' | 'size' | 'arrayBuffer'>, options?: { lookPackConfirmed: true }): Promise<boolean> {
       if (!allowed() || state.importing || state.recoveryPhase !== 'ready' || workspaceScope === null) return false;
-      if (state.recovery) { emit({ importError: '已有导入请求待确认，请重新选择原文件恢复原请求。' }); return false; }
+      if (state.recovery) { emit({ importError: '已有导入请求待确认，请重新选择原文件恢复原请求。', importErrorMessage: message('colour.error.pendingImport') }); return false; }
       const owner = generation, projectId = context.projectId; emit({ importing: true, importError: '' });
       let record: ClipLutImportRecord;
       try {
@@ -265,10 +274,10 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
         // bypasses the preview / publisher-license acknowledgement step.
         const bytes = Uint8Array.from(atob(record.input.dataBase64), char => char.charCodeAt(0));
         const packed = /\.mioon-look\.cube$/iu.test(file.name) || isLookPackBytes(bytes);
-        if (packed && !options?.lookPackConfirmed) throw Error('这是单 Look 数据包，请使用“预览单 Look 数据包”入口查看声明后明确采用。');
+        if (packed && !options?.lookPackConfirmed) throw new TimelineUiError(message('colour.error.usePackPreview'));
         if (options?.lookPackConfirmed) await parseLookPackBytes(bytes);
       }
-      catch (error) { if (owns(owner)) emit({ importing: false, importError: errorMessage(error, '文件读取失败。') }); return false; }
+      catch (error) { if (owns(owner)) emit({ importing: false, ...timelineFailure('importError', error, message('colour.error.fileReadFailed')) }); return false; }
       if (!owns(owner) || context.blocked) { if (owns(owner)) emit({ importing: false }); return false; }
       return await sendImport(record, owner, false);
     },
@@ -276,16 +285,16 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       if (!allowed() || state.importing || state.recoveryPhase !== 'ready' || !state.recovery) return false;
       const owner = generation, metadata = copy(state.recovery); emit({ importing: true, importError: '' });
       try {
-        if (file.name !== metadata.name || file.size !== metadata.sizeBytes) throw Error('必须重新选择原文件：文件名与字节数必须完全一致，不会更换原请求编号。');
+        if (file.name !== metadata.name || file.size !== metadata.sizeBytes) throw new TimelineUiError(message('colour.error.reselectExact'));
         const record = await prepareClipLutImport(file, metadata.projectId, metadata.requestId);
         if (!owns(owner) || context.blocked) return false;
         const identity = await verifyWorkspace(owner);
-        if (!sameClipLutRecovery(metadata, clipLutRecoveryMetadata(identity, record))) throw Error('文件 SHA-256 与原文件不一致，未恢复或提交原请求。');
+        if (!sameClipLutRecovery(metadata, clipLutRecoveryMetadata(identity, record))) throw new TimelineUiError(message('colour.error.reselectHashMismatch'));
         await recovery.verify(metadata);
         if (!owns(owner) || context.blocked) return false;
         record.phase = 'unknown'; record.error = '';
         imports.set(clipLutRecoveryKey(identity), record); emit({ importRecord: copy(record) }); return true;
-      } catch (error) { if (owns(owner)) emit({ importError: errorMessage(error, '原文件核验失败，未提交导入。') }); return false; }
+      } catch (error) { if (owns(owner)) emit({ ...timelineFailure('importError', error, message('colour.error.reselectFailed')) }); return false; }
       finally { if (owns(owner)) emit({ importing: false }); }
     },
     async retryImport(): Promise<boolean> {

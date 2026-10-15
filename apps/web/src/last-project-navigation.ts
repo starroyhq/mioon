@@ -1,3 +1,5 @@
+import { message as msg } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import type { LastProjectEnvelope } from '@mioon/contracts/last-project';
 
 const uuid = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/iu;
@@ -5,7 +7,7 @@ const scope = /^[a-f0-9]{64}$/u;
 export interface InitialProjectChoice {
   projectId: string | null;
   source: 'url' | 'remembered' | 'fallback' | 'none';
-  notice: string | null;
+  notice: DisplayMessage | null;
 }
 
 export interface ProjectBootTicket { readonly generation: number; readonly selectionEpoch: number }
@@ -26,11 +28,11 @@ export function chooseInitialProject(projects: readonly { id: string }[], explic
   if (available(explicit)) return { projectId: explicit, source: 'url', notice: null };
   const remembered = observed?.supported ? observed.projectId : null;
   if (observed?.supported && observed.targetStatus === 'matching' && available(remembered)) {
-    return { projectId: remembered, source: 'remembered', notice: explicit ? '指定链接中的项目不存在，已打开此工作区最近保存的位置。' : null };
+    return { projectId: remembered, source: 'remembered', notice: explicit ? msg('projects.bootMissingRemembered') : null };
   }
   const first = projects.find(project => uuid.test(project.id))?.id ?? null;
-  const missing = explicit ? '指定链接中的项目不存在。' : remembered ? '上次记住的项目已不可用。' : null;
-  return { projectId: first, source: first ? 'fallback' : 'none', notice: missing ? `${missing}${first ? '已打开列表中的首个项目；可另行选择。' : '请选择或新建项目。'}` : null };
+  const missing = Boolean(explicit || remembered);
+  return { projectId: first, source: first ? 'fallback' : 'none', notice: missing ? msg(explicit ? first ? 'projects.bootMissingFallback' : 'projects.bootMissingEmpty' : first ? 'projects.bootRememberedFallback' : 'projects.bootRememberedEmpty') : null };
 }
 
 /** Once observed, a normal workspace's private storage identity is pinned for

@@ -1,20 +1,23 @@
+import { message as msg } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import type { ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
 /** Slot requests own no form data. All form owners stay mounted and a later
  * intent or input invalidates consent before the selected pane can change. */
 export function createSettingsWindowNavigation({ context: initial, registry, confirm, onChange = () => {} }: {
-  context: ProjectWindowContext; registry: SettingsNavigationRegistry; confirm: (message: string) => Promise<boolean>; onChange?: () => void;
+  context: ProjectWindowContext; registry: SettingsNavigationRegistry; confirm: (message: string | DisplayMessage) => Promise<boolean>; onChange?: () => void;
 }) {
   let active = true, context = initial, intent = 0, seenVersion = initial.settingsVersion;
-  let selected: ProjectWindowSettingsSlot = initial.settingsSlot ?? 'agent', notice = '';
+  let selected: ProjectWindowSettingsSlot = initial.settingsSlot ?? 'agent';
+  let notice: string | DisplayMessage = '';
   async function select(slot: ProjectWindowSettingsSlot): Promise<boolean> {
     const serial = ++intent;
     if (!active || context.quitting) return false;
     if (slot === selected) return true;
     const capture = registry.capture();
     const current = () => active && !context.quitting && intent === serial && registry.canLeave(capture);
-    if (!current()) { notice = '设置仍在读取、保存或核对结果。请先处理当前设置。'; onChange(); return false; }
-    if (registry.needsConfirmation(capture) && !await confirm('连接设置有未保存的输入。切换连接会清空尚未提交的密钥；其他草稿仍保留。继续？')) return false;
+    if (!current()) { notice = msg('shell.settingsBusy'); onChange(); return false; }
+    if (registry.needsConfirmation(capture) && !await confirm(msg('shell.changeConnectionConfirm'))) return false;
     if (!current()) return false;
     selected = slot; notice = ''; onChange(); return true;
   }

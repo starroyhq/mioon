@@ -1,3 +1,4 @@
+import { nativeText } from './app-language-text.ts';
 import path from 'node:path';
 import type {BrowserWindow, DownloadItem, Event, SaveDialogOptions, WebContents} from 'electron';
 import {parseTimelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
@@ -60,8 +61,8 @@ function saveOptions(item: Item, origin: string, directory: TimelineDownloadDire
   const legacyName = directory.downloadsPath === undefined ? 'mioon.mp4' : path.basename(directory.downloadsPath);
   const basename = final.exportId ? namedTimelineDownloadBasename(item.getContentDisposition(), final) : legacyName;
   if (!basename || basename === '.' || basename === '..' || /[\\/\u0000-\u001f\u007f-\u009f]/u.test(basename)) return null;
-  return {title: '保存视频', defaultPath: path.join(downloadsDirectory, basename),
-    filters: [{name: 'MP4 视频', extensions: ['mp4']}], properties: ['showOverwriteConfirmation']};
+  return {title: nativeText('native.saveVideo'), buttonLabel: nativeText('native.saveVideo'), defaultPath: path.join(downloadsDirectory, basename),
+    filters: [{name: nativeText('native.mp4Video'), extensions: ['mp4']}], properties: ['showOverwriteConfirmation']};
 }
 
 /** No automatic writes or IPC. Chromium retains its native Save As flow,

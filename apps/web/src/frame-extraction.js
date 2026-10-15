@@ -1,3 +1,4 @@
+import { message as msg, renderMessage } from '../../../packages/i18n/src/index.ts';
 import { frameSchemas, isFrameTaskResponse, isFrameRequestResponse, isFrameMutationResponse, isFrameListResponse, canonicalFrameInput, FRAME_PROFILE, FRAME_LIMITS, FRAME_MUTATION_OPERATIONS } from '@mioon/contracts';
 import { sourceFrameCount } from './source-range-state.js';
 import { ApiError } from './api.js';
@@ -20,12 +21,14 @@ export async function frameRequestNotAccepted(error, operation, input) {
     return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('') === proof.inputHash;
   } catch { return false; }
 }
-export const frameTaskLabel = state => ({ queued: '等待本地提取', running: '正在本地提取', persisting: '正在保存 PNG', succeeded: 'PNG 已保存', cancelled_before_start: '已在开始前取消', interrupted: '提取已中断', local_result_error: '本地结果待恢复', failed: '提取失败' }[state] || '状态待核验');
+const frameStateKeys = Object.freeze({ queued: 'timeline.frame.state.queued', running: 'timeline.frame.state.running', persisting: 'timeline.frame.state.persisting', succeeded: 'timeline.frame.state.succeeded', cancelled_before_start: 'timeline.frame.state.cancelled_before_start', interrupted: 'timeline.frame.state.interrupted', local_result_error: 'timeline.frame.state.local_result_error', failed: 'timeline.frame.state.failed' });
+export const frameTaskMessage = state => msg(frameStateKeys[state] || 'timeline.frame.state.unknown');
+export const frameTaskLabel = (state, locale = 'zh-Hans') => renderMessage(locale, frameTaskMessage(state));
 export const frameCaptureBusy = state => !state || !state.projectId || !state.visible || state.blocked || !state.historyLoaded || Boolean(state.historyError || state.pending || state.actionTaskId || state.currentTaskPending || state.phase === 'submitting');
 export const frameCanCancel = task => Boolean(task && !task.started && ['queued', 'interrupted'].includes(task.state));
 export const frameCanRecover = task => task?.started === true && ['local_result_error', 'interrupted'].includes(task.state);
 const identity = task => canonicalFrameInput(Object.fromEntries(['id', 'projectId', 'requestId', 'sourceAssetId', 'sourceHash', 'sourceFrame', 'fps', 'profileId', 'createdAt'].map(key => [key, task[key]])));
-const initial = () => ({ projectId: null, sourceScope: null, sourceAsset: null, assets: [], visible: false, blocked: false, tasks: [], nextCursor: null, pageCursor: null, pageTrail: [], focusedTaskId: null, historyLoaded: false, historyError: false, loading: false, phase: 'idle', pending: null, acknowledged: null, currentTaskPending: null, actionTaskId: null, error: '', message: '' });
+const initial = () => ({ projectId: null, sourceScope: null, sourceAsset: null, assets: [], visible: false, blocked: false, tasks: [], nextCursor: null, pageCursor: null, pageTrail: [], focusedTaskId: null, historyLoaded: false, historyError: false, loading: false, phase: 'idle', pending: null, acknowledged: null, currentTaskPending: null, actionTaskId: null, error: '', errorMessage: null, message: '', messageDescriptor: null });
 
 // Construction/configuration are inert. Only explicit capture/control methods
 // write. The complete unknown input stays in this controller across navigation;
@@ -69,7 +72,7 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
       if (!owns(token)) return null;
       if (!isFrameTaskResponse(task) || task.id !== taskId || task.projectId !== token.projectId) throw new Error(safeFailure);
       return mergeTask(task, token);
-    } catch { if (owns(token)) emit({ historyError: true, error: safeFailure }); return null; }
+    } catch { if (owns(token)) emit({ historyError: true, error: safeFailure, errorMessage: msg('timeline.frame.safeFailure') }); return null; }
   }
   async function list(direction = 'latest') {
     if (!usable() || direction !== 'latest' && state.loading) return null;
@@ -84,7 +87,7 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
     if (state.loading && pendingListCursor === cursor) return null;
     const token = owner(), serial = ++listSerial;
     const input = inputFor('frame.task.list', { projectId: token.projectId, limit: FRAME_LIMITS.pageSize, ...(cursor ? { cursor } : {}) });
-    pendingListCursor = cursor; emit({ loading: true, error: '' });
+    pendingListCursor = cursor; emit({ loading: true, error: '', errorMessage: null });
     try {
       const result = await rpc('frame.task.list', copy(input));
       if (!owns(token) || serial !== listSerial) return null;
@@ -98,7 +101,7 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
         ...(tasks.some(task => task.id === state.currentTaskPending && task.revision >= (state.acknowledged?.revision || 1)) ? { currentTaskPending: null } : {}) });
       for (const task of tasks) announceResult(task, token);
       return result;
-    } catch { if (owns(token) && serial === listSerial) emit({ historyError: true, error: safeFailure }); return null; }
+    } catch { if (owns(token) && serial === listSerial) emit({ historyError: true, error: safeFailure, errorMessage: msg('timeline.frame.safeFailure') }); return null; }
     finally { if (owns(token) && serial === listSerial) { pendingListCursor = undefined; emit({ loading: false }); } }
   }
   function setPending(value) {
@@ -110,16 +113,16 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
     if (!owns(token) || state.pending !== pending) return null;
     if (!isFrameMutationResponse(pending.operation, pending.input, ack)) throw new Error(safeFailure);
     setPending(null);
-    emit({ acknowledged: copy(ack), currentTaskPending: ack.id, focusedTaskId: ack.id, phase: 'idle', message: '原请求已受理。此回执是受理时的快照，正在读取任务当前状态。' });
+    emit({ acknowledged: copy(ack), currentTaskPending: ack.id, focusedTaskId: ack.id, phase: 'idle', message: '原请求已受理。此回执是受理时的快照，正在读取任务当前状态。', messageDescriptor: msg('timeline.frame.acceptedSnapshot') });
     const current = await readTask(ack.id);
-    if (current && owns(token)) emit({ message: '原请求已受理；下方显示已核验的任务当前状态。' });
+    if (current && owns(token)) emit({ message: '原请求已受理；下方显示已核验的任务当前状态。', messageDescriptor: msg('timeline.frame.acceptedVerified') });
     return ack;
   }
   async function submit(pending) {
     const token = owner();
     if (!usable() || state.phase === 'submitting') return null;
     setPending(pending);
-    emit({ phase: 'submitting', actionTaskId: pending.input.taskId || null, error: '', message: '' });
+    emit({ phase: 'submitting', actionTaskId: pending.input.taskId || null, error: '', errorMessage: null, message: '', messageDescriptor: null });
     try {
       const ack = await rpc(pending.operation, copy(pending.input));
       if (!owns(token)) return null;
@@ -129,10 +132,10 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
       if (!owns(token) || state.pending !== pending) return null;
       if (rejected) {
         setPending(null);
-        emit({ phase: 'idle', historyError: true, message: error.code === 'FRAME_RESULT_INVALID'
+        emit({ phase: 'idle', historyError: true, messageDescriptor: msg(error.code === 'FRAME_RESULT_INVALID' ? 'timeline.frame.recoverRefused' : 'timeline.frame.refused'), message: error.code === 'FRAME_RESULT_INVALID'
           ? '本次恢复已确认未受理：没有可完整核验的本地 PNG。原任务保留，没有重新解码；请重新读取任务后决定是否明确新建提取。'
           : '本次操作已确认未受理，原任务保持不变。请重新读取任务后，再明确选择下一步。' });
-      } else emit({ phase: 'unknown', message: '是否受理仍待确认。已保留原操作和完整输入；请核对同一请求，不要新建重复提取。' });
+      } else emit({ phase: 'unknown', message: '是否受理仍待确认。已保留原操作和完整输入；请核对同一请求，不要新建重复提取。', messageDescriptor: msg('timeline.frame.outcomeUnknown') });
       return null;
     } finally { if (owns(token)) emit({ actionTaskId: null, ...(state.phase === 'submitting' ? { phase: state.pending ? 'unknown' : 'idle' } : {}) }); }
   }
@@ -141,11 +144,11 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
     const asset = state.sourceAsset, count = sourceFrameCount(asset?.duration);
     if (intent.sourceScope !== state.sourceScope || intent.sourceAssetId !== asset?.id || intent.sourceHash !== asset?.sha256 || asset.projectId !== state.projectId || !['video/mp4', 'video/webm'].includes(asset.mimeType) || count === null || !Number.isSafeInteger(intent.sourceFrame) || intent.sourceFrame < 0 || intent.sourceFrame >= count) return null;
     if ([...knownTasks.values()].some(task => activeStates.has(task.state) && task.sourceAssetId === asset.id && task.sourceHash === asset.sha256 && task.sourceFrame === intent.sourceFrame)) {
-      emit({ message: '此源时间点已有未完成任务。请先核对下面的原任务，避免重复提取。' }); return null;
+      emit({ message: '此源时间点已有未完成任务。请先核对下面的原任务，避免重复提取。', messageDescriptor: msg('timeline.frame.duplicate') }); return null;
     }
     let input;
     try { input = inputFor('frame.extract', { projectId: state.projectId, sourceAssetId: asset.id, sourceHash: asset.sha256, sourceFrame: intent.sourceFrame, requestId: createRequestId() }); }
-    catch { emit({ error: '无法创建有效请求标识。尚未提交提取。' }); return null; }
+    catch { emit({ error: '无法创建有效请求标识。尚未提交提取。', errorMessage: msg('timeline.frame.invalidCaptureId') }); return null; }
     return submit(freeze({ operation: 'frame.extract', input, sourceScope: state.sourceScope, sourceName: asset.name || '', sourceFrame: intent.sourceFrame }));
   }
   async function control(operation, candidate) {
@@ -154,21 +157,21 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
     if (!task || task.projectId !== state.projectId || canonicalFrameInput(task) !== canonicalFrameInput(candidate) || !(operation === 'frame.task.cancelQueued' ? frameCanCancel(task) : frameCanRecover(task))) return null;
     let input;
     try { input = inputFor(operation, { projectId: state.projectId, taskId: task.id, expectedRevision: task.revision, requestId: createRequestId() }); }
-    catch { emit({ error: '无法创建有效请求标识。尚未提交操作。' }); return null; }
+    catch { emit({ error: '无法创建有效请求标识。尚未提交操作。', errorMessage: msg('timeline.frame.invalidControlId') }); return null; }
     return submit(freeze({ operation, input, sourceScope: state.sourceScope, sourceName: '', sourceFrame: task.sourceFrame }));
   }
   async function reconcileUnknown() {
     if (!usable() || !state.pending || state.phase === 'submitting') return null;
     const token = owner(), pending = state.pending;
-    emit({ phase: 'submitting', error: '' });
+    emit({ phase: 'submitting', error: '', errorMessage: null });
     try {
       const input = inputFor('frame.request.get', { projectId: pending.input.projectId, requestId: pending.input.requestId });
       const receipt = await rpc('frame.request.get', copy(input));
       if (!owns(token) || state.pending !== pending) return null;
       if (!isFrameRequestResponse(receipt) || receipt && (receipt.projectId !== input.projectId || receipt.requestId !== input.requestId || receipt.operation !== pending.operation)) throw new Error(safeFailure);
-      if (!receipt) { emit({ phase: 'unknown', message: '尚未找到原请求回执。原标识和输入仍保留；可再次核对，或明确重发同一请求。' }); return null; }
+      if (!receipt) { emit({ phase: 'unknown', message: '尚未找到原请求回执。原标识和输入仍保留；可再次核对，或明确重发同一请求。', messageDescriptor: msg('timeline.frame.receiptMissing') }); return null; }
       return await acceptAcknowledgement(pending, receipt.response, token);
-    } catch { if (owns(token)) emit({ phase: 'unknown', error: safeFailure }); return null; }
+    } catch { if (owns(token)) emit({ phase: 'unknown', error: safeFailure, errorMessage: msg('timeline.frame.safeFailure') }); return null; }
     finally { if (owns(token) && state.phase === 'submitting') emit({ phase: state.pending ? 'unknown' : 'idle' }); }
   }
   async function revealResult(candidate) {
@@ -179,7 +182,7 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
     const stillCurrent = () => owns(token) && usable() && state.tasks.some(task => task.id === before.id && task.state === 'succeeded' && canonicalFrameInput(task.result) === canonicalFrameInput(before.result));
     if (!current || !stillCurrent()) return false;
     try { return await revealAsset(current.result.assetId, current.projectId, stillCurrent) !== false; }
-    catch { if (owns(token)) emit({ error: '无法打开此 PNG。当前编辑仍保留。' }); return false; }
+    catch { if (owns(token)) emit({ error: '无法打开此 PNG。当前编辑仍保留。', errorMessage: msg('timeline.frame.revealFailed') }); return false; }
   }
   return {
     getSnapshot: () => state, getState: () => state,

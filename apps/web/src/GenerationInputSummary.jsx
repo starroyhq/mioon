@@ -1,40 +1,43 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
+import { creationParameter } from './creation-i18n.ts';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible';
 import Icon from './icons.jsx';
-import { generationProfileSelection } from './generation-settings.js';
+import { generationProfileSelection, generationIssueDescriptor } from './generation-settings.js';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 import './generation-input-summary.css';
 
-const roles = [
-  ['first_frame', '首帧参考图'], ['last_frame', '尾帧参考图'],
-  ['subject_reference', '主体参考'], ['style_reference', '风格参考'], ['motion_reference', '动作参考'],
+const roles = t => [
+  ['first_frame', t('generation.inputs.firstFrameRole')], ['last_frame', t('generation.inputs.lastFrameRole')],
+  ['subject_reference', t('generation.inputs.subjectRole')], ['style_reference', t('generation.inputs.styleRole')], ['motion_reference', t('generation.inputs.motionRole')],
 ];
-const countLabel = rule => `${rule.min === rule.max ? rule.max : `${rule.min}–${rule.max}`} ${rule.implemented ? '张' : '个'}`;
-const bytesLabel = value => `${Number.isInteger(value / 1048576) ? `${value / 1048576} MiB · ` : ''}${value.toLocaleString('en-US')} bytes`;
+const countLabel = (rule, t) => rule.min === rule.max ? t(rule.implemented ? 'generation.inputs.imageCount' : 'generation.inputs.itemCount', { count: rule.max }) : t(rule.implemented ? 'generation.inputs.imageRange' : 'generation.inputs.itemRange', { min: rule.min, max: rule.max });
+const bytesLabel = (value, t, formatNumber) => `${Number.isInteger(value / 1048576) ? `${value / 1048576} MiB · ` : ''}${t('generation.inputs.bytes', { value: formatNumber(value) })}`;
 const sourceUrl = value => typeof value === 'string' && /^https:\/\//.test(value) ? value : null;
 // provider.list is polled. Fresh objects with the same displayed profile are
 // the same disclosure scope, including when JSON property order changes.
 const semanticKey = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
-const regionMeaning = profile => ({
-  runway: '固定 Runway API 端点标签，不代表数据驻留保证',
-  ark: '固定中国大陆方舟 API 端点',
-  veo: 'Gemini Developer API，不是 Vertex AI；不代表数据驻留保证',
-  minimax: '由服务器明确配置，账号和密钥须与 API 区域匹配',
-  vidu: '由服务器明确配置，账号和密钥须与 API 区域匹配',
-  mock: '本地模拟，不调用外部服务',
-}[profile.providerId] || profile.regionMeaning || 'API 配置标签，不代表数据驻留保证');
+const regionMeaning = (profile, t) => ({
+  runway: t('generation.inputs.runwayRegionMeaning'),
+  ark: t('generation.inputs.arkRegionMeaning'),
+  veo: t('generation.inputs.veoRegionMeaning'),
+  minimax: t('generation.inputs.configuredRegionMeaning'),
+  vidu: t('generation.inputs.configuredRegionMeaning'),
+  mock: t('generation.inputs.mockRegionMeaning'),
+}[profile.providerId] || t('generation.inputs.unknownRegionMeaning'));
 
 function RoleLimits({ role, label, rule }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const dimensions = rule?.dimensions;
   return <li data-testid={`generation-role-${role}`}>
-    <div className="generation-input-role-heading"><strong>{label}</strong><span>{rule ? countLabel(rule) : '数量未确认'}</span></div>
-    {!rule ? <p>尚未取得此模型的角色限制，请刷新服务商信息后核对。</p> : !rule.implemented ? <p>{!rule.reason || rule.reason === 'No mapping in the current Mioon adapter.' ? 'Mioon 当前适配器未接入此角色，尚无对应的生成输入映射。' : rule.reason}</p> : <>
-      <p>格式：{rule.mimeTypes?.length ? rule.mimeTypes.map(type => type.replace('image/', '').toUpperCase()).join(' / ') : '未声明'}</p>
-      <p>单张文件：{Number.isSafeInteger(rule.maxBytes) ? `最多 ${bytesLabel(rule.maxBytes)}` : '大小上限未声明'}</p>
-      {Number.isSafeInteger(rule.maxDataUriBytes) && <p>编码后 data URI：最多 {bytesLabel(rule.maxDataUriBytes)}</p>}
-      <p>尺寸：{[dimensions?.min && `宽高均至少 ${dimensions.min}px`, dimensions?.max && `宽高均不超过 ${dimensions.max}px`, dimensions?.matchAspectRatio && '须与镜头画幅比例一致', dimensions?.matchAspectRatio === false && '图片比例与输出画幅独立，可用方形图', dimensions?.minAspectRatio && `宽高比至少 ${dimensions.minAspectRatio}`, dimensions?.maxAspectRatio && `宽高比不超过 ${dimensions.maxAspectRatio}`].filter(Boolean).join('；') || '此适配配置未声明像素范围'}</p>
+    <div className="generation-input-role-heading"><strong>{label}</strong><span>{rule ? countLabel(rule, t) : t('generation.inputs.unconfirmedCount')}</span></div>
+    {!rule ? <p>{t('generation.inputs.roleLimitsUnavailable')}</p> : !rule.implemented ? <p>{t('generation.inputs.roleNotImplemented')}</p> : <>
+      <p>{t('generation.inputs.formats', { value: creationParameter(rule.mimeTypes?.length ? rule.mimeTypes.map(type => type.replace('image/', '').toUpperCase()).join(' / ') : t('generation.inputs.undeclared')) })}</p>
+      <p>{t('generation.inputs.singleFile', { value: creationParameter(Number.isSafeInteger(rule.maxBytes) ? t('generation.inputs.maximumBytes', { value: creationParameter(bytesLabel(rule.maxBytes, t, formatNumber)) }) : t('generation.inputs.sizeLimitUndeclared')) })}</p>
+      {Number.isSafeInteger(rule.maxDataUriBytes) && <p>{t('generation.inputs.dataUriLimit', { value: creationParameter(bytesLabel(rule.maxDataUriBytes, t, formatNumber)) })}</p>}
+      <p>{t('generation.inputs.dimensions', { value: creationParameter([dimensions?.min && t('generation.inputs.minimumDimensions', { min: creationParameter(dimensions.min) }), dimensions?.max && t('generation.inputs.maximumDimensions', { max: creationParameter(dimensions.max) }), dimensions?.matchAspectRatio && t('generation.inputs.matchAspectRatio'), dimensions?.matchAspectRatio === false && t('generation.inputs.independentAspectRatio'), dimensions?.minAspectRatio && t('generation.inputs.minimumAspectRatio', { minAspectRatio: creationParameter(dimensions.minAspectRatio) }), dimensions?.maxAspectRatio && t('generation.inputs.maximumAspectRatio', { maxAspectRatio: creationParameter(dimensions.maxAspectRatio) })].filter(Boolean).join('；') || t('generation.inputs.dimensionsUndeclared')) })}</p>
     </>}
   </li>;
 }
@@ -42,29 +45,31 @@ function RoleLimits({ role, label, rule }) {
 // Read-only rendering of the selected server profile. Subject-library bindings
 // never enter this component or become generation references implicitly.
 export function GenerationInputDetails({ selection }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const { profile, evaluation, region, evaluatedAsOf } = selection;
   const lifecycle = profile?.lifecycle;
   const source = sourceUrl(lifecycle?.source);
   return <div className="generation-input-details-body">
-    <p>Mioon 当前适配器的已接入范围；不代表服务商全部能力。</p>
-    {profile && <p>总参考图：{profile.inputs.minReferences}–{profile.inputs.maxReferences} 张。{profile.inputs.roles.last_frame?.implemented ? '支持单张首帧，或一张首帧加一张尾帧；尾帧不能单独提交。' : '只接入单张首帧，不组合多个参考角色。'}{profile.inputs.roles.subject_reference?.implemented && '另支持单张固定主体图片；不能与首帧、尾帧或连线组合。'}</p>}
-    <ul className="generation-input-roles" aria-label="各参考角色的数量与限制">{roles.map(([role, label]) => <RoleLimits key={role} role={role} label={label} rule={profile?.inputs?.roles?.[role]} />)}</ul>
-    <p className="generation-input-planning" data-testid="generation-subject-planning">主体与风格的策划关联不会自动作为生成输入。角色、产品或场景图片须在镜头属性中明确选择本次固定版本；此入口仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628。风格仍仅供策划。首帧仍由现有参考图选择或首帧连接提供。尾帧在镜头属性中单独保存；首尾帧组合仅接入 Ark 与 Mock，同一素材不可同时作为首尾帧（当前应用限制）。</p>
+    <p>{t('generation.inputs.adapterScope')}</p>
+    {profile && <p>{t('generation.inputs.totalReferences', { minReferences: creationParameter(profile.inputs.minReferences), maxReferences: creationParameter(profile.inputs.maxReferences), value: creationParameter(profile.inputs.roles.last_frame?.implemented ? t('generation.inputs.firstLastCombination') : t('generation.inputs.firstFrameOnly')), value2: creationParameter(profile.inputs.roles.subject_reference?.implemented && t('generation.inputs.fixedSubjectAlternative')) })}</p>}
+    <ul className="generation-input-roles" aria-label={t('generation.inputs.roleLimitsAria')}>{roles(t).map(([role, label]) => <RoleLimits key={role} role={role} label={label} rule={profile?.inputs?.roles?.[role]} />)}</ul>
+    <p className="generation-input-planning" data-testid="generation-subject-planning">{t('generation.inputs.planningNotGeneration')}</p>
     {profile && <dl className="generation-input-provenance">
-      <div><dt>适配配置</dt><dd>{profile.profileId} · {profile.profileVersion}</dd></div>
-      <div><dt>配置核查</dt><dd>{profile.reviewedOn || '未提供核查日期'}</dd></div>
-      <div><dt>服务端评估</dt><dd>{evaluatedAsOf || '尚未提供'}</dd></div>
-      <div><dt>API 区域</dt><dd>{region} · {regionMeaning(profile)}</dd></div>
+      <div><dt>{t('generation.inputs.adapterProfile')}</dt><dd>{profile.profileId} · {profile.profileVersion}</dd></div>
+      <div><dt>{t('generation.inputs.profileReview')}</dt><dd>{profile.reviewedOn || t('generation.inputs.reviewDateUnavailable')}</dd></div>
+      <div><dt>{t('generation.inputs.serverEvaluation')}</dt><dd>{evaluatedAsOf || t('generation.inputs.notProvided')}</dd></div>
+      <div><dt>{t('generation.inputs.apiRegion')}</dt><dd>{region} · {regionMeaning(profile, t)}</dd></div>
     </dl>}
     {lifecycle && <div className="generation-input-lifecycle-detail">
-      <p>生命周期核查：{lifecycle.checkedOn}；最早关闭日期：{lifecycle.earliestShutdownDate}。到期需重新核验该精确模型，不会自动替换模型。</p>
-      {source && <a href={source} target="_blank" rel="noreferrer">查看服务商生命周期说明</a>}
-      {evaluation?.warnings?.filter(warning => warning.code !== 'MODEL_LIFECYCLE_WARNING').map(warning => <p key={warning.code}>{warning.message}</p>)}
+      <p>{t('generation.inputs.lifecycleDates', { checkedOn: creationParameter(lifecycle.checkedOn), earliestShutdownDate: creationParameter(lifecycle.earliestShutdownDate) })}</p>
+      {source && <a href={source} target="_blank" rel="noreferrer">{t('generation.inputs.providerLifecycleLink')}</a>}
+      {evaluation?.warnings?.filter(warning => warning.code !== 'MODEL_LIFECYCLE_WARNING').map(warning => <p key={warning.code}>{renderMessage(generationIssueDescriptor(warning))}</p>)}
     </div>}
   </div>;
 }
 
 export default function GenerationInputSummary({ provider, model }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const selection = generationProfileSelection(provider, model);
   const { profile, state, message, region, evaluation, evaluatedAsOf } = selection;
   const visible = useWorkspaceVisibility();
@@ -78,18 +83,18 @@ export default function GenerationInputSummary({ provider, model }) {
   }, [scope]);
   const open = visible && disclosure.scope === scope && disclosure.open;
   const lifecycleIssue = evaluation?.issues?.[0];
-  const lifecycleMessage = lifecycleIssue?.code === 'MODEL_LIFECYCLE_REVALIDATION_REQUIRED' ? `服务端评估（${evaluatedAsOf}）：此 Veo 模型已到生命周期复核日期，已阻止新提交。` : lifecycleIssue?.message;
+  const lifecycleMessage = lifecycleIssue?.code === 'MODEL_LIFECYCLE_REVALIDATION_REQUIRED' ? t('generation.inputs.lifecycleBlocked', { evaluatedAsOf: creationParameter(evaluatedAsOf) }) : renderMessage(generationIssueDescriptor(lifecycleIssue));
   const firstFrame = profile?.inputs?.roles?.first_frame;
   const lastFrame = profile?.inputs?.roles?.last_frame;
-  return <section className="generation-input-summary" aria-label="Mioon 模型输入限制" data-testid="generation-input-summary" data-profile-state={state}>
-    <p className="generation-input-model" data-testid="generation-input-model">{model || '尚未选择模型'}</p>
-    <p className="generation-input-route" data-testid="generation-input-route">API：{profile?.apiFamily || '尚未确认'} · 区域：{region || '尚未确认'}</p>
-    <p className="generation-input-brief" data-testid="generation-input-brief">{profile ? `Mioon 首帧 ${firstFrame ? countLabel(firstFrame) : '数量未确认'} · 尾帧 ${lastFrame?.implemented ? countLabel(lastFrame) : '未接入'} · 其他角色见限制` : message}</p>
-    {lifecycleIssue ? <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-blocked">{lifecycleMessage} 不会自动替换模型。</p> : profile?.lifecycle && <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-warning">Veo 生命周期提示：最早 {profile.lifecycle.earliestShutdownDate} 关闭；核查于 {profile.lifecycle.checkedOn}，到期需重新核验。</p>}
+  return <section className="generation-input-summary" aria-label={t('generation.inputs.limitsAria')} data-testid="generation-input-summary" data-profile-state={state}>
+    <p className="generation-input-model" data-testid="generation-input-model">{model || t('generation.inputs.noModelSelected')}</p>
+    <p className="generation-input-route" data-testid="generation-input-route">{t('generation.inputs.routeSummary', { value: creationParameter(profile?.apiFamily || t('generation.inputs.unconfirmed')), value2: creationParameter(region || t('generation.inputs.unconfirmed')) })}</p>
+    <p className="generation-input-brief" data-testid="generation-input-brief">{profile ? t('generation.inputs.referenceBrief', { value: creationParameter(firstFrame ? countLabel(firstFrame, t) : t('generation.inputs.unconfirmedCount')), value2: creationParameter(lastFrame?.implemented ? countLabel(lastFrame, t) : t('generation.inputs.notImplemented')) }) : renderMessage(selection.displayMessage)}</p>
+    {lifecycleIssue ? <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-blocked">{t('generation.inputs.noAutomaticReplacement', { lifecycleMessage: creationParameter(lifecycleMessage) })}</p> : profile?.lifecycle && <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-warning">{t('generation.inputs.lifecycleWarning', { earliestShutdownDate: creationParameter(profile.lifecycle.earliestShutdownDate), checkedOn: creationParameter(profile.lifecycle.checkedOn) })}</p>}
     <Collapsible open={open} onOpenChange={next => {
       if (visible && current.current === scope) setDisclosure({ scope, open: Boolean(next) });
     }}>
-      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />} className="generation-input-toggle" data-testid="generation-input-toggle" disabled={!visible}><span>查看输入限制</span><Icon name="down" size={13} /></CollapsibleTrigger>
+      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />} className="generation-input-toggle" data-testid="generation-input-toggle" disabled={!visible}><span>{t('generation.inputs.viewLimits')}</span><Icon name="down" size={13} /></CollapsibleTrigger>
       <CollapsibleContent className="generation-input-details" data-testid="generation-input-details"><GenerationInputDetails selection={selection} /></CollapsibleContent>
     </Collapsible>
   </section>;

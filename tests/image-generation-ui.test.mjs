@@ -1,3 +1,8 @@
+import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
+import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
+import { createI18nTestContext } from './helpers/i18n.ts';
+import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.js';
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -200,7 +205,8 @@ test('input limits match contract and state copy distinguishes unknown, failure,
 test('renderer remains an extracted dock with explicit providers, fixed paid disclosure and local previews', () => {
   const source = readFileSync(new URL('../apps/web/src/ImageGeneration.jsx', import.meta.url), 'utf8');
   assert.doesNotThrow(() => transformSync(source, { loader: 'jsx', format: 'esm' }));
-  for (const text of ['useWorkspaceVisibility', 'image-provider-openai', '真实调用尚未验证', '确定性测试图案', '未加密', 'image-paid-warning', 'image-review-approve', 'image-review-reject', 'image-draft-guard', 'image-edit-version', 'image-version-preview', 'image-reveal-asset', 'image-cancel-queued', 'image-recover-result']) assert.ok(source.includes(text), text);
+  const displayCopy = source + Object.entries(creationUiMessages).filter(([key]) => source.includes(`'${key}'`)).map(([, value]) => JSON.stringify(value['zh-Hans'])).join('\n');
+  for (const text of ['useWorkspaceVisibility', 'image-provider-openai', '真实调用尚未验证', '确定性测试图案', '未加密', 'image-paid-warning', 'image-review-approve', 'image-review-reject', 'image-draft-guard', 'image-edit-version', 'image-version-preview', 'image-reveal-asset', 'image-cancel-queued', 'image-recover-result']) assert.ok(displayCopy.includes(text), text);
   assert.match(source, /composerVisible \? `\/media\/\$\{encodeURIComponent\(version.assetId\)\}` : undefined/);
   assert.doesNotMatch(source, /type="password"|Dialog|dangerouslySetInnerHTML|node\.create|shot\.attach/);
   assert.match(source, /disabled=\{busy \|\| Boolean\(state.target\)\}/);
@@ -221,6 +227,7 @@ function renderer(f, options = {}) {
   }; react.default = react;
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = { exports: {} };
   const require = name => {
+    const i18nDependency = creationTestDependency(name, options.languageStore); if (i18nDependency) return i18nDependency;
     if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === './editor-settings-scope.ts') {
       const settingsModule = { exports: {} };
@@ -234,7 +241,7 @@ function renderer(f, options = {}) {
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (name === './ComfyImageSettings.jsx') return { __esModule: true, default: 'ComfyImageSettings' };
     if (name === './ComfyImageDetails.jsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
-    if (name === './comfy-image-settings.js') return { createComfyImageSettingsClient: () => ({ read: async () => null }) };
+    if (name === './comfy-image-settings.js') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => null }) };
     // This element-tree harness adapts only the status wrapper; owner semantics have dedicated tests.
     if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
     if (name === './ImageSettings.jsx') return { __esModule: true, default: 'ImageSettings' };
@@ -640,4 +647,30 @@ test('history selection accepted generation or approval invalidates an older gro
       assert.equal(mutations(f).length, paid ? 0 : 1); assert.equal(f.privateCalls.length, paid ? 1 : 0);
     } finally { f.session.dispose(); }
   }
+});
+
+test('four-language changes preserve mounted image drafts and the same pending paid review without automatic approval', async () => {
+  const languageStore = createLanguageStore({ systemLanguages: ['zh-Hans'] });
+  const held = deferred(); let original;
+  const f = fixture({ settings: settings(), api: (operation, input, data) => { if (operation === 'image.review.prepare') { original = review(input.input); data.reviews = [original]; return held.promise; } } }), ui = renderer(f, { languageStore });
+  ui.render(); await flush(); ui.render();
+  const name = '保留名称 / Image / 画像', prompt = '  原文 <script>\nexact prompt  ';
+  ui.change('image-generation-name', name); ui.change('image-generation-prompt', prompt); ui.click('image-provider-openai');
+  const before = f.calls.length;
+  for (const locale of ['zh-Hant', 'en', 'ja', 'zh-Hans']) {
+    await languageStore.setPreference(locale); ui.render(); await flush(); ui.render();
+    assert.equal(ui.find('image-generation-name').props.value, name);
+    assert.equal(ui.find('image-generation-prompt').props.value, prompt);
+    assert.equal(f.calls.length, before); assert.equal(f.privateCalls.length, 0);
+  }
+  ui.click('image-generate'); await flush(); ui.show(false); held.resolve(original); await flush(); ui.show(true); await flush(); ui.render();
+  const approval = ui.find('image-review-approve'); assert.ok(approval);
+  const pendingCalls = f.calls.length;
+  for (const locale of ['ja', 'en', 'zh-Hant']) {
+    await languageStore.setPreference(locale); ui.render(); await flush(); ui.render();
+    assert.ok(ui.find('image-review-approve')); assert.equal(f.calls.length, pendingCalls); assert.equal(f.privateCalls.length, 0);
+  }
+  ui.click('image-review-approve'); await flush(); ui.render();
+  assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.input.name, name); assert.equal(f.privateCalls[0].review.input.prompt, prompt);
+  ui.unmount(); f.session.dispose(); languageStore.dispose();
 });

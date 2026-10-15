@@ -1,3 +1,5 @@
+import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.js';
+import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -133,6 +135,7 @@ function renderer(f) {
   const react = { createElement: renderElement, useState(initial) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, value => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial) { return slots[index++] ||= { current: initial }; }, useMemo(fn, deps) { const slot = index++; if (!slots[slot] || !same(slots[slot].deps, deps)) slots[slot] = { value: fn(), deps }; return slots[slot].value; }, useLayoutEffect(fn, deps) { const slot = index++, previous = slots[slot]; if (previous && same(previous.deps, deps)) return; slots[slot] = { fn, deps, cleanup: previous?.cleanup }; effects.push(slot); } }; react.default = react;
   const module = { exports: {} }, primitive = new Proxy({}, { get: (_, key) => String(key) });
   const require = name => {
+    const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === './editor-settings-scope.ts') {
       const settingsModule = { exports: {} };
@@ -148,7 +151,7 @@ function renderer(f) {
     if (name === './SettingsNavigationSlot.tsx') return { __esModule: true, default: 'SettingsNavigationSlot' };
     if (name === './ComfyImageDetails.jsx') return primitive;
     if (name === './image-settings.js') return { createImageSettingsClient: value => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient };
-    if (name === './comfy-image-settings.js') return { createComfyImageSettingsClient: () => ({ read: async () => { throw Error('Not configured'); } }) };
+    if (name === './comfy-image-settings.js') return { comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({ read: async () => { throw Error('Not configured'); } }) };
     if (name === './icons.jsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitive;

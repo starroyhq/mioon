@@ -2,12 +2,13 @@ import * as React from 'react'
 import { Button } from '@mioon/ui/components/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog'
 
-type Confirm = (message: string) => Promise<boolean>
+export type ConfirmationMessage = string | Readonly<{ key: string; params?: Readonly<Record<string, string | number>> }>
+type Confirm = (message: ConfirmationMessage) => Promise<boolean>
 const ConfirmationContext = React.createContext<Confirm | null>(null)
 
 /** Explicit, cancellable editor confirmations. Concurrent requests never auto-approve. */
-function ConfirmationProvider({ children }: { children: React.ReactNode }) {
-  const [message, setMessage] = React.useState<string | null>(null)
+function ConfirmationProvider({ children, labels = { title: '请确认此操作', cancel: '取消', continue: '继续' }, renderMessage = value => typeof value === 'string' ? value : '' }: { children: React.ReactNode; labels?: { title: string; cancel: string; continue: string }; renderMessage?: (message: ConfirmationMessage) => React.ReactNode }) {
+  const [message, setMessage] = React.useState<ConfirmationMessage | null>(null)
   const pending = React.useRef<((answer: boolean) => void) | null>(null)
   const cancel = React.useRef<HTMLButtonElement>(null)
   const settle = React.useCallback((answer: boolean) => {
@@ -24,11 +25,11 @@ function ConfirmationProvider({ children }: { children: React.ReactNode }) {
   return <ConfirmationContext.Provider value={confirm}>{children}
     <Dialog open={message !== null} onOpenChange={open => { if (!open) settle(false) }}>
       <DialogContent className="workbench-confirm" showCloseButton={false} initialFocus={cancel}>
-        <DialogTitle>请确认此操作</DialogTitle>
-        <DialogDescription>{message}</DialogDescription>
+        <DialogTitle>{labels.title}</DialogTitle>
+        <DialogDescription>{message === null ? '' : renderMessage(message)}</DialogDescription>
         <div className="workbench-confirm-actions">
-          <Button ref={cancel} variant="outline" onClick={() => settle(false)}>取消</Button>
-          <Button onClick={() => settle(true)} data-testid="confirm-action">继续</Button>
+          <Button ref={cancel} variant="outline" onClick={() => settle(false)}>{labels.cancel}</Button>
+          <Button onClick={() => settle(true)} data-testid="confirm-action">{labels.continue}</Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,3 +1,5 @@
+import { i18nTestModule, renderMessage } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,6 +22,9 @@ function homeHarness(patch = {}) {
   const module = { exports: {} };
   Function('require', 'module', 'exports', transformSync(source('ProjectHome.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
     if (name === 'react') return react;
+    if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
+    if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
+    if (name === './LanguageControl.tsx') return { default: () => null };
     return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label'].map(key => [key, key.toLowerCase()]));
   }, module, module.exports);
   const props = { projects: [], phase: 'home', busy: false, listBusy: false, page: 'projects', onPage() {}, onOpen() {}, onRetry() {}, onRefresh() {}, onCreate: async () => true, settings: null, onCreateStateChange: state => reports.push(state), ...patch };
@@ -77,7 +82,7 @@ test('entry form stale handlers cannot mutate while sealed before React rerender
 test('native settings slot delegates before existing key clearing; Web fallback remains present', () => {
   for (const file of ['ImageSettings.jsx', 'ComfyImageSettings.jsx']) assert.match(source(file), /onRequestSelectSlot/);
   const image = source('ImageSettings.jsx');
-  assert.ok(image.indexOf('if (onRequestSelectSlot)') < image.indexOf("setKeyNotice('切换连接"));
+  assert.ok(image.indexOf('if (onRequestSelectSlot)') < image.indexOf("setKeyNotice(message('image.settings.keySwitched"));
   assert.match(image, /onRequestSelectSlot\(next\); return;/);
   assert.match(source('ComfyImageSettings.jsx'), /else leave\(\(\) => onSelectSlot\(slot\)\)/);
   assert.match(source('SettingsRoot.tsx'), /window\.close\(\); return false/);
@@ -167,6 +172,9 @@ test('a superseded initial context rejection cannot unmount an established nativ
   const module = { exports: {} };
   Function('require', 'module', 'exports', 'window', transformSync(source('DesktopRoot.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
     if (name === 'react') return react;
+    if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
+    if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
+    if (name === './LanguageControl.tsx') return { default: () => null };
     if (name === './LauncherRoot.tsx') return { __esModule: true, default: 'launcher' };
     if (name === './SettingsRoot.tsx') return { __esModule: true, default: 'settings' };
     if (name === './NativeEditorRoot.tsx') return { __esModule: true, default: 'editor' };

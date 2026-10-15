@@ -1,3 +1,4 @@
+import { translate } from '../../../packages/i18n/src/index.ts';
 import { isExportPreflightResponse, isTimelineExportCapabilitiesResponse } from '@mioon/contracts';
 import { exportRangeContextFields, sameExportRangeContext, rangeFields } from './export-range-state.ts';
 import { exportSettingsKey, freezeExportSettings } from './export-settings-state.js';
@@ -5,41 +6,26 @@ import { deliveryNameContextFields, sameDeliveryNameContext, deliveryNameRequest
 
 const initialState = () => ({ ...exportRangeContextFields(null), ...deliveryNameContextFields(null), scope: null, projectId: null, timelineId: null, revision: null, connected: false, exportSettings: undefined, settingsKey: 'legacy', settingsVersion: 0, capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null, binding: null, uncheckedIntent: null, error: '', attempted: false });
 const hasRevision = value => Number.isSafeInteger(value) && value > 0;
-const issueMessages = Object.freeze({
-  EXPORT_RANGE_BOUNDS: '导出范围超出已保存时间线，请重新选择范围并检查。',
-  TIMELINE_MISSING: '项目还没有已保存的时间线，请先编排并保存片段。',
-  EMPTY_TIMELINE: '已保存的时间线中没有可导出的片段。',
-  INVALID_TIMELINE_SNAPSHOT: '已保存的时间线包含无效或暂不支持的设置。',
-  TIMELINE_SOURCE_UNAVAILABLE: '引用的素材缺失，或不属于当前项目。',
-  PREFLIGHT_SOURCE_INVALID: '源素材缺失，或无法在受管理的媒体目录中安全读取。',
-  PREFLIGHT_SOURCE_CHANGED: '源素材已变化，或文件内容与保存的校验值不一致。',
-  PREFLIGHT_MEDIA_INVALID: '源素材的媒体信息无效或暂不支持。',
-  PREFLIGHT_INCOMPLETE: '有限额的媒体检查未能完成。实际导出仍会重新验证素材。',
-  PREFLIGHT_BUDGET: '文件或累计字节检查已达到限额，尚未完成全部检查。',
-  PREFLIGHT_SNAPSHOT_BUDGET: '关联资料超出本次安全检查上限，检查未完成。',
-  PREFLIGHT_TIMEOUT: '素材检查已达到时间上限，尚未完成全部检查。',
-  PREFLIGHT_BUSY: '另一项交付检查仍在运行，请稍后重新检查。',
-  PREFLIGHT_STALE: '时间线或素材信息已变化，请重新检查已保存的快照。',
-});
+const knownIssueCodes = new Set(['EXPORT_RANGE_BOUNDS', 'TIMELINE_MISSING', 'EMPTY_TIMELINE', 'INVALID_TIMELINE_SNAPSHOT', 'TIMELINE_SOURCE_UNAVAILABLE', 'PREFLIGHT_SOURCE_INVALID', 'PREFLIGHT_SOURCE_CHANGED', 'PREFLIGHT_MEDIA_INVALID', 'PREFLIGHT_INCOMPLETE', 'PREFLIGHT_BUDGET', 'PREFLIGHT_SNAPSHOT_BUDGET', 'PREFLIGHT_TIMEOUT', 'PREFLIGHT_BUSY', 'PREFLIGHT_STALE']);
 const protocolError = () => Object.assign(new Error('检查响应不完整或与当前快照不匹配，请重新检查。'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
 // Never surface raw transport errors, ffprobe output, or server file locations.
-export function preflightErrorMessage(error) {
-  if (error?.code === 'UNAUTHORIZED') return '会话已过期，请重新登录后重新检查。';
-  if (['CONFLICT', 'REVISION_CONFLICT', 'PREFLIGHT_STALE'].includes(error?.code)) return '时间线已变化，请重新检查已保存的快照。';
-  if (error?.code === 'BACKEND_PROTOCOL_ERROR') return '检查响应不完整或与当前快照不匹配，请重新检查。';
-  return '检查未完成，请检查连接后重新检查。';
+export function preflightErrorMessage(error, locale = 'zh-Hans') {
+  if (error?.code === 'UNAUTHORIZED') return translate(locale, 'export.preflight.error.unauthorized');
+  if (['CONFLICT', 'REVISION_CONFLICT', 'PREFLIGHT_STALE'].includes(error?.code)) return translate(locale, 'export.preflight.error.changed');
+  if (error?.code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'export.preflight.error.protocol');
+  return translate(locale, 'export.preflight.error.failed');
 }
 
-export function preflightIssueMessage(issue) {
-  if (Object.hasOwn(issueMessages, issue?.code)) return issueMessages[issue.code];
+export function preflightIssueMessage(issue, locale = 'zh-Hans') {
+  if (knownIssueCodes.has(issue?.code)) return translate(locale, `export.preflight.issue.${issue.code}`);
   // Unknown server messages must not leak paths, probe output or credentials.
   // Preserve the bounded issue code and source ID beside a safe explanation.
-  return issue?.severity === 'error' ? '素材或时间线检查未通过，请核对源素材与编排。' : '有一项检查未完成或需要注意，请核对源素材。';
+  return issue?.severity === 'error' ? translate(locale, 'export.preflight.issue.unknownError') : translate(locale, 'export.preflight.issue.unknownNotice');
 }
 
-export function exportCapabilityMessage(status) {
-  return ({ idle: '尚未检查本机编码能力。', checking: '正在用当前设置进行有限额的本地编码检查…', available: '当前设置已通过本地编码检查。实际导出时仍会重新验证。', unavailable: '本机编码工具不可用，或缺少当前导出所需的能力。请检查 FFmpeg 配置后重新检查。', incomplete: '本机编码能力尚未确认，检查可能超时或暂时不可用。不能据此判断支持或不支持，请重新检查。', stale: '项目、时间线或编码工具已变化，请重新检查。', blocked: '当前项目或时间线不符合编码检查要求，请先核对已保存的编排。' })[status] || '本机编码能力尚未确认，请重新检查。';
+export function exportCapabilityMessage(status, locale = 'zh-Hans') {
+  return ({ idle: translate(locale, 'export.preflight.capability.idle'), checking: translate(locale, 'export.preflight.capability.checking'), available: translate(locale, 'export.preflight.capability.available'), unavailable: translate(locale, 'export.preflight.capability.unavailable'), incomplete: translate(locale, 'export.preflight.capability.incomplete'), stale: translate(locale, 'export.preflight.capability.stale'), blocked: translate(locale, 'export.preflight.capability.blocked') })[status] || translate(locale, 'export.preflight.capability.unknown');
 }
 
 function boundReport(report, context) {
@@ -141,7 +127,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
         return report;
       } catch (error) {
         if (!current(captured)) return null;
-        emit({ phase: 'error', capabilityPhase: state.checkingStep === 'capability' ? 'incomplete' : state.capabilityPhase, checkingStep: null, binding: null, uncheckedIntent: null, error: preflightErrorMessage(error) });
+        emit({ phase: 'error', capabilityPhase: state.checkingStep === 'capability' ? 'incomplete' : state.capabilityPhase, checkingStep: null, binding: null, uncheckedIntent: null, error: preflightErrorMessage(error), errorCode: error?.code });
         if (error?.code === 'UNAUTHORIZED') onUnauthorized();
         return null;
       } finally { if (activeRead === abort) activeRead = null; }

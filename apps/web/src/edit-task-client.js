@@ -1,3 +1,4 @@
+import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
 import { workspaceOriginOptions } from './workspace-origin.js';
 import { ApiError } from './api.js';
@@ -6,7 +7,7 @@ import { DURABLE_EDIT_OPERATIONS, isEditTaskEnvelope, isEditTaskListEnvelope } f
 export const isDurableEditOperation = operation => DURABLE_EDIT_OPERATIONS.includes(operation);
 export const taskInputKey = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
-export const taskProtocolError = () => new ApiError('任务确认无效。原请求仍保留，请重新核对任务；不会自动重试。', 'BACKEND_PROTOCOL_ERROR');
+export const taskProtocolError = () => Object.assign(new ApiError('任务确认无效。原请求仍保留，请重新核对任务；不会自动重试。', 'BACKEND_PROTOCOL_ERROR'), { displayMessage: localizedMessage('tasks.localError.taskProtocol') });
 
 // A 200 is not an acknowledgment. Bind every reply to the exact persisted
 // identity before it is allowed to release an edit lane or a legacy receipt.

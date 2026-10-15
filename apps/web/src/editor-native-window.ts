@@ -1,12 +1,14 @@
+import { message as msg } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { useEffect } from 'react';
 import type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import { isProjectWindowId } from '../../desktop/src/project-window-protocol.ts';
 export interface EditorWindowBinding { readonly context: ProjectWindowContext; readonly bridge: ProjectWindowBridge }
 /** Native launcher is the sole startup selector. Existing Web selection remains
  * the caller's original URL/locator/list result. No business action is added. */
-export function editorInitialSelection(binding: EditorWindowBinding | null, webChoice: { projectId: string | null; notice?: string }): { projectId: string | null; notice?: string } {
+export function editorInitialSelection(binding: EditorWindowBinding | null, webChoice: { projectId: string | null; notice?: string | DisplayMessage | null }): { projectId: string | null; notice?: string | DisplayMessage | null } {
   if (!binding) return webChoice;
-  if (binding.context.role !== 'editor' || !isProjectWindowId(binding.context.initialProjectId)) throw new Error('编辑窗口没有有效的固定项目。');
+  if (binding.context.role !== 'editor' || !isProjectWindowId(binding.context.initialProjectId)) throw Object.assign(new Error('编辑窗口没有有效的固定项目。'), { displayMessage: msg('shell.error.editorProject') });
   return { projectId: binding.context.initialProjectId, notice: '' };
 }
 /** Status reports have no locator write authority. The persistent launcher is

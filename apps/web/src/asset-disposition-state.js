@@ -1,7 +1,8 @@
+import { message as msg } from '../../../packages/i18n/src/index.ts';
 import { ASSET_DISPOSITIONS, ASSET_DISPOSITION_BATCH_LIMIT, isAssetDispositionResponse, isAssetDispositionListResponse } from '@mioon/contracts';
 
-export const dispositionLabels = Object.freeze({ neutral: '未标记', favorite: '收藏', rejected: '拒选' });
-export const dispositionFilters = Object.freeze([['all', '全部'], ['favorite', '收藏'], ['rejected', '拒选'], ['neutral', '未标记']]);
+export const dispositionLabels = Object.freeze({ neutral: msg('assets.mark.neutral'), favorite: msg('assets.mark.favorite'), rejected: msg('assets.mark.rejected') });
+export const dispositionFilters = Object.freeze([['all', msg('assets.all')], ['favorite', msg('assets.mark.favorite')], ['rejected', msg('assets.mark.rejected')], ['neutral', msg('assets.mark.neutral')]]);
 export const dispositionKey = assetId => `asset-disposition:${assetId}`;
 export function dispositionRow(state, assetId) {
   const entry = state?.entries?.[assetId];
@@ -22,8 +23,8 @@ export function filterLibraryAssets(assets, { type = 'all', search = '', disposi
   return assets.filter(asset => (type === 'all' || asset.mimeType?.startsWith(`${type}/`)) && asset.name.toLowerCase().includes(search.toLowerCase()) && matchesDisposition(state, asset.id, disposition));
 }
 const initialState = () => ({ scope: null, projectId: null, assetIds: [], entries: {}, loading: false, savingAssetId: null, mutationError: '', uncertain: false });
-const readError = error => error?.message || '标记读取失败，请重新读取。';
-const protocolError = () => new Error('标记响应不完整或不匹配；此批状态未知，请重新读取。');
+const readError = error => error?.displayMessage || msg('assets.mark.readError');
+const protocolError = () => Object.assign(new Error('标记响应不完整或不匹配；此批状态未知，请重新读取。'), { displayMessage: msg('assets.mark.protocolError') });
 
 // All asynchronous results are bound to a project epoch; read generations and
 // independent per-asset revisions prevent late GETs or ACKs from going backward.
@@ -82,13 +83,13 @@ export function createAssetDispositionController({ read, save, hasPending = () =
         const result = await save(input);
         if (!current(captured) || !state.assetIds.includes(assetId)) return null;
         if (!isAssetDispositionResponse(result) || result.projectId !== input.projectId || result.assetId !== assetId || result.revision !== input.expectedRevision + 1 || result.disposition !== disposition) {
-          emit({ mutationError: '标记未获确认。若任务中有待确认记录，请恢复同一请求；重新读取不会重发修改。', uncertain: pending() });
+          emit({ mutationError: msg('assets.mark.unconfirmed'), uncertain: pending() });
         } else {
           emit({ entries: { ...state.entries, [assetId]: install(assetId, result) } });
           acknowledged = result;
         }
       } catch (error) {
-        if (current(captured)) emit({ mutationError: readError(error), uncertain: pending() });
+        if (current(captured)) emit({ mutationError: error?.displayMessage || msg('assets.mark.unconfirmed'), uncertain: pending() });
       } finally {
         if (current(captured)) {
           emit({ savingAssetId: null });

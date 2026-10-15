@@ -1,3 +1,4 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import LauncherRoot from './LauncherRoot.tsx';
@@ -26,6 +27,7 @@ function initialHost(): HostState {
 /** Only the verified preload context chooses a native role. App is supplied as
  * a render callback so launcher never mounts the editor's controller graph. */
 export default function DesktopRoot({ rpc, contractChecks, renderWeb, renderEditor, renderSettings }: DesktopRootProps) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [host, setHost] = useState<HostState>(initialHost);
   const bridge = host.kind === 'pending' || host.kind === 'native' ? host.bridge : null;
   useEffect(() => {
@@ -44,8 +46,8 @@ export default function DesktopRoot({ rpc, contractChecks, renderWeb, renderEdit
     return () => { active = false; release?.(); };
   }, [bridge]);
   if (host.kind === 'web') return <>{renderWeb()}</>;
-  if (host.kind === 'failed') return <main className="boot-page" role="alert"><h1>窗口身份未确认</h1><p>请保留当前窗口，重新启动前先核对是否有未完成的输入。</p></main>;
-  if (host.kind === 'pending') return <main className="boot-page" role="status">正在核对桌面窗口…</main>;
+  if (host.kind === 'failed') return <main className="boot-page" role="alert"><h1>{t('shell.windowUnconfirmed')}</h1><p>{t('shell.keepWindow')}</p></main>;
+  if (host.kind === 'pending') return <main className="boot-page" role="status">{t('shell.checkingWindow')}</main>;
   if (host.context.role === 'launcher') return <LauncherRoot key={host.context.contextId} context={host.context} bridge={host.bridge} rpc={rpc} contractChecks={contractChecks} />;
   if (host.context.role === 'settings') return <SettingsRoot key={host.context.contextId} context={host.context} bridge={host.bridge} rpc={rpc} contractChecks={contractChecks} renderSettings={renderSettings} />;
   return <NativeEditorRoot key={host.context.contextId} context={host.context} bridge={host.bridge} rpc={rpc} contractChecks={contractChecks} renderEditor={renderEditor} />;

@@ -1,3 +1,5 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
+import * as i18nCore from '../packages/i18n/src/index.ts';
 import * as loudnessApplyRpc from '../apps/web/src/timeline-loudness-apply-rpc.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +20,7 @@ import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.t
 const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../apps/web/src/api.js', import.meta.url), 'utf8');
 const importSource = appSource.slice(appSource.indexOf('  async function importFiles(files) {'), appSource.indexOf('  async function saveShot('));
-const errorSource = appSource.slice(appSource.indexOf('function readableError(error) {'), appSource.indexOf('function Login('));
+const errorSource = appSource.slice(appSource.indexOf('function localizedError(displayMessage) {'), appSource.indexOf('function Login('));
 assert.ok(importSource.startsWith('  async function importFiles(files) {'), 'Exercise the actual App importFiles function');
 const projectId = '00000000-0000-4000-8000-000000000001';
 const file = (name, patch = {}) => ({ name, type: 'image/png', size: 4, ...patch });
@@ -54,11 +56,11 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
   let effect, cleanup;
   const importSession = Function('useRef', 'useEffect', 'requestCounter', `${lifecycleSource}\nreturn importSession;`)(
     value => ({ current: value }), fn => { effect = fn; cleanup = fn(); }, requestCounter);
-  const scope = { nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
+  const scope = { msg, renderCoreMessage, nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
     setShowCreate: value => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current }),
     isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOrigin.workspaceOriginScope(captured.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
     isBusy: key => busy.has(`${currentProject.current}:${key}`), markBusy: (owner, key, value) => { busyWrites.push({ owner, key, value }); if (value) busy.add(`${owner}:${key}`); else busy.delete(`${owner}:${key}`); },
-    notify: (message, type = 'success') => notifications.push({ message, type }),
+    notify: (message, type = 'success') => notifications.push({ message: feedback.renderImportFeedback('zh-Hans', message), descriptor: message, type }),
     fileInput: { current: input }, FileReader, rpc: (operation, input, options) => { requests.push({ operation, input }); return (rpcImpl || api.rpc)(operation, input, options); },
     useCallback: fn => fn, reconcilePending() {}, emptyData: {}, setData: value => stateWrites.push(['data', value]), setProviders: value => stateWrites.push(['providers', value]),
     setLastSync: value => stateWrites.push(['sync', value]), setOnline: value => stateWrites.push(['online', value]), setPending() {}, pendingForProject: () => [],
@@ -171,7 +173,7 @@ test('large batches and hostile Unicode/HTML labels stay bounded plain text with
   assert.equal(imports(h).length, 6); assert.match(notice(h), /已确认导入 5 个/); assert.match(notice(h), /另 2 个未列出/); assert.match(notice(h), /未尝试 994 个/); assert.match(notice(h), /另 991 个未列出/);
   assert.ok(notice(h).length < 1800); assert.doesNotMatch(notice(h), /[\u0000-\u001f\u007f-\u009f\u2028-\u202e]/);
   assert.equal(notice(h).isWellFormed(), true); assert.match(notice(h), /<img src=x/);
-  assert.match(appSource, /<span>\{toast\.message\}<\/span>/, 'The bounded labels remain a React text child, not injected HTML');
+  assert.match(appSource, /<span>\{renderImportFeedback\(locale, toast\.message\)\}<\/span>/, 'The bounded labels remain a React text child, not injected HTML');
   assert.doesNotMatch(appSource, /dangerouslySetInnerHTML/);
 });
 

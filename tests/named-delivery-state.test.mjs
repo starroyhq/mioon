@@ -1,3 +1,4 @@
+import { LOCALES, renderMessage } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
@@ -164,4 +165,29 @@ test('named projection rejects malformed own name, path-shaped IDs and legacy st
   assert.equal(namedTimelineDeliveryHistory(base).downloadHref, `/media/${id(8)}?download=1&exportId=${id(7)}`);
   for (const patch of [{ id: '../path' }, { status: 'completed' }, { status: 'ready' }, { snapshot: { ...base.snapshot, deliveryName: undefined } }, { snapshot: { timeline } }]) assert.equal(namedTimelineDeliveryHistory({ ...base, ...patch }), null);
   assert.equal(namedTimelineDeliveryHistory({ ...base, assetId: '../file', url: 'https://bad.example/name.mp4' }).downloadHref, null);
+});
+
+
+test('frozen rate descriptors use stable settings without changing legacy projection acceptance or original history', () => {
+  const base = { id: id(7), assetId: id(8), mode: 'timeline', purpose: 'export', status: 'succeeded', timelineRevision: 4, createdAt: '2026-10-12T06:00:00.000Z', snapshot: { timeline, deliveryName: 'literal 日本語 繁體' } };
+  const projection = { width: 720, height: 1280, fps: 30, rate: '紧凑 · CRF 28' };
+  const variants = [
+    [{ mode: 'crf', quality: 'compact' }, 'export.settings.compact'],
+    [{ mode: 'crf', quality: 'standard' }, 'export.settings.standard'],
+    [{ mode: 'crf', quality: 'high' }, 'export.settings.high'],
+    ...[2000, 4000, 8000].map(targetKbps => [{ mode: 'bitrate', targetKbps }, 'export.settings.rateTarget']),
+  ];
+  for (const [rateControl, key] of variants) {
+    const row = { ...base, snapshot: { ...base.snapshot, delivery: { exportSettings: { ...settings, rateControl } } } }, before = structuredClone(row);
+    const output = namedTimelineDeliveryHistory(row, projection);
+    assert.equal(output.output.rate, projection.rate, 'Legacy projection stays exact, even when descriptor comes from different frozen settings');
+    assert.equal(output.output.rateMessage.key, key);
+    for (const locale of LOCALES) assert.ok(renderMessage(locale, output.output.rateMessage));
+    assert.equal(output.downloadHref, `/media/${id(8)}?download=1&exportId=${id(7)}`);
+    assert.deepEqual(row, before);
+  }
+  const unknown = { ...base, snapshot: { ...base.snapshot, delivery: { exportSettings: { rateControl: { mode: 'future' } } } } };
+  assert.equal(namedTimelineDeliveryHistory(unknown, projection).output.rate, projection.rate);
+  assert.equal(namedTimelineDeliveryHistory(unknown, projection).output.rateMessage, undefined);
+  assert.equal(namedTimelineDeliveryHistory(unknown, { ...projection, rate: 'unrecognized' }).output, null);
 });

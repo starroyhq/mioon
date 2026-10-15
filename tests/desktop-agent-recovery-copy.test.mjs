@@ -1,18 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 
 const source = readFileSync(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8');
 
-function recoveryDetail(pattern) {
-  const match = source.match(pattern);
-  assert.ok(match, 'The native recovery dialog must explain recovery before restarting.');
-  return match[1];
+function recoveryDetail(key) {
+  assert.ok(source.includes(`detail: nt('${key}')`), 'The native recovery dialog must use the translated safety detail.');
+  setNativeLanguageReader(() => 'zh-Hans');
+  return nativeText(key);
 }
 
 const dialogs = [
-  ['restart confirmation', /message: '重启本地服务？',\s*detail: '([^']+)'/],
-  ['backend crash recovery', /message: '本地服务意外退出。已保存的数据会在重启时恢复。',\s*detail: '([^']+)'/],
+  ['restart confirmation', 'native.restartDetail'],
+  ['backend crash recovery', 'native.serviceStoppedDetail'],
 ];
 
 for (const [name, pattern] of dialogs) {

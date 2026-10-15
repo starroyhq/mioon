@@ -1,3 +1,4 @@
+import { message } from '../../../packages/i18n/src/index.ts';
 import { AGENT_PROTOCOLS, deriveAgentEndpoint } from '@mioon/contracts';
 export { AGENT_PROTOCOLS, deriveAgentEndpoint };
 
@@ -75,7 +76,7 @@ export function createAgentSettingsClient({ fetchImpl = (...args) => globalThis.
   return { read: () => request('GET'), write: input => request('PUT', JSON.stringify(input)) };
 }
 
-export const initialAgentSettingsState = () => ({ phase: 'loading', snapshot: null, draft: null, secretAction: 'keep', storage: 'session', message: '', recovery: null });
+export const initialAgentSettingsState = () => ({ phase: 'loading', snapshot: null, draft: null, secretAction: 'keep', storage: 'session', message: '', displayMessages: [], recovery: null });
 export const agentSettingsBusy = state => ['loading', 'saving', 'reconciling'].includes(state.phase);
 export const agentSettingsEditable = state => Boolean(state.snapshot) && !agentSettingsBusy(state);
 export const agentSettingsCanSave = state => agentSettingsEditable(state) && !state.recovery && state.phase !== 'blocked';
@@ -110,25 +111,25 @@ export function createAgentSettingsSession({ client = createAgentSettingsClient(
   function read({ recover = false } = {}) {
     if (!active || agentSettingsBusy(state) && state.phase !== 'loading') return Promise.resolve(false);
     const token = ++epoch;
-    publish({ phase: recover ? 'reconciling' : 'loading', message: recover ? '正在重新读取服务器状态；不会再次提交。' : '' });
+    publish({ phase: recover ? 'reconciling' : 'loading', message: recover ? '正在重新读取服务器状态；不会再次提交。' : '', displayMessages: (recover ? [message('agent.settings.notice.rereading')] : []) });
     return Promise.resolve().then(() => client.read()).then(snapshot => {
       if (!current(token)) return false;
       const safe = safeAgentSettings(snapshot);
       publish({ snapshot: safe, draft: recover && state.draft ? state.draft : { ...safe.configuration }, phase: recover ? 'review' : 'ready',
         secretAction: 'keep', storage: safe.secret.storage === 'persistent' && safe.storage.persistentAvailable ? 'persistent' : 'session',
         recovery: recover ? state.recovery || 'unknown' : null,
-        message: recover ? '已重新读取当前状态。草稿仍保留；请核对后继续，替换密钥需要重新输入。' : '' });
+        message: recover ? '已重新读取当前状态。草稿仍保留；请核对后继续，替换密钥需要重新输入。' : '', displayMessages: (recover ? [message('agent.settings.notice.review')] : []) });
       return true;
     }).catch(error => {
       if (!current(token)) return false;
-      publish({ phase: recover ? 'blocked' : 'load_error', message: recover ? '暂时无法核实保存结果。草稿已保留，请重新读取状态后再保存。' : errorText(error?.code) === '未收到保存确认，结果可能已经生效。' ? '暂时无法读取 Agent 设置，请检查工作台连接后重试。' : errorText(error?.code) });
+      publish({ phase: recover ? 'blocked' : 'load_error', message: recover ? '暂时无法核实保存结果。草稿已保留，请重新读取状态后再保存。' : !Object.hasOwn(agentSettingsErrorKeys, error?.code) ? '暂时无法读取 Agent 设置，请检查工作台连接后重试。' : errorText(error?.code), displayMessages: (recover ? [message('agent.settings.notice.blocked')] : (!Object.hasOwn(agentSettingsErrorKeys, error?.code) ? [message('agent.settings.notice.loadError')] : [errorDescriptor(error?.code)])) });
       return false;
     });
   }
   function edit(patch) {
     if (!editable()) return false;
     const draft = agentConfiguration({ ...state.draft, ...patch });
-    publish({ draft, message: state.recovery ? state.message : '', phase: state.recovery ? state.phase : 'ready' });
+    publish({ draft, message: state.recovery ? state.message : '', displayMessages: (state.recovery ? state.displayMessages : []), phase: state.recovery ? state.phase : 'ready' });
     return true;
   }
   function selectPreset(id) {
@@ -141,26 +142,26 @@ export function createAgentSettingsSession({ client = createAgentSettingsClient(
   }
   function useLatest() {
     if (!editable() || state.phase === 'blocked') return false;
-    publish({ draft: { ...state.snapshot.configuration }, secretAction: 'keep', phase: 'ready', recovery: null, message: '已使用当前已保存设置。' });
+    publish({ draft: { ...state.snapshot.configuration }, secretAction: 'keep', phase: 'ready', recovery: null, message: '已使用当前已保存设置。', displayMessages: [message('connections.notice.useSaved')] });
     return true;
   }
   function acknowledge() {
     if (!editable() || state.phase !== 'review' || !state.recovery) return false;
-    publish({ recovery: null, phase: 'ready', message: '已保留草稿。请确认目标与密钥操作，再点击保存。' }); return true;
+    publish({ recovery: null, phase: 'ready', message: '已保留草稿。请确认目标与密钥操作，再点击保存。', displayMessages: [message('agent.settings.notice.keepDraft')] }); return true;
   }
   function save(value = '') {
     if (!active || !visible || !agentSettingsCanSave(state)) return Promise.resolve(false);
     const platform = state.snapshot.presets.find(item => item.id === state.draft.presetId)?.platforms.find(item => item.id === state.draft.platformId);
-    const issue = agentSettingsIssue(state.draft, value) || (platform && !platform.availableProtocols.includes(state.draft.protocol) ? '此平台尚未提供所选协议配置，请明确选择可用协议。' : '');
-    if (issue) { publish({ phase: 'error', message: issue }); return Promise.resolve(false); }
+    const issue = agentSettingsIssue(state.draft, value) || (platform && !platform.availableProtocols.includes(state.draft.protocol) ? '此平台尚未提供所选协议配置，请明确选择可用协议。' : ''), issueDisplayMessage = agentSettingsIssueDescriptor(state.draft, value) || (platform && !platform.availableProtocols.includes(state.draft.protocol) ? message('agent.settings.issue.platformProtocol') : null);
+    if (issue) { publish({ phase: 'error', message: issue, displayMessages: issueDisplayMessage ? [issueDisplayMessage] : [] }); return Promise.resolve(false); }
     if (value && state.storage === 'persistent' && !state.snapshot.storage.persistentAvailable) {
-      publish({ phase: 'error', message: errorText('AGENT_SETTINGS_STORAGE_UNAVAILABLE') }); return Promise.resolve(false);
+      publish({ phase: 'error', message: errorText('AGENT_SETTINGS_STORAGE_UNAVAILABLE'), displayMessages: [errorDescriptor('AGENT_SETTINGS_STORAGE_UNAVAILABLE')] }); return Promise.resolve(false);
     }
     const token = ++epoch, configuration = agentConfiguration(state.draft), revision = state.snapshot.revision;
     configuration.baseUrl = configuration.baseUrl.trim(); configuration.model = configuration.model.trim();
     const secret = value ? { action: 'replace', value, storage: state.storage } : { action: state.secretAction === 'remove' || agentBindingChanged(state.snapshot.configuration, configuration) ? 'remove' : 'keep' };
     const expectedSecret = secret.action === 'replace' ? { configured: true, storage: state.storage } : secret.action === 'remove' ? { configured: false, storage: 'none' } : { ...state.snapshot.secret };
-    publish({ phase: 'saving', message: '正在保存连接设置…', secretAction: 'keep' });
+    publish({ phase: 'saving', message: '正在保存连接设置…', displayMessages: [message('agent.settings.notice.saving')], secretAction: 'keep' });
     let operation;
     try { operation = client.write({ expectedRevision: revision, configuration, secret }); } catch (error) { operation = Promise.reject(error); }
     // No value is captured in any of the completion/recovery handlers.
@@ -171,28 +172,63 @@ export function createAgentSettingsSession({ client = createAgentSettingsClient(
           safe.secret.configured !== expectedSecret.configured || safe.secret.storage !== expectedSecret.storage) throw failure('INVALID_RESPONSE');
       publish({ snapshot: safe, draft: { ...safe.configuration }, phase: 'saved', recovery: null,
         storage: safe.secret.storage === 'persistent' ? 'persistent' : state.storage,
-        message: safe.secret.configured ? `连接设置已保存；${safe.secret.storage === 'persistent' ? '密钥由系统加密保存' : '密钥仅在本次运行保留'}。尚未验证连接。` : '连接设置已保存；未保存 API 密钥。尚未验证连接。' });
+        message: safe.secret.configured ? `连接设置已保存；${safe.secret.storage === 'persistent' ? '密钥由系统加密保存' : '密钥仅在本次运行保留'}。尚未验证连接。` : '连接设置已保存；未保存 API 密钥。尚未验证连接。', displayMessages: (safe.secret.configured ? [message(safe.secret.storage === 'persistent' ? 'agent.settings.notice.savedPersistent' : 'agent.settings.notice.savedSession')] : [message('agent.settings.notice.savedNone')]) });
       return true;
     }).catch(error => {
       if (!current(token)) return false;
       if (['UNAUTHORIZED', 'AGENT_SETTINGS_VALIDATION'].includes(error?.code)) {
-        publish({ phase: 'error', message: `${errorText(error.code)}${error.code === 'UNAUTHORIZED' ? '' : ' 新输入的密钥已清空，如需替换请重新输入。'}` }); return false;
+        publish({ phase: 'error', message: `${errorText(error.code)}${error.code === 'UNAUTHORIZED' ? '' : ' 新输入的密钥已清空，如需替换请重新输入。'}`, displayMessages: [errorDescriptor(error.code), ...(error.code === 'UNAUTHORIZED' ? [] : [message('agent.settings.notice.keyCleared')])] }); return false;
       }
       const recovery = error?.code === 'AGENT_SETTINGS_CONFLICT' ? 'conflict' : 'unknown';
-      publish({ phase: 'reconciling', recovery, message: recovery === 'conflict' ? '设置已在其他窗口更新，正在读取最新状态。' : `${errorText(error?.code)}正在读取当前状态，不会自动重试。` });
+      publish({ phase: 'reconciling', recovery, message: recovery === 'conflict' ? '设置已在其他窗口更新，正在读取最新状态。' : `${errorText(error?.code)}正在读取当前状态，不会自动重试。`, displayMessages: (recovery === 'conflict' ? [message('agent.settings.notice.conflictReading')] : [errorDescriptor(error?.code), message('agent.settings.notice.readNoRetry')]) });
       return Promise.resolve().then(() => client.read()).then(snapshot => {
         if (!current(token)) return false;
         const safe = safeAgentSettings(snapshot);
         publish({ snapshot: safe, phase: 'review', storage: state.storage === 'persistent' && !safe.storage.persistentAvailable ? 'session' : state.storage,
-          message: recovery === 'conflict' ? '保存冲突：已读取其他窗口的最新设置。你的连接草稿仍保留；请核对后继续，替换密钥需要重新输入。' : '未收到保存确认。已读取当前服务器状态，未自动重试；请核对后继续，替换密钥需要重新输入。' });
+          message: recovery === 'conflict' ? '保存冲突：已读取其他窗口的最新设置。你的连接草稿仍保留；请核对后继续，替换密钥需要重新输入。' : '未收到保存确认。已读取当前服务器状态，未自动重试；请核对后继续，替换密钥需要重新输入。', displayMessages: (recovery === 'conflict' ? [message('agent.settings.notice.conflict')] : [message('agent.settings.notice.unknown')]) });
         return false;
-      }).catch(() => { if (current(token)) publish({ phase: 'blocked', message: '暂时无法核实保存结果。草稿已保留，请重新读取状态后再保存。' }); return false; });
+      }).catch(() => { if (current(token)) publish({ phase: 'blocked', message: '暂时无法核实保存结果。草稿已保留，请重新读取状态后再保存。', displayMessages: [message('agent.settings.notice.blocked')] }); return false; });
     });
   }
   return { getState: () => state, load: () => read(), reload: () => read({ recover: Boolean(state.snapshot) }), edit, selectPreset, selectPlatform, useLatest, acknowledge, save,
     setVisible(value) { visible = Boolean(value); },
     setStorage(storage) { if (!editable() || !['session', 'persistent'].includes(storage) || storage === 'persistent' && !state.snapshot.storage.persistentAvailable) return false; publish({ storage }); return true; },
-    removeKey(remove = true) { if (!editable()) return false; publish({ secretAction: remove ? 'remove' : 'keep', phase: state.recovery ? state.phase : 'ready', message: state.recovery ? state.message : '' }); return true; },
+    removeKey(remove = true) { if (!editable()) return false; publish({ secretAction: remove ? 'remove' : 'keep', phase: state.recovery ? state.phase : 'ready', message: state.recovery ? state.message : '', displayMessages: (state.recovery ? state.displayMessages : []) }); return true; },
     dispose() { active = false; epoch++; state = initialAgentSettingsState(); },
   };
 }
+
+// Display descriptors are transient UI metadata. Legacy diagnostics and request payloads remain unchanged.
+export function agentSettingsIssueDescriptor(draft, secret = '') {
+  if (!isAgentProtocol(draft?.protocol)) return message('agent.settings.issue.protocol');
+  if (!draft?.presetId || !draft?.platformId || !draft?.baseUrl.trim() || !draft?.model.trim()) return message('agent.settings.issue.required');
+  if (draft.baseUrl.length > 2048 || draft.model.length > 200) return message('agent.settings.issue.length');
+  try {
+    const url = new URL(draft.baseUrl.trim());
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return message('agent.settings.issue.urlParts');
+    if (draft.presetId !== 'ollama' && url.protocol !== 'https:') return message('agent.settings.issue.https');
+  } catch { return message('agent.settings.issue.url'); }
+  if (secret && (!secret.trim() || /[\u0000-\u001f\u007f-\u009f]/.test(secret) || new TextEncoder().encode(secret).length > 8192)) return message('agent.settings.issue.key');
+  return null;
+}
+
+const errorDescriptor = code => ({
+  UNAUTHORIZED: message('connections.error.unauthorized'),
+  AGENT_SETTINGS_VALIDATION: message('agent.settings.error.validation'),
+  AGENT_SETTINGS_STORAGE_UNAVAILABLE: message('agent.settings.error.storage'),
+  AGENT_SETTINGS_CORRUPT: message('agent.settings.error.corrupt'),
+  AGENT_SETTINGS_CLOSED: message('agent.settings.error.closed'),
+}[Object.hasOwn(agentSettingsErrorKeys, code) ? code : 'UNKNOWN'] || message('connections.error.unknown'));
+
+const agentSettingsErrorKeys = Object.freeze({ UNAUTHORIZED: true, AGENT_SETTINGS_VALIDATION: true, AGENT_SETTINGS_STORAGE_UNAVAILABLE: true, AGENT_SETTINGS_CORRUPT: true, AGENT_SETTINGS_CLOSED: true });
+const presetNames = Object.freeze({ openai: 'OpenAI', deepseek: 'DeepSeek', qwen: 'Qwen / DashScope', zhipu: 'Zhipu / Z.ai', kimi: 'Kimi / Moonshot', minimax: 'MiniMax', openrouter: 'OpenRouter' });
+export const agentPresetLabel = (preset, t) => preset.id === 'custom' ? t('agent.settings.presets.custom') : preset.id === 'ollama' ? t('agent.settings.presets.ollama') : (Object.hasOwn(presetNames, preset.id) ? presetNames[preset.id] : preset.id);
+const platformKeys = Object.freeze({ beijing: 'agent.settings.platform.beijing', singapore: 'agent.settings.platform.singapore', 'workspace-cn-beijing': 'agent.settings.platform.workspaceBeijing', 'workspace-ap-southeast-1': 'agent.settings.platform.workspaceSingapore', 'workspace-us-east-1': 'agent.settings.platform.workspaceUs', 'workspace-cn-hongkong': 'agent.settings.platform.workspaceHongkong', 'workspace-ap-northeast-1': 'agent.settings.platform.workspaceTokyo', 'workspace-eu-central-1': 'agent.settings.platform.workspaceFrankfurt', custom: 'agent.settings.platform.custom', local: 'agent.settings.platform.local' });
+export function agentPlatformLabel(presetId, platform, t) {
+  if (Object.hasOwn(platformKeys, platform.id)) return t(platformKeys[platform.id]);
+  const brand = presetId === 'zhipu' ? platform.id === 'china' ? 'BigModel' : 'Z.ai' : presetId === 'kimi' ? 'Moonshot' : presetId === 'minimax' ? 'MiniMax' : null;
+  if (brand && ['china', 'international'].includes(platform.id)) return t(platform.id === 'china' ? 'agent.settings.platform.china' : 'agent.settings.platform.international', { brand });
+  return presetId === 'openai' ? 'OpenAI' : presetId === 'deepseek' ? 'DeepSeek API' : presetId === 'openrouter' ? 'OpenRouter' : platform.id;
+}
+const presetNoteKeys = Object.freeze({ openai: 'agent.settings.presets.openaiNote', deepseek: 'agent.settings.presets.deepseekNote', qwen: 'agent.settings.presets.qwenNote', zhipu: 'agent.settings.presets.zhipuNote', kimi: 'agent.settings.presets.kimiNote', minimax: 'agent.settings.presets.minimaxNote', openrouter: 'agent.settings.presets.openrouterNote', custom: 'agent.settings.presets.customNote', ollama: 'agent.settings.presets.ollamaNote' });
+export const agentPresetNote = (preset, platform, t) => t(preset?.id === 'qwen' && platform?.id.startsWith('workspace-') ? 'agent.settings.presets.qwenWorkspace' : (Object.hasOwn(presetNoteKeys, preset?.id) ? presetNoteKeys[preset.id] : 'agent.settings.presetFallback'));

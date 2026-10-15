@@ -1,3 +1,4 @@
+import { useI18n } from './i18n/I18nProvider.tsx';
 import React from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
@@ -12,17 +13,18 @@ export default function ProjectEntry({ controller, status, onSettings, editor = 
   readonly controller: ProjectEntryController; readonly status?: ReactNode; readonly editor?: boolean;
   readonly onSettings: (slot: ProjectWindowSettingsSlot) => void;
 }) {
+  const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const state = controller.getState(), context = controller.getContext();
-  const disabled = context.quitting ? '应用正在退出，暂不能新建项目。'
-    : state.createUnknown ? '上次新建结果未确认。请保留此窗口并刷新列表核对，不要重复创建。'
-      : state.openUnknown ? '请先核对当前打开窗口的结果。'
-        : !state.workspace ? '工作区身份尚未核对，暂不能新建项目。'
-          : state.workspace.restored ? '恢复分支暂不支持新建项目。' : '';
+  const disabled = context.quitting ? t('projects.quittingCreate')
+    : state.createUnknown ? t('projects.previousCreateUnknown')
+      : state.openUnknown ? t('projects.checkOpenResult')
+        : !state.workspace ? t('projects.workspaceNotChecked')
+          : state.workspace.restored ? t('projects.restoredCreateUnavailable') : '';
   const contents = <>
-    {editor && <div className="project-entry-dialog-heading"><DialogTitle id="native-project-entry-heading">{state.mode === 'new' ? '新建项目' : '打开工作区项目'}</DialogTitle>
-      <DialogDescription>从当前工作区选择项目，将在独立编辑窗口打开；此窗口的项目与输入会保留。</DialogDescription>
-      <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown} onClick={() => { void controller.dismiss(); }}>关闭项目选择</Button></div>}
-    {state.openUnknown && <div className="project-home-notice" role="status"><p>只核对原打开请求，不会重新创建项目。</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>核对窗口状态</Button></div>}
+    {editor && <div className="project-entry-dialog-heading"><DialogTitle id="native-project-entry-heading">{state.mode === 'new' ? t('projects.createNew') : t('projects.openWorkspace')}</DialogTitle>
+      <DialogDescription>{t('projects.separateWindow')}</DialogDescription>
+      <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown} onClick={() => { void controller.dismiss(); }}>{t('projects.closeSelection')}</Button></div>}
+    {state.openUnknown && <div className="project-home-notice" role="status"><p>{t('projects.checkOriginalOpen')}</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>{t('projects.checkWindow')}</Button></div>}
     <ProjectHome projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting} listBusy={state.listBusy} listError={state.listError}
       page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => { void controller.open(id); }}

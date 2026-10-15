@@ -1,8 +1,9 @@
+import { message } from '../../../packages/i18n/src/index.ts';
 import { workspaceRestoreTaskContextSchema, workspaceRestoreTaskListContextSchema } from '@mioon/contracts';
 import { workspaceOriginScope, workspaceOriginOptions, WORKSPACE_ORIGIN_HELD_REASON, WORKSPACE_ORIGIN_UNVERIFIED_REASON } from './workspace-origin.js';
 
 const fail = (code, message) => Object.assign(new Error(message), { code });
-const protocol = () => fail('BACKEND_PROTOCOL_ERROR', '任务工作区身份确认无效，原编号和参数仍保留。');
+const protocol = () => Object.assign(fail('BACKEND_PROTOCOL_ERROR', '任务工作区身份确认无效，原编号和参数仍保留。'), { displayMessage: message('recovery.workspace.taskProtocol') });
 const freeze = value => Object.freeze(structuredClone(value));
 
 // Restore metadata wraps a task; it never changes that task's domain input,

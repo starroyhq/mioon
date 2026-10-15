@@ -1,3 +1,4 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -43,7 +44,8 @@ function view(kind) {
     import { renderToStaticMarkup } from 'react-dom/server';
     import { Button } from '@mioon/ui/components/button';
     ${source}
-    export { Component, React, Button, renderToStaticMarkup };
+    function DirectComponent(props) { let tree; function Probe() { tree = Component(props); return null; } renderToStaticMarkup(<Probe />); return tree; }
+    export { DirectComponent as Component, React, Button, renderToStaticMarkup };
     export const render = props => renderToStaticMarkup(<Component {...props} />);`;
   const result = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: path.join(root, 'apps/web') },
     bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic',
@@ -120,6 +122,7 @@ test('actual classic JSX transform executes without relying on an ambient React 
   }).code;
   Function('require', 'module', 'exports', code)(name => {
     if (name === 'react') return actual.React;
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
     if (name === '@mioon/ui/components/button') return { Button: actual.Button };
     assert.fail(`Unexpected component dependency: ${name}`);
   }, module, module.exports);
@@ -225,15 +228,16 @@ test('App owns the one busy projection, original dirty scope, late-bound Retry a
   assert.match(contextSource, /captured\.projectId === currentProject\.current && captured\.epoch === navigationEpoch\.current && workspaceOriginScope\(captured\.workspace\) === workspaceOriginScope\(workspaceRef\.current\)/);
   assert.equal(reloadSource.trim(), `async function reloadPreferences() {
     const captured = context();
-    if (!await confirm('载入已保存视图会替换当前的工作区、选择和位置。继续？')) return;
+    if (!await confirm(msg('shell.confirm.loadSavedView'))) return;
     if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
   }`);
+  assert.equal(renderCoreMessage('zh-Hans', msg('shell.confirm.loadSavedView')), '载入已保存视图会替换当前的工作区、选择和位置。继续？');
   assert.match(selectSource, /if \(!importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch \|\| workspaceOriginScope\(workspaceRef\.current\) !== attempt\.workspaceScope\) return false;/);
-  assert.match(selectSource, /if \(!restored\) throw Object\.assign\(new Error\([^;]+PROJECT_VIEW_UNAVAILABLE/);
+  assert.match(selectSource, /if \(!restored\) throw Object\.assign\(localizedError\([^;]+PROJECT_VIEW_UNAVAILABLE/);
   const source = readFileSync(componentPath, 'utf8');
   assert.doesNotMatch(source, /useState|useEffect|useLayoutEffect|useRef|useMemo|\bmemo\s*\(|\bfetch\s*\(|\brpc\s*\(|setTimeout|setInterval|localStorage|sessionStorage|preferencesRef|currentProject|navigationEpoch|realConfirm|generationReview|Agent/);
   assert.doesNotMatch(source, /:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck|\.jsx['"]/);
-  assert.deepEqual([...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(match => match[1]), ['react', '@mioon/ui/components/button']);
+  assert.deepEqual([...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(match => match[1]), ['./i18n/I18nProvider.tsx', 'react', '@mioon/ui/components/button']);
 });
 
 const copy = value => structuredClone(value);
@@ -272,7 +276,7 @@ function harness(t) {
     inspectorDirty: false, formatDirty: false, inspectorDraft: { title: 'retained inspector draft' }, formatDraft: { width: 1920 },
     paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties' };
   const calls = [], currentProject = { current: null }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 };
-  const env = { nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } }, workspaceOriginScope,
+  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } }, workspaceOriginScope,
     projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },
@@ -335,7 +339,8 @@ test('actual Reload waits for confirmation and rejects newer project, navigation
       preferenceStatus: { phase: 'conflict', pending: true }, preferencesRef: h.env.preferencesRef,
       currentProject: h.env.currentProject, reloadPreferences: actions.reloadPreferences });
     const pending = control(view('extracted').Component(element.props), 'reload-workspace-preferences').props.onClick();
-    assert.deepEqual(prompts, ['载入已保存视图会替换当前的工作区、选择和位置。继续？']);
+    assert.deepEqual(prompts, [msg('shell.confirm.loadSavedView')]);
+    assert.deepEqual(prompts.map(value => renderCoreMessage('zh-Hans', value)), ['载入已保存视图会替换当前的工作区、选择和位置。继续？']);
     if (supersede === 'project') await actions.selectProject(B);
     if (supersede === 'navigation') { h.env.navigationEpoch.current++; h.state.view.canvas.selectedId = SELECTED; }
     if (supersede === 'workspace') h.env.workspaceRef.current = { restored: true, workspaceOrigin: B };

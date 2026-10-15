@@ -1,3 +1,4 @@
+import { i18nTestModule, renderMessage as renderI18nMessage, message as msg } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -43,6 +44,7 @@ function harness() {
   const load = (source, loader, require) => { const module = { exports: {} }; Function('require', 'module', 'exports', transformSync(source, { loader, format: 'cjs' }).code)(require, module, module.exports); return module.exports; };
   const strictRequire = name => {
     if (name === 'react') return { ...react, default: react };
+    if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
     throw Error(`Unexpected TSX import ${name}`);
   };
@@ -214,7 +216,7 @@ test('actual library passes explicit hidden and subjects visibility to usage con
 
 test('filter copy identifies saved revision and unavailable data, and stays guarded while hidden', () => {
   const h = harness(), calls = [], props = { ...scopeProps, filter: 'unused', onFilter: value => calls.push(value) };
-  let tree = h.render(h.usage.AssetTimelineUsageFilters, props); assert.match(text(tree), /当前时间线 · 已保存 rev 7/);
+  let tree = h.render(h.usage.AssetTimelineUsageFilters, props); assert.match(text(tree), /当前时间线 · 已保存 修订版 7/);
   const button = find(tree, 'asset-usage-filter-unused'); assert.equal(button.props['aria-pressed'], true); button.props.onClick(); assert.deepEqual(calls, ['unused']);
   tree = h.render(h.usage.AssetTimelineUsageFilters, { ...props, visible: false, usage: undefined }); assert.match(text(tree), /暂不可用.*未知素材/); assert.equal(find(tree, 'asset-usage-filter-unused').props.disabled, true);
   button.props.onClick(); assert.deepEqual(calls, ['unused']);
@@ -233,6 +235,6 @@ test('real React and shared Button render safe compact HTML without network or s
   const [card, filters] = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
   assert.match(card, /data-slot="button"/); assert.match(card, /aria-expanded="false"/); assert.match(card, /<ul[^>]*hidden=""/);
   assert.match(card, /开场 &lt;script&gt;/); assert.doesNotMatch(card, /<script>/); assert.match(card, /起点 90 帧/);
-  assert.match(filters, /当前时间线 · 已保存 rev 7/); assert.match(filters, /未用于本时间线/); assert.match(filters, /role="group"/);
+  assert.match(filters, /当前时间线 · 已保存 修订版 7/); assert.match(filters, /未用于本时间线/); assert.match(filters, /role="group"/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|\bfetch\(|:\s*any\b|\bas\s+any\b|@ts-ignore|@ts-nocheck/);
 });
