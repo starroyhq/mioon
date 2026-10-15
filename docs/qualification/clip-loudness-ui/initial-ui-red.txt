@@ -1,0 +1,53 @@
+✔ actual App getter binds saved selection/graph and masks comparison/source-modal/settings/hidden/recovery/pending contexts (17.905414ms)
+✔ actual App getter and controller fence batched A→B→A and same-id source replacement before any render (4.378605ms)
+✔ actual video hasAudio false/unknown remains opt-in; only backend NO_AUDIO is presented as verified no stream (3.952895ms)
+✔ actual hook installs visibility/pagehide fences, never auto-reads and removes ownership on disposal (416.468297ms)
+✔ attach and context changes never analyze; explicit read sends exact saved selection only (21.142724ms)
+✔ saved-only admission blocks invalid identity, dirty/conflict/pending/recovery, mute/zero/no-audio, and long clip (2.919425ms)
+✔ every identity/execution/visibility change aborts and clears before late fulfillment or failure (12.514997ms)
+✔ A→B→A cannot restore an old report or reuse an old Analyze/Cancel callback (5.098515ms)
+✔ live context catches pre-effect changes; render suppresses ready response before layout effect (4.221866ms)
+✔ cancel, collapse revoke, dispose and strict-mode reattach abort with no retry or restored report (2.853448ms)
+✔ duplicates do not queue; exact clip ranges, gain/fades, track and asset must match current saved identity (18.393055ms)
+✔ saved public context preserves saved gain and probes audio/video despite false/unknown cached audio metadata (1.723048ms)
+✖ actual SSR card is collapsed, opt-in, saved-only and has no target/gain suggestion/apply controls (2981.965481ms)
+✔ measured report displays existing units/status and exact saved ranges/gain/fades/profile (2.356933ms)
+✔ disabled saved-only cases explain why without reporting a fabricated silence; hidden unmounts UI (1.320137ms)
+✔ actual component Analyze and Cancel callbacks retain captured selection/version and cannot revive A→B→A (522.262282ms)
+✔ four locale component labels/statuses and placeholders are present, zh-Hant is region-neutral (31.879687ms)
+✔ actual host binds selected saved clip and shared RPC; comparison/source overlays and draft conflicts fence analysis (3.737216ms)
+✔ actual Analyze callback admits false/unknown video metadata and displays only authoritative backend failure (12.262901ms)
+✔ bounded browser read sends exact explicit readonly request with workspace pin and no browser credentials expansion (35.548684ms)
+✔ complete success and error envelopes enforce declared and streamed 8KiB bounds before JSON parsing (125.429043ms)
+✔ stalled body hits one deadline, cancels its stream and yields no partial report (17.731556ms)
+✔ external cancel and deadline finish even when fetch ignores abort and late results never surface (25.337548ms)
+✔ pre-abort and absent clip identity never fetch; malformed/truncated/invalid UTF8 bodies fail closed (10.523919ms)
+✔ actual api.js selects bounded branch, validates report and retains existing non-mix JSON path (59.602347ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 24
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5757.401174
+
+✖ failing tests:
+
+test at tests/timeline-clip-loudness-ui.test.mjs:58:1
+✖ actual SSR card is collapsed, opt-in, saved-only and has no target/gain suggestion/apply controls (2981.965481ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /disabled/. Input:
+  
+  '<button type="button" tabindex="0" data-slot="button" data-testid="clip-loudness-analyze" aria-describedby="clip-loudness-status-44444444-4444-4444-8444-444444444444" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-3.5">'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness-ui/tests/timeline-clip-loudness-ui.test.mjs:63:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<button type="button" tabindex="0" data-slot="button" data-testid="clip-loudness-analyze" aria-describedby="clip-loudness-status-44444444-4444-4444-8444-444444444444" class="group/button inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-3.5">',
+    expected: /disabled/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }

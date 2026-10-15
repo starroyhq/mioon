@@ -1,0 +1,20 @@
+✔ inspection arguments are strict and authority-free; RPC project scope is separate (36.4156ms)
+✔ every shared operation has a complete explicit frozen effect descriptor; unknown operations fail closed (117.584103ms)
+✔ shared subject operations cannot enter either protocol built-in Agent catalog or parser (8.522689ms)
+✔ Comfy remote operations have truthful effects and remain outside built-in Agent tools (1.714746ms)
+✔ shared filter literals retain legacy omitted fades, stream fallback, gain and selected output trim exactly (2.928672ms)
+✔ historical 0343ed3 audio extraction preserves frozen b9e7d1e renderer bytes (10.592058ms)
+✔ current renderer retains exact shared audio helper wiring and unchanged trusted filter literals (6.59919ms)
+✔ typed fade extraction preserves the old helper body byte-for-byte and its public import path (4.632215ms)
+✔ legacy chunk coercion deterministically corrupts split Chinese and emoji despite valid JSON syntax (30.102346ms)
+✔ continuous UTF-8 preserves exact bytes and JSON at every interior multibyte split and byte-wise delivery (12.79519ms)
+✔ actual full shared catalog survives the reproduced version-list description boundary exactly (185.085757ms)
+✔ every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery (1923.794482ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3348.377014
