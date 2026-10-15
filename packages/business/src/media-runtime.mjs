@@ -1,7 +1,9 @@
 import { mediaConfigurationError, mediaExecutable } from './media-environment.mjs';
+import { createStreamingMediaRuntime } from './media-streaming-runtime.ts';
 import { spawnMedia, mediaInterrupted, onMediaInterruption, interruptedMediaError, throwIfMediaAborted, terminateMediaProcess } from './media-processes.mjs';
 
 export const MEDIA_RUNTIME_LIMITS = Object.freeze({ stdoutBytes: 4 * 1024 * 1024, streamingStdoutBytes: 600 * 48000 * 2 * 4, stderrBytes: 1024 * 1024, stderrTailBytes: 16 * 1024, timeoutMs: 120000 });
+export const MEDIA_PULL_CHUNK_BYTES = 1024 * 1024;
 const mediaError = (code, message) => Object.assign(new Error(message), { code });
 export const isMediaEffectRestriction = error => ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH'].includes(error?.code);
 // Backend-owned invocation/claim fences are synchronous. A Promise is not an
@@ -38,6 +40,14 @@ export async function runStreaming(command, args, { onStdout, timeout = MEDIA_RU
   if (typeof onStdout !== 'function') throw mediaConfigurationError();
   return runMedia(command, args, { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }, onStdout);
 }
+
+// Keep the legacy runner contracts above intact; the awaited pipe lane owns
+// its state and validation in a separately checked TypeScript implementation.
+export const runStreamingWithBackpressure = createStreamingMediaRuntime({
+  limits: MEDIA_RUNTIME_LIMITS, pullChunkBytes: MEDIA_PULL_CHUNK_BYTES,
+  mediaConfigurationError, mediaExecutable, checkMediaEffect, throwIfMediaAborted,
+  spawnMedia, mediaInterrupted, onMediaInterruption, interruptedMediaError, terminateMediaProcess,
+});
 
 async function runMedia(command, args, { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }, onStdout) {
   throwIfMediaAborted(signal);

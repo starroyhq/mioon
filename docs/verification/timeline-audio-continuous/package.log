@@ -1,0 +1,14 @@
+  • electron-builder  version=26.15.3 os=27.0.0
+  • loaded configuration  file=/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop/electron-builder.dev.cjs
+  • packageManager not detected by file, falling back to environment detection  resolvedPackageManager=npm detected=/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop
+  • skipped dependencies rebuild  reason=npmRebuild is set to false
+  • packaging       platform=darwin arch=arm64 electron=44.7.0 appOutDir=/private/tmp/mioon-continuous-mac-final-package-zip/mac-arm64
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=/private/tmp/mioon-continuous-mac-final-package-zip/mac-arm64
+  • searching for node modules  pm=npm searchDir=/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop/build
+  • no node modules found in collection, trying next search directory  searchDir=/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop/build attempt=0
+  • searching for node modules  pm=npm searchDir=/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop
+  • duplicate dependency references  dependencies=["@mioon/contracts@0.4.0"]
+  • default Electron icon is used  reason=application icon is not set
+  • executing @electron/fuses  electronPath=/private/tmp/mioon-continuous-mac-final-package-zip/mac-arm64/mioon-dev.app
+  • skipped macOS code signing  reason=identity explicitly is set to null

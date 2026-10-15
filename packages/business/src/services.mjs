@@ -6,6 +6,9 @@ import {createTimelineColourSourceServices,createTimelineColourSourceProbe} from
 import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
+import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
+import {createTimelineAudioContinuousDecoder} from './timeline-audio-continuous-decoder.ts';
+import {createTimelineAudioPreviewCoordinator,createSavedTimelineAudioReader} from './timeline-audio-preview-coordinator.ts';
 import {validateTimeline} from './timeline-inputs.mjs';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {lstatSync} from 'node:fs';
@@ -35,7 +38,7 @@ import {ownsStoreLock} from './db.mjs';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {readOwnedTimelineAsset,readTimelinePreflightSnapshot,readTimelineSourceGraph} from './timeline-sources.mjs';
 import {validateManagedSource,verifiedManagedHash} from './managed-media.mjs';
-import {run,runStreaming,checkMediaEffect} from './media-runtime.mjs';
+import {run,runStreaming,runStreamingWithBackpressure,checkMediaEffect} from './media-runtime.mjs';
 import {withProbePermit} from './media-probe.mjs';
 import {terminateMediaProcesses,waitForMediaProcesses} from './media-processes.mjs';
 import {createReferenceServices} from './references.mjs';
@@ -173,19 +176,24 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const loudnessApply=restored?{handlers:{'timeline.loudness.apply':disabled}}:createTimelineLoudnessApplyServices({
   measurement:mixLoudness,transactions:timeline.createLoudnessApplyTransactions(assertLoudnessApplyAvailable),assertAvailable:assertLoudnessApplyAvailable,
  });
- const audioPreview=restored?{...inactive(),handlers:{'timeline.audioPreview.plan':disabled},consumeSource:disabled}:createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
+ const readSavedAudioTimeline=createSavedTimelineAudioReader({db,
+  readTimeline:projectId=>readTimelinePreflightSnapshot(store,projectId).timeline,
+  readAssets:(projectId,timeline)=>readTimelineSourceGraph(db,projectId,timeline),
+  validate:(timeline,assets)=>validateTimeline(timeline,assets,{structureOnly:true}),
+ });
+ const audioPreviewV1=restored?{...inactive(),handlers:{'timeline.audioPreview.plan':disabled},consumeSource:disabled}:createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
-  readSavedTimeline:projectId=>{
-   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
-   try{const {timeline}=readTimelinePreflightSnapshot(store,projectId);if(!timeline)return null;
-    const assets=readTimelineSourceGraph(db,projectId,timeline);validateTimeline(timeline,assets,{structureOnly:true});
-    return {timeline,assets:[...assets.values()]};
-   }finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
-  },
+  readSavedTimeline:readSavedAudioTimeline,
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createTimelineAudioPreviewDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
+ const continuousAudio=restored?{...inactive(),handlers:{'timeline.audioPreview.continuousPlan':disabled},consumeBlock:disabled,retireSession:disabled,retireSessionById:disabled,assertNoContinuousSession:disabled}:createTimelineAudioContinuousServices(store,{signal:ownerSignal,runtime:{
+  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  readSavedTimeline:readSavedAudioTimeline,validateSource:validateManagedSource,hash:verifiedManagedHash,
+  decoder:createTimelineAudioContinuousDecoder({run,runStreamingWithBackpressure,withProbePermit,checkMediaEffect}),boundedShutdown,
+ }});
+ const audioPreview=createTimelineAudioPreviewCoordinator(audioPreviewV1,continuousAudio,AppError);
  const imageColourSource=restored?{...inactive(),handlers:{'timeline.colour.image.inspect':disabled,'timeline.colour.jpeg.inspect':disabled}}:createTimelineImageSourceServices(store,{signal:ownerSignal,runtime:{validateSource:validateManagedSource,runStreaming,waitForMediaProcesses,
   assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
   readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(db,projectId,assetId),
@@ -349,7 +357,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   checkpoint(signal);
   const operation=(async()=>{
    if(restored){
-    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
+    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.audioPreview.continuousPlan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.

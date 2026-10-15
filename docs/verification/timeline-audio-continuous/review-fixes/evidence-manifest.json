@@ -1,0 +1,49 @@
+{
+  "scope": "Post-review fixes, synthetic tests and current build; original checkpoint is retained in parent directory",
+  "files": {
+    "build.log": {
+      "bytes": 110838,
+      "sha256": "9cd835c159c4df6793395c089927554a5cb150650c8119d80515a76dcc82b365"
+    },
+    "checks.json": {
+      "bytes": 1360,
+      "sha256": "21f627b00dd0d51635e911398ef3de8089fca639839b8a91e97fccc5a1965fe9"
+    },
+    "electron.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "environment.json": {
+      "bytes": 197,
+      "sha256": "3331429ddf4ce0a275bb269bf37c792926902dd0af7473a5488a0fde2d73da56"
+    },
+    "numeric-artifact-hashes.json": {
+      "bytes": 436,
+      "sha256": "2ae0e4688c3d30ce970a389754b08f5edd97b467b58df88f80e58b1e3adfe7ab"
+    },
+    "numeric-launch.log": {
+      "bytes": 359,
+      "sha256": "ad75da293f61cf00c1fdd33b54370a5b1fa9d2a076d9ea84b73d0760bcf7375c"
+    },
+    "numeric-report.json": {
+      "bytes": 74269,
+      "sha256": "0d49482891778328967a10ecf9f8696f74edd1e166690e8e018ff0c0fba49182"
+    },
+    "product-build-hashes.json": {
+      "bytes": 689,
+      "sha256": "a1849079781b4f4ef3002ef25e18f5a93c6528189201e699b83804486bc5b45c"
+    },
+    "regression.log": {
+      "bytes": 50969,
+      "sha256": "d80d9e04e7499c3359b19ad8c0aab937b99c9c73456efb136b724aa7761dcfdc"
+    },
+    "source-hashes.json": {
+      "bytes": 2573,
+      "sha256": "1bb9571a68358ee350807f5ad6645994bd25f083fa5f4dba9e457bfdb82c6627"
+    },
+    "typecheck.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

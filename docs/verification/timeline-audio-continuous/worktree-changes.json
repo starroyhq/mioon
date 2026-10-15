@@ -1,0 +1,431 @@
+{
+  "baseCommit": "e87fa309ed0a604657dcdf6bddc768c1c10eb2a1",
+  "branch": "codex/continuous-audio-preview",
+  "committed": false,
+  "pushed": false,
+  "selfExcluded": true,
+  "unchangedCompatibilityFiles": [
+    "packages/contracts/src/timeline-audio-preview.ts",
+    "packages/contracts/src/timeline-segments.ts",
+    "packages/business/src/timeline-audio-filter-graph.ts",
+    "packages/business/src/timeline-audio.mjs",
+    "tests/timeline-audio-preview-compatibility.test.mjs",
+    "pnpm-lock.yaml"
+  ],
+  "files": [
+    {
+      "file": "apps/desktop/src/native-audio-preview-host.ts",
+      "status": "modified",
+      "bytes": 25999,
+      "sha256": "631f79ab1cfc7bf638aae40455d3a5c507f2c527f563ca8ba45f30d154c16d47"
+    },
+    {
+      "file": "apps/desktop/src/native-audio-preview-preload.ts",
+      "status": "modified",
+      "bytes": 5627,
+      "sha256": "8861f91bb4c312273853a20bdfbe9232d598721311b6d48ba89f901525dadd57"
+    },
+    {
+      "file": "apps/server/src/index.mjs",
+      "status": "modified",
+      "bytes": 25761,
+      "sha256": "8f219798dee4b468fb6cf1ffa822a2a140ad523ca47bfc5b7c1e3aca312493a8"
+    },
+    {
+      "file": "apps/server/src/timeline-audio-continuous-http.ts",
+      "status": "added",
+      "bytes": 7436,
+      "sha256": "579f234eb8862c87b0e5bd12f7809bc6e7b809b9479fe9df9e18593891912e10"
+    },
+    {
+      "file": "apps/web/src/App.jsx",
+      "status": "modified",
+      "bytes": 191523,
+      "sha256": "05b3c8600d47546ad281864f5108a672d19263174bc4a4eb0bd68ba973fb2eb0"
+    },
+    {
+      "file": "apps/web/src/TimelineAudioPreview.tsx",
+      "status": "modified",
+      "bytes": 8204,
+      "sha256": "c96b77cbc0908102782bec17e0e9cc2f765b1827521fcde364902517c5ba2d36"
+    },
+    {
+      "file": "apps/web/src/native-audio-preview-adapter.ts",
+      "status": "modified",
+      "bytes": 6750,
+      "sha256": "cbe0257e8283389e4740def73bfebb166563493f82efa33baf839733e44545c8"
+    },
+    {
+      "file": "apps/web/src/timeline-audio-continuous-client.ts",
+      "status": "added",
+      "bytes": 16013,
+      "sha256": "9e5fb64163e8fc630acb34124c4b32d079cca28bff66a92240ebad58b06a4ee5"
+    },
+    {
+      "file": "apps/web/src/timeline-audio-continuous-controller.ts",
+      "status": "added",
+      "bytes": 13869,
+      "sha256": "2bc8c7dbf74d688831bb4a70504e25dae6c3b00ca9be9695e86e7b82387050b6"
+    },
+    {
+      "file": "apps/web/src/timeline-audio-continuous-engine.ts",
+      "status": "added",
+      "bytes": 17104,
+      "sha256": "01ccbe682b3144416087aaa21acfead52c66817d15b3caafeb411f1567516901"
+    },
+    {
+      "file": "apps/web/src/use-timeline-audio-preview.ts",
+      "status": "modified",
+      "bytes": 25753,
+      "sha256": "213a52fb3d2e0ea8ec1358715d4380481aac7007d08a08b1674ebb7ade56587d"
+    },
+    {
+      "file": "docs/TIMELINE-AUDIO-CONTINUOUS-ACCEPTANCE.md",
+      "status": "added",
+      "bytes": 11221,
+      "sha256": "14d23ec482ca08e230f40070a691042e562a57935e1e2289f5d18d1499823399"
+    },
+    {
+      "file": "docs/TIMELINE-AUDIO-CONTINUOUS.md",
+      "status": "added",
+      "bytes": 10622,
+      "sha256": "0349c548078f87a722d20bbb7fce030e7f8e90499331be372ba12b2b739cd602"
+    },
+    {
+      "file": "docs/TIMELINE-AUDIO-PREVIEW.md",
+      "status": "modified",
+      "bytes": 21007,
+      "sha256": "408dff291ce0ef81781bad03feedbcac02afa2242da0858e2227169f78c7c3ff"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/.gitignore",
+      "status": "added",
+      "bytes": 86,
+      "sha256": "8fb85020fe532806f132dc249d0ddff4b25efaaf1b595fbf5afffb76a4240702"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/README.md",
+      "status": "added",
+      "bytes": 1539,
+      "sha256": "dab8735d1d7fabf993abc531149a7930298b49b32b9c55746fd88fea1190f5a4"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/build.log",
+      "status": "added",
+      "bytes": 110838,
+      "sha256": "068a01780fa44ae37e2ff44e1f7ddbb4448609c5df12bcc6a3252c95cd0cd79d"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/checks.json",
+      "status": "added",
+      "bytes": 922,
+      "sha256": "2ebe1b202e8544a5d98b6d683f0aca48e753e889a4ac932967fcb391a7f051eb"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/cursor-reopen-before-fix.json",
+      "status": "added",
+      "bytes": 2861,
+      "sha256": "d847deff7aa9cbf0f43ebe0c9b954362e278cb1cc7d2d522bfe1288d34768c5b"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/cursor-reopen-comparison.json",
+      "status": "added",
+      "bytes": 802,
+      "sha256": "ee47271bd706a01ec4d05d5f1fd5d407ed7f7be5c36c69ac0bcc696f9227f417"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/evidence-manifest.json",
+      "status": "added",
+      "bytes": 1886,
+      "sha256": "59b28a7bea33c6ebff9884965b678d70d6be477d18a2c74e1922d2e7662c9e35"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/extended-regression.log",
+      "status": "added",
+      "bytes": 8168,
+      "sha256": "c1334c9e84b5414e30fee4953cf894728ad8953c11d834b11bae132a901f32ce"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/final-artifact-hashes.json",
+      "status": "added",
+      "bytes": 436,
+      "sha256": "df5d99cc255aaab6bce55989a9efa7a6ec6c772e183131528cb2d94b8dd206b1"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/final-electron.log",
+      "status": "added",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/final-environment.json",
+      "status": "added",
+      "bytes": 1054,
+      "sha256": "b72da75c35053de27c8877a10579b8eaa9e42a22623964bd121443eb924c0e18"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/final-numeric-report.json",
+      "status": "added",
+      "bytes": 74603,
+      "sha256": "8322abb7caf394398582f7657cf98addd728c358386dc1073dd91b99ad052007"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/final-source-hashes.json",
+      "status": "added",
+      "bytes": 2205,
+      "sha256": "a8ba3a04dbae102a5ae8dbabfa34226d3195e46cd0e41038ad5fb05d2ae7e501"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/local-adhoc-sign.log",
+      "status": "added",
+      "bytes": 106,
+      "sha256": "ebf4f6d63a43dc9c8426ac048ce075c36b8bfcab6524f55418b0889e9db6df82"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/origin-actual-reference-proof.json",
+      "status": "added",
+      "bytes": 1386,
+      "sha256": "ec90306666929436bd6174e0de1290fb8cd597381e6c561509698f0b3ec6378f"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/origin-alignment-sweep.json",
+      "status": "added",
+      "bytes": 19817,
+      "sha256": "614d8980da908d11368840d715364ad32f3460f068f1dae733714394302641ac"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/package-custom-dist-failure.log",
+      "status": "added",
+      "bytes": 4482,
+      "sha256": "0aacd9d60f40c241e04a5f6d5b4cd9762d9bea02ff283db13b6103f45af33437"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/package.log",
+      "status": "added",
+      "bytes": 1503,
+      "sha256": "b875f890d20afc6da5384167aeb4575b8291ae889c0ec4ead29b9773677e3322"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/product-build-hashes.json",
+      "status": "added",
+      "bytes": 747,
+      "sha256": "3e4b4011607a34f8217b5aa43e8fb4ec539a9a26f2cd05289f744a06dd59d4f7"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/product-native-checks.json",
+      "status": "added",
+      "bytes": 1641,
+      "sha256": "de26ebd4c02f9352cccdce8f5ee3623bf03f9e44b9f6dbe4bf9c34559639cf6f"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/product-native.log",
+      "status": "added",
+      "bytes": 205,
+      "sha256": "3b30c78c97391391a1c1b703d548cd95636b3f2f16df38d733c90b90dc62ccc8"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/red-alignment-artifact.json",
+      "status": "added",
+      "bytes": 19465,
+      "sha256": "d8dba414599bbee22fb67d6b82c88b911993be2f3849330fc0742ff1c8f29278"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/red-runtime-short-segment.json",
+      "status": "added",
+      "bytes": 16465,
+      "sha256": "5c2891f66c0f4efdc3863828881f10afa5ee78e8c6d707c0b084370f5257a235"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/regression.log",
+      "status": "added",
+      "bytes": 39390,
+      "sha256": "3e6e17e43916fb2f922d874f4b6d2cd4e74811a283485c41a6b8dad4fc7f7f16"
+    },
+    {
+      "file": "docs/verification/timeline-audio-continuous/typecheck.log",
+      "status": "added",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "packages/business/src/media-runtime.mjs",
+      "status": "modified",
+      "bytes": 13225,
+      "sha256": "2feb370f705852d7444b701f7b5a206c178a138d123301d80717cbf2b5e79b3e"
+    },
+    {
+      "file": "packages/business/src/native-audio-preview.ts",
+      "status": "modified",
+      "bytes": 17458,
+      "sha256": "28196be37123c50bfb1c1dc5bdfb0eddd4a3107b8a8cadbc2ed5eef1427e29ae"
+    },
+    {
+      "file": "packages/business/src/services.mjs",
+      "status": "modified",
+      "bytes": 45378,
+      "sha256": "54b9e39e5895370a0810b2bbaee5e2de8132b6c7367808969e61fe0c0b6c67a9"
+    },
+    {
+      "file": "packages/business/src/timeline-audio-continuous-decoder.ts",
+      "status": "added",
+      "bytes": 8922,
+      "sha256": "e7354a6e03b3b96cd1f1ea1520532542ba6f1dbb608741393c739c94db16f887"
+    },
+    {
+      "file": "packages/business/src/timeline-audio-continuous.ts",
+      "status": "added",
+      "bytes": 34734,
+      "sha256": "777514dce6aad1569159d4e65e0ea66b701bca6eb916d4fd70f626ac3e9224d8"
+    },
+    {
+      "file": "packages/client/src/index.mjs",
+      "status": "modified",
+      "bytes": 30387,
+      "sha256": "8cd512a7c0c6496bda1eb37f0a3020b5c263559ec2c5ecca565201f6468321bb"
+    },
+    {
+      "file": "packages/contracts/package.json",
+      "status": "modified",
+      "bytes": 1295,
+      "sha256": "95938961308b7227d13d471e057632da9dccd1d46606b9391e324d26f22f9e57"
+    },
+    {
+      "file": "packages/contracts/src/index.mjs",
+      "status": "modified",
+      "bytes": 39003,
+      "sha256": "19b3c8262bfdc2d1078e77258f92a326b7801ea3fda59fa1f35bd1e7428720fe"
+    },
+    {
+      "file": "packages/contracts/src/native-audio-preview.ts",
+      "status": "modified",
+      "bytes": 7347,
+      "sha256": "cb4f5168fbb44d9beb40dc322b483734b203f606c8d46557e55696f5c4166242"
+    },
+    {
+      "file": "packages/contracts/src/operation-effects.mjs",
+      "status": "modified",
+      "bytes": 25871,
+      "sha256": "5be9023b4c8c225c6fa6180e0a95e6cc24ce4b48fc9583c59a2c32aefb52dbbc"
+    },
+    {
+      "file": "packages/contracts/src/timeline-audio-continuous.ts",
+      "status": "added",
+      "bytes": 5852,
+      "sha256": "dc7bfd5f1ab42d06eaaf86d56ee4cb8decf5bbe6f95b519411ae2190d5d6a0a8"
+    },
+    {
+      "file": "packages/i18n/src/catalogs/timeline.ts",
+      "status": "modified",
+      "bytes": 238950,
+      "sha256": "449161a809a88d2d948c46505bda839da7a0bf016ae35400ec38bbf193a48412"
+    },
+    {
+      "file": "tests/fixtures/timeline-audio-continuous/README.md",
+      "status": "added",
+      "bytes": 3397,
+      "sha256": "e17d15dd10fdb4d1d7a8d5faac7a888899576e04f56c0769f2c1561fabfe8172"
+    },
+    {
+      "file": "tests/fixtures/timeline-audio-continuous/capture-worklet.js",
+      "status": "added",
+      "bytes": 1620,
+      "sha256": "944ed57cf0417ab7b1b65bf041cd15b48d33e97fd4a0720cf9b15ff4f7058114"
+    },
+    {
+      "file": "tests/fixtures/timeline-audio-continuous/launch.mjs",
+      "status": "added",
+      "bytes": 13393,
+      "sha256": "eeb6d3e83683641db0eb92839392028832ba9aaab151b89da7cf2f39c3d5d969"
+    },
+    {
+      "file": "tests/fixtures/timeline-audio-continuous/main.mjs",
+      "status": "added",
+      "bytes": 14906,
+      "sha256": "4026135368c14aa9dedcc55e1b81fa8ba683de5c41fa27029069fd7684965bd0"
+    },
+    {
+      "file": "tests/fixtures/timeline-audio-continuous/origin-sweep.mjs",
+      "status": "added",
+      "bytes": 10111,
+      "sha256": "5ce047ee8c7c1b5ce66020a432ea89b7940094f099d9fe0197ca38a4afd1e064"
+    },
+    {
+      "file": "tests/fixtures/timeline-audio-continuous/preload.ts",
+      "status": "added",
+      "bytes": 768,
+      "sha256": "ba10bbf755b50eafc78c6f06a17202b55425e5f543bcc4927c31c90e5906ff6e"
+    },
+    {
+      "file": "tests/fixtures/timeline-audio-continuous/renderer.ts",
+      "status": "added",
+      "bytes": 14910,
+      "sha256": "1bcdcd2ccd02d909a3099d964439d2515696b307aa08f4c7f847222c8c3ae4c7"
+    },
+    {
+      "file": "tests/native-audio-continuous.test.mjs",
+      "status": "added",
+      "bytes": 17385,
+      "sha256": "161362a6862aa79cad9ce9f3c1e2bc63ece26bbd87f9f7f983b43e989f3228cb"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-business.test.mjs",
+      "status": "added",
+      "bytes": 16953,
+      "sha256": "bdbfebcce38cd81cdf0fbbedd7292870073928299d27299063cfe8684394a248"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-cancellation.test.mjs",
+      "status": "added",
+      "bytes": 15133,
+      "sha256": "4b02fe274e7359fbd32980b5b276d578d9e79ab98eeb6f8539d26d12da34e2f9"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-client.test.mjs",
+      "status": "added",
+      "bytes": 9017,
+      "sha256": "effa44150234b0216167995d29b689f95936f8613312c3a078b9c07dfc54aeff"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-controller.test.mjs",
+      "status": "added",
+      "bytes": 18498,
+      "sha256": "aadb857f5d67336fc2d015a8ea62fbbbea974ea983fd805fe2e6313a57d2bbe5"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-decoder.test.mjs",
+      "status": "added",
+      "bytes": 4789,
+      "sha256": "176eafb255fc31b5cbdcecda2414802be992c21cbd2674ba65d55782b7eac360"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-engine.test.mjs",
+      "status": "added",
+      "bytes": 19194,
+      "sha256": "6b767bae84351e753b58640ac4369b2225c2e277c59f9aa510e2995bc7e91b7c"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-http.test.mjs",
+      "status": "added",
+      "bytes": 6194,
+      "sha256": "c0233d45c7033ac0d83424951611dd92216544be3f0a871c47488a7d97308aa9"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-runtime.test.mjs",
+      "status": "added",
+      "bytes": 2392,
+      "sha256": "0cc20188832efcbe4a13c89d1b135ab62550f9b0acb2cdc9c97071a531551558"
+    },
+    {
+      "file": "tests/timeline-audio-continuous-transports.test.mjs",
+      "status": "added",
+      "bytes": 7196,
+      "sha256": "2a8f18811db937164801726112da1f78d8fd305fe04632936bbd44ecb1e706c0"
+    },
+    {
+      "file": "tests/timeline-audio-preview-app.test.mjs",
+      "status": "modified",
+      "bytes": 20332,
+      "sha256": "8adad17b0e25880ab87d0ef2ed21fd5db5a6be6ca6a06ff4d207004758da87a7"
+    }
+  ]
+}

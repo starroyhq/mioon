@@ -1,0 +1,23 @@
+  • electron-builder  version=26.15.3 os=27.0.0
+  • loaded configuration  file=/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop/electron-builder.dev.cjs
+  • packageManager not detected by file, falling back to environment detection  resolvedPackageManager=npm detected=/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop
+  • skipped dependencies rebuild  reason=npmRebuild is set to false
+  • packaging       platform=darwin arch=arm64 electron=44.7.0 appOutDir=/private/tmp/mioon-continuous-mac-final-package/mac-arm64
+  • using custom unpacked Electron distribution  electronDist=/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/electron@44.7.0_supports-color@7.2.0/node_modules/electron/dist
+  • copying unpacked Electron  source=/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/electron@44.7.0_supports-color@7.2.0/node_modules/electron/dist/Electron.app destination=/private/tmp/mioon-continuous-mac-final-package/mac-arm64/Electron.app
+  ⨯ ENOENT: no such file or directory, lstat '/private/tmp/mioon-continuous-mac-final-package/mac-arm64/LICENSE'  failedTask=build stackTrace=Error: ENOENT: no such file or directory, lstat '/private/tmp/mioon-continuous-mac-final-package/mac-arm64/LICENSE'
+    at Object.lstat (node:internal/fs/promises:1786:18)
+    at boundedRead (/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop/runtime-notices.cjs:51:18)
+    at preserveMacRuntimeNotices (/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop/runtime-notices.cjs:98:67)
+    at afterExtract (/Users/kouzen/Documents/mioon-continuous-audio-preview/apps/desktop/builder-config.cjs:34:24)
+    at emitInternal (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/util/asyncEventEmitter.ts:61:9)
+    at AsyncEventEmitter.emit (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/util/asyncEventEmitter.ts:68:26)
+    at Packager.emitAfterExtract (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/packager.ts:346:5)
+    at MacPackager.doPack (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/platformPackager.ts:265:5)
+    at MacPackager.doPack (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/macPackager.ts:188:14)
+    at MacPackager.packMacTargets (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/macPackager.ts:346:7)
+    at MacPackager.pack (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/macPackager.ts:304:7)
+    at Packager.doBuild (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/packager.ts:530:11)
+    at executeFinally (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/builder-util@26.15.3_supports-color@7.2.0/node_modules/builder-util/src/promise.ts:12:14)
+    at Packager.build (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/app-builder-lib@26.15.3_dmg-builder@26.15.3_electron-builder-squirrel-windows@26.15.3_supports-color@7.2.0/node_modules/app-builder-lib/src/packager.ts:450:31)
+    at executeFinally (/Users/kouzen/Documents/mioon-continuous-audio-preview/node_modules/.pnpm/builder-util@26.15.3_supports-color@7.2.0/node_modules/builder-util/src/promise.ts:12:14)

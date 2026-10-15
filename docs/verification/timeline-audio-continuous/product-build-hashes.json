@@ -1,0 +1,11 @@
+{
+  "baseline": "e87fa309ed0a604657dcdf6bddc768c1c10eb2a1",
+  "files": {
+    "apps/desktop/build/main.cjs": "1c4a4ab7723d38b689815562010529e6aeb97d524c00a67f47bd7971aff2b472",
+    "apps/desktop/build/backend.cjs": "6bcf9b43a2db5c36656988e9461a856547e799a7446e81c0967c6ca9073597ff",
+    "apps/desktop/build/preload.cjs": "092cb2a77ac27283b6a26de27cacbef675e67b63b248a70bf068ca4ffb7a24b0",
+    "apps/desktop/build/package.json": "2a9834f86e94b05f98ae388d284960cf942084e24bcdb76d1f730b757e623b35",
+    "apps/desktop/build/web/assets/index-BtV4NmwS.css": "b2b50904e4ed273382115e0d292daf23b919e35054919b0fd28a5e59f356b91a",
+    "apps/desktop/build/web/assets/index-BxVNeq0u.js": "0eb46a222ff584ffa15a3a12934285470a58a2f53b8c639f0502258bce223a13"
+  }
+}

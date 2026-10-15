@@ -7,6 +7,8 @@ import {lutResourceSchemas,lutResourceDescriptions} from './lut-resources.ts';
 export * from './lut-resources.ts';
 import {audioPreviewSchemas} from './timeline-audio-preview.ts';
 export * from './timeline-audio-preview.ts';
+import {continuousAudioSchemas} from './timeline-audio-continuous.ts';
+export * from './timeline-audio-continuous.ts';
 import {timelineExportRangeSchema,isTimelineExportRangeInput} from './timeline-export-range.ts';
 export * from './timeline-export-range.ts';
 import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput} from './timeline-delivery.ts';
@@ -112,6 +114,7 @@ export const schemas={
 ...timelineMixLoudnessSchemas,
 ...timelineLoudnessApplySchemas,
 ...audioPreviewSchemas,
+...continuousAudioSchemas,
 ...timelineExportCapabilitySchemas,
 'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional()}).strict(),
 'project.list':z.object({}).strict(),
@@ -164,6 +167,7 @@ Object.assign(descriptions,{
  ...lookPackInspectDescriptions,
  ...timelineColourDescriptions,
  'timeline.audioPreview.plan':'只读规划当前已保存时间线最多20秒的声音试听区间；绑定项目、版本与素材哈希，返回有界PCM准备清单。此调用不解码、不播放、不初始化时间线、不写入；PCM另由固定已认证本地资源显式有界解码，不能作为完整成片或响度/真峰值检查。',
+ 'timeline.audioPreview.continuousPlan':'只读规划已保存时间线的连续音频预览会话；绑定完整版本与源身份，固定双秒块及全会话96MiB额度。不解码、不播放、不写入；显式播放后由固定认证本地资源按需准备完整多轨混音。不是内置Agent工具。',
  'timeline.subtitle.add':'按时间线版本添加一条手动字幕；固定字体排版，30fps时间，返回完整已保存时间线',
  'timeline.subtitle.update':'按时间线版本更新指定字幕文字或时间；不修改素材，不生成语音或转录',
  'timeline.subtitle.remove':'按时间线版本移除指定手动字幕，保留精确请求回执和撤销历史',

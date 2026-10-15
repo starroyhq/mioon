@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "fix": "Consume same-track clips in chronological order before UUID tie-breaking; one track owns one cursor.",
+  "cases": [
+    {
+      "name": "controlled-2min",
+      "originalVoiceSegmentUnits": 7,
+      "before": {
+        "startedFfmpegProcesses": 11,
+        "chargedDecodeWorkFrames": 5636
+      },
+      "after": {
+        "startedFfmpegProcesses": 7,
+        "chargedDecodeWorkFrames": 3607,
+        "maximumPcmError": 0
+      }
+    },
+    {
+      "name": "controlled-10min",
+      "originalVoiceSegmentUnits": 26,
+      "before": {
+        "startedFfmpegProcesses": 38,
+        "chargedDecodeWorkFrames": 24187
+      },
+      "after": {
+        "startedFfmpegProcesses": 26,
+        "chargedDecodeWorkFrames": 18026,
+        "maximumPcmError": 0
+      }
+    }
+  ]
+}

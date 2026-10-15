@@ -5,6 +5,7 @@ import {isTimelineColourSourceInspection} from '@mioon/contracts/timeline-colour
 import {isLutRpcResponse} from './lut-resources.ts';
 import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_CLIENT_MS} from './timeline-loudness-apply.ts';
 import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
+import {isContinuousAudioPlan} from '@mioon/contracts/timeline-audio-continuous';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {parseExpectedWorkspaceOrigin, isWorkspaceRestoreInspection} from '@mioon/contracts';
@@ -275,6 +276,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export capability report.');
     if (operation === 'timeline.audioPreview.plan' && !isAudioPreviewPlan(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'Backend returned an invalid sound-audition plan.');
+    if (operation === 'timeline.audioPreview.continuousPlan' && !isContinuousAudioPlan(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'Backend returned an invalid continuous audio plan.');
     if (operation === 'timeline.export.samplePeak' && !isExportSamplePeakResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid 已导出文件解码样本峰值 report.');
     if (operation === 'timeline.export.loudness' && !isExportLoudnessResponse(result, parsed))

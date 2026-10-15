@@ -1,0 +1,791 @@
+{
+  "schemaVersion": 1,
+  "engineSha256": "01ccbe682b3144416087aaa21acfead52c66817d15b3caafeb411f1567516901",
+  "referencePrefixSha256": "53488d6b8596004f99113d01ca9cac4534704bab8fe7e22e83f9be9466a8757a",
+  "referenceFile": "/tmp/mioon-continuous-numeric-20261015-b/controlled-25s.reference.f32",
+  "scope": "Controlled actual OfflineAudioContext, production continuous engine versus integer-division control; no physical output or listening claim.",
+  "versions": {
+    "node": "24.21.0",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.8",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "149",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.7",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.4",
+    "tz": "2026d",
+    "undici": "7.29.1",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "15.2.124.28-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "44.7.0",
+    "chrome": "152.0.7977.130"
+  },
+  "rows": [
+    {
+      "quantum": 0,
+      "mode": "production-engine",
+      "expectedOrigin": 960,
+      "observedOrigin": 960,
+      "firstSignal": 961,
+      "referenceFirst": 1,
+      "inferredOrigin": 960,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.02,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.02,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 0,
+      "mode": "integer-division-control",
+      "expectedOrigin": 960,
+      "observedOrigin": 960,
+      "firstSignal": 961,
+      "referenceFirst": 1,
+      "inferredOrigin": 960,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.02,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.02,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 6,
+      "mode": "production-engine",
+      "expectedOrigin": 1728,
+      "observedOrigin": 1728,
+      "firstSignal": 1729,
+      "referenceFirst": 1,
+      "inferredOrigin": 1728,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.036000000000000004,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.036,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 6,
+      "mode": "integer-division-control",
+      "expectedOrigin": 1728,
+      "observedOrigin": 1728,
+      "firstSignal": 1728,
+      "referenceFirst": 1,
+      "inferredOrigin": 1727,
+      "maximumAbsoluteError": 1.436043316787964e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.036,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.036,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        1.436043316787964e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 17,
+      "mode": "production-engine",
+      "expectedOrigin": 3136,
+      "observedOrigin": 3136,
+      "firstSignal": 3137,
+      "referenceFirst": 1,
+      "inferredOrigin": 3136,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.06533333333333334,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.0653333333333332,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 17,
+      "mode": "integer-division-control",
+      "expectedOrigin": 3136,
+      "observedOrigin": 3136,
+      "firstSignal": 3136,
+      "referenceFirst": 1,
+      "inferredOrigin": 3135,
+      "maximumAbsoluteError": 2.872086633575928e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.06533333333333333,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.0653333333333332,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        2.872086633575928e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 23,
+      "mode": "production-engine",
+      "expectedOrigin": 3904,
+      "observedOrigin": 3904,
+      "firstSignal": 3904,
+      "referenceFirst": 1,
+      "inferredOrigin": 3903,
+      "maximumAbsoluteError": 2.872086633575928e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.08133333333333333,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.0813333333333333,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        2.872086633575928e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 23,
+      "mode": "integer-division-control",
+      "expectedOrigin": 3904,
+      "observedOrigin": 3904,
+      "firstSignal": 3904,
+      "referenceFirst": 1,
+      "inferredOrigin": 3903,
+      "maximumAbsoluteError": 2.872086633575928e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.08133333333333333,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.0813333333333333,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        2.872086633575928e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 43,
+      "mode": "production-engine",
+      "expectedOrigin": 6464,
+      "observedOrigin": 6464,
+      "firstSignal": 6464,
+      "referenceFirst": 1,
+      "inferredOrigin": 6463,
+      "maximumAbsoluteError": 1.1479706074624119e-13,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 189318,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.13466666666666666,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1346666666666665,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        5.744173267151856e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 43,
+      "mode": "integer-division-control",
+      "expectedOrigin": 6464,
+      "observedOrigin": 6464,
+      "firstSignal": 6464,
+      "referenceFirst": 1,
+      "inferredOrigin": 6463,
+      "maximumAbsoluteError": 1.1479706074624119e-13,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 189318,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.13466666666666666,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1346666666666665,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        5.744173267151856e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 45,
+      "mode": "production-engine",
+      "expectedOrigin": 6720,
+      "observedOrigin": 6720,
+      "firstSignal": 6720,
+      "referenceFirst": 1,
+      "inferredOrigin": 6719,
+      "maximumAbsoluteError": 5.744173267151856e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.13999999999999999,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.14,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        5.744173267151856e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 45,
+      "mode": "integer-division-control",
+      "expectedOrigin": 6720,
+      "observedOrigin": 6720,
+      "firstSignal": 6721,
+      "referenceFirst": 1,
+      "inferredOrigin": 6720,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.14,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.14,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 47,
+      "mode": "production-engine",
+      "expectedOrigin": 6976,
+      "observedOrigin": 6976,
+      "firstSignal": 6976,
+      "referenceFirst": 1,
+      "inferredOrigin": 6975,
+      "maximumAbsoluteError": 5.744173267151856e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.14533333333333331,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1453333333333333,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        5.744173267151856e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 47,
+      "mode": "integer-division-control",
+      "expectedOrigin": 6976,
+      "observedOrigin": 6976,
+      "firstSignal": 6977,
+      "referenceFirst": 1,
+      "inferredOrigin": 6976,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.14533333333333334,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1453333333333333,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 49,
+      "mode": "production-engine",
+      "expectedOrigin": 7232,
+      "observedOrigin": 7232,
+      "firstSignal": 7232,
+      "referenceFirst": 1,
+      "inferredOrigin": 7231,
+      "maximumAbsoluteError": 1.1479706074624119e-13,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 189318,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.15066666666666664,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1506666666666665,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        5.744173267151856e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 49,
+      "mode": "integer-division-control",
+      "expectedOrigin": 7232,
+      "observedOrigin": 7232,
+      "firstSignal": 7233,
+      "referenceFirst": 1,
+      "inferredOrigin": 7232,
+      "maximumAbsoluteError": 1.1479706074624119e-13,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 189318,
+      "legacyAlignmentMaximumError": 1.1479706074624119e-13,
+      "startTimes": [
+        {
+          "when": 0.15066666666666667,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1506666666666665,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 50,
+      "mode": "production-engine",
+      "expectedOrigin": 7360,
+      "observedOrigin": 7360,
+      "firstSignal": 7360,
+      "referenceFirst": 1,
+      "inferredOrigin": 7359,
+      "maximumAbsoluteError": 5.744173267151856e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.15333333333333332,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1533333333333333,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        5.744173267151856e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 50,
+      "mode": "integer-division-control",
+      "expectedOrigin": 7360,
+      "observedOrigin": 7360,
+      "firstSignal": 7360,
+      "referenceFirst": 1,
+      "inferredOrigin": 7359,
+      "maximumAbsoluteError": 5.744173267151856e-19,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.15333333333333332,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.1533333333333333,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        5.744173267151856e-19,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 92,
+      "mode": "production-engine",
+      "expectedOrigin": 12736,
+      "observedOrigin": 12736,
+      "firstSignal": 12736,
+      "referenceFirst": 1,
+      "inferredOrigin": 12735,
+      "maximumAbsoluteError": 1.1488346534303712e-18,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.2653333333333333,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.2653333333333334,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        1.1488346534303712e-18,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 92,
+      "mode": "integer-division-control",
+      "expectedOrigin": 12736,
+      "observedOrigin": 12736,
+      "firstSignal": 12736,
+      "referenceFirst": 1,
+      "inferredOrigin": 12735,
+      "maximumAbsoluteError": 1.1488346534303712e-18,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0.00873565673828125,
+      "startTimes": [
+        {
+          "when": 0.2653333333333333,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.2653333333333334,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        1.1488346534303712e-18,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 333,
+      "mode": "production-engine",
+      "expectedOrigin": 43584,
+      "observedOrigin": 43584,
+      "firstSignal": 43585,
+      "referenceFirst": 1,
+      "inferredOrigin": 43584,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.908,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.908,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 333,
+      "mode": "integer-division-control",
+      "expectedOrigin": 43584,
+      "observedOrigin": 43584,
+      "firstSignal": 43585,
+      "referenceFirst": 1,
+      "inferredOrigin": 43584,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 0.908,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 2.908,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 511,
+      "mode": "production-engine",
+      "expectedOrigin": 66368,
+      "observedOrigin": 66368,
+      "firstSignal": 66369,
+      "referenceFirst": 1,
+      "inferredOrigin": 66368,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 1.3826666666666667,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 3.3826666666666667,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    },
+    {
+      "quantum": 511,
+      "mode": "integer-division-control",
+      "expectedOrigin": 66368,
+      "observedOrigin": 66368,
+      "firstSignal": 66369,
+      "referenceFirst": 1,
+      "inferredOrigin": 66368,
+      "maximumAbsoluteError": 0,
+      "mismatchedSamples": 0,
+      "maximumErrorAtSample": 0,
+      "legacyAlignmentMaximumError": 0,
+      "startTimes": [
+        {
+          "when": 1.3826666666666667,
+          "offset": 0,
+          "duration": 2
+        },
+        {
+          "when": 3.3826666666666667,
+          "offset": 0,
+          "duration": 2
+        }
+      ],
+      "firstRenderedSamples": [
+        0,
+        6.315785299193521e-7,
+        0.0000014791180547035765,
+        0.000002539850129323895
+      ]
+    }
+  ],
+  "absoluteTolerance": 0.000002,
+  "renderedCases": 24,
+  "anchoredFailures": [],
+  "demonstratedLegacyAlignmentFailures": 13,
+  "status": "passed"
+}

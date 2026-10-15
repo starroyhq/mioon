@@ -1,0 +1,81 @@
+✔ metadata uses the root app version and exact Electron pin without changing manifests (0.797875ms)
+✔ exact versions permit valid SemVer prerelease and build identifiers (0.092292ms)
+✔ desktop and root version mismatch fails without rewriting either version (0.200792ms)
+✔ missing, non-object and malformed app metadata fails clearly (0.208417ms)
+✔ Electron metadata rejects missing pins, ranges, tags and malformed exact versions (0.180875ms)
+✔ reader resolves metadata relative to the supplied root and remains read-only on mismatch (23.313792ms)
+✔ reader reports malformed JSON and missing manifests with the failing path (8.923333ms)
+✔ staging validates every identity field and rejects missing or stale app versions (0.492542ms)
+✔ staging rejects missing or changed packaging envelope fields and nonempty dependencies (0.203667ms)
+✔ builder config takes its Electron version from root metadata and validates before loading a stage (17.251625ms)
+✔ beforePack rejects stale same-channel versions and names for both channels using fixture manifests only (85.142416ms)
+✔ staging build preflights metadata before cleanup and writes the root application version (0.511458ms)
+✔ package:linux resolves the real tooling contract and plans Web before same-channel desktop staging (7.788834ms)
+✔ package:dir resolves the real tooling contract and plans Web before same-channel desktop staging (0.231958ms)
+✔ package:mac resolves the real tooling contract and plans Web before same-channel desktop staging (0.189208ms)
+✔ package:linux:dev resolves the real tooling contract and plans Web before same-channel desktop staging (2.116667ms)
+✔ package:dir:dev resolves the real tooling contract and plans Web before same-channel desktop staging (0.262125ms)
+✔ package:mac:dev resolves the real tooling contract and plans Web before same-channel desktop staging (0.163333ms)
+✔ entrypoint checks reject the old staging-only path and channel or publication regressions (8.14775ms)
+✔ entrypoint checks reject missing, reversed or extra stages and misrouted builder arguments (5.117209ms)
+✔ other desktop entrypoints retain their existing behavior (0.135292ms)
+✔ root Linux package aliases forward directly to the checked workspace scripts (0.0925ms)
+✔ explicit environment policy only copies platform/locale keys from synthetic dictionaries (1.198625ms)
+✔ child environment omits synthetic credentials/injection settings and cannot be expanded by options.env (417.560291ms)
+✔ absolute configured paths preserve spaces and Unicode; shell metacharacters stay literal (132.909625ms)
+✔ stdout preserves multibyte bytes at the exact budget and rejects one byte over (279.676875ms)
+✔ stdout flood stops the child under a byte budget (114.810459ms)
+✔ stderr flood stops the child under a byte budget (110.211458ms)
+✔ spawn and exit errors are safe and leave no active records (111.115167ms)
+✔ already-aborted operations never spawn; observer errors do not affect a run (116.686167ms)
+✔ timeout and abort reap owned children with one start/exit pair (229.872125ms)
+✔ scoped termination leaves other owners running and repeated stop is idempotent (126.002459ms)
+✔ an owned child that ignores TERM is hard-stopped within the bounded reap window (2115.749542ms)
+✔ unconfirmed reap is bounded and never emits a false exited event (3246.385083ms)
+✔ legacy global shutdown reports unconfirmed reap to a running caller without an AbortSignal (3126.76875ms)
+✔ observed exit does not release an unconfirmed close gate or signal that child again (3248.303708ms)
+✔ final reap deadline is scheduled from stop start even if the grace callback is delayed (112.845875ms)
+✖ mock generation and probe use selected absolute executables with no host PATH (283.74325ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 37
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13653.923416
+
+✖ failing tests:
+
+test at tests/media-runtime-paths.test.mjs:10:1
+✖ mock generation and probe use selected absolute executables with no host PATH (283.74325ms)
+  Error: Command failed: /opt/homebrew/Cellar/node/26.9.0/bin/node --input-type=module -e import {DatabaseSync} from 'node:sqlite';import {createMockProvider} from "file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs";import {probe} from "file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/media.mjs";const root="/tmp/wb-media-runtime-wkRREL",db=new DatabaseSync(':memory:');const p=createMockProvider({db,root});const job=await p.submit({prompt:'Synthetic path verification',duration:2,aspectRatio:'9:16',parameters:{scenario:'success',delayMs:0},referenceAssets:[]},{requestId:'custom-runtime-path'});await p.download(job.providerJobId,root+'/output.mp4');const result=await probe(root+'/output.mp4');console.log(JSON.stringify({codec:result.codec,width:result.width,height:result.height,duration:result.duration}));db.close();
+  file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:11
+  const error = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });
+                                                            ^
+  
+  Error: Output must be inside the managed data directory.
+      at error (file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:11:59)
+      at managedDestination (file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:20:114)
+      at async Object.download (file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:169:22)
+      at async file:///Users/kouzen/Documents/mioon-continuous-audio-preview/[eval1]:1:598 {
+    code: 'UNSAFE_PATH'
+  }
+  
+  Node.js v26.9.0
+  
+      at genericNodeError (node:internal/errors:999:15)
+      at wrappedFn (node:internal/errors:544:14)
+      at ChildProcess.exithandler (node:child_process:417:12)
+      at ChildProcess.emit (node:events:514:20)
+      at maybeClose (node:internal/child_process:1125:16)
+      at Socket.<anonymous> (node:internal/child_process:497:11)
+      at Socket.emit (node:events:514:20)
+      at Pipe.<anonymous> (node:net:362:12) {
+    code: 1,
+    killed: false,
+    signal: null,
+    cmd: `/opt/homebrew/Cellar/node/26.9.0/bin/node --input-type=module -e import {DatabaseSync} from 'node:sqlite';import {createMockProvider} from "file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs";import {probe} from "file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/media.mjs";const root="/tmp/wb-media-runtime-wkRREL",db=new DatabaseSync(':memory:');const p=createMockProvider({db,root});const job=await p.submit({prompt:'Synthetic path verification',duration:2,aspectRatio:'9:16',parameters:{scenario:'success',delayMs:0},referenceAssets:[]},{requestId:'custom-runtime-path'});await p.download(job.providerJobId,root+'/output.mp4');const result=await probe(root+'/output.mp4');console.log(JSON.stringify({codec:result.codec,width:result.width,height:result.height,duration:result.duration}));db.close();`,
+    stdout: '',
+    stderr: "file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:11\nconst error = (code, message, tags = {}) => Object.assign(new Error(message), { code, ...tags });\n                                                          ^\n\nError: Output must be inside the managed data directory.\n    at error (file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:11:59)\n    at managedDestination (file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:20:114)\n    at async Object.download (file:///Users/kouzen/Documents/mioon-continuous-audio-preview/packages/business/src/providers/mock.mjs:169:22)\n    at async file:///Users/kouzen/Documents/mioon-continuous-audio-preview/[eval1]:1:598 {\n  code: 'UNSAFE_PATH'\n}\n\nNode.js v26.9.0\n"
+  }

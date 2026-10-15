@@ -2552,6 +2552,66 @@ const timelineCoreMessages = {
     "en": "Checking the saved interval and audio capacity…",
     "ja": "保存済み区間と音声の容量を確認中…"
   },
+  "audio.preview.continuousChecking": {
+    "zh-Hans": "正在核对已保存时间线并准备首段声音…",
+    "zh-Hant": "正在核對已儲存時間軸並準備首段聲音…",
+    "en": "Checking the saved timeline and buffering the first audio block…",
+    "ja": "保存済みタイムラインを確認し、最初の音声を準備中…"
+  },
+  "audio.preview.buffering": {
+    "zh-Hans": "正在缓冲，播放头停在第 {frame} 帧；完整声音准备好后继续。",
+    "zh-Hant": "正在緩衝，播放頭停在第 {frame} 影格；完整聲音準備好後繼續。",
+    "en": "Buffering at frame {frame}. Playback continues when the complete audio block is ready.",
+    "ja": "{frame} フレームでバッファリング中です。音声全体の準備ができ次第、再開します。"
+  },
+  "audio.preview.continuousPlaying": {
+    "zh-Hans": "正在连续播放已保存时间线的声音。",
+    "zh-Hant": "正在連續播放已儲存時間軸的聲音。",
+    "en": "Playing saved-timeline audio continuously.",
+    "ja": "保存済みタイムラインの音声を連続再生中です。"
+  },
+  "audio.preview.continuousPaused": {
+    "zh-Hans": "声音已暂停，已停止预读；可继续或定位。",
+    "zh-Hant": "聲音已暫停，已停止預讀；可繼續或定位。",
+    "en": "Audio is paused and prefetching has stopped. Resume or seek to another position.",
+    "ja": "音声と先読みを一時停止しました。再開または位置の指定ができます。"
+  },
+  "audio.preview.continuousEnded": {
+    "zh-Hans": "已播放到时间线结尾。",
+    "zh-Hant": "已播放至時間軸結尾。",
+    "en": "Playback reached the end of the timeline.",
+    "ja": "タイムラインの末尾まで再生しました。"
+  },
+  "audio.preview.continuousReady": {
+    "zh-Hans": "首段声音已准备，可连续播放至时间线结尾。",
+    "zh-Hant": "首段聲音已準備，可連續播放至時間軸結尾。",
+    "en": "The first audio block is ready. Playback can continue to the timeline end.",
+    "ja": "最初の音声を準備しました。タイムラインの末尾まで連続再生できます。"
+  },
+  "audio.preview.continuousIdle": {
+    "zh-Hans": "从当前播放头连续试听已保存时间线；播放时按需缓冲。",
+    "zh-Hant": "從目前播放頭連續試聽已儲存時間軸；播放時按需緩衝。",
+    "en": "Preview the saved timeline from the current playhead, buffering as needed.",
+    "ja": "現在の再生ヘッドから保存済みタイムラインを試聴します。必要に応じてバッファリングします。"
+  },
+  "audio.preview.continuousRange": {
+    "zh-Hans": "播放范围 [{fromTime}, {toTime}) · 帧 {from}–{to} · 连续音频",
+    "zh-Hant": "播放範圍 [{fromTime}, {toTime}) · 影格 {from}–{to} · 連續音訊",
+    "en": "Playback [{fromTime}, {toTime}) · Frames {from}–{to} · Continuous audio",
+    "ja": "再生範囲 [{fromTime}, {toTime}) · {from}–{to} フレーム · 連続音声"
+  },
+  "audio.preview.continuousPosition": {
+    "zh-Hans": "时间线定位",
+    "zh-Hant": "時間軸定位",
+    "en": "Timeline position",
+    "ja": "タイムラインの位置"
+  },
+  "audio.preview.continuousSeek": {
+    "zh-Hans": "定位已保存时间线声音",
+    "zh-Hant": "定位已儲存時間軸聲音",
+    "en": "Seek saved-timeline audio",
+    "ja": "保存済みタイムラインの音声位置を指定"
+  },
   "audio.preview.starting": {
     "zh-Hans": "正在启动声音播放…",
     "zh-Hant": "正在啟動聲音播放…",

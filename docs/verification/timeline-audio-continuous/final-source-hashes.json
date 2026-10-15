@@ -1,0 +1,22 @@
+{
+  "baseCommit": "e87fa309ed0a604657dcdf6bddc768c1c10eb2a1",
+  "files": {
+    "apps/web/src/timeline-audio-continuous-client.ts": "9e5fb64163e8fc630acb34124c4b32d079cca28bff66a92240ebad58b06a4ee5",
+    "apps/web/src/timeline-audio-continuous-engine.ts": "01ccbe682b3144416087aaa21acfead52c66817d15b3caafeb411f1567516901",
+    "apps/web/src/native-audio-preview-adapter.ts": "cbe0257e8283389e4740def73bfebb166563493f82efa33baf839733e44545c8",
+    "packages/contracts/src/timeline-audio-continuous.ts": "dc7bfd5f1ab42d06eaaf86d56ee4cb8decf5bbe6f95b519411ae2190d5d6a0a8",
+    "packages/contracts/src/native-audio-preview.ts": "cb4f5168fbb44d9beb40dc322b483734b203f606c8d46557e55696f5c4166242",
+    "packages/business/src/timeline-audio-continuous.ts": "777514dce6aad1569159d4e65e0ea66b701bca6eb916d4fd70f626ac3e9224d8",
+    "packages/business/src/timeline-audio-continuous-decoder.ts": "e7354a6e03b3b96cd1f1ea1520532542ba6f1dbb608741393c739c94db16f887",
+    "packages/business/src/native-audio-preview.ts": "28196be37123c50bfb1c1dc5bdfb0eddd4a3107b8a8cadbc2ed5eef1427e29ae",
+    "packages/business/src/media-runtime.mjs": "2feb370f705852d7444b701f7b5a206c178a138d123301d80717cbf2b5e79b3e",
+    "apps/server/src/timeline-audio-continuous-http.ts": "579f234eb8862c87b0e5bd12f7809bc6e7b809b9479fe9df9e18593891912e10",
+    "apps/desktop/src/native-audio-preview-host.ts": "631f79ab1cfc7bf638aae40455d3a5c507f2c527f563ca8ba45f30d154c16d47",
+    "apps/desktop/src/native-audio-preview-preload.ts": "8861f91bb4c312273853a20bdfbe9232d598721311b6d48ba89f901525dadd57",
+    "tests/fixtures/timeline-audio-continuous/launch.mjs": "eeb6d3e83683641db0eb92839392028832ba9aaab151b89da7cf2f39c3d5d969",
+    "tests/fixtures/timeline-audio-continuous/main.mjs": "4026135368c14aa9dedcc55e1b81fa8ba683de5c41fa27029069fd7684965bd0",
+    "tests/fixtures/timeline-audio-continuous/preload.ts": "ba10bbf755b50eafc78c6f06a17202b55425e5f543bcc4927c31c90e5906ff6e",
+    "tests/fixtures/timeline-audio-continuous/renderer.ts": "1bcdcd2ccd02d909a3099d964439d2515696b307aa08f4c7f847222c8c3ae4c7",
+    "tests/fixtures/timeline-audio-continuous/capture-worklet.js": "944ed57cf0417ab7b1b65bf041cd15b48d33e97fd4a0720cf9b15ff4f7058114"
+  }
+}

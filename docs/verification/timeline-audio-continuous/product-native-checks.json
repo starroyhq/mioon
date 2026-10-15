@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "scope": "Controlled actual product UI, not subjective listening or release distribution",
+  "packageCommand": "../../node_modules/.bin/electron-builder --config electron-builder.dev.cjs --mac --arm64 --dir --publish never -c.directories.output=/private/tmp/mioon-continuous-mac-final-package-zip",
+  "packageExitCode": 0,
+  "packagePath": "/private/tmp/mioon-continuous-mac-final-package-zip/mac-arm64/mioon-dev.app",
+  "archiveSha256": "f70bf4009da5df3e063d4ec5c835b80cf9de88c7b7fc9b233a0ce17875377e14",
+  "archiveMatchesEveryFinalProductBuildFile": true,
+  "localAdhocSigning": "codesign --force --deep --sign - --preserve-metadata=identifier,entitlements,requirements,flags,runtime; local test artifact only; no notarization or publishing",
+  "reopened": {
+    "savedTimelineRevision": 3,
+    "savedGain": 0.8,
+    "playhead": 0,
+    "phase": "idle",
+    "autoplay": false,
+    "locale": "zh-Hant"
+  },
+  "explicitPlay": {
+    "observedPlayingFrame": 507
+  },
+  "quit": {
+    "action": "Cmd+Q while playing",
+    "exitCode": 0,
+    "remainingOwnedProcesses": 0
+  },
+  "earlierProductControls": {
+    "playedToEndFrame": 750,
+    "englishPauseFrame": 603,
+    "bufferedSeekFrame": 602,
+    "unbufferedPausedSeekFrame": 0,
+    "draftsExcludedAndRetained": true,
+    "savedRevisionChangeRevokes": true,
+    "localeDoesNotReplay": true,
+    "automaticPlayheadNotPersisted": true
+  },
+  "limitations": [
+    "No subjective physical listening assessment",
+    "No code signing/notarization/distribution qualification",
+    "Some lifecycle/error states covered by deterministic regression rather than manual UI"
+  ]
+}

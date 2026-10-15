@@ -1,0 +1,7 @@
+{
+  "main.cjs": "31d4675c84993712df9354dc40fb715beebc5319f00fad86dcd435b22ef4f8cb",
+  "preload.cjs": "9fe5cd238acba118c5124cccb408fed6669c21ce1ebfe56148b4d7c43278370d",
+  "web/entry.js": "ac965017bff5cb6e47355eb0ca74a13dddc186790a38e71ea722718e6fe14b4b",
+  "web/capture-worklet.js": "944ed57cf0417ab7b1b65bf041cd15b48d33e97fd4a0720cf9b15ff4f7058114",
+  "cases.json": "b9ea11e487ce5371be680c4937c84dbe7908f1034a30d6251aca6943e73b528c"
+}
