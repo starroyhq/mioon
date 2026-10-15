@@ -3,6 +3,78 @@ import { subjectsMessages } from './subjects.ts';
 import { assertNoDuplicateMessageKeys } from '../catalog-integrity.ts';
 
 const shellCoreMessages = {
+  "settings.title": {
+    "zh-Hans": "设置",
+    "zh-Hant": "設定",
+    "en": "Settings",
+    "ja": "設定"
+  },
+  "settings.categories": {
+    "zh-Hans": "设置分类",
+    "zh-Hant": "設定分類",
+    "en": "Settings categories",
+    "ja": "設定カテゴリ"
+  },
+  "settings.general": {
+    "zh-Hans": "通用",
+    "zh-Hant": "一般",
+    "en": "General",
+    "ja": "一般"
+  },
+  "settings.models": {
+    "zh-Hans": "模型与服务",
+    "zh-Hant": "模型與服務",
+    "en": "Models & services",
+    "ja": "モデルとサービス"
+  },
+  "settings.extensions": {
+    "zh-Hans": "扩展",
+    "zh-Hant": "擴充功能",
+    "en": "Extensions",
+    "ja": "拡張機能"
+  },
+  "settings.scope": {
+    "zh-Hans": "全局设置独立于项目。片段属性和导出选项仍在各自的工作区。",
+    "zh-Hant": "全域設定獨立於專案。片段屬性和匯出選項仍在各自的工作區。",
+    "en": "Global settings are separate from projects. Clip properties and export options stay in their workspaces.",
+    "ja": "全体設定はプロジェクトとは別に管理されます。クリップのプロパティと書き出し設定は各作業画面にあります。"
+  },
+  "settings.generalHint": {
+    "zh-Hans": "调整应用的显示偏好，不改变项目内容。",
+    "zh-Hant": "調整應用程式的顯示偏好，不變更專案內容。",
+    "en": "Adjust application preferences without changing project content.",
+    "ja": "プロジェクトの内容を変えずに、アプリの表示設定を調整します。"
+  },
+  "settings.modelsHint": {
+    "zh-Hans": "选择服务后编辑连接。浏览设置不会发送模型请求。",
+    "zh-Hant": "選擇服務後編輯連線。瀏覽設定不會傳送模型請求。",
+    "en": "Choose a service to edit its connection. Viewing settings does not send model requests.",
+    "ja": "サービスを選択して接続を編集します。設定の表示だけでモデルへのリクエストは送信されません。"
+  },
+  "settings.extensionsHint": {
+    "zh-Hans": "管理现有的本地 ComfyUI 连接。此处不会安装、卸载或动态加载扩展。",
+    "zh-Hant": "管理現有的本機 ComfyUI 連線。此處不會安裝、解除安裝或動態載入擴充功能。",
+    "en": "Manage the existing local ComfyUI connection. This does not install, uninstall or dynamically load extensions.",
+    "ja": "既存のローカル ComfyUI 接続を管理します。拡張機能のインストール、アンインストール、動的読み込みは行いません。"
+  },
+  "settings.languageHint": {
+    "zh-Hans": "界面语言在此管理。切换语言不会保存连接或执行生成。",
+    "zh-Hant": "在此管理介面語言。切換語言不會儲存連線或執行生成。",
+    "en": "Choose the interface language. Changing it does not save connections or start generation.",
+    "ja": "表示言語を選択します。言語を変更しても、接続の保存や生成は実行されません。"
+  },
+  "settings.workspaceStatus": {
+    "zh-Hans": "工作区与恢复状态",
+    "zh-Hant": "工作區與還原狀態",
+    "en": "Workspace & recovery status",
+    "ja": "ワークスペースと復元の状態"
+  },
+  "settings.back": {
+    "zh-Hans": "返回工作区",
+    "zh-Hant": "返回工作區",
+    "en": "Back to workspace",
+    "ja": "作業画面に戻る"
+  },
   "projects.updatedAt": {
     "zh-Hans": "更新时间",
     "zh-Hant": "更新時間",

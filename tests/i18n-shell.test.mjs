@@ -64,7 +64,14 @@ test('shell component controllers are not keyed or reconstructed by locale', () 
 test('header actions and native settings remain reachable without locale or resize remount keys', () => {
   const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
   const header = app.slice(app.indexOf('<header className="topbar">'), app.indexOf('</header>', app.indexOf('<header className="topbar">')));
-  assert.match(header, /<LanguageControl \/>/u);
+  assert.match(header, /data-testid="global-settings-open" onClick=\{\(\) => openGlobalSettings\(\)\}/u);
+  assert.doesNotMatch(header, /<LanguageControl \/>/u);
+  const settingsCenter = readFileSync(new URL('../apps/web/src/ProjectHomeConnections.tsx', import.meta.url), 'utf8');
+  assert.match(settingsCenter, /data-testid="settings-general"/u);
+  assert.match(settingsCenter, /t\('settings\.languageHint'\).*<LanguageControl \/>/u);
+  const home = readFileSync(new URL('../apps/web/src/ProjectHome.tsx', import.meta.url), 'utf8');
+  assert.match(home, /data-testid="project-home-page-settings"/u);
+  assert.match(home, /onPage\('settings'\)/u); assert.doesNotMatch(home, /<LanguageControl \/>/u);
   assert.match(header, /data-testid="workbench-actions"/u);
   for (const id of ['agent-chat-open', 'agent-settings-open', 'region-guide-toggle', 'jobs-button', 'export-history', 'export-button', 'export-timeline']) assert.match(header, new RegExp(`<DropdownMenuItem[^>]*data-testid="${id}"`));
   assert.match(header, /data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}/u);

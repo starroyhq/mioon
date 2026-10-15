@@ -46,8 +46,9 @@ function environment(options = {}) {
     chooseInitialProject, retainLastProjectScope, assertLastProjectBootIdentity, URL, URLSearchParams,
     useCallback: callback => callback, emptyData, loading: false, auth: true, online: true,
     data: emptyData, projects, projectOpening: { phase: 'home', projectId: null, error: '' },
-    homePage: 'projects', homeConnection: 'agent', projectListStatus: { busy: false, error: '' }, busy: {}, toast: null,
+    homePage: 'projects', homeConnection: 'agent', webSettingsRequest: null, webSettingsOpen: false, projectListStatus: { busy: false, error: '' }, busy: {}, toast: null,
     currentProject: { current: null }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 },
+    webSettingsRequestRef: { current: null },
     requestCounter: { current: 0 }, projectListSerial: { current: 0 }, openedProject: { current: null }, projectCreateFlight: { current: null },
     importSession: { current: { active: true, selection: 0 } }, workspaceRef: { current: { restored: false } },
     dataRef: { current: emptyData }, viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false },
@@ -89,10 +90,11 @@ function environment(options = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
-    'Toast', 'MobilePanel', 'View', 'Zoom', 'Workspace', 'ShowCreate']) {
+    'Toast', 'MobilePanel', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = value => { env[key] = typeof value === 'function' ? value(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }
+  Object.defineProperty(env, 'restored', { get: () => env.workspaceRef.current.restored });
   env.bootGuard = { current: createProjectBootGuard(() => env.projectEpoch.current) }; env.bootGuard.current.activate();
   return { env, calls, registry };
 }
@@ -107,7 +109,7 @@ function harness(options = {}) {
     section('  async function createProject(', '  async function addShot(')].join('\n');
   // A live lexical environment models React rerenders without reimplementing the
   // production functions. Only external services and unrelated draft guards are fakes.
-  const api = Function('env', `with (env) { ${source}\nreturn { projectSessionReady, selectProject, refresh, prepareSettingsDeparture, changeHomePage, refreshHomeProjects, createProject, boot }; }`)(env);
+  const api = Function('env', `with (env) { ${source}\nreturn { projectSessionReady, selectProject, refresh, prepareSettingsDeparture, openGlobalSettings, changeHomePage, refreshHomeProjects, createProject, boot }; }`)(env);
   return { env, calls, registry, ...api,
     eligible: () => opening.canPublishProjectOpen(env.openedProject.current, { active: env.importSession.current.active,
       currentProjectId: env.currentProject.current, epoch: env.projectEpoch.current, workspaceScope: workspaceOriginScope(env.workspaceRef.current) || '',
@@ -366,15 +368,15 @@ let presentation;
 function boundaryRenderer() {
   if (presentation) return presentation;
   const start = app.indexOf('  if (auth === false) return <Login');
-  const workbench = app.indexOf('  return <main className={`workbench ', start);
+  const workbench = app.indexOf('  return <>{webSettingsCenter}<main className={`workbench ', start);
   const openingEnd = app.indexOf('>\n', workbench);
   assert.ok(start >= 0 && workbench > start && openingEnd > workbench, 'Actual App render boundaries must exist');
   // Mount the complete, unmodified home/auth branch with real ProjectHome,
   // connection navigation and shared controls. The successful boundary retains
-  // App's actual outer workbench element; full workbench internals are outside
+  // App's actual root Fragment, settings sibling and outer workbench element; full workbench internals are outside
   // this focused fixture, rather than replaced by a generic permissive proxy.
   const readiness = section('  const workbenchReady =', '  const panelSurface =');
-  const renderSource = readiness + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main>;';
+  const renderSource = readiness + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></>;';
   const fixture = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
     import ProjectHome from './src/ProjectHome.tsx';
@@ -382,8 +384,10 @@ function boundaryRenderer() {
     import EditorWindowOpening from './src/EditorWindowOpening.tsx';
     import SettingsNavigationSlot from './src/SettingsNavigationSlot.tsx';
     import LastProjectStatus from './src/LastProjectStatus.tsx';
+    import WebSettingsCenter from './src/WebSettingsCenter.tsx';
+    import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
     import { Button } from '@mioon/ui/components/button';
-    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, Button };`;
+    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, WebSettingsCenter, ConfirmationProvider, Button };`;
   const result = buildSync({ stdin: { contents: fixture, loader: 'jsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
     write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} }; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
@@ -397,24 +401,27 @@ function boundaryRenderer() {
       assetsCollapsed: false, inspectorCollapsed: false, timelineCollapsed: false,
       Icon: () => null, Login: stub('Login'), RestoredUnavailable: stub('RestoredUnavailable'),
       AgentSettings: stub('AgentSettings'), ImageSettings: stub('ImageSettings'), ComfyImageSettings: stub('ComfyImageSettings'),
+      SettingsConnectionForms: stub('SettingsConnectionForms'),
       AgentDockPane: ({ children }) => ui.React.createElement('div', null, children),
       TaskCenter: stub('TaskCenter'), AgentPanel: stub('AgentPanel'), ImageGeneration: stub('ImageGeneration'),
     };
     const render = Function('env', `with (env) { ${body}; return renderBoundary; }`)(env);
-    return { html: ui.renderToStaticMarkup(ui.React.createElement(render)), mounted };
+    return { html: ui.renderToStaticMarkup(ui.React.createElement(ui.ConfirmationProvider, null, ui.React.createElement(render))), mounted };
   };
   return presentation;
 }
 
-test('actual App fully renders standalone home/settings and exposes the original workbench only after success', async () => {
+test('actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success', async () => {
   const render = boundaryRenderer(), h = harness();
   for (const phase of ['home', 'opening', 'error']) {
     h.env.projectOpening = { phase, projectId: id(1), error: phase === 'error' ? '读取失败' : '' };
     const { html, mounted } = render(h); assert.match(html, /data-testid="project-home"/); assert.match(html, new RegExp(`data-phase="${phase}"`));
     assert.doesNotMatch(html, /data-testid="workbench"|task-workspace|react-flow|inspector-region/); assert.deepEqual(mounted, []);
   }
-  h.env.homePage = 'settings';
-  const settings = render(h); assert.match(settings.html, /全局连接设置/); assert.deepEqual(settings.mounted, ['AgentSettings']);
+  await h.changeHomePage('settings');
+  assert.equal(h.env.webSettingsRequest.page, 'general'); assert.equal(typeof h.env.webSettingsRequest.resolve, 'function'); assert.equal(h.env.homePage, 'projects');
+  const settings = render(h); assert.match(settings.html, /data-testid="project-home"/); assert.deepEqual(settings.mounted, []);
+  assert.doesNotMatch(settings.html, /data-testid="workbench"|agent-settings-page|image-settings-page/u, 'Settings are no longer nested inside project-home');
   for (const forbidden of ['TaskCenter', 'AgentPanel', 'ImageGeneration']) assert.equal(settings.mounted.includes(forbidden), false);
   h.env.homePage = 'projects'; assert.equal(await h.selectProject(id(1)), true);
   const ready = render(h); assert.match(ready.html, /<main[^>]+data-testid="workbench"/); assert.doesNotMatch(ready.html, /data-testid="project-home"/);
@@ -424,7 +431,9 @@ test('actual auth and restored-home branches retain their existing protections',
   const render = boundaryRenderer(), h = harness(); h.env.auth = false;
   assert.deepEqual(render(h).mounted, ['Login']); assert.doesNotMatch(render(h).html, /data-testid="project-home"|data-testid="workbench"/);
   h.env.auth = 'error'; const failed = render(h); assert.match(failed.html, /暂时无法连接工作台/); assert.doesNotMatch(failed.html, /data-testid="workbench"/);
-  h.env.auth = true; h.env.homePage = 'settings'; h.env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) };
+  h.env.auth = true; h.env.homePage = 'projects'; h.env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) };
+  h.openGlobalSettings('custom'); assert.equal(h.env.webSettingsRequest, null);
+  h.openGlobalSettings(); assert.equal(h.env.webSettingsRequest.page, 'general');
   const restored = render(h); assert.match(restored.html, /data-testid="project-home"/);
   assert.ok(restored.mounted.includes('RestoredUnavailable')); assert.equal(restored.mounted.includes('AgentSettings'), false);
   assert.equal(restored.mounted.includes('ImageSettings'), false); assert.equal(restored.mounted.includes('ComfyImageSettings'), false);

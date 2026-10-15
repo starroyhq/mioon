@@ -7,6 +7,20 @@ not promote a WIP checkpoint, certify the combined native application, or grant
 new execution, spending or publication authority. This documentation-only review
 reran no product tests, native acceptance or stopped issue investigations.
 
+## Current UI iteration (2026-10-15)
+
+- **Settings center: approved and in progress.** Replace the connection-only
+  presentation with one explicit Settings entry and General, Models & services,
+  and Extensions categories. Reuse existing language and connection forms in all
+  four GUI languages. Preserve retained drafts, transient-secret handling,
+  busy/recovery guards and close confirmation. Keep project, clip and export
+  options contextual. Existing ComfyUI connection settings do not grant plugin
+  install, uninstall or dynamic-loading scope. Audio work remains user-owned.
+- **Export preview: proposal for a later iteration, not implemented.** The user
+  asked for an opinion on export preview. Its interaction and acceptance scope
+  still need to be agreed before implementation; this settings iteration does
+  not change export or preview behavior.
+
 ## Current delivery and remaining work (2026-10-15)
 
 1. **Editing, audio and loudness.** Independent project home/windows, managed

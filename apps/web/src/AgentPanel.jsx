@@ -80,7 +80,15 @@ export default function AgentPanel({ nativeSettingsScope, nativeCloseRegistry, p
     if (!usable()) return;
     if (settings && nativeSettingsScope) { void nativeSettingsScope.open('agent'); return; }
     interactionRef.current = null; session.current?.setVisible(false);
-    if (settings) onSettings(); else onClose();
+    if (settings) {
+      const current = session.current;
+      const restoreRejectedSettings = accepted => {
+        if (accepted === false && session.current === current && lifetime.current === owner && !owner.closed && visibilityRef.current && interactionRef.current === null) {
+          interactionRef.current = interaction; current?.setVisible(typeof document === 'undefined' || document.visibilityState !== 'hidden');
+        }
+      };
+      void Promise.resolve().then(() => onSettings()).then(restoreRejectedSettings, () => restoreRejectedSettings(false));
+    } else onClose();
   };
   const { snapshot, phase } = state;
   const running = activeAgentChatRun(state), pending = Boolean(state.pending);

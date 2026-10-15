@@ -1,6 +1,5 @@
 import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
-import LanguageControl from './LanguageControl.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
@@ -121,7 +120,6 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
     <header className="project-home-header">
       <div className="project-home-brand" aria-label="mioon"><span className="project-home-brand-mark"><ProjectSymbol size={20} /></span><span>mioon.</span></div>
       <span className="project-home-header-label">{t('projects.home')}</span>
-      <LanguageControl />
       {status && <div className="project-home-status">{status}</div>}
     </header>
     <div className="project-home-layout">
@@ -129,7 +127,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
         <Button type="button" variant="ghost" data-testid="project-home-page-projects" aria-current={page === 'projects' ? 'page' : undefined}
           onClick={() => { if (page !== 'projects') onPage('projects'); }}>{t('projects.list')}</Button>
         <Button type="button" variant="ghost" data-testid="project-home-page-settings" disabled={phase === 'opening'} aria-current={page === 'settings' ? 'page' : undefined}
-          onClick={() => { if (current.current.phase !== 'opening' && page !== 'settings') onPage('settings'); }}>{t('projects.connections')}</Button>
+          onClick={() => { if (current.current.phase !== 'opening' && page !== 'settings') onPage('settings'); }}>{t('settings.title')}</Button>
       </nav>
       <main className="project-home-main" aria-labelledby={`${prefix}-heading`}>
         {notice && <div className="project-home-notice" role="status">{renderMessage(notice)}</div>}
@@ -142,7 +140,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
             onClick={() => { if (canAct() && current.current.phase === 'error') onRetry(); }}>{t('projects.retryOpen')}</Button>}
         </section>}
         {page === 'settings' ? <section className="project-home-settings" data-testid="project-home-settings">
-          <header className="project-home-heading"><div><div className="project-home-eyebrow">{t('projects.workspace')}</div><h1 id={`${prefix}-heading`}>{t('projects.connections')}</h1><p>{t('projects.manageConnections')}</p></div></header>
+          <header className="project-home-heading"><div><div className="project-home-eyebrow">{t('projects.workspace')}</div><h1 id={`${prefix}-heading`}>{t('settings.title')}</h1><p>{t('settings.scope')}</p></div></header>
           <div className="project-home-settings-body">{settings}</div>
         </section> : <>
           <header className="project-home-heading">

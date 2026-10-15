@@ -25,7 +25,7 @@ export function AgentDockPane({ visible, children, id, labelledBy, fallbackFocus
   </div></WorkspaceVisibilityProvider>;
 }
 
-export default function AgentWorkspace({ nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, projectName, selectedShot, selectedTimelineClip, timelineEditBlockedReason, timelineEditBlockedDescriptor, selectedTimelineGainClip, timelineGainBlockedReason, timelineGainBlockedDescriptor, onApplied, page, onPage, onCollapse, onDraftChange }) {
+export default function AgentWorkspace({ onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, projectName, selectedShot, selectedTimelineClip, timelineEditBlockedReason, timelineEditBlockedDescriptor, selectedTimelineGainClip, timelineGainBlockedReason, timelineGainBlockedDescriptor, onApplied, page, onPage, onCollapse, onDraftChange }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   // Settings are global and stay mounted within this dock; only chat is
   // project-keyed. App guards project departure before unmounting the dock.
@@ -33,11 +33,11 @@ export default function AgentWorkspace({ nativeSettingsScope, nativeCloseRegistr
   const settingsOpened = useRef(false);
   if (page === 'settings') settingsOpened.current = true;
   return <div className="agent-workspace" data-testid="agent-workspace" data-page={page}>
-    <AgentDockPane id="agent-chat-pane" visible={page === 'chat'} fallbackFocus="[data-testid=right-dock-tab-agent]">
-      {projectId ? <AgentPanel nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry} key={projectId} projectId={projectId} projectName={projectName} selectedShot={selectedShot} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} timelineEditBlockedDescriptor={timelineEditBlockedDescriptor} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} timelineGainBlockedDescriptor={timelineGainBlockedDescriptor} onApplied={onApplied} onSettings={() => onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} /> : <div className="agent-chat-empty"><h3>{t('agent.workspace.selectProject')}</h3><p>{t('agent.workspace.noImplicitProjectContent')}</p></div>}
+    <AgentDockPane id="agent-chat-pane" visible={page === 'chat' && !settingsOverlayOpen} fallbackFocus="[data-testid=right-dock-tab-agent]">
+      {projectId ? <AgentPanel nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry} key={projectId} projectId={projectId} projectName={projectName} selectedShot={selectedShot} selectedTimelineClip={selectedTimelineClip} timelineEditBlockedReason={timelineEditBlockedReason} timelineEditBlockedDescriptor={timelineEditBlockedDescriptor} selectedTimelineGainClip={selectedTimelineGainClip} timelineGainBlockedReason={timelineGainBlockedReason} timelineGainBlockedDescriptor={timelineGainBlockedDescriptor} onApplied={onApplied} onSettings={() => onOpenSettings ? onOpenSettings('agent') : onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} /> : <div className="agent-chat-empty"><h3>{t('agent.workspace.selectProject')}</h3><p>{t('agent.workspace.noImplicitProjectContent')}</p></div>}
     </AgentDockPane>
     <AgentDockPane id="agent-settings-pane" visible={page === 'settings'} fallbackFocus="[data-testid=right-dock-tab-agent]">
-      {!nativeSettingsScope && settingsOpened.current && <SettingsNavigationSlot registry={navigationRegistry} slot="workbench:agent">{report => <AgentSettings onClose={() => onPage('chat')} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
+      {!nativeSettingsScope && !onOpenSettings && settingsOpened.current && <SettingsNavigationSlot registry={navigationRegistry} slot="workbench:agent">{report => <AgentSettings onClose={() => onPage('chat')} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
     </AgentDockPane>
   </div>;
 }

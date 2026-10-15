@@ -1,4 +1,3 @@
-import LanguageControl from './LanguageControl.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -9,10 +8,16 @@ import { createNativeCloseRegistry, installNativeCloseAdmission } from './native
 import { createLauncherClient } from './launcher-state.ts';
 import type { LauncherContractChecks, LauncherRpc } from './launcher-state.ts';
 import type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
+import ProjectHomeConnections from './ProjectHomeConnections.tsx';
 import NativeLocatorStatus from './NativeLocatorStatus.tsx';
+import type { SettingsPage } from './settings-window-state.ts';
 import { createSettingsWindowNavigation } from './settings-window-state.ts';
 export interface SettingsRenderProps {
   readonly selected: ProjectWindowSettingsSlot;
+  readonly page: SettingsPage;
+  readonly onPage: (page: SettingsPage) => void;
+  readonly general: ReactNode;
+  readonly connectionsAvailable?: boolean;
   readonly visible: boolean;
   readonly registry: SettingsNavigationRegistry;
   readonly onSelect: (slot: ProjectWindowSettingsSlot) => void;
@@ -48,14 +53,15 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
       if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
   }, [bridge, navigation, native, registry]);
   useEffect(() => navigation.receive(context), [navigation, context]);
-  return <main className="project-home project-home-settings-window"><header className="project-home-header"><span className="project-home-brand">mioon.</span><span className="project-home-header-label">{t('shell.globalConnections')}</span><LanguageControl /></header>
-    <section className="project-home-settings" aria-label={t('shell.globalConnections')}><header className="project-home-heading"><div><div className="project-home-eyebrow">{t('projects.workspace')}</div><h1>{t('projects.connections')}</h1><p>{t('shell.settingsRetained')}</p></div></header>
-      <NativeLocatorStatus context={context} bridge={bridge} recovery />
+  return <main className="project-home project-home-settings-window"><header className="project-home-header"><span className="project-home-brand">mioon.</span><span className="project-home-header-label">{t('settings.title')}</span></header>
+    <section className="project-home-settings" aria-label={t('settings.title')}>
+      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || workspace === 'restored'}><summary>{t('settings.workspaceStatus')}</summary><div><NativeLocatorStatus context={context} bridge={bridge} recovery /></div></details>
       {navigation.notice && <p role="status" className="project-home-notice">{renderMessage(navigation.notice)}</p>}
-      {workspace === 'ready' ? renderSettings({ selected: navigation.selected, visible, registry, onSelect: slot => { void navigation.select(slot); },
+      {workspace === 'ready' ? renderSettings({ selected: navigation.selected, page: navigation.page, visible, registry, onSelect: slot => { void navigation.select(slot); }, onPage: page => { void navigation.selectPage(page); },
+        general: undefined,
         // Only native P0 decides actual closure. Returning false prevents the
         // form from clearing secrets before the native dialog has decided.
         beforeClose: async () => { window.close(); return false; }, onClose: () => {} })
-        : <p role="status">{workspace === 'pending' ? t('shell.checkingWorkspace') : workspace === 'restored' ? t('shell.restoredConnectionsUnavailable') : t('shell.workspaceUnconfirmed')}</p>}
+        : <><p role="status">{workspace === 'pending' ? t('shell.checkingWorkspace') : workspace === 'restored' ? t('shell.restoredConnectionsUnavailable') : t('shell.workspaceUnconfirmed')}</p><ProjectHomeConnections selected="agent" page="general" connectionsAvailable={false} onSelect={() => {}} onPage={() => {}} panes={{ agent: null, official: null, custom: null, comfy: null }} /></>}
     </section></main>;
 }

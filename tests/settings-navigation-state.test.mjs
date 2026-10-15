@@ -7,6 +7,8 @@ import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as agent from '../apps/web/src/agent-settings.js';
 import * as image from '../apps/web/src/image-settings.js';
 import * as comfy from '../apps/web/src/comfy-image-settings.js';
+import * as i18nCore from '../packages/i18n/src/index.ts';
+import { i18nTestModule } from './helpers/i18n.ts';
 import { DEFAULT_COMFY_IMAGE_CONFIGURATION } from '@mioon/contracts';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -54,6 +56,8 @@ function renderer(slot, f, callback, options = {}) {
   const module = { exports: {} }, primitives = new Proxy({}, { get: (_, key) => String(key) });
   Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => {
     if (name === 'react') return react;
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
+    if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './settings-navigation-state.ts') return navigation;
     if (name === './agent-settings.js') return { ...agent, createAgentSettingsSession: options => agent.createAgentSettingsSession({ ...options, client: f.client }) };
     if (name === './image-settings.js') return image;
@@ -246,7 +250,7 @@ for (const slot of ['agent', 'official', 'custom', 'comfy']) test(`${slot}: opti
   for (const closeLabel of [undefined, '返回项目列表']) {
     const f = fixture(slot), ui = renderer(slot, f, undefined, { closeLabel }); await ready(ui);
     const back = ui.find('back');
-    assert.equal(back.props['aria-label'], closeLabel ?? (slot === 'agent' ? '返回 Agent 对话' : slot === 'comfy' ? undefined : '返回图像工坊'));
+    assert.equal(back.props['aria-label'], closeLabel ?? (slot === 'agent' ? '返回 Agent 对话' : slot === 'comfy' ? i18nCore.translate('zh-Hans', 'connections.back') : '返回图像工坊'));
     assert.equal(textContent(slot === 'agent' ? ui.find('cancel') : back), closeLabel ?? (slot === 'agent' ? '返回对话' : '返回'));
     assert.equal(back.props.disabled, false); assert.equal(ui.latest().dirty, false); assert.equal(ui.latest().busy, false); assert.equal(ui.latest().blocked, false);
     ui.back(); assert.equal(ui.closes, 1, 'Presentation-only label must retain the same synchronous onClose behavior');
