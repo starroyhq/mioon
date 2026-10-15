@@ -15,6 +15,7 @@ interface Dependencies {
   editable(timeline:Timeline,input:TimelineLoudnessApplyInput):void;
   snapshot(timeline:Timeline):unknown;
   putTimeline(timeline:Timeline):void;
+  admitTimelineImageResponse(timeline:Timeline):void;
   recordEdit(operation:typeof TIMELINE_LOUDNESS_APPLY_OPERATION,timeline:Timeline,before:unknown):void;
   saveResponse(operation:typeof TIMELINE_LOUDNESS_APPLY_OPERATION,input:TimelineLoudnessApplyInput,requestHash:string,
     response:TimelineLoudnessApplyResponse,boundary:Boundary):TimelineLoudnessApplyResponse;
@@ -35,7 +36,13 @@ export function createTimelineLoudnessTransactions(deps:Dependencies,assertAvail
         // receipt absence. All receipt replay/conflicts remain upstream.
         receiptAbsent=true;
         try{assertAvailable();return body({...context,write:()=>{writesStarted=true;context.write();}});}
-        catch(error){callbackFailed=true;callbackError=error;throw error;}
+        catch(error){
+          // Keep the frozen loudness proof vocabulary. Image capacity is an
+          // unsafe application, but retain its actionable capacity explanation.
+          const failure=deps.isDomainError(error)&&error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'
+            ?Object.assign(deps.error('TIMELINE_LOUDNESS_APPLY_UNSAFE'),{message:error.message,details:error.details}):error;
+          callbackFailed=true;callbackError=failure;throw failure;
+        }
       });
     }catch(error){
       if(receiptAbsent&&callbackFailed&&error===callbackError&&!writesStarted&&!deps.db.isTransaction&&deps.isDomainError(error)&&definiteCodes.has(error.code)){
@@ -76,6 +83,7 @@ export function createTimelineLoudnessTransactions(deps:Dependencies,assertAvail
         for(const gain of gains)timeline.clips.find(clip=>clip.id===gain.clipId)!.gain=gain.afterGain;
         boundary.validate(timeline);
         timeline.revision++;timeline.updatedAt=deps.now();
+        deps.admitTimelineImageResponse(timeline);
         const response:TimelineLoudnessApplyResponse={operation:TIMELINE_LOUDNESS_APPLY_OPERATION,requestId:input.requestId,
           timeline,application:admission.application};
         // Everything above changed only this private JS record. This is the

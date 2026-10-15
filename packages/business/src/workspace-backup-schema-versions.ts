@@ -2,12 +2,13 @@ import type {DatabaseSync} from 'node:sqlite';
 import {validateWorkspaceSchema26} from './workspace-schema-v26.ts';
 import {validateWorkspaceSchema28} from './workspace-schema-v28.ts';
 import {validateWorkspaceSchema30} from './workspace-schema-v30.ts';
+import {validateWorkspaceSchema32} from './workspace-schema-v32.ts';
 import {validateWorkspaceColourRows} from './workspace-colour-validation.ts';
 
 function invalid(): never {throw Object.assign(new Error('Invalid workspace database schema.'),{code:'WORKSPACE_BACKUP_DATABASE_INVALID'});}
 
 /** Cold archives preserve unrelated unknown objects just as historical1–24
- * capture did. New26/28/30 still require its exact markers and migration-owned task
+ * capture did. New26/28/30/32 still require its exact markers and migration-owned task
  * structure. Integrity verification does not grant fixed-profile restoration;
  * the separate offline restore classifier remains stricter. */
 export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
@@ -16,14 +17,14 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
  // Verify also handles imported nonstandard marker tables, whose values may be
  // arbitrarily large text or blobs; a row cap alone does not bound those cells.
  for(const row of db.prepare(`SELECT CASE WHEN typeof(version)='integer' AND
-   (version BETWEEN 1 AND 24 OR version IN (26,28,30)) THEN version ELSE NULL END AS version
-   FROM main.schema_version LIMIT 29`).iterate()){
-  if(versions.size>=27||typeof row.version!=='number'||
-     !((row.version>=1&&row.version<=24)||row.version===26||row.version===28||row.version===30)||versions.has(row.version))invalid();
+   (version BETWEEN 1 AND 24 OR version IN (26,28,30,32)) THEN version ELSE NULL END AS version
+   FROM main.schema_version LIMIT 30`).iterate()){
+  if(versions.size>=28||typeof row.version!=='number'||
+     !((row.version>=1&&row.version<=24)||row.version===26||row.version===28||row.version===30||row.version===32)||versions.has(row.version))invalid();
   versions.add(row.version);version=Math.max(version,row.version);
  }
  if(!version)invalid();
- try{validateWorkspaceColourRows(db,{allowColour:version===30});}catch{invalid();}
+ try{validateWorkspaceColourRows(db,{allowColour:version===30||version===32,allowMixedImages:version===32});}catch{invalid();}
  if(version===26){
   try{validateWorkspaceSchema26(db);}catch{invalid();}
  }
@@ -32,6 +33,9 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
  }
  if(version===30){
   try{validateWorkspaceSchema30(db);}catch{invalid();}
+ }
+ if(version===32){
+  try{validateWorkspaceSchema32(db);}catch{invalid();}
  }
  return version;
 }

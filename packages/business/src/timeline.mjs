@@ -12,7 +12,7 @@ import {freezeTimelineSnapshot} from './timeline-inputs.mjs';
 export {TIMELINE_LIMITS} from './timeline-inputs.mjs';
 import {readTimelinePreflightSnapshot} from './timeline-sources.mjs';
 import {createTimelineReplacementBoundary} from './timeline-replacement.mjs';
-import {createTimelineRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.mjs';
+import {createTimelineRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.mjs';
 
 const defaultRect=timeline=>({x:0,y:0,width:timeline.width,height:timeline.height});
 // The shared wire schema admits every preset's envelope. Submitted rectangles
@@ -134,6 +134,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    timeline=boundary.restored(timeline,entry.snapshot);
    timeline.revision++;
    timeline.updatedAt=now();
+   admitTimelineImageResponse(timeline);
    write();put('timelines',timeline);
    setCursor(input.projectId,position+direction);
    return saveResponse(operation,input,requestHash,timeline,boundary);
@@ -152,6 +153,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    boundary.validate(timeline);
    timeline.revision++;
    timeline.updatedAt=now();
+   admitTimelineImageResponse(timeline);
    write();put('timelines',timeline);
    recordEdit(operation,timeline,before);
    return saveResponse(operation,input,requestHash,timeline,boundary);
@@ -293,7 +295,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
  const moveClipInProject=(input,target)=>updateClip(input,createAgentTimelineMoveBoundary(db,input,target));
  const setClipGainInProject=(input,target)=>updateClip(input,createAgentTimelineGainBoundary(db,input,target));
  const createLoudnessApplyTransactions=assertAvailable=>createTimelineLoudnessTransactions({
-  db,transaction,editable,snapshot,recordEdit,saveResponse,now,
+  db,transaction,editable,snapshot,recordEdit,saveResponse,now,admitTimelineImageResponse,
   putTimeline:value=>{put('timelines',value);},
   error:(code,status=409)=>new AppError(code,'已审核的固定增益无法应用，请重新检查当前时间线',status),
   isDomainError:error=>error instanceof AppError,

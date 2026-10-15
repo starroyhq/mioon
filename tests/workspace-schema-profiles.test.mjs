@@ -26,7 +26,7 @@ const profile = name => ({
   tables: golden.profiles[name].tables,
 });
 
-// Current ordinary30 retains the reviewed26 task CHECK and adds markers28/30 plus
+// Current ordinary32 retains the reviewed26 task CHECK and adds markers28/30/32 plus
 // the separately pinned LUT catalog below. Keep the independent24 golden intact;
 // historical constructors and profiles still compare against its original bytes.
 function currentOrdinaryProfile(name = 'ordinary-24') {
@@ -35,7 +35,7 @@ function currentOrdinaryProfile(name = 'ordinary-24') {
   const oldCheck = "'timeline.subtitle.remove'))";
   assert.equal(tasks.sql.split(oldCheck).length, 2);
   tasks.sql = tasks.sql.replace(oldCheck, "'timeline.subtitle.remove','timeline.loudness.apply'))");
-  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330']);
+  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332']);
   return expected;
 }
 
@@ -303,7 +303,7 @@ test('through24 constructor keeps every ordinary1–24 trusted SQL/default-row c
 });
 
 for (let version = 1; version <= 24; version++) {
-  test(`frozen ordinary${version} classifies without mutation and runtime opens with only the reviewed ordinary30 delta`, t => {
+  test(`frozen ordinary${version} classifies without mutation and runtime opens with only the reviewed ordinary32 delta`, t => {
     const name = `ordinary-${version}`;
     const root = onDisk(t, name);
     const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
@@ -320,7 +320,7 @@ for (let version = 1; version <= 24; version++) {
   });
 }
 
-test('fresh runtime construction has only the reviewed ordinary30 delta and no restoration authority', t => {
+test('fresh runtime construction has only the reviewed ordinary32 delta and no restoration authority', t => {
   const store = openStore(onDisk(t));
   try {
     assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile());
@@ -338,13 +338,13 @@ test('real Mock ledger constructor keeps the frozen optional ordinary24 table/in
 
 for (const mock of [false, true]) for (const seeded of [false, true]) {
   const suffix = (mock ? '-mock' : '') + (seeded ? '-seeded' : '');
-  test(`frozen ordinary24${suffix} reopens with only the reviewed28/30 schema delta, preserving raw rows, receipts and sequence`, t => {
+  test(`frozen ordinary24${suffix} reopens with only the reviewed28/30/32 schema delta, preserving raw rows, receipts and sequence`, t => {
     const name = `ordinary-24${suffix}`;
     const store = openStore(onDisk(t, name));
     try {
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
       assertPreserved(store.db, profile(name));
-      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 30, profile: 'ordinary'});
+      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 32, profile: 'ordinary'});
       if (seeded) constraints(store.db, {restored: false, mock});
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }

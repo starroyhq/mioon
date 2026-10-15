@@ -8,11 +8,12 @@ export const TIMELINE_COLOUR_RENDER_PROFILE = 'mioon-rec709-sdr-render-v1' as co
 export const TIMELINE_COLOUR_SOURCE_INSPECT = 'timeline.colour.source.inspect' as const;
 
 export const TIMELINE_COLOUR_PREFLIGHT_MESSAGES = Object.freeze({
-  INVALID_TIMELINE_COLOUR: 'Confirm a supported SDR source interpretation for every visible video clip before rendering managed colour.',
+  TIMELINE_IMAGE_COMPOSITOR_BUDGET: '同一时段最多支持 2 个可见的 SDR PNG 片段。请错开图片时间、隐藏多余图片轨道，或减少同时显示的图片；视频轨道上限不变。',
+  INVALID_TIMELINE_COLOUR: 'Confirm a supported SDR source interpretation for every visible video or PNG clip before rendering managed colour.',
   TIMELINE_COLOUR_SOURCE_UNSUPPORTED: 'The source has unsupported colour evidence. HDR, Log, non-Rec.709 and unsupported pixel formats are outside this SDR profile.',
   TIMELINE_COLOUR_SOURCE_MISMATCH: 'The saved source interpretation no longer matches the verified source. Inspect and confirm the current source again.',
   TIMELINE_COLOUR_RESOURCE_CHANGED: 'The saved creative LUT resource could not be verified against its frozen bytes, hash and profile.',
-  TIMELINE_COLOUR_LUT_BUDGET: 'The saved creative looks exceed the bounded render staging budget. Reduce distinct looks or strengths.',
+  TIMELINE_COLOUR_LUT_BUDGET: 'The saved colour resources or static image layers exceed the bounded render staging budget. Reduce distinct looks, image sizes or layers.',
 });
 export const TIMELINE_COLOUR_PREFLIGHT_CODES = Object.freeze(Object.keys(TIMELINE_COLOUR_PREFLIGHT_MESSAGES)) as readonly (keyof typeof TIMELINE_COLOUR_PREFLIGHT_MESSAGES)[];
 
@@ -33,13 +34,46 @@ export const timelineClipColourSchema = z.object({
   look: timelineColourLookSchema.nullable(),
 }).strict();
 export const nullableTimelineClipColourSchema = timelineClipColourSchema.nullable();
-export const clipColourSchema = nullableTimelineClipColourSchema;
+// Historical video/source/render schemas remain closed. Only the current clip
+// field admits the separate image profile, gated by ordinary32/restored33.
+export const TIMELINE_IMAGE_CLIP_COLOUR_PROFILE = 'mioon-srgb-image-clip-v1' as const;
+export const TIMELINE_IMAGE_SOURCE_PROFILE = 'png-rgb8-srgb-v1' as const;
+export const TIMELINE_MIXED_COLOUR_RENDER_PROFILE = 'mioon-mixed-sdr-render-v2' as const;
+export const TIMELINE_IMAGE_TRANSFORM_PROFILE = 'srgb8-to-bt1886-zero-black-display-v1' as const;
+export const TIMELINE_IMAGE_TABLE_SHA256 = '383f159aebd6758ead128a3f1291ec70275bbd6bf60aef603e17d2d3726c303c' as const;
+export const TIMELINE_IMAGE_RESIZE_PROFILE = 'png-contain-bilinear-mirror-premultiplied-v1' as const;
+export const TIMELINE_IMAGE_SOURCE_INSPECT = 'timeline.colour.image.inspect' as const;
+export const TIMELINE_IMAGE_COMPOSITOR_INPUTS = 2;
+export function assertTimelineImageCompositorInputCount(count:number):void {
+  if(!Number.isSafeInteger(count)||count<0||count>TIMELINE_IMAGE_COMPOSITOR_INPUTS)throw Object.assign(
+    new Error(TIMELINE_COLOUR_PREFLIGHT_MESSAGES.TIMELINE_IMAGE_COMPOSITOR_BUDGET),{code:'TIMELINE_IMAGE_COMPOSITOR_BUDGET'});
+}
+export const timelineImageEvidenceSchema = z.object({
+  profileId: z.literal(TIMELINE_IMAGE_SOURCE_PROFILE), sha256: hash,
+  sourceByteLength: z.number().int().min(1).max(32 * 1024 * 1024),
+  width: z.number().int().min(1).max(4096), height: z.number().int().min(1).max(4096),
+  bitDepth: z.literal(8), alphaMode: z.enum(['opaque', 'straight']), orientation: z.literal(1),
+  colourTag: z.enum(['srgb', 'untagged']),
+}).strict().refine(value => value.width * value.height <= 2073600, 'PNG pixel budget exceeded.');
+export const timelineImageSourceSchema = z.object({
+  assetSha256: hash, profileId: z.literal(TIMELINE_IMAGE_SOURCE_PROFILE),
+  interpretation: z.literal('srgb'), declaredBy: z.literal('user'), declaredAt: z.string().max(40).datetime(),
+  evidence: timelineImageEvidenceSchema,
+}).strict().refine(value => value.assetSha256 === value.evidence.sha256, 'Image evidence must bind the declared bytes.');
+export const timelineImageClipColourSchema = z.object({
+  profileId: z.literal(TIMELINE_IMAGE_CLIP_COLOUR_PROFILE), source: timelineImageSourceSchema.nullable(),
+  look: timelineColourLookSchema.nullable(),
+}).strict();
+export const clipColourSchema = z.union([timelineClipColourSchema, timelineImageClipColourSchema]).nullable();
+export type TimelineImageEvidence = z.infer<typeof timelineImageEvidenceSchema>;
+export type TimelineImageSource = z.infer<typeof timelineImageSourceSchema>;
+export type TimelineImageClipColour = z.infer<typeof timelineImageClipColourSchema>;
 export type ClipColour = z.infer<typeof clipColourSchema>;
 export type TimelineClipColour = z.infer<typeof timelineClipColourSchema>;
 export type TimelineColourSource = z.infer<typeof timelineColourSourceSchema>;
 export type TimelineColourLook = z.infer<typeof timelineColourLookSchema>;
 export function isTimelineClipColour(value: unknown): value is ClipColour | null {
-  return nullableTimelineClipColourSchema.safeParse(value).success;
+  return clipColourSchema.safeParse(value).success;
 }
 
 export const timelineColourPlanClipSchema = z.object({
@@ -52,7 +86,27 @@ export const timelineColourPlanSchema = z.object({
   outOfDomain: z.literal('clip-lut-domain'), clips: z.array(timelineColourPlanClipSchema).max(100),
 }).strict().refine(value => new Set(value.clips.map(clip => clip.clipId)).size === value.clips.length,
   'Colour plan clip identities must be unique.');
-export type TimelineColourPlan = z.infer<typeof timelineColourPlanSchema>;
+export const timelineMixedColourPlanClipSchema = z.union([
+  timelineColourPlanClipSchema.extend({kind: z.literal('video'), sourceProfileId: z.literal(TIMELINE_COLOUR_SOURCE_PROFILE)}).strict(),
+  z.object({clipId: id, assetId: id, assetSha256: hash, streamIndex: z.literal(0), kind: z.literal('image'),
+    sourceProfileId: z.literal(TIMELINE_IMAGE_SOURCE_PROFILE), interpretation: z.literal('srgb'), evidence: timelineImageEvidenceSchema,
+    transformProfile: z.literal(TIMELINE_IMAGE_TRANSFORM_PROFILE), algorithm: z.literal('rgb8-fixed-linear-table256-v1'),
+    algorithmSha256: z.literal(TIMELINE_IMAGE_TABLE_SHA256),
+    referenceDisplay: z.object({eotf: z.literal('bt1886-zero-black'), gamma: z.literal(2.4), black: z.literal(0), white: z.literal(1),
+      luminance: z.literal('relative'), primaries: z.literal('bt709'), whitePoint: z.literal('D65')}).strict(),
+    alpha: z.literal('straight-transform-look-premultiply-resize'), resizeProfile: z.literal(TIMELINE_IMAGE_RESIZE_PROFILE),
+    look: timelineColourLookSchema.nullable(),
+  }).strict().refine(value => value.assetSha256 === value.evidence.sha256, 'Image plan evidence must bind its source.'),
+]);
+export const timelineMixedColourPlanSchema = z.object({
+  profileId: z.literal(TIMELINE_MIXED_COLOUR_RENDER_PROFILE), working: z.literal('rec709-encoded-rgb8-v1'),
+  output: z.literal('rec709-yuv420p-limited-v1'), lutAlgorithm: z.literal('cube3d-tetrahedral-premixed-v1'),
+  outOfDomain: z.literal('clip-lut-domain'), clips: z.array(timelineMixedColourPlanClipSchema).max(100),
+}).strict().refine(value => new Set(value.clips.map(clip => clip.clipId)).size === value.clips.length && value.clips.some(clip => clip.kind === 'image'),
+  'Mixed colour plans require unique clip identities and an image.');
+export const timelineAnyColourPlanSchema = z.union([timelineColourPlanSchema, timelineMixedColourPlanSchema]);
+export type TimelineColourPlan = z.infer<typeof timelineAnyColourPlanSchema>;
+export type TimelineMixedColourPlanClip = z.infer<typeof timelineMixedColourPlanClipSchema>;
 export type TimelineColourPlanClip = z.infer<typeof timelineColourPlanClipSchema>;
 
 type RecordValue = Record<string, unknown>;
@@ -95,7 +149,7 @@ export function createTimelineColourPlan(timeline: unknown, assets: unknown): Ti
         !hash.safeParse(asset.sha256).success || typeof asset.mimeType !== 'string') invalid('Invalid colour source asset.');
     assetMap.set(asset.id as string, asset);
   }
-  const planned: TimelineColourPlanClip[] = [], clipIds = new Set<string>();
+  const planned: TimelineMixedColourPlanClip[] = [], clipIds = new Set<string>(), imageEdges:{frame:number;delta:number}[]=[];
   for (const value of clips) {
     const clip = value as RecordValue;
     if (typeof clip.id !== 'string' || !id.safeParse(clip.id).success || clipIds.has(clip.id) || typeof clip.trackId !== 'string' || typeof clip.assetId !== 'string') invalid('Invalid colour clip identity.');
@@ -107,16 +161,38 @@ export function createTimelineColourPlan(timeline: unknown, assets: unknown): Ti
       continue;
     }
     if (track.hidden) continue;
-    if (!['video/mp4', 'video/webm'].includes(String(asset.mimeType))) invalid('Managed colour cannot be mixed with visible images.');
-    const result = timelineClipColourSchema.safeParse(clip.colour);
-    if (!result.success || result.data.source === null) invalid('Every visible video requires a confirmed SDR source interpretation.');
-    const colour = result.data, source = colour.source!;
-    if (source.assetSha256 !== asset.sha256) invalid('Clip source interpretation no longer matches the frozen source hash.');
-    planned.push({clipId: clip.id, assetId: clip.assetId, assetSha256: source.assetSha256,
-      streamIndex: source.streamIndex, range: source.range, look: colour.look});
+    if (asset.mimeType === 'image/png') {
+      if(!Number.isSafeInteger(clip.startFrame)||!Number.isSafeInteger(clip.durationFrames)||Number(clip.startFrame)<0||Number(clip.durationFrames)<1||Number(clip.startFrame)+Number(clip.durationFrames)>18000)invalid('Invalid image interval.');
+      imageEdges.push({frame:Number(clip.startFrame),delta:1},{frame:Number(clip.startFrame)+Number(clip.durationFrames),delta:-1});
+      const result = timelineImageClipColourSchema.safeParse(clip.colour);
+      if (!result.success || result.data.source === null) invalid('Every visible PNG requires a confirmed sRGB image interpretation.');
+      const colour = result.data, source = colour.source!;
+      if (source.assetSha256 !== asset.sha256) invalid('Image interpretation no longer matches the frozen source hash.');
+      planned.push({clipId: clip.id, assetId: clip.assetId, assetSha256: source.assetSha256, streamIndex: 0,
+        kind: 'image', sourceProfileId: TIMELINE_IMAGE_SOURCE_PROFILE, interpretation: source.interpretation,
+        evidence: source.evidence, transformProfile: TIMELINE_IMAGE_TRANSFORM_PROFILE, algorithm: 'rgb8-fixed-linear-table256-v1',
+        algorithmSha256: TIMELINE_IMAGE_TABLE_SHA256,
+        referenceDisplay: {eotf: 'bt1886-zero-black', gamma: 2.4, black: 0, white: 1, luminance: 'relative', primaries: 'bt709', whitePoint: 'D65'},
+        alpha: 'straight-transform-look-premultiply-resize', resizeProfile: TIMELINE_IMAGE_RESIZE_PROFILE, look: colour.look});
+    } else {
+      if (!['video/mp4', 'video/webm'].includes(String(asset.mimeType))) invalid('Managed colour supports only interpreted video and bounded sRGB PNG.');
+      const result = timelineClipColourSchema.safeParse(clip.colour);
+      if (!result.success || result.data.source === null) invalid('Every visible video requires a confirmed SDR source interpretation.');
+      const colour = result.data, source = colour.source!;
+      if (source.assetSha256 !== asset.sha256) invalid('Clip source interpretation no longer matches the frozen source hash.');
+      planned.push({clipId: clip.id, assetId: clip.assetId, assetSha256: source.assetSha256,
+        streamIndex: source.streamIndex, range: source.range, look: colour.look, kind: 'video', sourceProfileId: TIMELINE_COLOUR_SOURCE_PROFILE});
+    }
   }
-  return timelineColourPlanSchema.parse({profileId: TIMELINE_COLOUR_RENDER_PROFILE, working: 'rec709-encoded-rgb8-v1',
-    output: 'rec709-yuv420p-limited-v1', lutAlgorithm: 'cube3d-tetrahedral-premixed-v1', outOfDomain: 'clip-lut-domain', clips: planned});
+  // Segments are cut at every clip edge. End-exclusive intervals release an
+  // input before a new one at the same frame; only visible PNGs are counted.
+  let activeImages=0;
+  for(const edge of imageEdges.sort((a,b)=>a.frame-b.frame||a.delta-b.delta)){activeImages+=edge.delta;assertTimelineImageCompositorInputCount(activeImages);}
+  const mixed = planned.some(clip => clip.kind === 'image');
+  const plan = {profileId: mixed ? TIMELINE_MIXED_COLOUR_RENDER_PROFILE : TIMELINE_COLOUR_RENDER_PROFILE, working: 'rec709-encoded-rgb8-v1',
+    output: 'rec709-yuv420p-limited-v1', lutAlgorithm: 'cube3d-tetrahedral-premixed-v1', outOfDomain: 'clip-lut-domain',
+    clips: mixed ? planned : planned.map(({kind: _kind, sourceProfileId: _profile, ...clip}) => clip)};
+  return timelineAnyColourPlanSchema.parse(plan);
 }
 export function projectTimelineColourPlan(snapshot: unknown): TimelineColourPlan | undefined {
   if (!object(snapshot)) invalid('Invalid colour snapshot.');
@@ -131,7 +207,7 @@ export function isTimelineColourPlanSnapshot(snapshot: unknown): boolean {
   try {
     const expected = createTimelineColourPlan(snapshot.timeline, snapshot.assets);
     return expected === undefined ? !Object.hasOwn(snapshot, 'colourPlan') : Object.hasOwn(snapshot, 'colourPlan') &&
-      timelineColourPlanSchema.safeParse(snapshot.colourPlan).success && same(expected, snapshot.colourPlan);
+      timelineAnyColourPlanSchema.safeParse(snapshot.colourPlan).success && same(expected, snapshot.colourPlan);
   } catch {return false;}
 }
 export const isTimelineColourSnapshot = isTimelineColourPlanSnapshot;
@@ -176,11 +252,23 @@ export function isTimelineColourSourceInspection(value: unknown, input: unknown)
   return parsed.success && request.success && parsed.data.projectId === request.data.projectId && parsed.data.assetId === request.data.assetId;
 }
 export const isTimelineColourSourceInspectResponse = isTimelineColourSourceInspection;
-export const timelineColourSchemas = Object.freeze({[TIMELINE_COLOUR_SOURCE_INSPECT]: timelineColourSourceInspectInputSchema});
+export const timelineColourSchemas = Object.freeze({[TIMELINE_COLOUR_SOURCE_INSPECT]: timelineColourSourceInspectInputSchema, [TIMELINE_IMAGE_SOURCE_INSPECT]: timelineColourSourceInspectInputSchema});
 export const timelineColourDescriptions = Object.freeze({[TIMELINE_COLOUR_SOURCE_INSPECT]:
-  'Read-only bounded hash and metadata probe of one owned local video source. Returns evidence and SDR interpretation eligibility, not a grading, decoder, LUT compatibility or future render guarantee. No writes or network.'});
+  'Read-only bounded hash and metadata probe of one owned local video source. Returns evidence and SDR interpretation eligibility, not a grading, decoder, LUT compatibility or future render guarantee. No writes or network.', [TIMELINE_IMAGE_SOURCE_INSPECT]: 'Read-only bounded inspection of one owned static RGB8/RGBA8 PNG. Validates its exact bytes, PNG structure and permitted colour metadata; untagged files still require explicit user sRGB interpretation. No writes, network or providers.'});
 export const timelineColourEffects = Object.freeze({[TIMELINE_COLOUR_SOURCE_INSPECT]: Object.freeze({
   readOnly: true, idempotent: true, destructive: false, openWorld: false, databaseWrite: false,
   fileWrite: false, externalIO: false, localProcess: true, paidGeneration: false,
   notes: 'Reads and hashes one owned bounded source and invokes a bounded local metadata probe. No decoding, media change, database/file/cache write, network, provider call or paid generation. Missing tags require explicit user interpretation; HDR, Log or conflicting tags are not authorized by a declaration.',
-})});
+}), [TIMELINE_IMAGE_SOURCE_INSPECT]: Object.freeze({readOnly: true, idempotent: true, destructive: false, openWorld: false, databaseWrite: false, fileWrite: false, externalIO: false, localProcess: false, paidGeneration: false, notes: 'Reads one owned bounded PNG and validates its structure and inflated rows. Does not write, launch a process, change source bytes or infer untagged colour.'})});
+
+// Separate operation preserves the original video inspection DTO byte-for-byte.
+export const timelineImageSourceInspectResponseSchema = z.object({
+  projectId: id, assetId: id, assetSha256: hash, kind: z.literal('image'),
+  evidence: timelineImageEvidenceSchema, status: z.enum(['compatible', 'needs_interpretation']),
+}).strict().refine(value => value.assetSha256 === value.evidence.sha256 &&
+  value.status === (value.evidence.colourTag === 'srgb' ? 'compatible' : 'needs_interpretation'), 'Image inspection evidence mismatch.');
+export type TimelineImageSourceInspection = z.infer<typeof timelineImageSourceInspectResponseSchema>;
+export function isTimelineImageSourceInspection(value: unknown, input: unknown): value is TimelineImageSourceInspection {
+  const parsed = timelineImageSourceInspectResponseSchema.safeParse(value), request = timelineColourSourceInspectInputSchema.safeParse(input);
+  return parsed.success && request.success && parsed.data.projectId === request.data.projectId && parsed.data.assetId === request.data.assetId;
+}

@@ -1,3 +1,4 @@
+import {timelineImageResponseBudgetIssue} from './timeline-image-budget.ts';
 import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
 import {TIMELINE_LOUDNESS_APPLY_OPERATION,TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES,createTimelineLoudnessApplyContracts} from '@mioon/contracts/timeline-loudness-apply';
@@ -14,6 +15,10 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 export const invalidTimeline=()=>{throw new AppError('INVALID_TIMELINE_SNAPSHOT','时间线或已保存的请求响应无效',409);};
 const unavailable=()=>{throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);};
+export function admitTimelineImageResponse(timeline){
+ const issue=timelineImageResponseBudgetIssue(timeline,TIMELINE_RESPONSE_BYTES);
+ if(issue)throw new AppError(issue.code,issue.message,issue.status,issue.details);
+}
 // History owns only editable state. Reuse this projection for travel and
 // read-only eligibility inspection so an omitted historical subtitle field
 // removes current cues rather than leaking them into an earlier snapshot.
@@ -27,7 +32,7 @@ export function restoreTimelineEditableSnapshot(timeline,saved){
 
 const bounded=(column,bytes)=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${bytes} THEN ${column} END`;
 const identity=column=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
-const definiteRejections=new Set(['TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE','EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
+const definiteRejections=new Set(['TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE','EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
  'SUBTITLE_LIMIT','SUBTITLE_BOUNDS','SUBTITLE_OVERLAP','SUBTITLE_NOT_FOUND','INVALID_FADE','FADE_AUDIO_UNSUPPORTED','AUDIO_HIDDEN_UNSUPPORTED','TIMELINE_LIMIT','CLIP_OVERLAP','SPLIT_BOUNDS','SPLIT_FADE_BOUNDS',
  'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE',...TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES]);
 
@@ -39,7 +44,7 @@ export function rejectTimelineMutation(db,input,error,{receiptAbsent,writesStart
  // binding; never fall back to the legacy optional operation/project proof.
  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return;
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
-  error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId,...(operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
+  error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
 }
 
 export function readTimelineReceipt(db,input,operation){
@@ -82,6 +87,7 @@ export function createTimelineRecoveryBoundary(db,input){
    const track=value.tracks.find(track=>track.id===id);
    if(!track)throw new AppError('TRACK_NOT_FOUND','轨道不属于此时间线',404,{trackId:id});return track;
   },asset:(_projectId,id)=>assets.get(id)});
+  admitTimelineImageResponse(timeline);
   if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
   return timeline;
  }
@@ -121,6 +127,14 @@ export function createTimelineRecoveryBoundary(db,input){
  function restored(timeline,text){
   let saved;try{saved=JSON.parse(text);}catch{invalidTimeline();}
   const result=restoreTimelineEditableSnapshot(timeline,saved);
+  if(timelineImageResponseBudgetIssue(result,TIMELINE_RESPONSE_BYTES)){
+   // History omits revision/timestamps. First check its strict structure and
+   // source ownership in the smallest constructor envelope, then distinguish
+   // growth caused by today's revision from malformed stored editable data.
+   // This projection is verification-only: it is never returned or persisted.
+   validateReadonly({...result,revision:1,updatedAt:timeline.createdAt});
+   admitTimelineImageResponse(result);
+  }
   validateReadonly(result);return result;
  }
  function renderRecord(response){

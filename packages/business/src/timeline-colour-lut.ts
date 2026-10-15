@@ -77,12 +77,12 @@ interface StageOptions {signal?:AbortSignal;beforeEffect?:()=>void;readLut?:Colo
  * It is kept alive until the renderer has joined every exact media child.
  */
 export async function prepareTimelineColourLuts(plan:ColourPlan,destination:string,options:StageOptions,runtime:StagingRuntime):Promise<{
- filter(clipId:string):string;effect():void;verifyBytes():void;cleanup():boolean;readonly totalBytes:number;
+ filter(clipId:string):string;path(clipId:string):string|undefined;effect():void;verifyBytes():void;cleanup():boolean;readonly totalBytes:number;
 }> {
  runtime.checkMediaEffect(options.beforeEffect,options.signal);
  const bindings=plan.clips.filter(item=>used(item.look));
- const filters=new Map<string,string>();
- if(!bindings.length)return {filter:()=>'',effect:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),verifyBytes:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),cleanup:()=>true,totalBytes:0};
+ const filters=new Map<string,string>(),paths=new Map<string,string>();
+ if(!bindings.length)return {filter:()=>'',path:()=>undefined,effect:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),verifyBytes:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),cleanup:()=>true,totalBytes:0};
  if(!options.readLut)throw invalid();
  const read=options.readLut,owned=createTimelineFloatStaging(destination,options,runtime),copies=new Map<string,{file:string;sha256:string;bytes:number}>();
  let totalBytes=0;
@@ -102,6 +102,7 @@ export async function prepareTimelineColourLuts(plan:ColourPlan,destination:stri
    }
    // copy forces independently allocated float planes before lut3d. This is a
    // proved workaround for the observed supported-FFmpeg raw-plane boundary case.
+   paths.set(item.clipId,copy.file);
    filters.set(item.clipId,`copy,lut3d=file=${timelineColourFilterPath(copy.file)}:interp=tetrahedral,`);
   }
   const verifyBytes=()=>{
@@ -113,6 +114,6 @@ export async function prepareTimelineColourLuts(plan:ColourPlan,destination:stri
     finally{closeSync(fd);}effect();
    }
   };
-  verifyBytes();return {filter:clipId=>filters.get(clipId)??'',effect,verifyBytes,cleanup:owned.cleanup,totalBytes};
+  verifyBytes();return {filter:clipId=>filters.get(clipId)??'',path:clipId=>paths.get(clipId),effect,verifyBytes,cleanup:owned.cleanup,totalBytes};
  }catch(error){owned.cleanup();throw error;}
 }

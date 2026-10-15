@@ -26,7 +26,8 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
   useLayoutEffect(() => { controller.refresh(); }, [controller, identity]);
   const state = observed ?? controller.getState(), colour = context.colour, blocked = context.blocked;
   if (kind === 'audio') return null;
-  if (kind !== 'video') return <><Separator className="section-divider" /><p className="input-hint" data-testid="clip-lut-image-unsupported">图片暂不支持 Rec.709 SDR LUT。时间线启用此流程后，可见图片会阻止渲染。</p></>;
+  if (kind !== 'video' && kind !== 'image') return null;
+  const image = kind === 'image', imageInspection = state.inspection && 'kind' in state.inspection ? state.inspection : null, videoInspection = state.inspection && !('kind' in state.inspection) ? state.inspection : null;
   const issue = clipLutSourceIssue(state.inspection, state.range), source = colour?.source, look = colour?.look;
   const importRecord = state.importRecord;
   const importUnavailable = state.recoveryPhase !== 'ready' || Boolean(state.recovery) || state.importing;
@@ -36,22 +37,24 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
     <Separator className="section-divider" />
     <div className="section-heading"><span id="clip-lut-title">Rec.709 SDR · 创意 LUT</span></div>
     <p className="input-hint" data-testid="clip-lut-render-disclosure">保存片段后，重新渲染的时间线预览与导出才会应用。源素材快速查看始终是原始、未调色画面。</p>
-    {!colour && <p className="notice warning" data-testid="clip-lut-adoption-warning">当前保持原有色彩路径，不会自动迁移。明确启用后，整条时间线使用 Rec.709 SDR 流程：所有可见视频都必须逐一确认来源解释，可见图片暂不支持。HDR / Log、技术转换 LUT 不在此范围内。</p>}
+    {!colour && <p className="notice warning" data-testid="clip-lut-adoption-warning">当前保持原有色彩路径，不会自动迁移。明确启用后，整条时间线使用 Rec.709 SDR 流程：所有可见视频都必须逐一确认 Rec.709 解释，图片必须是已检查并明确声明为 sRGB 的受支持 PNG。HDR / Log、JPEG、ICC 图片与技术转换 LUT 不在此范围内。</p>}
     {colour && !source && <p className="notice warning" role="alert" data-testid="clip-lut-reconfirm-source">来源已替换，色彩解释已失效。LUT、启用状态与强度保留；请重新检查并确认新来源，否则不能渲染。</p>}
-    {source && <p className="input-hint" data-testid="clip-lut-source-confirmed">已声明：Rec.709 SDR · {source.range === 'limited' ? 'Limited' : 'Full'} · 视频流 {source.streamIndex}。这是用户解释，不是从文件推断的事实。</p>}
+    {source && <p className="input-hint" data-testid="clip-lut-source-confirmed">{'evidence' in source ? `已声明：sRGB PNG · ${source.evidence.width} × ${source.evidence.height} · ${source.evidence.alphaMode === 'straight' ? '透明通道独立保留' : '不透明'}` : `已声明：Rec.709 SDR · ${source.range === 'limited' ? 'Limited' : 'Full'} · 视频流 ${source.streamIndex}`}。这是用户解释，文件检查不会自动替你声明。</p>}
+    {image && <p className="input-hint" data-testid="clip-image-colour-disclosure">图片按 sRGB 解释，并转换到 Rec.709 / Gamma 2.4 相对参考显示（黑位 0、白位 1），再应用创意 LUT。透明度不参与调色，预乘后以双线性方式缩放。同一时段最多显示 2 个受管理的 PNG 片段，可错开放置更多图片。当前合成是 8 位编码 RGB，不是线性光或 HDR；实际预览观感受播放器、系统和显示器设置影响。</p>}
     {restored && <p className="notice warning" role="status">恢复工作区中这里只显示已保存设置，不提供 LUT 导入或修改。</p>}
     {!state.opened ? <Button variant="outline" size="sm" type="button" data-testid="open-clip-lut" disabled={blocked} onClick={() => controller.open()}>{colour ? '检查来源与调整 LUT' : '检查并启用 Rec.709 SDR'}</Button> : <>
       <fieldset disabled={blocked} style={{ border: 0, padding: 0, margin: 0 }}>
         <legend className="field-label">1. 明确源素材解释</legend>
         <Button variant="outline" size="sm" type="button" data-testid="inspect-clip-colour-source" disabled={state.sourcePhase === 'loading'} onClick={() => { void controller.inspectSource(); }}>{state.sourcePhase === 'loading' ? '正在检查来源…' : '重新检查当前来源'}</Button>
-        {state.inspection && <p className="input-hint" data-testid="clip-lut-source-evidence">文件标签：原色 {state.inspection.evidence.primaries ?? '未标记'} · 转换 {state.inspection.evidence.transfer ?? '未标记'} · 矩阵 {state.inspection.evidence.matrix ?? '未标记'} · 范围 {state.inspection.evidence.range ?? '未标记'} · 像素 {state.inspection.evidence.pixelFormat ?? '未知'}{state.inspection.evidence.hdrMetadata ? ' · 含 HDR 元数据' : ''}</p>}
+        {videoInspection && <p className="input-hint" data-testid="clip-lut-source-evidence">文件标签：原色 {videoInspection.evidence.primaries ?? '未标记'} · 转换 {videoInspection.evidence.transfer ?? '未标记'} · 矩阵 {videoInspection.evidence.matrix ?? '未标记'} · 范围 {videoInspection.evidence.range ?? '未标记'} · 像素 {videoInspection.evidence.pixelFormat ?? '未知'}{videoInspection.evidence.hdrMetadata ? ' · 含 HDR 元数据' : ''}</p>}
+        {imageInspection && <p className="input-hint" data-testid="clip-image-source-evidence">已核验 PNG 原始字节与结构：{imageInspection.evidence.width} × {imageInspection.evidence.height} · 8 位 · {imageInspection.evidence.alphaMode === 'straight' ? 'Straight alpha' : '无透明通道'} · {imageInspection.evidence.colourTag === 'srgb' ? 'sRGB 标签' : '没有 sRGB 标签，必须由你明确解释'}。当前上限为 2,073,600 像素、单边 4096、文件 32 MiB。ICC / P3 / HDR、动画、16 位及未支持元数据不会被自动去除。</p>}
         {state.sourceError && <p className="notice warning" role="alert">{state.sourceError}</p>}
-        <Label className="field-label" htmlFor="clip-lut-source-range">源素材范围（必须明确选择）</Label>
+        {!image && <><Label className="field-label" htmlFor="clip-lut-source-range">源素材范围（必须明确选择）</Label>
         <Select id="clip-lut-source-range" data-testid="clip-lut-source-range" value={state.range} disabled={state.sourcePhase !== 'ready' || state.inspection?.status === 'unsupported'} onChange={event => controller.chooseRange(event.target.value)}>
           <option value="">请选择范围</option><option value="limited">Limited · 视频范围</option><option value="full">Full · 全范围</option>
-        </Select>
+        </Select></>}
         {state.inspection && issue && <p className="notice warning" role="status" data-testid="clip-lut-source-issue">{issue}</p>}
-        <label className="field-label"><input type="checkbox" data-testid="clip-lut-source-declaration" checked={state.sourceDeclared} disabled={Boolean(issue)} onChange={event => controller.declareSource(event.target.checked)} />我确认此来源是 Rec.709 SDR，并确认以上范围；不把 HDR / Log 作为 SDR 解释。</label>
+        <label className="field-label"><input type="checkbox" data-testid="clip-lut-source-declaration" checked={state.sourceDeclared} disabled={Boolean(issue)} onChange={event => controller.declareSource(event.target.checked)} />{image ? '我确认这张图片按 sRGB 解释；没有标签也不是自动推断，不把 ICC / P3 / HDR 当作 sRGB。' : '我确认此来源是 Rec.709 SDR，并确认以上范围；不把 HDR / Log 作为 SDR 解释。'}</label>
         <Button size="sm" type="button" data-testid="confirm-clip-colour-source" disabled={Boolean(issue) || !state.sourceDeclared || state.sourcePhase !== 'ready'} onClick={() => controller.confirmSource()}>{colour ? '将来源确认写入片段草稿' : '明确启用并写入片段草稿'}</Button>
       </fieldset>
       <fieldset disabled={blocked} style={{ border: 0, padding: 0, margin: '16px 0 0' }}>

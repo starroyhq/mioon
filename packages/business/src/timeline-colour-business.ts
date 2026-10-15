@@ -1,5 +1,5 @@
 import type {DatabaseSync} from 'node:sqlite';
-import {timelineClipColourSchema} from '../../contracts/src/timeline-colour.ts';
+import {clipColourSchema} from '../../contracts/src/timeline-colour.ts';
 import {readLutResource} from './lut-resource-validation.ts';
 
 const fault=(code:string):Error&{code:string;status:number}=>Object.assign(new Error(
@@ -14,11 +14,11 @@ export function validateTimelineColourBindings(db:DatabaseSync,timeline:ColourTi
   const looks=new Map<string,ReturnType<typeof readLutResource>>();
   for(const clip of timeline.clips){
     if(clip.colour===undefined||clip.colour===null)continue;
-    const parsed=timelineClipColourSchema.safeParse(clip.colour);
-    if(!parsed.success)throw fault('TIMELINE_COLOUR_SOURCE_MISMATCH');
+    const parsed=clipColourSchema.safeParse(clip.colour);
+    if(!parsed.success||parsed.data===null)throw fault('TIMELINE_COLOUR_SOURCE_MISMATCH');
     const source=assets.get(clip.assetId),track=timeline.tracks.find(item=>item.id===clip.trackId),colour=parsed.data;
     if(!source||source.id!==clip.assetId||source.projectId!==undefined&&source.projectId!==timeline.projectId||
-      track?.kind!=='video'||!source.mimeType.startsWith('video/')||colour.source!==null&&colour.source.assetSha256!==source.sha256)
+      track?.kind!=='video'||(colour.source===null?!['video/mp4','video/webm','image/png'].includes(source.mimeType):colour.profileId==='mioon-srgb-image-clip-v1'?source.mimeType!=='image/png':!source.mimeType.startsWith('video/'))||colour.source!==null&&colour.source.assetSha256!==source.sha256)
       throw fault('TIMELINE_COLOUR_SOURCE_MISMATCH');
     // source:null is a deliberately invalidated state, not authority to render.
     // The independent creative look remains editable and survives replacement.

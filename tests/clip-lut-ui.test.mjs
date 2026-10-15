@@ -181,7 +181,7 @@ const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof
 const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join(' ') : tree && typeof tree === 'object' ? textOf(tree.props?.children) : tree ?? '';
 test('actual controls disclose whole-timeline adoption, source-ungraded status and import versus save', async t => {
   const h = harness(t); let tree = renderControls(h.state()); assert.match(textOf(tree), /不会自动迁移/); assert.match(textOf(tree), /所有可见视频/); assert.match(textOf(tree), /原始、未调色/);
-  assert.equal(renderControls(h.state(), context(), 'audio'), null); assert.match(textOf(renderControls(h.state(), context(), 'image')), /图片暂不支持/);
+  assert.equal(renderControls(h.state(), context(), 'audio'), null); assert.match(textOf(renderControls(h.state(), context(), 'image')), /sRGB.*Rec.709 \/ Gamma 2.4/);
   h.controller.open(); await tick(); const record = await prepareClipLutImport(file(), projectId, id(20)); record.phase = 'imported'; record.resource = resource();
   tree = renderControls({ ...h.state(), importRecord: record }, context({ colour: colour({ source: null, look }) }));
   const byId = id => nodes(tree).find(node => node.props?.['data-testid'] === id);
@@ -361,4 +361,21 @@ test('selected project Look declaration is read-only, identity-bound and stale-s
   bad = false; gate = deferred(); const pending = h.controller.inspectSelectedPack();
   await h.controller.selectResource(''); gate.resolve({ resource: packed, integrity: 'verified', status: 'verified', pack }); await pending;
   assert.equal(h.state().packPhase, 'idle'); assert.equal(h.state().pack, null); assert.deepEqual(h.edits, []);
+});
+
+const imageInspection=patch=>({projectId,assetId,assetSha256:hash,kind:'image',status:'needs_interpretation',evidence:{profileId:'png-rgb8-srgb-v1',sha256:hash,sourceByteLength:123,width:64,height:48,bitDepth:8,alphaMode:'straight',orientation:1,colourTag:'untagged'},...patch});
+test('PNG controller uses dedicated inspection and explicit sRGB declaration with no range guess',async t=>{
+ const h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?imageInspection():undefined});h.controller.open();await tick();
+ assert.equal(h.calls[0][0],'timeline.colour.image.inspect');assert.equal(h.state().sourcePhase,'ready');assert.equal(h.controller.confirmSource(),false);h.controller.declareSource(true);assert.equal(h.controller.confirmSource(),true);
+ assert.equal(h.live().colour.profileId,'mioon-srgb-image-clip-v1');assert.equal(h.live().colour.source.interpretation,'srgb');assert.deepEqual(h.live().colour.source.evidence,imageInspection().evidence);assert.equal(Object.hasOwn(h.live().colour.source,'range'),false);
+ await h.controller.selectResource(id(10));h.controller.declareLook(true);assert.equal(h.controller.applyLook(),true);assert.equal(h.live().colour.look.resourceId,id(10));assert.equal(h.calls.some(([op])=>op==='timeline.clip.update'),false);
+});
+test('PNG reply cannot widen colour, lose byte binding or survive kind/source changes',async t=>{
+ for(const response of [imageInspection({assetSha256:'f'.repeat(64)}),imageInspection({status:'compatible'}),imageInspection({evidence:{...imageInspection().evidence,colourTag:'icc'}})]){const h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?response:undefined});h.controller.open();await tick();assert.equal(h.state().sourcePhase,'error');h.controller.declareSource(true);assert.equal(h.controller.confirmSource(),false);}
+ const gate=deferred(),h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?gate.promise:undefined});h.controller.open();h.set({kind:'video'});gate.resolve(imageInspection());await tick();assert.equal(h.state().inspection,null);assert.deepEqual(h.edits,[]);
+});
+test('image controls disclose reference display, strict PNG admission, alpha and encoded composition',async t=>{
+ const h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?imageInspection():undefined});h.controller.open();await tick();const tree=renderControls(h.state(),h.live(),'image'),all=textOf(tree);
+ assert.match(all,/Gamma 2.4/);assert.match(all,/不是线性光或 HDR/);assert.match(all,/没有 sRGB 标签/);assert.match(all,/ICC \/ P3 \/ HDR/);assert.match(all,/系统和显示器/);assert.equal(nodes(tree).some(node=>node.props?.['data-testid']==='clip-lut-source-range'),false);
+ const declaration=nodes(tree).find(node=>node.props?.['data-testid']==='clip-lut-source-declaration');assert.equal(declaration.props.checked,false);assert.equal(declaration.props.disabled,false);
 });

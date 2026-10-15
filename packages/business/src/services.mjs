@@ -1,3 +1,5 @@
+import {nullableTimelineClipColourSchema} from '../../contracts/src/timeline-colour.ts';
+import {createTimelineImageSourceServices} from './timeline-image-source.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
 import {createLutResourceServices} from './lut-resources.ts';
 import {createTimelineColourSourceServices,createTimelineColourSourceProbe} from './timeline-colour-source.ts';
@@ -184,6 +186,10 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   decode:createTimelineAudioPreviewDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
+ const imageColourSource=restored?{...inactive(),handlers:{'timeline.colour.image.inspect':disabled}}:createTimelineImageSourceServices(store,{signal:ownerSignal,runtime:{validateSource:validateManagedSource,
+  assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
+  readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(db,projectId,assetId),
+ }});
  const colourSource=restored?{...inactive(),handlers:{'timeline.colour.source.inspect':disabled}}:createTimelineColourSourceServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
   readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(db,projectId,assetId),
@@ -236,6 +242,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...loudnessApply.handlers,
  ...audioPreview.handlers,
  ...colourSource.handlers,
+ ...imageColourSource.handlers,
  ...exportAdmission.handlers,
  ...waveforms.handlers,
  ...sourceRanges.handlers,
@@ -342,10 +349,15 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   checkpoint(signal);
   const operation=(async()=>{
    if(restored){
-    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.colour.source.inspect')throw workspaceRestoreError();
+    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
-    // Frozen restored profiles cannot admit fields introduced by schema 30.
-    if(restored.schemaVersion!==31&&(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&Object.hasOwn(parsed.patch,'colour')))throw workspaceRestoreError();
+    // Frozen restored profiles admit only their own colour generation: video
+    // in 31, and the separately versioned PNG/mixed generation in 33.
+    if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&Object.hasOwn(parsed.patch,'colour')){
+     if(![31,33].includes(restored.schemaVersion))throw workspaceRestoreError();
+     const colour=op==='timeline.clip.add'?parsed.colour:parsed.patch.colour;
+     if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
+    }
     if(Object.hasOwn(restoredReads.readers,op))return restoredReads.call(op,parsed,{signal});
     const saved=restoredReads.replay(op,parsed);if(saved)return publicValue(saved.response);
     if(!RESTORE_LOCAL_OPERATIONS.includes(op)){refuseRestoredOperation(store,op,parsed);}
@@ -369,7 +381,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   restoredLifetime?.abort();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),audioPreview.drain(),colourSource.drain()];
+  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
   const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;

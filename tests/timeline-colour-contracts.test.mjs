@@ -96,8 +96,8 @@ test('source inspection is bounded, read-only local compute and exactly request-
 });
 
 test('purposeful preflight blockers are explicit and restored LUT reading stays pair-bound',()=>{
- assert.equal(TIMELINE_COLOUR_PREFLIGHT_CODES.length,5);for(const code of TIMELINE_COLOUR_PREFLIGHT_CODES)assert.ok(TIMELINE_COLOUR_PREFLIGHT_MESSAGES[code].length<=240);
- for(const version of [25,27,29,31,33])for(const op of ['lut.list','lut.inspect','lut.import'])assert.equal(lutRestorePolicy(op,version).available,[29,31].includes(version)&&op!=='lut.import');
+ assert.equal(TIMELINE_COLOUR_PREFLIGHT_CODES.length,6);for(const code of TIMELINE_COLOUR_PREFLIGHT_CODES)assert.ok(TIMELINE_COLOUR_PREFLIGHT_MESSAGES[code].length<=240);
+ for(const version of [25,27,29,31,33])for(const op of ['lut.list','lut.inspect','lut.import'])assert.equal(lutRestorePolicy(op,version).available,[29,31,33].includes(version)&&op!=='lut.import');
 });
 
 test('definitive colour edit rejection proofs bind the exact request and do not admit read-only inspection failures',()=>{

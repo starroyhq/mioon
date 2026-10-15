@@ -71,9 +71,9 @@ for(const phase of ['capability','prepublication'])test(`physical source replace
  if(phase==='capability')assert.deepEqual(await readFile(source),original,'fixture replacement is preserved, never repaired/deleted');
  else{assert.equal(after.ino,before.ino);assert.equal(after.size,before.size);assert.equal(after.mtimeMs,before.mtimeMs);assert.notEqual(after.ctimeMs,before.ctimeMs);assert.equal((await readFile(source))[0],original[0]^1,'changed source is preserved, never repaired');}
 });
-test('cold backup30 restore31 retains exact LUT and source interpretation and explicitly rerenders',{timeout:120000},async t=>{
+test('cold backup32 restore33 retains exact LUT and source interpretation and explicitly rerenders',{timeout:120000},async t=>{
  const f=await fixture(t);await f.close();const backup=path.join(f.base,'backup'),restored=path.join(f.base,'restored');
- await createWorkspaceBackup({source:f.root,destination:backup});const installed=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(installed.databaseSchemaVersion,31);
+ await createWorkspaceBackup({source:f.root,destination:backup});const installed=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(installed.databaseSchemaVersion,33);
  const store=openStore(restored),services=createServices(store,new Map()),context={expectedWorkspaceOrigin:getWorkspaceRestoreContext(store).workspaceOrigin};let worker;
  try{
   const timeline=await services.call('timeline.get',{projectId:f.project.id});assert.deepEqual(timeline.clips[0].colour,f.timeline.clips[0].colour);

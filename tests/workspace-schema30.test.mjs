@@ -93,15 +93,15 @@ for(const version of [24,26,28,30])test(`current reader keeps exact source${vers
  assert.equal(readCurrentWorkspaceRole(db),`restored-${version+1}-evidence`);assert.deepEqual(validateCurrentWorkspaceRestoreSchema(db),info);
 });
 
-test('pair contracts admit30/31 but reject unknown newer versions and cross-pairs',()=>{
- for(const value of [1,24,26,28,30])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
- for(const value of [25,27,29,31,32,33,30.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
- for(const [index,profile]of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4'].entries())for(const sourceSchema of [24,26,28,30])for(const databaseSchemaVersion of [25,27,29,31])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+2*index&&databaseSchemaVersion===25+2*index);
+test('pair contracts keep30/31 and current32/33 exact while rejecting unknown versions and cross-pairs',()=>{
+ for(const value of [1,24,26,28,30,32])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
+ for(const value of [25,27,29,31,33,34,35,30.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
+ for(const [index,profile]of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5'].entries())for(const sourceSchema of [24,26,28,30,32])for(const databaseSchemaVersion of [25,27,29,31,33])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+2*index&&databaseSchemaVersion===25+2*index);
 });
 
 for(const change of ['future marker','missing30','missing26','restore31 without30'])test(`new role rejects stale/corrupt markers: ${change}`,t=>{
  const db=database(t);seed(db,{render:false});
- if(change==='future marker')db.exec('INSERT INTO schema_version VALUES(32)');
+ if(change==='future marker')db.exec('INSERT INTO schema_version VALUES(34)');
  if(change==='missing30')db.exec('DELETE FROM schema_version WHERE version=30');
  if(change==='missing26')db.exec('DELETE FROM schema_version WHERE version=26');
  if(change==='restore31 without30')db.exec('DELETE FROM schema_version WHERE version=30;INSERT INTO schema_version VALUES(31)');
@@ -167,7 +167,9 @@ test('null and invalidated source declarations persist exactly without becoming 
 test('cold backup30 and restored31 preserve exact colour, snapshots, history, LUT bytes and source bytes',async t=>{
  const base=mkdtempSync(path.join(tmpdir(),'mioon-colour-backup-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
  const root=path.join(base,'source'),backup=path.join(base,'backup'),restored=path.join(base,'restored');
- const store=openStore(root),f=seed(store.db),before=snapshot(store.db);writeFileSync(path.join(root,f.asset.relativePath),bytes,{mode:0o600});store.close();
+ // Keep an actual source30 archive fixture after ordinary startup advances.
+ const store=openStore(root);store.db.exec('DELETE FROM schema_version WHERE version=32');
+ const f=seed(store.db),before=snapshot(store.db);writeFileSync(path.join(root,f.asset.relativePath),bytes,{mode:0o600});store.close();
  const sourceBytes=readFileSync(path.join(root,'workbench.sqlite'));
  let migrated=false;await withOrdinaryMigrationSource(path.join(root,'workbench.sqlite'),async({file})=>{migrated=true;assert.deepEqual(readFileSync(file),sourceBytes);});assert.equal(migrated,true);
  const result=await createWorkspaceBackup({source:root,destination:backup});assert.equal(result.databaseSchemaVersion,30);assert.equal(result.integrity,'verified');
@@ -187,7 +189,7 @@ test('cold backup30 and restored31 preserve exact colour, snapshots, history, LU
 test('cold capture and migration refuse missing30 or corrupt colour before publishing a destination',async t=>{
  for(const kind of ['missing30','corrupt colour']){
   const base=mkdtempSync(path.join(tmpdir(),'mioon-colour-refuse-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
-  const root=path.join(base,'source'),backup=path.join(base,'backup'),store=openStore(root);seed(store.db,{render:false});
+  const root=path.join(base,'source'),backup=path.join(base,'backup'),store=openStore(root);store.db.exec('DELETE FROM schema_version WHERE version=32');seed(store.db,{render:false});
   if(kind==='missing30')store.db.exec('DELETE FROM schema_version WHERE version=30');
   else changeTimeline(store.db,value=>{value.clips[0].colour.look.strength=-1;});store.close();
   let consumed=false;await assert.rejects(withOrdinaryMigrationSource(path.join(root,'workbench.sqlite'),()=>{consumed=true;}));assert.equal(consumed,false);

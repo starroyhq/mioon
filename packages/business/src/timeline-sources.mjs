@@ -1,3 +1,4 @@
+import {readManagedTimelineImage,validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
 import path from 'node:path';
 import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue,isTimelineExportSnapshot} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.mjs';
@@ -138,13 +139,16 @@ export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,s
   checkMediaEffect(beforeEffect,signal);
   const checkSource=()=>{checkMediaEffect(beforeEffect,signal);const latest=readAsset(frozen.id);if(!latest||latest.projectId!==projectId||latest.sha256!==a.sha256||latest.mimeType!==a.mimeType||latest.relativePath!==a.relativePath||!sameManagedFile(hashed.info,validateManagedSource(root,a,{maxBytes}).info))throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from frozen asset hash');};
   checkSource();
+  const imageColour=snapshot.colourPlan?.clips.some(item=>item.assetId===a.id&&item.kind==='image')?await readManagedTimelineImage(root,a,{signal,beforeEffect:checkSource,expected:hashed.info},{validateSource:validateManagedSource}):null;
+  checkSource();
   const media=await probe(hashed.file,{signal,beforeSpawn:checkSource,beforeEffect});checkMediaEffect(beforeEffect,signal);checkSource();
   if(snapshot.colourPlan)for(const planned of snapshot.colourPlan.clips.filter(item=>item.assetId===a.id)){
    const clip=snapshot.timeline.clips.find(item=>item.id===planned.clipId);
-   validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:media.probe,assetSha256:hashed.sha256,streamIndex:media.videoStreamIndex});
+   if(planned.kind==='image')validateTimelineImageSourceInterpretation({source:clip?.colour?.source,evidence:imageColour?.evidence,probe:media.probe,assetSha256:hashed.sha256,streamIndex:media.videoStreamIndex});
+   else validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:media.probe,assetSha256:hashed.sha256,streamIndex:media.videoStreamIndex});
   }
   assets.set(a.id,{...frozen,sizeBytes:hashed.sizeBytes,sha256:hashed.sha256,width:media.width,height:media.height,duration:media.duration,
-   hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info}:{})});
+   hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info,...(imageColour?{colourImageEvidence:imageColour.evidence}:{})}:{})});
   onChecked?.(a.id);
   }catch(error){if(error&&typeof error==='object'){error.timelineAssetId=a.id;if(error.code==='MANAGED_SOURCE_CHANGED')error.message='Export input bytes differ from frozen version hash';}throw error;}
  }
