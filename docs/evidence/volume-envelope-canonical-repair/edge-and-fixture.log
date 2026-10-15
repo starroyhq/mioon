@@ -1,0 +1,138 @@
+TAP version 13
+# Subtest: typed error is the one canonical constructor through both import paths
+ok 1 - typed error is the one canonical constructor through both import paths
+  ---
+  duration_ms: 6.602003
+  type: 'test'
+  ...
+# Subtest: AppError type-only extraction preserves field order, defaults, details identity and serialization
+ok 2 - AppError type-only extraction preserves field order, defaults, details identity and serialization
+  ---
+  duration_ms: 2.396233
+  type: 'test'
+  ...
+# Subtest: strict raw schema retains bounded editing strings and absent/null independently
+ok 3 - strict raw schema retains bounded editing strings and absent/null independently
+  ---
+  duration_ms: 9.223318
+  type: 'test'
+  ...
+# Subtest: v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+ok 4 - v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+  ---
+  duration_ms: 65.654154
+  type: 'test'
+  ...
+# Subtest: actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+ok 5 - actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+  ---
+  duration_ms: 24.31657
+  type: 'test'
+  ...
+# Subtest: strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+ok 6 - strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+  ---
+  duration_ms: 51.980347
+  type: 'test'
+  ...
+# Subtest: arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+ok 7 - arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+  ---
+  duration_ms: 7.50378
+  type: 'test'
+  ...
+# Subtest: promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+ok 8 - promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 6.359183
+  type: 'test'
+  ...
+# Subtest: promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+ok 9 - promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 5.422219
+  type: 'test'
+  ...
+# Subtest: promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+ok 10 - promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 4.564099
+  type: 'test'
+  ...
+# Subtest: published limits stay unchanged
+ok 11 - published limits stay unchanged
+  ---
+  duration_ms: 0.458966
+  type: 'test'
+  ...
+# Subtest: complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+ok 12 - complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+  ---
+  duration_ms: 11.497376
+  type: 'test'
+  ...
+# {"legacySlotBytes":5430,"ordinaryEnvelopeSlotBytes":6611,"adversarialEnvelopeSlotBytes":9373,"completePutBytes":6706,"completeSuccessBytes":6817,"maximumRowSuccessBytes":8398}
+# Subtest: serialized complete row 8191: inclusive real service read boundary and evidence preservation
+ok 13 - serialized complete row 8191: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 13.754877
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8192: inclusive real service read boundary and evidence preservation
+ok 14 - serialized complete row 8192: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 3.17125
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8193: inclusive real service read boundary and evidence preservation
+ok 15 - serialized complete row 8193: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 2.842969
+  type: 'test'
+  ...
+# Subtest: actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+ok 16 - actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+  ---
+  duration_ms: 19.442022
+  type: 'test'
+  ...
+# Subtest: complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+ok 17 - complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+  ---
+  duration_ms: 225.682464
+  type: 'test'
+  ...
+# {"max128RowsDiskBytes":1048814,"mixed127RowsOneTombstoneBytes":1040815,"tombstoneBytes":193,"metadataCommasNewlineBytes":238}
+# Subtest: actual companion file 2097151 bytes: whitespace counts toward disk read cap
+ok 18 - actual companion file 2097151 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 51.525765
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097152 bytes: whitespace counts toward disk read cap
+ok 19 - actual companion file 2097152 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 50.019947
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097153 bytes: whitespace counts toward disk read cap
+ok 20 - actual companion file 2097153 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 22.592966
+  type: 'test'
+  ...
+# Subtest: maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+ok 21 - maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+  ---
+  duration_ms: 28.448834
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2141.46758

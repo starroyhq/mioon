@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {VOLUME_ENVELOPE_PROFILE as profileId,validateVolumeEnvelope,createVolumeEnvelopeEvaluator,volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE as profileId,validateVolumeEnvelope,createVolumeEnvelopeEvaluator,volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../packages/contracts/src/timeline-volume-envelope.ts';
 const envelope=points=>({profileId,points:points.map(([frame,multiplier])=>({frame,multiplier}))});
 const clip=(points,durationFrames=20)=>({durationFrames,volumeEnvelope:envelope(points)});
 const invalid=fn=>assert.throws(fn,{code:'INVALID_VOLUME_ENVELOPE'});

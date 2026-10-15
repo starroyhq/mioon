@@ -1,3 +1,4 @@
+import '../packages/business/src/db.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
@@ -11,7 +12,7 @@ import {initializeWorkspaceSchema38,validateWorkspaceSchema38} from '../packages
 import {initializeWorkspaceSchema40,validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
 import {createWorkspaceRestoreProfileV39} from '../packages/business/src/workspace-restore-schema-v39.ts';
 import {createWorkspaceRestoreProfileV41,WORKSPACE_RESTORE_PROFILE_V41} from '../packages/business/src/workspace-restore-schema-v41.ts';
-import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {open,snapshot,insert,facade} from './workspace-schema26-fixtures.mjs';
 
 // No workspace, media, provider or service is opened. All database fixtures are

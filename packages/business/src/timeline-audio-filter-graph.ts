@@ -1,6 +1,6 @@
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import type {TimelineVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope-processing.ts';
-import {compileVolumeEnvelopeFilterCandidate} from './timeline-volume-envelope-filter-candidate.mjs';
+import {compileVolumeEnvelopeFilterCandidate} from './timeline-volume-envelope-filter-candidate.ts';
 import {deriveTimelineAudioSamples} from '@mioon/contracts/timeline-audio-preview';
 
 export interface TimelineAudioFilterClip {

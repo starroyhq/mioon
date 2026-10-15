@@ -1,0 +1,18 @@
+{
+  "sourceFiles": 1523,
+  "sourceManifestSha256": "018e4eff1bef7282630375fc7aeffc526450a5e8debb4d6fbf49cc8ec26ed759",
+  "sourceUnchangedThroughoutFinalReplay": true,
+  "finalTests": 265,
+  "passed": 265,
+  "failed": 0,
+  "skipped": 0,
+  "explicitFiles": 21,
+  "audit": {
+    "guard-installed": 21,
+    "spawnSync": 5
+  },
+  "unexpectedSubprocesses": 0,
+  "canonicalExit": 0,
+  "broadGuardedTests": 765,
+  "broadPassed": 765
+}

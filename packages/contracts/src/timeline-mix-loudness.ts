@@ -1,4 +1,4 @@
-import {VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.ts';
 import {z} from 'zod';
 import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_ADVISORY_MARGIN_DB,
   exportLoudnessTargetSchema, exportLoudnessMeasurementSchema} from './export-loudness.ts';

@@ -1,3 +1,4 @@
+import '../packages/business/src/db.mjs';
 import {createHash} from 'node:crypto';
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
@@ -157,4 +158,12 @@ for(const feature of ['audioRole','colour'])for(const owner of ['bad',id(9),Buff
  const db=database(t),value=receipt(feature,false);seed(db,value,'exports');
  if(owner!==id(9))insert(db,'projects',{id:owner,data:'{}'});db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(owner,id(6));
  assert.throws(()=>validateWorkspaceSchema40(db),error(feature));assert.throws(()=>profile.classifyWorkspaceSchemaV40V41(db),error(feature));
+});
+for(const feature of ['audioRole','colour'])for(const kind of ['negative-zero','lone-high','lone-low'])test(`${feature}: decoded frozen envelope rejects ${kind} without writes`,t=>{
+ const db=database(t),value=receipt(feature);
+ if(kind==='lone-high')value.snapshot.timeline.clips[0].name='\ud800';
+ if(kind==='lone-low')value.snapshot.timeline.clips[0].name='\udfff';
+ let raw=JSON.stringify(value);if(kind==='negative-zero')raw=raw.replace('"gain":1','"gain":-0');
+ seed(db,value,'timeline_requests',raw);const before=databaseSnapshot(db);
+ assert.throws(()=>validateWorkspaceSchema40(db));assert.throws(()=>profile.classifyWorkspaceSchemaV40V41(db));assert.deepEqual(databaseSnapshot(db),before);
 });

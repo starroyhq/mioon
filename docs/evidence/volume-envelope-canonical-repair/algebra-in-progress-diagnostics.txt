@@ -1,0 +1,43 @@
+IN-PROGRESS DIAGNOSTICS, NOT FINAL VALIDATION
+All commands used /workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node, version 24.21.0.
+No nonmedia preload was supplied to these exploratory runs; the parent will perform guarded replay. No media/native/network/GUI operation was requested.
+
+1. Initial direct strict compile (exit 2), before fixing explicit never-return variable annotation and descriptor value typing:
+node node_modules/typescript/bin/tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions --types node packages/contracts/src/timeline-volume-envelope.ts packages/business/src/timeline-volume-envelope-filter-candidate.ts
+packages/contracts/src/timeline-volume-envelope.ts(25,54): error TS18048: 'value' is possibly 'undefined'.
+packages/contracts/src/timeline-volume-envelope.ts(25,60): error TS2339: Property 'points' does not exist on type '{}'.
+packages/contracts/src/timeline-volume-envelope.ts(26,44): error TS18048: 'value' is possibly 'undefined'.
+packages/contracts/src/timeline-volume-envelope.ts(26,50): error TS2339: Property 'points' does not exist on type '{}'.
+packages/contracts/src/timeline-volume-envelope.ts(28,17): error TS18048: 'value' is possibly 'undefined'.
+packages/contracts/src/timeline-volume-envelope.ts(28,23): error TS2339: Property 'points' does not exist on type '{}'.
+packages/contracts/src/timeline-volume-envelope.ts(35,14): error TS18046: 'point' is of type 'unknown'.
+packages/contracts/src/timeline-volume-envelope.ts(93,28): error TS7006: Parameter 'p' implicitly has an 'any' type.
+packages/contracts/src/timeline-volume-envelope.ts(93,54): error TS7006: Parameter 'p' implicitly has an 'any' type.
+packages/contracts/src/timeline-volume-envelope.ts(94,29): error TS7006: Parameter 'p' implicitly has an 'any' type.
+packages/contracts/src/timeline-volume-envelope.ts(94,55): error TS7006: Parameter 'p' implicitly has an 'any' type.
+The same direct command subsequently exited 0 after type-only corrections.
+
+2. Initial equivalence test (exit 1, 14 pass / 1 fail):
+node --test tests/timeline-volume-envelope-type-only.test.mjs tests/timeline-volume-envelope-pure.test.mjs tests/timeline-volume-envelope-filter-candidate.test.mjs
+The original normalization printed emitted ASTs; it exposed only arrow-parameter parentheses:
++ const copy = (value) => value === null ? null : { profileId: value.profileId, points: value.points.map(point => ({ ...point })) };
+- const copy = value => value === null ? null : { profileId: value.profileId, points: value.points.map(point => ({ ...point })) };
+The test now compares executable AST structure rather than printer-preserved optional arrow parentheses. The same command then exited 0, 15 pass / 0 fail.
+
+3. Incomplete parallel repair foundation compile (exit 2), before all other workers finished:
+node node_modules/typescript/bin/tsc --project tests/typecheck/tsconfig.foundation.json --noEmit --pretty false
+This output was not redirected. The tool returned 779 lines, 25,754 tokens before truncation to 4,500 tokens. Full raw diagnostics cannot be reconstructed; below are retained representative excerpts, not a complete log. No rerun was performed to recreate this transient state.
+packages/business/src/agent/edit-proposal-schema.mjs(3,48): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/comfy-image-schema.mjs(4,41): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/timeline-format-schema.mjs(6,45): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(14,109): error TS2550: Property 'isWellFormed' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2024' or later.
+packages/contracts/src/timeline-volume-envelope-record.ts(55,19): error TS2345: Argument of type '{} | undefined' is not assignable to parameter of type 'object'.
+  Type 'undefined' is not assignable to type 'object'.
+packages/contracts/src/timeline-volume-envelope-record.ts(68,40): error TS2538: Type 'symbol' cannot be used as an index type.
+packages/contracts/src/timeline-volume-envelope-record.ts(70,16): error TS2538: Type 'symbol' cannot be used as an index type.
+packages/contracts/src/timeline-volume-envelope-record.ts(70,48): error TS2322: Type 'string | number | symbol' is not assignable to type 'string | number'.
+  Type 'symbol' is not assignable to type 'string | number'.
+packages/contracts/src/timeline-volume-envelope-record.ts(70,57): error TS2322: Type 'string | symbol' is not assignable to type 'string | number'.
+  Type 'symbol' is not assignable to type 'string | number'.
+packages/contracts/src/timeline-volume-envelope-record.ts(74,22): error TS2345: Argument of type '{} | undefined' is not assignable to parameter of type 'object'.
+  Type 'undefined' is not assignable to type 'object'.

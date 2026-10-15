@@ -1,0 +1,7 @@
+{"pid":6,"event":"guard-installed"}
+{"pid":6,"method":"execFileSync","allowed":false,"command":"/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node","args":["-e","throw new Error(\"must never execute\")","/workspace/scratch/6877817dff0d/mioon-envelope-canonical-repair/tests/app-error-identity.test.mjs"]}
+{"pid":6,"method":"spawn","allowed":false,"command":"/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node","args":["/workspace/scratch/6877817dff0d/mioon-envelope-canonical-repair/tests/app-error-identity.test.mjs"]}
+{"pid":6,"method":"execSync","allowed":false}
+{"pid":6,"method":"fork","allowed":false}
+{"pid":6,"method":"execFileSync","allowed":false,"command":"/forbidden/ffmpeg","args":["-version"]}
+{"pid":6,"method":"execFileSync","allowed":false,"command":"/forbidden/ffprobe","args":["-version"]}

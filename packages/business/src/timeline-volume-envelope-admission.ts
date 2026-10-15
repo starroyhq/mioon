@@ -1,11 +1,10 @@
-import {createWorkspaceRestoreProfileV41} from './workspace-restore-schema-v41.ts';
-import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';
+import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isProxy} from 'node:util/types';
-import {AppError} from '@mioon/contracts';
+import {AppError} from '../../contracts/src/app-error.ts';
 import {validateWorkspaceSchema40} from './workspace-schema-v40.ts';
-import {validateVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope.mjs';
+import {validateVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope.ts';
 
 export const TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES=Object.freeze([
  'TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED',
@@ -25,14 +24,14 @@ export function hasTimelineVolumeEnvelope(value:unknown):boolean{
  }
  return false;
 }
-const restored41=createWorkspaceRestoreProfileV41(initializeWorkspaceSchemaThrough24);
 /** Profile compatibility only, never execution authority. Reads and captured
  * evidence also use this guard. Restored mutations remain gated independently
  * by the existing owned-store, pinned invocation, origin and vacancy checks. */
 export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unknown):void{
  if(!hasTimelineVolumeEnvelope(value))return;
  try{
-  if(readCurrentWorkspaceRole(db)==='restored-41-evidence')restored41.validateWorkspaceRestoreSchemaV41(db);
+  const runtime=requireWorkspaceEnvelopeRuntime();
+  if(readCurrentWorkspaceRole(db)==='restored-41-evidence')runtime.validateRestored41(db);
   else validateWorkspaceSchema40(db,{verifyBytes:false});
  }
  catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');}

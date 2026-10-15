@@ -1,5 +1,5 @@
 import {assertTimelineVolumeEnvelopeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
-import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.mjs';
+import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
 import {ownsStoreLock} from './db.mjs';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';

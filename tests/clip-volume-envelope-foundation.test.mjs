@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as state from '../apps/web/src/clip-volume-envelope-state.ts';
-import * as contract from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import * as contract from '../packages/contracts/src/timeline-volume-envelope.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 import { validateCatalogs, translate } from '../packages/i18n/src/index.ts';
 import { volumeEnvelopeMessages } from '../packages/i18n/src/catalogs/volume-envelope.ts';
@@ -56,7 +56,7 @@ function harness(locale='en', initial=raw([['0','1']]).volumeEnvelope) {
  const hooks=[];let cursor=0, tree, edits=[], events=[];
  const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useId:()=> 'test-envelope',useRef:initial=>hooks[cursor++]??=( {current:initial}),useState(initial){const at=cursor++;hooks[at]??={value:initial};return [hooks[at].value,value=>{hooks[at].value=value;}];}};react.default=react;
  const module={exports:{}};
- Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipVolumeEnvelopeControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>name==='react'?react:name.includes('I18nProvider')?i18nTestModule(locale):name.endsWith('clip-volume-envelope-state.ts')?state:name.endsWith('timeline-volume-envelope.mjs')?contract:assert.fail(name),module,module.exports);
+ Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipVolumeEnvelopeControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>name==='react'?react:name.includes('I18nProvider')?i18nTestModule(locale):name.endsWith('clip-volume-envelope-state.ts')?state:name.endsWith('timeline-volume-envelope.ts')?contract:assert.fail(name),module,module.exports);
  const props={value:initial,proposedDuration:10,onEdit(value){edits.push(value);props.value=value;events.push('edit');},onCompositionChange(value){events.push(value);}};
  const h={props,edits,events,render(patch={}){Object.assign(props,patch);cursor=0;tree=module.exports.default(props);return tree;},input(field='frame',row=0){return nodes(tree).find(n=>n.props?.['data-testid']===`envelope-${row}-${field}`);},buttons(){return nodes(tree).filter(n=>n.type==='button');},all(){return nodes(tree);}};h.render();return h;
 }

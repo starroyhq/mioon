@@ -1,0 +1,764 @@
+packages/business/src/agent/edit-proposal-schema.mjs(3,48): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/agent/edit-proposal-schema.mjs(13,83): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/agent/edit-proposal-schema.mjs(24,30): error TS7006: Parameter 'name' implicitly has an 'any' type.
+packages/business/src/comfy-image-schema.mjs(4,41): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/edit-task-schema.mjs(59,41): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/edit-task-schema.mjs(66,41): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/edit-task-schema.mjs(87,48): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/frame-schema.mjs(6,36): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/frame-schema.mjs(10,19): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/business/src/frame-schema.mjs(13,20): error TS7006: Parameter 'alias' implicitly has an 'any' type.
+packages/business/src/frame-schema.mjs(14,17): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/business/src/image-schema.mjs(5,36): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(3,42): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(66,48): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(124,47): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(184,74): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(185,36): error TS7006: Parameter 'name' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(200,46): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(222,76): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/images/review-schema.mjs(223,38): error TS7006: Parameter 'name' implicitly has an 'any' type.
+packages/business/src/subject-schema.mjs(3,38): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/timeline-format-schema.mjs(6,45): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/timeline-subtitle-schema.mjs(7,50): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/business/src/timeline-subtitle-schema.mjs(13,43): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-fixed-schema.mjs(15,49): error TS7006: Parameter 'db' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(12,18): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(13,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(14,15): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(14,22): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(14,109): error TS2550: Property 'isWellFormed' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2024' or later.
+packages/contracts/src/agent-timeline-move.mjs(15,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(17,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(17,23): error TS7006: Parameter 'required' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(17,33): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/agent-timeline-move.mjs(17,83): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(19,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(20,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(21,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(22,22): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(22,29): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(27,22): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(29,18): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(29,24): error TS7006: Parameter 'depth' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(33,70): error TS2550: Property 'isWellFormed' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2024' or later.
+packages/contracts/src/agent-timeline-move.mjs(42,38): error TS2538: Type 'symbol' cannot be used as an index type.
+packages/contracts/src/agent-timeline-move.mjs(56,25): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(56,32): error TS7006: Parameter 'startFrame' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(56,44): error TS7006: Parameter 'endFrame' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(56,54): error TS7006: Parameter 'remainingEnd' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(68,46): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(72,43): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(72,51): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/agent-timeline-move.mjs(93,53): error TS7006: Parameter 'timeline' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(93,63): error TS7006: Parameter 'clipId' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(95,36): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(97,38): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(97,103): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(100,50): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(101,12): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(101,108): error TS7006: Parameter 'a' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(101,111): error TS7006: Parameter 'b' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(102,57): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(103,75): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(107,28): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(107,35): error TS7006: Parameter 'projectId' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(112,49): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(112,57): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/agent-timeline-move.mjs(115,47): error TS7006: Parameter 'target' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(121,22): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(125,49): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(125,57): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/agent-timeline-move.mjs(129,47): error TS7006: Parameter 'target' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(135,47): error TS7006: Parameter 'target' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(141,72): error TS7031: Binding element 'startFrame' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(141,84): error TS7031: Binding element 'endFrame' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(144,39): error TS7006: Parameter 'target' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(144,47): error TS7006: Parameter 'changes' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(149,37): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(158,45): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/agent-timeline-move.mjs(158,53): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/asset-disposition.mjs(15,24): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/asset-disposition.mjs(19,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(20,20): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(20,26): error TS7006: Parameter 'keys' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(20,106): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(21,17): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(22,44): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(31,48): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(31,54): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(34,26): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(35,31): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(38,24): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/asset-disposition.mjs(38,29): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(20,17): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(21,44): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(30,42): error TS7006: Parameter 'baseUrl' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(42,48): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(46,41): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(49,13): error TS7006: Parameter 'node' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(49,18): error TS7006: Parameter 'slot' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(50,13): error TS7006: Parameter 'class_type' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(50,24): error TS7006: Parameter 'inputs' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(71,63): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/comfy-images.mjs(77,102): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/comfy-images.mjs(82,36): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(83,41): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(84,48): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(85,40): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(85,46): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/comfy-images.mjs(92,38): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(20,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(21,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(21,23): error TS7006: Parameter 'required' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(21,33): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/edit-tasks.mjs(21,83): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(22,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(23,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(24,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(31,29): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(37,28): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(41,30): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ 'project.create': ZodObject<{ name: ZodString; description: ZodOptional<ZodString>; }, "strict", ZodTypeAny, { name: string; description?: string | undefined; }, { ...; }>; ... 94 more ...; 'lut.inspect': ZodObject<...>; }'.
+packages/contracts/src/edit-tasks.mjs(51,36): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(55,7): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline:mutation': (operation: any, input: any, value: any) => any; 'reference:mutation': (operation: any, input: any, value: any) => boolean; 'subject:mutation': (operation: any, input: any, result: any) => boolean; }>'.
+packages/contracts/src/edit-tasks.mjs(57,40): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(59,116): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(61,85): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/edit-tasks.mjs(61,90): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/export-preflight.mjs(20,15): error TS7006: Parameter 'maximum' implicitly has an 'any' type.
+packages/contracts/src/export-preflight.mjs(72,17): error TS7006: Parameter 'path' implicitly has an 'any' type.
+packages/contracts/src/export-preflight.mjs(72,23): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/export-preflight.mjs(80,11): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ height: 1280 | 720; width: 1280 | 720; fps: 30; durationFrames: number; trackCount: number; clipCount: number; assetCount: number; visualClipCount: number; audibleClipCount: number; mutedTrackCount: number; hiddenVideoTrackCount: number; delivery?: { ...; } | ... 1 more ... | undefined; exportRange?: { ...; } | un...'.
+  No index signature with a parameter of type 'string' was found on type '{ height: 1280 | 720; width: 1280 | 720; fps: 30; durationFrames: number; trackCount: number; clipCount: number; assetCount: number; visualClipCount: number; audibleClipCount: number; mutedTrackCount: number; hiddenVideoTrackCount: number; delivery?: { ...; } | ... 1 more ... | undefined; exportRange?: { ...; } | un...'.
+packages/contracts/src/export-preflight.mjs(85,11): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ summary: { height: 1280 | 720; width: 1280 | 720; fps: 30; durationFrames: number; trackCount: number; clipCount: number; assetCount: number; visualClipCount: number; audibleClipCount: number; ... 4 more ...; deliveryName?: string | undefined; } | null; ... 8 more ...; snapshotHash: string | null; }'.
+  No index signature with a parameter of type 'string' was found on type '{ summary: { height: 1280 | 720; width: 1280 | 720; fps: 30; durationFrames: number; trackCount: number; clipCount: number; assetCount: number; visualClipCount: number; audibleClipCount: number; ... 4 more ...; deliveryName?: string | undefined; } | null; ... 8 more ...; snapshotHash: string | null; }'.
+packages/contracts/src/export-preflight.mjs(98,43): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/export-preflight.mjs(98,50): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/export-preflight.mjs(100,122): error TS2339: Property 'projectId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/export-preflight.mjs(100,168): error TS2339: Property 'expectedRevision' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/export-preflight.mjs(101,172): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/export-preflight.mjs(101,252): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/export-preflight.mjs(101,348): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/frame-extraction.mjs(18,34): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(20,13): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(21,16): error TS7006: Parameter 'schema' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(21,23): error TS7006: Parameter 'limit' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(21,45): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(52,93): error TS2531: Object is possibly 'null'.
+packages/contracts/src/frame-extraction.mjs(63,15): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/frame-extraction.mjs(70,91): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/frame-extraction.mjs(75,34): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(76,37): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(77,41): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(77,51): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(77,57): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(78,54): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'frame.extract': ZodObject<{ projectId: ZodString; sourceAssetId: ZodString; sourceHash: ZodString; sourceFrame: ZodNumber; requestId: ZodEffects<ZodString, string, string>; }, "strict", ZodTypeAny, { ...; }, { ...; }>; ... 4 more ...; 'frame.task.recoverResult': ZodObject<...>; }>'.
+packages/contracts/src/frame-extraction.mjs(83,37): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(83,47): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(83,53): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(84,37): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'frame.extract': ZodObject<{ projectId: ZodString; sourceAssetId: ZodString; sourceHash: ZodString; sourceFrame: ZodNumber; requestId: ZodEffects<ZodString, string, string>; }, "strict", ZodTypeAny, { ...; }, { ...; }>; ... 4 more ...; 'frame.task.recoverResult': ZodObject<...>; }>'.
+packages/contracts/src/frame-extraction.mjs(85,34): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/frame-extraction.mjs(85,100): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(14,28): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(22,16): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(22,21): error TS7006: Parameter 'image' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(37,18): error TS7006: Parameter 'providerId' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(37,30): error TS7006: Parameter 'model' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(37,37): error TS7006: Parameter 'fields' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(93,23): error TS7006: Parameter 'legacy' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(104,49): error TS7006: Parameter 'profile' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(105,30): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(116,66): error TS7006: Parameter 'profile' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(117,94): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(120,28): error TS7006: Parameter 'profile' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(124,38): error TS7006: Parameter 'providerId' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(124,50): error TS7006: Parameter 'model' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(124,57): error TS7006: Parameter 'region' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(124,65): error TS7006: Parameter 'pin' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(126,19): error TS7006: Parameter 'p' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(134,44): error TS7006: Parameter 'providerId' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(134,56): error TS7006: Parameter 'model' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(134,63): error TS7006: Parameter 'region' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(136,30): error TS7006: Parameter 'p' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(140,44): error TS7006: Parameter 'providerId' implicitly has an 'any' type.
+packages/contracts/src/generation-input-profiles.mjs(144,79): error TS2339: Property 'region' does not exist on type '{}'.
+packages/contracts/src/generation-input-validation.mjs(5,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(6,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(6,21): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(7,24): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(8,24): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(13,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(14,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(15,7): error TS7023: 'copy' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/generation-input-validation.mjs(15,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(15,125): error TS7024: Function implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/generation-input-validation.mjs(17,42): error TS7006: Parameter 'mimeType' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(17,52): error TS7006: Parameter 'sizeBytes' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(28,41): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(29,9): error TS7034: Variable 'issues' implicitly has type 'any[]' in some locations where its type cannot be determined.
+packages/contracts/src/generation-input-validation.mjs(29,22): error TS7034: Variable 'warnings' implicitly has type 'any[]' in some locations where its type cannot be determined.
+packages/contracts/src/generation-input-validation.mjs(30,16): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(30,22): error TS7006: Parameter 'path' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(30,28): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(31,20): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(31,27): error TS7006: Parameter 'allowed' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(31,36): error TS7006: Parameter 'path' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(35,19): error TS7006: Parameter 'profile' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(35,28): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(36,74): error TS7005: Variable 'asOf' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(37,5): error TS7005: Variable 'issues' implicitly has an 'any[]' type.
+packages/contracts/src/generation-input-validation.mjs(37,13): error TS7005: Variable 'warnings' implicitly has an 'any[]' type.
+packages/contracts/src/generation-input-validation.mjs(38,7): error TS7034: Variable 'asOf' implicitly has type 'any' in some locations where its type cannot be determined.
+packages/contracts/src/generation-input-validation.mjs(42,45): error TS2339: Property 'profileId' does not exist on type '{}'.
+packages/contracts/src/generation-input-validation.mjs(42,80): error TS2339: Property 'profileVersion' does not exist on type '{}'.
+packages/contracts/src/generation-input-validation.mjs(44,44): error TS2339: Property 'asOf' does not exist on type '{}'.
+packages/contracts/src/generation-input-validation.mjs(49,33): error TS7006: Parameter 'p' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(50,38): error TS7006: Parameter 'p' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(73,33): error TS7006: Parameter 'ref' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(114,36): error TS7006: Parameter 'ref' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(115,43): error TS7006: Parameter 'combination' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(116,81): error TS7006: Parameter 'ref' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(119,97): error TS2339: Property 'asOf' does not exist on type '{}'.
+packages/contracts/src/generation-input-validation.mjs(121,42): error TS7006: Parameter 'issue' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(126,34): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(126,41): error TS7006: Parameter 'options' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(132,45): error TS7006: Parameter 'ref' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(135,48): error TS7031: Binding element 'role' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(135,54): error TS7031: Binding element 'assetId' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(141,45): error TS7006: Parameter 'profile' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(142,9): error TS7034: Variable 'issues' implicitly has type 'any[]' in some locations where its type cannot be determined.
+packages/contracts/src/generation-input-validation.mjs(143,16): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(143,22): error TS7006: Parameter 'path' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(143,28): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(149,29): error TS2339: Property 'asOf' does not exist on type '{}'.
+packages/contracts/src/generation-input-validation.mjs(149,60): error TS2339: Property 'asOf' does not exist on type '{}'.
+packages/contracts/src/generation-input-validation.mjs(161,63): error TS7005: Variable 'issues' implicitly has an 'any[]' type.
+packages/contracts/src/generation-input-validation.mjs(169,43): error TS7006: Parameter 'snapshot' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(169,53): error TS7006: Parameter 'capabilities' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(170,18): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(170,24): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(170,33): error TS7006: Parameter 'path' implicitly has an 'any[]' type.
+packages/contracts/src/generation-input-validation.mjs(183,56): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(191,69): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(193,52): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(193,59): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(195,112): error TS7006: Parameter 'binding' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(195,121): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(198,112): error TS7006: Parameter 'connection' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(199,32): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(199,39): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(200,84): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(200,90): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(203,29): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(203,36): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(211,29): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/generation-input-validation.mjs(211,36): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/contracts/src/image-compatible.mjs(7,45): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-compatible.mjs(13,20): error TS18047: 'match' is possibly 'null'.
+packages/contracts/src/image-compatible.mjs(17,21): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+packages/contracts/src/image-compatible.mjs(18,16): error TS18047: 'match' is possibly 'null'.
+packages/contracts/src/image-compatible.mjs(24,7): error TS18048: 'url' is possibly 'undefined'.
+packages/contracts/src/image-compatible.mjs(24,36): error TS18048: 'url' is possibly 'undefined'.
+packages/contracts/src/image-compatible.mjs(24,65): error TS18048: 'url' is possibly 'undefined'.
+packages/contracts/src/image-compatible.mjs(24,77): error TS18048: 'url' is possibly 'undefined'.
+packages/contracts/src/image-compatible.mjs(24,93): error TS18048: 'url' is possibly 'undefined'.
+packages/contracts/src/image-compatible.mjs(31,43): error TS7006: Parameter 'baseUrl' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(20,94): error TS2339: Property 'purpose' does not exist on type '{ name: string; options: { size: "1024x1024"; background: "opaque"; quality: "low"; n: 1; outputFormat: "png"; }; prompt: string; requestId: string; model: string; projectId: string; providerId: "mock" | "openai" | "openai-compatible"; expectedRevision?: number | undefined; groupId?: string | undefined; } | { ...; }'.
+  Property 'purpose' does not exist on type '{ name: string; options: { size: "1024x1024"; background: "opaque"; quality: "low"; n: 1; outputFormat: "png"; }; prompt: string; requestId: string; model: string; projectId: string; providerId: "mock" | "openai" | "openai-compatible"; expectedRevision?: number | undefined; groupId?: string | undefined; }'.
+packages/contracts/src/image-reviews.mjs(21,88): error TS2339: Property 'purpose' does not exist on type '{ name: string; options: { size: "1024x1024"; background: "opaque"; quality: "low"; n: 1; outputFormat: "png"; }; prompt: string; requestId: string; model: string; projectId: string; providerId: "mock" | "openai" | "openai-compatible"; expectedRevision?: number | undefined; groupId?: string | undefined; } | { ...; }'.
+  Property 'purpose' does not exist on type '{ name: string; options: { size: "1024x1024"; background: "opaque"; quality: "low"; n: 1; outputFormat: "png"; }; prompt: string; requestId: string; model: string; projectId: string; providerId: "mock" | "openai" | "openai-compatible"; expectedRevision?: number | undefined; groupId?: string | undefined; }'.
+packages/contracts/src/image-reviews.mjs(22,27): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(26,33): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(30,30): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(58,17): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/image-reviews.mjs(61,25): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(61,32): error TS7006: Parameter 'context' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(62,17): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(68,26): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ pending: number; approved: number; rejected: number; dispatched: number; }'.
+packages/contracts/src/image-reviews.mjs(78,38): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(79,43): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(79,50): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(84,35): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(84,107): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(86,50): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/image-reviews.mjs(86,57): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/image-settings.mjs(30,38): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-settings.mjs(46,51): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/image-settings.mjs(52,44): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(18,34): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(40,25): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(44,23): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(44,62): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ mock: "mock-image-v1"; openai: "gpt-image-2.5-flare-2026-09-08"; }>'.
+packages/contracts/src/images.mjs(72,115): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/images.mjs(77,119): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/images.mjs(81,137): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/images.mjs(98,95): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/images.mjs(103,34): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(104,35): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(105,37): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(106,37): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(107,39): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(107,170): error TS2339: Property 'includeSettingsRevision' does not exist on type '{}'.
+packages/contracts/src/images.mjs(107,216): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(108,41): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(108,51): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(108,57): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(109,54): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'image.profile.list': ZodObject<{ includeSettingsRevision: ZodOptional<ZodBoolean>; }, "strict", ZodTypeAny, { includeSettingsRevision?: boolean | undefined; }, { ...; }>; ... 8 more ...; 'image.task.recoverResult': ZodObject<...>; }>'.
+packages/contracts/src/images.mjs(114,37): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(114,47): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(114,53): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(115,17): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ 'image.task.list': (v: any) => boolean; 'image.group.list': (v: any) => boolean; 'image.version.list': (v: any) => boolean; }'.
+packages/contracts/src/images.mjs(116,17): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'image.profile.list': ZodObject<{ includeSettingsRevision: ZodOptional<ZodBoolean>; }, "strict", ZodTypeAny, { includeSettingsRevision?: boolean | undefined; }, { ...; }>; ... 8 more ...; 'image.task.recoverResult': ZodObject<...>; }>'.
+packages/contracts/src/images.mjs(117,34): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/images.mjs(117,92): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(93,13): error TS7006: Parameter 'minimum' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(93,21): error TS7006: Parameter 'maximum' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(255,50): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(255,55): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(256,23): error TS7006: Parameter 'op' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(256,26): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(256,37): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ 'project.create': ZodObject<{ name: ZodString; description: ZodOptional<ZodString>; }, "strict", ZodTypeAny, { name: string; description?: string | undefined; }, { ...; }>; ... 94 more ...; 'lut.inspect': ZodObject<...>; }'.
+packages/contracts/src/index.mjs(256,108): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ 'project.create': ZodObject<{ name: ZodString; description: ZodOptional<ZodString>; }, "strict", ZodTypeAny, { name: string; description?: string | undefined; }, { ...; }>; ... 94 more ...; 'lut.inspect': ZodObject<...>; }'.
+packages/contracts/src/index.mjs(256,229): error TS7006: Parameter 'x' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(257,17): error TS7023: 'publicValue' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/index.mjs(257,29): error TS7006: Parameter 'v' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(257,111): error TS7022: 'result' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+packages/contracts/src/index.mjs(257,225): error TS7024: Function implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/index.mjs(261,39): error TS7006: Parameter 'capabilities' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(261,53): error TS7006: Parameter 'model' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(267,58): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(270,107): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(278,97): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(279,16): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(281,36): error TS7006: Parameter 'snapshot' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(281,46): error TS7006: Parameter 'capabilities' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(282,15): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(282,20): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(283,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(284,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(300,28): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(300,155): error TS7006: Parameter 'binding' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(309,15): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(310,15): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(311,38): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(312,41): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(313,41): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/index.mjs(314,117): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/local-mutations.mjs(15,41): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/local-mutations.mjs(15,52): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/local-mutations.mjs(15,59): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/local-mutations.mjs(15,68): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/operation-effects.mjs(10,47): error TS7031: Binding element 'notes' implicitly has an 'any' type.
+packages/contracts/src/operation-effects.mjs(125,47): error TS7006: Parameter 'schemas' implicitly has an 'any' type.
+packages/contracts/src/operation-effects.mjs(132,33): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/operation-effects.mjs(134,10): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline.loudness.apply': Readonly<{ readOnly: boolean; idempotent: boolean; destructive: boolean; openWorld: boolean; databaseWrite: boolean; fileWrite: boolean; externalIO: boolean; localProcess: boolean; paidGeneration: boolean; notes: any; }>; ... 98 more ...; "timeline.colour.jpeg.inspect": Readonly...'.
+packages/contracts/src/operation-effects.mjs(139,35): error TS7006: Parameter 'effects' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(12,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(13,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(14,18): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(14,25): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(15,15): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(15,22): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(15,27): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(16,17): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(16,24): error TS7006: Parameter 'required' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(16,34): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/reference-acknowledgement.mjs(16,84): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(17,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(19,21): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(24,39): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(24,47): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/reference-acknowledgement.mjs(44,39): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(44,47): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/reference-acknowledgement.mjs(50,45): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(50,56): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/reference-acknowledgement.mjs(50,63): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/source-range.mjs(5,34): error TS7006: Parameter 'duration' implicitly has an 'any' type.
+packages/contracts/src/source-range.mjs(26,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/source-range.mjs(27,20): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/source-range.mjs(27,27): error TS7006: Parameter 'keys' implicitly has an 'any' type.
+packages/contracts/src/source-range.mjs(27,109): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/source-range.mjs(30,39): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(10,21): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/subject-generation.mjs(14,12): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(14,18): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(15,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(16,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(21,12): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(22,13): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(22,19): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(22,23): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(23,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(23,22): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(24,15): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(24,21): error TS7006: Parameter 'required' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(24,30): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/subject-generation.mjs(24,74): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(25,17): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(29,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(31,8): error TS7023: 'visit' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/subject-generation.mjs(31,15): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(31,20): error TS7006: Parameter 'depth' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(36,24): error TS7022: 'valid' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+packages/contracts/src/subject-generation.mjs(40,7): error TS7023: 'same' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/subject-generation.mjs(40,13): error TS7006: Parameter 'left' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(40,18): error TS7006: Parameter 'right' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(41,33): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(50,51): error TS7006: Parameter 'snapshot' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(51,15): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(51,23): error TS7006: Parameter 'path' implicitly has an 'any[]' type.
+packages/contracts/src/subject-generation.mjs(52,128): error TS2339: Property 'requireProfilePin' does not exist on type '{}'.
+packages/contracts/src/subject-generation.mjs(53,20): error TS7006: Parameter 'items' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(53,52): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(58,13): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/subject-generation.mjs(58,51): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/subject-generation.mjs(58,91): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/subject-generation.mjs(61,13): error TS2339: Property 'requireProfilePin' does not exist on type '{}'.
+packages/contracts/src/subject-generation.mjs(75,13): error TS2339: Property 'requireProfilePin' does not exist on type '{}'.
+packages/contracts/src/subject-generation.mjs(83,18): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(90,45): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(90,55): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(90,61): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(93,43): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(93,49): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(93,56): error TS7006: Parameter 'options' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(93,64): error TS7006: Parameter 'expectedRetryOfJobId' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(121,50): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(121,56): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/subject-generation.mjs(123,9): error TS2339: Property 'snapshot' does not exist on type '{}'.
+packages/contracts/src/subjects.mjs(12,54): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/subjects.mjs(22,74): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/subjects.mjs(24,39): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(25,32): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(26,39): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(27,43): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(27,53): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(27,59): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(28,56): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'subject.create': ZodObject<{ projectId: ZodString; kind: ZodEnum<[string, ...string[]]>; name: ZodEffects<ZodString, string, string>; assetId: ZodString; requestId: ZodString; }, "strict", ZodTypeAny, { ...; }, { ...; }>; ... 4 more ...; 'subject.binding.list': ZodEffects<...>; }>'.
+packages/contracts/src/subjects.mjs(33,39): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(33,49): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(33,55): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(34,91): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'subject.create': ZodObject<{ projectId: ZodString; kind: ZodEnum<[string, ...string[]]>; name: ZodEffects<ZodString, string, string>; assetId: ZodString; requestId: ZodString; }, "strict", ZodTypeAny, { ...; }, { ...; }>; ... 4 more ...; 'subject.binding.list': ZodEffects<...>; }>'.
+packages/contracts/src/subjects.mjs(36,34): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/subjects.mjs(36,98): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(19,31): error TS7006: Parameter 'left' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(19,36): error TS7006: Parameter 'right' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(33,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(34,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(35,18): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(35,25): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(36,15): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(36,22): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(36,27): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(37,17): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(37,24): error TS7006: Parameter 'required' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(37,34): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/timeline-acknowledgement.mjs(37,84): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(38,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(39,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(44,7): error TS7023: 'same' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/timeline-acknowledgement.mjs(44,15): error TS7006: Parameter 'a' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(44,18): error TS7006: Parameter 'b' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(48,29): error TS7006: Parameter 'a' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(48,31): error TS7006: Parameter 'b' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(51,10): error TS18047: 'a' is possibly 'null'.
+packages/contracts/src/timeline-acknowledgement.mjs(51,24): error TS18047: 'b' is possibly 'null'.
+packages/contracts/src/timeline-acknowledgement.mjs(51,39): error TS18047: 'a' is possibly 'null'.
+packages/contracts/src/timeline-acknowledgement.mjs(51,57): error TS18047: 'b' is possibly 'null'.
+packages/contracts/src/timeline-acknowledgement.mjs(52,5): error TS18047: 'a' is possibly 'null'.
+packages/contracts/src/timeline-acknowledgement.mjs(52,49): error TS18047: 'b' is possibly 'null'.
+packages/contracts/src/timeline-acknowledgement.mjs(52,91): error TS18047: 'b' is possibly 'null'.
+packages/contracts/src/timeline-acknowledgement.mjs(54,20): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(54,27): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(54,34): error TS7006: Parameter 'keys' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(54,54): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(56,19): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(57,25): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(57,32): error TS7006: Parameter 'required' implicitly has an 'any[]' type.
+packages/contracts/src/timeline-acknowledgement.mjs(57,47): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/timeline-acknowledgement.mjs(58,21): error TS7006: Parameter 'patch' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(58,28): error TS7006: Parameter 'allowed' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(64,44): error TS7006: Parameter 'operation' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(64,55): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(64,62): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(66,48): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline.format.get': ZodObject<{ projectId: ZodString; }, "strict", ZodTypeAny, { projectId: string; }, { projectId: string; }>; 'timeline.format.set': ZodObject<...>; }>'.
+packages/contracts/src/timeline-acknowledgement.mjs(72,35): error TS7006: Parameter 'clip' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(75,14): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline.subtitle.add': ZodEffects<ZodObject<{ text: ZodEffects<ZodString, string, string>; startFrame: ZodNumber; durationFrames: ZodNumber; projectId: ZodString; expectedRevision: ZodNumber; requestId: ZodString; }, "strict", ZodTypeAny, { ...; }, { ...; }>, { ...; }, { ...; }>; 'timeline.subtitle.upda...'.
+packages/contracts/src/timeline-acknowledgement.mjs(75,112): error TS7006: Parameter 'cue' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(77,14): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline.subtitle.add': ZodEffects<ZodObject<{ text: ZodEffects<ZodString, string, string>; startFrame: ZodNumber; durationFrames: ZodNumber; projectId: ZodString; expectedRevision: ZodNumber; requestId: ZodString; }, "strict", ZodTypeAny, { ...; }, { ...; }>, { ...; }, { ...; }>; 'timeline.subtitle.upda...'.
+packages/contracts/src/timeline-acknowledgement.mjs(77,112): error TS7006: Parameter 'cue' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(79,14): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline.subtitle.add': ZodEffects<ZodObject<{ text: ZodEffects<ZodString, string, string>; startFrame: ZodNumber; durationFrames: ZodNumber; projectId: ZodString; expectedRevision: ZodNumber; requestId: ZodString; }, "strict", ZodTypeAny, { ...; }, { ...; }>, { ...; }, { ...; }>; 'timeline.subtitle.upda...'.
+packages/contracts/src/timeline-acknowledgement.mjs(79,132): error TS7006: Parameter 'cue' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(85,50): error TS7006: Parameter 'track' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(86,103): error TS7006: Parameter 'track' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(87,32): error TS7006: Parameter 'track' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(91,39): error TS7006: Parameter 'track' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(96,31): error TS7006: Parameter 'clip' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(108,31): error TS7006: Parameter 'right' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(124,21): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(130,40): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(130,47): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(131,171): error TS2339: Property 'purpose' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(132,14): error TS2339: Property 'preflightSnapshotHash' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(132,67): error TS2339: Property 'preflightSnapshotHash' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(133,14): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(133,53): error TS2339: Property 'purpose' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(133,119): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(134,158): error TS2339: Property 'projectId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(134,197): error TS2339: Property 'requestId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(135,60): error TS2339: Property 'purpose' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(135,104): error TS2339: Property 'expectedRevision' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(136,14): error TS2339: Property 'exportId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(136,59): error TS2339: Property 'exportId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(138,231): error TS2339: Property 'purpose' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(138,260): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(138,456): error TS2339: Property 'projectId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(139,50): error TS2339: Property 'expectedRevision' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(140,14): error TS2339: Property 'timelineId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(140,79): error TS2339: Property 'timelineId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(156,61): error TS7006: Parameter 'track' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(182,43): error TS7006: Parameter 'error' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(182,50): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(182,58): error TS2339: Property 'operation' does not exist on type '{}'.
+packages/contracts/src/timeline-acknowledgement.mjs(204,51): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-acknowledgement.mjs(206,12): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(206,85): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(206,120): error TS2339: Property 'preflightSnapshotHash' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(206,168): error TS2339: Property 'preflightSnapshotHash' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(210,205): error TS2339: Property 'purpose' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(210,223): error TS2339: Property 'purpose' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(210,290): error TS2339: Property 'exportSettings' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(211,12): error TS2339: Property 'preflightSnapshotHash' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(211,60): error TS2339: Property 'preflightSnapshotHash' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(213,103): error TS2339: Property 'projectId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(213,140): error TS2339: Property 'requestId' does not exist on type 'TimelineDeliveryNameInput'.
+packages/contracts/src/timeline-acknowledgement.mjs(214,56): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline.format.get': ZodObject<{ projectId: ZodString; }, "strict", ZodTypeAny, { projectId: string; }, { projectId: string; }>; 'timeline.format.set': ZodObject<...>; }>'.
+packages/contracts/src/timeline-acknowledgement.mjs(218,72): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Readonly<{ 'timeline.subtitle.add': ZodEffects<ZodObject<{ text: ZodEffects<ZodString, string, string>; startFrame: ZodNumber; durationFrames: ZodNumber; projectId: ZodString; expectedRevision: ZodNumber; requestId: ZodString; }, "strict", ZodTypeAny, { ...; }, { ...; }>, { ...; }, { ...; }>; 'timeline.subtitle.upda...'.
+packages/contracts/src/timeline-export-profile.mjs(35,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(36,7): error TS7023: 'same' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+packages/contracts/src/timeline-export-profile.mjs(36,13): error TS7006: Parameter 'a' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(36,15): error TS7006: Parameter 'b' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(38,47): error TS7006: Parameter 'timeline' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(38,56): error TS7006: Parameter 'exportSettings' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(46,49): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ compact: number; standard: number; high: number; }'.
+packages/contracts/src/timeline-export-profile.mjs(51,42): error TS7006: Parameter 'delivery' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(51,51): error TS7006: Parameter 'timeline' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(51,60): error TS7006: Parameter 'exportSettings' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(58,42): error TS7006: Parameter 'snapshot' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(61,55): error TS2339: Property 'exportSettings' does not exist on type '{}'.
+packages/contracts/src/timeline-export-profile.mjs(63,53): error TS2339: Property 'purpose' does not exist on type '{}'.
+packages/contracts/src/timeline-export-profile.mjs(63,143): error TS2339: Property 'exportSettings' does not exist on type '{}'.
+packages/contracts/src/timeline-export-profile.mjs(72,24): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(73,129): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/timeline-export-profile.mjs(77,24): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type '[...string[], string, string, string, string]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type '[...string[], string, string, string, string]' is not assignable to parameter of type '[string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+packages/contracts/src/timeline-export-profile.mjs(96,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-export-profile.mjs(96,60): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-fades.mjs(4,38): error TS7006: Parameter 'clip' implicitly has an 'any' type.
+packages/contracts/src/timeline-fades.mjs(4,44): error TS7006: Parameter 'asset' implicitly has an 'any' type.
+packages/contracts/src/timeline-format.mjs(10,38): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-format.mjs(22,21): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type '("portrait_720" | "landscape_720" | "square_720")[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type '("portrait_720" | "landscape_720" | "square_720")[]' is not assignable to parameter of type '[string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+packages/contracts/src/timeline-format.mjs(26,19): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type '("portrait_720" | "landscape_720" | "square_720")[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type '("portrait_720" | "landscape_720" | "square_720")[]' is not assignable to parameter of type '[string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+packages/contracts/src/timeline-format.mjs(27,54): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/timeline-format.mjs(34,39): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-format.mjs(36,44): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-format.mjs(36,50): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(9,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(10,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(11,18): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(11,25): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(11,30): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(12,15): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(12,22): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(13,17): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(13,24): error TS7006: Parameter 'required' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(13,34): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/timeline-replacement.mjs(13,84): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(14,19): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(27,34): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(27,42): error TS2339: Property 'projectId' does not exist on type '{}'.
+packages/contracts/src/timeline-replacement.mjs(62,17): error TS7006: Parameter 'a' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(62,20): error TS7006: Parameter 'b' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(70,47): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(70,54): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/timeline-replacement.mjs(76,35): error TS7006: Parameter 'clip' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitle-profile.mjs(12,45): error TS7006: Parameter 'codePoint' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(7,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(8,15): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(8,21): error TS7006: Parameter 'required' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(8,30): error TS7006: Parameter 'optional' implicitly has an 'any[]' type.
+packages/contracts/src/timeline-subtitles.mjs(8,74): error TS7006: Parameter 'key' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(9,12): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(10,16): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(10,22): error TS7006: Parameter 'min' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(10,26): error TS7006: Parameter 'max' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(12,14): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(12,19): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(16,46): error TS7006: Parameter 'text' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(21,24): error TS2532: Object is possibly 'undefined'.
+packages/contracts/src/timeline-subtitles.mjs(31,42): error TS7006: Parameter 'subtitles' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(31,52): error TS7006: Parameter 'durationFrames' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(48,35): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(48,41): error TS7006: Parameter 'durationFrames' implicitly has an 'any' type.
+packages/contracts/src/timeline-subtitles.mjs(49,51): error TS7006: Parameter 'snapshot' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(2,14): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(3,13): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(8,12): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(14,53): error TS7006: Parameter 'shot' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(15,8): error TS7034: Variable 'issues' implicitly has type 'any[]' in some locations where its type cannot be determined.
+packages/contracts/src/video-frame-selection.mjs(15,23): error TS7006: Parameter 'code' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(15,28): error TS7006: Parameter 'path' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(15,33): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(16,15): error TS7006: Parameter 'references' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(16,71): error TS7005: Variable 'issues' implicitly has an 'any[]' type.
+packages/contracts/src/video-frame-selection.mjs(19,27): error TS7006: Parameter 'id' implicitly has an 'any' type.
+packages/contracts/src/video-frame-selection.mjs(20,27): error TS7006: Parameter 'assetId' implicitly has an 'any' type.
+packages/contracts/src/waveforms.mjs(40,18): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/waveforms.mjs(52,17): error TS7006: Parameter 'path' implicitly has an 'any' type.
+packages/contracts/src/waveforms.mjs(52,23): error TS7006: Parameter 'message' implicitly has an 'any' type.
+packages/contracts/src/waveforms.mjs(55,11): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ status: string; projectId: string; assetId: string; algorithm: "peak-u16-48k-100hz-v1"; binsPerSecond: 100; reason?: { code: string; message: string; } | undefined; duration?: number | undefined; ... 6 more ...; clipped?: boolean | undefined; }'.
+  No index signature with a parameter of type 'string' was found on type '{ status: string; projectId: string; assetId: string; algorithm: "peak-u16-48k-100hz-v1"; binsPerSecond: 100; reason?: { code: string; message: string; } | undefined; duration?: number | undefined; ... 6 more ...; clipped?: boolean | undefined; }'.
+packages/contracts/src/waveforms.mjs(58,18): error TS18048: 'value.decodedSampleFrames' is possibly 'undefined'.
+packages/contracts/src/waveforms.mjs(58,69): error TS18048: 'value.duration' is possibly 'undefined'.
+packages/contracts/src/waveforms.mjs(63,70): error TS18048: 'value.sourceStartFrame' is possibly 'undefined'.
+packages/contracts/src/waveforms.mjs(70,36): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/waveforms.mjs(70,43): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/contracts/src/workspace-backup.mjs(21,46): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/workspace-backup.mjs(26,39): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/workspace-backup.mjs(76,45): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/workspace-restore.mjs(13,46): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/workspace-restore.mjs(22,70): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type 'readonly [string, ...string[]]'.
+      Source provides no match for required element at position 0 in target.
+  Overload 2 of 2, '(values: [string, ...string[]], params?: RawCreateParams): ZodEnum<[string, ...string[]]>', gave the following error.
+    Argument of type 'readonly string[]' is not assignable to parameter of type '[string, ...string[]]'.
+      The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type '[string, ...string[]]'.
+packages/contracts/src/workspace-restore.mjs(41,16): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ source: { schemaVersion: 32 | 24 | 30 | 36 | 40 | 28 | 38 | 26 | 34; manifestHash: string; backupId: string; dbHash: string; }; createdAt: string; schemaVersion: 25 | 27 | 29 | 31 | 33 | 35 | 37 | 39 | 41; ... 8 more ...; volumeEnvelopeCapability?: { ...; } | undefined; }'.
+  No index signature with a parameter of type 'string' was found on type '{ source: { schemaVersion: 32 | 24 | 30 | 36 | 40 | 28 | 38 | 26 | 34; manifestHash: string; backupId: string; dbHash: string; }; createdAt: string; schemaVersion: 25 | 27 | 29 | 31 | 33 | 35 | 37 | 39 | 41; ... 8 more ...; volumeEnvelopeCapability?: { ...; } | undefined; }'.
+packages/contracts/src/workspace-restore.mjs(41,33): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/contracts/src/workspace-restore.mjs(41,58): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ source: { schemaVersion: 32 | 24 | 30 | 36 | 40 | 28 | 38 | 26 | 34; manifestHash: string; backupId: string; dbHash: string; }; createdAt: string; schemaVersion: 25 | 27 | 29 | 31 | 33 | 35 | 37 | 39 | 41; ... 8 more ...; volumeEnvelopeCapability?: { ...; } | undefined; }'.
+  No index signature with a parameter of type 'string' was found on type '{ source: { schemaVersion: 32 | 24 | 30 | 36 | 40 | 28 | 38 | 26 | 34; manifestHash: string; backupId: string; dbHash: string; }; createdAt: string; schemaVersion: 25 | 27 | 29 | 31 | 33 | 35 | 37 | 39 | 41; ... 8 more ...; volumeEnvelopeCapability?: { ...; } | undefined; }'.
+packages/contracts/src/workspace-restore.mjs(45,43): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/contracts/src/workspace-restore.mjs(47,47): error TS7006: Parameter 'inspection' implicitly has an 'any' type.
+packages/contracts/src/workspace-restore.mjs(48,42): error TS7006: Parameter 'inspection' implicitly has an 'any' type.

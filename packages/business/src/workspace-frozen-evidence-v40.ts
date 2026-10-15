@@ -3,8 +3,8 @@
  * caller-supplied source metadata. Nothing is normalized, returned or persisted.
  */
 import type {DatabaseSync} from 'node:sqlite';
-import {isTimelineRenderRecord,TIMELINE_RENDER_RESPONSE_BYTES} from '../../contracts/src/timeline-acknowledgement.mjs';
-import {isTimelineVolumeEnvelopeCandidateRecord} from '../../contracts/src/timeline-volume-envelope-candidate.mjs';
+import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
+import {isTimelineVolumeEnvelopeRecord} from '../../contracts/src/timeline-volume-envelope-record.ts';
 import {isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 
@@ -32,16 +32,17 @@ export function frozenReceiptBindingsV40(db:Pick<DatabaseSync,'prepare'>,root:un
   for(const child of children)pending.push({value:child,depth:depth+1});
  }
  if(!evidence)return result;
+ const runtime=requireWorkspaceEnvelopeRuntime();
  if(!object(root)||!object(root.snapshot)||!object(root.snapshot.timeline)||!Array.isArray(root.snapshot.assets))invalid();
  const snapshot=root.snapshot,timeline=snapshot.timeline as Value,assets=snapshot.assets as unknown[];
  if((table==='exports'||owner!=null)&&root.projectId!==owner||timeline.projectId!==root.projectId||
     root[table==='timeline_requests'?'requestId':'id']!==rowIdentity||
-    Buffer.byteLength(JSON.stringify(root))>TIMELINE_RENDER_RESPONSE_BYTES||
+    Buffer.byteLength(JSON.stringify(root))>runtime.timelineRenderResponseBytes||
     !Array.isArray(timeline.clips)||assets.length<1||assets.length>100||
     !isVolumeEnvelopeProcessingSnapshot(snapshot))invalid();
  const clips=timeline.clips as unknown[];
  const hasEnvelope=clips.some(clip=>object(clip)&&own(clip,'volumeEnvelope'));
- if(hasEnvelope&&!isTimelineVolumeEnvelopeCandidateRecord(timeline,{projectId:root.projectId}))invalid();
+ if(hasEnvelope&&!isTimelineVolumeEnvelopeRecord(timeline,{projectId:root.projectId},runtime.isTimelineRecord))invalid();
  const projectedTimeline=hasEnvelope?{...timeline,clips:clips.map(clip=>without(clip as Value,'volumeEnvelope'))}:timeline;
  // An optional frozen projectId is accepted only when it agrees with the
  // original receipt. The production public asset projection omits that field.
@@ -52,7 +53,7 @@ export function frozenReceiptBindingsV40(db:Pick<DatabaseSync,'prepare'>,root:un
  const projectedSnapshot={...without(snapshot,'volumeEnvelopeProfile'),timeline:projectedTimeline,assets:projectedAssets};
  let input:Value;
  try{input={projectId:root.projectId,requestId:root.requestId,expectedRevision:root.timelineRevision,purpose:root.purpose,...timelineRenderDeliveryFields(snapshot)};}catch{invalid();}
- if(!isTimelineRenderRecord({...root,snapshot:projectedSnapshot},input))invalid();
+ if(!runtime.isTimelineRenderRecord({...root,snapshot:projectedSnapshot},input))invalid();
  const frozen=new Map<string,Value>();
  for(const item of assets){const asset=item as Value;
   // Only current resource existence and owning project are authoritative here.

@@ -1,0 +1,11 @@
+{
+  "source": "/workspace/scratch/6877817dff0d/mioon-volume-envelope-editor-integration",
+  "destination": "/workspace/scratch/6877817dff0d/mioon-envelope-canonical-repair",
+  "lockSha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+  "regularFiles": 20363,
+  "bytes": 547216490,
+  "relativeLinks": 1050,
+  "allLinksLocalAndResolved": true,
+  "digest": "f55b7e0290d26c0d295e85817ab2f60ffa1ae2adf71fb2c189bcf91819e84b39",
+  "noInstallOrDownload": true
+}

@@ -1,18 +1,16 @@
 /** Historical evidence gate for the dormant40/41 profile and fail-closed
  * mutation admission. No dispatcher activation; old readers own other fields. */
 import type {DatabaseSync} from 'node:sqlite';
-import {validateVolumeEnvelope,VOLUME_ENVELOPE_PROFILE} from '../../contracts/src/timeline-volume-envelope.mjs';
+import {validateVolumeEnvelope,VOLUME_ENVELOPE_PROFILE} from '../../contracts/src/timeline-volume-envelope.ts';
 import {isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 // Historical schemas validate only a projection; no projection is persisted.
-import {schemas} from '../../contracts/src/index.mjs';
+import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {createTimelineLoudnessApplyContracts} from '../../contracts/src/timeline-loudness-apply.ts';
-import {isTimelineRecord} from '../../contracts/src/timeline-replacement.mjs';
 import {isTimelineClipLoudnessResponse} from '../../contracts/src/timeline-clip-loudness.ts';
 import {isTimelineMixLoudnessResponse} from '../../contracts/src/timeline-mix-loudness.ts';
 
 const JSON_BYTES=4*1024*1024, SNAPSHOT_BYTES=256*1024;
 const keys=['volumeEnvelope','volumeEnvelopeProfile','volumeEnvelopeProcessingProfile','volumeEnvelopeSha256'];
-const {isTimelineLoudnessApplyResponse}=createTimelineLoudnessApplyContracts({isTimelineRecord});
 const knownCodes=new Set(['INVALID_VOLUME_ENVELOPE','VOLUME_ENVELOPE_SOURCE_UNSUPPORTED','TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED','TIMELINE_VOLUME_ENVELOPE_LIMIT','TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED']);
 const codeEvidence=(value:unknown)=>typeof value==='string'&&/(?:^|_)VOLUME_ENVELOPE(?:_|$)/.test(value);
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -39,6 +37,8 @@ export function hasWorkspaceVolumeEnvelopeEvidence(root:unknown):boolean {
 /** Scan all retained rows, including completed tasks, historical receipts and
  * archived history. This is read-only admission, never a migration or capability. */
 export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare'>,{allowVolumeEnvelopes:allowed}:{allowVolumeEnvelopes:boolean}):void {
+ const runtime=allowed?requireWorkspaceEnvelopeRuntime():undefined;
+ const isTimelineLoudnessApplyResponse=(root:unknown,input:unknown)=>createTimelineLoudnessApplyContracts({isTimelineRecord:requireWorkspaceEnvelopeRuntime().isTimelineRecord}).isTimelineLoudnessApplyResponse(root,input);
  const names=new Map<string,{type:unknown;sql:unknown}>();
  for(const row of db.prepare("SELECT type,lower(name) AS name,CASE WHEN length(CAST(sql AS BLOB))<=131072 THEN sql END AS sql FROM main.sqlite_schema WHERE name COLLATE NOCASE IN ('timelines','timeline_history','timeline_requests','edit_tasks','exports','workspace_restore_timeline_history','agent_edit_proposals','assets') LIMIT 9").iterate()){
   if(typeof row.name!=='string'||names.has(row.name))invalid(allowed);names.set(row.name,{type:row.type,sql:row.sql});
@@ -102,12 +102,12 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
     // hashed, returned or dispatched, and does not alter the retained intent.
     projected.patch=Object.keys(projectedFields).length?projectedFields:{gain:0};
    }
-   if(!schemas[op as 'timeline.clip.add'|'timeline.clip.update'].safeParse(projected).success)invalid(true);
+   if(!runtime?.validateClipIntent(op as 'timeline.clip.add'|'timeline.clip.update',projected))invalid(true);
    // Arrays are admitted only in the exact typed points leaf, never generally.
    const visit=(value:unknown,depth:number,budget:{nodes:number}):void=>{
     if(++budget.nodes>128||depth>8)invalid(true);
     if(value===null||typeof value==='boolean')return;
-    if(typeof value==='string'){if(!value.isWellFormed())invalid(true);return;}
+    if(typeof value==='string'){if(!/^(?:[^\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])*$/u.test(value))invalid(true);return;}
     if(typeof value==='number'){if(!Number.isFinite(value)||Object.is(value,-0))invalid(true);return;}
     if(!object(value))invalid(true);
     for(const [key,child]of Object.entries(value)){

@@ -10,7 +10,7 @@ import {tmpdir} from 'node:os';
 import {createLocalDrafts,LOCAL_DRAFT_FILENAME} from '../packages/business/src/local-drafts.ts';
 import {createLocalDrafts as createOldLocalDrafts} from './fixtures/local-drafts-v1-reader.ts';
 import {clipDraftRawSchema,clipDraftRawV1Schema,clipDraftDiskSchema,clipDraftSlotSchema,clipDraftEnvelopeSchema,LOCAL_DRAFT_LIMITS} from '@mioon/contracts/local-drafts';
-import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const error=code=>e=>e.code===code;

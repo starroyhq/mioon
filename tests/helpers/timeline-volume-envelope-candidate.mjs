@@ -1,7 +1,7 @@
 import {isProxy} from 'node:util/types';
-import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from './timeline-replacement.mjs';
-import {isTimelineMutationResponse} from './timeline-acknowledgement.mjs';
-import {VOLUME_ENVELOPE_PROFILE, validateVolumeEnvelope, splitVolumeEnvelopeFields} from './timeline-volume-envelope.mjs';
+import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../../packages/contracts/src/timeline-replacement.mjs';
+import {isTimelineMutationResponse} from '../../packages/contracts/src/timeline-acknowledgement.mjs';
+import {VOLUME_ENVELOPE_PROFILE, validateVolumeEnvelope, splitVolumeEnvelopeFields} from '../../packages/contracts/src/timeline-volume-envelope.ts';
 import {captureVolumeEnvelopeCandidateIntent, volumeEnvelopeCandidateIntentDigest} from './timeline-volume-envelope-candidate-intent.mjs';
 
 /** Dormant, Node-only candidate evidence. No package export or production caller.

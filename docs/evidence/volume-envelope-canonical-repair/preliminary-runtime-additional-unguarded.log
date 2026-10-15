@@ -1,0 +1,32 @@
+✔ actual database startup supplies exact production timeline and receipt predicates (14.952997ms)
+✔ unassembled typed admission fails closed before reads or migration writes (5.448252ms)
+✔ missing or malformed dependencies cannot install a permissive runtime (0.500356ms)
+✔ unassembled historical scans stay usable, but reject envelope evidence (2.810378ms)
+✔ all retained evidence families refuse old profiles including explicit null, without writes (17.097258ms)
+✔ complete current/history/receipt rows and exact partial intents admit in compatible profiles (23.197925ms)
+✔ historical update survives missing current clip, Undo duration changes and missing source (4.316276ms)
+✔ historical intent lexical bounds remain strict without generic array relaxation (13.259045ms)
+✔ frozen snapshots use their own metadata and ownership, never current cache (3.453386ms)
+✔ snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives (6.836787ms)
+✔ explicit null snapshot has no active profile and preserves original shape (2.61957ms)
+✔ frozen source cannot be an image, missing, duplicate or out of source bounds (6.434167ms)
+✔ escaped and duplicate keys cannot hide evidence before parsing, including nested arrays (19.125382ms)
+✔ unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses (2.714225ms)
+✔ oversized cells and non-text storage are never parsed, schema views reject (27.611996ms)
+✔ depth/node and complete snapshot byte guards remain bounded (52.349406ms)
+✔ processing digest/profile and orphan declarations are positive evidence, never candidate protocol (15.117995ms)
+✔ all retained task errors are inspected and unknown envelope error namespace is not admitted (4.513186ms)
+✔ actual production full/isolated processing reports admit their exact profile and digest identities (8.044579ms)
+✔ incomplete frozen wrappers cannot fall back to current source cache (1.978234ms)
+✔ four concrete mutation errors are admitted, never unknown namespace variants (5.270699ms)
+✔ a scalar loudness label cannot bypass frozen wrapper validation (4.136947ms)
+✔ scalar loudness wrapper is exact and binds independently retained owner/request/operation (16.72501ms)
+✔ intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization (12.530803ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 964.556498

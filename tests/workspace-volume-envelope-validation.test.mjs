@@ -1,10 +1,11 @@
+import '../packages/business/src/db.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {validateWorkspaceVolumeEnvelopeRows as scan,hasWorkspaceVolumeEnvelopeEvidence as has} from '../packages/business/src/workspace-volume-envelope-validation.ts';
 import {readyMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.mjs';
 import {readyClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.mjs';
-import {VOLUME_ENVELOPE_PROFILE as profile} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE as profile} from '../packages/contracts/src/timeline-volume-envelope.ts';
 const project='10000000-0000-4000-8000-000000000001',asset='20000000-0000-4000-8000-000000000002',clipId='30000000-0000-4000-8000-000000000003',trackId='40000000-0000-4000-8000-000000000004';
 const envelope=()=>({profileId:profile,points:[{frame:0,multiplier:1},{frame:60,multiplier:.5}]});
 const clip=(value=envelope())=>({id:clipId,assetId:asset,trackId,durationFrames:60,sourceInFrame:0,volumeEnvelope:value});
@@ -110,5 +111,15 @@ test('scalar loudness wrapper is exact and binds independently retained owner/re
   if(mutation==='nested-snapshot-lookalike'){candidate.snapshot={timeline:candidate.timeline,assets:[{id:asset,mimeType:'audio/wav',duration:2}],volumeEnvelopeProfile:profile};delete candidate.timeline;candidate.application=null;}
   f.put(candidate);f.db.prepare('UPDATE timeline_requests SET operation=?,requestId=?,projectId=?').run(mutation==='operation'?'timeline.clip.update':value.operation,mutation==='request'?'different-request':value.requestId,mutation==='owner'?clipId:project);
   if(mutation===null)f.scan(true);else bad(()=>f.scan(true));
+ }
+});
+test('intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization',t=>{
+ for(const name of ['Plain text','A\uD83D\uDE00Z','\uD83D\uDE00\uD83D\uDE01']){
+  const f=fixture(t,'edit_tasks','input'),value=input();value.patch.name=name;f.put(value);
+  const before=f.state();f.scan(true);assert.deepEqual(f.state(),before);
+ }
+ for(const name of ['\uD800','\uDC00','x\uD800y','\uD800\uD800','\uDC00\uD800','\uD83D\uDE00\uDC00']){
+  const f=fixture(t,'edit_tasks','input'),value=input();value.patch.name=name;f.put(value);
+  const before=f.state();bad(()=>f.scan(true));assert.deepEqual(f.state(),before);
  }
 });

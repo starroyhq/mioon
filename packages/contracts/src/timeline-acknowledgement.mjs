@@ -1,4 +1,4 @@
-import {createVolumeEnvelopeEvaluator} from './timeline-volume-envelope.mjs';
+import {createVolumeEnvelopeEvaluator} from './timeline-volume-envelope.ts';
 import {isVolumeEnvelope,isVolumeEnvelopeProcessingSnapshot} from './timeline-volume-envelope-processing.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';

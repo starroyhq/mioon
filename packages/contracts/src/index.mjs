@@ -1,3 +1,4 @@
+import {AppError} from './app-error.ts';
 export * from './timeline-volume-envelope-capability.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {clipAudioRoleSchema} from './timeline-audio-role.ts';
@@ -252,7 +253,7 @@ Object.assign(descriptions,{
  'timeline.seed':'仅向空时间线按镜头顺序复制当前所选版本，之后独立编辑',
  'timeline.render':'冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询'
 });
-export class AppError extends Error {constructor(code,message,status=400,details={}){super(message);this.code=code;this.status=status;this.details=details;}}
+export {AppError};
 export function parse(op,input){if(!schemas[op])throw new AppError('UNKNOWN_OPERATION','未知操作',404);const r=schemas[op].safeParse(input);if(!r.success)throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:r.error.issues.map(x=>({path:x.path,message:x.message}))});return r.data;}
 export function publicValue(v){if(Array.isArray(v))return v.map(publicValue);if(v&&typeof v==='object'){const result=Object.fromEntries(Object.entries(v).filter(([k])=>!['path','relativePath','requestHash'].includes(k)).map(([k,x])=>[k,publicValue(x)]));if(v.shotId&&v.providerId&&v.status&&v.requestId)result.allowedActions=v.status==='failed'?['retry']:v.status==='submission_unknown'?['reconcile','cancel']:v.status==='cancelled'?['reconcile']:v.status==='succeeded'?[]:['cancel'];return result;}return v;}
 

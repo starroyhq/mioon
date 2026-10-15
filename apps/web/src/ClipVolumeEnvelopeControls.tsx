@@ -1,6 +1,6 @@
 import React, { useId, useRef, useState } from 'react';
 import { useI18n } from './i18n/I18nProvider.tsx';
-import { VOLUME_ENVELOPE_PROFILE } from '../../../packages/contracts/src/timeline-volume-envelope.mjs';
+import { VOLUME_ENVELOPE_PROFILE } from '../../../packages/contracts/src/timeline-volume-envelope.ts';
 import { acceptsVolumeEnvelopeText, RAW_VOLUME_ENVELOPE_LIMITS, validateRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
 import type { RawVolumeEnvelope, VolumeEnvelopeComposition, VolumePointField } from './clip-volume-envelope-state.ts';
 

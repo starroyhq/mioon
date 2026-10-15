@@ -4,15 +4,15 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../packages/contracts/src/timeline-replacement.mjs';
 import {isTimelineMutationResponse, hasRequestNotAppliedProof} from '../packages/contracts/src/timeline-acknowledgement.mjs';
-import {VOLUME_ENVELOPE_PROFILE as profileId, splitVolumeEnvelopeFields} from '../packages/contracts/src/timeline-volume-envelope.mjs';
-import {volumeEnvelopeCandidateIntentDigest} from '../packages/contracts/src/timeline-volume-envelope-candidate-intent.mjs';
+import {VOLUME_ENVELOPE_PROFILE as profileId, splitVolumeEnvelopeFields} from '../packages/contracts/src/timeline-volume-envelope.ts';
+import {volumeEnvelopeCandidateIntentDigest} from './helpers/timeline-volume-envelope-candidate-intent.mjs';
 import {
   captureTimelineVolumeEnvelopeCandidateRecord as capture,
   isTimelineVolumeEnvelopeCandidateRecord as record,
   isTimelineVolumeEnvelopeCandidateSnapshot as snapshot,
   isTimelineVolumeEnvelopeCandidateMutationResponse as ack,
   isTimelineVolumeEnvelopeCandidateMutationReceipt as receipt,
-} from '../packages/contracts/src/timeline-volume-envelope-candidate.mjs';
+} from './helpers/timeline-volume-envelope-candidate.mjs';
 
 const clone = value => structuredClone(value);
 const bytes = value => Buffer.byteLength(JSON.stringify(value));

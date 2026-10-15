@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {clipAudioRoleSchema} from './timeline-audio-role.ts';
 import {clipColourSchema} from './timeline-colour.ts';
-import {VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.ts';
 
 // UI-only local input. This is deliberately not a business-operation schema.
 export const LOCAL_DRAFT_LIMITS = Object.freeze({slots:128, rowBytes:8192, envelopeBytes:2*1024*1024, httpBytes:12*1024, urlBytes:2048});

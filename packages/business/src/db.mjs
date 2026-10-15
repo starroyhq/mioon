@@ -1,3 +1,8 @@
+import {installWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
+import {createWorkspaceRestoreProfileV41} from './workspace-restore-schema-v41.ts';
+import {schemas} from '../../contracts/src/index.mjs';
+import {isTimelineRecord} from '../../contracts/src/timeline-replacement.mjs';
+import {isTimelineRenderRecord,TIMELINE_RENDER_RESPONSE_BYTES} from '../../contracts/src/timeline-acknowledgement.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {isAsyncFunction,isPromise} from 'node:util/types';
 import path from 'node:path';
@@ -7,6 +12,14 @@ import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';
 import {validateWorkspaceRestoreSchema,detectWorkspaceRestoreEvidence,classifyWorkspaceSchema,installWorkspaceRestoreSchema} from './workspace-restore-schema.mjs';
 import {createWorkspaceSchemaDispatch} from './workspace-schema-dispatch.ts';
 export {validateCurrentWorkspaceColourProfile} from './workspace-schema-dispatch.ts';
+
+// Actual legacy predicates are assembled before any workspace can be opened.
+const envelopeRestored41=createWorkspaceRestoreProfileV41(initializeWorkspaceSchemaThrough24);
+installWorkspaceEnvelopeRuntime({isTimelineRecord,isTimelineRenderRecord,
+ timelineRenderResponseBytes:TIMELINE_RENDER_RESPONSE_BYTES,
+ validateClipIntent:(operation,value)=>schemas[operation].safeParse(value).success,
+ classify40Or41:envelopeRestored41.classifyWorkspaceSchemaV40V41,
+ validateRestored41:envelopeRestored41.validateWorkspaceRestoreSchemaV41});
 
 const workspaceSchemas=createWorkspaceSchemaDispatch({initializeThrough24:initializeWorkspaceSchemaThrough24,
  detectRestoreEvidence:detectWorkspaceRestoreEvidence,classify:classifyWorkspaceSchema,

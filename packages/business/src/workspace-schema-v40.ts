@@ -1,3 +1,4 @@
+import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {validateWorkspaceVolumeEnvelopeRows} from './workspace-volume-envelope-validation.ts';
 import {validateWorkspaceAudioRoleRows} from './workspace-audio-role-validation.ts';
 import {validateAssetAnnotationRows} from './asset-annotation-validation.ts';
@@ -256,6 +257,7 @@ export function validateWorkspaceSchema40(db: DatabaseSync, {verifyBytes=true}: 
 /** Dormant marker-only, all-or-nothing38→40 migration; existing rows/DDL/rowids stay exact.
  * Restored25/27/29/31/33/35/37/39/41 never enter this initializer. No filesystem effects occur. */
 export function initializeWorkspaceSchema40(db: DatabaseSync): void {
+  requireWorkspaceEnvelopeRuntime();
   if (db.isTransaction) unsupported('nested migration transaction');
   connection(db);
   try {

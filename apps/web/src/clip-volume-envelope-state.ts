@@ -1,5 +1,5 @@
-import { VOLUME_ENVELOPE_PROFILE, VOLUME_ENVELOPE_LIMITS, validateVolumeEnvelope } from '../../../packages/contracts/src/timeline-volume-envelope.mjs';
-import type { VolumeEnvelope, VolumeEnvelopeClip } from '../../../packages/contracts/src/timeline-volume-envelope.mjs';
+import { VOLUME_ENVELOPE_PROFILE, VOLUME_ENVELOPE_LIMITS, validateVolumeEnvelope } from '../../../packages/contracts/src/timeline-volume-envelope.ts';
+import type { VolumeEnvelope, VolumeEnvelopeClip } from '../../../packages/contracts/src/timeline-volume-envelope.ts';
 
 /** Dormant form values, NOT the production local-draft schema. */
 export const RAW_VOLUME_ENVELOPE_LIMITS = Object.freeze({ frame: 8, multiplier: 32, points: 16 });

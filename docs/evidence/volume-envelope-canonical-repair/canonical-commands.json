@@ -1,0 +1,31 @@
+{
+  "node": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+  "version": "v24.21.0",
+  "sourceGuard": "passed",
+  "commands": [
+    {
+      "command": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+      "args": [
+        "/workspace/scratch/6877817dff0d/mioon-envelope-canonical-repair/node_modules/typescript/lib/tsc.js",
+        "--project",
+        "tests/typecheck/tsconfig.foundation.json",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "cwd": "/workspace/scratch/6877817dff0d/mioon-envelope-canonical-repair"
+    },
+    {
+      "command": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+      "args": [
+        "/workspace/scratch/6877817dff0d/mioon-envelope-canonical-repair/node_modules/typescript/lib/tsc.js",
+        "--project",
+        "tests/typecheck/tsconfig.browser.json",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "cwd": "/workspace/scratch/6877817dff0d/mioon-envelope-canonical-repair"
+    }
+  ]
+}

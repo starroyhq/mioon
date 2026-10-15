@@ -1,5 +1,5 @@
-import {validateVolumeEnvelope, volumeEnvelopeFieldsAfterEdit, VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.mjs';
-import type {VolumeEnvelope, VolumeEnvelopeClip} from './timeline-volume-envelope.mjs';
+import {validateVolumeEnvelope, volumeEnvelopeFieldsAfterEdit, VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.ts';
+import type {VolumeEnvelope, VolumeEnvelopeClip} from './timeline-volume-envelope.ts';
 export type TimelineVolumeEnvelope = VolumeEnvelope;
 export type TimelineVolumeEnvelopeClip = VolumeEnvelopeClip;
 export const VOLUME_ENVELOPE_PROCESSING_PROFILE = VOLUME_ENVELOPE_PROFILE;

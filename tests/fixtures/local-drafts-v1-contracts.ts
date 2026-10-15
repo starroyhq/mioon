@@ -1,5 +1,5 @@
 // Frozen actual pre-v2 contracts from b86d0d3; only relative import paths changed.
-import {z} from 'zod';
+import {z} from '../../packages/contracts/node_modules/zod/index.js';
 import {clipAudioRoleSchema} from '../../packages/contracts/src/timeline-audio-role.ts';
 import {clipColourSchema} from '../../packages/contracts/src/timeline-colour.ts';
 

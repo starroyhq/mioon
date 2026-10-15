@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClipDraftController, clipDraftRaw, clipDraftPatch } from '../apps/web/src/clip-draft-state.ts';
 import { createClipDraftClient, admitClipDraftRequest } from '../apps/web/src/clip-draft-client.ts';
-import { VOLUME_ENVELOPE_PROFILE as profileId } from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import { VOLUME_ENVELOPE_PROFILE as profileId } from '../packages/contracts/src/timeline-volume-envelope.ts';
 const id=n=>`d1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const key={projectId:id(1),timelineId:id(2),clipId:id(3)}, source={assetId:id(5),assetSha256:'b'.repeat(64)};
 const base={name:'Clip',trackId:id(4),startFrame:0,durationFrames:120,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1};

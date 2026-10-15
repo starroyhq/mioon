@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { isWorkspaceRestoreInspection, canEditTimelineVolumeEnvelope } from '../packages/contracts/src/workspace-restore.mjs';
-import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.ts';
 import { clipVolumeEnvelopeCapabilityMatches, observeClipVolumeEnvelopeCapability } from '../apps/web/src/clip-volume-envelope-capability.ts';
 import { validateCatalogs, translate } from '../packages/i18n/src/index.ts';
 import { volumeEnvelopeMessages } from '../packages/i18n/src/catalogs/volume-envelope.ts';

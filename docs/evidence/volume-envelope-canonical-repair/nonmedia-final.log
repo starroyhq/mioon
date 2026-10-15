@@ -1,0 +1,1606 @@
+TAP version 13
+# Subtest: typed error is the one canonical constructor through both import paths
+ok 1 - typed error is the one canonical constructor through both import paths
+  ---
+  duration_ms: 4.036497
+  type: 'test'
+  ...
+# Subtest: AppError type-only extraction preserves field order, defaults, details identity and serialization
+ok 2 - AppError type-only extraction preserves field order, defaults, details identity and serialization
+  ---
+  duration_ms: 6.571999
+  type: 'test'
+  ...
+# Subtest: strict raw schema retains bounded editing strings and absent/null independently
+ok 3 - strict raw schema retains bounded editing strings and absent/null independently
+  ---
+  duration_ms: 20.280015
+  type: 'test'
+  ...
+# Subtest: v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+ok 4 - v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades
+  ---
+  duration_ms: 85.977546
+  type: 'test'
+  ...
+# Subtest: actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+ok 5 - actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes
+  ---
+  duration_ms: 38.046259
+  type: 'test'
+  ...
+# Subtest: strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+ok 6 - strict v1 rejects envelope presence and strict v2 rejects future fields without repair
+  ---
+  duration_ms: 54.229768
+  type: 'test'
+  ...
+# Subtest: arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+ok 7 - arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps
+  ---
+  duration_ms: 6.209354
+  type: 'test'
+  ...
+# Subtest: promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+ok 8 - promotion beforePersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 11.340755
+  type: 'test'
+  ...
+# Subtest: promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+ok 9 - promotion afterPersist retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 6.928351
+  type: 'test'
+  ...
+# Subtest: promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+ok 10 - promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry
+  ---
+  duration_ms: 9.994167
+  type: 'test'
+  ...
+# Subtest: published limits stay unchanged
+ok 11 - published limits stay unchanged
+  ---
+  duration_ms: 0.348138
+  type: 'test'
+  ...
+# Subtest: complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+ok 12 - complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers
+  ---
+  duration_ms: 21.783575
+  type: 'test'
+  ...
+# {"legacySlotBytes":5430,"ordinaryEnvelopeSlotBytes":6611,"adversarialEnvelopeSlotBytes":9373,"completePutBytes":6706,"completeSuccessBytes":6817,"maximumRowSuccessBytes":8398}
+# Subtest: serialized complete row 8191: inclusive real service read boundary and evidence preservation
+ok 13 - serialized complete row 8191: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 13.302466
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8192: inclusive real service read boundary and evidence preservation
+ok 14 - serialized complete row 8192: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 4.918211
+  type: 'test'
+  ...
+# Subtest: serialized complete row 8193: inclusive real service read boundary and evidence preservation
+ok 15 - serialized complete row 8193: inclusive real service read boundary and evidence preservation
+  ---
+  duration_ms: 4.193544
+  type: 'test'
+  ...
+# Subtest: actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+ok 16 - actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests
+  ---
+  duration_ms: 28.427282
+  type: 'test'
+  ...
+# Subtest: complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+ok 17 - complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction
+  ---
+  duration_ms: 516.819454
+  type: 'test'
+  ...
+# {"max128RowsDiskBytes":1048814,"mixed127RowsOneTombstoneBytes":1040815,"tombstoneBytes":193,"metadataCommasNewlineBytes":238}
+# Subtest: actual companion file 2097151 bytes: whitespace counts toward disk read cap
+ok 18 - actual companion file 2097151 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 79.083837
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097152 bytes: whitespace counts toward disk read cap
+ok 19 - actual companion file 2097152 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 74.439461
+  type: 'test'
+  ...
+# Subtest: actual companion file 2097153 bytes: whitespace counts toward disk read cap
+ok 20 - actual companion file 2097153 bytes: whitespace counts toward disk read cap
+  ---
+  duration_ms: 33.083325
+  type: 'test'
+  ...
+# Subtest: maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+ok 21 - maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes
+  ---
+  duration_ms: 27.470591
+  type: 'test'
+  ...
+# Subtest: strict real compiler rejects unsuppressed runner and coordinator implementation errors and recovers without emit
+ok 22 - strict real compiler rejects unsuppressed runner and coordinator implementation errors and recovers without emit
+  ---
+  duration_ms: 49627.050358
+  type: 'test'
+  ...
+# Subtest: analysis response dispatch is explicit, bounded and preserves old response shape
+ok 23 - analysis response dispatch is explicit, bounded and preserves old response shape
+  ---
+  duration_ms: 99.986863
+  type: 'test'
+  ...
+# Subtest: full analysis verifies non-null muted and zero gain sources before silence output
+ok 24 - full analysis verifies non-null muted and zero gain sources before silence output
+  ---
+  duration_ms: 22.599389
+  type: 'test'
+  ...
+# Subtest: non-null cached no-audio sources cannot bypass actual audio eligibility
+ok 25 - non-null cached no-audio sources cannot bypass actual audio eligibility
+  ---
+  duration_ms: 2.786058
+  type: 'test'
+  ...
+# Subtest: isolated analysis rebases clip origin but preserves points and source slip
+ok 26 - isolated analysis rebases clip origin but preserves points and source slip
+  ---
+  duration_ms: 4.385878
+  type: 'test'
+  ...
+# Subtest: service projections preserve absent/null/value and report exact non-null identity
+ok 27 - service projections preserve absent/null/value and report exact non-null identity
+  ---
+  duration_ms: 109.160642
+  type: 'test'
+  ...
+# Subtest: muted and zero envelope verification bytes are charged before hash or decode
+ok 28 - muted and zero envelope verification bytes are charged before hash or decode
+  ---
+  duration_ms: 3.266498
+  type: 'test'
+  ...
+# Subtest: scalar candidate keeps every envelope point unchanged for the second actual pass
+ok 29 - scalar candidate keeps every envelope point unchanged for the second actual pass
+  ---
+  duration_ms: 54.092078
+  type: 'test'
+  ...
+# Subtest: invalid envelopes fail planning before any media effect
+ok 30 - invalid envelopes fail planning before any media effect
+  ---
+  duration_ms: 1.862613
+  type: 'test'
+  ...
+# Subtest: non-null source identities remain in silent muted/zero reports with two hashes
+ok 31 - non-null source identities remain in silent muted/zero reports with two hashes
+  ---
+  duration_ms: 22.882541
+  type: 'test'
+  ...
+# Subtest: decoder captures detached envelope points before asynchronous source verification
+ok 32 - decoder captures detached envelope points before asynchronous source verification
+  ---
+  duration_ms: 3.697743
+  type: 'test'
+  ...
+# Subtest: whole envelope processing snapshot includes original source metadata in the unchanged 256-KiB cap
+ok 33 - whole envelope processing snapshot includes original source metadata in the unchanged 256-KiB cap
+  ---
+  duration_ms: 16.021111
+  type: 'test'
+  ...
+# Subtest: absent envelope retains historical raw snapshot budget and identity
+ok 34 - absent envelope retains historical raw snapshot budget and identity
+  ---
+  duration_ms: 85.320608
+  type: 'test'
+  ...
+# Subtest: analysis reader rejects explicit conflicting processing profile before media effects
+ok 35 - analysis reader rejects explicit conflicting processing profile before media effects
+  ---
+  duration_ms: 3.755783
+  type: 'test'
+  ...
+# Subtest: cached false audio and faded sources still reach actual probe for non-null automation
+ok 36 - cached false audio and faded sources still reach actual probe for non-null automation
+  ---
+  duration_ms: 1.157355
+  type: 'test'
+  ...
+# Subtest: complete candidate intent is detached and bounded while live schema admission grants no workspace authority
+ok 37 - complete candidate intent is detached and bounded while live schema admission grants no workspace authority
+  ---
+  duration_ms: 30.286463
+  type: 'test'
+  ...
+# Subtest: only the typed points path admits an ordinary dense bounded array without running code
+ok 38 - only the typed points path admits an ordinary dense bounded array without running code
+  ---
+  duration_ms: 7.587315
+  type: 'test'
+  ...
+# Subtest: node, depth, unicode and complete bytes fail closed without changing caps
+ok 39 - node, depth, unicode and complete bytes fail closed without changing caps
+  ---
+  duration_ms: 4.423889
+  type: 'test'
+  ...
+# Subtest: complete candidate task binds exact intent including presence and all IDs
+ok 40 - complete candidate task binds exact intent including presence and all IDs
+  ---
+  duration_ms: 65.896252
+  type: 'test'
+  ...
+# Subtest: candidate is absent from production root and package export surface
+ok 41 - candidate is absent from production root and package export surface
+  ---
+  duration_ms: 3.305588
+  type: 'test'
+  ...
+# Subtest: maximal complete add and update include the largest current colour declaration within unchanged budgets
+ok 42 - maximal complete add and update include the largest current colour declaration within unchanged budgets
+  ---
+  duration_ms: 13.771643
+  type: 'test'
+  ...
+# {"maximalAdd":{"bytes":4600,"nodes":98,"depth":4},"maximalUpdate":{"bytes":4609,"nodes":99,"depth":5}}
+# Subtest: duration context is descriptor-checked before selection, including digest and task entry points
+ok 43 - duration context is descriptor-checked before selection, including digest and task entry points
+  ---
+  duration_ms: 13.687854
+  type: 'test'
+  ...
+# Subtest: candidate and live complete records preserve absent/null/value without workspace authority
+ok 44 - candidate and live complete records preserve absent/null/value without workspace authority
+  ---
+  duration_ms: 37.272941
+  type: 'test'
+  ...
+# Subtest: candidate envelope validation rejects undefined, unknown profiles, extra keys and out-of-duration points
+ok 45 - candidate envelope validation rejects undefined, unknown profiles, extra keys and out-of-duration points
+  ---
+  duration_ms: 7.583406
+  type: 'test'
+  ...
+# Subtest: strict typed traversal rejects getters, proxies, symbols, nonenumerable properties and exotic arrays without executing them
+ok 46 - strict typed traversal rejects getters, proxies, symbols, nonenumerable properties and exotic arrays without executing them
+  ---
+  duration_ms: 21.868868
+  type: 'test'
+  ...
+# Subtest: standalone candidate snapshot has exact conditional profile presence and is not a production render shape
+ok 47 - standalone candidate snapshot has exact conditional profile presence and is not a production render shape
+  ---
+  duration_ms: 18.691336
+  type: 'test'
+  ...
+# Subtest: add ACK matches the newly added clip, exact field presence and every untouched previous clip
+ok 48 - add ACK matches the newly added clip, exact field presence and every untouched previous clip
+  ---
+  duration_ms: 53.691423
+  type: 'test'
+  ...
+# Subtest: update ACK binds exact envelope payload, untouched clips and shrink replacement semantics
+ok 49 - update ACK binds exact envelope payload, untouched clips and shrink replacement semantics
+  ---
+  duration_ms: 84.25694
+  type: 'test'
+  ...
+# Subtest: replacement ACK preserves the exact envelope and every non-source field
+ok 50 - replacement ACK preserves the exact envelope and every non-source field
+  ---
+  duration_ms: 20.592403
+  type: 'test'
+  ...
+# Subtest: split ACK checks all interior cuts, absent/null/held/ramps/max points and existing fade restrictions
+ok 51 - split ACK checks all interior cuts, absent/null/held/ramps/max points and existing fade restrictions
+  ---
+  duration_ms: 583.647067
+  type: 'test'
+  ...
+# Subtest: Undo/redo require exact expected history; immutable original ACK remains valid after later Undo
+ok 52 - Undo/redo require exact expected history; immutable original ACK remains valid after later Undo
+  ---
+  duration_ms: 9.64348
+  type: 'test'
+  ...
+# Subtest: 100 complete envelope clips serialize exactly on both sides of unchanged 256 KiB cap; rejection is pure, not a transaction proof
+ok 53 - 100 complete envelope clips serialize exactly on both sides of unchanged 256 KiB cap; rejection is pure, not a transaction proof
+  ---
+  duration_ms: 27624.703043
+  type: 'test'
+  ...
+# Subtest: candidate and live ACK value validation never establishes workspace admission
+ok 54 - candidate and live ACK value validation never establishes workspace admission
+  ---
+  duration_ms: 2.1315
+  type: 'test'
+  ...
+# Subtest: separate dormant receipt binds exact operation, project, requestId and full input digest without claiming provenance
+ok 55 - separate dormant receipt binds exact operation, project, requestId and full input digest without claiming provenance
+  ---
+  duration_ms: 25.924933
+  type: 'test'
+  ...
+# Subtest: snapshot and receipt complete wrappers, not just inner timelines, obey unchanged 256 KiB cap
+ok 56 - snapshot and receipt complete wrappers, not just inner timelines, obey unchanged 256 KiB cap
+  ---
+  duration_ms: 480.609776
+  type: 'test'
+  ...
+# Subtest: receipt wrapper rejects hostile binding/context fields without executing code
+ok 57 - receipt wrapper rejects hostile binding/context fields without executing code
+  ---
+  duration_ms: 0.891818
+  type: 'test'
+  ...
+# Subtest: continuous automation multiplies independently evaluated fade and local envelope at every sample
+ok 58 - continuous automation multiplies independently evaluated fade and local envelope at every sample
+  ---
+  duration_ms: 328.967398
+  type: 'test'
+  ...
+# Subtest: absent and null retain identical PCM but distinct snapshot identity and unchanged legacy response keys
+ok 59 - absent and null retain identical PCM but distinct snapshot identity and unchanged legacy response keys
+  ---
+  duration_ms: 231.462477
+  type: 'test'
+  ...
+# Subtest: muted, zero scalar, cached-no-audio and all-zero envelope each still require actual source verification
+ok 60 - muted, zero scalar, cached-no-audio and all-zero envelope each still require actual source verification
+  ---
+  duration_ms: 48.614516
+  type: 'test'
+  ...
+# Subtest: silent automated sources complete both hashes without opening a cursor
+ok 61 - silent automated sources complete both hashes without opening a cursor
+  ---
+  duration_ms: 17.570163
+  type: 'test'
+  ...
+# Subtest: automation source budget is independent of silent voice selection
+ok 62 - automation source budget is independent of silent voice selection
+  ---
+  duration_ms: 1.616763
+  type: 'test'
+  ...
+# Subtest: snapshot and plan use exact profile dispatch and reject malformed envelope data
+ok 63 - snapshot and plan use exact profile dispatch and reject malformed envelope data
+  ---
+  duration_ms: 11.940175
+  type: 'test'
+  ...
+# Subtest: cached no-audio is rejected only after actual verification and never silently emitted
+ok 64 - cached no-audio is rejected only after actual verification and never silently emitted
+  ---
+  duration_ms: 48.288394
+  type: 'test'
+  ...
+# Subtest: all-zero automation still decodes its verified audible source and emits exact silence
+ok 65 - all-zero automation still decodes its verified audible source and emits exact silence
+  ---
+  duration_ms: 103.004466
+  type: 'test'
+  ...
+# Subtest: block boundaries and initial seeks use clip-local envelope time, with held anchors
+ok 66 - block boundaries and initial seeks use clip-local envelope time, with held anchors
+  ---
+  duration_ms: 175.924385
+  type: 'test'
+  ...
+# Subtest: malformed saved automation fails bounded admission before any source effect
+ok 67 - malformed saved automation fails bounded admission before any source effect
+  ---
+  duration_ms: 6.767118
+  type: 'test'
+  ...
+# Subtest: hash reservation includes silent automated assets, separately from PCM voices
+ok 68 - hash reservation includes silent automated assets, separately from PCM voices
+  ---
+  duration_ms: 4.724962
+  type: 'test'
+  ...
+# Subtest: envelope edits stale an existing plan even when revision and scalar gain are unchanged
+ok 69 - envelope edits stale an existing plan even when revision and scalar gain are unchanged
+  ---
+  duration_ms: 5.072218
+  type: 'test'
+  ...
+# Subtest: complete source wrapper budget counts metadata discarded by projection without changing absent admission
+ok 70 - complete source wrapper budget counts metadata discarded by projection without changing absent admission
+  ---
+  duration_ms: 19.119318
+  type: 'test'
+  ...
+# Subtest: reader profiles are derived only when absent, never normalized from conflicting evidence
+ok 71 - reader profiles are derived only when absent, never normalized from conflicting evidence
+  ---
+  duration_ms: 12.213701
+  type: 'test'
+  ...
+# Subtest: cached-no-audio with fades still reaches actual verification in non-null branch
+ok 72 - cached-no-audio with fades still reaches actual verification in non-null branch
+  ---
+  duration_ms: 8.335911
+  type: 'test'
+  ...
+# Subtest: owned old38 prepare refuses both typed paths and explicit null before any durable insert
+ok 73 - owned old38 prepare refuses both typed paths and explicit null before any durable insert
+  ---
+  duration_ms: 1273.667099
+  type: 'test'
+  ...
+# Subtest: outer prepare and nested point capture execute zero getter/proxy traps
+ok 74 - outer prepare and nested point capture execute zero getter/proxy traps
+  ---
+  duration_ms: 962.376396
+  type: 'test'
+  ...
+# Subtest: typed arrays do not relax unrelated paths, malformed Unicode or the 128-node/depth8 budgets
+ok 75 - typed arrays do not relax unrelated paths, malformed Unicode or the 128-node/depth8 budgets
+  ---
+  duration_ms: 710.085912
+  type: 'test'
+  ...
+# Subtest: synthetic40 existing coordinator captures both exact points paths and production hashes without dispatch
+ok 76 - synthetic40 existing coordinator captures both exact points paths and production hashes without dispatch
+  ---
+  duration_ms: 1475.501524
+  type: 'test'
+  ...
+# Subtest: real live coordinator construction admits validated40 without insertion or dispatch
+ok 77 - real live coordinator construction admits validated40 without insertion or dispatch
+  ---
+  duration_ms: 958.795343
+  type: 'test'
+  ...
+# Subtest: absent/null append no stage and preserve exact legacy string
+ok 78 - absent/null append no stage and preserve exact legacy string
+  ---
+  duration_ms: 2.092753
+  type: 'test'
+  ...
+# Subtest: nearest holds, exact anchors, sample boundaries and detached output
+ok 79 - nearest holds, exact anchors, sample boundaries and detached output
+  ---
+  duration_ms: 1.860854
+  type: 'test'
+  ...
+# Subtest: original sample offset, seek inside ramp, segment and frame boundaries
+ok 80 - original sample offset, seek inside ramp, segment and frame boundaries
+  ---
+  duration_ms: 3.202237
+  type: 'test'
+  ...
+# Subtest: one point, zero, unity, tiny and scientific notation numbers
+ok 81 - one point, zero, unity, tiny and scientific notation numbers
+  ---
+  duration_ms: 0.736578
+  type: 'test'
+  ...
+# Subtest: 16-point maximum grammar and conservative escaped byte bound
+ok 82 - 16-point maximum grammar and conservative escaped byte bound
+  ---
+  duration_ms: 6.070203
+  type: 'test'
+  ...
+# Subtest: invalid ranges, integer samples, negative zero and unsupported shapes reject
+ok 83 - invalid ranges, integer samples, negative zero and unsupported shapes reject
+  ---
+  duration_ms: 9.222222
+  type: 'test'
+  ...
+# Subtest: malformed records, point arrays and accessor properties reject
+ok 84 - malformed records, point arrays and accessor properties reject
+  ---
+  duration_ms: 1.096524
+  type: 'test'
+  ...
+# Subtest: deterministic curves match pure evaluator over sampled original coordinates
+ok 85 - deterministic curves match pure evaluator over sampled original coordinates
+  ---
+  duration_ms: 17.133483
+  type: 'test'
+  ...
+# Subtest: live add/update retain exact bounded presence and lexical historical-update semantics
+ok 86 - live add/update retain exact bounded presence and lexical historical-update semantics
+  ---
+  duration_ms: 28.712634
+  type: 'test'
+  ...
+# Subtest: live point schema refuses sparse, custom, extra-property and unknown typed fields
+ok 87 - live point schema refuses sparse, custom, extra-property and unknown typed fields
+  ---
+  duration_ms: 6.493217
+  type: 'test'
+  ...
+# Subtest: JSON round-tripped ACK uses envelope-only typed equality and exact add/null presence
+ok 88 - JSON round-tripped ACK uses envelope-only typed equality and exact add/null presence
+  ---
+  duration_ms: 8.664199
+  type: 'test'
+  ...
+# Subtest: render ACK accepts only the production string profile with exact absent/null behavior
+ok 89 - render ACK accepts only the production string profile with exact absent/null behavior
+  ---
+  duration_ms: 10.509368
+  type: 'test'
+  ...
+# Subtest: render envelope snapshot wrapper stays bounded at 262143/262144/262145 bytes beneath 4-MiB outer cap
+ok 90 - render envelope snapshot wrapper stays bounded at 262143/262144/262145 bytes beneath 4-MiB outer cap
+  ---
+  duration_ms: 85.391613
+  type: 'test'
+  ...
+# Subtest: new rejection codes bind exact operation/project/request even for scalar loudness and never accept uncertain outcomes
+ok 91 - new rejection codes bind exact operation/project/request even for scalar loudness and never accept uncertain outcomes
+  ---
+  duration_ms: 6.957251
+  type: 'test'
+  ...
+# Subtest: complete live durable task retains the existing byte budgets and exact typed input
+ok 92 - complete live durable task retains the existing byte budgets and exact typed input
+  ---
+  duration_ms: 5.739828
+  type: 'test'
+  ...
+# Subtest: split ACK preserves envelope presence/null and exact meeting value, not array equality
+ok 93 - split ACK preserves envelope presence/null and exact meeting value, not array equality
+  ---
+  duration_ms: 6.131964
+  type: 'test'
+  ...
+# (node:132) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:132) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+# Subtest: fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay
+ok 94 - fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay
+  ---
+  duration_ms: 6982.669124
+  type: 'test'
+  ...
+# Subtest: absent/null and split exact interpolation survive history, fades reject atomically
+ok 95 - absent/null and split exact interpolation survive history, fades reject atomically
+  ---
+  duration_ms: 2437.558916
+  type: 'test'
+  ...
+# Subtest: replacement preserves envelope and rejects incompatible cached audio without probes
+ok 96 - replacement preserves envelope and rejects incompatible cached audio without probes
+  ---
+  duration_ms: 1014.077267
+  type: 'test'
+  ...
+# Subtest: old38 explicit null refuses while exact40 admits inherited audio roles
+ok 97 - old38 explicit null refuses while exact40 admits inherited audio roles
+  ---
+  duration_ms: 1038.66299
+  type: 'test'
+  ...
+# Subtest: complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently
+ok 98 - complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently
+  ---
+  duration_ms: 56.094178
+  type: 'test'
+  ...
+# Subtest: new rejection proof requires rollback, exact scope, receipt absence and zero writes
+ok 99 - new rejection proof requires rollback, exact scope, receipt absence and zero writes
+  ---
+  duration_ms: 388.951302
+  type: 'test'
+  ...
+# Subtest: live dispatch recognizes synthetic40 profile without the historical policy seam
+ok 100 - live dispatch recognizes synthetic40 profile without the historical policy seam
+  ---
+  duration_ms: 326.556217
+  type: 'test'
+  ...
+# Subtest: scalar loudness transaction preserves envelope and immutable replay after Undo/removal
+ok 101 - scalar loudness transaction preserves envelope and immutable replay after Undo/removal
+  ---
+  duration_ms: 1202.240108
+  type: 'test'
+  ...
+# Subtest: 100-clip complete candidate rejects revision growth before timeline/history/redo/receipt writes
+ok 102 - 100-clip complete candidate rejects revision growth before timeline/history/redo/receipt writes
+  ---
+  duration_ms: 950.456584
+  type: 'test'
+  ...
+# Subtest: lazy ensure writes never acquire definite rejection proof even after rollback
+ok 103 - lazy ensure writes never acquire definite rejection proof even after rollback
+  ---
+  duration_ms: 414.2974
+  type: 'test'
+  ...
+# Subtest: authentic owned synthetic40 source rejection has exact no-write transaction proof
+ok 104 - authentic owned synthetic40 source rejection has exact no-write transaction proof
+  ---
+  duration_ms: 497.420363
+  type: 'test'
+  ...
+# Subtest: atomic shrink with replacement keeps requested anchors rather than clamping
+ok 105 - atomic shrink with replacement keeps requested anchors rather than clamping
+  ---
+  duration_ms: 1303.554033
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+ok 106 - owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+  ---
+  duration_ms: 2327.922457
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 source replacement, atomic shrink/clear, split and history preserve exact anchors
+ok 107 - owned ordinary40 source replacement, atomic shrink/clear, split and history preserve exact anchors
+  ---
+  duration_ms: 2448.561889
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 durable invalid source is terminal not_applied with no domain writes
+ok 108 - owned ordinary40 durable invalid source is terminal not_applied with no domain writes
+  ---
+  duration_ms: 1331.785109
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 afterClaim interruption recovers without dispatch and rejects stale instance
+ok 109 - owned ordinary40 afterClaim interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 1448.200246
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+ok 110 - owned ordinary40 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 2636.700175
+  type: 'test'
+  ...
+# Subtest: owned restored41 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+ok 111 - owned restored41 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+  ---
+  duration_ms: 7893.864693
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 durable updates distinguish absent/null/value and retain inherited role/colour fields
+ok 112 - owned ordinary40 durable updates distinguish absent/null/value and retain inherited role/colour fields
+  ---
+  duration_ms: 4096.113589
+  type: 'test'
+  ...
+# Subtest: owned restored41 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+ok 113 - owned restored41 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 4514.79723
+  type: 'test'
+  ...
+# Subtest: owned restored41 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+ok 114 - owned restored41 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 8498.492373
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 115 - owned ordinary40 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 2276.016711
+  type: 'test'
+  ...
+# Subtest: owned restored41 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 116 - owned restored41 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 3639.634498
+  type: 'test'
+  ...
+# Subtest: processing projection preserves exact absence/null/value, detached points and strict dispatch
+ok 117 - processing projection preserves exact absence/null/value, detached points and strict dispatch
+  ---
+  duration_ms: 4.953381
+  type: 'test'
+  ...
+# Subtest: envelope-bearing wrapper enforces exact unchanged 256 KiB boundary including null
+ok 118 - envelope-bearing wrapper enforces exact unchanged 256 KiB boundary including null
+  ---
+  duration_ms: 7.114425
+  type: 'test'
+  ...
+# Subtest: graph preserves exact absent/null bytes and inserts sample-aware fenced stage after fades
+ok 119 - graph preserves exact absent/null bytes and inserts sample-aware fenced stage after fades
+  ---
+  duration_ms: 2.240631
+  type: 'test'
+  ...
+# Subtest: render required verification includes muted/zero/cached-no-audio and all-zero curves
+ok 120 - render required verification includes muted/zero/cached-no-audio and all-zero curves
+  ---
+  duration_ms: 52.983159
+  type: 'test'
+  ...
+# Subtest: legacy audition rejects non-null before projection even muted or zero gain
+ok 121 - legacy audition rejects non-null before projection even muted or zero gain
+  ---
+  duration_ms: 4.294323
+  type: 'test'
+  ...
+# Subtest: reader profile derivation never erases explicit conflicting evidence
+ok 122 - reader profile derivation never erases explicit conflicting evidence
+  ---
+  duration_ms: 0.878102
+  type: 'test'
+  ...
+# Subtest: strict bounded values, ordering and non-normalization
+ok 123 - strict bounded values, ordering and non-normalization
+  ---
+  duration_ms: 3.672085
+  type: 'test'
+  ...
+# Subtest: legacy absent, explicit null, constants and closed endpoint versus half-open samples
+ok 124 - legacy absent, explicit null, constants and closed endpoint versus half-open samples
+  ---
+  duration_ms: 1.186287
+  type: 'test'
+  ...
+# Subtest: immutable evaluator and edit fields preserve presence without aliasing
+ok 125 - immutable evaluator and edit fields preserve presence without aliasing
+  ---
+  duration_ms: 2.326297
+  type: 'test'
+  ...
+# Subtest: all interior frame cuts preserve exact anchors and numerical curve including held regions
+ok 126 - all interior frame cuts preserve exact anchors and numerical curve including held regions
+  ---
+  duration_ms: 26.179933
+  type: 'test'
+  ...
+# Subtest: fade times automation is quadratic, not a combined endpoint ramp
+ok 127 - fade times automation is quadratic, not a combined endpoint ramp
+  ---
+  duration_ms: 0.88618
+  type: 'test'
+  ...
+# Subtest: serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission
+ok 128 - serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission
+  ---
+  duration_ms: 0.44596
+  type: 'test'
+  ...
+# Subtest: typed record extraction preserves absent/null/value, owner binding and detached bytes
+ok 129 - typed record extraction preserves absent/null/value, owner binding and detached bytes
+  ---
+  duration_ms: 21.325726
+  type: 'test'
+  ...
+# Subtest: Unicode ES2022 predicate is equivalent for every UTF-16 code unit and pair boundaries
+ok 130 - Unicode ES2022 predicate is equivalent for every UTF-16 code unit and pair boundaries
+  ---
+  duration_ms: 65.368912
+  type: 'test'
+  ...
+# Subtest: decoded JSON retains negative-zero, unknown-key, typed-array and profile refusal
+ok 131 - decoded JSON retains negative-zero, unknown-key, typed-array and profile refusal
+  ---
+  duration_ms: 16.560468
+  type: 'test'
+  ...
+# Subtest: prototype/descriptor/proxy and array-cap invariant matches without effects
+ok 132 - prototype/descriptor/proxy and array-cap invariant matches without effects
+  ---
+  duration_ms: 6.16302
+  type: 'test'
+  ...
+# Subtest: complete timeline aggregate retains exact 256KiB boundary
+ok 133 - complete timeline aggregate retains exact 256KiB boundary
+  ---
+  duration_ms: 548.945543
+  type: 'test'
+  ...
+# Subtest: envelope TypeScript migrations preserve the complete emitted runtime
+ok 134 - envelope TypeScript migrations preserve the complete emitted runtime
+  ---
+  duration_ms: 643.529141
+  type: 'test'
+  ...
+# Subtest: actual database startup supplies exact production timeline and receipt predicates
+ok 135 - actual database startup supplies exact production timeline and receipt predicates
+  ---
+  duration_ms: 10.708847
+  type: 'test'
+  ...
+# Subtest: actual startup capability validates the complete catalog, not only markers
+ok 136 - actual startup capability validates the complete catalog, not only markers
+  ---
+  duration_ms: 1053.092614
+  type: 'test'
+  ...
+# Subtest: unassembled typed admission fails closed before reads or migration writes
+ok 137 - unassembled typed admission fails closed before reads or migration writes
+  ---
+  duration_ms: 3.669003
+  type: 'test'
+  ...
+# Subtest: missing or malformed dependencies cannot install a permissive runtime
+ok 138 - missing or malformed dependencies cannot install a permissive runtime
+  ---
+  duration_ms: 0.690508
+  type: 'test'
+  ...
+# Subtest: unassembled historical scans stay usable, but reject envelope evidence
+ok 139 - unassembled historical scans stay usable, but reject envelope evidence
+  ---
+  duration_ms: 1.778054
+  type: 'test'
+  ...
+# Subtest: audioRole timeline_requests envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 140 - audioRole timeline_requests envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 1160.049999
+  type: 'test'
+  ...
+# Subtest: audioRole timeline_requests envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 141 - audioRole timeline_requests envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 550.853793
+  type: 'test'
+  ...
+# Subtest: audioRole exports envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 142 - audioRole exports envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 693.397523
+  type: 'test'
+  ...
+# Subtest: audioRole exports envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 143 - audioRole exports envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 659.945069
+  type: 'test'
+  ...
+# Subtest: colour timeline_requests envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 144 - colour timeline_requests envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 668.70854
+  type: 'test'
+  ...
+# Subtest: colour timeline_requests envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 145 - colour timeline_requests envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 761.162666
+  type: 'test'
+  ...
+# Subtest: colour exports envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 146 - colour exports envelope=false: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 633.727007
+  type: 'test'
+  ...
+# Subtest: colour exports envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+ok 147 - colour exports envelope=true: frozen40/41 ignores current cache MIME/hash, retains raw bytes
+  ---
+  duration_ms: 608.322262
+  type: 'test'
+  ...
+# Subtest: audioRole: exact legacy38/39 outcomes and source38-to40 preflight remain unchanged
+ok 148 - audioRole: exact legacy38/39 outcomes and source38-to40 preflight remain unchanged
+  ---
+  duration_ms: 1483.326568
+  type: 'test'
+  ...
+# Subtest: colour: exact legacy38/39 outcomes and source38-to40 preflight remain unchanged
+ok 149 - colour: exact legacy38/39 outcomes and source38-to40 preflight remain unchanged
+  ---
+  duration_ms: 1627.826193
+  type: 'test'
+  ...
+# Subtest: audioRole: reject changed snapshot project
+ok 150 - audioRole: reject changed snapshot project
+  ---
+  duration_ms: 521.847435
+  type: 'test'
+  ...
+# Subtest: audioRole: reject changed frozen asset owner
+ok 151 - audioRole: reject changed frozen asset owner
+  ---
+  duration_ms: 374.983525
+  type: 'test'
+  ...
+# Subtest: audioRole: reject changed frozen asset id
+ok 152 - audioRole: reject changed frozen asset id
+  ---
+  duration_ms: 557.984318
+  type: 'test'
+  ...
+# Subtest: audioRole: reject invalid frozen source hash
+ok 153 - audioRole: reject invalid frozen source hash
+  ---
+  duration_ms: 375.67147
+  type: 'test'
+  ...
+# Subtest: audioRole: reject changed envelope profile
+ok 154 - audioRole: reject changed envelope profile
+  ---
+  duration_ms: 485.8016
+  type: 'test'
+  ...
+# Subtest: audioRole: reject changed envelope point
+ok 155 - audioRole: reject changed envelope point
+  ---
+  duration_ms: 380.313777
+  type: 'test'
+  ...
+# Subtest: audioRole: reject missing asset metadata
+ok 156 - audioRole: reject missing asset metadata
+  ---
+  duration_ms: 418.979937
+  type: 'test'
+  ...
+# Subtest: audioRole: reject duplicate frozen asset
+ok 157 - audioRole: reject duplicate frozen asset
+  ---
+  duration_ms: 474.570382
+  type: 'test'
+  ...
+# Subtest: audioRole: reject unreferenced frozen asset
+ok 158 - audioRole: reject unreferenced frozen asset
+  ---
+  duration_ms: 373.339375
+  type: 'test'
+  ...
+# Subtest: audioRole: reject forged snapshot extra key
+ok 159 - audioRole: reject forged snapshot extra key
+  ---
+  duration_ms: 423.966334
+  type: 'test'
+  ...
+# Subtest: audioRole: reject forged receipt extra key
+ok 160 - audioRole: reject forged receipt extra key
+  ---
+  duration_ms: 378.845448
+  type: 'test'
+  ...
+# Subtest: audioRole: reject partial snapshot wrapper
+ok 161 - audioRole: reject partial snapshot wrapper
+  ---
+  duration_ms: 390.087877
+  type: 'test'
+  ...
+# Subtest: audioRole: reject partial render wrapper
+ok 162 - audioRole: reject partial render wrapper
+  ---
+  duration_ms: 459.442155
+  type: 'test'
+  ...
+# Subtest: audioRole: reject wrong request identity
+ok 163 - audioRole: reject wrong request identity
+  ---
+  duration_ms: 379.720424
+  type: 'test'
+  ...
+# Subtest: audioRole: reject wrong export identity
+ok 164 - audioRole: reject wrong export identity
+  ---
+  duration_ms: 386.491891
+  type: 'test'
+  ...
+# Subtest: colour: reject changed snapshot project
+ok 165 - colour: reject changed snapshot project
+  ---
+  duration_ms: 419.510056
+  type: 'test'
+  ...
+# Subtest: colour: reject changed frozen asset owner
+ok 166 - colour: reject changed frozen asset owner
+  ---
+  duration_ms: 373.317606
+  type: 'test'
+  ...
+# Subtest: colour: reject changed frozen asset id
+ok 167 - colour: reject changed frozen asset id
+  ---
+  duration_ms: 451.155228
+  type: 'test'
+  ...
+# Subtest: colour: reject invalid frozen source hash
+ok 168 - colour: reject invalid frozen source hash
+  ---
+  duration_ms: 383.32387
+  type: 'test'
+  ...
+# Subtest: colour: reject changed envelope profile
+ok 169 - colour: reject changed envelope profile
+  ---
+  duration_ms: 443.012943
+  type: 'test'
+  ...
+# Subtest: colour: reject changed envelope point
+ok 170 - colour: reject changed envelope point
+  ---
+  duration_ms: 387.364003
+  type: 'test'
+  ...
+# Subtest: colour: reject missing asset metadata
+ok 171 - colour: reject missing asset metadata
+  ---
+  duration_ms: 343.631516
+  type: 'test'
+  ...
+# Subtest: colour: reject duplicate frozen asset
+ok 172 - colour: reject duplicate frozen asset
+  ---
+  duration_ms: 358.272483
+  type: 'test'
+  ...
+# Subtest: colour: reject unreferenced frozen asset
+ok 173 - colour: reject unreferenced frozen asset
+  ---
+  duration_ms: 456.1565
+  type: 'test'
+  ...
+# Subtest: colour: reject forged snapshot extra key
+ok 174 - colour: reject forged snapshot extra key
+  ---
+  duration_ms: 500.18726
+  type: 'test'
+  ...
+# Subtest: colour: reject forged receipt extra key
+ok 175 - colour: reject forged receipt extra key
+  ---
+  duration_ms: 418.461281
+  type: 'test'
+  ...
+# Subtest: colour: reject partial snapshot wrapper
+ok 176 - colour: reject partial snapshot wrapper
+  ---
+  duration_ms: 413.868547
+  type: 'test'
+  ...
+# Subtest: colour: reject partial render wrapper
+ok 177 - colour: reject partial render wrapper
+  ---
+  duration_ms: 303.514174
+  type: 'test'
+  ...
+# Subtest: colour: reject wrong request identity
+ok 178 - colour: reject wrong request identity
+  ---
+  duration_ms: 307.801867
+  type: 'test'
+  ...
+# Subtest: colour: reject wrong export identity
+ok 179 - colour: reject wrong export identity
+  ---
+  duration_ms: 899.527194
+  type: 'test'
+  ...
+# Subtest: audioRole: reject owner without frozen binding escape
+ok 180 - audioRole: reject owner without frozen binding escape
+  ---
+  duration_ms: 589.390088
+  type: 'test'
+  ...
+# Subtest: audioRole: reject missing asset without frozen binding escape
+ok 181 - audioRole: reject missing asset without frozen binding escape
+  ---
+  duration_ms: 367.680892
+  type: 'test'
+  ...
+# Subtest: audioRole: reject role profile without frozen binding escape
+ok 182 - audioRole: reject role profile without frozen binding escape
+  ---
+  duration_ms: 342.773266
+  type: 'test'
+  ...
+# Subtest: audioRole: reject duplicate escaped without frozen binding escape
+ok 183 - audioRole: reject duplicate escaped without frozen binding escape
+  ---
+  duration_ms: 561.068172
+  type: 'test'
+  ...
+# Subtest: audioRole: reject snapshot profile missing without frozen binding escape
+ok 184 - audioRole: reject snapshot profile missing without frozen binding escape
+  ---
+  duration_ms: 499.68148
+  type: 'test'
+  ...
+# Subtest: audioRole: reject history without frozen binding escape
+ok 185 - audioRole: reject history without frozen binding escape
+  ---
+  duration_ms: 541.962842
+  type: 'test'
+  ...
+# Subtest: audioRole: reject timeline without frozen binding escape
+ok 186 - audioRole: reject timeline without frozen binding escape
+  ---
+  duration_ms: 452.053254
+  type: 'test'
+  ...
+# Subtest: colour: reject owner without frozen binding escape
+ok 187 - colour: reject owner without frozen binding escape
+  ---
+  duration_ms: 494.743026
+  type: 'test'
+  ...
+# Subtest: colour: reject missing asset without frozen binding escape
+ok 188 - colour: reject missing asset without frozen binding escape
+  ---
+  duration_ms: 464.891138
+  type: 'test'
+  ...
+# Subtest: colour: reject role profile without frozen binding escape
+ok 189 - colour: reject role profile without frozen binding escape
+  ---
+  duration_ms: 648.78825
+  type: 'test'
+  ...
+# Subtest: colour: reject duplicate escaped without frozen binding escape
+ok 190 - colour: reject duplicate escaped without frozen binding escape
+  ---
+  duration_ms: 573.703151
+  type: 'test'
+  ...
+# Subtest: colour: reject snapshot profile missing without frozen binding escape
+ok 191 - colour: reject snapshot profile missing without frozen binding escape
+  ---
+  duration_ms: 578.471082
+  type: 'test'
+  ...
+# Subtest: colour: reject history without frozen binding escape
+ok 192 - colour: reject history without frozen binding escape
+  ---
+  duration_ms: 535.443628
+  type: 'test'
+  ...
+# Subtest: colour: reject timeline without frozen binding escape
+ok 193 - colour: reject timeline without frozen binding escape
+  ---
+  duration_ms: 392.066031
+  type: 'test'
+  ...
+# Subtest: colour: frozen hash/source plan consistency also covers hidden clips
+ok 194 - colour: frozen hash/source plan consistency also covers hidden clips
+  ---
+  duration_ms: 776.814763
+  type: 'test'
+  ...
+# Subtest: legacy no-envelope receipt retains 4MiB whole-shape budget, envelope path retains 256KiB snapshot cap
+ok 195 - legacy no-envelope receipt retains 4MiB whole-shape budget, envelope path retains 256KiB snapshot cap
+  ---
+  duration_ms: 804.486085
+  type: 'test'
+  ...
+# Subtest: frozen ownership binding never reads current asset MIME/hash JSON
+ok 196 - frozen ownership binding never reads current asset MIME/hash JSON
+  ---
+  duration_ms: 359.160159
+  type: 'test'
+  ...
+# Subtest: frozen colour LUT still enforces retained valid resource identity
+ok 197 - frozen colour LUT still enforces retained valid resource identity
+  ---
+  duration_ms: 395.528642
+  type: 'test'
+  ...
+# Subtest: frozen colour LUT still enforces retained missing resource identity
+ok 198 - frozen colour LUT still enforces retained missing resource identity
+  ---
+  duration_ms: 507.129568
+  type: 'test'
+  ...
+# Subtest: frozen colour LUT still enforces retained owner resource identity
+ok 199 - frozen colour LUT still enforces retained owner resource identity
+  ---
+  duration_ms: 437.239774
+  type: 'test'
+  ...
+# Subtest: frozen colour LUT still enforces retained hash resource identity
+ok 200 - frozen colour LUT still enforces retained hash resource identity
+  ---
+  duration_ms: 402.880912
+  type: 'test'
+  ...
+# Subtest: frozen colour LUT still enforces retained profile resource identity
+ok 201 - frozen colour LUT still enforces retained profile resource identity
+  ---
+  duration_ms: 670.640622
+  type: 'test'
+  ...
+# Subtest: audioRole: export row owner bad cannot bypass frozen ownership
+ok 202 - audioRole: export row owner bad cannot bypass frozen ownership
+  ---
+  duration_ms: 929.935658
+  type: 'test'
+  ...
+# Subtest: audioRole: export row owner 00000000-0000-4000-8000-000000000009 cannot bypass frozen ownership
+ok 203 - audioRole: export row owner 00000000-0000-4000-8000-000000000009 cannot bypass frozen ownership
+  ---
+  duration_ms: 754.100899
+  type: 'test'
+  ...
+# Subtest: audioRole: export row owner blob-owner cannot bypass frozen ownership
+ok 204 - audioRole: export row owner blob-owner cannot bypass frozen ownership
+  ---
+  duration_ms: 773.549059
+  type: 'test'
+  ...
+# Subtest: colour: export row owner bad cannot bypass frozen ownership
+ok 205 - colour: export row owner bad cannot bypass frozen ownership
+  ---
+  duration_ms: 441.678899
+  type: 'test'
+  ...
+# Subtest: colour: export row owner 00000000-0000-4000-8000-000000000009 cannot bypass frozen ownership
+ok 206 - colour: export row owner 00000000-0000-4000-8000-000000000009 cannot bypass frozen ownership
+  ---
+  duration_ms: 382.427152
+  type: 'test'
+  ...
+# Subtest: colour: export row owner blob-owner cannot bypass frozen ownership
+ok 207 - colour: export row owner blob-owner cannot bypass frozen ownership
+  ---
+  duration_ms: 318.975067
+  type: 'test'
+  ...
+# Subtest: audioRole: decoded frozen envelope rejects negative-zero without writes
+ok 208 - audioRole: decoded frozen envelope rejects negative-zero without writes
+  ---
+  duration_ms: 406.261009
+  type: 'test'
+  ...
+# Subtest: audioRole: decoded frozen envelope rejects lone-high without writes
+ok 209 - audioRole: decoded frozen envelope rejects lone-high without writes
+  ---
+  duration_ms: 369.156939
+  type: 'test'
+  ...
+# Subtest: audioRole: decoded frozen envelope rejects lone-low without writes
+ok 210 - audioRole: decoded frozen envelope rejects lone-low without writes
+  ---
+  duration_ms: 356.710374
+  type: 'test'
+  ...
+# Subtest: colour: decoded frozen envelope rejects negative-zero without writes
+ok 211 - colour: decoded frozen envelope rejects negative-zero without writes
+  ---
+  duration_ms: 367.529691
+  type: 'test'
+  ...
+# Subtest: colour: decoded frozen envelope rejects lone-high without writes
+ok 212 - colour: decoded frozen envelope rejects lone-high without writes
+  ---
+  duration_ms: 346.085067
+  type: 'test'
+  ...
+# Subtest: colour: decoded frozen envelope rejects lone-low without writes
+ok 213 - colour: decoded frozen envelope rejects lone-low without writes
+  ---
+  duration_ms: 375.057381
+  type: 'test'
+  ...
+# Subtest: dormant38 to40 is marker-only and preserves integer task sequence storage
+ok 214 - dormant38 to40 is marker-only and preserves integer task sequence storage
+  ---
+  duration_ms: 1062.52259
+  type: 'test'
+  ...
+# Subtest: dormant38 to40 is marker-only and preserves real task sequence storage
+ok 215 - dormant38 to40 is marker-only and preserves real task sequence storage
+  ---
+  duration_ms: 603.894862
+  type: 'test'
+  ...
+# Subtest: dormant38 to40 is marker-only and preserves wide integer task sequence storage
+ok 216 - dormant38 to40 is marker-only and preserves wide integer task sequence storage
+  ---
+  duration_ms: 405.581944
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38
+ok 217 - ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38
+  ---
+  duration_ms: 296.142261
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13
+ok 218 - ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13
+  ---
+  duration_ms: 289.870598
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39)
+ok 219 - ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39)
+  ---
+  duration_ms: 332.212752
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41)
+ok 220 - ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41)
+  ---
+  duration_ms: 293.85174
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999)
+ok 221 - ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999)
+  ---
+  duration_ms: 449.043207
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited immutable_timeline_responses without repairs
+ok 222 - ordinary40 refuses missing inherited immutable_timeline_responses without repairs
+  ---
+  duration_ms: 426.605089
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited immutable_timeline_history without repairs
+ok 223 - ordinary40 refuses missing inherited immutable_timeline_history without repairs
+  ---
+  duration_ms: 309.941102
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs
+ok 224 - ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs
+  ---
+  duration_ms: 294.73555
+  type: 'test'
+  ...
+# Subtest: ordinary40 refuses missing inherited agent_chat_one_active without repairs
+ok 225 - ordinary40 refuses missing inherited agent_chat_one_active without repairs
+  ---
+  duration_ms: 293.189021
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null}
+ok 226 - ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null}
+  ---
+  duration_ms: 359.834948
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volume\\u0045nvelope":null}
+ok 227 - ordinary38 positive envelope evidence is rejected before marker writes: {"volume\\u0045nvelope":null}
+  ---
+  duration_ms: 392.631204
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0}
+ok 228 - ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0}
+  ---
+  duration_ms: 591.145026
+  type: 'test'
+  ...
+# Subtest: ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":
+ok 229 - ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":
+  ---
+  duration_ms: 351.534777
+  type: 'test'
+  ...
+# Subtest: ordinary40 interruption after marker insertion rolls back without touching prior bytes
+ok 230 - ordinary40 interruption after marker insertion rolls back without touching prior bytes
+  ---
+  duration_ms: 388.642282
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects bounded blob task sequence projection
+ok 231 - ordinary40 rejects bounded blob task sequence projection
+  ---
+  duration_ms: 833.595961
+  type: 'test'
+  ...
+# Subtest: ordinary40 rejects bounded text task sequence projection
+ok 232 - ordinary40 rejects bounded text task sequence projection
+  ---
+  duration_ms: 857.787539
+  type: 'test'
+  ...
+# Subtest: ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes
+ok 233 - ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes
+  ---
+  duration_ms: 2332.161604
+  type: 'test'
+  ...
+# Subtest: ordinary40 and exact restored41 preserve null timeline/history/receipt shapes
+ok 234 - ordinary40 and exact restored41 preserve null timeline/history/receipt shapes
+  ---
+  duration_ms: 1313.376227
+  type: 'test'
+  ...
+# Subtest: ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes
+ok 235 - ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes
+  ---
+  duration_ms: 837.328758
+  type: 'test'
+  ...
+# Subtest: restored41 held tasks, receipt vacancy and execution epochs remain isolated
+ok 236 - restored41 held tasks, receipt vacancy and execution epochs remain isolated
+  ---
+  duration_ms: 492.530238
+  type: 'test'
+  ...
+# Subtest: restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted
+ok 237 - restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted
+  ---
+  duration_ms: 1989.396037
+  type: 'test'
+  ...
+# Subtest: restored41 rejects forged metadata pair sourceSchema=38
+ok 238 - restored41 rejects forged metadata pair sourceSchema=38
+  ---
+  duration_ms: 761.339038
+  type: 'test'
+  ...
+# Subtest: restored41 rejects forged metadata pair profile='restored-local-v8'
+ok 239 - restored41 rejects forged metadata pair profile='restored-local-v8'
+  ---
+  duration_ms: 799.422802
+  type: 'test'
+  ...
+# Subtest: ordinary40 and restored41 retain inherited roles, annotation and image/colour admission
+ok 240 - ordinary40 and restored41 retain inherited roles, annotation and image/colour admission
+  ---
+  duration_ms: 574.011047
+  type: 'test'
+  ...
+# Subtest: ordinary40 invalid inherited feature data fails without repair
+ok 241 - ordinary40 invalid inherited feature data fails without repair
+  ---
+  duration_ms: 347.368763
+  type: 'test'
+  ...
+# Subtest: ordinary40 invalid inherited feature data fails without repair
+ok 242 - ordinary40 invalid inherited feature data fails without repair
+  ---
+  duration_ms: 340.938367
+  type: 'test'
+  ...
+# Subtest: ordinary40 invalid inherited feature data fails without repair
+ok 243 - ordinary40 invalid inherited feature data fails without repair
+  ---
+  duration_ms: 338.245479
+  type: 'test'
+  ...
+# Subtest: ordinary40 and restored41 preserve every historical task state and raw non-input storage class
+ok 244 - ordinary40 and restored41 preserve every historical task state and raw non-input storage class
+  ---
+  duration_ms: 491.716169
+  type: 'test'
+  ...
+# Subtest: supported40 malformed positive evidence rejects restoration before any DDL or capture
+ok 245 - supported40 malformed positive evidence rejects restoration before any DDL or capture
+  ---
+  duration_ms: 373.694963
+  type: 'test'
+  ...
+# Subtest: all retained evidence families refuse old profiles including explicit null, without writes
+ok 246 - all retained evidence families refuse old profiles including explicit null, without writes
+  ---
+  duration_ms: 27.490365
+  type: 'test'
+  ...
+# Subtest: complete current/history/receipt rows and exact partial intents admit in compatible profiles
+ok 247 - complete current/history/receipt rows and exact partial intents admit in compatible profiles
+  ---
+  duration_ms: 30.400182
+  type: 'test'
+  ...
+# Subtest: historical update survives missing current clip, Undo duration changes and missing source
+ok 248 - historical update survives missing current clip, Undo duration changes and missing source
+  ---
+  duration_ms: 8.257218
+  type: 'test'
+  ...
+# Subtest: historical intent lexical bounds remain strict without generic array relaxation
+ok 249 - historical intent lexical bounds remain strict without generic array relaxation
+  ---
+  duration_ms: 20.294591
+  type: 'test'
+  ...
+# Subtest: frozen snapshots use their own metadata and ownership, never current cache
+ok 250 - frozen snapshots use their own metadata and ownership, never current cache
+  ---
+  duration_ms: 5.111447
+  type: 'test'
+  ...
+# Subtest: snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives
+ok 251 - snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives
+  ---
+  duration_ms: 9.866362
+  type: 'test'
+  ...
+# Subtest: explicit null snapshot has no active profile and preserves original shape
+ok 252 - explicit null snapshot has no active profile and preserves original shape
+  ---
+  duration_ms: 2.734761
+  type: 'test'
+  ...
+# Subtest: frozen source cannot be an image, missing, duplicate or out of source bounds
+ok 253 - frozen source cannot be an image, missing, duplicate or out of source bounds
+  ---
+  duration_ms: 6.826638
+  type: 'test'
+  ...
+# Subtest: escaped and duplicate keys cannot hide evidence before parsing, including nested arrays
+ok 254 - escaped and duplicate keys cannot hide evidence before parsing, including nested arrays
+  ---
+  duration_ms: 19.57354
+  type: 'test'
+  ...
+# Subtest: unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses
+ok 255 - unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses
+  ---
+  duration_ms: 3.738923
+  type: 'test'
+  ...
+# Subtest: oversized cells and non-text storage are never parsed, schema views reject
+ok 256 - oversized cells and non-text storage are never parsed, schema views reject
+  ---
+  duration_ms: 31.145104
+  type: 'test'
+  ...
+# Subtest: depth/node and complete snapshot byte guards remain bounded
+ok 257 - depth/node and complete snapshot byte guards remain bounded
+  ---
+  duration_ms: 79.101828
+  type: 'test'
+  ...
+# Subtest: processing digest/profile and orphan declarations are positive evidence, never candidate protocol
+ok 258 - processing digest/profile and orphan declarations are positive evidence, never candidate protocol
+  ---
+  duration_ms: 16.15769
+  type: 'test'
+  ...
+# Subtest: all retained task errors are inspected and unknown envelope error namespace is not admitted
+ok 259 - all retained task errors are inspected and unknown envelope error namespace is not admitted
+  ---
+  duration_ms: 5.175429
+  type: 'test'
+  ...
+# Subtest: actual production full/isolated processing reports admit their exact profile and digest identities
+ok 260 - actual production full/isolated processing reports admit their exact profile and digest identities
+  ---
+  duration_ms: 21.109833
+  type: 'test'
+  ...
+# Subtest: incomplete frozen wrappers cannot fall back to current source cache
+ok 261 - incomplete frozen wrappers cannot fall back to current source cache
+  ---
+  duration_ms: 3.55057
+  type: 'test'
+  ...
+# Subtest: four concrete mutation errors are admitted, never unknown namespace variants
+ok 262 - four concrete mutation errors are admitted, never unknown namespace variants
+  ---
+  duration_ms: 10.829675
+  type: 'test'
+  ...
+# Subtest: a scalar loudness label cannot bypass frozen wrapper validation
+ok 263 - a scalar loudness label cannot bypass frozen wrapper validation
+  ---
+  duration_ms: 7.449738
+  type: 'test'
+  ...
+# Subtest: scalar loudness wrapper is exact and binds independently retained owner/request/operation
+ok 264 - scalar loudness wrapper is exact and binds independently retained owner/request/operation
+  ---
+  duration_ms: 25.679891
+  type: 'test'
+  ...
+# Subtest: intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization
+ok 265 - intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization
+  ---
+  duration_ms: 19.21764
+  type: 'test'
+  ...
+1..265
+# tests 265
+# suites 0
+# pass 265
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 226327.508424

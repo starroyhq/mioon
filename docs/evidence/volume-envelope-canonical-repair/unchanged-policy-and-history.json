@@ -1,0 +1,22 @@
+{
+  "config/typecheck-legacy-sources.json": "962a5e15f68c1f2c2f4d2971b2a252d280568fcd6c1684126a0f76d233eb47e5",
+  "config/typecheck-legacy-typed-exclusions.json": "032d0ed0cd5ae29b3f813e7d6d15ee6f72a33a595748ca250dc27f2b5c821c81",
+  "tests/typecheck/tsconfig.foundation.json": "21232e029dfb3ead0ec54cddfb3cf01958a4d850b05eb35f13d1c692ba808d04",
+  "tests/typecheck/tsconfig.browser.json": "371dc2a6d47b9aa6eadd7683633499b7e2a2f9cee23d88acf5713da40ab1fa7c",
+  "pnpm-lock.yaml": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+  "package.json": "049b21513332b8c2da1a5ba3f241b3705631b8b06c44f8e0727de11e9de36b45",
+  "packages/business/src/workspace-restore-schema-v31.ts": "0932065643b57395d310792236846357c5927bbc6e5ef596b07ce9caff551764",
+  "packages/business/src/workspace-schema-v26.ts": "3731061a64f2ce71ca5deddda9d8972e73e5e6d3a2743d5923f60bd4af9a41cd",
+  "packages/business/src/workspace-restore-schema-v27.ts": "49fee1a9b0f891e04f7dc789c5793cfbafba843c728bb8f10bc30529a0c6dc35",
+  "packages/business/src/workspace-schema-v38.ts": "766276a823898296ff03478e15566a45170c6f4bede272e26022903b77dd2920",
+  "packages/business/src/workspace-schema-v30.ts": "54cea43b7c6c9ab2cadd316c463794036c40c0bf98b8693b03719bc80c3e1901",
+  "packages/business/src/workspace-schema-v34.ts": "2da821c424cf3c0e75587b0c091dd9851b46374e0f32a3a643feb8cd19b670ff",
+  "packages/business/src/workspace-restore-schema-v39.ts": "2dc569e1224b0083abe4ea75fd248d51588080b71b34bf71c7c0a2da71de6fc8",
+  "packages/business/src/workspace-schema-v32.ts": "155743d3ccdc29489efd612ff27e68b5dd94bdeff0ec8d4b765a41e914ef70a9",
+  "packages/business/src/workspace-restore-schema-v35.ts": "a8d7f889d593b8d3dd97e424e599c60697de52f7cc2c73fb15611e88797ecaee",
+  "packages/business/src/workspace-restore-schema-v29.ts": "07823b4fdf6ffa570e3e1cf2caf3edcd20db37ee6649f134e56e6067ad595a31",
+  "packages/business/src/workspace-restore-schema-v37.ts": "4f331ff1d5962dc11a9cc3d2bb34b07eaa656f5862195e7244451a0758ccf2dc",
+  "packages/business/src/workspace-schema-v28.ts": "c8696ae2ee13ccae8a17ad66417081b9f5e479e79dcf9fdd0b108f4aa01248ed",
+  "packages/business/src/workspace-restore-schema-v33.ts": "81feb41eeb6d2853bb3f8a905f4cc7dd57aaf7fec4317374bba4499ddef054da",
+  "packages/business/src/workspace-schema-v36.ts": "bd3b84c58cbc5c5c60f7cd0e6a250d6c63874cbed4349f753e7a9cf26e120e71"
+}

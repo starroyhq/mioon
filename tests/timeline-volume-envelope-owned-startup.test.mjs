@@ -7,7 +7,7 @@ import path from 'node:path';
 import {openStore,installCurrentWorkspaceRestoreSchema,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
 import {createServices,hash} from '../packages/business/src/services.mjs';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {hasRequestNotAppliedProof} from '../packages/contracts/src/index.mjs';
 import {validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
 import {snapshot} from './workspace-schema26-fixtures.mjs';

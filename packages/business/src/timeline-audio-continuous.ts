@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {volumeEnvelopeField, volumeEnvelopeSnapshotFields, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
-import {createVolumeEnvelopeEvaluator} from '../../contracts/src/timeline-volume-envelope.mjs';
+import {createVolumeEnvelopeEvaluator} from '../../contracts/src/timeline-volume-envelope.ts';
 import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {CONTINUOUS_AUDIO_LIMITS as LIMITS, CONTINUOUS_AUDIO_PROFILE,

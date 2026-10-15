@@ -16,7 +16,7 @@ import {createTimelineServices as realTimelineServices} from '../packages/busine
 import * as realRestorePolicy from '../packages/business/src/workspace-restore-policy.mjs';
 import {hash} from '../packages/business/src/services.mjs';
 import {AppError,parse,hasRequestNotAppliedProof} from '../packages/contracts/src/index.mjs';
-import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {admitTimelineVolumeEnvelopeWrite} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 import {rejectTimelineMutation} from '../packages/business/src/timeline-recovery.mjs';
 import {open,snapshot,insert} from './workspace-schema26-fixtures.mjs';

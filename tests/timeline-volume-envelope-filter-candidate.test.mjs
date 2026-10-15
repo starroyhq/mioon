@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileVolumeEnvelopeFilterCandidate as compile,VOLUME_ENVELOPE_FILTER_BYTE_CAP} from '../packages/business/src/timeline-volume-envelope-filter-candidate.mjs';
-import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {compileVolumeEnvelopeFilterCandidate as compile,VOLUME_ENVELOPE_FILTER_BYTE_CAP} from '../packages/business/src/timeline-volume-envelope-filter-candidate.ts';
+import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 const clip=(points,durationFrames=18000)=>({durationFrames,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:points.map(([frame,multiplier])=>({frame,multiplier}))}});
 
 // Independent restricted grammar reader/interpreter, not JS eval and not FFmpeg.

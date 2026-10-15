@@ -7,7 +7,7 @@ import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
 import {validateWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
 import {initializeWorkspaceSchema40,validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
 import {hash} from '../packages/business/src/services.mjs';
-import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.mjs';
+import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.ts';
 const id='11111111-1111-4111-8111-111111111111';
 const points=()=>[{frame:0,multiplier:1},{frame:20,multiplier:.5}];
 const add=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request',assetId:id,trackId:id,startFrame:0,durationFrames:20,volumeEnvelope:{profileId,points:points()}});
