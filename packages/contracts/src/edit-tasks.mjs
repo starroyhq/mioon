@@ -40,7 +40,8 @@ export function isEditTask(value) {
       uuid(value.id) && uuid(value.projectId) && DURABLE_EDIT_OPERATIONS.includes(value.operation) &&
       object(value.input) && schemas[value.operation].safeParse(value.input).success && value.input.projectId === value.projectId &&
       value.requestId === value.input.requestId && typeof value.requestId === 'string' && value.requestId.length >= 8 && value.requestId.length <= 200 &&
-      encoder.encode(JSON.stringify(value.input)).byteLength <= EDIT_TASK_LIMITS.inputBytes && digest(value.digest) && value.lane === editTaskLane(value.operation) &&
+      encoder.encode(JSON.stringify(value.input)).byteLength <= EDIT_TASK_LIMITS.inputBytes &&
+      encoder.encode(JSON.stringify(value)).byteLength <= EDIT_TASK_LIMITS.rowBytes && digest(value.digest) && value.lane === editTaskLane(value.operation) &&
       EDIT_TASK_STATUSES.includes(value.status) && Number.isSafeInteger(value.revision) && value.revision > 0 &&
       timestamp(value.createdAt) && timestamp(value.updatedAt) && typeof value.acknowledged === 'boolean' &&
       (!value.acknowledged || ['applied', 'not_applied'].includes(value.status)) && ['new', 'legacy_session'].includes(value.origin) &&

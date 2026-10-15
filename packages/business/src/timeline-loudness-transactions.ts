@@ -16,6 +16,7 @@ interface Dependencies {
   snapshot(timeline:Timeline):unknown;
   putTimeline(timeline:Timeline):void;
   admitTimelineImageResponse(timeline:Timeline):void;
+  admitTimelineVolumeEnvelopeWrite(timeline:Timeline,options:{before:unknown;after:unknown;response:unknown}):void;
   recordEdit(operation:typeof TIMELINE_LOUDNESS_APPLY_OPERATION,timeline:Timeline,before:unknown):void;
   saveResponse(operation:typeof TIMELINE_LOUDNESS_APPLY_OPERATION,input:TimelineLoudnessApplyInput,requestHash:string,
     response:TimelineLoudnessApplyResponse,boundary:Boundary):TimelineLoudnessApplyResponse;
@@ -86,6 +87,7 @@ export function createTimelineLoudnessTransactions(deps:Dependencies,assertAvail
         deps.admitTimelineImageResponse(timeline);
         const response:TimelineLoudnessApplyResponse={operation:TIMELINE_LOUDNESS_APPLY_OPERATION,requestId:input.requestId,
           timeline,application:admission.application};
+        deps.admitTimelineVolumeEnvelopeWrite(timeline,{before,after:deps.snapshot(timeline),response});
         // Everything above changed only this private JS record. This is the
         // last owner/full-graph/source/deadline fence before the first write.
         admission.finalFence();

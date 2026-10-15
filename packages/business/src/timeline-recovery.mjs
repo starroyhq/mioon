@@ -1,3 +1,4 @@
+import {assertTimelineVolumeEnvelopeWorkspace,hasTimelineVolumeEnvelope,admitTimelineVolumeEnvelopeWrite,TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {timelineImageResponseBudgetIssue} from './timeline-image-budget.ts';
 import {validateTimelineColourBindings} from './timeline-colour-business.ts';
@@ -40,9 +41,14 @@ const definiteRejections=new Set(['AUDIO_ROLE_CLIP_UNSUPPORTED','TIMELINE_IMAGE_
 // A proof is attached only outside the transaction after its rollback. A fresh
 // receipt absence is necessary, but cannot make a post-write or scope failure
 // definite. The caller marks *every* write, including legacy initialization.
-export function rejectTimelineMutation(db,input,error,{receiptAbsent,writesStarted,transactionEntered,callbackFailed,operation}){
+export function rejectTimelineMutation(db,input,error,{receiptAbsent,writesStarted,transactionEntered,callbackFailed,operation,ownedScope=false}){
  // New loudness proofs require its owner-aware adapter's exact post-rollback
  // binding; never fall back to the legacy optional operation/project proof.
+ if(TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES.includes(error?.code)){
+  try{if(typeof ownedScope==='function'&&ownedScope()&&transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&!db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=?').get(input.requestId)&&ownedScope())
+   error.details={...error.details,mutationOutcome:'not_applied',operation,projectId:input.projectId,requestId:input.requestId};}catch{ /* uncertain rollback/ownership never releases a key */ }
+  return;
+ }
  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return;
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
   error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='AUDIO_ROLE_CLIP_UNSUPPORTED'||error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
@@ -84,17 +90,20 @@ export function createTimelineRecoveryBoundary(db,input){
  }
  function validate(timeline){
   assertTimelineAudioRoleWorkspace(db,timeline);
+  assertTimelineVolumeEnvelopeWorkspace(db,timeline);
   const assets=sources(timeline);
   validateSavedTimeline(timeline,{track:(value,id)=>{
    const track=value.tracks.find(track=>track.id===id);
    if(!track)throw new AppError('TRACK_NOT_FOUND','轨道不属于此时间线',404,{trackId:id});return track;
   },asset:(_projectId,id)=>assets.get(id)});
   admitTimelineImageResponse(timeline);
+  admitTimelineVolumeEnvelopeWrite(timeline);
   if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
   return timeline;
  }
  function validateReadonly(timeline){
   assertTimelineAudioRoleWorkspace(db,timeline);
+  assertTimelineVolumeEnvelopeWorkspace(db,timeline);
   if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
   try{const checked=validate(clone(timeline));if(checked.durationFrames!==timeline.durationFrames)invalidTimeline();}
   catch(error){if(['TIMELINE_SOURCE_UNAVAILABLE','INSPECTION_BUDGET_EXCEEDED'].includes(error.code))throw error;invalidTimeline();}
@@ -109,6 +118,7 @@ export function createTimelineRecoveryBoundary(db,input){
   let timeline;try{timeline=JSON.parse(row.data);}catch{unavailable();}
   if(!object(timeline)||!uuid(row.id)||row.id!==timeline.id||row.projectId!==input.projectId||timeline.projectId!==input.projectId)unavailable();
   assertTimelineAudioRoleWorkspace(db,timeline);
+  assertTimelineVolumeEnvelopeWorkspace(db,timeline);
   if(sourceSemantics)return validateReadonly(timeline);
   // Historical render acknowledgements retain their own frozen media metadata.
   // Current structure and source ownership remain mandatory even when later
@@ -131,13 +141,14 @@ export function createTimelineRecoveryBoundary(db,input){
  function restored(timeline,text){
   let saved;try{saved=JSON.parse(text);}catch{invalidTimeline();}
   const result=restoreTimelineEditableSnapshot(timeline,saved);
-  if(timelineImageResponseBudgetIssue(result,TIMELINE_RESPONSE_BYTES)){
+  if(timelineImageResponseBudgetIssue(result,TIMELINE_RESPONSE_BYTES)||hasTimelineVolumeEnvelope(result)&&Buffer.byteLength(JSON.stringify(result))>TIMELINE_RESPONSE_BYTES){
    // History omits revision/timestamps. First check its strict structure and
    // source ownership in the smallest constructor envelope, then distinguish
    // growth caused by today's revision from malformed stored editable data.
    // This projection is verification-only: it is never returned or persisted.
    validateReadonly({...result,revision:1,updatedAt:timeline.createdAt});
    admitTimelineImageResponse(result);
+   admitTimelineVolumeEnvelopeWrite(result);
   }
   validateReadonly(result);return result;
  }
@@ -152,6 +163,7 @@ export function createTimelineRecoveryBoundary(db,input){
  }
  function responseSources(operation,response,{historical=false}={}){
   assertTimelineAudioRoleWorkspace(db,response);
+  assertTimelineVolumeEnvelopeWorkspace(db,response);
   const timeline=operation==='timeline.render'?response.snapshot.timeline:response;
   if(operation==='timeline.render'&&historical){
    // The shared ACK validator checked frame/fade semantics against the frozen

@@ -1,4 +1,4 @@
-/** Pure design slice only. Not exported by the package or admitted by any API.
+/** Pure value/curve algebra shared by bounded contracts and processing.
  * This module establishes no source-audio eligibility or workspace authority. */
 export const VOLUME_ENVELOPE_PROFILE = 'mioon-clip-linear-attenuation-v1';
 export const VOLUME_ENVELOPE_LIMITS = Object.freeze({points:16, frames:18000, samplesPerFrame:1600});

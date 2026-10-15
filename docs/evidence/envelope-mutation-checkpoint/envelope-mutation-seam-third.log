@@ -1,0 +1,39 @@
+(node:13) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:13) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay (4511.793303ms)
+✔ absent/null and split exact interpolation survive history, fades reject atomically (2711.472178ms)
+✔ replacement preserves envelope and rejects incompatible cached audio without probes (1580.871494ms)
+✔ old38 explicit null and mixed-role40 request reject before any state change (1571.47827ms)
+✔ complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently (89.257872ms)
+✔ new rejection proof requires rollback, exact scope, receipt absence and zero writes (555.736433ms)
+✔ unmodified live policy refuses synthetic40 entry without writes (580.170836ms)
+✖ scalar loudness transaction preserves envelope and immutable replay after Undo/removal (1070.605047ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 7
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13799.936728
+
+✖ failing tests:
+
+test at tests/timeline-volume-envelope-mutations.test.mjs:122:1
+✖ scalar loudness transaction preserves envelope and immutable replay after Undo/removal (1070.605047ms)
+  Error: 时间线音量包络不能安全应用。
+      at volumeEnvelopeMutationError (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-volume-envelope-admission.mjs:11:9)
+      at assertTimelineVolumeEnvelopeWorkspace (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-volume-envelope-admission.mjs:29:14)
+      at read (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-recovery.mjs:121:3)
+      at Object.readCurrent (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-recovery.mjs:196:27)
+      at Object.verify (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-loudness-recovery.ts:32:51)
+      at Object.verify (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-recovery.mjs:214:76)
+      at Object.saveResponse (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline.mjs?synthetic40-tests:102:12)
+      at file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-loudness-transactions.ts:96:21
+      at file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-loudness-transactions.ts:39:38
+      at file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline.mjs?synthetic40-tests:80:12 {
+    code: 'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED',
+    status: 409,
+    details: {}
+  }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {schemas} from '../packages/contracts/src/index.mjs';
 import {isEditTask} from '../packages/contracts/src/edit-tasks.mjs';
 import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.mjs';
@@ -9,10 +10,10 @@ const id='11111111-1111-4111-8111-111111111111', add='timeline.clip.add',update=
 const envelope=()=>({profileId,points:Array.from({length:16},(_,i)=>({frame:i,multiplier:i/15}))});
 const input=()=>({projectId:id,expectedRevision:1,requestId:'request-envelope',assetId:id,trackId:id,name:'clip',startFrame:0,durationFrames:20,sourceInFrame:0,rect:{x:0,y:0,width:1280,height:720},gain:1,fadeInFrames:1,fadeOutFrames:1,audioRole:'human',volumeEnvelope:envelope()});
 const bad=v=>assert.throws(()=>capture(add,v));
-test('complete candidate intent is detached, bounded and historical schema remains frozen',()=>{
+test('complete candidate intent is detached and bounded while live schema admission grants no workspace authority',()=>{
  const v=input(),before=JSON.stringify(v),result=capture(add,v);
  assert.equal(JSON.stringify(v),before);assert.deepEqual(result.input,v);assert.notEqual(result.input.volumeEnvelope.points,v.volumeEnvelope.points);
- assert.ok(result.nodes<=128&&result.depth<=8&&result.bytes<=8192);assert.equal(schemas[add].safeParse(v).success,false);
+ assert.ok(result.nodes<=128&&result.depth<=8&&result.bytes<=8192);assert.equal(schemas[add].safeParse(v).success,true);
  for(const e of [undefined,null,envelope()]){
   const v=input();if(e===undefined)delete v.volumeEnvelope;else v.volumeEnvelope=e;
   const result=capture(add,v).input;assert.equal(Object.hasOwn(result,'volumeEnvelope'),e!==undefined);assert.deepEqual(result,v);
@@ -49,7 +50,11 @@ test('node, depth, unicode and complete bytes fail closed without changing caps'
 });
 test('complete candidate task binds exact intent including presence and all IDs',()=>{
  const v=input();const task={id,projectId:id,operation:add,input:v,requestId:v.requestId,digest:digest(add,v),lane:'timeline:mutation',status:'prepared',revision:1,createdAt:'2026-10-15T00:00:00Z',updatedAt:'2026-10-15T00:00:00Z',acknowledged:false,origin:'new'};
- assert.equal(taskValid(task),true);assert.equal(isEditTask(task),false);
+ assert.equal(taskValid(task),true);assert.equal(isEditTask(task),true);
+ // The structural task guard grants no ledger authority. Live capture hashes
+ // operation/input without the standalone candidate's explicit hash domain.
+ const liveText=JSON.stringify({operation:add,input:v},(_,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
+ assert.notEqual(task.digest,createHash('sha256').update(liveText).digest('hex'));
  for(const change of [{requestId:'another-request'},{projectId:'22222222-2222-4222-8222-222222222222'},{digest:'0'.repeat(64)},{unexpected:1},{input:{...v,volumeEnvelope:null}},{input:{...v,name:'changed'}}])assert.equal(taskValid({...task,...change}),false);
  const absent={...v};delete absent.volumeEnvelope;assert.notEqual(digest(add,absent),digest(add,{...v,volumeEnvelope:null}));
  const reordered=Object.fromEntries(Object.entries(v).reverse());assert.equal(digest(add,v),digest(add,reordered));
@@ -58,7 +63,7 @@ test('complete candidate task binds exact intent including presence and all IDs'
 test('candidate is absent from production root and package export surface',()=>{
  const root=readFileSync(new URL('../packages/contracts/src/index.mjs',import.meta.url),'utf8');
  const pkg=JSON.parse(readFileSync(new URL('../packages/contracts/package.json',import.meta.url),'utf8'));
- assert.equal(root.includes('volume-envelope'),false);assert.equal(JSON.stringify(pkg.exports).includes('volume-envelope'),false);
+ assert.equal(root.includes('timeline-volume-envelope-candidate'),false);assert.equal(JSON.stringify(pkg.exports).includes('volume-envelope'),false);
  assert.equal(Object.keys(schemas).some(k=>/envelope/i.test(k)),false);
 });
 test('maximal complete add and update include the largest current colour declaration within unchanged budgets',t=>{

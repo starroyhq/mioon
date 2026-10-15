@@ -1,16 +1,19 @@
-/** Dormant historical evidence gate. No live dispatch or package export imports
- * this module. Existing row readers still own all non-envelope validation. */
+/** Historical evidence gate for the dormant40/41 profile and fail-closed
+ * mutation admission. No dispatcher activation; old readers own other fields. */
 import type {DatabaseSync} from 'node:sqlite';
 import {validateVolumeEnvelope,VOLUME_ENVELOPE_PROFILE} from '../../contracts/src/timeline-volume-envelope.mjs';
 import {isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 // Historical schemas validate only a projection; no projection is persisted.
 import {schemas} from '../../contracts/src/index.mjs';
+import {createTimelineLoudnessApplyContracts} from '../../contracts/src/timeline-loudness-apply.ts';
+import {isTimelineRecord} from '../../contracts/src/timeline-replacement.mjs';
 import {isTimelineClipLoudnessResponse} from '../../contracts/src/timeline-clip-loudness.ts';
 import {isTimelineMixLoudnessResponse} from '../../contracts/src/timeline-mix-loudness.ts';
 
 const JSON_BYTES=4*1024*1024, SNAPSHOT_BYTES=256*1024;
 const keys=['volumeEnvelope','volumeEnvelopeProfile','volumeEnvelopeProcessingProfile','volumeEnvelopeSha256'];
-const knownCodes=new Set(['INVALID_VOLUME_ENVELOPE','VOLUME_ENVELOPE_SOURCE_UNSUPPORTED']);
+const {isTimelineLoudnessApplyResponse}=createTimelineLoudnessApplyContracts({isTimelineRecord});
+const knownCodes=new Set(['INVALID_VOLUME_ENVELOPE','VOLUME_ENVELOPE_SOURCE_UNSUPPORTED','TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED','TIMELINE_VOLUME_ENVELOPE_LIMIT','TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED']);
 const codeEvidence=(value:unknown)=>typeof value==='string'&&/(?:^|_)VOLUME_ENVELOPE(?:_|$)/.test(value);
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const own=(value:object,key:string)=>Object.hasOwn(value,key);
@@ -60,7 +63,19 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
   if(!object(asset)||!['audio/wav','audio/mpeg','audio/mp4','video/mp4','video/webm'].includes(String(asset.mimeType)))invalid(true);
   if(frozen&&(!Number.isFinite(asset.duration)||Number(asset.duration)<=0||!Number.isSafeInteger(clip.sourceInFrame)||Number(clip.sourceInFrame)<0||Number(clip.sourceInFrame)+Number(clip.durationFrames)>Math.floor(Number(asset.duration)*30+1e-6)))invalid(true);
  }
- function inspect(root:unknown,owner:unknown,table:string,operation:unknown):void {
+ function inspect(root:unknown,owner:unknown,table:string,operation:unknown,request:unknown,bindings:{owner:boolean;operation:boolean;request:boolean}):void {
+  const loudness=table==='timeline_requests'&&operation==='timeline.loudness.apply'||object(root)&&root.operation==='timeline.loudness.apply';
+  if(loudness){
+   // Discriminate the whole root before traversing any nested snapshot. A
+   // malformed labelled ACK must never fall back to a valid render subtree.
+   if(table!=='timeline_requests'||!object(root)||root.operation!=='timeline.loudness.apply'||!object(root.timeline)||!object(root.application))invalid(true);
+   if(bindings.owner&&owner!==root.timeline.projectId||bindings.operation&&operation!==root.operation||bindings.request&&request!==root.requestId)invalid(true);
+   const application=root.application;
+   const input={projectId:root.timeline.projectId,requestId:root.requestId,expectedRevision:application.beforeRevision,
+    candidateDigest:application.candidateDigest,snapshotSha256:application.snapshotSha256,mixProfile:application.mixProfile,measurementProfile:application.measurementProfile,target:application.target};
+   // Payload validation establishes self-consistency, not independent authority.
+   if(!Boolean(isTimelineLoudnessApplyResponse(root,input))||Buffer.byteLength(JSON.stringify(root))>SNAPSHOT_BYTES)invalid(true);
+  }
   const admitted=new WeakMap<object,Set<string>>();
   const mark=(value:object,key:string)=>{let set=admitted.get(value);if(!set)admitted.set(value,set=new Set());set.add(key);};
   const envelope=(value:Record<string,unknown>,partial:boolean)=>{
@@ -116,8 +131,11 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
    const project=parentOwner??value.projectId;
    const frozen=object(value.timeline)&&Array.isArray(value.assets)?value.assets:parentFrozen;
    if(object(value.timeline)&&hasWorkspaceVolumeEnvelopeEvidence(value.timeline)){
-    if(!Array.isArray(value.assets)||!isVolumeEnvelopeProcessingSnapshot(value))invalid(true);
-    if(own(value,'volumeEnvelopeProfile'))mark(value,'volumeEnvelopeProfile');
+    if(value===root&&loudness){ /* Exact complete ACK admitted above. */ }else{
+     if(value.operation==='timeline.loudness.apply')invalid(true);
+     if(!Array.isArray(value.assets)||!isVolumeEnvelopeProcessingSnapshot(value))invalid(true);
+     if(own(value,'volumeEnvelopeProfile'))mark(value,'volumeEnvelopeProfile');
+    }
    }
    if(Array.isArray(value.clips)&&Array.isArray(value.tracks)&&hasWorkspaceVolumeEnvelopeEvidence(value.clips)){
     if(value.clips.length>100||Buffer.byteLength(JSON.stringify(value))>SNAPSHOT_BYTES)invalid(true);
@@ -144,9 +162,10 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
   }
   const owner=columns.has('projectId')?"CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END":'NULL';
   const operation=columns.has('operation')?"CASE WHEN typeof(operation)='text' AND length(CAST(operation AS BLOB))<=128 THEN operation END":'NULL';
+  const request=columns.has('requestId')?"CASE WHEN typeof(requestId)='text' AND length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800 THEN requestId END":'NULL';
   for(const field of fields.filter(field=>columns.has(field))){const column=quote(field);
    const bounded=`typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${JSON_BYTES}`;
-   const query=`SELECT ${owner} AS owner,${operation} AS operation,CASE WHEN ${bounded} THEN json_valid(${column}) ELSE 0 END AS valid,CASE WHEN ${bounded} THEN ${column} END AS value,CASE WHEN ${bounded} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicates FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 WHEN typeof(${column})!='text' THEN 1 WHEN length(CAST(${column} AS BLOB))=0 THEN 0 WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE ${evidenceSql}) ELSE 1 END`;
+   const query=`SELECT ${owner} AS owner,${operation} AS operation,${request} AS request,CASE WHEN ${bounded} THEN json_valid(${column}) ELSE 0 END AS valid,CASE WHEN ${bounded} THEN ${column} END AS value,CASE WHEN ${bounded} THEN CASE WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1) ELSE 1 END ELSE 1 END AS duplicates FROM main.${quote(table)} WHERE CASE WHEN length(CAST(${column} AS BLOB))>${JSON_BYTES} THEN 1 WHEN typeof(${column})!='text' THEN 1 WHEN length(CAST(${column} AS BLOB))=0 THEN 0 WHEN json_valid(${column}) THEN EXISTS(SELECT 1 FROM json_tree(${column}) WHERE ${evidenceSql}) ELSE 1 END`;
    for(const row of db.prepare(query).iterate()){
     // Malformed unrelated legacy JSON stays with its historical reader. Decode
     // member/string tokens, including escaped spellings, before JSON.parse can
@@ -159,7 +178,7 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
     if(!allowed||typeof row.value!=='string'||row.duplicates!==0)invalid(allowed);
     let value:unknown;try{value=JSON.parse(row.value);}catch{invalid(true);}
     // Bound the entire retained shape before any semantic traversal.
-    walk(value,()=>{});inspect(value,row.owner,table,row.operation);
+    walk(value,()=>{});inspect(value,row.owner,table,row.operation,row.request,{owner:columns.has('projectId'),operation:columns.has('operation'),request:columns.has('requestId')});
    }
   }
  }

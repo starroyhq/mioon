@@ -1,0 +1,40 @@
+(node:23) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay (5782.814708ms)
+✔ absent/null and split exact interpolation survive history, fades reject atomically (2208.018307ms)
+✔ replacement preserves envelope and rejects incompatible cached audio without probes (954.641633ms)
+✔ old38 explicit null and mixed-role40 request reject before any state change (638.267947ms)
+✔ complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently (56.805401ms)
+✔ new rejection proof requires rollback, exact scope, receipt absence and zero writes (367.90712ms)
+✔ unmodified live policy refuses synthetic40 entry without writes (442.382127ms)
+✔ scalar loudness transaction preserves envelope and immutable replay after Undo/removal (1569.235095ms)
+✖ 100-clip complete candidate rejects revision growth before timeline/history/redo/receipt writes (1856.669581ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 8
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15137.210806
+
+✖ failing tests:
+
+test at tests/timeline-volume-envelope-mutations.test.mjs:137:1
+✖ 100-clip complete candidate rejects revision growth before timeline/history/redo/receipt writes (1856.669581ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/timeline-volume-envelope-mutations.test.mjs:149:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { code: 'TIMELINE_VOLUME_ENVELOPE_LIMIT' },
+    operator: 'throws',
+    diff: 'simple'
+  }

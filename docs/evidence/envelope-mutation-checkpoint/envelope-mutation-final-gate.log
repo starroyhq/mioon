@@ -1,0 +1,47 @@
+✔ owned old38 prepare refuses both typed paths and explicit null before any durable insert (630.503308ms)
+✔ outer prepare and nested point capture execute zero getter/proxy traps (324.205372ms)
+✔ typed arrays do not relax unrelated paths, malformed Unicode or the 128-node/depth8 budgets (403.375881ms)
+✔ synthetic40 existing coordinator captures both exact points paths and production hashes without dispatch (1047.218356ms)
+✔ real live coordinator construction refuses dormant40 before durable insertion (366.329578ms)
+(node:13) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:13) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay (3276.694238ms)
+✔ absent/null and split exact interpolation survive history, fades reject atomically (1339.035135ms)
+✔ replacement preserves envelope and rejects incompatible cached audio without probes (1140.760871ms)
+✔ old38 explicit null and mixed-role40 request reject before any state change (1035.374681ms)
+✔ complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently (84.675701ms)
+✔ new rejection proof requires rollback, exact scope, receipt absence and zero writes (439.962793ms)
+✔ unmodified live policy refuses synthetic40 entry without writes (607.29754ms)
+✔ scalar loudness transaction preserves envelope and immutable replay after Undo/removal (1142.776114ms)
+✔ 100-clip complete candidate rejects revision growth before timeline/history/redo/receipt writes (1009.074358ms)
+✔ lazy ensure writes never acquire definite rejection proof even after rollback (405.369748ms)
+✔ authentic owned synthetic40 source rejection has exact no-write transaction proof (462.454431ms)
+✔ atomic shrink with replacement keeps requested anchors rather than clamping (1477.693429ms)
+✔ all retained evidence families refuse old profiles including explicit null, without writes (26.129114ms)
+✔ complete current/history/receipt rows and exact partial intents admit in compatible profiles (36.961432ms)
+✔ historical update survives missing current clip, Undo duration changes and missing source (4.060471ms)
+✔ historical intent lexical bounds remain strict without generic array relaxation (31.001304ms)
+✔ frozen snapshots use their own metadata and ownership, never current cache (7.667082ms)
+✔ snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives (13.173125ms)
+✔ explicit null snapshot has no active profile and preserves original shape (3.121524ms)
+✔ frozen source cannot be an image, missing, duplicate or out of source bounds (25.18274ms)
+✔ escaped and duplicate keys cannot hide evidence before parsing, including nested arrays (15.909151ms)
+✔ unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses (3.131871ms)
+✔ oversized cells and non-text storage are never parsed, schema views reject (54.057337ms)
+✔ depth/node and complete snapshot byte guards remain bounded (54.219819ms)
+✔ processing digest/profile and orphan declarations are positive evidence, never candidate protocol (10.419017ms)
+✔ all retained task errors are inspected and unknown envelope error namespace is not admitted (2.665611ms)
+✔ actual production full/isolated processing reports admit their exact profile and digest identities (9.037422ms)
+✔ incomplete frozen wrappers cannot fall back to current source cache (2.208341ms)
+✔ four concrete mutation errors are admitted, never unknown namespace variants (5.004336ms)
+✔ a scalar loudness label cannot bypass frozen wrapper validation (2.783814ms)
+✔ scalar loudness wrapper is exact and binds independently retained owner/request/operation (22.822386ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13777.392272

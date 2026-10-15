@@ -86,3 +86,29 @@ test('actual production full/isolated processing reports admit their exact profi
 test('incomplete frozen wrappers cannot fall back to current source cache',t=>{
  const f=fixture(t,'exports','data');f.put({snapshot:{timeline:timeline()}});bad(()=>f.scan(true));
 });
+test('four concrete mutation errors are admitted, never unknown namespace variants',t=>{
+ for(const code of ['TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED','TIMELINE_VOLUME_ENVELOPE_LIMIT','TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED']){
+  const f=fixture(t,'edit_tasks','input');f.db.prepare('INSERT INTO edit_tasks(errorCode,input) VALUES(?,?)').run(code,'{}');bad(()=>f.scan(false),false);f.scan(true);
+ }
+ const f=fixture(t,'edit_tasks','input');f.db.prepare('INSERT INTO edit_tasks(errorCode,input) VALUES(?,?)').run('TIMELINE_VOLUME_ENVELOPE_LIMIT_FUTURE','{}');bad(()=>f.scan(true));
+});
+test('a scalar loudness label cannot bypass frozen wrapper validation',t=>{
+ for(const application of [undefined,{},null]){const f=fixture(t,'timeline_requests','response');f.put({operation:'timeline.loudness.apply',timeline:timeline(),application});bad(()=>f.scan(true));}
+});
+test('scalar loudness wrapper is exact and binds independently retained owner/request/operation',t=>{
+ const input={projectId:project,expectedRevision:1,requestId:'loudness-envelope-request',mixProfile:'mioon-timeline-postgain-f32-stereo-48k-v1',measurementProfile:'mioon-ffmpeg-ebur128-stereo-v1',target:{integratedLufs:-24,truePeakCeilingDbtp:-1}};
+ const report=readyMixLoudness({...input,mixProfile:readyMixLoudness().mixProfile,measurementProfile:readyMixLoudness().measurementProfile});
+ const value={operation:'timeline.loudness.apply',requestId:input.requestId,timeline:{id:clipId,projectId:project,revision:2,fps:30,width:720,height:1280,
+  tracks:[{id:trackId,name:'Video',kind:'video',orderIndex:0,hidden:false,muted:false}],
+  clips:[{id:clipId,trackId,assetId:asset,name:'Clip',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:report.candidate.gainMultiplier,volumeEnvelope:{profileId:profile,points:[{frame:0,multiplier:.5}]}}],durationFrames:30,createdAt:'2026-10-15T00:00:00Z',updatedAt:'2026-10-15T00:00:00Z'},
+  application:{candidateDigest:'timeline-loudness-candidate-v1:'+ 'a'.repeat(64),snapshotSha256:'b'.repeat(64),mixProfile:report.mixProfile,measurementProfile:report.measurementProfile,target:input.target,beforeRevision:1,afterRevision:2,gainMultiplier:report.candidate.gainMultiplier,gains:[{clipId,assetId:asset,beforeGain:1,afterGain:report.candidate.gainMultiplier}],original:report.original,candidate:report.candidate.measurement,meetsTarget:true,meetsTruePeak:true,marginDb:.5}};
+ for(const mutation of [null,'owner','request','operation','missing','render','null-render-lookalike','missing-label-render-lookalike','nested-snapshot-lookalike']){
+  const f=fixture(t,'timeline_requests','response');f.db.exec('ALTER TABLE timeline_requests ADD COLUMN requestId TEXT');const candidate=structuredClone(value);
+  if(mutation==='missing')delete candidate.application.beforeRevision;
+  if(mutation==='render')candidate.operation='timeline.render';
+  if(mutation?.endsWith('render-lookalike')){candidate.assets=[{id:asset,mimeType:'audio/wav',duration:2}];candidate.volumeEnvelopeProfile=profile;candidate.application=null;if(mutation==='missing-label-render-lookalike')delete candidate.operation;}
+  if(mutation==='nested-snapshot-lookalike'){candidate.snapshot={timeline:candidate.timeline,assets:[{id:asset,mimeType:'audio/wav',duration:2}],volumeEnvelopeProfile:profile};delete candidate.timeline;candidate.application=null;}
+  f.put(candidate);f.db.prepare('UPDATE timeline_requests SET operation=?,requestId=?,projectId=?').run(mutation==='operation'?'timeline.clip.update':value.operation,mutation==='request'?'different-request':value.requestId,mutation==='owner'?clipId:project);
+  if(mutation===null)f.scan(true);else bad(()=>f.scan(true));
+ }
+});

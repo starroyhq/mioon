@@ -1,0 +1,44 @@
+(node:13) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:13) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay (3463.621512ms)
+✖ absent/null and split exact interpolation survive history, fades reject atomically (1077.919961ms)
+✔ replacement preserves envelope and rejects incompatible cached audio without probes (1081.827048ms)
+✔ old38 explicit null and mixed-role40 request reject before any state change (806.376186ms)
+✔ complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently (69.88058ms)
+✔ new rejection proof requires rollback, exact scope, receipt absence and zero writes (361.971294ms)
+✔ unmodified live policy refuses synthetic40 entry without writes (387.242479ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9109.009134
+
+✖ failing tests:
+
+test at tests/timeline-volume-envelope-mutations.test.mjs:68:1
+✖ absent/null and split exact interpolation survive history, fades reject atomically (1077.919961ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 0.3440000000000001
+  - 0.34400000000000003
+                     ^
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/timeline-volume-envelope-mutations.test.mjs:78:52)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0.3440000000000001,
+    expected: 0.34400000000000003,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

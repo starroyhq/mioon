@@ -1,0 +1,25 @@
+{
+  "baselineMerge": "388a0667db0df194b0f12049a58bb003736311fd",
+  "runtime": {
+    "requestedPath": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+    "version": "v24.21.0",
+    "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+  },
+  "activation": false,
+  "gates": [
+    {"kind":"pure and existing timeline contracts","passed":45,"failed":0,"log":"envelope-mutation-pure-final.log"},
+    {"kind":"targeted legacy durable and replacement business","passed":64,"failed":0,"log":"envelope-affected-regression.log","excludes":"independent-process and independent SQLite writer tests; no transport/media"},
+    {"kind":"final mutation/scanner/owned ingress","passed":36,"failed":0,"log":"envelope-mutation-final-gate.log","seam":"Full validated synthetic40 WeakSet fixtures only; restore-policy exemption in test module, actual ownership unchanged"},
+    {"kind":"focused corrected loudness family","passed":3,"failed":0,"log":"envelope-mutation-loudness-family-final.log"},
+    {"kind":"full scanner after root fallback fix","passed":19,"failed":0,"log":"envelope-mutation-scanner-reviewed-final.log"},
+    {"kind":"scoped strict TypeScript","exitCode":0,"log":"envelope-mutation-final-typecheck.log","checkJs":false,"roots":["packages/business/src/timeline-volume-envelope-admission.ts","packages/business/src/timeline-loudness-transactions.ts","packages/business/src/workspace-volume-envelope-validation.ts"]}
+  ],
+  "review": {
+    "agent":"review_envelope_mutation_admission",
+    "result":"No remaining source blockers found in the bounded slice.",
+    "foundAndFixed":["Split ACK presence/null and exact cut continuity","Malformed scalar loudness render fallback","Nested snapshot fallback","SQL loudness discriminator must be restricted to timeline_requests, not history"],
+    "intermediateFailedDiagnostic":{"passed":0,"failed":1,"chunk":"a31d29","command":"node --experimental-test-module-mocks --test --test-name-pattern='scalar loudness transaction' tests/timeline-volume-envelope-mutations.test.mjs","errorCode":"TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED","rawLog":"Not persisted by read-only reviewer; exact result retained in coordination output"}
+  },
+  "nonqualifyingInitialOwnedRun":{"passed":3,"failed":0,"session":49746,"chunk":"6ca8e9","reason":"Completed in fresh OS temporary old38 fixtures before pause arrived, outside initial in-memory-only scope; no dispatch/media/network; cleanup completed; not relabelled as approved."},
+  "closedGates":["Live ordinary40 startup/dispatcher/coordinator restart","Restored41 mutation and execution epochs","Mixed role/colour live dispatch","Capability advertisement","UI/raw drafts"]
+}

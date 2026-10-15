@@ -1,0 +1,48 @@
+import type {DatabaseSync} from 'node:sqlite';
+import {isProxy} from 'node:util/types';
+import {AppError} from '@mioon/contracts';
+import {validateWorkspaceSchema40} from './workspace-schema-v40.ts';
+import {validateVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope.mjs';
+
+export const TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES=Object.freeze([
+ 'TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED',
+ 'TIMELINE_VOLUME_ENVELOPE_LIMIT','TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED',
+]);
+export function volumeEnvelopeMutationError(code:string,details:Record<string,unknown>={}){
+ return new AppError(code,code==='TIMELINE_VOLUME_ENVELOPE_LIMIT'?'时间线音量包络超过完整记录保存上限。':'时间线音量包络不能安全应用。',409,details);
+}
+// Descriptor-only detection: the ingress layer owns shape validation. Never
+// execute an untrusted accessor or proxy merely to decide workspace authority.
+export function hasTimelineVolumeEnvelope(value:unknown):boolean{
+ const pending:unknown[]=[value],seen=new Set<object>();
+ while(pending.length){const item=pending.pop();if(!item||typeof item!=='object'||isProxy(item)||seen.has(item))continue;seen.add(item);
+  for(const key of Reflect.ownKeys(item)){if(key==='volumeEnvelope'||key==='volumeEnvelopeProfile'||key==='volumeEnvelopeProcessingProfile')return true;
+   const descriptor=Object.getOwnPropertyDescriptor(item,key);if(descriptor&&Object.hasOwn(descriptor,'value'))pending.push(descriptor.value);
+  }
+ }
+ return false;
+}
+/** No marker-only authority and no dispatcher activation. This intentionally
+ * revalidates the complete fixed dormant40 profile at each admission. */
+export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unknown):void{
+ if(!hasTimelineVolumeEnvelope(value))return;
+ try{validateWorkspaceSchema40(db,{verifyBytes:false});}
+ catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');}
+}
+export function validateTimelineVolumeEnvelopeClip(clip:{durationFrames:number;volumeEnvelope?:unknown},source:{mimeType?:string;hasAudio?:boolean}):void{
+ if(!Object.hasOwn(clip,'volumeEnvelope'))return;
+ try{validateVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames);}
+ catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
+ if(clip.volumeEnvelope!==null&&(source.mimeType?.startsWith('image/')||source.hasAudio!==true))
+  throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');
+}
+/** Full candidates, not field estimates. The caller supplies finalized revision
+ * and timestamps and the exact response wrapper before its first write. */
+export function admitTimelineVolumeEnvelopeWrite(timeline:unknown,{before,after,response=timeline,related}:{before?:unknown;after?:unknown;response?:unknown;related?:unknown}={}):void{
+ if(!hasTimelineVolumeEnvelope(timeline)&&!hasTimelineVolumeEnvelope(before)&&!hasTimelineVolumeEnvelope(related))return;
+ for(const [record,value]of Object.entries({timeline,before,after,response})){
+  if(value===undefined)continue;
+  const actualBytes=Buffer.byteLength(JSON.stringify(value),'utf8'),maxBytes=262144;
+  if(actualBytes>maxBytes)throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_LIMIT',{record,maxBytes,actualBytes});
+ }
+}

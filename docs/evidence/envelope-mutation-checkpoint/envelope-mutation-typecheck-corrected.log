@@ -1,0 +1,4 @@
+packages/business/src/timeline-volume-envelope-admission.ts(28,37): error TS1005: ',' expected.
+packages/business/src/timeline-volume-envelope-admission.ts(28,46): error TS1005: ')' expected.
+packages/business/src/timeline-volume-envelope-admission.ts(28,47): error TS1434: Unexpected keyword or identifier.
+packages/business/src/timeline-volume-envelope-admission.ts(28,54): error TS1128: Declaration or statement expected.

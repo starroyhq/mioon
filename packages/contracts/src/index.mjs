@@ -1,3 +1,4 @@
+import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {clipAudioRoleSchema} from './timeline-audio-role.ts';
 export * from './timeline-audio-role.ts';
 export * from './comfy-availability.ts';
@@ -93,7 +94,10 @@ const even=(minimum,maximum)=>z.number().int().min(minimum).max(maximum).multipl
 // against their own exact preset pair, including historical acknowledgements.
 const rect=z.object({x:even(0,1278),y:even(0,1278),width:even(2,1280),height:even(2,1280)}).strict().refine(r=>r.x+r.width<=1280&&r.y+r.height<=1280,{message:'Rectangle exceeds the supported output envelope'});
 const timelineMutation={projectId:id,expectedRevision:z.number().int().positive(),requestId:key};
-const clipFields={audioRole:clipAudioRoleSchema.optional(),colour:clipColourSchema.optional(),trackId:id,name:z.string().min(1).max(200),startFrame:frame,durationFrames,sourceInFrame:sourceFrame,rect,gain:z.number().finite().min(0).max(2),
+// Validation preserves the submitted profile, point order and explicit null.
+// An update without duration remains lexical; execution uses its original clip.
+const volumeEnvelope=z.custom(value=>isVolumeEnvelope(value,18000),{message:'Invalid bounded clip volume envelope.'});
+const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRoleSchema.optional(),colour:clipColourSchema.optional(),trackId:id,name:z.string().min(1).max(200),startFrame:frame,durationFrames,sourceInFrame:sourceFrame,rect,gain:z.number().finite().min(0).max(2),
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
@@ -154,8 +158,8 @@ export const schemas={
 'timeline.redo':z.object(timelineMutation).strict(),
 'timeline.track.add':z.object({...timelineMutation,kind:z.enum(['video','audio']),name:z.string().min(1).max(150).optional()}).strict(),
 'timeline.track.update':z.object({...timelineMutation,trackId:id,patch:z.object({name:z.string().min(1).max(150).optional(),hidden:z.boolean().optional(),muted:z.boolean().optional()}).strict().refine(p=>Object.keys(p).length>0)}).strict(),
-'timeline.clip.add':z.object({...timelineMutation,assetId:id,...clipFields,name:clipFields.name.optional(),sourceInFrame:sourceFrame.optional(),rect:rect.optional(),gain:clipFields.gain.optional()}).strict(),
-'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()]))).strict().refine(p=>Object.keys(p).length>0)}).strict(),
+'timeline.clip.add':z.object({...timelineMutation,assetId:id,...clipFields,name:clipFields.name.optional(),sourceInFrame:sourceFrame.optional(),rect:rect.optional(),gain:clipFields.gain.optional()}).strict().refine(value=>!Object.hasOwn(value,'volumeEnvelope')||isVolumeEnvelope(value.volumeEnvelope,value.durationFrames),{message:'Envelope points exceed the clip duration.',path:['volumeEnvelope']}),
+'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()]))).strict().refine(p=>Object.keys(p).length>0).refine(p=>!Object.hasOwn(p,'volumeEnvelope')||isVolumeEnvelope(p.volumeEnvelope,p.durationFrames??18000),{message:'Envelope points exceed the resulting clip duration.',path:['volumeEnvelope']})}).strict(),
 'timeline.clip.replaceSource':z.object({...timelineMutation,clipId:id,assetId:id,versionId:id.optional().describe('Optional exact generated version to pin with its canonical shot. Must belong to the replacement asset and project. Omission keeps an asset-only fixed reference; no version is inferred.')}).strict(),
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
 'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),

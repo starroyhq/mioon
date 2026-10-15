@@ -1,3 +1,4 @@
+import {validateTimelineVolumeEnvelopeClip} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeField,volumeEnvelopeSnapshotFields,isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {getTimelineAudioRoleIssue,timelineAudioRoleSnapshotFields} from '../../contracts/src/timeline-audio-role.ts';
 import {timelineExportRangeFields} from '@mioon/contracts/timeline-export-range';
@@ -70,6 +71,7 @@ export function validateSavedTimeline(timeline,{track,asset}){
    const lane=track(timeline,item.trackId),source=asset(timeline.projectId,item.assetId);
    if(!(lane.kind==='audio'?audioTypes:visualTypes).has(source.mimeType))
     throw new AppError('INVALID_CLIP_TYPE','视频轨道只接收图片/视频，音频轨道只接收音频',400,{clipId:item.id,trackId:lane.id,assetId:source.id});
+   validateTimelineVolumeEnvelopeClip(item,source);
    const roleIssue=getTimelineAudioRoleIssue(item,source);
    if(roleIssue)throw new AppError(roleIssue.code,roleIssue.message,400,{clipId:item.id});
    const fadeIssue=getTimelineFadeIssue(item,source);

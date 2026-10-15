@@ -1,3 +1,6 @@
+import {assertTimelineVolumeEnvelopeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
+import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.mjs';
+import {ownsStoreLock} from './db.mjs';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
@@ -61,8 +64,9 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
  }
  function transaction(operation,input,apply,boundary=createTimelineRecoveryBoundary(db,input)){
   assertTimelineAudioRoleWorkspace(db,input);
+  assertTimelineVolumeEnvelopeWorkspace(db,input);
   refuseRestoredOperation(store,operation,input);
-  const state={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
+  const state={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false,ownedScope:()=>ownsStoreLock(store)};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
    state.transactionEntered=true;
@@ -134,10 +138,12 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    const position=cursor(input.projectId),column=direction<0?'beforeSnapshot':'afterSnapshot';
    const entry=db.prepare(`SELECT CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${TIMELINE_RESPONSE_BYTES} THEN ${column} END AS snapshot FROM timeline_history WHERE projectId=? AND position=?`).get(input.projectId,position+(direction>0?1:0));
    if(!entry)throw empty();
+   const before=snapshot(timeline);
    timeline=boundary.restored(timeline,entry.snapshot);
    timeline.revision++;
    timeline.updatedAt=now();
    admitTimelineImageResponse(timeline);
+   admitTimelineVolumeEnvelopeWrite(timeline,{before,after:snapshot(timeline),related:input});
    write();put('timelines',timeline);
    setCursor(input.projectId,position+direction);
    return saveResponse(operation,input,requestHash,timeline,boundary);
@@ -157,13 +163,19 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    timeline.revision++;
    timeline.updatedAt=now();
    admitTimelineImageResponse(timeline);
+   admitTimelineVolumeEnvelopeWrite(timeline,{before,after:snapshot(timeline),related:input});
    write();put('timelines',timeline);
    recordEdit(operation,timeline,before);
    return saveResponse(operation,input,requestHash,timeline,boundary);
   },specialBoundary);
  }
  function updateClip(input,boundary){
-  return mutate('timeline.clip.update',input,timeline=>{Object.assign(clip(timeline,input.clipId),input.patch);},boundary);
+  return mutate('timeline.clip.update',input,timeline=>{
+   const target=clip(timeline,input.clipId);let envelope;
+   try{envelope=volumeEnvelopeFieldsAfterEdit(target,input.patch);}
+   catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
+   Object.assign(target,input.patch,envelope);
+  },boundary);
  }
  function renderSnapshot(input,boundary,write,expectedTimelineId){
   // Explicit settings/ranges cannot initialize a timeline. The omitted path retains
@@ -235,7 +247,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   'timeline.clip.add':input=>mutate('timeline.clip.add',input,(timeline,boundary)=>{
    const source=boundary.inputAsset(input.assetId);
    timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(timeline),gain:input.gain??1,
-    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour','audioRole'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
+    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
   'timeline.clip.update':input=>updateClip(input),
   'timeline.clip.replaceSource':input=>{
@@ -256,12 +268,15 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
     throw new AppError('SPLIT_FADE_BOUNDS','分割点不能位于音频淡入或淡出内部；可在淡入结束或淡出开始帧分割',400,{clipId:left.id,atFrame:input.atFrame,minFrame:left.startFrame+fadeInFrames,maxFrame:end-fadeOutFrames});
    // A still has no advancing source clock. Moving media keeps contiguous
    // source ranges; copying the complete clip also preserves frozen references.
-   const right={...clone(left),id:randomUUID(),startFrame:input.atFrame,durationFrames:end-input.atFrame,
+   let envelopes;try{envelopes=splitVolumeEnvelopeFields(left,leftDuration);}
+   catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
+   const right={...clone(left),...envelopes[1],id:randomUUID(),startFrame:input.atFrame,durationFrames:end-input.atFrame,
     sourceInFrame:source.mimeType.startsWith('image/')?0:left.sourceInFrame+leftDuration};
    // Preserve the original envelope at its two outer edges. Do not introduce
    // keys into legacy clips or make an omitted zero explicit at an inner edge.
    if(Object.hasOwn(left,'fadeInFrames'))right.fadeInFrames=0;
    if(Object.hasOwn(left,'fadeOutFrames'))left.fadeOutFrames=0;
+   Object.assign(left,envelopes[0]);
    left.durationFrames=leftDuration;
    timeline.clips.splice(timeline.clips.indexOf(left)+1,0,right);
   }),
@@ -298,7 +313,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
  const moveClipInProject=(input,target)=>updateClip(input,createAgentTimelineMoveBoundary(db,input,target));
  const setClipGainInProject=(input,target)=>updateClip(input,createAgentTimelineGainBoundary(db,input,target));
  const createLoudnessApplyTransactions=assertAvailable=>createTimelineLoudnessTransactions({
-  db,transaction,editable,snapshot,recordEdit,saveResponse,now,admitTimelineImageResponse,
+  db,transaction,editable,snapshot,recordEdit,saveResponse,now,admitTimelineImageResponse,admitTimelineVolumeEnvelopeWrite,
   putTimeline:value=>{put('timelines',value);},
   error:(code,status=409)=>new AppError(code,'已审核的固定增益无法应用，请重新检查当前时间线',status),
   isDomainError:error=>error instanceof AppError,

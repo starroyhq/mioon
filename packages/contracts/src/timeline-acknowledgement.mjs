@@ -1,3 +1,5 @@
+import {createVolumeEnvelopeEvaluator} from './timeline-volume-envelope.mjs';
+import {isVolumeEnvelope,isVolumeEnvelopeProcessingSnapshot} from './timeline-volume-envelope-processing.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {createTimelineLoudnessApplyContracts,TIMELINE_LOUDNESS_APPLY_OPERATION,hasTimelineLoudnessApplyNotAppliedProof} from './timeline-loudness-apply.ts';
@@ -11,6 +13,15 @@ import {isTimelineRecord, isTimelineReplacementResponse} from './timeline-replac
 import {sourceFrameCount} from './source-range.mjs';
 import {SUBJECT_MUTATION_OPERATIONS} from './subjects.mjs';
 import {REFERENCE_MUTATION_OPERATIONS} from './reference-acknowledgement.mjs';
+
+// Split children do not share point arrays. They must retain the same field
+// presence and null semantics, and meet at the exact interpolated boundary.
+function splitEnvelopeMatches(left,right){
+ if(Object.hasOwn(left,'volumeEnvelope')!==Object.hasOwn(right,'volumeEnvelope'))return false;
+ if(!Object.hasOwn(left,'volumeEnvelope'))return true;
+ if(left.volumeEnvelope===null||right.volumeEnvelope===null)return left.volumeEnvelope===right.volumeEnvelope;
+ try{return createVolumeEnvelopeEvaluator(left).limitAtSample(left.durationFrames*1600)===createVolumeEnvelopeEvaluator(right).limitAtSample(0);}catch{return false;}
+}
 
 export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
@@ -28,12 +39,20 @@ const timestamp = value => text(value, 1, 64) && Number.isFinite(Date.parse(valu
 const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const encoder = new TextEncoder();
 const baseFields = ['projectId', 'expectedRevision', 'requestId'];
-const clipFields = ['trackId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole'];
+const clipFields = ['trackId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope'];
 const provenance = ['versionId', 'shotId', 'jobId'];
 const same = (a, b) => object(a) && object(b)
   ? Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && same(a[key], b[key]))
   : a === b;
-const hasFields = (value, input, keys) => keys.every(key => input[key] === undefined || same(value[key], input[key]));
+// Only this typed field compares arrays. Other legacy array semantics stay closed.
+const sameVolumeEnvelope = (a,b) => {
+  if(a===null||b===null)return a===b;
+  if(!isVolumeEnvelope(a,18000)||!isVolumeEnvelope(b,18000))return false;
+  return a.profileId===b.profileId && a.points.length===b.points.length &&
+    a.points.every((point,index)=>point.frame===b.points[index].frame&&point.multiplier===b.points[index].multiplier);
+};
+const hasFields = (value, input, keys) => keys.every(key => input[key] === undefined ||
+  (key==='volumeEnvelope'?sameVolumeEnvelope(value[key],input[key]):same(value[key], input[key])));
 const baseInput = input => object(input) && uuid(input.projectId) && text(input.requestId, 8, 200) && integer(input.expectedRevision, 1);
 const operationInput = (input, required = [], optional = []) => baseInput(input) && fields(input, [...baseFields, ...required], optional);
 const patchInput = (patch, allowed) => object(patch) && Object.keys(patch).length > 0 && Object.keys(patch).every(key => allowed.includes(key) && patch[key] !== undefined);
@@ -73,12 +92,12 @@ export function isTimelineMutationResponse(operation, input, value) {
       return Boolean(track && !(track.kind === 'audio' && Object.hasOwn(input.patch, 'hidden')) && hasFields(track, input.patch, Object.keys(input.patch)));
     }
     case 'timeline.clip.add': {
-      if (!operationInput(input, ['assetId', 'trackId', 'startFrame', 'durationFrames'], clipFields.filter(key => !['trackId', 'startFrame', 'durationFrames'].includes(key))) || !uuid(input.assetId) || !uuid(input.trackId) || !integer(input.startFrame, 0, 18000) || !integer(input.durationFrames, 1, 18000)) return false;
+      if (!operationInput(input, ['assetId', 'trackId', 'startFrame', 'durationFrames'], clipFields.filter(key => !['trackId', 'startFrame', 'durationFrames'].includes(key))) || !uuid(input.assetId) || !uuid(input.trackId) || !integer(input.startFrame, 0, 18000) || !integer(input.durationFrames, 1, 18000) || Object.hasOwn(input,'volumeEnvelope')&&!isVolumeEnvelope(input.volumeEnvelope,input.durationFrames)) return false;
       return value.clips.some(clip => clip.assetId === input.assetId && hasFields(clip, input, clipFields) &&
         clip.sourceInFrame === (input.sourceInFrame ?? 0) && clip.gain === (input.gain ?? 1) &&
         same(clip.rect, input.rect ?? {x: 0, y: 0, width: value.width, height: value.height}) &&
         provenance.every(key => !Object.hasOwn(clip, key)) &&
-        ['fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole'].every(key => (input[key] !== undefined) === Object.hasOwn(clip, key)));
+        ['fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope'].every(key => (input[key] !== undefined) === Object.hasOwn(clip, key)));
     }
     case 'timeline.clip.update':
       return operationInput(input, ['clipId', 'patch']) && uuid(input.clipId) && patchInput(input.patch, clipFields) && Boolean(target && hasFields(target, input.patch, Object.keys(input.patch)));
@@ -86,7 +105,7 @@ export function isTimelineMutationResponse(operation, input, value) {
       return operationInput(input, ['clipId']) && uuid(input.clipId) && !target;
     case 'timeline.clip.split':
       if (!operationInput(input, ['clipId', 'atFrame']) || !uuid(input.clipId) || !integer(input.atFrame, 0, 18000) || !target || target.startFrame + target.durationFrames !== input.atFrame || (target.fadeOutFrames ?? 0) !== 0) return false;
-      return value.clips.some(right => right.id !== target.id && right.startFrame === input.atFrame &&
+      return value.clips.some(right => right.id !== target.id && right.startFrame === input.atFrame && splitEnvelopeMatches(target,right) &&
         ['trackId', 'assetId', 'name', 'rect', 'gain', 'colour', 'audioRole', ...provenance].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key) && same(right[key], target[key])) &&
         (right.sourceInFrame === target.sourceInFrame + target.durationFrames || right.sourceInFrame === 0 && target.sourceInFrame === 0) &&
         (right.fadeInFrames ?? 0) === 0 && ['fadeInFrames', 'fadeOutFrames'].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key)));
@@ -116,7 +135,7 @@ export function isTimelineRenderRecord(value, input) {
       value.mode !== 'timeline' || value.purpose !== input.purpose || value.timelineRevision !== input.expectedRevision ||
       (input.exportId !== undefined && value.id !== input.exportId) ||
       !['queued', 'running', 'succeeded', 'failed'].includes(value.status) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
-      !fields(value.snapshot, ['timeline', 'assets'], ['subtitleProfile','delivery','deliveryName','exportRange','colourPlan','audioRoleProfile']) || !isTimelineExportSnapshot(value.snapshot,{purpose:input.purpose,exportSettings:input.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(value.snapshot) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
+      !fields(value.snapshot, ['timeline', 'assets'], ['subtitleProfile','delivery','deliveryName','exportRange','colourPlan','audioRoleProfile','volumeEnvelopeProfile']) || !isTimelineExportSnapshot(value.snapshot,{purpose:input.purpose,exportSettings:input.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(value.snapshot) || !isVolumeEnvelopeProcessingSnapshot(value.snapshot) || !isTimelineRecord(value.snapshot.timeline, {projectId: input.projectId}) ||
       value.snapshot.timeline.revision !== input.expectedRevision || !value.snapshot.timeline.clips.length ||
       (input.timelineId !== undefined && value.snapshot.timeline.id !== input.timelineId) ||
       !Array.isArray(value.snapshot.assets) || value.snapshot.assets.length < 1 || value.snapshot.assets.length > 100 ||
@@ -139,6 +158,7 @@ export function isTimelineRenderRecord(value, input) {
     const asset = assets.get(clip.assetId);
     if (!asset || !(tracks.get(clip.trackId).kind === 'audio' ? audioTypes : visualTypes).includes(asset.mimeType)) return false;
     if (asset.mimeType.startsWith('image/') ? clip.sourceInFrame !== 0 : clip.sourceInFrame + clip.durationFrames > (sourceFrameCount(asset.duration) ?? 0)) return false;
+    if (clip.volumeEnvelope != null && (asset.mimeType.startsWith('image/') || asset.hasAudio === false)) return false;
     if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > 0 && (asset.mimeType.startsWith('image/') || asset.hasAudio === false)) return false;
     used.add(asset.id);
   }
@@ -155,14 +175,22 @@ const proofCodes = new Set([
   'SUBTITLE_LIMIT', 'SUBTITLE_BOUNDS', 'SUBTITLE_OVERLAP', 'SUBTITLE_NOT_FOUND', 'AUDIO_HIDDEN_UNSUPPORTED', 'TIMELINE_LIMIT', 'CLIP_OVERLAP', 'SPLIT_BOUNDS', 'SPLIT_FADE_BOUNDS',
   'TIMELINE_NOT_EMPTY', 'MISSING_SELECTION', 'NOTHING_TO_UNDO', 'NOTHING_TO_REDO', 'EMPTY_TIMELINE', 'PREFLIGHT_STALE', 'TIMELINE_REVISION_LIMIT',
 ]);
+const envelopeProofCodes = new Set(['TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED','TIMELINE_VOLUME_ENVELOPE_LIMIT','TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED']);
 const colourProofCodes = new Set(['TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE']);
 const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT']);
 const subjectProofCodes = new Set(['REVISION_CONFLICT', 'SUBJECT_NO_CHANGE', 'SUBJECT_REVISION_LIMIT', 'SUBJECT_BINDING_LIMIT', 'SUBJECT_ROLE_MISMATCH']);
 export function hasRequestNotAppliedProof(error, input, {operation} = {}) {
-  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(error,input);
   const details = error?.details;
+  // These new errors never inherit legacy optional owner/operation bindings.
+  // Ordinary edits and scalar loudness may also preserve an enveloped aggregate.
+  if(envelopeProofCodes.has(error?.code))return Boolean(baseInput(input)&&TIMELINE_MUTATION_OPERATIONS.includes(operation)&&
+    operation!=='timeline.render'&&error.terminationUnconfirmed!==true&&object(details)&&
+    (integer(error.status,400,499)&&![401,403].includes(error.status)||error.status===undefined&&error.definitive===true)&&
+    ['mutationOutcome','operation','projectId','requestId'].every(key=>Object.hasOwn(details,key))&&
+    details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===input.projectId&&details.requestId===input.requestId);
+  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(error,input);
   if(error?.code==='AUDIO_ROLE_CLIP_UNSUPPORTED')return Boolean(baseInput(input)&&
-    (operation==='timeline.clip.add'&&operationInput(input,['trackId','assetId','startFrame','durationFrames'],['name','sourceInFrame','rect','gain','fadeInFrames','fadeOutFrames','colour','audioRole'])&&uuid(input.trackId)&&uuid(input.assetId)&&Object.hasOwn(input,'audioRole')&&isClipAudioRole(input.audioRole)||
+    (operation==='timeline.clip.add'&&operationInput(input,['trackId','assetId','startFrame','durationFrames'],['name','sourceInFrame','rect','gain','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'])&&uuid(input.trackId)&&uuid(input.assetId)&&Object.hasOwn(input,'audioRole')&&isClipAudioRole(input.audioRole)||
      operation==='timeline.clip.update'&&operationInput(input,['clipId','patch'])&&uuid(input.clipId)&&patchInput(input.patch,clipFields)&&Object.hasOwn(input.patch,'audioRole')&&isClipAudioRole(input.patch.audioRole))&&
     object(details)&&(integer(error.status,400,499)&&![401,403].includes(error.status)||error.status===undefined&&error.definitive===true)&&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===input.projectId&&details.requestId===input.requestId);

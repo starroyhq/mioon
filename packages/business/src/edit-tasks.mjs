@@ -1,3 +1,4 @@
+import {assertTimelineVolumeEnvelopeWorkspace} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
 import {refuseRestoredTask,safeWorkspaceRestoreError,assertWorkspaceRestoreOrigin,assertRestoreRequestVacant} from './workspace-restore-policy.mjs';
@@ -15,6 +16,7 @@ import {readSubjectReceipt} from './subject-recovery.mjs';
 import {createSubjectRecoveryBoundary} from './subjects.mjs';
 
 const errors = Object.freeze({
+ TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED: [409, '当前工作区不支持时间线音量包络。'],
  EDIT_TASK_VALIDATION: [400, '编辑任务参数无效。'], EDIT_TASK_LIMIT: [413, '编辑意图超过 8 KiB 限制。'],
  EDIT_TASK_NOT_FOUND: [404, '项目或编辑任务不存在。'], EDIT_TASK_CONFLICT: [409, '编辑任务内容、版本或恢复通道已改变，请重新查看。'],
  EDIT_TASK_STALE_INSTANCE: [409, '后端已重新启动，请重新读取任务后显式恢复。'],
@@ -38,24 +40,48 @@ const columns = ['position','revision','acknowledged','bytes', ...Object.entries
 
 // Inspect data properties before serialization. No getter, toJSON, proxy,
 // undefined omission, or lossy non-JSON number can alter the captured intent.
-function plain(value, depth = 0, budget = {nodes: 0}) {
+function plain(value, depth = 0, budget = {nodes: 0}, arrayPath = null, path = []) {
  if (++budget.nodes > 128 || depth > 8) invalid();
  if (value === null || typeof value === 'boolean') return value;
  if (typeof value === 'number') { if (!Number.isFinite(value)) invalid(); return value; }
  if (typeof value === 'string') { if (value.length > EDIT_TASK_LIMITS.inputBytes || !value.isWellFormed()) invalid(); return value; }
- if (!value || typeof value !== 'object' || isProxy(value) || Array.isArray(value) || ![Object.prototype,null].includes(Object.getPrototypeOf(value))) invalid();
+ if (!value || typeof value !== 'object' || isProxy(value)) invalid();
+ if (Array.isArray(value)) {
+  // No generic array permission: only the selected add/update points path.
+  if (arrayPath===null || path.length!==arrayPath.length || path.some((key,index)=>key!==arrayPath[index]) || Object.getPrototypeOf(value)!==Array.prototype) invalid();
+  const length=Object.getOwnPropertyDescriptor(value,'length');
+  if(!length || !Object.hasOwn(length,'value') || !Number.isSafeInteger(length.value) || length.value<1 || length.value>16 || Reflect.ownKeys(value).length!==length.value+1) invalid();
+  const result=[];
+  for(let index=0;index<length.value;index++) {
+   const entry=Object.getOwnPropertyDescriptor(value,String(index));
+   if(!entry?.enumerable || !Object.hasOwn(entry,'value')) invalid();
+   result.push(plain(entry.value,depth+1,budget,arrayPath,[...path,String(index)]));
+  }
+  return result;
+ }
+ if (![Object.prototype,null].includes(Object.getPrototypeOf(value))) invalid();
  const result = {};
  for (const key of Reflect.ownKeys(value)) {
   const entry = Object.getOwnPropertyDescriptor(value,key);
-  if (typeof key !== 'string' || key === '__proto__' || !entry?.enumerable || !Object.hasOwn(entry,'value')) invalid();
-  result[key] = plain(entry.value,depth+1,budget);
+  if (typeof key !== 'string' || !key.isWellFormed() || key === '__proto__' || !entry?.enumerable || !Object.hasOwn(entry,'value')) invalid();
+  result[key] = plain(entry.value,depth+1,budget,arrayPath,[...path,key]);
  }
  return result;
 }
-function fields(value, required, optional = []) {
- const result = plain(value);
+const envelopeArrayPath = operation => operation==='timeline.clip.add'?['volumeEnvelope','points']:operation==='timeline.clip.update'?['patch','volumeEnvelope','points']:null;
+function fields(value, required, optional = [], arrayPath = null) {
+ const result = plain(value,0,{nodes:0},arrayPath);
  if (!result || typeof result !== 'object' || required.some(key => !Object.hasOwn(result,key)) || Object.keys(result).some(key => !required.includes(key) && !optional.includes(key))) invalid();
  return result;
+}
+
+function prepareFields(value) {
+ // Inspect operation without invoking a getter/proxy before selecting a path.
+ if (!value || typeof value!=='object' || isProxy(value) || Array.isArray(value) || ![Object.prototype,null].includes(Object.getPrototypeOf(value))) invalid();
+ const descriptor=Object.getOwnPropertyDescriptor(value,'operation');
+ if(!descriptor?.enumerable || !Object.hasOwn(descriptor,'value')) invalid();
+ const path=envelopeArrayPath(descriptor.value);
+ return fields(value,['projectId','operation','input','origin'],[],path&&['input',...path]);
 }
 
 /** Additive local UI intent ledger. The domain journals remain authoritative.
@@ -81,10 +107,11 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  const project = projectId => { if (!uuid(projectId)) invalid(); if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId)) fail('EDIT_TASK_NOT_FOUND'); createOwnedMediaGraphReader(db,projectId); };
  function parseIntent(operation, input, projectId) {
   if (!DURABLE_EDIT_OPERATIONS.includes(operation) || !uuid(projectId)) invalid();
-  const exact = plain(input), text = JSON.stringify(exact);
+  const exact = plain(input,0,{nodes:0},envelopeArrayPath(operation)), text = JSON.stringify(exact);
   if (Buffer.byteLength(text) > bounds.inputBytes) fail('EDIT_TASK_LIMIT');
   if (!schemas[operation].safeParse(exact).success || exact.projectId !== projectId) invalid();
   assertTimelineAudioRoleWorkspace(db,exact);
+  assertTimelineVolumeEnvelopeWorkspace(db,exact);
   return {input:exact,text,requestId:exact.requestId,digest:hash({operation,input:exact}),lane:editTaskLane(operation)};
  }
  function decode(row, projectId) {
@@ -195,7 +222,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  }
  const methods = {
   prepare(input,context={}) { return guarded(()=>{
-   open();owner();const args=fields(input,['projectId','operation','input','origin']);
+   open();owner();const args=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
    const intent=parseIntent(args.operation,args.input,args.projectId);
    if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}

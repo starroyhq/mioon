@@ -52,14 +52,14 @@ function freeze(value) {
   return value;
 }
 
-test('candidate complete records preserve absent/null/value and historical contracts stay closed', () => {
+test('candidate and live complete records preserve absent/null/value without workspace authority', () => {
   for (const field of [{}, {volumeEnvelope: null}, {volumeEnvelope: curve()}]) {
     const value = fixture(field), before = JSON.stringify(value);
     freeze(value);
     assert.equal(record(value, {projectId: value.projectId}), true);
     assert.equal(record(value, {projectId: randomUUID()}), false);
     assert.equal(record(value, {projectId: value.projectId, unknown: true}), false);
-    assert.equal(isTimelineRecord(value), !Object.hasOwn(field, 'volumeEnvelope'));
+    assert.equal(isTimelineRecord(value), true);
     const detached = capture(value);
     assert.equal(detached.text, before);
     assert.equal(detached.bytes, bytes(value));
@@ -300,10 +300,10 @@ test('100 complete envelope clips serialize exactly on both sides of unchanged 2
   assert.equal(ack('timeline.clip.update', request, value, {previous}), false);
 });
 
-test('candidate-only ACK does not turn a historical schema into envelope admission', () => {
+test('candidate and live ACK value validation never establishes workspace admission', () => {
   const previous = fixture(), {request, value} = update(previous, {volumeEnvelope: null});
   assert.equal(ack('timeline.clip.update', request, value, {previous}), true);
-  assert.equal(isTimelineMutationResponse('timeline.clip.update', request, value), false);
+  assert.equal(isTimelineMutationResponse('timeline.clip.update', request, value), true);
 });
 
 test('separate dormant receipt binds exact operation, project, requestId and full input digest without claiming provenance', () => {
