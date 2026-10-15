@@ -168,7 +168,13 @@ replacement, replays after Undo and complete analysis/render equivalence. Define
 PCM tolerances and failure classifications before execution. No old readiness,
 CLI-timing or 600-second acceptance loop is reopened by this plan.
 
-## Smallest next slice (not started): dormant contract/admission foundation
+## Dormant contract/admission foundation: partial candidate slice
+
+The standalone candidate subset is now implemented and described in
+[VOLUME-ENVELOPE-CANDIDATE-ADMISSION.md](VOLUME-ENVELOPE-CANDIDATE-ADMISSION.md).
+It adds no production imports, operation exposure, workspace activation or
+durable writer. The broader integration items below remain future gates;
+standalone snapshot/receipt evidence is not a live render/continuous contract.
 
 Keep editing disabled and do not bump workspace markers yet. Implement and test
 candidate-specific schemas/validators behind an unadvertised capability first:
