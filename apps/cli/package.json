@@ -3,7 +3,14 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "bin": {"mioon": "./src/index.mjs"},
-  "scripts": {"start": "node src/index.mjs"},
-  "dependencies": {"@mioon/client": "workspace:*"}
+  "bin": {
+    "mioon": "./src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@mioon/client": "workspace:*",
+    "@mioon/i18n": "workspace:*"
+  }
 }

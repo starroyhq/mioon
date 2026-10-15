@@ -3,9 +3,12 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "scripts": {"start": "node src/index.mjs"},
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
-    "@mioon/client": "workspace:*"
+    "@mioon/client": "workspace:*",
+    "@mioon/i18n": "workspace:*"
   }
 }

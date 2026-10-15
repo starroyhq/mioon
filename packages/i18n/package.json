@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./locale": "./src/locale.ts",
-    "./preference": "./src/preference.ts"
+    "./preference": "./src/preference.ts",
+    "./presentation": "./src/presentation.ts"
   }
 }

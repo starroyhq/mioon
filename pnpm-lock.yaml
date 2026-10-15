@@ -50,6 +50,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@mioon/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@mioon/client':
         specifier: workspace:*
         version: link:../../packages/client
@@ -68,6 +71,9 @@ importers:
 
   apps/mcp:
     dependencies:
+      '@mioon/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@mioon/client':
         specifier: workspace:*
         version: link:../../packages/client
