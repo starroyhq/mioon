@@ -1,0 +1,19 @@
+✔ volume capability input is true-only opt-in and absence never grants editing (30.436082ms)
+✔ capability denies exact historical38/39 and marker-only40 without modifying fixtures (5259.909051ms)
+✔ full restored41 capability and shared mutation admission fail closed on catalog corruption (5682.62177ms)
+✔ full restored41 capability and shared mutation admission fail closed on metadata corruption (1542.939046ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-receipt corruption (4744.167545ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-task corruption (2266.633887ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-proposal corruption (1704.038205ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-export corruption (1600.541745ms)
+✔ full restored41 capability and shared mutation admission fail closed on task-binding corruption (1211.916255ms)
+✔ ordinary40 capability refuses extra table catalog object without writes (1358.913665ms)
+✔ ordinary40 capability refuses extra view catalog object without writes (1180.085365ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29855.293997

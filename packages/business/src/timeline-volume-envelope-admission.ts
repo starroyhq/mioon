@@ -1,3 +1,6 @@
+import {createWorkspaceRestoreProfileV41} from './workspace-restore-schema-v41.ts';
+import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.mjs';
+import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isProxy} from 'node:util/types';
 import {AppError} from '@mioon/contracts';
@@ -22,11 +25,16 @@ export function hasTimelineVolumeEnvelope(value:unknown):boolean{
  }
  return false;
 }
-/** No marker-only authority and no dispatcher activation. This intentionally
- * revalidates the complete fixed dormant40 profile at each admission. */
+const restored41=createWorkspaceRestoreProfileV41(initializeWorkspaceSchemaThrough24);
+/** Profile compatibility only, never execution authority. Reads and captured
+ * evidence also use this guard. Restored mutations remain gated independently
+ * by the existing owned-store, pinned invocation, origin and vacancy checks. */
 export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unknown):void{
  if(!hasTimelineVolumeEnvelope(value))return;
- try{validateWorkspaceSchema40(db,{verifyBytes:false});}
+ try{
+  if(readCurrentWorkspaceRole(db)==='restored-41-evidence')restored41.validateWorkspaceRestoreSchemaV41(db);
+  else validateWorkspaceSchema40(db,{verifyBytes:false});
+ }
  catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');}
 }
 export function validateTimelineVolumeEnvelopeClip(clip:{durationFrames:number;volumeEnvelope?:unknown},source:{mimeType?:string;hasAudio?:boolean}):void{

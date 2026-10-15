@@ -1,0 +1,119 @@
+{
+  "baseline": "99c87a1f6a0a78ecf60d4b2137abfbe963c3ca68",
+  "preservedIntegratedParent": "63ce0f7fc71121663b8c4c3da73d9fe412a00a42",
+  "runtime": {
+    "path": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+    "version": "v24.21.0",
+    "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+  },
+  "activated": [
+    "ordinary40 startup and valid ordinary38 migration",
+    "exact ordinary40 backup and source40/restored41 dispatch",
+    "existing origin-pinned restored41 local envelope mutations and durable current epoch",
+    "inherited role/colour/image/JPEG/annotation/LUT compatibility",
+    "opt-in exact-profile volumeEnvelopeCapability"
+  ],
+  "notActivated": [
+    "UI",
+    "persistent raw drafts",
+    "new operation or Agent authority",
+    "implicit task resend",
+    "release or package readiness"
+  ],
+  "gates": [
+    {
+      "name": "final combined runtime regression",
+      "tests": 259,
+      "passed": 259,
+      "failed": 0,
+      "skipped": 0,
+      "log": "combined-final-gate.log",
+      "boundary": "Includes historical synthetic seam tests; all eleven new owned-startup tests use real policy and ownership."
+    },
+    {
+      "name": "final exact dispatcher capability backup and corruption matrix",
+      "tests": 129,
+      "passed": 129,
+      "failed": 0,
+      "skipped": 0,
+      "log": "dispatcher-capability-tests.log",
+      "matrix": "dispatcher-capability-matrix.json"
+    },
+    {
+      "name": "pure envelope and candidate contracts",
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "log": "pure-final.log"
+    },
+    {
+      "name": "independent held binding review",
+      "tests": 101,
+      "passed": 101,
+      "failed": 0,
+      "skipped": 0,
+      "log": "independent-binding-review.log"
+    },
+    {
+      "name": "independent capability review",
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "log": "independent-capability-review.log"
+    },
+    {
+      "name": "strict scoped TypeScript",
+      "exitCode": 0,
+      "checkJs": false,
+      "log": "typecheck-final.log",
+      "command": "commands.txt"
+    }
+  ],
+  "failuresPreserved": [
+    {
+      "log": "dispatcher-capability-initial-red.log",
+      "result": "21/22",
+      "finding": "Production41 held query omitted family binding; fixed41 only."
+    },
+    {
+      "log": "dispatcher-capability-fixture-error.log",
+      "result": "19/26",
+      "finding": "New synthetic export lacked request identity; fixture corrected."
+    },
+    {
+      "log": "dispatcher-capability-matrix-assertion-red.log",
+      "result": "124/127",
+      "finding": "Two export identity negatives correctly rejected with specific export identity error; assertions corrected; parent test accounted for third failure."
+    },
+    {
+      "log": "regression-first.log",
+      "result": "152/160",
+      "finding": "Stale dormant40 assertions and seeded golden non-TEXT cells refused by required scanner; fixed historical bytes unchanged."
+    },
+    {
+      "log": ".envelope-owned-startup-first.log",
+      "finding": "New genuine restored41 retained read exposed ordinary-only shared envelope guard; full41 compatibility validation added without changing invocation policy."
+    },
+    {
+      "log": "typecheck-first.log",
+      "finding": "Missing --types node on initial scoped command; corrected command passed."
+    },
+    {
+      "log": "contracts-catalog-pure.log",
+      "finding": "Optional inspection catalog test failed at import of unavailable MCP SDK before any test/transport workflow executed; no install or retry. Pure files separately pass27/27."
+    }
+  ],
+  "independentReview": {
+    "result": "No remaining blocker in reviewed new40/41 activation scope after binding fix and exact capability classifier.",
+    "ordinary40SqlAudit": "No SQL placeholders, hence no analogous missing execution binding.",
+    "historical39Issue": "workspace-restore-schema-v39.ts lines459-460 still omit family.table for WHERE h.kind=?; unchanged, separate issue.",
+    "qualification": "Earlier green review did not establish held-integrity validation; post-fix corruption tests do."
+  },
+  "historicalConstructorsUnchanged": [
+    "packages/business/src/workspace-schema-v38.ts",
+    "packages/business/src/workspace-restore-schema-v39.ts"
+  ],
+  "scope": "In-process services/SQLite and fresh disposable synthetic disk fixtures only. No user workspace, media, GUI, CLI transport/readiness loop, provider/network, install/build, GitHub/push, or Mac action. No full repository test/typecheck or final media rerun claimed."
+}

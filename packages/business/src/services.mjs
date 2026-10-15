@@ -1,3 +1,4 @@
+import {readTimelineVolumeEnvelopeCapability} from './timeline-volume-envelope-capability.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts';
 import {createMutationReplay} from './mutation-replay.mjs';
@@ -260,7 +261,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...luts.handlers,
  ...lookPacks.handlers,
  'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
- 'workspace.restore.inspect':input=>({restored:false,...(input.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{})}),
+ 'workspace.restore.inspect':input=>({restored:false,...(input.includeVolumeEnvelopeCapability?{volumeEnvelopeCapability:readTimelineVolumeEnvelopeCapability(db)}:{}),...(input.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{})}),
  ...frames.handlers,
  ...images.handlers,
  ...preflight.handlers,
@@ -385,7 +386,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37,39].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37,39,41].includes(restored.schemaVersion))throw workspaceRestoreError();
      const colour=op==='timeline.clip.add'?parsed.colour:parsed.patch.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
      if(restored.schemaVersion===33&&!nullableTimelineClipColourSchema.safeParse(colour).success&&!timelineImageClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();

@@ -1,5 +1,7 @@
 # Dormant volume-envelope workspace admission
 
+Later backend activation is documented in [VOLUME-ENVELOPE-BACKEND-ACTIVATION.md](VOLUME-ENVELOPE-BACKEND-ACTIVATION.md). The dated slice evidence below is preserved.
+
 Based on `72d78150c559a1558580b2288563b7d78e869e18`. This slice enables no
 workspace role, migration path, backup source, operation, mutation, capability,
 Agent authority, UI or processing dispatch. Existing constructors are unchanged.

@@ -1,0 +1,15 @@
+✔ owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts (3245.78823ms)
+✔ owned ordinary40 source replacement, atomic shrink/clear, split and history preserve exact anchors (4174.608682ms)
+✔ owned ordinary40 durable invalid source is terminal not_applied with no domain writes (1465.16247ms)
+✔ owned ordinary40 afterClaim interruption recovers without dispatch and rejects stale instance (2190.163557ms)
+✔ owned ordinary40 afterBusinessCommit interruption recovers without dispatch and rejects stale instance (2307.237625ms)
+✔ owned restored41 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch (8714.292268ms)
+✔ owned ordinary40 durable updates distinguish absent/null/value and retain inherited role/colour fields (4593.400397ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27945.551914

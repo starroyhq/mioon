@@ -1,0 +1,10 @@
+✔ owned ordinary40 complete envelope budget fails atomically before history/redo/receipt/task writes (3451.046103ms)
+✔ owned restored41 complete envelope budget fails atomically before history/redo/receipt/task writes (4403.375531ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10019.542748

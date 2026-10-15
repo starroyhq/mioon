@@ -1,5 +1,7 @@
 # Volume-envelope mutation staging (not activation)
 
+Later backend activation is documented in [VOLUME-ENVELOPE-BACKEND-ACTIVATION.md](VOLUME-ENVELOPE-BACKEND-ACTIVATION.md). The dated slice evidence below is preserved.
+
 This bounded slice adds structural contracts and the existing mutation/history/durable-intent integration. It does **not** enable ordinary40 startup/migration, live workspace dispatch, restored41 writes, capability advertisement, editor/UI controls, or a candidate receipt protocol. Baseline is real local merge `388a0667db0df194b0f12049a58bb003736311fd` of dormant scanner `f6caf840114ca4e1431012a358cca9e8ed5cb8fd` and media-evidence checkpoint `2afd797851f92ffbddec6b923042fc5cf025e9ad`.
 
 ## Closed authority boundary

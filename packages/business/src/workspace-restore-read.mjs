@@ -1,3 +1,4 @@
+import {readTimelineVolumeEnvelopeCapability} from './timeline-volume-envelope-capability.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts';
 import {createMutationReplay} from './mutation-replay.mjs';
@@ -76,7 +77,7 @@ export function createRestoredReadServices(store,{signal}={}) {
   ...createWaveformHistoryReaders(store).handlers,
   ...createImageHistoryReaders(store).handlers,
   ...createFrameHistoryReaders(store).handlers,
-  'workspace.restore.inspect':input=>({restored:true,...(input.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{}),schemaVersion:restored.schemaVersion,workspaceOrigin:restored.workspaceOrigin,restorationId:restored.restorationId,
+  'workspace.restore.inspect':input=>({restored:true,...(input.includeVolumeEnvelopeCapability?{volumeEnvelopeCapability:readTimelineVolumeEnvelopeCapability(db)}:{}),...(input.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{}),schemaVersion:restored.schemaVersion,workspaceOrigin:restored.workspaceOrigin,restorationId:restored.restorationId,
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts).map(([kind,count])=>({kind,count})),

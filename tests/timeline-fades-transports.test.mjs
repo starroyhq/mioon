@@ -86,7 +86,7 @@ test('fade CLI and official MCP schemas are optional, strict, offline and retain
   assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
   const restoreInspection = tools.find(tool => tool.name === 'workspace_restore_inspect');
   assert.ok(restoreInspection); assert.equal(restoreInspection.annotations.readOnlyHint, true);
-  assert.deepEqual(Object.keys(restoreInspection.inputSchema.properties), ['includeAudioRoleCapability']); assert.equal(restoreInspection.inputSchema.properties.includeAudioRoleCapability.const, true); assert.equal(restoreInspection.inputSchema.required?.includes('includeAudioRoleCapability')??false, false); assert.equal(restoreInspection.inputSchema.additionalProperties, false);
+  assert.deepEqual(Object.keys(restoreInspection.inputSchema.properties), ['includeAudioRoleCapability','includeVolumeEnvelopeCapability']); assert.equal(restoreInspection.inputSchema.properties.includeAudioRoleCapability.const, true); assert.equal(restoreInspection.inputSchema.required?.includes('includeAudioRoleCapability')??false, false); assert.equal(restoreInspection.inputSchema.additionalProperties, false);
   const restoreEffects = catalog.operations.find(item => item.operation === 'workspace.restore.inspect').effects;
   for (const field of ['databaseWrite', 'fileWrite', 'externalIO', 'localProcess', 'paidGeneration']) assert.equal(restoreEffects[field], false);
   const backupInspection = tools.find(tool => tool.name === 'workspace_backup_inspect');

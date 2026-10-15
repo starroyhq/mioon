@@ -1,0 +1,62 @@
+node:internal/modules/package_json_reader:331
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@modelcontextprotocol/sdk' imported from /workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/inspection-contracts.test.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:331:9)
+    at packageResolve (node:internal/modules/esm/resolve:784:25)
+    at moduleResolve (node:internal/modules/esm/resolve:873:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1006:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:705:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:725:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:763:56)
+    at #resolve (node:internal/modules/esm/loader:687:17)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:607:35)
+    at ModuleJob.syncLink (node:internal/modules/esm/module_job:276:33) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v24.21.0
+✖ tests/inspection-contracts.test.mjs (284.099187ms)
+✔ complete candidate intent is detached and bounded while live schema admission grants no workspace authority (13.102413ms)
+✔ only the typed points path admits an ordinary dense bounded array without running code (5.164872ms)
+✔ node, depth, unicode and complete bytes fail closed without changing caps (2.228425ms)
+✔ complete candidate task binds exact intent including presence and all IDs (27.459505ms)
+✔ candidate is absent from production root and package export surface (1.023253ms)
+✔ maximal complete add and update include the largest current colour declaration within unchanged budgets (4.413268ms)
+ℹ {"maximalAdd":{"bytes":4600,"nodes":98,"depth":4},"maximalUpdate":{"bytes":4609,"nodes":99,"depth":5}}
+✔ duration context is descriptor-checked before selection, including digest and task entry points (4.649821ms)
+✔ candidate and live complete records preserve absent/null/value without workspace authority (28.563186ms)
+✔ candidate envelope validation rejects undefined, unknown profiles, extra keys and out-of-duration points (7.420588ms)
+✔ strict typed traversal rejects getters, proxies, symbols, nonenumerable properties and exotic arrays without executing them (10.986544ms)
+✔ standalone candidate snapshot has exact conditional profile presence and is not a production render shape (6.803364ms)
+✔ add ACK matches the newly added clip, exact field presence and every untouched previous clip (33.827942ms)
+✔ update ACK binds exact envelope payload, untouched clips and shrink replacement semantics (113.78947ms)
+✔ replacement ACK preserves the exact envelope and every non-source field (10.925063ms)
+✔ split ACK checks all interior cuts, absent/null/held/ramps/max points and existing fade restrictions (512.061145ms)
+✔ Undo/redo require exact expected history; immutable original ACK remains valid after later Undo (7.22378ms)
+✔ 100 complete envelope clips serialize exactly on both sides of unchanged 256 KiB cap; rejection is pure, not a transaction proof (543.197669ms)
+✔ candidate and live ACK value validation never establishes workspace admission (1.559008ms)
+✔ separate dormant receipt binds exact operation, project, requestId and full input digest without claiming provenance (41.484542ms)
+✔ snapshot and receipt complete wrappers, not just inner timelines, obey unchanged 256 KiB cap (740.62963ms)
+✔ receipt wrapper rejects hostile binding/context fields without executing code (3.810089ms)
+✔ strict bounded values, ordering and non-normalization (8.650602ms)
+✔ legacy absent, explicit null, constants and closed endpoint versus half-open samples (2.358745ms)
+✔ immutable evaluator and edit fields preserve presence without aliasing (4.104343ms)
+✔ all interior frame cuts preserve exact anchors and numerical curve including held regions (93.781015ms)
+✔ fade times automation is quadratic, not a combined endpoint ramp (1.422722ms)
+✔ serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission (1.225423ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 27
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3592.132811
+
+✖ failing tests:
+
+test at tests/inspection-contracts.test.mjs:1:1
+✖ tests/inspection-contracts.test.mjs (284.099187ms)
+  'test failed'

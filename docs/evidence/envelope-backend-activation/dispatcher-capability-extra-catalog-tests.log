@@ -1,0 +1,10 @@
+✔ ordinary40 capability refuses extra table catalog object without writes (2413.527363ms)
+✔ ordinary40 capability refuses extra view catalog object without writes (663.105067ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5379.010731

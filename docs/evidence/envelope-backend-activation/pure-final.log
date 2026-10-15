@@ -1,0 +1,36 @@
+✔ complete candidate intent is detached and bounded while live schema admission grants no workspace authority (12.308117ms)
+✔ only the typed points path admits an ordinary dense bounded array without running code (3.543274ms)
+✔ node, depth, unicode and complete bytes fail closed without changing caps (3.010118ms)
+✔ complete candidate task binds exact intent including presence and all IDs (31.50055ms)
+✔ candidate is absent from production root and package export surface (1.289661ms)
+✔ maximal complete add and update include the largest current colour declaration within unchanged budgets (4.248808ms)
+ℹ {"maximalAdd":{"bytes":4600,"nodes":98,"depth":4},"maximalUpdate":{"bytes":4609,"nodes":99,"depth":5}}
+✔ duration context is descriptor-checked before selection, including digest and task entry points (7.924799ms)
+✔ candidate and live complete records preserve absent/null/value without workspace authority (12.244363ms)
+✔ candidate envelope validation rejects undefined, unknown profiles, extra keys and out-of-duration points (2.753866ms)
+✔ strict typed traversal rejects getters, proxies, symbols, nonenumerable properties and exotic arrays without executing them (7.199321ms)
+✔ standalone candidate snapshot has exact conditional profile presence and is not a production render shape (9.319183ms)
+✔ add ACK matches the newly added clip, exact field presence and every untouched previous clip (23.609429ms)
+✔ update ACK binds exact envelope payload, untouched clips and shrink replacement semantics (34.804919ms)
+✔ replacement ACK preserves the exact envelope and every non-source field (6.184247ms)
+✔ split ACK checks all interior cuts, absent/null/held/ramps/max points and existing fade restrictions (231.280519ms)
+✔ Undo/redo require exact expected history; immutable original ACK remains valid after later Undo (5.014552ms)
+✔ 100 complete envelope clips serialize exactly on both sides of unchanged 256 KiB cap; rejection is pure, not a transaction proof (265.848522ms)
+✔ candidate and live ACK value validation never establishes workspace admission (1.647997ms)
+✔ separate dormant receipt binds exact operation, project, requestId and full input digest without claiming provenance (22.317957ms)
+✔ snapshot and receipt complete wrappers, not just inner timelines, obey unchanged 256 KiB cap (626.114834ms)
+✔ receipt wrapper rejects hostile binding/context fields without executing code (1.22955ms)
+✔ strict bounded values, ordering and non-normalization (27.907028ms)
+✔ legacy absent, explicit null, constants and closed endpoint versus half-open samples (4.426979ms)
+✔ immutable evaluator and edit fields preserve presence without aliasing (8.23878ms)
+✔ all interior frame cuts preserve exact anchors and numerical curve including held regions (94.924699ms)
+✔ fade times automation is quadratic, not a combined endpoint ramp (2.02579ms)
+✔ serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission (2.373965ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2011.3633

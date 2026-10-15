@@ -1,0 +1,148 @@
+✔ real dispatch migrates source38 marker-only to40 and reopens idempotently (1733.414739ms)
+✔ dispatch restores source40 as exact41 while fixed source38/restored39 stays unchanged (2123.162468ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(42) (2288.46724ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(39) (1565.068193ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: DELETE FROM schema_version WHERE version=38 (4849.440593ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: DELETE FROM schema_version WHERE version=1 (1269.568178ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(41) (1751.103111ms)
+✔ source38 envelope evidence never acquires40 through migration (1099.810159ms)
+✔ dispatch40/41 retains all seven envelope families (explicit null) (2537.015594ms)
+✔ dispatch40/41 retains all seven envelope families (active) (4150.654447ms)
+✔ real dispatch frozen role/timeline_requests survives changed cache with inherited read continuity (2287.216108ms)
+✔ real dispatch frozen role/exports survives changed cache with inherited read continuity (1694.741884ms)
+✔ real dispatch frozen colour/timeline_requests survives changed cache with inherited read continuity (1821.290364ms)
+✔ real dispatch frozen colour/exports survives changed cache with inherited read continuity (3357.467492ms)
+✔ dispatch preserves old38/39 role cache-binding rejection rather than applying40 frozen rules (5295.748121ms)
+✔ dispatch preserves old38/39 colour cache-binding rejection rather than applying40 frozen rules (2037.71001ms)
+✔ volume capability input is true-only opt-in and absence never grants editing (5.648806ms)
+✔ capability denies exact historical38/39 and marker-only40 without modifying fixtures (976.861195ms)
+✖ full restored41 capability and shared mutation admission fail closed on catalog corruption (757.024362ms)
+✖ full restored41 capability and shared mutation admission fail closed on metadata corruption (828.427823ms)
+✖ full restored41 capability and shared mutation admission fail closed on holds-receipt corruption (830.369019ms)
+✖ full restored41 capability and shared mutation admission fail closed on holds-task corruption (922.2504ms)
+✖ full restored41 capability and shared mutation admission fail closed on holds-proposal corruption (868.678854ms)
+✖ full restored41 capability and shared mutation admission fail closed on holds-export corruption (948.35366ms)
+✖ full restored41 capability and shared mutation admission fail closed on task-binding corruption (826.079079ms)
+✔ ordinary40 backup verifies and restores41 with valid actual-service capability responses and exact retained envelope history (6005.041962ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 19
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 53867.871803
+
+✖ failing tests:
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:118
+✖ full restored41 capability and shared mutation admission fail closed on catalog corruption (757.024362ms)
+  Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+      at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+      at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:356:61)
+      at captureHolds (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:366:14)
+      at Object.installWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:432:3)
+      at Object.installRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:240:91)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:193:318)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19) {
+    code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:118
+✖ full restored41 capability and shared mutation admission fail closed on metadata corruption (828.427823ms)
+  Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+      at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+      at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:356:61)
+      at captureHolds (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:366:14)
+      at Object.installWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:432:3)
+      at Object.installRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:240:91)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:193:318)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19) {
+    code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:118
+✖ full restored41 capability and shared mutation admission fail closed on holds-receipt corruption (830.369019ms)
+  Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+      at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+      at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:356:61)
+      at captureHolds (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:366:14)
+      at Object.installWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:432:3)
+      at Object.installRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:240:91)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:193:318)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19) {
+    code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:118
+✖ full restored41 capability and shared mutation admission fail closed on holds-task corruption (922.2504ms)
+  Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+      at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+      at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:356:61)
+      at captureHolds (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:366:14)
+      at Object.installWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:432:3)
+      at Object.installRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:240:91)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:193:318)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19) {
+    code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:118
+✖ full restored41 capability and shared mutation admission fail closed on holds-proposal corruption (868.678854ms)
+  Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+      at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+      at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:356:61)
+      at captureHolds (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:366:14)
+      at Object.installWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:432:3)
+      at Object.installRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:240:91)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:193:318)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19) {
+    code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:118
+✖ full restored41 capability and shared mutation admission fail closed on holds-export corruption (948.35366ms)
+  Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+      at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+      at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:356:61)
+      at captureHolds (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:366:14)
+      at Object.installWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:432:3)
+      at Object.installRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:240:91)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:193:318)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19) {
+    code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:118
+✖ full restored41 capability and shared mutation admission fail closed on task-binding corruption (826.079079ms)
+  Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+      at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+      at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:356:61)
+      at captureHolds (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:366:14)
+      at Object.installWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:432:3)
+      at Object.installRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:240:91)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:193:318)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19) {
+    code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  }

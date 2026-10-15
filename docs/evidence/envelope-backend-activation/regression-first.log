@@ -1,0 +1,303 @@
+✔ role inputs preserve omission/null, reject invalid enums and remain ordinary clip operations (19.47035ms)
+✔ roles are clip-owned, editorial and preserve legacy omission and unrelated state (1341.708343ms)
+✔ role edit undo/redo, split inheritance and clear restore exact absent/null shape (1137.505022ms)
+✔ role CAS and exact replay preserve old acknowledgements after removal and restart (687.245672ms)
+✔ still-image role edits including explicit clear fail atomically (450.244861ms)
+✔ role-only edits explicitly change frozen snapshots but leave audio filter parameters unchanged (1010.99888ms)
+✔ image role rejection proof is bound to exact operation, project and request (464.775427ms)
+✔ role write capability is opt-in and missing capability fails closed (420.4902ms)
+✔ owned old38 prepare refuses both typed paths and explicit null before any durable insert (1108.801781ms)
+✔ outer prepare and nested point capture execute zero getter/proxy traps (489.85732ms)
+✔ typed arrays do not relax unrelated paths, malformed Unicode or the 128-node/depth8 budgets (502.936319ms)
+✔ synthetic40 existing coordinator captures both exact points paths and production hashes without dispatch (1578.536239ms)
+✖ real live coordinator construction refuses dormant40 before durable insertion (1268.521043ms)
+✔ live add/update retain exact bounded presence and lexical historical-update semantics (46.166269ms)
+✔ live point schema refuses sparse, custom, extra-property and unknown typed fields (12.918413ms)
+✔ JSON round-tripped ACK uses envelope-only typed equality and exact add/null presence (20.067057ms)
+✔ render ACK accepts only the production string profile with exact absent/null behavior (17.401499ms)
+✔ render envelope snapshot wrapper stays bounded at 262143/262144/262145 bytes beneath 4-MiB outer cap (162.712385ms)
+✔ new rejection codes bind exact operation/project/request even for scalar loudness and never accept uncertain outcomes (9.119356ms)
+✔ complete live durable task retains the existing byte budgets and exact typed input (13.664333ms)
+✔ split ACK preserves envelope presence/null and exact meeting value, not array equality (8.144198ms)
+(node:20) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay (5392.012961ms)
+✔ absent/null and split exact interpolation survive history, fades reject atomically (2761.438968ms)
+✔ replacement preserves envelope and rejects incompatible cached audio without probes (1420.175923ms)
+✔ old38 explicit null refuses while exact40 admits inherited audio roles (1094.53622ms)
+✔ complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently (35.0139ms)
+✔ new rejection proof requires rollback, exact scope, receipt absence and zero writes (314.225118ms)
+✔ live dispatch recognizes synthetic40 profile without the historical policy seam (326.973794ms)
+✔ scalar loudness transaction preserves envelope and immutable replay after Undo/removal (1176.624756ms)
+✔ 100-clip complete candidate rejects revision growth before timeline/history/redo/receipt writes (832.339893ms)
+✔ lazy ensure writes never acquire definite rejection proof even after rollback (377.814579ms)
+✔ authentic owned synthetic40 source rejection has exact no-write transaction proof (464.970498ms)
+✔ atomic shrink with replacement keeps requested anchors rather than clamping (1447.354395ms)
+✔ restore origin is optional only by omission and never normalized or coerced (5.50777ms)
+✔ restore inspection is a strict non-path public read and does not grant effects (26.574206ms)
+✔ restore disclosure is bounded, excludes arbitrary fields and reports backup unavailable (26.479941ms)
+✔ ordinary task and ACK shapes remain byte-identical with optional outer restored projection (1.900829ms)
+✔ restore task page projection must match every returned identity in order (2.367355ms)
+✔ known historical marker repair eligibility remains [] (22.559846ms)
+✔ known historical marker repair eligibility remains [1] (9.181828ms)
+✔ known historical marker repair eligibility remains [1,3,19] (7.178769ms)
+✔ known historical marker repair eligibility remains [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24] (6.397281ms)
+✔ missing marker table still preserves ordinary bootstrap eligibility (1.907322ms)
+✔ explicit marker role restored-25-evidence never follows maximum-number inference (118.891188ms)
+✔ explicit marker role ordinary-26 never follows maximum-number inference (1.614858ms)
+✔ explicit marker role restored-27-evidence never follows maximum-number inference (2.099221ms)
+✔ unsupported marker combination is refused 26 (1.881586ms)
+✔ unsupported marker combination is refused 27 (1.71647ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27 (0.836368ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26 (1.008852ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27 (1.066896ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,27,28 (0.741375ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,28 (1.309986ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,0 (1.214235ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,-1 (0.99449ms)
+✔ unsupported marker combination is refused 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,9007199254740993 (4.727059ms)
+✔ partial restoration evidence never gives an ordinary26 fallback (5.78851ms)
+✔ marker declaration is validated before query and TEMP rows cannot spoof main (3.535687ms)
+✔ bounded role query preserves harmless marker whitespace and comments (1.566481ms)
+✔ restored25 dispatch only validates the original fixed profile and never bootstraps or upgrades it (13.021544ms)
+✔ failed restored25 validation cannot fall back to ordinary initializer (3.835137ms)
+✖ completed24 enters explicit26,28,30,32,34,36,38 and40 migrations without legacy bootstrap writes (179.675451ms)
+✔ completed24 rejects imported marker trigger before its real audit side effect can execute (103.354002ms)
+✔ completed24 missing known protection is refused instead of silently repaired before26 (101.323031ms)
+✖ genuinely missing known markers keep the old ordinary repair path before26 (80.049174ms)
+✔ real missing marker table retains historical bootstrap/upgrade qualification (747.483742ms)
+✔ real ordinary-1 retains historical bootstrap/upgrade qualification (510.778947ms)
+✔ real ordinary-14 retains historical bootstrap/upgrade qualification (519.937991ms)
+✔ real ordinary-21 retains historical bootstrap/upgrade qualification (476.955989ms)
+✔ real ordinary-23 retains historical bootstrap/upgrade qualification (406.107347ms)
+✖ actual current schema marker26 removed is refused unchanged before historical repair (50.929402ms)
+✖ actual current schema known marker removed is refused unchanged before historical repair (47.056099ms)
+✖ actual current schema marker26 and known marker removed is refused unchanged before historical repair (50.416543ms)
+✖ actual current schema all marker rows removed is refused unchanged before historical repair (70.783976ms)
+✖ actual current schema marker table removed is refused unchanged before historical repair (52.55694ms)
+✔ new operation evidence in a commented/quoted operation CHECK is fail-closed and never authorizes a profile (3.512531ms)
+✔ old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo','timeline.loudness.apply.more'))) (0.982633ms)
+✔ old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo')) /* CHECK(operation IN ('timeline.loudness.apply')) */) (0.778005ms)
+✔ old operation CHECK evidence stays eligible: CREATE TABLE edit_tasks(operation TEXT CHECK(operation IN ('timeline.undo')),note TEXT DEFAULT 'timeline.loudness.apply') (1.776315ms)
+✔ 36 to38 is marker-only, preserves raw rows and is idempotent (1685.539449ms)
+✔ 38 restores into fixed39 and does not widen old restored37 (1935.322827ms)
+✔ old profile rejects null evidence in timelines (3.140978ms)
+✔ old profile rejects null evidence in timeline_history (3.256891ms)
+✔ old profile rejects null evidence in timeline_requests (2.117155ms)
+✔ old profile rejects null evidence in edit_tasks (2.245891ms)
+✔ old profile rejects null evidence in exports (0.969457ms)
+✔ old profile rejects null evidence in workspace_restore_timeline_history (5.537879ms)
+✔ old profile rejects null evidence in agent_edit_proposals (1.62617ms)
+✔ old profile rejects escaped evidence in timelines (1.912688ms)
+✔ old profile rejects escaped evidence in timeline_history (1.169025ms)
+✔ old profile rejects escaped evidence in timeline_requests (2.539924ms)
+✔ old profile rejects escaped evidence in edit_tasks (1.894742ms)
+✔ old profile rejects escaped evidence in exports (1.12629ms)
+✔ old profile rejects escaped evidence in workspace_restore_timeline_history (2.880056ms)
+✔ old profile rejects escaped evidence in agent_edit_proposals (1.615825ms)
+✔ old profile rejects duplicate evidence in timelines (2.045426ms)
+✔ old profile rejects duplicate evidence in timeline_history (2.559477ms)
+✔ old profile rejects duplicate evidence in timeline_requests (2.191837ms)
+✔ old profile rejects duplicate evidence in edit_tasks (1.77143ms)
+✔ old profile rejects duplicate evidence in exports (1.109885ms)
+✔ old profile rejects duplicate evidence in workspace_restore_timeline_history (3.480051ms)
+✔ old profile rejects duplicate evidence in agent_edit_proposals (0.882212ms)
+✔ old profile rejects profile evidence in timelines (1.603901ms)
+✔ old profile rejects profile evidence in timeline_history (0.984371ms)
+✔ old profile rejects profile evidence in timeline_requests (1.95533ms)
+✔ old profile rejects profile evidence in edit_tasks (1.10313ms)
+✔ old profile rejects profile evidence in exports (0.743224ms)
+✔ old profile rejects profile evidence in workspace_restore_timeline_history (1.533207ms)
+✔ old profile rejects profile evidence in agent_edit_proposals (1.014067ms)
+✔ old profile rejects malformed evidence in timelines (2.170113ms)
+✔ old profile rejects malformed evidence in timeline_history (2.508635ms)
+✔ old profile rejects malformed evidence in timeline_requests (1.148157ms)
+✔ old profile rejects malformed evidence in edit_tasks (1.763537ms)
+✔ old profile rejects malformed evidence in exports (1.302417ms)
+✔ old profile rejects malformed evidence in workspace_restore_timeline_history (1.691882ms)
+✔ old profile rejects malformed evidence in agent_edit_proposals (1.720797ms)
+✔ new profile rejects duplicate role keys and bounded malformed/oversize cells (24.774905ms)
+✔ new profile admits silent video and audio classifications but rejects image explicit clear (5.645519ms)
+✔ role-bearing exports require exact declaration and role-free exports forbid one (5.172215ms)
+✔ malformed unrelated legacy payloads are left to historical readers (1.977399ms)
+✔ old profiles reject role error proof even when task input has no role (1.887296ms)
+✔ 36 to38 rejects smuggled role evidence before marker writes (500.597194ms)
+✔ marker-only38 refuses missing immutable_timeline_responses without repairs or marker writes (831.730052ms)
+✔ marker-only38 refuses missing immutable_timeline_history without repairs or marker writes (655.776875ms)
+✔ marker-only38 refuses missing immutable_timeline_render_snapshot without repairs or marker writes (393.572153ms)
+✔ marker-only38 refuses missing agent_chat_one_active without repairs or marker writes (529.001513ms)
+✔ restored37 refuses role-bearing edit-task preparation without reserving an intent (694.888893ms)
+✔ actual backup38 restores role timelines, history and set/clear receipts exactly into editable39 (2091.332677ms)
+✔ dormant38 to40 is marker-only and preserves integer task sequence storage (1888.367604ms)
+✔ dormant38 to40 is marker-only and preserves real task sequence storage (635.181151ms)
+✔ dormant38 to40 is marker-only and preserves wide integer task sequence storage (674.49851ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38 (519.147478ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13 (305.731921ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39) (316.154861ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41) (338.04624ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999) (538.200163ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_responses without repairs (393.013036ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_history without repairs (409.774084ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs (335.073419ms)
+✔ ordinary40 refuses missing inherited agent_chat_one_active without repairs (459.229867ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null} (363.05385ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volume\u0045nvelope":null} (378.697473ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0} (373.679526ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope": (416.053442ms)
+✔ ordinary40 interruption after marker insertion rolls back without touching prior bytes (442.853438ms)
+✔ ordinary40 rejects bounded blob task sequence projection (914.262024ms)
+✔ ordinary40 rejects bounded text task sequence projection (467.965927ms)
+✔ ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes (1084.704721ms)
+✔ ordinary40 and exact restored41 preserve null timeline/history/receipt shapes (921.293143ms)
+✔ ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes (982.442265ms)
+✔ restored41 held tasks, receipt vacancy and execution epochs remain isolated (617.919958ms)
+✔ restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted (1540.120801ms)
+✔ restored41 rejects forged metadata pair sourceSchema=38 (630.875964ms)
+✔ restored41 rejects forged metadata pair profile='restored-local-v8' (471.162428ms)
+✔ ordinary40 and restored41 retain inherited roles, annotation and image/colour admission (526.842843ms)
+✔ ordinary40 invalid inherited feature data fails without repair (362.115806ms)
+✔ ordinary40 invalid inherited feature data fails without repair (567.428405ms)
+✔ ordinary40 invalid inherited feature data fails without repair (393.137699ms)
+✔ ordinary40 and restored41 preserve every historical task state and raw non-input storage class (635.450996ms)
+✔ supported40 malformed positive evidence rejects restoration before any DDL or capture (399.118217ms)
+ℹ tests 160
+ℹ suites 0
+ℹ pass 152
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20950.32279
+
+✖ failing tests:
+
+test at tests/timeline-volume-envelope-durable-ingress.test.mjs:77:1
+✖ real live coordinator construction refuses dormant40 before durable insertion (1268.521043ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/timeline-volume-envelope-durable-ingress.test.mjs:79:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { code: 'RESTORE_STORE_UNVERIFIED' },
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at tests/workspace-schema-dispatch.test.mjs:82:1
+✖ completed24 enters explicit26,28,30,32,34,36,38 and40 migrations without legacy bootstrap writes (179.675451ms)
+  Error: Volume envelopes require an exact supported workspace profile.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:23:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:204:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema-dispatch.test.mjs:84:45)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema-dispatch.test.mjs:100:1
+✖ genuinely missing known markers keep the old ordinary repair path before26 (80.049174ms)
+  Error: Volume envelopes require an exact supported workspace profile.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:23:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:204:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema-dispatch.test.mjs:102:45)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema-dispatch.test.mjs:120:3
+✖ actual current schema marker26 removed is refused unchanged before historical repair (50.929402ms)
+  Error: Volume envelopes require an exact supported workspace profile.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:23:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:204:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema-dispatch.test.mjs:122:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema-dispatch.test.mjs:120:3
+✖ actual current schema known marker removed is refused unchanged before historical repair (47.056099ms)
+  Error: Volume envelopes require an exact supported workspace profile.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:23:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:204:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema-dispatch.test.mjs:122:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema-dispatch.test.mjs:120:3
+✖ actual current schema marker26 and known marker removed is refused unchanged before historical repair (50.416543ms)
+  Error: Volume envelopes require an exact supported workspace profile.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:23:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:204:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema-dispatch.test.mjs:122:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema-dispatch.test.mjs:120:3
+✖ actual current schema all marker rows removed is refused unchanged before historical repair (70.783976ms)
+  Error: Volume envelopes require an exact supported workspace profile.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:23:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:204:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema-dispatch.test.mjs:122:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  }
+
+test at tests/workspace-schema-dispatch.test.mjs:120:3
+✖ actual current schema marker table removed is refused unchanged before historical repair (52.55694ms)
+  Error: Volume envelopes require an exact supported workspace profile.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:23:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:204:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema-dispatch.test.mjs:122:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  }

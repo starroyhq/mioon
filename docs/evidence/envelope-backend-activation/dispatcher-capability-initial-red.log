@@ -1,0 +1,58 @@
+✔ real dispatch migrates source38 marker-only to40 and reopens idempotently (1744.94395ms)
+✔ dispatch restores source40 as exact41 while fixed source38/restored39 stays unchanged (2027.155038ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(42) (452.981422ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(39) (489.775786ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: DELETE FROM schema_version WHERE version=38 (433.757176ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: DELETE FROM schema_version WHERE version=1 (810.025717ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(41) (658.39167ms)
+✔ source38 envelope evidence never acquires40 through migration (462.116502ms)
+✔ dispatch40/41 retains all seven envelope families (explicit null) (1005.850203ms)
+✔ dispatch40/41 retains all seven envelope families (active) (865.143979ms)
+✔ real dispatch frozen role/timeline_requests survives changed cache with inherited read continuity (970.72119ms)
+✔ real dispatch frozen role/exports survives changed cache with inherited read continuity (991.49046ms)
+✔ real dispatch frozen colour/timeline_requests survives changed cache with inherited read continuity (1777.246879ms)
+✔ real dispatch frozen colour/exports survives changed cache with inherited read continuity (957.718119ms)
+✔ dispatch preserves old38/39 role cache-binding rejection rather than applying40 frozen rules (2496.334281ms)
+✔ dispatch preserves old38/39 colour cache-binding rejection rather than applying40 frozen rules (1635.155226ms)
+✔ volume capability input is true-only opt-in and absence never grants editing (2.445823ms)
+✔ capability denies exact historical38/39 and marker-only40 without modifying fixtures (476.73788ms)
+✔ full restored41 capability and shared mutation admission fail closed on catalog corruption (1679.96315ms)
+✔ full restored41 capability and shared mutation admission fail closed on metadata corruption (919.005192ms)
+✖ full restored41 capability and shared mutation admission fail closed on holds corruption (884.685193ms)
+✔ ordinary40 backup verifies and restores41 with valid actual-service capability responses and exact retained envelope history (2349.043591ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 21
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25147.031913
+
+✖ failing tests:
+
+test at tests/workspace-schema40-dispatch.test.mjs:192:50
+✖ full restored41 capability and shared mutation admission fail closed on holds corruption (884.685193ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+  +   editable: true,
+  -   editable: false,
+      profileId: 'mioon-clip-linear-attenuation-v1'
+    }
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:198:35)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { profileId: 'mioon-clip-linear-attenuation-v1', editable: true },
+    expected: { profileId: 'mioon-clip-linear-attenuation-v1', editable: false },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

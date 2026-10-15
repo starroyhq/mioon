@@ -20,7 +20,8 @@ import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages
 import {admitTimelineVolumeEnvelopeWrite} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 import {rejectTimelineMutation} from '../packages/business/src/timeline-recovery.mjs';
 import {open,snapshot,insert} from './workspace-schema26-fixtures.mjs';
-// Test-only seam: production restore dispatch deliberately does not know40.
+// Historical test-only seam retained for bounded synthetic transaction regressions.
+// Genuine activation evidence lives in timeline-volume-envelope-owned-startup.test.mjs.
 // No other permission check is mocked, and only full validated ordinary40
 // synthetic fixtures receive the exemption. Restored/forged profiles refuse.
 const fixtures=new WeakSet();
@@ -90,9 +91,9 @@ test('replacement preserves envelope and rejects incompatible cached audio witho
  f.call('timeline.clip.replaceSource',{clipId,assetId:b.id});assert.deepEqual(f.timeline.clips[0].volumeEnvelope,envelope());
  rejected(f,'timeline.clip.replaceSource',{clipId,assetId:bad.id},'TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');
 });
-test('old38 explicit null and mixed-role40 request reject before any state change',t=>{
+test('old38 explicit null refuses while exact40 admits inherited audio roles',t=>{
  const old=fixture(t,{version:38}),a=old.asset();rejected(old,'timeline.clip.add',{assetId:a.id,trackId:old.timeline.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:null},'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');
- const fresh=fixture(t),b=fresh.asset();rejected(fresh,'timeline.clip.add',{assetId:b.id,trackId:fresh.timeline.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope(),audioRole:null},'RESTORE_SCHEMA_UNSUPPORTED');
+ const fresh=fixture(t),b=fresh.asset();fresh.call('timeline.clip.add',{assetId:b.id,trackId:fresh.timeline.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope(),audioRole:null});assert.equal(fresh.timeline.clips[0].audioRole,null);
 });
 test('complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently',()=>{
  for(const field of ['timeline','before','after','response'])for(const size of [262143,262144,262145]){
@@ -115,12 +116,9 @@ test('new rejection proof requires rollback, exact scope, receipt absence and ze
  assert.equal(hasRequestNotAppliedProof(error,{...input,projectId:randomUUID()},{operation}),false);
 });
 
-test('unmodified live policy refuses synthetic40 entry without writes',t=>{
- const f=fixture(t,{missing:true,realPolicy:true}),before=f.state();
- assert.throws(()=>f.services.ensure(f.projectId),{code:'RESTORE_STORE_UNVERIFIED'});
- assert.deepEqual(f.state(),before);
- assert.throws(()=>f.call('timeline.track.add',{kind:'video'}),{code:'RESTORE_STORE_UNVERIFIED'});
- assert.deepEqual(f.state(),before);
+test('live dispatch recognizes synthetic40 profile without the historical policy seam',t=>{
+ const f=fixture(t,{missing:true,realPolicy:true});
+ assert.equal(f.services.ensure(f.projectId).projectId,f.projectId);
 });
 test('scalar loudness transaction preserves envelope and immutable replay after Undo/removal',async t=>{
  const {readyMixLoudness,mixLoudnessInput}=await import('./fixtures/timeline-mix-loudness-fixtures.mjs');

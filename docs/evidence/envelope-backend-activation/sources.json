@@ -1,0 +1,28 @@
+{
+  "baseline": "99c87a1f6a0a78ecf60d4b2137abfbe963c3ca68",
+  "sha256": {
+    "packages/business/src/lut-resources.ts": "c8e6c98d0c580e99565aac2139bcb148a4072809cb6658ead893dcc0cc2fe6c6",
+    "packages/business/src/services.mjs": "e3f840b65988935480407a380cdbfcad148337e8903097aff282c4b9427846c4",
+    "packages/business/src/timeline-audio-role-business.ts": "12dcf8b1dd38d466d24f846f0c6da468bbb8a3b1b2132461a81bf2e4e13eb268",
+    "packages/business/src/timeline-volume-envelope-admission.ts": "e096fcab27351db14871a1735a97476c2b652ad0b0b524272afa8a9cc87f325d",
+    "packages/business/src/timeline-volume-envelope-capability.ts": "f0e25c0ce2935fcd9f7dbcbb6966dbfeeea6ecc1a6cb39e57f6d04d64caacc3d",
+    "packages/business/src/workspace-backup-schema-versions.ts": "9d91b4b006113d1c2c7d6804b1c15768c0dd432ab9907fc1c89eb862e9fc0c98",
+    "packages/business/src/workspace-restore-read.mjs": "35cea843fa70f386e16679072d9bdf007cb9773b757aef33ebd938edf23e66b4",
+    "packages/business/src/workspace-restore-schema-v41.ts": "50eab2f5ec49847cda2b008b397e71fb18e662e294d002d25639b6c433a9173a",
+    "packages/business/src/workspace-restore.mjs": "0ca45d54091186b050cbb694e6cd95f25998e5d8de951d8662d0e168527b6322",
+    "packages/business/src/workspace-schema-dispatch.ts": "0177539d7717ae86b5d97b47c4b14e106893af8342757ba95d936ea0f1449292",
+    "packages/contracts/src/index.mjs": "fe43d39316b4cfc4f25cbf8a890581bee085c636eb61350c71f28c99969aaa76",
+    "packages/contracts/src/lut-resources.ts": "5658797cd03a25f8c047b1700fc53f1df91ecab58da8698630e715c673e3a21b",
+    "packages/contracts/src/operation-effects.mjs": "b1f4519478b7a171801cef4e8af5f5ec2bbe0306e4f812d5540d9dd9569e1c7e",
+    "packages/contracts/src/timeline-volume-envelope-capability.ts": "cff363b10d2d5c9fe85fbcf75486d6cb30aa47eafd3e9487df0eb0d45b9f4005",
+    "packages/contracts/src/workspace-restore.mjs": "fa2ecdd296aacb0aa7301ce5f8dc1d754dacbf88dfcb5ff5b6a7d2d26adf19db",
+    "packages/contracts/src/workspace-schema-profiles.ts": "de4e9c16ac425681ca47da1ae83d655df67e19be2569f549cfd69a600b502ef0",
+    "tests/timeline-fades-transports.test.mjs": "1388e53e3be64608680bde1000f27b3a0305bb3e26ae1c99f738ae218b73e10a",
+    "tests/timeline-volume-envelope-durable-ingress.test.mjs": "e183d39d043dd6a27aa0356cd7d28452aec3a46e6acfc9a3011821c768f3791b",
+    "tests/timeline-volume-envelope-mutations.test.mjs": "c020b2c09b6debba839d6e885d660b5e5651cdb1d602c490930175a1ccb45850",
+    "tests/timeline-volume-envelope-owned-startup.test.mjs": "01f6bcd47db233ca0474b1aba79d51618bd7e003f04e9e735b12e58065d588da",
+    "tests/workspace-schema-dispatch.test.mjs": "9ba57dfd157a2b5a59a1744f634ed7e076a2c48555a3bcb80ec78b61220acdd0",
+    "tests/workspace-schema38.test.mjs": "a1bd753053dee510ce13995706b4bfa0632b2fc22d98d9bf257e7c5664b4e549",
+    "tests/workspace-schema40-dispatch.test.mjs": "90d2dd3a83658b1b5033dc9cbedb911c447d2abe3b1331013184ba5d259aa70d"
+  }
+}
