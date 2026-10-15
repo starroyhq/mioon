@@ -1,0 +1,11 @@
+{
+  "status": "passed_with_accidental_second_execution",
+  "firstObservationMs": 43699,
+  "secondObservationMs": 44682,
+  "qualificationPath": "tests/timeline-clip-loudness-60.qualification.mjs",
+  "qualificationTestBodySha256": "195386011779cdeb6998e58c3058251f5c1bbcc67c1b36a329584671febf1c36",
+  "selectedSourceInFrame": 16200,
+  "selectedDurationFrames": 1800,
+  "deadlineMs": 120000,
+  "note": "Moved unchanged test body and helpers after accidental negative-name filter rerun. No execution after relocation."
+}

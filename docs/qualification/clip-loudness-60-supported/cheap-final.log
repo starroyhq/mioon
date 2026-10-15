@@ -1,0 +1,55 @@
+✔ missing or corrupt owned timeline graph never initializes or reaches media (1150.148825ms)
+▶ same-revision metadata, source bytes, ownership and revision drift discard the observation
+  ✔ metadata (1406.302585ms)
+  ✔ revision (1367.906056ms)
+  ✔ bytes (1141.444563ms)
+  ✔ foreign (822.485342ms)
+  ✔ lock (872.838488ms)
+✔ same-revision metadata, source bytes, ownership and revision drift discard the observation (5614.890503ms)
+✔ native-db audio observation admission is shared and retains noncooperative reads through cancellation (367.997147ms)
+✔ late timeout results cannot decode or publish and a live permit remains held (334.848644ms)
+✔ unconfirmed exact child cleanup keeps shared admission sticky even after late close (864.96957ms)
+✔ restored direct and composed boundaries refuse before any payload getters or media (1419.294819ms)
+✔ a second source hash failure discards the measured clip (1374.030791ms)
+▶ decoder stderr, private paths and unrecognized code strings never enter safe public failures
+  ✔ FFMPEG_ERROR (597.598253ms)
+  ✔ TIMELINE_CLIP_LOUDNESS_/private/source.wav (837.731532ms)
+✔ decoder stderr, private paths and unrecognized code strings never enter safe public failures (1439.369661ms)
+✔ one selected saved signal is double-hashed, bound and measured without any durable effects (1212.65198ms)
+✔ wrong selection, source hash, timeline identity and extra authority refuse before media (422.186847ms)
+✔ muted and zero gain selections are explicit rejections, never source-only substitutes (421.816123ms)
+✔ unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement (1893.492443ms)
+▶ selected exact sample count rejects one missing or extra sample frame
+  ✔ -1 (802.129475ms)
+  ✔ 1 (807.66236ms)
+✔ selected exact sample count rejects one missing or extra sample frame (1613.517013ms)
+✔ source resource admission refuses over 512 MiB before file access (389.667587ms)
+✔ complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed (438.15769ms)
+✔ selected clip default is125s; explicit timeouts and unrelated30s defaults stay intact (47.815506ms)
+✔ typed helper and shared RPC preserve explicit selection and transport-only workspace/cancellation (8.313007ms)
+✔ strict selection and fixed profile reject targets, candidates and authority before dispatch (18.632441ms)
+✔ reports bind exact selected identity, scope, samples and counters without retry (171.123013ms)
+✔ 8KiB reader rejects declared, streamed and error-body overflow before unbounded JSON decoding (24.235507ms)
+✔ bounded reader handles split UTF8, exact envelope limit and rejects invalid bytes/JSON or absent streams (4.682225ms)
+✔ pending streamed response cancels on caller abort or deadline; owned body is retired without retry (41.273763ms)
+✔ transport loss and safe backend errors carry no mutation receipt/retry authority or credentials (3.602154ms)
+✔ strict catalog operation is observation only with no persisted request or scope-changing options (9.242733ms)
+✔ measurement schema preserves fixed algorithm states and exact clip output bounds (22.337712ms)
+✔ response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings (2.597268ms)
+✔ four locale operation discovery text is present and never silently grants application (3.402929ms)
+✔ independent descriptor has one segment and preserves source trim, gain and clip-local fades under rebase (20.556519ms)
+✔ timeline placement cannot add leading silence, extra segments, or change selected PCM mapping (35.197838ms)
+✔ muted, zero gain and image selections reject without a source probe (2.0347ms)
+✔ hidden video embedded sound is measured; actual audio mismatch and genuine no-audio are not silence (5.7099ms)
+✔ unknown and multichannel layouts refuse before PCM; supported mono/44.1k retains fixed output (7.557355ms)
+✔ exact sample count, finite PCM and callback cancellation remain enforced (10.907919ms)
+✔ 60 second clip planner stays one pass; longer selections refuse before allocating PCM (1.60538ms)
+✔ adapter preserves the existing synchronous borrowed-chunk callback contract (1.94738ms)
+ℹ tests 44
+ℹ suites 0
+ℹ pass 44
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22988.803943

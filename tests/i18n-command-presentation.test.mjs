@@ -62,9 +62,10 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   const original=cli(['--help']);
   assert.equal(original.status,0);
   const snapshot=JSON.parse(readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8'));
-  // Keep the frozen help fixture: only explicitly added V2 and annotation
+  // Keep the frozen help fixture: only explicitly added V2, annotation and clip
   // operations may differ, not legacy prose, schemas or operation ordering.
   const expectedOperations = [...snapshot.data.operations];
+  expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
   expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');
   expectedOperations.splice(expectedOperations.indexOf('asset.disposition.set') + 1, 0, 'asset.annotation.list', 'asset.annotation.set');
   assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, operations:expectedOperations}});

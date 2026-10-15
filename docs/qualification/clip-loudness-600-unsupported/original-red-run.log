@@ -1,0 +1,46 @@
+▶ saved false audio metadata is verified against real video bytes and genuine no-audio is explicitly refused
+  ✔ false metadata with real AAC refuses (2538.387684ms)
+  ✔ verified silent video refuses without fake measurement (2084.531333ms)
+✔ saved false audio metadata is verified against real video bytes and genuine no-audio is explicitly refused (4635.946049ms)
+✔ real selected post-gain/fade clip matches independently assembled PCM reference, not unrelated overlap or leading silence (7527.226624ms)
+▶ real digital silence, short material and low gated signal retain existing meter states
+  ✔ silence (2045.134928ms)
+  ✔ short (1946.451313ms)
+  ✔ quiet (2706.340701ms)
+✔ real digital silence, short material and low gated signal retain existing meter states (6701.628858ms)
+▶ real owned decoder cancellation and native-owner drain retire exact children without changing saved state
+  ✔ observer (1662.002251ms)
+  ✔ owner (3137.549581ms)
+✔ real owned decoder cancellation and native-owner drain retire exact children without changing saved state (4804.233163ms)
+✖ maximum 600-second selected saved clip completes its one real float pass within the fixed operation budget (122213.443123ms)
+✔ actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline (3558.462596ms)
+✔ actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry (3484.961791ms)
+✔ actual HTTP cancellation disconnects only loudness observation and leaves server healthy (33.336874ms)
+✔ actual CLI cancellation disconnects only loudness observation and leaves server healthy (859.367924ms)
+✔ actual MCP cancellation disconnects only loudness observation and leaves server healthy (1326.807523ms)
+✔ HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags (9504.126087ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 17
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 167770.186712
+
+✖ failing tests:
+
+test at mioon-clip-loudness/tests/timeline-clip-loudness-media.test.mjs:144:1
+✖ maximum 600-second selected saved clip completes its one real float pass within the fixed operation budget (122213.443123ms)
+  Error: The selected saved clip loudness measurement is unavailable. Read the saved timeline and explicitly analyze again.
+      at fault (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/packages/business/src/timeline-clip-loudness.ts:24:17)
+      at Object.measureClip [as timeline.clip.loudness] (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/packages/business/src/timeline-clip-loudness.ts:329:29)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/packages/business/src/services.mjs:401:40
+      at async Object.call (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/packages/business/src/services.mjs:405:14)
+      at async TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-clip-loudness/tests/timeline-clip-loudness-media.test.mjs:165:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'TIMELINE_CLIP_LOUDNESS_TIMEOUT',
+    status: 503
+  }
