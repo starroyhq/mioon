@@ -58,8 +58,11 @@ reran no product tests, native acceptance or stopped issue investigations.
    implementation](I18N-ACCEPTANCE.md) (`45da4df`) covers Simplified Chinese,
    region-neutral Traditional Chinese, English and Japanese, with isolated
    preferences, 365/365 targeted checks and bounded Linux native observations.
-   CLI/MCP human-readable localization remains a separate active phase, not
-   completed by that GUI commit. Narrow editor layout ([issue #4](https://github.com/starroyhq/mioon/issues/4)),
+   The separate [CLI/MCP presentation checkpoint](i18n-coverage-cli-mcp.md)
+   (`1794006`) delivers explicit four-language main-CLI help/parser diagnostics
+   and MCP instructions/tool descriptions, preserving legacy default output and
+   machine protocols. Backup/developer-script copy and MCP launch/transport
+   diagnostics remain open. Narrow editor layout ([issue #4](https://github.com/starroyhq/mioon/issues/4)),
    native 200% zoom, full screen-reader coverage and exhaustive native menus/file
    choosers remain unverified. No repeated resize investigation is implied.
 6. **Reliability and delivery.** Local integration includes the user's
