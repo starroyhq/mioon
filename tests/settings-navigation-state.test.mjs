@@ -23,6 +23,7 @@ function snapshot(slot) {
 function fixture(slot, options = {}) {
   let saved = snapshot(slot), reads = 0; const writes = [], checks = [];
   const client = {
+    ...(slot === 'comfy' ? { readAvailability: async () => ({ schemaVersion: 1, connectorId: 'mioon.comfy-local', implementationVersion: '1', state: 'available', reason: 'ready', fixedForSession: true }) } : {}),
     read: () => { reads++; return options.read ? options.read(reads, copy(saved)) : Promise.resolve(copy(saved)); },
     write: input => {
       writes.push(copy(input));

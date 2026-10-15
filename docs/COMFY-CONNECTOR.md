@@ -1,5 +1,9 @@
 # First-party local ComfyUI image connector
 
+The subsequent bounded increment adds [optional startup admission](COMFY-OPTIONAL-MODULE.md)
+without changing the original settings-enabled meaning or retained task formats.
+Its separate verification status does not extend the accepted checkpoint below.
+
 Status: implemented and accepted on top of `8c694d1` (2026-10-10). Focused
 checks, fresh builds, Linux native synthetic acceptance and the independent final
 full suite passed: **2993 total, 2991 passed, 0 failed, 2 skipped**. Validation

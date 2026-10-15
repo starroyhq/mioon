@@ -193,7 +193,7 @@ export async function saveToolConfig(file, config) {
 export function utilityEnvironment(env, tools) {
   // Never inherit Node injection options or unrelated credentials into the utility.
   const result = {};
-  for (const key of ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR',
+  for (const key of ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR', 'MIOON_COMFY_MODULE',
     ...providerEnvironmentKeys]) {
     if (typeof env[key] === 'string') result[key] = env[key];
   }

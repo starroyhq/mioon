@@ -1,3 +1,4 @@
+import {createComfyAdmission,COMFY_MODULE_UNAVAILABLE_MESSAGE} from '../../../packages/business/src/comfy/admission.ts';
 import {COMFY_SETTINGS_LIMITS, comfyImageCheckRequestSchema, comfyImageCheckResultSchema} from '@mioon/contracts';
 import {sanitizeComfySettingsResult, sanitizeComfySettingsError} from '@mioon/business/comfy/settings';
 import {comfyError} from '@mioon/business/comfy/profile';
@@ -47,6 +48,7 @@ async function observeCheck(req, res, shutdownSignal, run) {
   }
 }
 function safeError(error) {
+  if(error?.code==='COMFY_MODULE_UNAVAILABLE')return {code:error.code,message:COMFY_MODULE_UNAVAILABLE_MESSAGE,status:503};
   if (error?.code === 'COMFY_HTTP_VALIDATION') return {code: error.code, message: 'Local ComfyUI request is invalid or too large.', status: error.status === 413 ? 413 : 400};
   if (typeof error?.code === 'string' && error.code.startsWith('COMFY_SETTINGS_')) return sanitizeComfySettingsError(error);
   const safe = comfyError(error?.code);
@@ -58,21 +60,23 @@ function safeError(error) {
  * the broader Images route family. No configuration read/save performs I/O.
  * Explicit connection checks are advisory reads and may be aborted on disconnect;
  * settings writes retain their normal durable ownership after client disconnect. */
-export function createComfyHttp({settings, connector, signal} = {}) {
+export function createComfyHttp({settings, connector, availability, signal} = {}) {
+  const admission=createComfyAdmission(connector,availability);
   return async (req, res, url) => {
-    const settingsRoute = url.pathname === '/api/images/comfy-settings', checkRoute = url.pathname === '/api/images/comfy-check';
-    if (!settingsRoute && !checkRoute) return false;
+    const settingsRoute = url.pathname === '/api/images/comfy-settings', checkRoute = url.pathname === '/api/images/comfy-check', availabilityRoute = url.pathname === '/api/images/comfy-availability';
+    if (!settingsRoute && !checkRoute && !availabilityRoute) return false;
     try {
       assertActive(signal);
       if (typeof req.url !== 'string' || Buffer.byteLength(req.url) > 2048 || req.url !== url.pathname || url.search || url.hash) throw invalid();
-      const methods = settingsRoute ? ['GET', 'PUT'] : ['POST'];
+      const methods = availabilityRoute ? ['GET'] : settingsRoute ? ['GET', 'PUT'] : ['POST'];
       if (!methods.includes(req.method)) {
         res.setHeader('Allow', methods.join(', '));
         json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: 'Local ComfyUI request method is not allowed.', details: {}, retryable: false}});
         return true;
       }
       let result;
-      if (settingsRoute) {
+      if(availabilityRoute) result=admission.availability;
+      else if (settingsRoute) {
         if (req.method === 'GET') result = sanitizeComfySettingsResult(await settings.get());
         else {
           const input = await readBody(req, res, signal);
@@ -84,6 +88,7 @@ export function createComfyHttp({settings, connector, signal} = {}) {
           const parsed = comfyImageCheckRequestSchema.safeParse(await readBody(req, res, checkSignal));
           if (!parsed.success) throw invalid();
           assertActive(checkSignal);
+          admission.assertAvailable();
           const token = settings.clearCheck(parsed.data.baseUrl);
           const checked = await connector.check({config: parsed.data, signal: checkSignal});
           assertActive(checkSignal);

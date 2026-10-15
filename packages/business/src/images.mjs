@@ -1,3 +1,4 @@
+import {createComfyAdmission,COMFY_MODULE_UNAVAILABLE_MESSAGE} from './comfy/admission.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
 import {workspaceRestoreError} from './workspace-restore-policy.mjs';
 import {randomUUID,createHash} from 'node:crypto';
@@ -26,7 +27,7 @@ const hash=value=>createHash('sha256').update(canonical(value)).digest('hex');
 const now=()=>new Date().toISOString();
 // Safe custom pre-dispatch diagnostics. A dispatched task always remains unknown.
 const customPreDispatchCodes=new Set(['IMAGE_NETWORK_DENIED','IMAGE_CONNECTION_FAILED','IMAGE_TIMEOUT','IMAGE_DISPATCH_BLOCKED','IMAGE_SETTINGS_CONFLICT','IMAGE_SETTINGS_NOT_CONFIGURED','IMAGE_SETTINGS_DISABLED']);
-export function safeImageServiceError(cause){const code=Object.hasOwn(messages,cause?.code)?cause.code:'IMAGE_STORAGE_FAILED';return {code,message:messages[code],status:Number.isInteger(cause?.status)&&cause.status>=400&&cause.status<=599?cause.status:503};}
+export function safeImageServiceError(cause){if(cause?.code==='COMFY_MODULE_UNAVAILABLE')return {code:cause.code,message:COMFY_MODULE_UNAVAILABLE_MESSAGE,status:503};const code=Object.hasOwn(messages,cause?.code)?cause.code:'IMAGE_STORAGE_FAILED';return {code,message:messages[code],status:Number.isInteger(cause?.status)&&cause.status>=400&&cause.status<=599?cause.status:503};}
 const fail=(code,status)=>{throw error(code,status);};
 const invalid=()=>fail('IMAGE_RECORD_INVALID');
 const maxRevision=revision=>{if(!Number.isSafeInteger(revision)||revision>=Number.MAX_SAFE_INTEGER)fail('IMAGE_CAPACITY',507);};
@@ -36,17 +37,18 @@ const defaultGenerate=createMockImageAdapter().generate;
 /** Image-specific durable lifecycle. No chat/tool authority and no generic
  * operation dispatch. Live images require dedicated settings and immutable
  * user approval; injected dependencies are trusted tests, never RPC options. */
-export function createImageServices(store,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector}={}){
+export function createImageServices(store,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability}={}){
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
- if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
+ if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
  const {db,tx}=store,queue=[],pending=new Map(),active=new Set();
  const controller=new AbortController(),signal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
  let stopped=false,running=false,reconciled=false,reported=false;
+ const comfyAdmission=createComfyAdmission(comfyConnector,comfyModuleAvailability);
  const selectedSettings=providerId=>providerId==='openai'?settings:providerId==='openai-compatible'?customSettings:providerId==='comfy-local'?comfySettings:null;
  const expectedSettings=(revision,configuration)=>({expectedRevision:revision,configuration:configuration??{...DEFAULT_IMAGE_CONFIGURATION,enabled:true}});
  const reviews=createImageReviewServices(store,{signal,fault,
-  getSettings:providerId=>{const engine=selectedSettings(providerId);if(!engine)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};const current=engine[providerId==='comfy-local'?COMFY_SETTINGS_READ_CURRENT:IMAGE_SETTINGS_READ_CURRENT]();if(providerId==='comfy-local')return {revision:current.revision,enabled:current.configuration.enabled&&current.readiness.checked,destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};return {revision:current.revision,enabled:current.configuration.enabled,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
+  getSettings:providerId=>{if(providerId==='comfy-local')comfyAdmission.assertAvailable();const engine=selectedSettings(providerId);if(!engine)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};const current=engine[providerId==='comfy-local'?COMFY_SETTINGS_READ_CURRENT:IMAGE_SETTINGS_READ_CURRENT]();if(providerId==='comfy-local')return {revision:current.revision,enabled:current.configuration.enabled&&current.readiness.checked,destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};return {revision:current.revision,enabled:current.configuration.enabled,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
   assertSettings:({revision,configuration},providerId)=>{const engine=selectedSettings(providerId);if(!engine)fail('IMAGE_LIVE_DISABLED',403);return engine[providerId==='comfy-local'?COMFY_SETTINGS_ASSERT_CURRENT:IMAGE_SETTINGS_ASSERT_CURRENT](expectedSettings(revision,configuration));}});
  const live=liveGateway??(settings?createLiveImageGateway({settings}):null);
  const compatible=customGateway??(customSettings?createCompatibleImageGateway({settings:customSettings}):null);
@@ -82,6 +84,7 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   capacity(input.projectId,operation==='image.generate');
   let value;
   if(operation==='image.generate'){
+   if(input.providerId==='comfy-local')comfyAdmission.assertAvailable();
    if(input.providerId!=='mock'){const engine=selectedSettings(input.providerId);if(!engine||!selectedGateway(input.providerId))fail('IMAGE_LIVE_DISABLED',403);if(!approval){const configured=engine[input.providerId==='comfy-local'?COMFY_SETTINGS_READ_CURRENT:IMAGE_SETTINGS_READ_CURRENT]();if(!configured.configuration.enabled||(input.providerId==='comfy-local'?!configured.readiness.checked:!configured.secret.configured))fail('IMAGE_LIVE_DISABLED',403);fail('IMAGE_REVIEW_REQUIRED',403);}}
    const id=randomUUID(),timestamp=now();let groupId;
    if(input.groupId){const g=group(input.projectId,input.groupId);if(g.revision!==input.expectedRevision)fail('IMAGE_REVISION_CONFLICT');if(g.activeTaskId!==null)fail('IMAGE_GROUP_BUSY');if(g.name!==input.name)fail('IMAGE_STATE_CONFLICT');maxRevision(g.revision);groupId=g.id;db.prepare('UPDATE image_groups SET activeTaskId=?,revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(id,timestamp,g.id,g.projectId,g.revision);}
@@ -155,7 +158,7 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
   });
   try{storage.discardStagedPng(stageTask(result),()=>current(result));}catch{/* A retained private stage is safe; never undo a committed result. */}
  }
- const remote=createComfyRemoteServices(store,{signal,owner,readTask:task,readReview:reviews.getForTask,connector:comfyConnector,fault,
+ const remote=createComfyRemoteServices(store,{signal,owner,readTask:task,readReview:reviews.getForTask,connector:comfyConnector,admission:comfyAdmission,fault,
   failTask:target=>change(target,{state:'failed',errorCode:'COMFY_EXECUTION_FAILED'},{release:true}),
   stageResult:async(target,candidate,claim)=>{
    let original=current(target);const check=()=>{claim();return current(original);};
@@ -235,5 +238,5 @@ export function createImageServices(store,{signal:ownerSignal,generate=defaultGe
  const handlers={...reviews.handlers,...remote.handlers,'image.profile.list':listProfiles,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,input=>mutateWithSource(operation,input)]))};
  async function drain(){if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);}
  for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];handlers[operation]=input=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
- const service={handlers,drain,approveReviewed:approval=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input,approval);},rejectReview:reviews.reject};owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,service});reconcile();remote.reconcile();return service;
+ const service={handlers,drain,approveReviewed:approval=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input,approval);},rejectReview:reviews.reject};owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,service});reconcile();remote.reconcile();return service;
 }

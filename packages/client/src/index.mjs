@@ -121,7 +121,7 @@ function uncertainRequestDetails(body) {
   return {operation: body.operation, ...(Object.hasOwn(body, 'expectedWorkspaceOrigin') ? {expectedWorkspaceOrigin: body.expectedWorkspaceOrigin} : {}), ...(keyedMutationOperations.has(body.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
 }
 function comfyObservationNotAccepted(error,status,input) {
-  const statuses={COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
+  const statuses={COMFY_MODULE_UNAVAILABLE:503,COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
   const proof=error?.details?.observation;
   return Object.hasOwn(statuses,error?.code)&&status===statuses[error.code]&&proof?.outcome==='not_accepted'&&
     proof.operation==='image.task.observeRemote'&&proof.projectId===input.projectId&&proof.taskId===input.taskId&&proof.requestId===input.requestId&&

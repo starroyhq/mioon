@@ -2,7 +2,7 @@ import { ApiError, rpc, requestId as newRequestId } from './api.js';
 import { createImageRejectionCloseLatch } from './native-close-sources.ts';
 import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_REVIEW_LIMITS, IMAGE_EDIT_LIMITS, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
 import { safeImageSettings } from './image-settings.js';
-import { safeComfyImageSettings } from './comfy-image-settings.js';
+import { safeComfyImageSettings, safeComfyConnectorAvailability, comfyConnectorAvailable } from './comfy-image-settings.js';
 import { createComfyObservationSession, comfyObservationActive, comfyCanObserve } from './comfy-image-observation.js';
 export { comfyCanObserve } from './comfy-image-observation.js';
 import { createImageReviewClient, imageReviewIdentity as reviewIdentity } from './image-review.js';
@@ -39,7 +39,7 @@ export function imageInputIssue(draft) {
   return '';
 }
 export function initialImageGenerationState() {
-  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
+  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, comfyAvailability: null, comfyAvailabilityPhase: 'idle', remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', storageBlocked: false, pollPaused: false, actionTaskId: null };
 }
 export const imageDraftDirty = state => Boolean(state.draft.name || state.draft.prompt || state.target || state.mode === 'edit' || state.inputImage);
 // Metadata only: eligibility here is a chooser hint. The backend alone verifies
@@ -66,7 +66,7 @@ export function imageReviewCanApprove(state, review) {
   const settings = imageSelectedSettings(state, review?.input?.providerId);
   if (!isImageReviewResponse(review) || !imageEditReviewMatchesDraft(state, review) || review.state !== 'pending' || settings?.revision !== review.settingsRevision || !settings.configuration.enabled) return false;
   if (review.input.purpose === 'edit' && review.input.groupId && !state.groups.some(group => group.id === review.input.groupId && group.revision === review.input.expectedRevision && !group.activeTaskId)) return false;
-  if (review.input.providerId === 'comfy-local') return settings.readiness.checked && isCompleteComfyImageConfiguration(settings.configuration) && canonicalImageInput(settings.configuration) === canonicalImageInput(review.configuration);
+  if (review.input.providerId === 'comfy-local') return comfyConnectorAvailable(state.comfyAvailability) && settings.readiness.checked && isCompleteComfyImageConfiguration(settings.configuration) && canonicalImageInput(settings.configuration) === canonicalImageInput(review.configuration);
   return settings.secret.configured && (review.input.providerId !== 'openai-compatible' || canonicalImageInput(settings.configuration) === canonicalImageInput(review.configuration));
 }
 export function imageTaskReview(state, task) {
@@ -81,7 +81,7 @@ export function imagePaidAuthorization(state) {
 }
 export function imageCanGenerate(state) {
   const group = state.target && state.groups.find(item => item.id === state.target.groupId), settings = imageSelectedSettings(state);
-  return state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && !state.remotePending && !state.remoteStorageBlocked && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && !imageEditDraftIssue(state) && (state.providerId === 'mock' || state.providerId === 'comfy-local' && settings?.configuration.enabled && settings.readiness.checked && settings.revision > 0 && isCompleteComfyImageConfiguration(settings.configuration) || paidProvider(state.providerId) && settings?.configuration.enabled && settings.secret.configured && settings.revision > 0 && (state.providerId !== 'openai-compatible' || isCompleteCustomImageConfiguration(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision));
+  return state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && !state.remotePending && !state.remoteStorageBlocked && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && !imageEditDraftIssue(state) && (state.providerId === 'mock' || state.providerId === 'comfy-local' && comfyConnectorAvailable(state.comfyAvailability) && settings?.configuration.enabled && settings.readiness.checked && settings.revision > 0 && isCompleteComfyImageConfiguration(settings.configuration) || paidProvider(state.providerId) && settings?.configuration.enabled && settings.secret.configured && settings.revision > 0 && (state.providerId !== 'openai-compatible' || isCompleteCustomImageConfiguration(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision));
 }
 const pendingMatchesReview = (pending, review) => (!pending.sourceImage || canonicalImageInput(pending.sourceImage) === canonicalImageInput(review.sourceImage)) && canonicalImageInput(pending.input) === canonicalImageInput(review.input) && pending.settingsRevision === review.settingsRevision &&
   (pending.input.providerId !== 'openai-compatible' || pending.version === 2 && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination) &&
@@ -119,11 +119,12 @@ async function notAccepted(error, operation, input) {
 }
 
 /** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
-export function createImageGenerationSession({ projectId, api = rpc, reviewClient = createImageReviewClient(), settings, settingsReader, customSettings, customSettingsReader, comfySettings, comfySettingsReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 } = {}) {
-  let state = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer = null, polls = 0, reading = false;
+export function createImageGenerationSession({ projectId, api = rpc, reviewClient = createImageReviewClient(), settings, settingsReader, customSettings, customSettingsReader, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 } = {}) {
+  let state = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer = null, polls = 0, reading = false, availabilityEpoch = 0;
   if (settings) state.settings = safeImageSettings(settings);
   if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom');
   if (comfySettings) state.comfySettings = safeComfyImageSettings(comfySettings);
+  if (comfyAvailability) { try { state.comfyAvailability = safeComfyConnectorAvailability(comfyAvailability); state.comfyAvailabilityPhase = 'ready'; } catch { state.comfyAvailabilityPhase = 'error'; } }
   const announced = new Set(), tracked = new Map(), calls = new Set();
   async function call(operation, input) {
     const controller = new AbortController(); calls.add(controller); let deadline;
@@ -145,7 +146,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     onChange(copy(state));
   };
   const rejectionClose = createImageRejectionCloseLatch({ limit: IMAGE_REVIEW_LIMITS.reviewsPerProject, identityBytes: IMAGE_REVIEW_LIMITS.rowBytes }, () => emit({}));
-  const observations = createComfyObservationSession({ projectId, call, storage, requestId, onChange: emit });
+  const observations = createComfyObservationSession({ projectId, call, storage, requestId, getAvailability: () => state.comfyAvailability, onChange: emit });
   state = { ...state, ...observations.snapshot() };
   const stopTimer = () => { if (timer !== null) clearTimer(timer); timer = null; };
   const owned = epoch => !disposed && readEpoch === epoch;
@@ -221,8 +222,22 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     mergeTask(latest);
     if (clearPending(pending)) emit({ phase: 'ready', ...(pending.operation === 'image.generate' ? { ...(!pending.preserveDraft ? clearedDraft() : {}), selectedGroupId: latest.groupId, versionCursor: null, versionTrail: [] } : {}), message: '已找到原请求，没有重新生成。' });
   }
-  async function load({ automatic = false } = {}) {
+  async function refreshComfyAvailability() {
+    if (disposed || !visible) return false;
+    const token = ++availabilityEpoch;
+    emit({ comfyAvailability: null, comfyAvailabilityPhase: 'loading' });
+    try {
+      const availability = safeComfyConnectorAvailability(await comfyAvailabilityReader());
+      if (disposed || token !== availabilityEpoch) return false;
+      emit({ comfyAvailability: availability, comfyAvailabilityPhase: 'ready' }); return true;
+    } catch {
+      if (!disposed && token === availabilityEpoch) emit({ comfyAvailability: null, comfyAvailabilityPhase: 'error' });
+      return false;
+    }
+  }
+  async function load({ automatic = false, refreshAvailability = false } = {}) {
     if (disposed || !visible || reading || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || state.phase === 'submitting' || state.phase === 'targeting') return false;
+    if (refreshAvailability || state.comfyAvailabilityPhase === 'idle') void refreshComfyAvailability();
     if (!automatic) { polls = 0; emit({ pollPaused: false }); }
     stopTimer(); const epoch = ++readEpoch; reading = epoch; let pendingRemoteTask = null;
     emit({ historyPhase: 'loading', ...(!state.loaded ? { phase: state.pending ? 'unknown' : 'loading' } : {}) });
@@ -447,6 +462,7 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     getState: () => copy(state), getNativeCloseState: rejectionClose.getState, load, generatePaid, prepareComfy,
     setSettings(value) { if (disposed) return false; const settings = safeImageSettings(value); if (canonicalImageInput(state.settings) !== canonicalImageInput(settings)) interactionEpoch++; emit({ settings }); return true; },
     setCustomSettings(value) { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom'); if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
+    setComfyAvailability(value) { if (disposed) return false; availabilityEpoch++; let comfyAvailability = null; try { comfyAvailability = safeComfyConnectorAvailability(value); } catch {} emit({ comfyAvailability, comfyAvailabilityPhase: comfyAvailability ? 'ready' : 'error' }); return Boolean(comfyAvailability); },
     setComfySettings(value) { if (disposed) return false; const comfySettings = safeComfyImageSettings(value); if (canonicalImageInput(state.comfySettings) !== canonicalImageInput(comfySettings)) interactionEpoch++; emit({ comfySettings }); return true; },
     selectMode(mode) { if (!composerEditable() || !['text', 'edit'].includes(mode)) return false; interactionEpoch++; emit({ mode, targetRequest: null, message: '' }); return true; },
     selectSource(asset) {
@@ -516,6 +532,6 @@ export function createImageGenerationSession({ projectId, api = rpc, reviewClien
     async pageVersions(older) { if (!visible || state.remotePending || state.remoteActionTaskId || reading || (older ? !state.nextVersionCursor : !state.versionTrail.length)) return false; const trail = [...state.versionTrail], cursor = older ? state.nextVersionCursor : trail.pop(); if (older) trail.push(state.versionCursor); emit({ versionCursor: cursor, versionTrail: trail }); return load(); },
     async pageReviews(older) { if (!visible || reading || state.reviewActionId || (older ? !state.nextReviewCursor : !state.reviewTrail.length)) return false; const trail = [...state.reviewTrail], cursor = older ? state.nextReviewCursor : trail.pop(); if (older) trail.push(state.reviewCursor); emit({ reviewCursor: cursor, reviewTrail: trail }); return load(); },
     setVisible(value) { if (disposed) return; const changed = visible !== Boolean(value); visible = Boolean(value); observations.setVisible(visible); if (changed) interactionEpoch++; if (!visible) { stopTimer(); selectionEpoch++; if (state.phase === 'targeting') emit({ phase: 'ready' }); } else if (changed) { polls = 0; void load(); } },
-    dispose() { rejectionClose.dispose(); observations.dispose(); disposed = true; readEpoch++; selectionEpoch++; interactionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
+    dispose() { rejectionClose.dispose(); observations.dispose(); disposed = true; availabilityEpoch++; readEpoch++; selectionEpoch++; interactionEpoch++; stopTimer(); for (const controller of calls) controller.abort(); },
   };
 }

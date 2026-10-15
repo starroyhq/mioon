@@ -1,3 +1,4 @@
+import { comfyConnectorAvailable } from './comfy-image-settings.js';
 import { ApiError } from './api.js';
 import { canonicalImageInput, comfyRemoteSchemas, isComfyRemoteResponse, isComfyObserveResponse } from '@mioon/contracts';
 
@@ -10,16 +11,16 @@ export function comfyCanObserve(state, task) {
   if (task?.providerId !== 'comfy-local' || state.remoteActionTaskId || state.remoteStorageBlocked) return false;
   // A late receipt may be replayed even after another observer finished the task.
   if (state.remotePending) return state.remotePending.input.taskId === task.id;
-  return Boolean(task.dispatched && ['outcome_unknown', 'receiving'].includes(task.state) && value && value.remote.state !== 'failed' && !comfyObservationActive(value));
+  return Boolean(comfyConnectorAvailable(state.comfyAvailability) && task.dispatched && ['outcome_unknown', 'receiving'].includes(task.state) && value && value.remote.state !== 'failed' && !comfyObservationActive(value));
 }
-const rejectionCodes = new Set(['COMFY_REMOTE_STATE', 'COMFY_REMOTE_REVISION_CONFLICT', 'COMFY_REMOTE_BUSY', 'COMFY_REMOTE_CAPACITY']);
+const rejectionCodes = new Set(['COMFY_REMOTE_STATE', 'COMFY_REMOTE_REVISION_CONFLICT', 'COMFY_REMOTE_BUSY', 'COMFY_REMOTE_CAPACITY', 'COMFY_MODULE_UNAVAILABLE']);
 async function notAccepted(error, input) {
   const proof = error?.details?.observation;
-  if (!(error instanceof ApiError) || !rejectionCodes.has(error.code) || error.status !== (error.code === 'COMFY_REMOTE_CAPACITY' ? 507 : 409) || proof?.outcome !== 'not_accepted' || proof.operation !== 'image.task.observeRemote' || proof.projectId !== input.projectId || proof.taskId !== input.taskId || proof.requestId !== input.requestId || !/^[a-f0-9]{64}$/.test(proof.inputHash || '')) return false;
+  if (!(error instanceof ApiError) || !rejectionCodes.has(error.code) || error.status !== (error.code === 'COMFY_REMOTE_CAPACITY' ? 507 : error.code === 'COMFY_MODULE_UNAVAILABLE' ? 503 : 409) || proof?.outcome !== 'not_accepted' || proof.operation !== 'image.task.observeRemote' || proof.projectId !== input.projectId || proof.taskId !== input.taskId || proof.requestId !== input.requestId || !/^[a-f0-9]{64}$/.test(proof.inputHash || '')) return false;
   try { const hash = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalImageInput(input))); return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('') === proof.inputHash; } catch { return false; }
 }
 /** Observing has its own journal: old recoverResult receipts and task revisions are untouched. */
-export function createComfyObservationSession({ projectId, call, storage, requestId, onChange = () => {} }) {
+export function createComfyObservationSession({ projectId, call, storage, requestId, getAvailability = () => null, onChange = () => {} }) {
   let active = true, visible = true, values = {}, pending = null, actionTaskId = null, storageBlocked = false;
   const store = () => storage === undefined ? globalThis.sessionStorage : storage;
   const emit = (message = '') => { if (active) onChange({ remotes: copy(values), remotePending: copy(pending), remoteActionTaskId: actionTaskId, remoteStorageBlocked: storageBlocked, ...(message ? { message } : {}) }); };
@@ -44,7 +45,7 @@ export function createComfyObservationSession({ projectId, call, storage, reques
     emit(); return true;
   }
   async function observe(task) {
-    if (!active || !visible || !comfyCanObserve({ remotes: values, remotePending: pending, remoteActionTaskId: actionTaskId, remoteStorageBlocked: storageBlocked }, task)) return false;
+    if (!active || !visible || !comfyCanObserve({ comfyAvailability: getAvailability(), remotes: values, remotePending: pending, remoteActionTaskId: actionTaskId, remoteStorageBlocked: storageBlocked }, task)) return false;
     let intent = pending;
     if (!intent) {
       intent = { version: 1, operation: 'image.task.observeRemote', input: { projectId, taskId: task.id, expectedRevision: values[task.id].remote.revision, requestId: requestId() } };

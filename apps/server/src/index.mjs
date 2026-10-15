@@ -26,6 +26,7 @@ import {createEditTasksHttp} from './edit-tasks-http.mjs';
 import {createImageHttp} from './image-http.mjs';
 import {createComfyHttp} from './comfy-http.mjs';
 import {createComfySettings} from '@mioon/business/comfy/settings';
+import {composeOfficialComfyModule} from './comfy-module.ts';
 import {createComfyConnector} from '@mioon/business/comfy/connector';
 import {createImageSettings,createCustomImageSettings} from '@mioon/business/images/settings';
 import {createImageSettingsFile,createCustomImageSettingsFile} from '@mioon/business/images/settings-file';
@@ -84,6 +85,7 @@ export async function startServer({
   imageSecretCodec, // Trusted desktop main codec only; never supplied by HTTP.
   imageNetwork, // Trusted synthetic DNS/HTTPS fixture only; never HTTP/environment.
   comfyNetwork, // Trusted synthetic HTTP fixture only; never HTTP/environment.
+  comfyModule = 'load', // Trusted launcher/distribution composition, never HTTP/RPC input.
   chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
   agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
   taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
@@ -93,6 +95,7 @@ export async function startServer({
 } = {}) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('Invalid PORT');
   if (comfyNetwork !== undefined && (comfyNetwork === null || typeof comfyNetwork.httpRequest !== 'function')) throw Error('Invalid local ComfyUI transport');
+  if (!['load','skip','not-provided'].includes(comfyModule)) throw Error('Invalid official ComfyUI module composition');
   const root = path.resolve(dataDir), dist = path.resolve(distDir);
   if (suppliedToken !== undefined) validToken(suppliedToken);
   const tokenFile = path.join(root, 'access-token');
@@ -127,10 +130,10 @@ export async function startServer({
     // This process knows its backend listener, not unrelated frontend processes.
     const comfyReservedPorts = () => new Set([port, server?.address()?.port].filter(value => Number.isInteger(value) && value > 0));
     comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
-    const comfyConnector = createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})});
-    services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector}});
+    const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
+    services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
-    comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,signal:shutdown.signal});
+    comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,availability:comfyModuleAvailability,signal:shutdown.signal});
     }else services=createServices(store,providers,{signal:shutdown.signal});
     editTasks = createEditTasks({store, services, ...(taskFault ? {fault: taskFault} : {})});
     // openStore already owns the exclusive workspace lock. Startup only

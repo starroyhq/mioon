@@ -37,7 +37,8 @@
     "./timeline-audio-preview.consumer.mts",
     "./export-loudness.consumer.mts",
     "./timeline-mix-loudness.consumer.mts",
-    "./timeline-loudness-apply.consumer.mts"
+    "./timeline-loudness-apply.consumer.mts",
+    "./comfy-availability.consumer.mts"
   ],
   "include": [
     "../../packages/*/src/**/*.ts",

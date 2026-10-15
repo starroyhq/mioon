@@ -1,4 +1,5 @@
 import { startServer } from '@mioon/server';
+import {comfyModuleModeFromEnvironment} from '../../server/src/comfy-module.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { onMediaProcess } from '@mioon/business/media-processes';
 import { initializeSubtitleResources } from '@mioon/business/subtitle-resources';
@@ -55,7 +56,7 @@ process.parentPort.on('message', ({ data }) => {
       // A desktop utility without the fixed public-key gate must never fall
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
-      server = await startServer({ dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
+      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
       if (!closing) process.parentPort.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {

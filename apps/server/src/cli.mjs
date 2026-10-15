@@ -1,8 +1,10 @@
 import {startServer} from './index.mjs';
+import {comfyModuleModeFromEnvironment} from './comfy-module.ts';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const service = await startServer({
+  comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE),
   dataDir: process.env.MIOON_DATA_DIR || path.join(root, 'data'),
   port: Number(process.env.PORT || 4318),
   distDir: process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'),

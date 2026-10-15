@@ -143,7 +143,7 @@ test('completed local result pins descriptor, hash and byte count before any lat
 });
 test('normal startup upgrades frozen schema18 once and restarts without rewriting retained bytes',()=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-comfy-migration-'));let db=database(path.join(root,'workbench.sqlite')),store;
- try{db.exec('BEGIN');seed(db);db.exec('COMMIT');const before=snapshot(db);db.close();db=null;store=openStore(root);sameOld(store.db,before);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,i)=>i+1),26]);const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}
+ try{db.exec('BEGIN');seed(db);db.exec('COMMIT');const before=snapshot(db);db.close();db=null;store=openStore(root);sameOld(store.db,before);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,i)=>i+1),26,28,30,32,34]);const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}
  finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 test('unsafe local settings fail preflight before SQLite or backend-owned files are created',()=>{

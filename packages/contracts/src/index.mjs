@@ -1,3 +1,4 @@
+export * from './comfy-availability.ts';
 import {lookPackInspectSchemas,lookPackInspectDescriptions} from './look-pack-inspection.ts';
 export * from './look-pack-inspection.ts';
 import {clipColourSchema,timelineColourSchemas,timelineColourDescriptions} from './timeline-colour.ts';
