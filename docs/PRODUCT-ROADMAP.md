@@ -1,7 +1,8 @@
 # Mioon approved product roadmap
 
 Updated: 2026-10-15 UTC. Current index checked against local integration checkpoint
-`41f09c3dbb7fa6f05175651af8aff24d0598ea30`. This document distinguishes implemented
+`ad72c8f4be6abb5f351c05ebf3fc5ea089dd57cd`, preserving the accepted
+`41f09c3` integration ancestry. This document distinguishes implemented
 slices, their actual acceptance boundaries and remaining approved scope. It does
 not promote a WIP checkpoint, certify the combined native application, or grant
 new execution, spending or publication authority. This documentation-only review
@@ -15,7 +16,7 @@ reran no product tests, native acceptance or stopped issue investigations.
   handling, busy/recovery guards and close confirmation are preserved; project,
   clip and export options remain contextual. This is not plugin install,
   uninstall or dynamic-loading support, nor full native/platform acceptance.
-- **Sample export preview: first bounded increment implemented locally.** A
+- **Sample export preview: implemented locally in `5a3751b`.** A
   separate 1–300-frame trial range uses current export settings, its own checks,
   the existing durable export path and an exact-output player with stale-result
   blocking. It does not change the final range or cancel a render when closed.
@@ -23,13 +24,38 @@ reran no product tests, native acceptance or stopped issue investigations.
   in [the feature acceptance boundary](EXPORT-PREVIEW.md). Native GUI acceptance
   remains separate; this is not a live final-quality or HDR preview.
 
-- **Fixed shot-video comparison: bounded source increment.** Existing A/B UI now
+- **Fixed shot-video comparison: implemented locally in `7115279`.** Existing A/B UI now
   uses explicit distinct immutable selections, exact local media identity,
   frozen metadata and stale/offline playback fencing in four languages. The
   read-only exact-version route and source acceptance are documented in
   [version comparison](VERSION-COMPARISON.md). Native GUI remains unverified;
   image-group comparison, synchronized/wipe/diff views and live generation are
   not included.
+
+- **Local media tags/notes: backend `fc40d80`, UI `128c8fb`.** Project-owned
+  tags/plain-text notes and composed saved-tag filtering have explicit save,
+  independent annotation revisions, exact session replay and retained draft/close
+  protection in four languages. They do not modify timeline undo, source ranges
+  or favorite/reject semantics. [UI workflow](ASSET-ANNOTATIONS-UI.md) and
+  [combined acceptance](../evidence/asset-annotation-ui/ACCEPTANCE.md) distinguish
+  source/service verification from unaccepted interactive native behavior.
+- **Selected saved-clip loudness: implemented locally through `7b0de4a`.** The
+  [opt-in read-only panel](TIMELINE-CLIP-LOUDNESS-UI.md) analyzes the entire saved
+  clip only, up to 60 seconds / 1800 frames; longer clips are refused, not trimmed.
+  There is no gain recommendation/application, normalization or batch matching.
+  [Backend evidence](TIMELINE-CLIP-LOUDNESS.md) preserves the failed 600-second
+  offline experiment and both successful 60-second boundary runs, including the
+  accidental second run. None qualifies 600-second real-time playback.
+- **Clip audio roles: backend `e5bf880`, integrated UI `ad72c8f`.** Explicit
+  Unclassified / Human voice / Music / Sound effects labels use ordinary clip
+  Save, revision/CAS, draft recovery, Undo/Redo and split inheritance in four
+  languages. [Backend semantics](TIMELINE-AUDIO-ROLES.md) cover optional/null
+  preservation and ordinary schema38 → restored schema39 compatibility; the
+  [editor acceptance](TIMELINE-AUDIO-ROLE-UI-ACCEPTANCE.md) records bounded,
+  fail-closed capability admission. These are editorial metadata, not automatic
+  classification, audio processing, routing or ducking. The backend's final
+  15-second CLI qualification failure remains unresolved; a diagnostic 30-second
+  pass is not acceptance of that gate.
 
 ## Current delivery and remaining work (2026-10-15)
 
@@ -56,10 +82,14 @@ reran no product tests, native acceptance or stopped issue investigations.
    undo/redo and explicit float-v2 UI selection exist in `44c41a7`, but their
    [WIP checkpoint](ATOMIC-LOUDNESS-WIP-CHECKPOINT.md) remains unaccepted after
    incomplete/failing regression evidence. Do not describe these as wholly
-   unimplemented or as fully accepted. Per-clip/dialogue loudness matching,
-   keyframes, roles, crossfades, ducking, limiter/EQ/noise reduction, scoped proxy
-   performance and tags/notes remain separate work. No automatic target or AAC
-   loudness/true-peak guarantee is implied.
+   unimplemented or as fully accepted. Selected-clip read-only measurement and
+   explicit editorial roles are now delivered within the limits indexed above;
+   they do not complete per-clip/dialogue loudness matching. Volume keyframes
+   remain outside production: a pure volume-envelope prototype is underway, with
+   no production integration or final support decision.
+   Crossfades, ducking, limiter/EQ/noise reduction and scoped proxy performance
+   remain separate work; local media tags/notes are no longer pending. No automatic
+   target or AAC loudness/true-peak guarantee is implied.
 2. **Colour and Looks.** Project-owned LUT resources (`a78abb0`) and the versioned
    [Rec.709 SDR clip LUT workflow](SDR-CLIP-LUT.md) (`16b7b4d`) are implemented;
    the latter commit records focused tests and packaged Linux feature acceptance,
@@ -121,7 +151,7 @@ reran no product tests, native acceptance or stopped issue investigations.
    remain separate. Incremental TS migration or safety-boundary extraction should
    address a concrete reproduced need, not duplicate completed features.
 
-The combined `41f09c3` integration has 915/915 focused checks across 63 files,
+The earlier combined `41f09c3` integration has 915/915 focused checks across 63 files,
 strict typecheck and an actual production-channel build passing. Source hashes
 were verified unchanged after the provenance commits. This is not the full
 repository suite, combined native acceptance or release certification; do not
@@ -130,6 +160,45 @@ performed for this integration. Remote main and the user's Mac checkout were not
 queried by this documentation review. A proposed public
 [issue #3](https://github.com/starroyhq/mioon/issues/3) comment remains awaiting
 approval and is not recorded as published or as issue closure.
+
+The accepted local descendants retain separate, scoped gates, not a new full-suite
+or release acceptance total:
+- `5a3751b`: 475/475 affected checks and a development web/desktop build, plus the
+  bounded synthetic export artifacts in [EXPORT-PREVIEW.md](EXPORT-PREVIEW.md).
+- `fc40d80` → `128c8fb`: 711/711 affected checks and a production build, with
+  retained initial failures and exact source/staging manifests in the
+  [annotation checkpoint](../evidence/asset-annotation-ui/ACCEPTANCE.md).
+- `7115279`: 458/458 affected checks, strict typechecks and a production build;
+  [comparison evidence](../evidence/version-comparison/ACCEPTANCE.md) retains the
+  earlier route-fixture failure and native limitations.
+- `7b0de4a`: 337/337 affected nonmedia checks, a separate 12/12 pure gate and a
+  production build; [UI verification](qualification/clip-loudness-ui/README.md)
+  does not rerun the backend media boundary or establish GUI acceptance.
+- `e5bf880` → `ad72c8f`: 468/468 affected checks, an independent 88/88 check,
+  strict typechecks and a production build. These do not close the unresolved
+  backend CLI gate or establish native acceptance.
+
+Do not sum these counts or their overlapping checks. The role production build
+records Node 24.19.0, not pinned 24.21.0. The historical 468/88 test logs do not
+independently attest their executable/version. Earlier slice reports retain their
+own runtime claims, not a blanket Node 24.21.0 attestation for the chain.
+
+The separate one-shot native attempt in a fresh cloud profile ended normally at
+21:32:16 UTC on 2026-10-15. Exact-window q/a keyboard input and creation of project
+qa passed. Selecting v.mp4 and pressing Return closed the chooser, but produced
+zero assets and no error toast. Read-only postmortem cannot distinguish chooser
+cancellation/no FileList, an early frontend return or rejection. No retained HTTP
+trace establishes that asset.import reached the backend; this is not evidence of
+a backend bug. Role Save/Undo, annotations and trial export were not exercised,
+and general native acceptance remains pending. The backend-exit.jsonl record
+reports expected normal shutdown with forced=false, exitConfirmed=true,
+mediaExitConfirmed=true, shutdownFailed=false and code 0; independent descendant-
+process absence was not audited. This is not proof of complete process retirement.
+
+This documentation refresh runs no tests, media qualification, builds or GUI,
+performs no push or Mac synchronization, and does not publish the approval-pending
+issue #3 comment.
+
 The current index takes precedence over historical "pending", "next" and
 "current" wording below. Future work does not authorize paid calls, credential
 configuration, third-party installation, platform changes, push or publication.
@@ -140,15 +209,21 @@ Continue approved local feature work when a separate acceptance or publication
 step is blocked; a blocked item does not pause the whole project. Preserve each
 item's evidence and permission boundary rather than silently treating it as done.
 
-1. Finish the in-progress bounded trial-export/player/staleness increment and
-   validate the actual generated artifact against its frozen snapshot/settings.
-2. Separately scope local media tags/notes with explicit persistence, undo/replay
-   and four-language presentation boundaries; do not duplicate the delivered
-   favorite/reject or current-timeline-usage features.
-3. The bounded existing shot-video comparison increment now has its own
-   [source acceptance](VERSION-COMPARISON.md). Broader comparison modes and
-   native GUI acceptance remain separate; paid generation and automatic timeline
-   replacement are not authorized by this slice.
+1. Keep volume keyframes in planning/prototype scope: a pure volume-envelope
+   prototype is underway, not integrated into production. Define saved-clip
+   timing, interpolation, compatibility, history/replay and preview/export parity
+   boundaries before production integration or a final support decision. This
+   queue is not a feature completion or support commitment.
+2. Keep the completed bounded export preview, tags/notes, shot-video A/B,
+   selected-clip measurement and audio-role slices closed at their documented
+   source gates; do not restart them because older roadmap entries say pending.
+   Broader comparison modes, loudness matching/application and effects need their
+   own bounded implementation and acceptance.
+3. Preserve the bounded native outcome above without inferring an import cause
+   or feature acceptance. Native GUI acceptance, 600-second real-time audio
+   qualification, the role CLI gap and LUT reselection/restart acceptance remain
+   independent unresolved gates, not
+   implicit permission to rerun stopped investigations or widen deadlines.
 
 The dated feature checkpoints record each slice’s actual implementation and
 acceptance; this queue grants no permission for broader external actions. Audio
