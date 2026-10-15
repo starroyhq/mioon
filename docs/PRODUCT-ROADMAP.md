@@ -1,7 +1,7 @@
 # Mioon approved product roadmap
 
 Updated: 2026-10-15 UTC. Current index checked against local integration checkpoint
-`e87fa309ed0a604657dcdf6bddc768c1c10eb2a1`. This document distinguishes implemented
+`41f09c3dbb7fa6f05175651af8aff24d0598ea30`. This document distinguishes implemented
 slices, their actual acceptance boundaries and remaining approved scope. It does
 not promote a WIP checkpoint, certify the combined native application, or grant
 new execution, spending or publication authority. This documentation-only review
@@ -9,17 +9,19 @@ reran no product tests, native acceptance or stopped issue investigations.
 
 ## Current UI iteration (2026-10-15)
 
-- **Settings center: approved and in progress.** Replace the connection-only
-  presentation with one explicit Settings entry and General, Models & services,
-  and Extensions categories. Reuse existing language and connection forms in all
-  four GUI languages. Preserve retained drafts, transient-secret handling,
-  busy/recovery guards and close confirmation. Keep project, clip and export
-  options contextual. Existing ComfyUI connection settings do not grant plugin
-  install, uninstall or dynamic-loading scope. Audio work remains user-owned.
-- **Export preview: proposal for a later iteration, not implemented.** The user
-  asked for an opinion on export preview. Its interaction and acceptance scope
-  still need to be agreed before implementation; this settings iteration does
-  not change export or preview behavior.
+- **Settings center: implemented locally in `92add7e`.** One explicit Settings
+  entry now groups General, Models & services, and Extensions in all four GUI
+  languages. Existing connection forms, retained drafts, transient-secret
+  handling, busy/recovery guards and close confirmation are preserved; project,
+  clip and export options remain contextual. This is not plugin install,
+  uninstall or dynamic-loading support, nor full native/platform acceptance.
+- **Sample export preview: first bounded increment implemented locally.** A
+  separate 1–300-frame trial range uses current export settings, its own checks,
+  the existing durable export path and an exact-output player with stale-result
+  blocking. It does not change the final range or cancel a render when closed.
+  Focused checks and genuine 60-frame/120-frame synthetic MP4 proof are recorded
+  in [the feature acceptance boundary](EXPORT-PREVIEW.md). Native GUI acceptance
+  remains separate; this is not a live final-quality or HDR preview.
 
 ## Current delivery and remaining work (2026-10-15)
 
@@ -27,9 +29,20 @@ reran no product tests, native acceptance or stopped issue investigations.
    media/source ranges, favorite/reject and current-timeline usage, raw-source
    waveforms, clip fades and the three 30fps canvas presets have their earlier
    bounded deliveries. [Saved-timeline sound audition](TIMELINE-AUDIO-PREVIEW.md)
-   is limited to 20 seconds; it is not full continuous timeline audio preview.
-   That continuous-preview work is assigned to the user; implementation/start is
-   not yet verified, and it is not delivered by this checkpoint. [Exported-file loudness observation](EXPORT-LOUDNESS.md)
+   retains its legacy 20-second interface. [Continuous timeline audio](TIMELINE-AUDIO-CONTINUOUS.md)
+   is now integrated: original user commit `70d9bb6` is preserved through merge
+   `670edd8`, with four-locale discovery adaptation `77b4c8e`; `41f09c3` also
+   merges the reviewed LUT recovery work. Historical [audio acceptance](TIMELINE-AUDIO-CONTINUOUS-ACCEPTANCE.md)
+   and [review fixes](TIMELINE-AUDIO-CONTINUOUS-REVIEW-FIXES.md) retain their own
+   evidence boundaries: actual 25-second audio-clock playback and accelerated
+   two-/ten-minute PCM comparisons are not a 600-second wall-clock qualification.
+   A later Linux 600-second qualification attempt stopped at its cancellation
+   prerequisite after a harness 30 ms observation window; the 600-second case
+   never ran. That observation does not establish a product defect. The repaired
+   harness has been rebuilt and statically reviewed with 19 focused checks
+   passing, but has not passed rebuilt media/GUI runtime acceptance. Positive
+   GUI-host RSS observation and cancellation evidence with at least one observed
+   FFmpeg start and no remaining owned FFmpeg processes remain runtime gates. [Exported-file loudness observation](EXPORT-LOUDNESS.md)
    and [full-current-mix candidates](TIMELINE-MIX-LOUDNESS.md) have separate
    read-only acceptance. [Atomic gain application](TIMELINE-LOUDNESS-APPLY.md),
    undo/redo and explicit float-v2 UI selection exist in `44c41a7`, but their
@@ -47,8 +60,11 @@ reran no product tests, native acceptance or stopped issue investigations.
    (`93a0575`) and [restricted JFIF JPEG inputs](JFIF-SDR-IMAGES-ACCEPTANCE.md)
    (`75ad276`) have their own focused, production and synthetic Linux native
    evidence. They are not general ICC/P3/Log/HDR/RAW support or a professional
-   colour compositor. Desktop cross-restart pending LUT import recovery remains
-   limited by [issue #2](https://github.com/starroyhq/mioon/issues/2).
+   colour compositor. Bounded desktop pending-LUT recovery metadata is implemented
+   in `f50f1a8` and merged in `41f09c3`. Native restart survival has partial
+   evidence, but exact-file reselection/explicit retry and the complete native
+   restart gate remain unaccepted. This is not verified closure of
+   [issue #2](https://github.com/starroyhq/mioon/issues/2).
 3. **Export, creation and versions.** Preflight, MP4/H.264 settings, named export
    history, selected-range export, decoded sample-peak checks and backend opt-in
    float-checked export retain their own evidence. Further codecs/containers,
@@ -75,8 +91,11 @@ reran no product tests, native acceptance or stopped issue investigations.
    The separate [CLI/MCP presentation checkpoint](i18n-coverage-cli-mcp.md)
    (`1794006`) delivers explicit four-language main-CLI help/parser diagnostics
    and MCP instructions/tool descriptions, preserving legacy default output and
-   machine protocols. Backup/developer-script copy and MCP launch/transport
-   diagnostics remain open. Narrow editor layout ([issue #4](https://github.com/starroyhq/mioon/issues/4)),
+   machine protocols. The later `5d9774f` slice delivers four-language offline
+   backup help/owned diagnostics and MCP-owned launch/stdio startup diagnostics;
+   [I18N.md](I18N.md) records its explicit-locale and unchanged-machine-protocol
+   boundaries. Development, doctor and server-startup script copy remains outside
+   that slice. Narrow editor layout ([issue #4](https://github.com/starroyhq/mioon/issues/4)),
    native 200% zoom, full screen-reader coverage and exhaustive native menus/file
    choosers remain unverified. No repeated resize investigation is implied.
 6. **Reliability and delivery.** Local integration includes the user's
@@ -94,13 +113,39 @@ reran no product tests, native acceptance or stopped issue investigations.
    remain separate. Incremental TS migration or safety-boundary extraction should
    address a concrete reproduced need, not duplicate completed features.
 
-These are scoped checkpoints, not an accumulated full-suite count or one combined
-release gate. Historical counts and limitations belong to their original source
-and package identities. Remote main and the user's Mac checkout were not queried
-by this documentation review; no current synchronization or push claim is made.
+The combined `41f09c3` integration has 915/915 focused checks across 63 files,
+strict typecheck and an actual production-channel build passing. Source hashes
+were verified unchanged after the provenance commits. This is not the full
+repository suite, combined native acceptance or release certification; do not
+sum historical test totals into a new gate. No push or Mac synchronization was
+performed for this integration. Remote main and the user's Mac checkout were not
+queried by this documentation review. A proposed public
+[issue #3](https://github.com/starroyhq/mioon/issues/3) comment remains awaiting
+approval and is not recorded as published or as issue closure.
 The current index takes precedence over historical "pending", "next" and
 "current" wording below. Future work does not authorize paid calls, credential
 configuration, third-party installation, platform changes, push or publication.
+
+## Next independent feature slices
+
+Continue approved local feature work when a separate acceptance or publication
+step is blocked; a blocked item does not pause the whole project. Preserve each
+item's evidence and permission boundary rather than silently treating it as done.
+
+1. Finish the in-progress bounded trial-export/player/staleness increment and
+   validate the actual generated artifact against its frozen snapshot/settings.
+2. Separately scope local media tags/notes with explicit persistence, undo/replay
+   and four-language presentation boundaries; do not duplicate the delivered
+   favorite/reject or current-timeline-usage features.
+3. Separately scope richer version comparison using existing immutable versions,
+   with exact selected-version identity and stale-result handling; do not infer
+   permission for paid generation or automatic timeline replacement.
+
+The latter two are candidate slices within the historical approved roadmap, not
+newly implemented features or permission for broader external actions. Audio
+qualification and native LUT reselection remain independent acceptance work;
+issue publication, platform changes and real-provider gates retain their own
+approval requirements.
 
 ## Historical roadmap snapshot (2026-10-14)
 

@@ -1,5 +1,29 @@
 import type { MessageCatalog } from '../types.ts';
 export const timelineDeliveryMessages = {
+  "export.sample.separateRange": {"zh-Hans": "此短范围仅用于试导出，不改变正式导出范围。", "zh-Hant": "此短範圍僅用於試導出，不會變更正式導出範圍。", "en": "This short range is only for the sample. The final export range is unchanged.", "ja": "この短い範囲は試し書き出し専用です。本番の書き出し範囲は変更しません。"},
+  "export.sample.start": {"zh-Hans": "开始帧", "zh-Hant": "開始幀", "en": "Start frame", "ja": "開始フレーム"},
+  "export.sample.end": {"zh-Hans": "结束帧（不含）", "zh-Hant": "結束幀（不含）", "en": "End frame (exclusive)", "ja": "終了フレーム（含まない）"},
+  "export.sample.check": {"zh-Hans": "检查试导出", "zh-Hant": "檢查試導出", "en": "Check sample export", "ja": "試し書き出しをチェック"},
+  "export.sample.checkState": {"zh-Hans": "试导出检查：{state}", "zh-Hant": "試導出檢查：{state}", "en": "Sample check: {state}", "ja": "試し書き出しチェック：{state}"},
+
+  "export.sample.title": {"zh-Hans": "试导出预览", "zh-Hant": "試導出預覽", "en": "Sample export preview", "ja": "試し書き出しプレビュー"},
+  "export.sample.help": {"zh-Hans": "使用当前导出设置生成真实 MP4，范围最多 300 帧（10 秒）。先选择短范围，再检查导出。短片仍可能需要较长素材检查或渲染时间。", "zh-Hant": "使用目前的導出設定產生真實 MP4，範圍最多 300 幀（10 秒）。先選擇短範圍，再檢查導出。短片仍可能需要較長的素材檢查或算圖時間。", "en": "Generate a real MP4 using the current export settings, up to 300 frames (10 seconds). Select a short range, then check the export. Source checks and rendering can still take time.", "ja": "現在の書き出し設定で最大 300 フレーム（10 秒）の実際の MP4 を生成します。短い範囲を選択してから書き出しチェックを行ってください。素材の確認やレンダリングには時間がかかる場合があります。"},
+  "export.sample.select": {"zh-Hans": "选择播放头附近的短范围", "zh-Hant": "選擇播放頭附近的短範圍", "en": "Select a short range", "ja": "短い範囲を選択"},
+  "export.sample.generate": {"zh-Hans": "生成试导出预览", "zh-Hant": "產生試導出預覽", "en": "Generate sample export", "ja": "試し書き出しを生成"},
+  "export.sample.stale": {"zh-Hans": "设置、范围、已保存时间线或素材已变化。此结果已过期，请重新检查并生成。", "zh-Hant": "設定、範圍、已儲存時間軸或素材已變更。此結果已過期，請重新檢查並產生。", "en": "Settings, range, saved timeline or sources have changed. This result is stale; check and generate again.", "ja": "設定、範囲、保存済みタイムライン、または素材が変更されました。この結果は古いため、再チェックして生成してください。"},
+  "export.sample.receipt": {"zh-Hans": "本次导出：{id}", "zh-Hant": "本次導出：{id}", "en": "This export: {id}", "ja": "今回の書き出し：{id}"},
+  "export.sample.retained": {"zh-Hans": "关闭播放器或离开面板不会取消导出。试导出会保留真实文件和导出记录；重开项目后请到导出记录查找。", "zh-Hant": "關閉播放器或離開面板不會取消導出。試導出會保留真實檔案及導出記錄；重新開啟專案後請到導出記錄查找。", "en": "Closing the player or leaving this panel does not cancel the export. The real file and export record are retained; find them in export history after reopening the project.", "ja": "プレーヤーを閉じたりパネルを離れたりしても書き出しは取り消されません。実ファイルと履歴が残ります。プロジェクトを開き直した後は書き出し履歴で確認できます。"},
+  "export.sample.close": {"zh-Hans": "关闭播放器", "zh-Hant": "關閉播放器", "en": "Close player", "ja": "プレーヤーを閉じる"},
+  "export.sample.reopen": {"zh-Hans": "重新打开播放器", "zh-Hant": "重新開啟播放器", "en": "Reopen player", "ja": "プレーヤーを開く"},
+  "export.sample.mediaError": {"zh-Hans": "无法播放此文件。请到导出记录下载并检查；不会自动重新导出。", "zh-Hant": "無法播放此檔案。請到導出記錄下載並檢查；不會自動重新導出。", "en": "This file could not be played. Download it from export history to inspect it; no export will be retried automatically.", "ja": "このファイルを再生できません。書き出し履歴からダウンロードして確認してください。自動で再書き出しはしません。"},
+  "export.sample.phase.submitting": {"zh-Hans": "正在提交试导出…", "zh-Hant": "正在提交試導出…", "en": "Submitting sample export…", "ja": "試し書き出しを送信中…"},
+  "export.sample.phase.queued": {"zh-Hans": "试导出正在排队…", "zh-Hant": "試導出正在排隊…", "en": "Sample export queued…", "ja": "試し書き出し待機中…"},
+  "export.sample.phase.running": {"zh-Hans": "正在生成试导出文件…", "zh-Hant": "正在產生試導出檔案…", "en": "Rendering sample export…", "ja": "試し書き出しを処理中…"},
+  "export.sample.phase.succeeded": {"zh-Hans": "试导出文件已完成。", "zh-Hant": "試導出檔案已完成。", "en": "Sample export file is ready.", "ja": "試し書き出しファイルが完成しました。"},
+  "export.sample.phase.failed": {"zh-Hans": "试导出失败。请到任务中心查看详情。", "zh-Hant": "試導出失敗。請到任務中心查看詳情。", "en": "Sample export failed. See the task center for details.", "ja": "試し書き出しに失敗しました。タスクセンターで詳細を確認してください。"},
+  "export.sample.phase.unknown": {"zh-Hans": "尚未确认提交结果，请到任务中心核对原请求，不要重复提交。", "zh-Hant": "尚未確認提交結果，請到任務中心核對原請求，不要重複提交。", "en": "Submission is not confirmed. Reconcile the original request in the task center; do not submit it again.", "ja": "送信結果が未確認です。重複送信せず、タスクセンターで元のリクエストを確認してください。"},
+  "export.sample.phase.unavailable": {"zh-Hans": "当前无法核验或播放此结果，请检查连接或导出记录。", "zh-Hant": "目前無法核驗或播放此結果，請檢查連線或導出記錄。", "en": "This result cannot currently be verified or played. Check the connection or export history.", "ja": "現在、この結果を検証または再生できません。接続または書き出し履歴を確認してください。"},
+
   "export.history.film": {
     "zh-Hans": "成片",
     "zh-Hant": "成片",

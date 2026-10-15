@@ -1,3 +1,4 @@
+import { translate } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { component, nodes, textOf } from './fixtures/export-range-ui-harness.mjs';
@@ -11,8 +12,8 @@ test('uncertain newer preparation displays the coherent request that recovery wi
   const state = { phase: 'ready', busy: false, intent: prior, retainedPreparation: retained, intentUncertain: true, intentPhase: 'error', pending: true };
   const before = structuredClone(state), tree = View({ state, controller: new Proxy({}, { get: () => () => assert.fail('Passive recovery view invoked a controller') }) });
   const section = nodes(tree).find(node => node.props['data-testid'] === 'delivery-original-intent'), text = textOf(section);
-  assert.match(text, /NEW TITLE/); assert.match(text, /new-unknown-request/); assert.match(text, new RegExp(id(5))); assert.match(text, /rev 8/);
-  assert.doesNotMatch(text, /OLD TITLE|old-accepted-request|rev 4|已确认接受/);
+  assert.match(text, /NEW TITLE/); assert.match(text, /new-unknown-request/); assert.match(text, new RegExp(id(5))); assert.ok(text.includes(translate('zh-Hans', 'export.revision', { revision: 8 })));
+  assert.doesNotMatch(text, /OLD TITLE|old-accepted-request|修订版 4|已确认接受/);
   assert.match(text, /"startFrame": 30/); assert.match(text, /"endFrame": 90/);
   assert.match(text, /保存结果待确认/); assert.match(text, /确认恢复同一原请求/); assert.deepEqual(state, before);
 });

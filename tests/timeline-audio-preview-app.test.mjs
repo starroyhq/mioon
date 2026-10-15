@@ -43,7 +43,7 @@ function harness() {
     workspaceMode: 'editing', previewKind: 'timeline', previewAsset: null, comparisonId: null, clipDirty: false, subtitleDirty: false, formatDirty: false,
     clipDraftRef: { current: null },
     canvasVisible: true, panelVisible: name => name === 'canvas' && env.canvasVisible,
-    nativePreviewPause: { current: () => calls.order.push('native-pause') }, playhead: 30,
+    exportPreviewPause: { current: () => calls.order.push('export-pause') }, nativePreviewPause: { current: () => calls.order.push('native-pause') }, playhead: 30,
     setPlayhead(frame) { calls.positions.push(frame); env.viewRef.current.editing.playhead = frame; }, setAuth(value) { env.auth = value; },
     async rpc(operation, input, options) {
       calls.rpc.push({ operation, input, options });
@@ -115,7 +115,7 @@ test('an unapplied clip recovery candidate warns even with clean inputs without 
   draft.candidate = null; f.render();
   assert.equal(f.controller.getState().hasUnsavedDrafts, false); assert.equal(f.controller.getState().phase, 'playing');
   assert.equal(f.calls.transports[0].disposed, false); assert.equal(f.calls.contexts.length, 1); assert.equal(f.calls.rpc.length, 1);
-  assert.deepEqual(f.calls.positions, []); assert.deepEqual(f.calls.order, ['native-pause', 'sound-play']);
+  assert.deepEqual(f.calls.positions, []); assert.deepEqual(f.calls.order, ['export-pause', 'native-pause', 'sound-play']);
   f.controller.dispose();
 });
 
@@ -140,12 +140,12 @@ test('unaccepted project data cannot start audition through actual App readiness
 
 test('actual App clock display stays ephemeral while each explicit seek writes the saved view exactly once', async () => {
   const f = harness(); await f.controller.prepare(30); await f.controller.play();
-  assert.deepEqual(f.calls.order, ['native-pause', 'sound-play']);
+  assert.deepEqual(f.calls.order, ['export-pause', 'native-pause', 'sound-play']);
   f.calls.transports[0].paint(44); f.calls.transports[0].paint(48); const current = f.render();
   assert.equal(current.effectivePlayhead, 48); assert.equal(f.env.viewRef.current.editing.playhead, 30); assert.deepEqual(f.calls.positions, []);
   current.seekTimelineSound(77); assert.deepEqual(f.calls.positions, [77]);
   f.controller.revoke(); await tick(); f.render().seekTimelineSound(88); assert.deepEqual(f.calls.positions, [77, 88]);
-  const previewTag = app.slice(app.indexOf('<Preview audioPreview='), app.indexOf('/>', app.indexOf('<Preview audioPreview=')) + 2);
+  const previewTag = app.slice(app.indexOf('<Preview '), app.indexOf('/>', app.indexOf('<Preview ')) + 2);
   assert.match(previewTag, /playhead=\{playhead\} onSeek=\{setPlayhead\}/); assert.doesNotMatch(previewTag, /effectivePlayhead|seekTimelineSound/);
   const timelineTag = app.slice(app.indexOf('<Timeline staleClips='), app.indexOf('/>', app.indexOf('<Timeline staleClips=')) + 2);
   assert.match(timelineTag, /onSeek=\{seekTimelineSound\} playhead=\{effectivePlayhead\}/);
@@ -154,7 +154,7 @@ test('actual App clock display stays ephemeral while each explicit seek writes t
 test('actual native-player guard revokes current sound, while stale media can only pause itself', async () => {
   const f = harness(); await f.controller.prepare(30); await f.controller.play(); let observerCalls = 0;
   const valid = { seeking: false, pause() { assert.fail('Current player was not rejected'); } }, stale = { pauseCalls: 0, pause() { this.pauseCalls++; } };
-  const env = { isCurrentMedia: element => element === valid, audioPreview: { controller: f.controller }, activeMedia: { current: { programmaticSeek: 3 } }, captureObserver: { current: () => observerCalls++ } };
+  const env = { onBeforePlay: () => f.calls.order.push('export-pause'), isCurrentMedia: element => element === valid, audioPreview: { controller: f.controller }, activeMedia: { current: { programmaticSeek: 3 } }, captureObserver: { current: () => observerCalls++ } };
   const from = preview.indexOf('  function guardPlayback('), to = preview.indexOf('  function finishSeek(', from);
   const guard = Function(...Object.keys(env), `${preview.slice(from, to)};return guardPlayback;`)(...Object.values(env));
   guard({ currentTarget: stale }); assert.equal(stale.pauseCalls, 1); assert.equal(f.controller.getState().phase, 'playing');

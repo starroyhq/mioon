@@ -9,3 +9,10 @@
 .export-capability-status.is-unavailable,.export-capability-status.is-blocked{border-color:#6a4140;background:#2b2223;color:#e5aaa4}
 .export-capability-status.is-incomplete,.export-capability-status.is-stale{border-color:#6a5738;background:#2b271e;color:#e1c18b}
 .export-detail .export-frozen-settings{color:#aabca4;line-height:1.7}
+.export-preview{margin:14px 0;padding:12px;border:1px solid #44504a;border-radius:8px;min-width:0}
+.export-preview h3{margin:0 0 8px;font-size:12px}
+.export-preview-actions{display:flex;gap:6px;flex-wrap:wrap}
+.export-preview video{display:block;width:100%;max-height:320px;background:#000;margin:10px 0;border-radius:6px}
+.export-preview .export-frozen-settings{display:block;overflow-wrap:anywhere;font-size:10px;line-height:1.7}
+.export-preview-actions label{display:grid;gap:4px;flex:1;min-width:100px;font-size:11px}
+.export-preview-actions input{min-width:0;width:100%;padding:6px;border:1px solid #44504a;border-radius:5px;background:transparent}

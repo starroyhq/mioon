@@ -1,3 +1,4 @@
+import { translate } from '../packages/i18n/src/index.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -41,12 +42,12 @@ test('passive right-dock disclosure uses a labelled region with explicit draft a
 });
 
 test('candidate controls show exact escaped raw name, original baseline, and explicit replace wording', () => {
-  assert.match(rendered.candidate, /&lt;script&gt;原名称\n第二行/); assert.match(rendered.candidate, /rev 2/); assert.match(rendered.candidate, /恢复名称，替换当前输入/); assert.match(rendered.candidate, /保留当前名称，替换已保存草稿/); assert.match(rendered.candidate, /放弃已保存名称/); assert.match(rendered.candidate, /data-slot="button"/); assert.doesNotMatch(rendered.candidate, /<script>/);
+  assert.match(rendered.candidate, /&lt;script&gt;原名称\n第二行/); assert.ok(rendered.candidate.includes(translate('zh-Hans', 'export.revision', { revision: 2 }))); assert.match(rendered.candidate, /恢复名称，替换当前输入/); assert.match(rendered.candidate, /保留当前名称，替换已保存草稿/); assert.match(rendered.candidate, /放弃已保存名称/); assert.match(rendered.candidate, /data-slot="button"/); assert.doesNotMatch(rendered.candidate, /<script>/);
   const buttons = rendered.candidate.match(/<button[^>]*>/g); assert.ok(buttons.length >= 3); for (const button of buttons) assert.match(button, /type="button"/);
 });
 
 test('baseline mismatch requires explicit current timeline adoption', () => {
-  assert.match(rendered.conflict, /不能直接用于当前检查/); assert.match(rendered.conflict, /明确改用于当前时间线，再检查/); assert.match(rendered.conflict, /rev 2/);
+  assert.match(rendered.conflict, /不能直接用于当前检查/); assert.match(rendered.conflict, /明确改用于当前时间线，再检查/); assert.ok(rendered.conflict.includes(translate('zh-Hans', 'export.revision', { revision: 2 })));
 });
 
 test('capacity refusal and unknown write have distinct safe choices and inline alerts', () => {
@@ -55,7 +56,7 @@ test('capacity refusal and unknown write have distinct safe choices and inline a
 });
 
 test('saved and unacknowledged original intents disclose execution authority and exact original request', () => {
-  for (const html of [rendered.pending, rendered.lostPrepare]) { assert.match(html, /original-request-unchanged/); assert.match(html, /rev 2/); assert.match(html, /可能首次执行之前尚未提交的导出/); assert.match(html, /确认恢复同一原请求/); assert.match(html, /不会改用当前名称或输出规格/); }
+  for (const html of [rendered.pending, rendered.lostPrepare]) { assert.match(html, /original-request-unchanged/); assert.ok(html.includes(translate('zh-Hans', 'export.revision', { revision: 2 }))); assert.match(html, /可能首次执行之前尚未提交的导出/); assert.match(html, /确认恢复同一原请求/); assert.match(html, /不会改用当前名称或输出规格/); }
   assert.match(rendered.lostPrepare, /即使读取结果为空/); assert.match(rendered.lostPrepare, /同一编号和原参数再次确认保存/);
 });
 

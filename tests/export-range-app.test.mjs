@@ -1,3 +1,4 @@
+import { message as msg } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -88,7 +89,7 @@ async function harness(t, {restored = false, gates = {}, projectReady = true} = 
     async recover(input) { record('recover', input); return settle('recover'); },
     async discard() { assert.fail('Range changes cannot discard the title through transport'); },
   };
-  const environment = {schemas, isTimelineMutationResponse, hasRequestNotAppliedProof, pinNewWorkspaceIntent,
+  const environment = {msg, schemas, isTimelineMutationResponse, hasRequestNotAppliedProof, pinNewWorkspaceIntent,
     dataRef, currentProject: {current: projectId}, projectEpoch: {current: 1}, navigationEpoch: {current: 0}, panelIntent: {current: 0},
     workspaceRef: {current: restored ? {restored: true, workspaceOrigin: id(8)} : {restored: false}},
     exportSettingsRef: {current: null}, exportRangeRef: {current: null},

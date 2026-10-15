@@ -41,7 +41,7 @@ export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCa
   return <div className="source-frame-capture"><Button type="button" variant="outline" size="sm" data-testid="source-frame-capture" disabled={captureBusy || submitting || ready?.key !== captureKey || !ready?.intent} onClick={capture}>{t('timeline.preview.capture')}</Button><span className="input-hint">{t('timeline.preview.captureHint')}</span></div>;
 }
 
-export default function Preview({ audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false }) {
+export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false }) {
   const { t, renderMessage } = useI18n();
   const media = useRef(null);
   useLayoutEffect(() => onRegisterMediaPause?.(() => media.current?.pause()), [onRegisterMediaPause]);
@@ -142,6 +142,7 @@ export default function Preview({ audioPreview, onRegisterMediaPause, visible = 
   function guardPlayback(event) {
     const element = event.currentTarget;
     if (!isCurrentMedia(element)) { element.pause(); return; }
+    onBeforePlay?.();
     audioPreview?.controller.revoke();
     if (!element.seeking) activeMedia.current.programmaticSeek = null;
     captureObserver.current?.();

@@ -175,3 +175,35 @@ export function timelineDeliveryResponseHeaders(
   return {'Content-Type': current.mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600',
     'Content-Disposition': current.contentDisposition};
 }
+
+
+/** Dedicated inline playback syntax. Never broadens historical download URLs. */
+export function timelineExportPreviewIdentity(url: URL): {assetId: string; exportId: string} | null {
+  const assetId = url.pathname.slice('/media/'.length), exportId = url.searchParams.get('exportId');
+  const keys = [...url.searchParams.keys()];
+  if (url.hash || url.username || url.password || !url.pathname.startsWith('/media/') || !uuid(assetId) || !uuid(exportId) ||
+      keys.length !== 2 || keys.filter(key => key === 'preview').length !== 1 || keys.filter(key => key === 'exportId').length !== 1 ||
+      url.searchParams.get('preview') !== '1') return null;
+  return {assetId, exportId};
+}
+
+export type TimelineExportPreviewMedia = Pick<TimelineExportOutput, 'exportId' | 'assetId' | 'projectId' | 'relativePath' | 'identityDigest'>;
+
+/** Both named and unnamed exports require the same exact receipt/output proof. */
+export function readTimelineExportPreviewMedia(db: DatabaseSync, url: URL, guards: TimelineDeliveryReadGuards): TimelineExportPreviewMedia | null {
+  const requested = timelineExportPreviewIdentity(url);
+  if (!requested) return null;
+  const output = readTimelineExportOutputCore(db, requested, guards, false);
+  if (!output) return null;
+  return Object.freeze({exportId: output.exportId, assetId: output.assetId, projectId: output.projectId,
+    relativePath: output.relativePath, identityDigest: output.identityDigest});
+}
+
+/** Check the retained owner again after open/stat and before any output bytes. */
+export function timelineExportPreviewResponseHeaders(db: DatabaseSync, url: URL, guards: TimelineDeliveryReadGuards,
+  expected: TimelineExportPreviewMedia): Readonly<Record<string, string>> {
+  const current = readTimelineExportPreviewMedia(db, url, guards);
+  if (!current || JSON.stringify(current) !== JSON.stringify(expected))
+    throw Object.assign(new Error('本地文件不可用。'), {code: 'FILE_UNAVAILABLE', status: 404});
+  return {'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store', 'Content-Disposition': 'inline'};
+}

@@ -13,7 +13,7 @@ const bytesLabel = bytes => bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} K
 
 // Presentation only: the parent owns the saved context, explicit read, and
 // durable render submission. Hidden tabs retain this view without starting work.
-export default function TimelineExportPreflight({ recovery, state, projectName, timeline, exportSettings, settingsDisabled, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport }) {
+export default function TimelineExportPreflight({ preview, recovery, state, projectName, timeline, exportSettings, settingsDisabled, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport }) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const phase = state?.phase || 'idle', report = state?.report, summary = report?.summary;
   const oldReport = Boolean(report && ['checking', 'stale', 'error'].includes(phase));
@@ -26,6 +26,7 @@ export default function TimelineExportPreflight({ recovery, state, projectName, 
       <TimelineDeliveryName value={deliveryName} error={deliveryNameError} disabled={deliveryNameDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onDeliveryNameChange} />
       <ExportRangeControls draft={rangeDraft} value={exportRange} durationFrames={timeline?.durationFrames} error={rangeError} disabled={rangeDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onRangeChange} />
       <TimelineExportSettings timeline={timeline} value={exportSettings} disabled={settingsDisabled || exportBusy || pendingExport} onChange={onSettingsChange} />
+      {preview}
       {exportSettings && <div className={`export-capability-status is-${state?.capabilityPhase || 'idle'}`} data-testid="export-capability-status" data-status={state?.capabilityPhase || 'idle'} role="status" aria-live="polite"><strong>{t('export.preflight.capability')}</strong><p>{exportCapabilityMessage(state?.capabilityPhase || 'idle', locale)}</p></div>}
       <details className="export-preflight-scope" data-testid="preflight-scope-details"><summary>{t('export.preflight.scopeTitle')}</summary><p>{t('export.preflight.scope')}</p></details>
       {dirty && <p className="export-preflight-draft" data-testid="preflight-unsaved">{t('export.preflight.unsaved')}</p>}
