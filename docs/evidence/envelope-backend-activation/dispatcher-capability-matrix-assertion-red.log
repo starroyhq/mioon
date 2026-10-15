@@ -1,0 +1,217 @@
+✔ real dispatch migrates source38 marker-only to40 and reopens idempotently (1713.002322ms)
+✔ dispatch restores source40 as exact41 while fixed source38/restored39 stays unchanged (2442.27262ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(42) (479.772313ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(39) (544.853857ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: DELETE FROM schema_version WHERE version=38 (536.538841ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: DELETE FROM schema_version WHERE version=1 (540.795329ms)
+✔ dispatch refuses unknown/forged40 marker chain without repair: INSERT INTO schema_version VALUES(41) (696.674648ms)
+✔ source38 envelope evidence never acquires40 through migration (463.060529ms)
+✔ dispatch40/41 retains all seven envelope families (explicit null) (922.369059ms)
+✔ dispatch40/41 retains all seven envelope families (active) (1159.755776ms)
+✔ real dispatch frozen role/timeline_requests survives changed cache with inherited read continuity (1419.753134ms)
+✔ real dispatch frozen role/exports survives changed cache with inherited read continuity (1737.944644ms)
+✔ real dispatch frozen colour/timeline_requests survives changed cache with inherited read continuity (1675.721494ms)
+✔ real dispatch frozen colour/exports survives changed cache with inherited read continuity (2656.04226ms)
+✔ dispatch preserves old38/39 role cache-binding rejection rather than applying40 frozen rules (1710.791927ms)
+✔ dispatch preserves old38/39 colour cache-binding rejection rather than applying40 frozen rules (1620.318269ms)
+✔ volume capability input is true-only opt-in and absence never grants editing (4.13161ms)
+✔ capability denies exact historical38/39 and marker-only40 without modifying fixtures (726.978106ms)
+✔ full restored41 capability and shared mutation admission fail closed on catalog corruption (3489.083032ms)
+✔ full restored41 capability and shared mutation admission fail closed on metadata corruption (1772.402705ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-receipt corruption (2053.806489ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-task corruption (1370.833243ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-proposal corruption (1352.322435ms)
+✔ full restored41 capability and shared mutation admission fail closed on holds-export corruption (1652.881572ms)
+✔ full restored41 capability and shared mutation admission fail closed on task-binding corruption (2500.593192ms)
+✔ ordinary40 backup verifies and restores41 with valid actual-service capability responses and exact retained envelope history (2198.950577ms)
+▶ all33 held families reject zero/nonexistent live bindings with intact41 catalog
+  ✔ jobs: capturedRowid=0 has no live record (381.073816ms)
+  ✔ jobs: capturedRowid=9007199254740991 has no live record (331.933144ms)
+  ✔ exports: capturedRowid=0 has no live record (469.658706ms)
+  ✔ exports: capturedRowid=9007199254740991 has no live record (222.509779ms)
+  ✔ versions: capturedRowid=0 has no live record (179.388628ms)
+  ✔ versions: capturedRowid=9007199254740991 has no live record (166.726314ms)
+  ✔ job_events: capturedRowid=0 has no live record (152.764913ms)
+  ✔ job_events: capturedRowid=9007199254740991 has no live record (167.149397ms)
+  ✔ timeline_requests: capturedRowid=0 has no live record (155.193263ms)
+  ✔ timeline_requests: capturedRowid=9007199254740991 has no live record (145.97929ms)
+  ✔ reference_requests: capturedRowid=0 has no live record (205.585368ms)
+  ✔ reference_requests: capturedRowid=9007199254740991 has no live record (207.75043ms)
+  ✔ idempotency: capturedRowid=0 has no live record (184.81687ms)
+  ✔ idempotency: capturedRowid=9007199254740991 has no live record (253.957682ms)
+  ✔ mutation_requests: capturedRowid=0 has no live record (268.281814ms)
+  ✔ mutation_requests: capturedRowid=9007199254740991 has no live record (175.820108ms)
+  ✔ asset_range_requests: capturedRowid=0 has no live record (234.12387ms)
+  ✔ asset_range_requests: capturedRowid=9007199254740991 has no live record (224.474011ms)
+  ✔ asset_disposition_requests: capturedRowid=0 has no live record (202.874929ms)
+  ✔ asset_disposition_requests: capturedRowid=9007199254740991 has no live record (275.490473ms)
+  ✔ asset_annotations: capturedRowid=0 has no live record (180.885147ms)
+  ✔ asset_annotations: capturedRowid=9007199254740991 has no live record (181.811452ms)
+  ✔ asset_annotation_requests: capturedRowid=0 has no live record (200.641689ms)
+  ✔ asset_annotation_requests: capturedRowid=9007199254740991 has no live record (174.546233ms)
+  ✔ subject_requests: capturedRowid=0 has no live record (176.080181ms)
+  ✔ subject_requests: capturedRowid=9007199254740991 has no live record (167.553194ms)
+  ✔ agent_chat_threads: capturedRowid=0 has no live record (235.962176ms)
+  ✔ agent_chat_threads: capturedRowid=9007199254740991 has no live record (382.358789ms)
+  ✔ agent_chat_requests: capturedRowid=0 has no live record (357.732383ms)
+  ✔ agent_chat_requests: capturedRowid=9007199254740991 has no live record (475.526468ms)
+  ✔ agent_chat_runs: capturedRowid=0 has no live record (929.612916ms)
+  ✔ agent_chat_runs: capturedRowid=9007199254740991 has no live record (247.400261ms)
+  ✔ agent_chat_events: capturedRowid=0 has no live record (256.469775ms)
+  ✔ agent_chat_events: capturedRowid=9007199254740991 has no live record (218.740802ms)
+  ✔ agent_chat_steps: capturedRowid=0 has no live record (157.814625ms)
+  ✔ agent_chat_steps: capturedRowid=9007199254740991 has no live record (407.667554ms)
+  ✔ agent_chat_quota: capturedRowid=0 has no live record (339.059894ms)
+  ✔ agent_chat_quota: capturedRowid=9007199254740991 has no live record (213.951195ms)
+  ✔ agent_edit_proposals: capturedRowid=0 has no live record (249.755194ms)
+  ✔ agent_edit_proposals: capturedRowid=9007199254740991 has no live record (156.664851ms)
+  ✔ edit_tasks: capturedRowid=0 has no live record (151.073067ms)
+  ✔ edit_tasks: capturedRowid=9007199254740991 has no live record (166.685166ms)
+  ✔ image_groups: capturedRowid=0 has no live record (163.379572ms)
+  ✔ image_groups: capturedRowid=9007199254740991 has no live record (173.496832ms)
+  ✔ image_tasks: capturedRowid=0 has no live record (182.657067ms)
+  ✔ image_tasks: capturedRowid=9007199254740991 has no live record (180.508566ms)
+  ✔ image_versions: capturedRowid=0 has no live record (252.345776ms)
+  ✔ image_versions: capturedRowid=9007199254740991 has no live record (247.512531ms)
+  ✔ image_requests: capturedRowid=0 has no live record (162.020891ms)
+  ✔ image_requests: capturedRowid=9007199254740991 has no live record (173.459402ms)
+  ✔ image_reviews: capturedRowid=0 has no live record (197.46098ms)
+  ✔ image_reviews: capturedRowid=9007199254740991 has no live record (186.735676ms)
+  ✔ image_remote_runs: capturedRowid=0 has no live record (195.541184ms)
+  ✔ image_remote_runs: capturedRowid=9007199254740991 has no live record (183.697508ms)
+  ✔ image_remote_observations: capturedRowid=0 has no live record (214.845406ms)
+  ✔ image_remote_observations: capturedRowid=9007199254740991 has no live record (194.444132ms)
+  ✔ project_lut_resources: capturedRowid=0 has no live record (176.208057ms)
+  ✔ project_lut_resources: capturedRowid=9007199254740991 has no live record (251.913278ms)
+  ✔ lut_import_requests: capturedRowid=0 has no live record (201.775835ms)
+  ✔ lut_import_requests: capturedRowid=9007199254740991 has no live record (182.814916ms)
+  ✔ frame_tasks: capturedRowid=0 has no live record (211.284472ms)
+  ✔ frame_tasks: capturedRowid=9007199254740991 has no live record (189.614788ms)
+  ✔ frame_requests: capturedRowid=0 has no live record (191.673468ms)
+  ✔ frame_requests: capturedRowid=9007199254740991 has no live record (228.831978ms)
+  ✔ waveform_cache: capturedRowid=0 has no live record (185.370458ms)
+  ✔ waveform_cache: capturedRowid=9007199254740991 has no live record (184.738561ms)
+✔ all33 held families reject zero/nonexistent live bindings with intact41 catalog (16809.263951ms)
+ℹ Matrix: 33 genuine declared held families × 2 missing live bindings = 66 negatives; no claim of populated-row hash coverage for these missing-row cases.
+▶ every populated captured family rejects hash and applicable identity-binding mismatch
+  ✔ agent_chat_quota: mismatched rowHash (427.820405ms)
+  ✔ agent_chat_quota: mismatched id (224.65916ms)
+  ✔ agent_chat_requests: mismatched rowHash (184.263797ms)
+  ✔ agent_chat_requests: mismatched id (340.32598ms)
+  ✔ agent_chat_requests: mismatched projectId (347.402948ms)
+  ✔ agent_chat_requests: mismatched namespace (315.426626ms)
+  ✔ agent_chat_requests: mismatched requestId (485.418171ms)
+  ✔ agent_chat_runs: mismatched rowHash (577.423095ms)
+  ✔ agent_chat_runs: mismatched id (1101.994567ms)
+  ✔ agent_chat_runs: mismatched projectId (514.813018ms)
+  ✔ agent_chat_runs: mismatched requestId (577.726115ms)
+  ✔ agent_chat_threads: mismatched rowHash (772.289043ms)
+  ✔ agent_chat_threads: mismatched id (366.97113ms)
+  ✔ agent_chat_threads: mismatched projectId (600.459022ms)
+  ✔ agent_edit_proposals: mismatched rowHash (572.110134ms)
+  ✔ agent_edit_proposals: mismatched id (542.518394ms)
+  ✔ agent_edit_proposals: mismatched projectId (298.701369ms)
+  ✔ edit_tasks: mismatched rowHash (223.719277ms)
+  ✔ edit_tasks: mismatched id (262.806883ms)
+  ✔ edit_tasks: mismatched projectId (272.381576ms)
+  ✔ edit_tasks: mismatched namespace (368.864207ms)
+  ✔ edit_tasks: mismatched requestId (485.745451ms)
+  ✔ edit_tasks: mismatched operation (328.785418ms)
+  ✔ exports: mismatched rowHash (533.329685ms)
+  ✔ exports: mismatched id (228.103281ms)
+  ✔ exports: mismatched projectId (1189.146953ms)
+  ✖ exports: mismatched namespace (176.541729ms)
+  ✖ exports: mismatched requestId (105.146788ms)
+  ✔ exports: mismatched operation (338.163038ms)
+  ✔ timeline_requests: mismatched rowHash (303.506778ms)
+  ✔ timeline_requests: mismatched id (265.048703ms)
+  ✔ timeline_requests: mismatched namespace (241.824667ms)
+  ✔ timeline_requests: mismatched requestId (296.673983ms)
+✖ every populated captured family rejects hash and applicable identity-binding mismatch (15325.613137ms)
+ℹ {"matrix":"populated-family-hash-and-binding","families":8,"cases":33,"manifest":[{"family":"agent_chat_quota","fields":["rowHash","id"]},{"family":"agent_chat_requests","fields":["rowHash","id","projectId","namespace","requestId"]},{"family":"agent_chat_runs","fields":["rowHash","id","projectId","requestId"]},{"family":"agent_chat_threads","fields":["rowHash","id","projectId"]},{"family":"agent_edit_proposals","fields":["rowHash","id","projectId"]},{"family":"edit_tasks","fields":["rowHash","id","projectId","namespace","requestId","operation"]},{"family":"exports","fields":["rowHash","id","projectId","namespace","requestId","operation"]},{"family":"timeline_requests","fields":["rowHash","id","namespace","requestId"]}]}
+ℹ tests 127
+ℹ suites 0
+ℹ pass 124
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 71130.334991
+
+✖ failing tests:
+
+test at tests/workspace-schema40-dispatch.test.mjs:264:46
+✖ exports: mismatched namespace (176.541729ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    Comparison {
+  +   code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  -   code: 'RESTORE_CAPTURE_CHANGED'
+    }
+  
+      at assertCorruptedHoldDenied (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:234:9)
+      at alterHeldFixture (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:242:127)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:266:4)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at TestContext.test (node:internal/test_runner/test:400:20)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:264:46)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+        at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+        at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:341:169)
+        at Object.validateWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:465:18)
+        at Object.validateRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:190:60)
+        at assert.throws.code (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:234:29)
+        at getActual (node:assert:611:5)
+        at strict.throws (node:assert:759:24)
+        at assertCorruptedHoldDenied (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:234:9)
+        at alterHeldFixture (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:242:127)
+        at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:266:4),
+    expected: { code: 'RESTORE_CAPTURE_CHANGED' },
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at tests/workspace-schema40-dispatch.test.mjs:264:46
+✖ exports: mismatched requestId (105.146788ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    Comparison {
+  +   code: 'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'
+  -   code: 'RESTORE_CAPTURE_CHANGED'
+    }
+  
+      at assertCorruptedHoldDenied (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:234:9)
+      at alterHeldFixture (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:242:127)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:266:4)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at TestContext.test (node:internal/test_runner/test:400:20)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:264:46)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: RESTORE_EXPORT_IDENTITY_UNSUPPORTED
+        at fail (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:27:71)
+        at capturedIdentityMetadata (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:341:169)
+        at Object.validateWorkspaceRestoreSchemaV41 (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-schema-v41.ts:465:18)
+        at Object.validateRestore (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-schema-dispatch.ts:190:60)
+        at assert.throws.code (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:234:29)
+        at getActual (node:assert:611:5)
+        at strict.throws (node:assert:759:24)
+        at assertCorruptedHoldDenied (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:234:9)
+        at alterHeldFixture (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:242:127)
+        at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/workspace-schema40-dispatch.test.mjs:266:4),
+    expected: { code: 'RESTORE_CAPTURE_CHANGED' },
+    operator: 'throws',
+    diff: 'simple'
+  }

@@ -1,0 +1,20 @@
+Working directory: /workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations
+All runtime calls use the absolute Node path below; no PATH node substitution.
+NODE=/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node
+
+Final combined gate (259 tests):
+$NODE --experimental-test-module-mocks --test tests/workspace-schema-dispatch.test.mjs tests/workspace-schema38.test.mjs tests/workspace-schema40-dormant.test.mjs tests/timeline-volume-envelope-durable-ingress.test.mjs tests/timeline-volume-envelope-mutations.test.mjs tests/timeline-volume-envelope-live-contracts.test.mjs tests/workspace-restore-contracts.test.mjs tests/timeline-audio-role.test.mjs tests/workspace-volume-envelope-validation.test.mjs tests/workspace-frozen-evidence-v40.test.mjs tests/timeline-volume-envelope-owned-startup.test.mjs
+The historical synthetic transaction file retains its old policy seam. The new owned-startup file, dispatcher tests and capability/hold-corruption tests never use a policy/ownership bypass.
+
+Dispatcher/capability/backup/hold matrix:
+$NODE --test tests/workspace-schema40-dispatch.test.mjs
+
+Final pure gate (27 tests):
+$NODE --test tests/timeline-volume-envelope-pure.test.mjs tests/timeline-volume-envelope-candidate-intent.test.mjs tests/timeline-volume-envelope-candidate.test.mjs
+
+Final scoped strict TypeScript (checkJs false):
+$NODE node_modules/typescript/bin/tsc --noEmit --strict --allowJs --checkJs false --skipLibCheck --target ES2024 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions packages/business/src/workspace-schema-dispatch.ts packages/business/src/workspace-backup-schema-versions.ts packages/business/src/workspace-restore-schema-v41.ts packages/business/src/timeline-volume-envelope-admission.ts packages/business/src/timeline-volume-envelope-capability.ts packages/business/src/timeline-audio-role-business.ts packages/business/src/lut-resources.ts packages/contracts/src/workspace-schema-profiles.ts packages/contracts/src/timeline-volume-envelope-capability.ts
+
+Retained nonqualifying attempt:
+$NODE --test tests/inspection-contracts.test.mjs tests/timeline-volume-envelope-pure.test.mjs tests/timeline-volume-envelope-candidate-intent.test.mjs tests/timeline-volume-envelope-candidate.test.mjs
+inspection-contracts failed during module loading because @modelcontextprotocol/sdk is not available in this checkout. No transport workflow or child process from that test ran. It was not installed or retried; the pure files were rerun independently. This is not a full catalog/transport pass.

@@ -123,7 +123,10 @@ test('restored37 refuses role-bearing edit-task preparation without reserving an
 test('actual backup38 restores role timelines, history and set/clear receipts exactly into editable39',async t=>{
  const root=mkdtempSync(path.join(tmpdir(),'role-backup38-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
  const source=path.join(root,'source'),backup=path.join(root,'backup'),destination=path.join(root,'restored');
- let store=openStore(source),services=createServices(store,new Map());
+ let store=openStore(source);
+ // Preserve this historical source38→39 regression on a fresh synthetic fixture.
+ store.db.exec('DELETE FROM schema_version WHERE version=40');validateWorkspaceSchema38(store.db,{verifyBytes:false});
+ let services=createServices(store,new Map());
  const project=await services.call('project.create',{name:'role capture'}),projectId=project.id;
  // Metadata only: editorial role edits never probe or require a media file.
  const asset=store.put('assets',{id:randomUUID(),projectId,name:'silent synthetic video',mimeType:'video/mp4',duration:600,width:720,height:1280,hasVideo:true,hasAudio:false});

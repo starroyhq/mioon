@@ -460,7 +460,7 @@ function validateWorkspaceRestoreSchemaV41(db: DatabaseSync): WorkspaceRestoreIn
  for(const family of families){
   const fields=columns(db,family.table).filter(column=>column!=='executionEpoch');
   const held=db.prepare(`SELECT h.*,t.rowid AS liveRowid FROM workspace_restore_holds h LEFT JOIN ${quote(family.table)} t ON t.rowid=h.capturedRowid WHERE h.kind=?`);held.setReadBigInts(true);
-  for(const item of held.iterate()){
+  for(const item of held.iterate(family.table)){
    if(item.liveRowid===null||item.liveRowid!==item.capturedRowid||typeof item.rowHash!=='string'||!HASH.test(item.rowHash)||rowDigest(db,family.table,item.liveRowid,fields)!==item.rowHash)fail('RESTORE_CAPTURE_CHANGED');
    const binding=capturedIdentityMetadata(db,family,item.liveRowid,item as unknown as CapturedIdentity);
    if((Object.keys(binding) as (keyof CapturedIdentity)[]).some(key=>binding[key]!==item[key]))fail('RESTORE_CAPTURE_CHANGED');

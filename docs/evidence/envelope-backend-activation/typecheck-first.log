@@ -1,0 +1,143 @@
+packages/business/src/asset-annotation-validation.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resource-validation.ts(1,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resource-validation.ts(2,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resources.ts(1,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resources.ts(2,23): error TS2591: Cannot find name 'node:util/types'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resources.ts(3,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resources.ts(32,31): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resources.ts(38,15): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/timeline-audio-role-business.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/timeline-volume-envelope-admission.ts(4,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/timeline-volume-envelope-admission.ts(5,23): error TS2591: Cannot find name 'node:util/types'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/timeline-volume-envelope-admission.ts(53,21): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/timeline-volume-envelope-capability.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-audio-role-validation.ts(2,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-audio-role-validation.ts(58,89): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-backup-schema-versions.ts(6,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-backup-schema-versions.ts(67,50): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-backup-schema-versions.ts(69,42): error TS7006: Parameter 'letter' implicitly has an 'any' type.
+packages/business/src/workspace-colour-validation.ts(2,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-colour-validation.ts(97,89): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-frozen-evidence-v40.ts(5,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-frozen-evidence-v40.ts(39,5): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-receipt-protections.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v27.ts(5,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v27.ts(6,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v27.ts(8,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v27.ts(45,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v27.ts(122,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v27.ts(122,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v27.ts(228,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v27.ts(247,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v27.ts(338,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v27.ts(396,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v27.ts(434,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v29.ts(5,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v29.ts(6,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v29.ts(10,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v29.ts(47,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v29.ts(124,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v29.ts(124,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v29.ts(235,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v29.ts(254,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v29.ts(345,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v29.ts(403,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v29.ts(441,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v31.ts(5,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v31.ts(6,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v31.ts(12,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v31.ts(49,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v31.ts(126,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v31.ts(126,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v31.ts(237,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v31.ts(256,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v31.ts(347,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v31.ts(405,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v31.ts(443,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v33.ts(5,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v33.ts(6,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v33.ts(13,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v33.ts(50,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v33.ts(127,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v33.ts(127,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v33.ts(238,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v33.ts(257,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v33.ts(348,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v33.ts(406,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v33.ts(444,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v35.ts(5,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v35.ts(6,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v35.ts(14,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v35.ts(51,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v35.ts(128,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v35.ts(128,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v35.ts(239,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v35.ts(258,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v35.ts(349,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v35.ts(407,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v35.ts(445,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v37.ts(5,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v37.ts(6,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v37.ts(16,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v37.ts(53,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v37.ts(130,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v37.ts(130,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v37.ts(243,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v37.ts(262,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v37.ts(353,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v37.ts(411,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v37.ts(449,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v39.ts(5,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v39.ts(6,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v39.ts(18,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v39.ts(55,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v39.ts(132,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v39.ts(132,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v39.ts(245,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v39.ts(264,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v39.ts(355,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v39.ts(413,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v39.ts(451,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(6,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(7,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(21,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(58,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(135,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(135,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(248,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(267,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(358,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(416,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(454,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-dispatch.ts(9,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-dispatch.ts(78,61): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-profile.ts(45,71): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v26.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v26.ts(136,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v26.ts(136,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v28.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v28.ts(136,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v28.ts(136,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v30.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v30.ts(137,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v30.ts(137,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v32.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v32.ts(138,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v32.ts(138,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v34.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v34.ts(138,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v34.ts(138,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v36.ts(2,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v36.ts(139,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v36.ts(139,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v38.ts(3,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v38.ts(140,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v38.ts(140,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v40.ts(4,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v40.ts(141,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v40.ts(141,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-volume-envelope-validation.ts(3,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-volume-envelope-validation.ts(77,62): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-volume-envelope-validation.ts(90,242): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-volume-envelope-validation.ts(141,32): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-volume-envelope-validation.ts(159,89): error TS7006: Parameter 'row' implicitly has an 'any' type.

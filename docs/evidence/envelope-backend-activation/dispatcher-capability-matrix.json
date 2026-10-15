@@ -1,0 +1,165 @@
+{
+  "testFile": "tests/workspace-schema40-dispatch.test.mjs",
+  "nodeVersion": "v24.21.0",
+  "expectedTotalTestsIncludingSubtests": 129,
+  "topLevelTests": 30,
+  "missingLiveBindings": {
+    "families": [
+      "jobs",
+      "exports",
+      "versions",
+      "job_events",
+      "timeline_requests",
+      "reference_requests",
+      "idempotency",
+      "mutation_requests",
+      "asset_range_requests",
+      "asset_disposition_requests",
+      "asset_annotations",
+      "asset_annotation_requests",
+      "subject_requests",
+      "agent_chat_threads",
+      "agent_chat_requests",
+      "agent_chat_runs",
+      "agent_chat_events",
+      "agent_chat_steps",
+      "agent_chat_quota",
+      "agent_edit_proposals",
+      "edit_tasks",
+      "image_groups",
+      "image_tasks",
+      "image_versions",
+      "image_requests",
+      "image_reviews",
+      "image_remote_runs",
+      "image_remote_observations",
+      "project_lut_resources",
+      "lut_import_requests",
+      "frame_tasks",
+      "frame_requests",
+      "waveform_cache"
+    ],
+    "familyCount": 33,
+    "capturedRowids": [
+      0,
+      9007199254740991
+    ],
+    "cases": 66,
+    "expectedRestoreCode": "RESTORE_CAPTURE_CHANGED"
+  },
+  "populatedIdentityBindings": {
+    "matrix": "populated-family-hash-and-binding",
+    "families": 8,
+    "cases": 33,
+    "manifest": [
+      {
+        "family": "agent_chat_quota",
+        "fields": [
+          "rowHash",
+          "id"
+        ]
+      },
+      {
+        "family": "agent_chat_requests",
+        "fields": [
+          "rowHash",
+          "id",
+          "projectId",
+          "namespace",
+          "requestId"
+        ]
+      },
+      {
+        "family": "agent_chat_runs",
+        "fields": [
+          "rowHash",
+          "id",
+          "projectId",
+          "requestId"
+        ]
+      },
+      {
+        "family": "agent_chat_threads",
+        "fields": [
+          "rowHash",
+          "id",
+          "projectId"
+        ]
+      },
+      {
+        "family": "agent_edit_proposals",
+        "fields": [
+          "rowHash",
+          "id",
+          "projectId"
+        ]
+      },
+      {
+        "family": "edit_tasks",
+        "fields": [
+          "rowHash",
+          "id",
+          "projectId",
+          "namespace",
+          "requestId",
+          "operation"
+        ]
+      },
+      {
+        "family": "exports",
+        "fields": [
+          "rowHash",
+          "id",
+          "projectId",
+          "namespace",
+          "requestId",
+          "operation"
+        ]
+      },
+      {
+        "family": "timeline_requests",
+        "fields": [
+          "rowHash",
+          "id",
+          "namespace",
+          "requestId"
+        ]
+      }
+    ]
+  },
+  "expectedErrors": {
+    "default": "RESTORE_CAPTURE_CHANGED",
+    "exports.namespace": "RESTORE_EXPORT_IDENTITY_UNSUPPORTED",
+    "exports.requestId": "RESTORE_EXPORT_IDENTITY_UNSUPPORTED"
+  },
+  "additionalAssertions": [
+    "Capability editable is false",
+    "Shared envelope admission rejects TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED",
+    "Raw database snapshot is unchanged by checks",
+    "Rollback restores exact originally valid fixture"
+  ],
+  "limitations": [
+    "Missing-row cases do not claim valid populated source rows or hash coverage for all33 families.",
+    "Arbitrary offline deletion of an entire hold is not authenticated provenance for otherwise-allowed live receipt families.",
+    "Historical fixed39 behavior is unchanged."
+  ],
+  "workspace40ReadOnlyReview": "No analogous unbound prepared placeholder observed in workspace-schema-v40.ts statement execution sites.",
+  "sourceSha256": "90d2dd3a83658b1b5033dc9cbedb911c447d2abe3b1331013184ba5d259aa70d",
+  "extraCatalogCapabilityCases": [
+    "unrelated table",
+    "unrelated view"
+  ],
+  "previousVerifiedResult": {
+    "tests": 127,
+    "passed": 127,
+    "failed": 0,
+    "log": "dispatcher-capability-127-green.log"
+  },
+  "verifiedResult": {
+    "tests": 129,
+    "passed": 129,
+    "failed": 0,
+    "durationMs": 73491.034462,
+    "log": "dispatcher-capability-tests.log"
+  }
+}

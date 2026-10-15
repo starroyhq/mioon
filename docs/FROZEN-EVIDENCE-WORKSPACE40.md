@@ -1,5 +1,7 @@
 # Dormant40/41 frozen role and colour evidence
 
+Later backend activation is documented in [VOLUME-ENVELOPE-BACKEND-ACTIVATION.md](VOLUME-ENVELOPE-BACKEND-ACTIVATION.md). The dated slice evidence below is preserved.
+
 Base: `f6caf840114ca4e1431012a358cca9e8ed5cb8fd`.
 This bounded compatibility correction activates no dispatcher, migration, live
 mutation, capability, UI, transport or media path. Historical constructors remain

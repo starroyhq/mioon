@@ -63,7 +63,7 @@ export const lutResourceDescriptions=Object.freeze({
 });
 
 export function lutRestorePolicy(operation:string,schemaVersion:number):{operation:string;available:boolean;reason:'AVAILABLE'|'RESTORE_OPERATION_UNAVAILABLE'} {
-  const available=!operation.startsWith('lut.')||(schemaVersion===29||schemaVersion===31||schemaVersion===33||schemaVersion===35||schemaVersion===37||schemaVersion===39)&&operation!=='lut.import';
+  const available=!operation.startsWith('lut.')||(schemaVersion===29||schemaVersion===31||schemaVersion===33||schemaVersion===35||schemaVersion===37||schemaVersion===39||schemaVersion===41)&&operation!=='lut.import';
   return {operation,available,reason:available?'AVAILABLE':'RESTORE_OPERATION_UNAVAILABLE'};
 }
 

@@ -1,0 +1,19 @@
+✔ owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts (3499.817718ms)
+✔ owned ordinary40 source replacement, atomic shrink/clear, split and history preserve exact anchors (2998.917869ms)
+✔ owned ordinary40 durable invalid source is terminal not_applied with no domain writes (941.645681ms)
+✔ owned ordinary40 afterClaim interruption recovers without dispatch and rejects stale instance (1123.366345ms)
+✔ owned ordinary40 afterBusinessCommit interruption recovers without dispatch and rejects stale instance (1315.788595ms)
+✔ owned restored41 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch (7521.336047ms)
+✔ owned ordinary40 durable updates distinguish absent/null/value and retain inherited role/colour fields (3674.014611ms)
+✔ owned restored41 current-epoch afterClaim recovery preserves captured holds and rejects stale instances (4426.705181ms)
+✔ owned restored41 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances (6273.187926ms)
+✔ owned ordinary40 complete envelope budget fails atomically before history/redo/receipt/task writes (3101.18501ms)
+✔ owned restored41 complete envelope budget fails atomically before history/redo/receipt/task writes (5758.750738ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41767.793935

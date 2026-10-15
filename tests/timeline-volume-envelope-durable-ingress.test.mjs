@@ -4,6 +4,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.mjs';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
+import {validateWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
 import {initializeWorkspaceSchema40,validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
 import {hash} from '../packages/business/src/services.mjs';
 import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.mjs';
@@ -15,6 +16,8 @@ function fixture(t,{version=38}={}){
  // Approved disposable synthetic fixture, confined to this isolated checkout.
  const root=mkdtempSync(path.join(process.cwd(),'.tmp-envelope-ingress-')),store=openStore(root);
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
+ // This historical-profile negative uses only a fresh synthetic catalog.
+ if(version===38){store.db.exec('DELETE FROM schema_version WHERE version=40');validateWorkspaceSchema38(store.db,{verifyBytes:false});}
  const tasks=createEditTasks({store,services:{call(){throw Error('Preparation must never dispatch.');}}});
  if(version===40){
   store.put('projects',{id,name:'Synthetic ingress',description:'',revision:1});
@@ -71,8 +74,8 @@ test('synthetic40 existing coordinator captures both exact points paths and prod
   assert.equal(f.state().rows,1);
  }
 });
-test('real live coordinator construction refuses dormant40 before durable insertion',t=>{
+test('real live coordinator construction admits validated40 without insertion or dispatch',t=>{
  const f=fixture(t,{version:40}),before=f.state();
- assert.throws(()=>createEditTasks({store:f.store,services:{call(){throw Error('Must not dispatch.');}}}),{code:'RESTORE_STORE_UNVERIFIED'});
+ assert.doesNotThrow(()=>createEditTasks({store:f.store,services:{call(){throw Error('Must not dispatch.');}}}));
  assert.deepEqual(f.state(),before);
 });

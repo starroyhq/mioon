@@ -1,0 +1,11 @@
+✔ owned restored41 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch (18338.795143ms)
+✔ owned restored41 current-epoch afterClaim recovery preserves captured holds and rejects stale instances (4640.571051ms)
+✔ owned restored41 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances (4524.677324ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28992.236904

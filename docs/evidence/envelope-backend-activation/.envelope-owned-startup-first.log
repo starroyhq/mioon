@@ -1,0 +1,34 @@
+✔ owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts (3709.464272ms)
+✔ owned ordinary40 source replacement, atomic shrink/clear, split and history preserve exact anchors (3951.67864ms)
+✔ owned ordinary40 durable invalid source is terminal not_applied with no domain writes (837.369188ms)
+✔ owned ordinary40 afterClaim interruption recovers without dispatch and rejects stale instance (1558.556892ms)
+✔ owned ordinary40 afterBusinessCommit interruption recovers without dispatch and rejects stale instance (1377.725894ms)
+✖ owned restored41 reopens exact receipts but blocks new envelope intents and isolates captured/current execution epochs (1093.264696ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13812.703721
+
+✖ failing tests:
+
+test at tests/timeline-volume-envelope-owned-startup.test.mjs:98:1
+✖ owned restored41 reopens exact receipts but blocks new envelope intents and isolates captured/current execution epochs (1093.264696ms)
+  Error: 时间线音量包络不能安全应用。
+      at volumeEnvelopeMutationError (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-volume-envelope-admission.ts:12:9)
+      at assertTimelineVolumeEnvelopeWorkspace (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-volume-envelope-admission.ts:30:14)
+      at Object.read (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/timeline-recovery.mjs:121:3)
+      at findTimeline (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-read.mjs:54:118)
+      at timeline.get (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-read.mjs:95:25)
+      at Object.timeline.get (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-read.mjs:146:64)
+      at Object.call (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/workspace-restore-read.mjs:153:41)
+      at file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/services.mjs:393:69
+      at Object.call (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/packages/business/src/services.mjs:406:5)
+      at Object.reopen (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-mutations/tests/timeline-volume-envelope-owned-startup.test.mjs:35:183) {
+    code: 'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED',
+    status: 409,
+    details: {}
+  }
