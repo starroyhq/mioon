@@ -218,7 +218,7 @@ test('failed or unacknowledged save preserves fade edits and does not retry', as
     h.edit('clip-fade-out', '30');
     await h.submit();
     h.render(); assert.equal(calls, 1); assert.equal(h.find('clip-fade-out').props.value, '30'); assert.equal(h.dirtyEvents.at(-1), true);
-    if (failure) assert.match(h.text(), /Offline/);
+    if (failure) { assert.ok(h.text().includes(i18nCore.translate('zh-Hans', 'recovery.notice.unconfirmed'))); assert.doesNotMatch(h.text(), /Offline/); }
   }
 });
 

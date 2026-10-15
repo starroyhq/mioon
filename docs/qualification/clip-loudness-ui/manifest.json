@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-15T20:21:44.437760+00:00",
+  "sourceBaseCommit": "c1059f2a01f5e8cd4d36ae1223506eada6dbe25e",
+  "runtimeSourceFileCount": 693,
+  "runtimeSourceTreeSha256": "11944d2f64f6b1475fa9544794d929a4157d3dd4efd31423f2264a5f62b396c0",
+  "runtimeSourceDrift": false,
+  "node": "24.21.0",
+  "build": {
+    "command": "node scripts/tooling.mjs build --channel=production",
+    "exitCode": 0,
+    "identity": {
+      "channel": "production",
+      "appId": "app.starroy.mioon",
+      "productName": "Mioon",
+      "executableName": "mioon"
+    },
+    "version": "0.4.1",
+    "webMatchesDesktopStaging": true,
+    "packagedInstaller": false,
+    "warnings": [
+      "Existing Base UI use-client bundling directives",
+      "Web chunk exceeds 500 kB"
+    ]
+  },
+  "verification": {
+    "affectedUi": {
+      "files": 26,
+      "passed": 337,
+      "failed": 0
+    },
+    "pureGateRepairs": {
+      "passed": 12,
+      "failed": 0
+    },
+    "independentFocusedUi": {
+      "passed": 25,
+      "failed": 0,
+      "scope": "SSR/component/hook/controller harness, not GUI or actual mounted React StrictMode"
+    },
+    "typecheck": "foundation and browser plus source-language policy passed via production build"
+  },
+  "backendQualification": {
+    "commit": "0c386b048d9ad128391bdf953c313d8d5613e8f1",
+    "supportedClipSeconds": 60,
+    "boundaryRunsInThisFrontendTask": 0,
+    "scope": "Inherited bounded backend qualification; archived 600-second failed experiment is not accepted capacity"
+  },
+  "notValidated": [
+    "Native GUI due existing AT-SPI blocker",
+    "macOS runtime or signing",
+    "Live providers",
+    "Full repository test suite",
+    "Long-duration playback qualification"
+  ],
+  "artifacts": [
+    {
+      "path": "apps/desktop/build/backend.cjs",
+      "bytes": 2879014,
+      "sha256": "589b3d01d0cff5b69d74405fcef3c4fbd3979e8a19f73d00fb51769ef3f11bc8"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@babel-runtime-LICENSE",
+      "bytes": 1106,
+      "sha256": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@base-ui-react-LICENSE",
+      "bytes": 1072,
+      "sha256": "07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@base-ui-utils-LICENSE",
+      "bytes": 1072,
+      "sha256": "07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@floating-ui-core-LICENSE",
+      "bytes": 1089,
+      "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@floating-ui-dom-LICENSE",
+      "bytes": 1089,
+      "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@floating-ui-react-dom-LICENSE",
+      "bytes": 1089,
+      "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@floating-ui-utils-LICENSE",
+      "bytes": 1089,
+      "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@types-d3-color-LICENSE",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@types-d3-drag-LICENSE",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@types-d3-interpolate-LICENSE",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@types-d3-selection-LICENSE",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@types-d3-transition-LICENSE",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@types-d3-zoom-LICENSE",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@xyflow-react-LICENSE",
+      "bytes": 1073,
+      "sha256": "023119ac20fb1c8c9930abe0bcd196989a1960388529a96fc43cebf96f07c9ff"
+    },
+    {
+      "path": "apps/desktop/build/licenses/@xyflow-system-LICENSE",
+      "bytes": 1073,
+      "sha256": "023119ac20fb1c8c9930abe0bcd196989a1960388529a96fc43cebf96f07c9ff"
+    },
+    {
+      "path": "apps/desktop/build/licenses/THIRD-PARTY-NOTICES.md",
+      "bytes": 1887,
+      "sha256": "691b338d699a8a221cf6916e55d13ce9400ae3e6605d9c1313b13b463579edfc"
+    },
+    {
+      "path": "apps/desktop/build/licenses/class-variance-authority-LICENSE",
+      "bytes": 10753,
+      "sha256": "0ccbf956cffc8dcf515809433cb5242ee67c94513d46e48c261d68d0880de406"
+    },
+    {
+      "path": "apps/desktop/build/licenses/classcat-LICENSE.md",
+      "bytes": 1080,
+      "sha256": "f101c761d255d0dddc77dd8a9327733b03d381798ec54a1bb718367207b48a8e"
+    },
+    {
+      "path": "apps/desktop/build/licenses/clsx-license",
+      "bytes": 1104,
+      "sha256": "9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-color-LICENSE",
+      "bytes": 731,
+      "sha256": "faa682e3e430941f958d26180458f5934a62f58dac4d70ccdd15608c15d0f884"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-dispatch-LICENSE",
+      "bytes": 731,
+      "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-drag-LICENSE",
+      "bytes": 731,
+      "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-ease-LICENSE",
+      "bytes": 1504,
+      "sha256": "b989d9085148d21ff64a75e14462aefa06b2589a55553b07b1460c70081c7d08"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-interpolate-LICENSE",
+      "bytes": 731,
+      "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-selection-LICENSE",
+      "bytes": 731,
+      "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-timer-LICENSE",
+      "bytes": 731,
+      "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-transition-LICENSE",
+      "bytes": 731,
+      "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee"
+    },
+    {
+      "path": "apps/desktop/build/licenses/d3-zoom-LICENSE",
+      "bytes": 731,
+      "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee"
+    },
+    {
+      "path": "apps/desktop/build/licenses/lucide-react-LICENSE",
+      "bytes": 3208,
+      "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+    },
+    {
+      "path": "apps/desktop/build/licenses/react-LICENSE",
+      "bytes": 1088,
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "path": "apps/desktop/build/licenses/react-dom-LICENSE",
+      "bytes": 1088,
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "path": "apps/desktop/build/licenses/reselect-LICENSE",
+      "bytes": 1093,
+      "sha256": "e98047a5dee068b33f82e8c4b7a63037b5108c93393198efd4097753004af5dd"
+    },
+    {
+      "path": "apps/desktop/build/licenses/scheduler-LICENSE",
+      "bytes": 1088,
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "path": "apps/desktop/build/licenses/shadcn-ui-LICENSE.md",
+      "bytes": 1063,
+      "sha256": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f"
+    },
+    {
+      "path": "apps/desktop/build/licenses/tailwind-merge-LICENSE.md",
+      "bytes": 1070,
+      "sha256": "d4c70c7ce38cea8778f0aed3fc0bef0a9dbd27f13bd8b6773cbd6d37941971e5"
+    },
+    {
+      "path": "apps/desktop/build/licenses/tailwindcss-LICENSE",
+      "bytes": 1071,
+      "sha256": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+    },
+    {
+      "path": "apps/desktop/build/licenses/tw-animate-css-LICENSE",
+      "bytes": 1068,
+      "sha256": "039184dfa0a822397b3f45a435b5b1e538721587fbade96b9fa80f86cb354109"
+    },
+    {
+      "path": "apps/desktop/build/licenses/use-sync-external-store-LICENSE",
+      "bytes": 1088,
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "path": "apps/desktop/build/licenses/zod-LICENSE",
+      "bytes": 1072,
+      "sha256": "3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8"
+    },
+    {
+      "path": "apps/desktop/build/licenses/zod-to-json-schema-LICENSE",
+      "bytes": 745,
+      "sha256": "80d3168ad2f70f6f5bb2ab22b23414707abf6f0a392034891481ae36a1a429d4"
+    },
+    {
+      "path": "apps/desktop/build/licenses/zustand-LICENSE",
+      "bytes": 1070,
+      "sha256": "c1e6e266563517467b1bf874817d23e426f3149252bd7d42758cd697514b8417"
+    },
+    {
+      "path": "apps/desktop/build/main.cjs",
+      "bytes": 1608492,
+      "sha256": "6e48b3b1908e0812a54bbc39b934a329d2268d2da5c5ba33744d6c1356e7bda5"
+    },
+    {
+      "path": "apps/desktop/build/package.json",
+      "bytes": 382,
+      "sha256": "43acf3c692936d42fd29a7ee8300719f1b39d1e186a5d39860564ab3cde610f9"
+    },
+    {
+      "path": "apps/desktop/build/preload.cjs",
+      "bytes": 191698,
+      "sha256": "11895f908a324ac1df94352df8aa1e1bbd9765739c5e235d5caaa44cdb76b249"
+    },
+    {
+      "path": "apps/desktop/build/subtitles/OFL-1.1.txt",
+      "bytes": 4219,
+      "sha256": "cacb4866bed89a54fc5b1bc163989bca8d8fb72bc0517fdaa70db7325ba666ec"
+    },
+    {
+      "path": "apps/desktop/build/subtitles/README.md",
+      "bytes": 2283,
+      "sha256": "0bd10c7fed09a7c54fe82e5e58129ce538ae1c65974acb04a90708cff7c6d7c5"
+    },
+    {
+      "path": "apps/desktop/build/subtitles/SOURCE-COPYRIGHT.txt",
+      "bytes": 14712,
+      "sha256": "849f4ea9c214fa4ac3593b770c699f387534b11ce671264c1b10d85bdcb5997b"
+    },
+    {
+      "path": "apps/desktop/build/subtitles/extract-font.py",
+      "bytes": 1244,
+      "sha256": "a480fb8f194522d2eb00de575182aeb0808b3e3832b76c374af0b48f9f569a96"
+    },
+    {
+      "path": "apps/desktop/build/subtitles/mioon-subtitle-cjk-sc-v1.otf",
+      "bytes": 16437296,
+      "sha256": "7b13c45bba411924f99c1ee26e1a5ee1ea7fc768503a4d03987d587e16a72e99"
+    },
+    {
+      "path": "apps/desktop/build/web/assets/index-B64AaL4i.css",
+      "bytes": 267598,
+      "sha256": "0da1724cb779b29c5635d4ea29696f1f24efb5e77d335a89122e663354ba5aa1"
+    },
+    {
+      "path": "apps/desktop/build/web/assets/index-BYjCScwQ.js",
+      "bytes": 3452284,
+      "sha256": "b62ad998d0653bd0c1318012cfb421af8f79ae1e4e294baaefdf598e070a1b1d"
+    },
+    {
+      "path": "apps/desktop/build/web/index.html",
+      "bytes": 496,
+      "sha256": "956f4093c3f68b359e9ade9fc30a2c40e47fa28d190bc1aff4822cb3fdf285de"
+    }
+  ]
+}

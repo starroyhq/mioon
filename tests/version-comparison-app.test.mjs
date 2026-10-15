@@ -21,10 +21,10 @@ import { comparisonCurrent } from '../apps/web/src/version-comparison-state.ts';
 const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 function execute(start, end, env) { const source = app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start))); assert.ok(source); return Function(...Object.keys(env), `${source}; return ${/function (\w+)/.exec(source)[1]};`)(...Object.values(env)); }
 test('actual App comparison opening and close synchronously fence context and pause owners', () => {
-  const calls = [], comparisonIdRef = { current: null };
-  const set = execute('  function setComparisonId(', '  function comparisonContext(', { projectSessionReady: () => true, dataRef: { current: { project: { id: id(1) }, shots: [{ id: id(2), projectId: id(1) }] } }, currentProject: { current: id(1) }, comparisonIdRef, comparisonPreviewPause: { current: () => calls.push('comparison') }, nativePreviewPause: { current: () => calls.push('main') }, exportPreviewPause: { current: () => calls.push('export') }, audioPreview: { controller: { revoke: () => calls.push('audio') } }, updateComparisonId: value => calls.push(value) });
-  set(id(2)); assert.equal(comparisonIdRef.current, id(2)); assert.deepEqual(calls, ['comparison', 'audio', 'main', 'export', id(2)]);
-  calls.length = 0; set(null); assert.equal(comparisonIdRef.current, null); assert.deepEqual(calls, ['comparison', null]);
+  const calls = [], comparisonIdRef = { current: null }, clipLoudnessEpoch = { current: 0 };
+  const set = execute('  function setComparisonId(', '  function comparisonContext(', { clipLoudnessEpoch, projectSessionReady: () => true, dataRef: { current: { project: { id: id(1) }, shots: [{ id: id(2), projectId: id(1) }] } }, currentProject: { current: id(1) }, comparisonIdRef, comparisonPreviewPause: { current: () => calls.push('comparison') }, nativePreviewPause: { current: () => calls.push('main') }, exportPreviewPause: { current: () => calls.push('export') }, audioPreview: { controller: { revoke: () => calls.push('audio') } }, updateComparisonId: value => calls.push(value) });
+  set(id(2)); assert.equal(clipLoudnessEpoch.current, 1); assert.equal(comparisonIdRef.current, id(2)); assert.deepEqual(calls, ['comparison', 'audio', 'main', 'export', id(2)]);
+  calls.length = 0; set(null); assert.equal(clipLoudnessEpoch.current, 2); assert.equal(comparisonIdRef.current, null); assert.deepEqual(calls, ['comparison', null]);
 });
 test('actual App context binds live project/epoch/workspace and synchronous comparison identity', () => {
   const currentProject = { current: id(1) }, comparisonIdRef = { current: id(2) }, projectEpoch = { current: 1 }, workspaceRef = { current: { restored: false } };
@@ -60,11 +60,11 @@ test('background visibility, exact comparison ownership and four-locale catalog 
 
 test('retained invalid Compare opener has no state or media effects; null always closes', () => {
   for (const shots of [[], [{ id: id(2), projectId: id(99) }], [{ id: id(2), projectId: id(1) }, { id: id(2), projectId: id(1) }]]) {
-    const calls = [], comparisonIdRef = { current: null };
-    const set = execute('  function setComparisonId(', '  function comparisonContext(', { projectSessionReady: () => true, dataRef: { current: { project: { id: id(1) }, shots } }, currentProject: { current: id(1) }, comparisonIdRef,
+    const calls = [], comparisonIdRef = { current: null }, clipLoudnessEpoch = { current: 0 };
+    const set = execute('  function setComparisonId(', '  function comparisonContext(', { clipLoudnessEpoch, projectSessionReady: () => true, dataRef: { current: { project: { id: id(1) }, shots } }, currentProject: { current: id(1) }, comparisonIdRef,
       comparisonPreviewPause: { current: () => calls.push('comparison') }, nativePreviewPause: { current: () => calls.push('main') }, exportPreviewPause: { current: () => calls.push('export') }, audioPreview: { controller: { revoke: () => calls.push('audio') } }, updateComparisonId: value => calls.push(value) });
-    set(id(2)); assert.equal(comparisonIdRef.current, null); assert.deepEqual(calls, []);
-    comparisonIdRef.current = id(2); set(null); assert.equal(comparisonIdRef.current, null); assert.deepEqual(calls, ['comparison', null]);
+    set(id(2)); assert.equal(clipLoudnessEpoch.current, 0); assert.equal(comparisonIdRef.current, null); assert.deepEqual(calls, []);
+    comparisonIdRef.current = id(2); set(null); assert.equal(clipLoudnessEpoch.current, 1); assert.equal(comparisonIdRef.current, null); assert.deepEqual(calls, ['comparison', null]);
   }
 });
 

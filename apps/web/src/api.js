@@ -1,3 +1,5 @@
+import { readTimelineClipLoudnessRpc } from './timeline-clip-loudness-rpc.ts';
+import { isTimelineClipLoudnessResponse } from '@mioon/contracts/timeline-clip-loudness';
 import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
 import { isWorkspaceRestoreInspection } from '@mioon/contracts';
 import { workspaceOriginOptions } from './workspace-origin.js';
@@ -9,7 +11,7 @@ export class ApiError extends Error {
 }
 export async function rpc(operation, input = {}, { signal, expectedWorkspaceOrigin } = {}) {
   const invocation = workspaceOriginOptions(expectedWorkspaceOrigin);
-  const mix = operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal }) : null;
+  const mix = operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal }) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal }) : null;
   const response = mix?.response ?? await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
   let body;
   try { body = mix ? mix.body : await response.json(); } catch { throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'NETWORK'); }
@@ -24,6 +26,7 @@ export async function rpc(operation, input = {}, { signal, expectedWorkspaceOrig
   }
   if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(body.data)) throw new ApiError('工作区身份核对返回无效数据。', 'BACKEND_PROTOCOL_ERROR');
   if (operation === 'timeline.loudness.prepare' && !isTimelineMixLoudnessResponse(body.data, input)) throw new ApiError('整片混音测量响应与本次请求不匹配。', 'BACKEND_PROTOCOL_ERROR');
+  if (operation === 'timeline.clip.loudness' && !isTimelineClipLoudnessResponse(body.data, input)) throw new ApiError('Invalid saved-clip loudness response.', 'BACKEND_PROTOCOL_ERROR');
   return body.data;
 }
 export const requestId = () => crypto.randomUUID();

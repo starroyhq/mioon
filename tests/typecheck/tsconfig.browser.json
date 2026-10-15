@@ -34,6 +34,7 @@
     "timeline-audio-preview.consumer.tsx",
     "export-loudness.consumer.tsx",
     "timeline-mix-loudness.consumer.tsx",
+    "timeline-clip-loudness.consumer.tsx",
     "timeline-loudness-apply.consumer.tsx"
   ],
   "exclude": [
