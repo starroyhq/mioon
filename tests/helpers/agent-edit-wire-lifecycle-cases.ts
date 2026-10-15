@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, writeFile, rm} from 'node:fs/promises';
+import {mkdtemp, writeFile, rm, realpath, access} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {OwnedFixtureLifetime, startOwnedEditBackend, fixtureCli, fixtureDeadline} from './agent-edit-wire-lifecycle.ts';
+import {OwnedFixtureLifetime, startOwnedEditBackend, fixtureCli, fixtureDeadline, inheritedTestCompileCache} from './agent-edit-wire-lifecycle.ts';
 
 const deferred = <T = void>() => {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};};
 test('owned fixture tries every disposer, retains errors, and closes exactly once', async () => {
@@ -79,4 +81,50 @@ test('close awaits late acquisition disposal and retains its exact failure', asy
   const failedClose = assert.rejects(closing, error => error === failure);
   creating.resolve('late'); await Promise.resolve(); disposing.resolve();
   await rejected; await failedClose;
+});
+
+for (const disconnectAt of ['start-send', 'server-starting']) test(`backend startup owns a parent IPC disconnect at ${disconnectAt} until every acquired resource closes`, {timeout: 15000}, async t => {
+  const lifetime = new OwnedFixtureLifetime(t);
+  const root = await lifetime.acquire(async () => mkdtemp(path.join(await realpath(tmpdir()), 'mioon-owned-disconnect-regression-')), value => rm(value, {recursive: true, force: true}));
+  const entry = fileURLToPath(new URL('./agent-edit-wire-process.mjs', import.meta.url));
+  const child = spawn(process.execPath, [entry], {stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', NODE_ENV: 'test', ...inheritedTestCompileCache()}});
+  let stderr = '';
+  assert.ok(child.stderr); child.stderr.setEncoding('utf8').on('data', chunk => {stderr = (stderr + chunk).slice(-20000);});
+  const exited = new Promise<{code: number | null; signal: NodeJS.Signals | null}>((resolve, reject) => {
+    child.once('exit', (code, signal) => resolve({code, signal})); child.once('error', reject);
+  });
+  lifetime.deferCleanup(async () => {if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await fixtureDeadline(exited, 'backend disconnect reap'); child.stderr?.destroy();});
+  const disconnected = new Promise<void>((resolve, reject) => {
+    child.on('message', (value: unknown) => {
+      const message = value as {type?: string; phase?: string};
+      if (disconnectAt === message.phase && message.type === 'startup-phase') {child.disconnect(); resolve();}
+    });
+    child.send({type: 'start', dataDir: root, token: 'synthetic-disconnect-regression-token'}, error => {
+      if (error) reject(error); else if (disconnectAt === 'start-send') {child.disconnect(); resolve();}
+    });
+  });
+  // Deliver start, then disappear before readiness. The child must consume an
+  // IPC send failure and await startup rather than publishing an orphan server.
+  await fixtureDeadline(disconnected, `backend disconnect at ${disconnectAt}`);
+  assert.deepEqual(await fixtureDeadline(exited, 'backend parent disconnect'), {code: 0, signal: null}, stderr);
+  assert.equal(stderr.includes('EPIPE'), false, stderr);
+  await assert.rejects(access(path.join(root, 'server.lock')), {code: 'ENOENT'});
+});
+
+test('readiness failure retains a fixed startup phase without copying child labels or secrets', {timeout: 15000}, async t => {
+  const lifetime = new OwnedFixtureLifetime(t);
+  const root = await lifetime.acquire(async () => mkdtemp(path.join(await realpath(tmpdir()), 'mioon-owned-phase-regression-')), value => rm(value, {recursive: true, force: true}));
+  const entry = path.join(root, 'pending.cjs');
+  const token = 'synthetic-phase-regression-token';
+  // One IPC channel orders the phase reports before the deliberate failure;
+  // no sleep or filesystem marker races the parent's receipt of diagnostics.
+  await writeFile(entry, `process.on('message',message=>{process.send({type:'startup-phase',phase:'module-loading'});process.send({type:'startup-phase',phase:message.token});process.send({type:'error',message:'synthetic startup failure'});});`);
+  await assert.rejects(startOwnedEditBackend(root, {repo: root, entry, token, lifetime}), error => {
+    assert.ok(error instanceof Error); assert.match(error.message, /phase=module-loading/u);
+    assert.match(error.message, /ready=false exit=null signal=null cancelled=false/u);
+    assert.match(error.message, /Owned backend reap: \{"code":null,"signal":"SIGKILL"\}/u);
+    assert.equal(error.message.includes(token), false); assert.equal(error.message.includes(root), false);
+    return true;
+  });
 });

@@ -6,7 +6,7 @@ import net from 'node:net';
 import tls from 'node:tls';
 import dns from 'node:dns';
 import childProcess from 'node:child_process';
-import {syncBuiltinESMExports} from 'node:module';
+import {getCompileCacheDir, syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
 
 export const uuid = value => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -181,9 +181,15 @@ export async function seedInspectionStore(root) {
   } finally { store.close(); }
 }
 
-if (process.env.MIOON_INSPECTION_WIRE_GUARD === '1') installWireGuard({
-  origin: process.env.MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN || '', auditPath: process.env.MIOON_INSPECTION_WIRE_AUDIT,
-});
+if (process.env.MIOON_INSPECTION_WIRE_GUARD === '1') {
+  // The optional fourth pipe carries fixed test phases only. It never shares
+  // CLI result/error bytes and cannot expose a URL, credential or input.
+  const trace = process.env.MIOON_INSPECTION_WIRE_TRACE === '1' ? stage => fs.writeSync(3, stage + '\n') : undefined;
+  trace?.('preloaded');
+  trace?.(getCompileCacheDir() ? 'compile-cache-active' : 'compile-cache-disabled');
+  installWireGuard({origin: process.env.MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN || '',
+    auditPath: process.env.MIOON_INSPECTION_WIRE_AUDIT, onFetchStage: trace});
+}
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv[2] === 'server') {
   const root = process.env.MIOON_DATA_DIR;

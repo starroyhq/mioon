@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
-import {mkdtemp, mkdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -11,6 +11,7 @@ import {createHash} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {HOSTILE, PRIVATE, TOKEN, IDS, NOW, uuid} from './helpers/inspection-wire-fixture.mjs';
+import {runInspectionProcess} from './helpers/inspection-wire-lifecycle.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs');
@@ -24,7 +25,7 @@ const sourceFiles = [
   'packages/business/src/db.mjs', 'packages/business/src/services.mjs', 'packages/business/src/inspection.mjs',
   'packages/business/src/inspection-query.mjs', 'packages/contracts/src/index.mjs',
   'packages/contracts/src/inspection.mjs', 'packages/contracts/src/operation-effects.mjs', 'packages/client/src/index.mjs',
-  'tests/inspection-wire.test.mjs', 'tests/helpers/inspection-wire-fixture.mjs',
+  'tests/inspection-wire.test.mjs', 'tests/helpers/inspection-wire-fixture.mjs', 'tests/helpers/inspection-wire-lifecycle.mjs',
 ];
 const sourceSnapshot = async () => Object.fromEntries(await Promise.all(sourceFiles.map(async file =>
   [file, createHash('sha256').update(await readFile(path.join(repo, file))).digest('hex')])));
@@ -38,19 +39,11 @@ function environment(extra = {}) {
     MIOON_INSPECTION_WIRE_GUARD: '1', ...extra};
 }
 
-async function runCli(args, env, expectedError) {
-  const child = spawn(process.execPath, ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], {
-    cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let stdout = '', stderr = '';
-  // JSON descriptions may cross pipe chunks inside a UTF-8 character.
-  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
-  child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
-  const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
-  let code, signal;
-  try { [code, signal] = await once(child, 'close'); }
-  finally { clearTimeout(timer); }
+async function runCli(args, env, expectedError, testSignal) {
+  const {stdout, stderr, code, signal} = await runInspectionProcess(
+    ['--import', helper, path.join(repo, 'apps/cli/src/index.mjs'), ...args], {
+      cwd: repo, env: environment({...env, MIOON_INSPECTION_WIRE_TRACE: '1'}), signal: testSignal,
+    });
   assert.equal(signal, null, `CLI must terminate normally: ${stderr}`);
   assert.equal(stdout.trim().split('\n').length, 1, 'CLI emits exactly one JSON result envelope');
   assert.ok(!stdout.includes(TOKEN) && !stderr.includes(TOKEN), 'CLI never prints the synthetic credential');
@@ -65,7 +58,7 @@ async function runCli(args, env, expectedError) {
 }
 
 async function backendFixture(t) {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-inspection-wire-'));
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-inspection-wire-'));
   const auditPath = path.join(root, 'forbidden-side-effects.jsonl');
   await writeFile(auditPath, '');
   let child, port = 0, url, readOnly;
@@ -196,7 +189,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     'workspace_preferences', 'agent_chat_threads', 'agent_chat_requests', 'agent_chat_runs', 'agent_chat_events', 'agent_chat_quota']) {
     assert.ok(initial[table]?.length > 0, `${table} has sentinel rows, not just an empty-table write check`);
   }
-  const cli = (operation, input, error) => runCli([...operation.split('.'), '--input', JSON.stringify(input)], backend.env, error);
+  const cli = (operation, input, error) => runCli([...operation.split('.'), '--input', JSON.stringify(input)], backend.env, error, t.signal);
   async function parity(operation, input, error) {
     const http = await backend.http(operation, input, error);
     assert.deepEqual(await cli(operation, input, error), http, `${operation} CLI/HTTP envelope parity`);
@@ -217,11 +210,11 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     const offlineEnv = {MIOON_INSPECTION_WIRE_AUDIT: path.join(backend.root, 'forbidden-side-effects.jsonl')};
     const offline = await mcpFixture(subtest, offlineEnv);
     report.initialize = offline.client.getServerVersion();
-    const catalog = (await runCli(['schema'], offlineEnv)).data;
+    const catalog = (await runCli(['schema'], offlineEnv, undefined, subtest.signal)).data;
     assert.deepEqual((await offline.call('mioon_schema')).data, catalog);
     const tools = (await offline.client.listTools()).tools;
     for (const operation of [...operations, 'project.get', 'timeline.get']) {
-      const definition = (await runCli(['schema', operation], offlineEnv)).data;
+      const definition = (await runCli(['schema', operation], offlineEnv, undefined, subtest.signal)).data;
       const tool = tools.find(item => item.name === toolName(operation));
       assert.ok(tool, `${operation} is discoverable`);
       assert.deepEqual(definition, catalog.operations.find(item => item.operation === operation));

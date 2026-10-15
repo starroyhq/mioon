@@ -100,6 +100,9 @@ export interface OwnedEditBackend {
 interface BackendOptions {repo: string; entry: string; token: string; lifetime?: OwnedFixtureLifetime}
 export async function startOwnedEditBackend(root: string, {repo, entry, token, lifetime}: BackendOptions): Promise<OwnedEditBackend> {
   lifetime?.assertActive();
+  const startedAt = performance.now();
+  let startupPhase = 'spawned';
+  const startupPhases = new Set(['process-booted', 'start-received', 'module-loading', 'module-loaded', 'settings-ready', 'server-starting', 'server-ready']);
   const child = spawn(process.execPath, [entry], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', NODE_ENV: 'test', ...inheritedTestCompileCache()}});
   let output = '', readyReceived = false;
@@ -115,8 +118,9 @@ export async function startOwnedEditBackend(root: string, {repo, entry, token, l
   const replies = new Map<string, {resolve: (value: any) => void; reject: (error: unknown) => void}>();
   const rejectReplies = (error: unknown) => {for (const reply of replies.values()) reply.reject(error); replies.clear();};
   child.on('message', (value: unknown) => {
-    const message = value as {type?: string; requestId?: string; data?: unknown; message?: string; pid: number; url: string};
+    const message = value as {type?: string; requestId?: string; data?: unknown; message?: string; phase?: string; pid: number; url: string};
     if (message.type === 'ready') {readyReceived = true; readyResolve(message);}
+    else if (message.type === 'startup-phase' && message.phase && startupPhases.has(message.phase)) startupPhase = message.phase;
     else if (message.type === 'error') {const error = Error(message.message); readyReject(error); rejectReplies(error);}
     else if (message.type === 'reply' && message.requestId) replies.get(message.requestId)?.resolve(message.data);
   });
@@ -157,8 +161,15 @@ export async function startOwnedEditBackend(root: string, {repo, entry, token, l
     assert.equal(result.pid, child.pid); instance.url = result.url;
     assert.equal((await instance.observe()).acquisitions, 0); lifetime?.assertActive(); return instance;
   } catch (error) {
-    try {await instance.crash();} catch (cleanupError) {throw new AggregateError([error, cleanupError], 'Owned backend startup and reap failed');}
-    throw Error(`${error instanceof Error ? error.message : String(error)}\n${output}`, {cause: error});
+    // Fixed phase labels distinguish source loading, server startup and IPC.
+    // Freeze before cleanup: its SIGKILL/elapsed time must not be mistaken for
+    // the startup failure. Never copy child labels, environment, root or token.
+    const diagnostic = `Owned backend startup: phase=${startupPhase} elapsedMs=${Math.round(performance.now() - startedAt)} ready=${readyReceived} exit=${child.exitCode} signal=${child.signalCode} cancelled=${Boolean(lifetime?.signal.aborted)} node=${process.versions.node} platform=${process.platform} arch=${process.arch}`;
+    const failure = `${error instanceof Error ? error.message : String(error)}\n${diagnostic}\n${output}`;
+    let reaped: ChildExit;
+    try {reaped = await instance.crash();}
+    catch (cleanupError) {throw new AggregateError([Error(failure, {cause: error}), cleanupError], 'Owned backend startup and reap failed');}
+    throw Error(`${failure}\nOwned backend reap: ${JSON.stringify(reaped)}`, {cause: error});
   }
 }
 

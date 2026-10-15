@@ -53,6 +53,8 @@ Build/test forward the first child failure code. SIGINT/SIGTERM target only the 
 
 The build/test launcher forwards signals but does not promise a deadline for a stubborn tool that ignores them, nor process-tree termination. Media probes independently retain the shared 10-second probe timeout and bounded termination/reap policy. No numeric PID fallback or automatic replacement is introduced.
 
+Source-test backend readiness, CLI process completion and an outer `node:test` timeout are separate boundaries. The [Issue #1 investigation](SOURCE-PROCESS-TIMEOUTS.md) records their original limits, minimal reproductions, fixture cleanup fixes and repeat results; focused macOS results do not replace the Linux full gate.
+
 ## Package and environment boundaries
 
 The tooling resolves Vite relative to `apps/web/package.json`, and esbuild/Electron relative to the root manifest. It requires exact pinned metadata names/versions, verifies regular expected entrypoints and canonical containment within both the package and repository `node_modules`. Ordinary pnpm links into the local `.pnpm` tree are supported. Outside/global fallback, `node_modules` redirected outside the repository, escaped package/entry symlinks and changed Vite `bin` metadata fail before execution. This checks local provenance/consistency; it is not a cryptographic dependency-integrity or vulnerability audit and does not replace the lockfile/install policy. Electron's package metadata is checked without launching its native binary.
