@@ -284,6 +284,18 @@ export const operationMessages = {
     "en": "Save the asset in-point and exclusive out-point against the independent range version. The range must span at least 1 frame and may exceed the timeline's 18000-frame limit. Requires a stable requestId for exact replay; does not modify the asset, version, or timeline.",
     "ja": "独立した範囲バージョンを照合し、素材のイン点と排他的アウト点を保存します。少なくとも1フレーム必要で、タイムラインの18000フレーム上限を超えることができます。同一リクエストの元の結果の再現には安定したrequestIdが必須です。素材、バージョン、タイムラインは変更しません。"
   },
+  "operation.asset.annotation.list": {
+    "zh-Hans": "按请求顺序读取项目素材的标签和纯文本备注，不创建记录。",
+    "zh-Hant": "按請求順序讀取專案素材的標籤和純文字備註，不建立記錄。",
+    "en": "Read project asset tags and plain-text notes in request order without creating records.",
+    "ja": "プロジェクト素材のタグとプレーンテキストのメモをリクエスト順に読み取ります。記録は作成しません。"
+  },
+  "operation.asset.annotation.set": {
+    "zh-Hans": "按独立版本保存素材标签和纯文本备注，使用稳定请求 ID 精确重放；不修改素材字节、生成版本或时间线。恢复的工作区不支持此操作。",
+    "zh-Hant": "按獨立版本儲存素材標籤和純文字備註，使用穩定請求 ID 精確重播；不修改素材位元組、生成版本或時間軸。還原的工作區不支援此操作。",
+    "en": "Save asset tags and plain-text notes against an independent revision with exact stable-key replay. Does not change media bytes, generated versions or the timeline. Unavailable in restored workspaces.",
+    "ja": "独立したリビジョンを照合して素材のタグとプレーンテキストのメモを保存し、同じキーで元の結果を再現します。メディア、生成バージョン、タイムラインは変更しません。復元したワークスペースでは使用できません。"
+  },
   "operation.asset.disposition.list": {
     "zh-Hans": "只读查询指定项目中1–100个不重复素材的共享标记，按请求顺序返回；未保存时为 neutral 和 revision 0；缺失或跨项目时整批失败，不创建记录",
     "zh-Hant": "唯讀查詢指定專案中1–100個不重複素材的共用標記，按請求順序傳回；未儲存時為neutral和revision 0；缺失或跨專案時整批失敗，不建立記錄。",

@@ -1,3 +1,4 @@
+import {createMutationReplay} from './mutation-replay.mjs';
 import {nullableTimelineClipColourSchema,timelineImageClipColourSchema} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineImageSourceServices} from './timeline-image-source.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
@@ -46,6 +47,7 @@ import {createInspectionServices,createOwnedMediaGraphReader} from './inspection
 import {createLocalMutationServices} from './local-mutations.mjs';
 import {createSourceRangeServices} from './source-ranges.mjs';
 import {createSubjectServices} from './subjects.mjs';
+import {createAssetAnnotationServices} from './asset-annotations.ts';
 import {createAssetDispositionServices} from './asset-dispositions.mjs';
 import {createWaveformServices} from './waveforms.mjs';
 import {createImageServices} from './images.mjs';
@@ -209,6 +211,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const inspection=createInspectionServices(store);
  const localMutations=createLocalMutationServices(store,{check,canonical,now,references});
  const sourceRanges=createSourceRangeServices(store,{canonical});
+ const assetAnnotations=createAssetAnnotationServices(store,{mutate:createMutationReplay(store,{canonical}),error:(...args)=>new AppError(...args),restoredSchema:()=>getWorkspaceRestoreContext(store)?.schemaVersion??null});
  const assetDispositions=createAssetDispositionServices(store,{canonical});
  const subjects=createSubjectServices(store,{canonical,now});
  const waveforms=restored?inactive():createWaveformServices(store,{signal:ownerSignal});
@@ -255,6 +258,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...waveforms.handlers,
  ...sourceRanges.handlers,
  ...assetDispositions.handlers,
+ ...assetAnnotations.handlers,
  ...subjects.handlers,
  ...inspection.handlers,
  ...timeline.handlers,
@@ -357,12 +361,12 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   checkpoint(signal);
   const operation=(async()=>{
    if(restored){
-    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.audioPreview.continuousPlan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
+    if(op==='asset.annotation.set'||op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.audioPreview.continuousPlan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37].includes(restored.schemaVersion))throw workspaceRestoreError();
      const colour=op==='timeline.clip.add'?parsed.colour:parsed.patch.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
      if(restored.schemaVersion===33&&!nullableTimelineClipColourSchema.safeParse(colour).success&&!timelineImageClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();

@@ -68,13 +68,18 @@ function preservedCurrent(db,before) {
  assert.equal(createHash('sha256').update(JSON.stringify(additions)).digest('hex'),'a60ce5a71e48f9afaa52635f9737a035e3256986dcef31bda83c60739ac93d00');
  after.objects=after.objects.filter(object=>!lutTables.has(object.tbl_name));
  for(const table of lutTables){assert.deepEqual(after.tables[table].rows,[]);delete after.tables[table];}
+ const annotations=after.objects.filter(object=>/annotation/.test(object.name));
+ assert.equal(annotations.length,20);
+ assert.equal(createHash('sha256').update(JSON.stringify(annotations)).digest('hex'),'36eab4635ff3ef13ae1fd9fd11e0467ac6890cb5bb9175342ff02748d5bf5ede');
+ after.objects=after.objects.filter(object=>!/annotation/.test(object.name));
+ for(const table of ['asset_annotations','asset_annotation_requests']){assert.deepEqual(after.tables[table].rows,[]);delete after.tables[table];}
  const tasks=expected.objects.find(object=>object.name==='edit_tasks');
  tasks.sql=tasks.sql.replace("'timeline.subtitle.remove'))","'timeline.subtitle.remove','timeline.loudness.apply'))");
- expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334']);
- assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus the reviewed26 CHECK and28 addition');
+ expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334'],['36','integer','3336']);
+ assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus the reviewed26 CHECK,28 resources and36 annotations');
  assert.equal(db.prepare('PRAGMA quick_check(1)').get().quick_check,'ok');assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
-test('completed24 enters explicit26,28,30,32 and34 migrations without legacy bootstrap writes',t=>{
+test('completed24 enters explicit26,28,30,32,34 and36 migrations without legacy bootstrap writes',t=>{
  const db=ordinaryDatabase(t),before=snapshot(db);let calls=0;
  assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);
  assert.equal(calls,0);preservedCurrent(db,before);
@@ -97,13 +102,13 @@ test('genuinely missing known markers keep the old ordinary repair path before26
  assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);assert.equal(calls,1);
  const after=snapshot(db);
  for(const [name,table]of Object.entries(before.tables))if(name!=='schema_version')assert.deepEqual(after.tables[name],table,`${name}: legacy gap repair preserves raw records`);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34]);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36]);
 });
 for(const profile of [null,'ordinary-1','ordinary-14','ordinary-21','ordinary-23'])test(`real ${profile??'missing marker table'} retains historical bootstrap/upgrade qualification`,t=>{
  const db=ordinaryDatabase(t,profile);let calls=0;
  assert.equal(ordinaryDispatch(()=>calls++).initialize(db),null);assert.equal(calls,1);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34]);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-34');
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36]);
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-36');
 });
 
 for(const [name,sql]of [
@@ -112,7 +117,7 @@ for(const [name,sql]of [
  ['marker26 and known marker removed','DELETE FROM schema_version WHERE version IN(1,26)'],
  ['all marker rows removed','DELETE FROM schema_version'],
  ['marker table removed','DROP TABLE schema_version'],
-])test(`actual34 ${name} is refused unchanged before historical repair`,t=>{
+])test(`actual current schema ${name} is refused unchanged before historical repair`,t=>{
  const db=ordinaryDatabase(t);let legacyCalls=0;const dispatch=ordinaryDispatch(()=>legacyCalls++);
  dispatch.initialize(db);assert.equal(legacyCalls,0);db.exec(sql);const before=snapshot(db);
  assert.throws(()=>readCurrentWorkspaceRole(db),unsupported);

@@ -1,3 +1,5 @@
+import {createMutationReplay} from './mutation-replay.mjs';
+import {createAssetAnnotationServices} from './asset-annotations.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
 import {createLutResourceServices,assertLutReadProfile} from './lut-resources.ts';
 import {lutRestorePolicy} from '../../contracts/src/lut-resources.ts';
@@ -41,6 +43,7 @@ export function createRestoredReadServices(store,{signal}={}) {
  const timeline=createTimelineServices(store,{required,check:denied,hash,now});
  const inspection=createInspectionServices(store);
  const ranges=createSourceRangeServices(store,{canonical,readOnly:true});
+ const annotations=createAssetAnnotationServices(store,{mutate:createMutationReplay(store,{canonical,readOnly:true}),error:(...args)=>new AppError(...args),restoredSchema:()=>getWorkspaceRestoreContext(store)?.schemaVersion??null});
  const dispositions=createAssetDispositionServices(store,{canonical,readOnly:true});
  const subjects=createSubjectServices(store,{canonical,now,readOnly:true});
  const references=createReferenceServices(store,{check:denied,hash,now});
@@ -91,6 +94,7 @@ export function createRestoredReadServices(store,{signal}={}) {
   'timeline.history.get':input=>timeline.history(input.projectId),
   'timeline.format.get':timeline.handlers['timeline.format.get'],
   'asset.range.get':ranges.handlers['asset.range.get'],
+  'asset.annotation.list':annotations.handlers['asset.annotation.list'],
   'asset.disposition.list':dispositions.handlers['asset.disposition.list'],
   'subject.list':subjects.handlers['subject.list'],
   'subject.version.list':subjects.handlers['subject.version.list'],
@@ -100,6 +104,7 @@ export function createRestoredReadServices(store,{signal}={}) {
  // response without entering a business mutator. Absence is never a probe by
  // attempted execution, and read replay never enqueues a captured export.
  function replay(operation,input) {
+  if(operation==='asset.annotation.set')throw workspaceRestoreError();
   if(TIMELINE_MUTATION_OPERATIONS.includes(operation)){
    const saved=readTimelineReceipt(db,input,operation);
    if(!saved)return null;

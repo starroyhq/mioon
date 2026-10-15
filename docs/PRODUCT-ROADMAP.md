@@ -667,6 +667,10 @@ filtering were delivered separately; evidence is in [ASSET-DISPOSITIONS.md](ASSE
 The later [current-timeline asset usage](TIMELINE-ASSET-USAGE.md) increment adds
 read-derived counts, explicit clip location and an unused-in-this-saved-timeline
 filter. It does not count every project or unsaved draft. Tags and notes remain open.
+The separate [asset annotation backend checkpoint](ASSET-ANNOTATIONS.md) prepares
+bounded project-owned tags/notes with independent revision/replay and schema36/37
+backup/restoration. It has no editor or tag-filter UI yet and does not close this
+user-facing roadmap item.
 
 ## Audio editing delivery checkpoint (2026-10-10)
 

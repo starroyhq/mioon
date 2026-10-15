@@ -33,8 +33,8 @@ const safeMissing=error=>error.code==='NOT_FOUND'&&error.status===404&&error.mes
 const noDisclosure=error=>!Object.hasOwn(error.details??{},'current')&&!/Private disposition asset|Foreign private project|media\/fixture|retained secret/.test(JSON.stringify(error.details));
 const conflict=error=>error.code==='IDEMPOTENCY_CONFLICT'&&error.status===409&&!error.details.mutationOutcome&&noDisclosure(error);
 function replaceAsset(f,asset,patch={},owner=asset.projectId){f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(owner,JSON.stringify({...asset,...patch}),asset.id);}
-const receiptTables=['mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests'];
-const operationTable=op=>op.startsWith('subject.')?'subject_requests':op==='asset.disposition.set'?'asset_disposition_requests':op==='asset.range.set'?'asset_range_requests':'mutation_requests';
+const receiptTables=['mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests','asset_annotation_requests'];
+const operationTable=op=>op==='asset.annotation.set'?'asset_annotation_requests':op.startsWith('subject.')?'subject_requests':op==='asset.disposition.set'?'asset_disposition_requests':op==='asset.range.set'?'asset_range_requests':'mutation_requests';
 
 test('ordered bounded reads confirm absent neutral revision zero without writes, rows or lazy timeline creation',async t=>{
  const f=await fixture(t),assets=Array.from({length:100},(_,i)=>f.asset(['image/png','video/mp4','audio/wav'][i%3])).reverse();
@@ -202,6 +202,7 @@ function collisionInput(f,op,key){
   'node.update':{nodeId,expectedRevision,patch:{label:'Changed'},requestId},'version.select':{shotId,versionId:randomUUID(),expectedRevision,requestId},
   'asset.range.set':{projectId,assetId,expectedRevision:0,inFrame:0,outFrame:30,requestId},
   'asset.disposition.set':{projectId,assetId,expectedRevision:0,disposition:'favorite',requestId},
+  'asset.annotation.set':{projectId,assetId,expectedRevision:0,tags:[],note:'namespace',requestId},
  }[op];
 }
 async function acceptedInput(f,op){
@@ -218,7 +219,7 @@ async function acceptedInput(f,op){
  }
  return {...input,shotId:shot.id};
 }
-for(const winner of LOCAL_MUTATION_OPERATIONS)test(`${winner}: all ten other mutation writers reject its key globally after any required ownership checks`,async t=>{
+for(const winner of LOCAL_MUTATION_OPERATIONS)test(`${winner}: all other mutation writers reject its key globally after any required ownership checks`,async t=>{
  const f=await fixture(t);await subjectCollisionFixture(f);const prior=receiptTables.reduce((sum,table)=>sum+count(f,table),0),input=await acceptedInput(f,winner),result=await f.call(winner,input),before=snapshot(f);
  for(const loser of LOCAL_MUTATION_OPERATIONS.filter(op=>op!==winner))await assert.rejects(f.call(loser,collisionInput(f,loser,input.requestId)),conflict);
  assert.deepEqual(snapshot(f),before);assert.deepEqual(await f.call(winner,input),result);
@@ -236,7 +237,7 @@ test('immutable companion receipts cannot be updated, deleted or replaced; SQL c
  for(const [source,operation] of [['mutation_requests','shot.create'],['asset_range_requests','asset.range.set'],['asset_disposition_requests','asset.disposition.set'],['subject_requests','subject.create']]){
   const requestId=randomUUID();f.store.db.prepare(`INSERT INTO ${source} VALUES(?,?,?,?,?)`).run(requestId,operation,f.project.id,JSON.stringify({projectId:f.project.id}),JSON.stringify({projectId:f.project.id}));
   for(const target of receiptTables.filter(table=>table!==source)){
-   const targetOperation=target==='mutation_requests'?'shot.create':target==='asset_range_requests'?'asset.range.set':target==='subject_requests'?'subject.create':'asset.disposition.set';
+   const targetOperation=target==='mutation_requests'?'shot.create':target==='asset_range_requests'?'asset.range.set':target==='subject_requests'?'subject.create':target==='asset_annotation_requests'?'asset.annotation.set':'asset.disposition.set';
    assert.throws(()=>f.store.db.prepare(`INSERT INTO ${target} VALUES(?,?,?,?,?)`).run(requestId,targetOperation,f.project.id,'{}','{}'),/already retained/);
   }
  }
@@ -282,8 +283,9 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  f.store.db.exec('DROP TABLE timeline_format_requests; DROP INDEX timeline_requests_project; DELETE FROM schema_version WHERE version IN (21,22);');
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
  const old=snapshot(f,['schema_version']);f.restart();
- assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests','timeline_format_requests']),old);assert.deepEqual(schema(),fresh);
- assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);
+ assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests']),old);assert.deepEqual(schema(),fresh);
+ assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36]);
+ for(const table of ['project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests'])assert.equal(count(f,table),0);
  const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
 });
 
