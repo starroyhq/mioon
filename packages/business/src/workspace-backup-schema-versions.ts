@@ -1,3 +1,4 @@
+import {validateWorkspaceSchema36} from './workspace-schema-v36.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {validateWorkspaceSchema26} from './workspace-schema-v26.ts';
 import {validateWorkspaceSchema28} from './workspace-schema-v28.ts';
@@ -18,14 +19,14 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
  // Verify also handles imported nonstandard marker tables, whose values may be
  // arbitrarily large text or blobs; a row cap alone does not bound those cells.
  for(const row of db.prepare(`SELECT CASE WHEN typeof(version)='integer' AND
-   (version BETWEEN 1 AND 24 OR version IN (26,28,30,32,34)) THEN version ELSE NULL END AS version
-   FROM main.schema_version LIMIT 31`).iterate()){
-  if(versions.size>=29||typeof row.version!=='number'||
-     !((row.version>=1&&row.version<=24)||row.version===26||row.version===28||row.version===30||row.version===32||row.version===34)||versions.has(row.version))invalid();
+   (version BETWEEN 1 AND 24 OR version IN (26,28,30,32,34,36)) THEN version ELSE NULL END AS version
+   FROM main.schema_version LIMIT 32`).iterate()){
+  if(versions.size>=30||typeof row.version!=='number'||
+     !((row.version>=1&&row.version<=24)||row.version===26||row.version===28||row.version===30||row.version===32||row.version===34||row.version===36)||versions.has(row.version))invalid();
   versions.add(row.version);version=Math.max(version,row.version);
  }
  if(!version)invalid();
- try{validateWorkspaceColourRows(db,{allowColour:version===30||version===32||version===34,allowMixedImages:version===32||version===34,allowJpegImages:version===34});}catch{invalid();}
+ try{validateWorkspaceColourRows(db,{allowColour:version===30||version===32||version===34||version===36,allowMixedImages:version===32||version===34||version===36,allowJpegImages:version===34||version===36});}catch{invalid();}
  if(version===26){
   try{validateWorkspaceSchema26(db);}catch{invalid();}
  }
@@ -41,6 +42,7 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
  if(version===34){
   try{validateWorkspaceSchema34(db);}catch{invalid();}
  }
+ if(version===36){try{validateWorkspaceSchema36(db);}catch{invalid();}}
  return version;
 }
 

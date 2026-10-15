@@ -1,8 +1,9 @@
+import {usesAssetAnnotationSchema} from './workspace-schema-dispatch.ts';
 import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
 import {AppError,publicValue,LOCAL_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {isAsyncFunction,isPromise} from 'node:util/types';
 
-const definite=new Set(['NOT_FOUND','REVISION_CONFLICT','INVALID_ORDER','ASSET_REQUIRED','INVALID_NODE_ASSET','REFERENCE_CONNECTED','SOURCE_BOUNDS','SOURCE_RANGE_UNSUPPORTED','RANGE_REVISION_LIMIT','DISPOSITION_REVISION_LIMIT','SUBJECT_NO_CHANGE','SUBJECT_REVISION_LIMIT','SUBJECT_BINDING_LIMIT','SUBJECT_ROLE_MISMATCH']);
+const definite=new Set(['NOT_FOUND','REVISION_CONFLICT','INVALID_ORDER','ASSET_REQUIRED','INVALID_NODE_ASSET','REFERENCE_CONNECTED','SOURCE_BOUNDS','SOURCE_RANGE_UNSUPPORTED','RANGE_REVISION_LIMIT','DISPOSITION_REVISION_LIMIT','ANNOTATION_REVISION_LIMIT','SUBJECT_NO_CHANGE','SUBJECT_REVISION_LIMIT','SUBJECT_BINDING_LIMIT','SUBJECT_ROLE_MISMATCH']);
 function synchronous(callback,...args) {
  const result=callback(...args);
  if(result&&typeof result.then==='function'){
@@ -27,9 +28,10 @@ export function createMutationReplay(store,{canonical,readOnly=false}) {
    throw new TypeError('Mutation transactions require synchronous callbacks');
   const {requestId,...fields}=input;
   const subjectMutation=SUBJECT_MUTATION_OPERATIONS.includes(operation);
-  const receiptTable=subjectMutation?'subject_requests':operation==='asset.disposition.set'?'asset_disposition_requests':operation==='asset.range.set'?'asset_range_requests':'mutation_requests';
+  const receiptTable=operation==='asset.annotation.set'?'asset_annotation_requests':subjectMutation?'subject_requests':operation==='asset.disposition.set'?'asset_disposition_requests':operation==='asset.range.set'?'asset_range_requests':'mutation_requests';
   if(operation==='asset.range.set'&&requestId===undefined)throw new AppError('VALIDATION_ERROR','素材范围保存需要稳定请求 ID');
   if(operation==='asset.disposition.set'&&requestId===undefined)throw new AppError('VALIDATION_ERROR','素材标记保存需要稳定请求 ID');
+  if(operation==='asset.annotation.set'&&requestId===undefined)throw new AppError('VALIDATION_ERROR','素材备注保存需要稳定请求 ID');
   if(subjectMutation&&requestId===undefined)throw new AppError('VALIDATION_ERROR','主体变更需要稳定请求 ID');
   const canonicalInput=requestId===undefined?null:canonical(fields);
   let absent=false;
@@ -37,12 +39,13 @@ export function createMutationReplay(store,{canonical,readOnly=false}) {
    return transaction(()=>{
     // Subject replay must pass ownership gates before any retained receipt is used.
     const subjectContext=subjectMutation?synchronous(resolve):null;
-    const receiptIdentity=subjectMutation?`CASE WHEN length(CAST(operation AS BLOB)) BETWEEN 1 AND 80 THEN operation END AS operation,CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId`:'operation,projectId';
-    const legacyReceiptColumns=subjectMutation?`
+    const receiptIdentity=(subjectMutation||operation==='asset.annotation.set')?`CASE WHEN length(CAST(operation AS BLOB)) BETWEEN 1 AND 80 THEN operation END AS operation,CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId`:'operation,projectId';
+    const legacyReceiptColumns=(subjectMutation||operation==='asset.annotation.set')?`
      CASE WHEN length(CAST(operation AS BLOB)) BETWEEN 1 AND 80 THEN operation END AS operation,
      CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,
      CASE WHEN length(CAST(canonicalInput AS BLOB)) BETWEEN 1 AND 8192 THEN canonicalInput END AS canonicalInput,
      CASE WHEN length(CAST(response AS BLOB)) BETWEEN 1 AND 16384 THEN response END AS response`:'operation,projectId,canonicalInput,response';
+    const annotations=usesAssetAnnotationSchema(db);
     const receipts=requestId===undefined?[]:db.prepare(`
      SELECT 'mutation_requests' AS receiptTable,${legacyReceiptColumns} FROM mutation_requests WHERE requestId=?
      UNION ALL
@@ -57,7 +60,13 @@ export function createMutationReplay(store,{canonical,readOnly=false}) {
       CASE WHEN length(CAST(canonicalInput AS BLOB)) BETWEEN 1 AND 8192 THEN canonicalInput END AS canonicalInput,
       CASE WHEN length(CAST(response AS BLOB)) BETWEEN 1 AND 16384 THEN response END AS response
       FROM subject_requests WHERE requestId=?
-    `).all(requestId,requestId,requestId,requestId);
+     ${annotations?`UNION ALL SELECT 'asset_annotation_requests' AS receiptTable,
+      CASE WHEN typeof(operation)='text' AND length(CAST(operation AS BLOB)) BETWEEN 1 AND 80 THEN operation END AS operation,
+      CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,
+      CASE WHEN length(CAST(canonicalInput AS BLOB)) BETWEEN 1 AND 24576 THEN canonicalInput END AS canonicalInput,
+      CASE WHEN length(CAST(response AS BLOB)) BETWEEN 1 AND 24576 THEN response END AS response
+      FROM asset_annotation_requests WHERE requestId=?`:''}
+    `).all(requestId,requestId,requestId,requestId,...annotations?[requestId]:[]);
     absent=requestId!==undefined&&receipts.length===0;
     // Duplicate presence and a receipt in the wrong companion fail closed even
     // if a damaged database presents otherwise identical operation/input bytes.
@@ -71,6 +80,7 @@ export function createMutationReplay(store,{canonical,readOnly=false}) {
      let response;
      try{response=JSON.parse(prior.response);}catch(error){
       if(subjectMutation)throw new AppError('INVALID_SUBJECT_RECORD','主体或关联状态不一致，请先检查项目',409);
+      if(operation==='asset.annotation.set')throw new AppError('INVALID_ASSET_ANNOTATION_RECORD','素材备注或关联状态不一致，请先检查项目',409);
       if(operation==='asset.disposition.set')throw new AppError('INVALID_ASSET_DISPOSITION_RECORD','素材标记或关联状态不一致，请先检查项目',409);
       throw error;
      }
@@ -98,7 +108,7 @@ export function createMutationReplay(store,{canonical,readOnly=false}) {
    // An asset metadata scope denial is deliberately indistinguishable from absence. Keep
    // client recovery state on that error; preserve the original six semantics.
    if(!readOnly&&absent&&!db.isTransaction&&error instanceof AppError&&definite.has(error.code)&&
-      !((['asset.range.set','asset.disposition.set'].includes(operation)||subjectMutation)&&error.code==='NOT_FOUND'))
+      !((['asset.range.set','asset.disposition.set','asset.annotation.set'].includes(operation)||subjectMutation)&&error.code==='NOT_FOUND'))
     error.details={...error.details,mutationOutcome:'not_applied',requestId,...(subjectMutation?{operation,projectId:input.projectId}:{})};
    throw error;
   }

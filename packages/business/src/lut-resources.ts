@@ -18,7 +18,7 @@ export interface LutResourceOptions {
   fault?:(point:LutImportFaultPoint)=>void;
 }
 export function assertLutReadProfile(schemaVersion:number):void {
-  if(schemaVersion!==29&&schemaVersion!==31&&schemaVersion!==33&&schemaVersion!==35)throw lutResourceError('RESTORE_OPERATION_UNAVAILABLE',409);
+  if(schemaVersion!==29&&schemaVersion!==31&&schemaVersion!==33&&schemaVersion!==35&&schemaVersion!==37)throw lutResourceError('RESTORE_OPERATION_UNAVAILABLE',409);
 }
 function input<T>(schema:{safeParse(value:unknown):{success:true;data:T}|{success:false}},value:unknown):T {
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw lutResourceError('VALIDATION_ERROR',400);

@@ -10,8 +10,10 @@ export const workspaceBackupSourceSchemaVersion = z.union([
   z.literal(30),
   z.literal(32),
   z.literal(34),
+  z.literal(36),
 ]);
 export const workspaceRestorationPairSchema = z.union([
+  z.object({profile:z.literal('restored-local-v7'),sourceSchema:z.literal(36),databaseSchemaVersion:z.literal(37)}).strict(),
   z.object({profile:z.literal('restored-local-v1'),sourceSchema:z.literal(24),databaseSchemaVersion:z.literal(25)}).strict(),
   z.object({profile:z.literal('restored-local-v2'),sourceSchema:z.literal(26),databaseSchemaVersion:z.literal(27)}).strict(),
   z.object({profile:z.literal('restored-local-v3'),sourceSchema:z.literal(28),databaseSchemaVersion:z.literal(29)}).strict(),
@@ -25,9 +27,9 @@ export function isWorkspaceRestorationPair(value: unknown): value is WorkspaceRe
   return workspaceRestorationPairSchema.safeParse(value).success;
 }
 
-export const workspaceRestoreProfile = z.enum(['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6']);
-export const workspaceRestoreSourceVersion = z.union([z.literal(24),z.literal(26),z.literal(28),z.literal(30),z.literal(32),z.literal(34)]);
-export const workspaceRestoreDatabaseVersion = z.union([z.literal(25),z.literal(27),z.literal(29),z.literal(31),z.literal(33),z.literal(35)]);
+export const workspaceRestoreProfile = z.enum(['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6','restored-local-v7']);
+export const workspaceRestoreSourceVersion = z.union([z.literal(24),z.literal(26),z.literal(28),z.literal(30),z.literal(32),z.literal(34),z.literal(36)]);
+export const workspaceRestoreDatabaseVersion = z.union([z.literal(25),z.literal(27),z.literal(29),z.literal(31),z.literal(33),z.literal(35),z.literal(37)]);
 
 export function validateWorkspaceRestorationPair(
   value: {profile:unknown;sourceSchema:unknown;databaseSchemaVersion:unknown},

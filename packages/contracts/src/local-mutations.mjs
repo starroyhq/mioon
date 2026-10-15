@@ -1,3 +1,4 @@
+import {isAssetAnnotationResponse} from './asset-annotations.ts';
 import {SUBJECT_MUTATION_OPERATIONS,isSubjectMutationResponse} from './subjects.mjs';
 import {isSourceRangeResponse} from './source-range.mjs';
 import {isAssetDispositionResponse} from './asset-disposition.mjs';
@@ -5,7 +6,7 @@ import {isAssetDispositionResponse} from './asset-disposition.mjs';
 // The original six operations support optional keys and retain keyless behavior.
 // Additive asset metadata and subject operations require a durable replay key.
 export const LOCAL_MUTATION_OPERATIONS = Object.freeze([
-  'shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', 'asset.range.set', 'asset.disposition.set', ...SUBJECT_MUTATION_OPERATIONS,
+  'shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', 'asset.range.set', 'asset.disposition.set', 'asset.annotation.set', ...SUBJECT_MUTATION_OPERATIONS,
 ]);
 
 // Minimum acknowledgement identity, shared by first-party clients. This does not
@@ -15,6 +16,7 @@ export function isLocalMutationResponse(operation, input, result, {projectId} = 
   if (!LOCAL_MUTATION_OPERATIONS.includes(operation) || !result || typeof result !== 'object' || Array.isArray(result) ||
       typeof result.id !== 'string' || !result.id || !Number.isSafeInteger(result.revision) || result.revision < 1) return false;
   if (SUBJECT_MUTATION_OPERATIONS.includes(operation)) return isSubjectMutationResponse(operation,input,result) && (!projectId || result.projectId===projectId);
+  if (operation === 'asset.annotation.set') return isAssetAnnotationResponse(result) && result.assetId===input.assetId && result.projectId===input.projectId && (!projectId || result.projectId===projectId) && Number.isSafeInteger(input.expectedRevision) && result.revision===input.expectedRevision+1 && JSON.stringify(result.tags)===JSON.stringify(input.tags) && result.note===input.note;
   if (operation === 'asset.disposition.set') return isAssetDispositionResponse(result) &&
     result.assetId === input.assetId && result.projectId === input.projectId && (!projectId || result.projectId === projectId) &&
     Number.isSafeInteger(input.expectedRevision) && input.expectedRevision >= 0 && result.revision === input.expectedRevision + 1 &&

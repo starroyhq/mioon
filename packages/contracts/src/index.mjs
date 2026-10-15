@@ -44,6 +44,7 @@ import {subjectSchemas} from './subjects.mjs';
 export {SUBJECT_KINDS,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,subjectSchemas,subjectResponseSchema,subjectVersionResponseSchema,subjectBindingResponseSchema,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from './subjects.mjs';
 import {inspectionSchemas} from './inspection.mjs';
 import {sourceRangeSchemas} from './source-range.mjs';
+import {assetAnnotationSchemas} from './asset-annotations.ts';
 import {assetDispositionSchemas} from './asset-disposition.mjs';
 import {waveformSchemas} from './waveforms.mjs';
 import {exportPreflightSchemas} from './export-preflight.mjs';
@@ -107,6 +108,7 @@ export const schemas={
 ...subjectSchemas,
 ...sourceRangeSchemas,
 ...assetDispositionSchemas,
+...assetAnnotationSchemas,
 ...waveformSchemas,
 ...exportPreflightSchemas,
 ...exportSamplePeakSchemas,
@@ -207,6 +209,8 @@ Object.assign(descriptions,{
  'asset.waveform.request':'显式请求本地源音频波形缓存；重复请求复用排队、运行或就绪结果，失败或中断须显式retry；运行有界本地解码并写入可淘汰缓存，不调用生成供应商、不编辑素材或时间线',
  'asset.waveform.get':'只读查询指定项目素材的源音频波形；30fps源范围使用排他出点，最多返回2048个归一化峰值；不启动解码、不探测媒体、不修复或写入缓存；不表示时间线混音结果',
  'asset.disposition.list':'只读查询指定项目中1–100个不重复素材的共享标记，按请求顺序返回；未保存时为 neutral 和 revision 0；缺失或跨项目时整批失败，不创建记录',
+ 'asset.annotation.list':'读取明确批次中的项目素材标签和纯文本备注，不创建记录',
+ 'asset.annotation.set':'按独立版本保存项目素材标签和纯文本备注；必须使用稳定请求 ID 精确重放，不修改素材字节、生成版本或时间线',
  'asset.disposition.set':'按独立版本设置素材共享标记 neutral、favorite 或 rejected；重置仍保留版本；必须使用稳定requestId精确重放，不删除素材、不修改名称、字节、源范围或时间线',
  'asset.range.get':'只读查询已有视频或音频素材的独立源范围；未保存时返回 revision 0 和 range null，不创建记录；使用30fps时间线时基，非原生/VFR逐帧精度',
  'asset.range.set':'按独立范围版本保存素材入点和排他出点；至少1帧，可超过时间线18000帧上限；必须使用稳定requestId精确重放，不修改素材、版本或时间线',
@@ -305,3 +309,5 @@ export function getGenerationIssue(snapshot, capabilities) {
  if(Object.hasOwn(capabilities||{},'inputProfiles')){const rich=getGenerationProfileIssue({...snapshot,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);}
  return null;
 }
+
+export {ASSET_ANNOTATION_LIMITS,assetAnnotationSchemas,isAssetAnnotationResponse,isAssetAnnotationListResponse} from './asset-annotations.ts';

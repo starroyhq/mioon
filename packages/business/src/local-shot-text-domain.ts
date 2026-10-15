@@ -1,3 +1,4 @@
+import {usesAssetAnnotationSchema} from './workspace-schema-dispatch.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {LocalShotTextUpdateInput} from '@mioon/contracts/local-shot-text';
 import {LOCAL_SHOT_TEXT_LIMITS} from '@mioon/contracts/local-shot-text';
@@ -69,8 +70,8 @@ export function createLocalShotTextDomain({db,canonical,replay,updateShotInProje
       // relational owners fail before their JSON or retained response is decoded.
       if(!shot(projectId,input.shotId))invalid();
       const columns=[bound('operation',80),identity('projectId'),bound('canonicalInput',LOCAL_SHOT_TEXT_LIMITS.httpBytes),bound('response',LOCAL_SHOT_TEXT_LIMITS.shotResponseBytes)].join(',');
-      const tables=['mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests'] as const;
-      const rows:unknown[]=db.prepare(tables.map(table=>`SELECT '${table}' AS receiptTable,${columns} FROM ${table} WHERE requestId=?`).join(' UNION ALL ')).all(input.requestId,input.requestId,input.requestId,input.requestId);
+      const tables=['mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests',...usesAssetAnnotationSchema(db)?['asset_annotation_requests']:[]];
+      const rows:unknown[]=db.prepare(tables.map(table=>`SELECT '${table}' AS receiptTable,${columns} FROM ${table} WHERE requestId=?`).join(' UNION ALL ')).all(...tables.map(()=>input.requestId));
       if(rows.length===0)return null;
       if(rows.length!==1)invalid();const row=rows[0];
       const {requestId:unused,...fields}=input;void unused;

@@ -1,3 +1,4 @@
+import {usesAssetAnnotationSchema} from './workspace-schema-dispatch.ts';
 import {AppError, schemas, SUBJECT_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {canonical, hash} from './services.mjs';
 
@@ -11,12 +12,14 @@ const conflict = () => { throw new AppError('EDIT_TASK_CONFLICT', '编辑任务�
 export function readSubjectReceipt(db, input, operation) {
   if (!SUBJECT_MUTATION_OPERATIONS.includes(operation) || !schemas[operation].safeParse(input).success) invalid();
   const fields = [bounded('operation', 80), bounded('projectId', 36), bounded('canonicalInput', 8192), bounded('response', 16384)].join(',');
+  const annotations=usesAssetAnnotationSchema(db);
   const rows = db.prepare(`
     SELECT 'mutation_requests' AS receiptTable,${fields} FROM mutation_requests WHERE requestId=?
     UNION ALL SELECT 'asset_range_requests' AS receiptTable,${fields} FROM asset_range_requests WHERE requestId=?
     UNION ALL SELECT 'asset_disposition_requests' AS receiptTable,${fields} FROM asset_disposition_requests WHERE requestId=?
     UNION ALL SELECT 'subject_requests' AS receiptTable,${fields} FROM subject_requests WHERE requestId=?
-  `).all(input.requestId, input.requestId, input.requestId, input.requestId);
+    ${annotations?`UNION ALL SELECT 'asset_annotation_requests' AS receiptTable,${fields} FROM asset_annotation_requests WHERE requestId=?`:''}
+  `).all(input.requestId, input.requestId, input.requestId, input.requestId,...annotations?[input.requestId]:[]);
   if (rows.length > 1) conflict();
   const row = rows[0];
   if (!row) return null;

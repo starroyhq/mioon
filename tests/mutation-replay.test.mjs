@@ -231,7 +231,8 @@ test('additive first migration and repeated startup preserve old rows and journa
  f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',key(),'legacy-hash',randomUUID());
  f.store.db.exec('DROP TABLE mutation_requests; DELETE FROM schema_version WHERE version=9;');
  const before=capture(f,['schema_version']);
- f.restart();assert.deepEqual(capture(f,['schema_version','mutation_requests']),before);
+ f.restart();assert.deepEqual(capture(f,['schema_version','mutation_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests']),before);
+ for(const table of ['project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests'])assert.equal(f.store.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n,0);
  assert.deepEqual(journal(f),[]);assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=9').get());
  const migrated=capture(f);f.restart();assert.deepEqual(capture(f),migrated);
 });
