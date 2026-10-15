@@ -1337,10 +1337,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       sourceIdentity: timelineAudioPreviewSourceIdentity(saved, dataRef.current.assets),
       connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
       visible: workbenchReady && workspaceMode === 'editing' && previewKind === 'timeline' && panelVisible('canvas') && !previewAsset && !comparisonId,
-      restored: workspaceRef.current?.restored === true, hasUnsavedDrafts: clipDirty || subtitleDirty || formatDirty };
+      restored: workspaceRef.current?.restored === true, hasUnsavedDrafts: clipDirty || subtitleDirty || formatDirty || Boolean(clipDraftRef.current?.getState().candidate) };
   }
   const audioPreview = useTimelineAudioPreview({ ...(nativeAudioAdmission ? { nativeAdmission: nativeAudioAdmission } : {}), context: soundAuditionContext(), getContext: soundAuditionContext,
     readPlan: (input, options) => rpc('timeline.audioPreview.plan', input, options),
+    readContinuousPlan: (input, options) => rpc('timeline.audioPreview.continuousPlan', input, options),
     getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), onUnauthorized: () => setAuth(false),
     onExplicitPosition: setPlayhead, onBeforePlay: () => nativePreviewPause.current?.() });
   function readTimelineLoudnessRecoveryScope() {

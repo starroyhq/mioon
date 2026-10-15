@@ -1,10 +1,12 @@
 import {z} from 'zod';
 import {audioPreviewPlanInputSchema, audioPreviewSourceInputSchema, AUDIO_PREVIEW_LIMITS} from './timeline-audio-preview.ts';
+import {continuousAudioBlockInputSchema,continuousAudioQuery,CONTINUOUS_AUDIO_ENDPOINT} from './timeline-audio-continuous.ts';
 
 /** Fixed native audition ownership metadata. No business operation, credential,
  * path, arbitrary URL, PCM or renderer-declared byte budget crosses this lane. */
 export const NATIVE_AUDIO_VERSION = 1 as const;
 export const NATIVE_AUDIO_PCM_PATH = '/api/timeline-audio-preview/pcm';
+export const NATIVE_AUDIO_CONTINUOUS_PATH = CONTINUOUS_AUDIO_ENDPOINT;
 export const NATIVE_AUDIO_LEASE_HEADER = 'X-Mioon-Audio-Lease';
 export const NATIVE_AUDIO_PROOF_HEADER = 'X-Mioon-Audio-Proof';
 export const NATIVE_AUDIO_SIGNATURE_HEADER = 'X-Mioon-Audio-Signature';
@@ -17,12 +19,17 @@ export const nativeAudioConfigSchema = z.object({version:z.literal(1),backendId:
   publicKey:z.string().regex(/^302a300506032b6570032100[a-f0-9]{64}$/u)}).strict();
 export type NativeAudioConfig = z.infer<typeof nativeAudioConfigSchema>;
 const identity = {owner:nativeAudioOwnerSchema,actionId:id,leaseId:id};
-export const nativeAudioLeaseSchema = z.object({...identity,input:audioPreviewPlanInputSchema,planHash:digest,
+const legacyLeaseSchema = z.object({...identity,input:audioPreviewPlanInputSchema,planHash:digest,
   admittedBytes:z.number().int().min(AUDIO_PREVIEW_LIMITS.transportReserveBytes).max(AUDIO_PREVIEW_LIMITS.memoryBytes)}).strict();
+export const nativeAudioContinuousLeaseSchema = legacyLeaseSchema.extend({version:z.literal(2),sessionId:id}).strict();
+export const nativeAudioLeaseSchema = z.union([legacyLeaseSchema,nativeAudioContinuousLeaseSchema]);
 export type NativeAudioLease = z.infer<typeof nativeAudioLeaseSchema>;
-export const nativeAudioCommandSchema = z.discriminatedUnion('type',[
+export type NativeAudioContinuousLease = z.infer<typeof nativeAudioContinuousLeaseSchema>;
+export const nativeAudioCommandSchema = z.union([
   z.object({type:z.literal('native-audio:reserve'),version:z.literal(1),requestId:id,...identity,
     input:audioPreviewPlanInputSchema,planHash:digest}).strict(),
+  z.object({type:z.literal('native-audio:reserve'),version:z.literal(2),requestId:id,...identity,
+    input:audioPreviewPlanInputSchema,planHash:digest,sessionId:id}).strict(),
   z.object({type:z.literal('native-audio:retire'),version:z.literal(1),requestId:id,...identity}).strict(),
 ]);
 export type NativeAudioCommand = z.infer<typeof nativeAudioCommandSchema>;
@@ -33,18 +40,25 @@ export const nativeAudioReplySchema = z.discriminatedUnion('status',[
     status:z.enum(['retired','blocked','rejected']),code:z.enum(['NONE','INVALID','BUSY','STALE','UNAVAILABLE','CLEANUP_UNCONFIRMED'])}).strict(),
 ]);
 export type NativeAudioReply = z.infer<typeof nativeAudioReplySchema>;
-export const nativeAudioProofSchema = z.object({version:z.literal(1),backendId:id,leaseId:id,
-  sequence:z.number().int().min(1).max(AUDIO_PREVIEW_LIMITS.clips),input:audioPreviewSourceInputSchema}).strict();
+export const nativeAudioProofSchema = z.discriminatedUnion('version',[
+  z.object({version:z.literal(1),backendId:id,leaseId:id,
+    sequence:z.number().int().min(1).max(AUDIO_PREVIEW_LIMITS.clips),input:audioPreviewSourceInputSchema}).strict(),
+  z.object({version:z.literal(2),backendId:id,leaseId:id,method:z.enum(['GET','DELETE']),input:continuousAudioBlockInputSchema}).strict(),
+]);
 export type NativeAudioProof = z.infer<typeof nativeAudioProofSchema>;
 export function nativeAudioSourceQuery(input:z.infer<typeof audioPreviewSourceInputSchema>):string {
   return new URLSearchParams({projectId:input.projectId,timelineId:input.timelineId,expectedRevision:String(input.expectedRevision),
     startFrame:String(input.startFrame),clipId:input.clipId,sourceHash:input.sourceHash,planHash:input.planHash}).toString();
 }
 export function nativeAudioProofMaterial(proof:NativeAudioProof):string {
+  if(proof.version===2){const {input}=proof;return JSON.stringify(['mioon-native-audio-pcm-v2',proof.method,NATIVE_AUDIO_CONTINUOUS_PATH,
+    proof.backendId,proof.leaseId,input.projectId,input.timelineId,input.expectedRevision,input.startFrame,input.planHash,
+    input.sessionId,input.generation,input.sequence,input.blockStartFrame]);}
   const {input}=proof;
   return JSON.stringify(['mioon-native-audio-pcm-v1','GET',NATIVE_AUDIO_PCM_PATH,proof.backendId,proof.leaseId,proof.sequence,
     input.projectId,input.timelineId,input.expectedRevision,input.startFrame,input.clipId,input.sourceHash,input.planHash]);
 }
+export const nativeAudioContinuousQuery = continuousAudioQuery;
 export function sameNativeAudioOwner(a:NativeAudioOwner,b:NativeAudioOwner):boolean {
   return a.backendId===b.backendId&&a.windowId===b.windowId&&a.contextId===b.contextId&&a.projectId===b.projectId;
 }
@@ -53,6 +67,7 @@ export const NATIVE_AUDIO_EVENT='mioon:native-audio-preview:event:v1';
 export const nativeAudioRequestSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('describe')}).strict(),
   z.object({action:z.literal('acquire'),contextId:id,actionId:id,input:audioPreviewPlanInputSchema,planHash:digest}).strict(),
+  z.object({action:z.literal('acquireContinuous'),contextId:id,actionId:id,input:audioPreviewPlanInputSchema,planHash:digest,sessionId:id}).strict(),
   z.object({action:z.literal('cancel'),contextId:id,actionId:id}).strict(),
   z.object({action:z.literal('retired'),contextId:id,actionId:id,leaseId:id,status:z.enum(['retired','unconfirmed'])}).strict(),
 ]);
@@ -71,6 +86,7 @@ export type NativeAudioEvent=z.infer<typeof nativeAudioEventSchema>;
 export interface NativeAudioPreviewBridge {
   context():Promise<NativeAudioOwner|null>;
   acquire(input:z.infer<typeof audioPreviewPlanInputSchema>,planHash:string,actionId:string):Promise<NativeAudioAcquireResult>;
+  acquireContinuous(input:z.infer<typeof audioPreviewPlanInputSchema>,planHash:string,sessionId:string,actionId:string):Promise<NativeAudioAcquireResult>;
   cancel(actionId:string):Promise<boolean>;
   retired(lease:NativeAudioLease,status:'retired'|'unconfirmed'):Promise<boolean>;
   subscribe(listener:(event:NativeAudioEvent)=>void):()=>void;

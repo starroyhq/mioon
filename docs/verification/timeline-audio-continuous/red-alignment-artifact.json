@@ -1,0 +1,506 @@
+{
+  "schemaVersion": 1,
+  "status": "failed",
+  "startedAt": "2026-10-15T10:42:44.801Z",
+  "scope": "Controlled original synthetic media, actual production service/HTTP/native proof/client/engine in sandboxed Electron renderer; silent pre-destination capture, no physical listening claim.",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "osRelease": "27.0.0",
+    "cpu": "Apple M2 Max",
+    "versions": {
+      "node": "24.21.0",
+      "acorn": "8.18.0",
+      "ada": "4.0.0",
+      "amaro": "1.1.11",
+      "ares": "1.34.8",
+      "brotli": "1.2.0",
+      "cldr": "48.0",
+      "icu": "78.2",
+      "llhttp": "9.4.3",
+      "merve": "1.2.2",
+      "modules": "149",
+      "napi": "10",
+      "nbytes": "0.1.4",
+      "ncrypto": "0.0.1",
+      "nghttp2": "1.70.0",
+      "nghttp3": "",
+      "ngtcp2": "",
+      "openssl": "0.0.0",
+      "simdjson": "4.6.7",
+      "simdutf": "7.7.0",
+      "sqlite": "3.53.4",
+      "tz": "2026d",
+      "undici": "7.29.1",
+      "unicode": "17.0",
+      "uv": "1.52.1",
+      "uvwasi": "0.0.23",
+      "v8": "15.2.124.28-electron.0",
+      "zlib": "1.3.2.1-motley",
+      "zstd": "1.6.0",
+      "electron": "44.7.0",
+      "chrome": "152.0.7977.130"
+    },
+    "launch": {
+      "launcherNode": "v26.9.0",
+      "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+      "ffprobe": "ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers"
+    }
+  },
+  "cases": [
+    {
+      "status": "failed",
+      "error": "Error: Realtime output max error 0.00873565673828125\n    at assert (http://127.0.0.1:64862/entry.js:5319:21)\n    at realtime (http://127.0.0.1:64862/entry.js:5470:5)\n    at async http://127.0.0.1:64862/entry.js:5545:14",
+      "name": "controlled-25s",
+      "backend": {
+        "peakOwnedFfmpegProcesses": 3,
+        "remainingObservedFfmpeg": 0,
+        "measuredHashBytes": 10663372,
+        "measuredDecodeWorkFrames": 1274,
+        "peakConservativeBackendPcmBytes": 53669888,
+        "conservativeActivePcmBoundBytes": 100663296,
+        "allocationNote": "Production protocol admission is fixed96MiB; renderer reports actual retained mixed-buffer copies. Backend telemetry reports per-block PCM and active cursor count; this is not process RSS.",
+        "workNote": "workFrames is measured conservative session debit, including original-segment seek prefixes and bounded read-ahead. measuredHashBytes/workFrames report the largest session within a case, not an RSS measurement or the sum of repeated performance sessions.",
+        "mediaProcessCounts": {
+          "startedFfmpeg": 16,
+          "exitedFfmpeg": 16,
+          "startedFfprobe": 2,
+          "exitedFfprobe": 2
+        }
+      }
+    }
+  ],
+  "references": [
+    {
+      "name": "controlled-25s",
+      "samples": 1200000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 71,
+          "sourceVoices": 1,
+          "sampleFrames": 113600,
+          "sha256": "11af63ad70f67b98fc4980da0c6cea259fbae78a2fd719c9fadbe0316ffab257"
+        },
+        {
+          "beginFrame": 71,
+          "endFrame": 113,
+          "sourceVoices": 2,
+          "sampleFrames": 67200,
+          "sha256": "f7e4a2bb748b51d88eedc9f5fedc782ceb3230e0ee1d0f3f6d5af56b31db3d6d"
+        },
+        {
+          "beginFrame": 113,
+          "endFrame": 301,
+          "sourceVoices": 2,
+          "sampleFrames": 300800,
+          "sha256": "d5e55db5dda9d0647ea4e2934904f0ad23e35c6d5637c21cb12e64115139d3c5"
+        },
+        {
+          "beginFrame": 301,
+          "endFrame": 333,
+          "sourceVoices": 3,
+          "sampleFrames": 51200,
+          "sha256": "2b87853e2b1ce5d0b43ceb3eb26c15bc9e53c285e60e13163144e883e8fb4e02"
+        },
+        {
+          "beginFrame": 333,
+          "endFrame": 400,
+          "sourceVoices": 3,
+          "sampleFrames": 107200,
+          "sha256": "a8360ade7bf10b08af6f1f2e12e4e2d0294f5bcdd0bf23b1b0599b11518f141c"
+        },
+        {
+          "beginFrame": 400,
+          "endFrame": 480,
+          "sourceVoices": 2,
+          "sampleFrames": 128000,
+          "sha256": "e6a378684be84a33c893556a280e4eba8b71f2ade4ac19eba2906eb4b6423d61"
+        },
+        {
+          "beginFrame": 480,
+          "endFrame": 599,
+          "sourceVoices": 1,
+          "sampleFrames": 190400,
+          "sha256": "1e2464ccb48455d61adf629cc80bde3f14bb564dfdc3353a607d8e4f28594398"
+        },
+        {
+          "beginFrame": 599,
+          "endFrame": 604,
+          "sourceVoices": 1,
+          "sampleFrames": 8000,
+          "sha256": "fc8de0cb409dad15e04ecd98d19073eff4b21e1463316c6849c322be09606038"
+        },
+        {
+          "beginFrame": 604,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 233600,
+          "sha256": "986c7de9afa46f2b68d6aec5b743dfc1be3883afa42d98e14af3477c195bd97b"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "aac44100-25s",
+      "samples": 1200000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 71,
+          "sourceVoices": 1,
+          "sampleFrames": 113600,
+          "sha256": "6efdc9a2e983b51981125380bd3113505cbe94eef9b1890ea613a0eae3b680dc"
+        },
+        {
+          "beginFrame": 71,
+          "endFrame": 113,
+          "sourceVoices": 2,
+          "sampleFrames": 67200,
+          "sha256": "b33b442ff68f2f5b9646bd2cfbbe127e07847f6fccc84ec3922f82b178dda98e"
+        },
+        {
+          "beginFrame": 113,
+          "endFrame": 333,
+          "sourceVoices": 2,
+          "sampleFrames": 352000,
+          "sha256": "111fe21e19cb54d58d1727eb2d2663419dd1f623a6081bbf505fd48adf00a0c2"
+        },
+        {
+          "beginFrame": 333,
+          "endFrame": 400,
+          "sourceVoices": 2,
+          "sampleFrames": 107200,
+          "sha256": "ee96fdf0a09dc760a21506d0b08b6bc34fb49c8eb477c07d351715c715575814"
+        },
+        {
+          "beginFrame": 400,
+          "endFrame": 599,
+          "sourceVoices": 1,
+          "sampleFrames": 318400,
+          "sha256": "dfa038217d39958baf18af331af8c3a7c5243099b0ac762471870a0a88e5b36a"
+        },
+        {
+          "beginFrame": 599,
+          "endFrame": 604,
+          "sourceVoices": 1,
+          "sampleFrames": 8000,
+          "sha256": "09dc0aab898328396c696a355435b7c37243486341cd54836151be42444661cf"
+        },
+        {
+          "beginFrame": 604,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 233600,
+          "sha256": "e9dec0055091c21f3cf4d5972a224cd6bfc5053bad66643d0072f5afbdf2c683"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "controlled-2min",
+      "samples": 5760000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 17,
+          "sourceVoices": 1,
+          "sampleFrames": 27200,
+          "sha256": "8f24cdb9259ed7dd0a97e9c8b5c46f28d125fe102ba752abc69be6d2d304c6d4"
+        },
+        {
+          "beginFrame": 17,
+          "endFrame": 29,
+          "sourceVoices": 1,
+          "sampleFrames": 19200,
+          "sha256": "d987209bd3f5721c90ed3a5fae662bfaeb26c578a693cee1a7184633107216a1"
+        },
+        {
+          "beginFrame": 29,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 1153600,
+          "sha256": "e0d5a541203a9332d96475d4eeb50bc8987626dfaa036648605dc48e47933a40"
+        },
+        {
+          "beginFrame": 750,
+          "endFrame": 1500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 1500,
+          "endFrame": 2250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 2250,
+          "endFrame": 3000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 3000,
+          "endFrame": 3600,
+          "sourceVoices": 1,
+          "sampleFrames": 960000,
+          "sha256": "b13e13f38805d81bafe4e6f56fc44437f01cb006d880a73d9c7197370f1c6b3c"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "controlled-10min",
+      "samples": 28800000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 17,
+          "sourceVoices": 1,
+          "sampleFrames": 27200,
+          "sha256": "8f24cdb9259ed7dd0a97e9c8b5c46f28d125fe102ba752abc69be6d2d304c6d4"
+        },
+        {
+          "beginFrame": 17,
+          "endFrame": 29,
+          "sourceVoices": 1,
+          "sampleFrames": 19200,
+          "sha256": "d987209bd3f5721c90ed3a5fae662bfaeb26c578a693cee1a7184633107216a1"
+        },
+        {
+          "beginFrame": 29,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 1153600,
+          "sha256": "e0d5a541203a9332d96475d4eeb50bc8987626dfaa036648605dc48e47933a40"
+        },
+        {
+          "beginFrame": 750,
+          "endFrame": 1500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 1500,
+          "endFrame": 2250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 2250,
+          "endFrame": 3000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 3000,
+          "endFrame": 3750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 3750,
+          "endFrame": 4500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 4500,
+          "endFrame": 5250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 5250,
+          "endFrame": 6000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 6000,
+          "endFrame": 6750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 6750,
+          "endFrame": 7500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 7500,
+          "endFrame": 8250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 8250,
+          "endFrame": 9000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 9000,
+          "endFrame": 9750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 9750,
+          "endFrame": 10500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 10500,
+          "endFrame": 11250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 11250,
+          "endFrame": 12000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 12000,
+          "endFrame": 12750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 12750,
+          "endFrame": 13500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 13500,
+          "endFrame": 14250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 14250,
+          "endFrame": 15000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 15000,
+          "endFrame": 15750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 15750,
+          "endFrame": 16500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 16500,
+          "endFrame": 17250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 17250,
+          "endFrame": 18000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "native-performance",
+      "samples": 1200000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 17,
+          "sourceVoices": 1,
+          "sampleFrames": 27200,
+          "sha256": "8f24cdb9259ed7dd0a97e9c8b5c46f28d125fe102ba752abc69be6d2d304c6d4"
+        },
+        {
+          "beginFrame": 17,
+          "endFrame": 29,
+          "sourceVoices": 1,
+          "sampleFrames": 19200,
+          "sha256": "d987209bd3f5721c90ed3a5fae662bfaeb26c578a693cee1a7184633107216a1"
+        },
+        {
+          "beginFrame": 29,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 1153600,
+          "sha256": "e0d5a541203a9332d96475d4eeb50bc8987626dfaa036648605dc48e47933a40"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    }
+  ],
+  "artifacts": {
+    "main.cjs": "0ac7da8b66f81603912a925aa403c37bd060dcd385d0d9d3fa9c5dadfc60a4a8",
+    "preload.cjs": "cfcb909f8fd88d4888fbd078fb5e42e14b14751488b0c746292edab3106d3641",
+    "web/entry.js": "0c7974d3328a008488c90ac3ddfe8b4e1e439dad7c85195afde5b5d90a1104ed",
+    "web/capture-worklet.js": "944ed57cf0417ab7b1b65bf041cd15b48d33e97fd4a0720cf9b15ff4f7058114",
+    "cases.json": "49e738bcfc7e57835d7d966d9611e8b0a3662e8312649250ab98462eb5fdefb9"
+  },
+  "sourceHashes": {
+    "baseCommit": "e87fa309ed0a604657dcdf6bddc768c1c10eb2a1",
+    "files": {
+      "apps/web/src/timeline-audio-continuous-client.ts": "9e5fb64163e8fc630acb34124c4b32d079cca28bff66a92240ebad58b06a4ee5",
+      "apps/web/src/timeline-audio-continuous-engine.ts": "01ccbe682b3144416087aaa21acfead52c66817d15b3caafeb411f1567516901",
+      "apps/web/src/native-audio-preview-adapter.ts": "cbe0257e8283389e4740def73bfebb166563493f82efa33baf839733e44545c8",
+      "packages/contracts/src/timeline-audio-continuous.ts": "dc7bfd5f1ab42d06eaaf86d56ee4cb8decf5bbe6f95b519411ae2190d5d6a0a8",
+      "packages/contracts/src/native-audio-preview.ts": "cb4f5168fbb44d9beb40dc322b483734b203f606c8d46557e55696f5c4166242",
+      "packages/business/src/timeline-audio-continuous.ts": "9e8291728ef76660b8db590c3512ab41448b687ac55d344f9761a08b29bc0cb5",
+      "packages/business/src/timeline-audio-continuous-decoder.ts": "e7354a6e03b3b96cd1f1ea1520532542ba6f1dbb608741393c739c94db16f887",
+      "packages/business/src/native-audio-preview.ts": "28196be37123c50bfb1c1dc5bdfb0eddd4a3107b8a8cadbc2ed5eef1427e29ae",
+      "packages/business/src/media-runtime.mjs": "2feb370f705852d7444b701f7b5a206c178a138d123301d80717cbf2b5e79b3e",
+      "apps/server/src/timeline-audio-continuous-http.ts": "579f234eb8862c87b0e5bd12f7809bc6e7b809b9479fe9df9e18593891912e10",
+      "apps/desktop/src/native-audio-preview-host.ts": "631f79ab1cfc7bf638aae40455d3a5c507f2c527f563ca8ba45f30d154c16d47",
+      "apps/desktop/src/native-audio-preview-preload.ts": "8861f91bb4c312273853a20bdfbe9232d598721311b6d48ba89f901525dadd57",
+      "tests/fixtures/timeline-audio-continuous/launch.mjs": "eeb6d3e83683641db0eb92839392028832ba9aaab151b89da7cf2f39c3d5d969",
+      "tests/fixtures/timeline-audio-continuous/main.mjs": "1131809d801112a1689ccad135f368f66acb908bd1114f5a6fdbcc3a011a306c",
+      "tests/fixtures/timeline-audio-continuous/preload.ts": "65fe70df234797ce7689cfa202c9e9845c9827d59df12c243c93af69e7147717",
+      "tests/fixtures/timeline-audio-continuous/renderer.ts": "947d725b0c683b377a1ef9c9ca37a31eb1fc3235e57a914ed2d8a927f93e21f3",
+      "tests/fixtures/timeline-audio-continuous/capture-worklet.js": "944ed57cf0417ab7b1b65bf041cd15b48d33e97fd4a0720cf9b15ff4f7058114"
+    }
+  },
+  "error": "Error: controlled-25s failed\n    at /private/tmp/mioon-continuous-numeric-20261015-b/main.cjs:18864:45",
+  "historicalClassification": "Test-harness exact-first-nonzero alignment artifact, independently reproduced; production timing was unchanged, absolute observed sample anchoring fixed the fixture.",
+  "rawReportSha256": "e6f9ea74e8881d3d978099a9674d4d3a09c4ecd26fc21e4a18fc10c1e20b14c4"
+}

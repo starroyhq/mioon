@@ -6,6 +6,7 @@ import { transformSync } from 'esbuild';
 import { buildAudioPreviewPlan } from '../packages/contracts/src/timeline-audio-preview.ts';
 import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.js';
 import { createTimelineAudioPreviewController, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview } from '../apps/web/src/use-timeline-audio-preview.ts';
+import * as i18n from '../packages/i18n/src/index.ts';
 
 const app = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
 const preview = readFileSync(new URL('../apps/web/src/Preview.jsx', import.meta.url), 'utf8');
@@ -40,6 +41,7 @@ function harness() {
     viewRef: { current: { activeMode: 'editing', editing: { previewKind: 'timeline', selectedClipId: null, quickAssetId: null, playhead: 30 } } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false,
     workspaceMode: 'editing', previewKind: 'timeline', previewAsset: null, comparisonId: null, clipDirty: false, subtitleDirty: false, formatDirty: false,
+    clipDraftRef: { current: null },
     canvasVisible: true, panelVisible: name => name === 'canvas' && env.canvasVisible,
     nativePreviewPause: { current: () => calls.order.push('native-pause') }, playhead: 30,
     setPlayhead(frame) { calls.positions.push(frame); env.viewRef.current.editing.playhead = frame; }, setAuth(value) { env.auth = value; },
@@ -94,6 +96,27 @@ test('actual App hook reads the current saved snapshot, supplies exact RPC optio
   assert.equal(f.controller.getState().hasUnsavedDrafts, true); assert.equal(f.controller.getState().phase, 'ready'); assert.equal(f.calls.rpc.length, 1);
   f.env.dataRef.current.assets[0] = { ...f.env.dataRef.current.assets[0], sha256: 'c'.repeat(64) };
   f.render(); assert.equal(f.calls.transports[0].disposed, true); assert.equal(f.controller.getState().plan, null); assert.equal(f.calls.rpc.length, 1);
+});
+
+test('an unapplied clip recovery candidate warns even with clean inputs without entering the saved mix or changing its owner', async () => {
+  const f = harness(), saved = structuredClone(f.env.dataRef.current.timeline), before = f.initial.soundAuditionContext();
+  const candidate = {raw: {gain: '2', sourceInFrame: '99'}, baseRevision: 1, clipId: id(5)}, original = structuredClone(candidate);
+  const draft = {candidate}; let writes = 0;
+  f.env.clipDraftRef.current = {getState: () => draft, save() {writes++;}, restore() {writes++;}, discard() {writes++;}};
+  const current = f.render();
+  assert.equal(f.env.clipDirty || f.env.subtitleDirty || f.env.formatDirty, false);
+  assert.equal(current.soundAuditionContext().hasUnsavedDrafts, true);
+  const binding = ({hasUnsavedDrafts: ignored, ...value}) => {void ignored; return value;};
+  assert.deepEqual(binding(current.soundAuditionContext()), binding(before));
+  assert.equal(f.calls.rpc.length, 0); assert.equal(f.calls.contexts.length, 0);
+  await f.controller.prepare(30); await f.controller.play();
+  assert.deepEqual(f.calls.rpc[0].input, {projectId: id(1), timelineId: id(2), expectedRevision: 1, startFrame: 30});
+  assert.deepEqual(f.env.dataRef.current.timeline, saved); assert.deepEqual(candidate, original); assert.equal(writes, 0);
+  draft.candidate = null; f.render();
+  assert.equal(f.controller.getState().hasUnsavedDrafts, false); assert.equal(f.controller.getState().phase, 'playing');
+  assert.equal(f.calls.transports[0].disposed, false); assert.equal(f.calls.contexts.length, 1); assert.equal(f.calls.rpc.length, 1);
+  assert.deepEqual(f.calls.positions, []); assert.deepEqual(f.calls.order, ['native-pause', 'sound-play']);
+  f.controller.dispose();
 });
 
 for (const [name, change] of Object.entries({ hidden: f => { f.env.canvasVisible = false; }, sourceTab: f => { f.env.viewRef.current.editing.previewKind = 'source'; },
@@ -156,6 +179,8 @@ test('actual TSX callbacks pass their rendered owner once; shared Slider seek re
     if (name === 'react') return react;
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
     if (name === '@mioon/ui/components/slider') return { Slider: 'Slider' };
+    if (name === '../../../packages/i18n/src/index.ts') return i18n;
+    if (name === './i18n/I18nProvider.tsx') return {useI18n: () => ({t: (key, params) => i18n.translate('zh-Hans', key, params), renderMessage: value => i18n.renderMessage('zh-Hans', value)})};
     assert.fail(`Unexpected production component dependency: ${name}`);
   });
   const f = harness(), state = { ...f.controller.getState(), phase: 'ready', plan: { range: { startFrame: 30, endFrame: 630 }, sources: [] }, positionFrame: 30 };
@@ -179,6 +204,8 @@ test('actual component never substitutes a last-frame prepare for an outside or 
     if (name === 'react') return react;
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
     if (name === '@mioon/ui/components/slider') return { Slider: 'Slider' };
+    if (name === '../../../packages/i18n/src/index.ts') return i18n;
+    if (name === './i18n/I18nProvider.tsx') return {useI18n: () => ({t: (key, params) => i18n.translate('zh-Hans', key, params), renderMessage: value => i18n.renderMessage('zh-Hans', value)})};
     assert.fail(`Unexpected component dependency: ${name}`);
   });
   const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value && typeof value === 'object' ? [value, ...flatten(value.props?.children)] : [];

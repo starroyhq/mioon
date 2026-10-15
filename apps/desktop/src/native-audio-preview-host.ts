@@ -1,5 +1,7 @@
 import {generateKeyPairSync,randomUUID,sign} from 'node:crypto';
 import {audioPreviewSourceInputSchema,AUDIO_PREVIEW_LIMITS} from '@mioon/contracts/timeline-audio-preview';
+import {continuousAudioBlockInputSchema,continuousAudioQuery,CONTINUOUS_AUDIO_ENDPOINT,CONTINUOUS_AUDIO_LIMITS} from '@mioon/contracts/timeline-audio-continuous';
+import type {ContinuousAudioBlockInput} from '@mioon/contracts/timeline-audio-continuous';
 import {nativeAudioConfigSchema,nativeAudioProofSchema,nativeAudioProofMaterial,nativeAudioSourceQuery,sameNativeAudioOwner,
   NATIVE_AUDIO_PCM_PATH,NATIVE_AUDIO_LEASE_HEADER,NATIVE_AUDIO_PROOF_HEADER,NATIVE_AUDIO_SIGNATURE_HEADER} from '@mioon/contracts/native-audio-preview';
 import type {NativeAudioCommand,NativeAudioReply,NativeAudioConfig,NativeAudioLease,NativeAudioOwner,NativeAudioProof} from '@mioon/contracts/native-audio-preview';
@@ -37,14 +39,14 @@ interface Event {readonly sender:NativeAudioContents;readonly senderFrame:Native
 interface RequestDetails {readonly id:number;readonly url:string;readonly method:string;readonly resourceType:string;
   readonly webContents?:NativeAudioContents;readonly frame?:NativeAudioFrame|null;readonly requestHeaders:Record<string,string|string[]>}
 interface LeaseRecord {lease:NativeAudioLease;document:NativeAudioDocument;phase:'reserving'|'active'|'retiring'|'blocked';
-  granted:boolean;sequence:number;proofs:Map<number,{query:string;proof:string;signature:string}>;
+  granted:boolean;sequence:number;generation:number;lastInput?:ContinuousAudioBlockInput;deleting:boolean;proofs:Map<number,{query:string;method:string;proof:string;signature:string}>;
   renderer:{promise:Promise<void>;resolve:()=>void};backend:{promise:Promise<void>;resolve:()=>void};retirement:Promise<boolean>|null}
-interface Attempt {document:NativeAudioDocument;actionId:string;input:NativeAudioLease['input'];planHash:string;cancelled:boolean;promise:Promise<NativeAudioAcquireResult>}
+interface Attempt {document:NativeAudioDocument;actionId:string;input:NativeAudioLease['input'];planHash:string;sessionId?:string;cancelled:boolean;promise:Promise<NativeAudioAcquireResult>}
 const sameLease=(record:LeaseRecord,actionId:string,leaseId:string)=>record.lease.actionId===actionId&&record.lease.leaseId===leaseId;
 const ownerOf=(document:NativeAudioDocument):NativeAudioOwner=>({backendId:document.backendId,windowId:document.windowId,contextId:document.contextId,projectId:document.projectId});
 const publicResult=(status:'cancelled'|'blocked'|'unavailable'|'busy'):NativeAudioAcquireResult=>({status});
 const completion=():{promise:Promise<void>;resolve:()=>void}=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};};
-const samePlan=(a:{input:NativeAudioLease['input'];planHash:string},b:{input:NativeAudioLease['input'];planHash:string}):boolean=>a.planHash===b.planHash&&
+const samePlan=(a:{input:NativeAudioLease['input'];planHash:string;sessionId?:string},b:{input:NativeAudioLease['input'];planHash:string;sessionId?:string}):boolean=>a.planHash===b.planHash&&a.sessionId===b.sessionId&&
   a.input.projectId===b.input.projectId&&a.input.timelineId===b.input.timelineId&&a.input.expectedRevision===b.input.expectedRevision&&a.input.startFrame===b.input.startFrame;
 
 /** One app-wide retained audition, plus at most one waiting explicit action.
@@ -95,7 +97,7 @@ export function createNativeAudioPreviewHost(options:Options){
     record.retirement=Promise.all([record.backend.promise,record.renderer.promise]).then(()=>{if(active===record)active=null;return true;});
     return record.retirement;
   }
-  function acquire(document:NativeAudioDocument,request:Extract<ReturnType<typeof nativeAudioRequestSchema.parse>,{action:'acquire'}>):Promise<NativeAudioAcquireResult>{
+  function acquire(document:NativeAudioDocument,request:Extract<ReturnType<typeof nativeAudioRequestSchema.parse>,{action:'acquire'|'acquireContinuous'}>):Promise<NativeAudioAcquireResult>{
     if(request.input.projectId!==document.projectId)return Promise.resolve(publicResult('unavailable'));
     let known=actions.get(document.contents);
     if(!known||known.contextId!==document.contextId){known={contextId:document.contextId,seen:new Set()};actions.set(document.contents,known);}
@@ -114,7 +116,8 @@ export function createNativeAudioPreviewHost(options:Options){
     // Never evict an identifier and thereby turn a replay into a fresh action.
     if(known.seen.size>=1024)return Promise.resolve(publicResult('unavailable'));
     known.seen.add(request.actionId);
-    const attempt:Attempt={document,actionId:request.actionId,input:request.input,planHash:request.planHash,cancelled:false,promise:Promise.resolve(publicResult('unavailable'))};pending=attempt;
+    const attempt:Attempt={document,actionId:request.actionId,input:request.input,planHash:request.planHash,
+      ...(request.action==='acquireContinuous'?{sessionId:request.sessionId}:{}),cancelled:false,promise:Promise.resolve(publicResult('unavailable'))};pending=attempt;
     const current=()=>admissionAllowed(document)&&pending===attempt&&!attempt.cancelled&&trusted(document,document.frame);
     attempt.promise=(async()=>{
       const previous=active;
@@ -122,12 +125,13 @@ export function createNativeAudioPreviewHost(options:Options){
         if(!await retire(previous,'handoff'))return publicResult('blocked');}
       if(!current())return publicResult('cancelled');
       const record:LeaseRecord={lease:{owner:ownerOf(document),actionId:request.actionId,leaseId:randomUUID(),input:request.input,
-        planHash:request.planHash,admittedBytes:AUDIO_PREVIEW_LIMITS.memoryBytes},document,phase:'reserving',granted:false,sequence:0,proofs:new Map(),
+        planHash:request.planHash,admittedBytes:AUDIO_PREVIEW_LIMITS.memoryBytes,...(request.action==='acquireContinuous'?{version:2 as const,sessionId:request.sessionId}:{})},document,phase:'reserving',granted:false,sequence:0,generation:0,deleting:false,proofs:new Map(),
         renderer:completion(),backend:completion(),retirement:null};
       // Suppress an unhandled rejection while a failed local retirement awaits its backend peer.
       void record.renderer.promise.catch(()=>{});active=record;
-      const command:NativeAudioCommand={type:'native-audio:reserve',version:1,requestId:randomUUID(),owner:record.lease.owner,
-        actionId:record.lease.actionId,leaseId:record.lease.leaseId,input:request.input,planHash:request.planHash};
+      const command:NativeAudioCommand={type:'native-audio:reserve',requestId:randomUUID(),owner:record.lease.owner,
+        actionId:record.lease.actionId,leaseId:record.lease.leaseId,input:request.input,planHash:request.planHash,
+        ...(request.action==='acquireContinuous'?{version:2 as const,sessionId:request.sessionId}:{version:1 as const})};
       try{
         const reply=await options.request(command,()=>{
           if(active===record&&pending===attempt)notify(document,{type:'blocked',owner:record.lease.owner,actionId:request.actionId});
@@ -136,14 +140,15 @@ export function createNativeAudioPreviewHost(options:Options){
           record.renderer.resolve();if(active===record)active=null;return publicResult('unavailable');
         }
         if(reply.status!=='reserved'||reply.backendId!==options.backendId||reply.leaseId!==record.lease.leaseId||reply.requestId!==command.requestId||reply.planHash!==request.planHash||
-          !Number.isSafeInteger(reply.admittedBytes)||reply.admittedBytes<AUDIO_PREVIEW_LIMITS.transportReserveBytes||reply.admittedBytes>AUDIO_PREVIEW_LIMITS.memoryBytes)throw Error('Native reservation unavailable');
+          !Number.isSafeInteger(reply.admittedBytes)||reply.admittedBytes<AUDIO_PREVIEW_LIMITS.transportReserveBytes||reply.admittedBytes>AUDIO_PREVIEW_LIMITS.memoryBytes||
+          request.action==='acquireContinuous'&&reply.admittedBytes!==CONTINUOUS_AUDIO_LIMITS.memoryBytes)throw Error('Native reservation unavailable');
         record.lease=Object.freeze({...record.lease,admittedBytes:reply.admittedBytes});
         if(!current()){await retire(record,'release');return publicResult('cancelled');}
         record.granted=true;record.phase='active';return {status:'granted',lease:record.lease} as NativeAudioAcquireResult;
       }catch{
         // A lost reserve reply may conceal a real backend reservation. Only an
         // exact retirement proof can release that uncertain record.
-        await retire(record,'release');return publicResult('blocked');
+        const clean=await retire(record,'release');return publicResult(clean&&!current()?'cancelled':'blocked');
       }
     })().finally(()=>{if(pending===attempt)pending=null;});
     return attempt.promise;
@@ -204,10 +209,10 @@ export function createNativeAudioPreviewHost(options:Options){
     retireOwnerForReload,
     async dispatch(event:Event,raw:unknown):Promise<NativeAudioAcquireResult|NativeAudioOwner|boolean|null>{
       const parsed=nativeAudioRequestSchema.safeParse(raw);if(!parsed.success)return false;
-      const request=parsed.data,document=lookup(event);if(!document)return request.action==='describe'?null:request.action==='acquire'?publicResult('unavailable'):false;
+      const request=parsed.data,document=lookup(event);if(!document)return request.action==='describe'?null:request.action==='acquire'||request.action==='acquireContinuous'?publicResult('unavailable'):false;
       if(request.action==='describe')return ownerOf(document);
-      if(request.contextId!==document.contextId)return request.action==='acquire'?publicResult('unavailable'):false;
-      if(request.action==='acquire')return acquire(document,request);
+      if(request.contextId!==document.contextId)return request.action==='acquire'||request.action==='acquireContinuous'?publicResult('unavailable'):false;
+      if(request.action==='acquire'||request.action==='acquireContinuous')return acquire(document,request);
       if(request.action==='cancel'){
         let matched=false;if(pending&&sameNativeAudioOwner(pending.document,document)&&pending.actionId===request.actionId){pending.cancelled=true;matched=true;}
         if(active&&sameNativeAudioOwner(active.lease.owner,document)&&active.lease.actionId===request.actionId){void retire(active,'release');matched=true;}
@@ -228,19 +233,45 @@ export function createNativeAudioPreviewHost(options:Options){
       let url:URL;try{url=new URL(details.url);}catch{return {cancel:true};}
       if(!url.pathname.startsWith('/api/timeline-audio-preview'))return {cancel:false,requestHeaders:headers};
       const record=active,document=details.webContents&&!destroyedContents.has(details.webContents)?options.ownerForContents(details.webContents):null;
-      if(!record||record.phase!=='active'||!document||!admissionAllowed(document)||!trusted(document,details.frame)||!sameNativeAudioOwner(record.lease.owner,document)||claimedLease!==record.lease.leaseId||
-        url.origin!==options.origin||url.username||url.password||url.hash||url.pathname!==NATIVE_AUDIO_PCM_PATH||details.method!=='GET'||details.resourceType!=='xhr'||details.url.length>2048)return {cancel:true};
+      const cleanup=details.method==='DELETE'&&url.pathname===CONTINUOUS_AUDIO_ENDPOINT;
+      if(!record||(!cleanup&&record.phase!=='active')||!document||!cleanup&&!admissionAllowed(document)||!trusted(document,details.frame)||!sameNativeAudioOwner(record.lease.owner,document)||claimedLease!==record.lease.leaseId||
+        url.origin!==options.origin||url.username||url.password||url.hash||details.resourceType!=='xhr'||details.url.length>2048)return {cancel:true};
       if(!Number.isSafeInteger(details.id)||details.id<0)return {cancel:true};
+      if('sessionId' in record.lease){
+        if(url.pathname!==CONTINUOUS_AUDIO_ENDPOINT||details.method!=='GET'&&details.method!=='DELETE')return {cancel:true};
+        const raw=Object.fromEntries(url.searchParams),parsed=continuousAudioBlockInputSchema.safeParse({...raw,
+          expectedRevision:Number(raw.expectedRevision),startFrame:Number(raw.startFrame),generation:Number(raw.generation),sequence:Number(raw.sequence),blockStartFrame:Number(raw.blockStartFrame)});
+        if(!parsed.success||url.search.slice(1)!==continuousAudioQuery(parsed.data))return {cancel:true};
+        const input=parsed.data,expected=record.lease.input;
+        if(input.projectId!==expected.projectId||input.timelineId!==expected.timelineId||input.expectedRevision!==expected.expectedRevision||
+          input.startFrame!==expected.startFrame||input.planHash!==record.lease.planHash||input.sessionId!==record.lease.sessionId)return {cancel:true};
+        let signed=record.proofs.get(details.id);
+        if(signed&&(signed.query!==url.search||signed.method!==details.method))return {cancel:true};
+        if(!signed){
+          if(details.method==='GET'){
+            if(record.deleting||input.sequence<=record.sequence||input.generation<record.generation||record.sequence>=CONTINUOUS_AUDIO_LIMITS.requests)return {cancel:true};
+          }else if(record.deleting)return {cancel:true};
+          const proof:NativeAudioProof={version:2,backendId:options.backendId,leaseId:record.lease.leaseId,method:details.method,input};
+          try{signed={query:url.search,method:details.method,proof:Buffer.from(JSON.stringify(proof)).toString('base64url'),signature:options.signer.sign(proof)};}catch{return {cancel:true};}
+          if(details.method==='GET'){record.sequence=input.sequence;record.generation=input.generation;record.lastInput=input;}else record.deleting=true;
+          // The ledger has a strict session cap (10,000 GET + one DELETE), so
+          // repeat webRequest callbacks remain idempotent without an LRU replay.
+          record.proofs.set(details.id,signed);
+        }
+        headers[NATIVE_AUDIO_PROOF_HEADER]=signed.proof;headers[NATIVE_AUDIO_SIGNATURE_HEADER]=signed.signature;
+        return {cancel:false,requestHeaders:headers};
+      }
+      if(url.pathname!==NATIVE_AUDIO_PCM_PATH||details.method!=='GET')return {cancel:true};
       const raw=Object.fromEntries(url.searchParams),parsed=audioPreviewSourceInputSchema.safeParse({...raw,expectedRevision:Number(raw.expectedRevision),startFrame:Number(raw.startFrame)});
       if(!parsed.success||url.search.slice(1)!==nativeAudioSourceQuery(parsed.data))return {cancel:true};
       const input=parsed.data,expected=record.lease.input;
       if(input.projectId!==expected.projectId||input.timelineId!==expected.timelineId||input.expectedRevision!==expected.expectedRevision||input.startFrame!==expected.startFrame||input.planHash!==record.lease.planHash)return {cancel:true};
       let signed=record.proofs.get(details.id);
-      if(signed&&signed.query!==url.search)return {cancel:true};
+      if(signed&&(signed.query!==url.search||signed.method!==details.method))return {cancel:true};
       if(!signed){
         if(record.sequence>=AUDIO_PREVIEW_LIMITS.clips)return {cancel:true};
         const proof:NativeAudioProof={version:1,backendId:options.backendId,leaseId:record.lease.leaseId,sequence:record.sequence+1,input};
-        try{signed={query:url.search,proof:Buffer.from(JSON.stringify(proof)).toString('base64url'),signature:options.signer.sign(proof)};}catch{return {cancel:true};}
+        try{signed={query:url.search,method:'GET',proof:Buffer.from(JSON.stringify(proof)).toString('base64url'),signature:options.signer.sign(proof)};}catch{return {cancel:true};}
         record.sequence++;record.proofs.set(details.id,signed);
       }
       headers[NATIVE_AUDIO_PROOF_HEADER]=signed.proof;

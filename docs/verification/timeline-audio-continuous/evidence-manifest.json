@@ -1,0 +1,53 @@
+{
+  "status": "passed",
+  "scope": "Native continuous numeric evidence only; repository build, regression and product UI logs are maintained separately.",
+  "files": {
+    "final-numeric-report.json": {
+      "sha256": "8322abb7caf394398582f7657cf98addd728c358386dc1073dd91b99ad052007",
+      "bytes": 74603
+    },
+    "final-environment.json": {
+      "sha256": "b72da75c35053de27c8877a10579b8eaa9e42a22623964bd121443eb924c0e18",
+      "bytes": 1054
+    },
+    "final-source-hashes.json": {
+      "sha256": "a8ba3a04dbae102a5ae8dbabfa34226d3195e46cd0e41038ad5fb05d2ae7e501",
+      "bytes": 2205
+    },
+    "final-artifact-hashes.json": {
+      "sha256": "df5d99cc255aaab6bce55989a9efa7a6ec6c772e183131528cb2d94b8dd206b1",
+      "bytes": 436
+    },
+    "red-runtime-short-segment.json": {
+      "sha256": "5c2891f66c0f4efdc3863828881f10afa5ee78e8c6d707c0b084370f5257a235",
+      "bytes": 16465
+    },
+    "red-alignment-artifact.json": {
+      "sha256": "d8dba414599bbee22fb67d6b82c88b911993be2f3849330fc0742ff1c8f29278",
+      "bytes": 19465
+    },
+    "origin-alignment-sweep.json": {
+      "sha256": "614d8980da908d11368840d715364ad32f3460f068f1dae733714394302641ac",
+      "bytes": 19817
+    },
+    "origin-actual-reference-proof.json": {
+      "sha256": "ec90306666929436bd6174e0de1290fb8cd597381e6c561509698f0b3ec6378f",
+      "bytes": 1386
+    },
+    "cursor-reopen-before-fix.json": {
+      "sha256": "d847deff7aa9cbf0f43ebe0c9b954362e278cb1cc7d2d522bfe1288d34768c5b",
+      "bytes": 2861
+    },
+    "cursor-reopen-comparison.json": {
+      "sha256": "ee47271bd706a01ec4d05d5f1fd5d407ed7f7be5c36c69ac0bcc696f9227f417",
+      "bytes": 802
+    },
+    "final-electron.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  },
+  "binaryMediaIncluded": false,
+  "rawPcmIncluded": false,
+  "largeBundlesIncluded": false
+}

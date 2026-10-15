@@ -1,0 +1,2 @@
+# These are curated, synthetic qualification logs, not arbitrary runtime logs.
+!*.log

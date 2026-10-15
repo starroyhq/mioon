@@ -1,0 +1,24 @@
+{
+  "baseline": "e87fa309ed0a604657dcdf6bddc768c1c10eb2a1",
+  "regression": {
+    "command": "TMPDIR=/private/tmp node --test --test-concurrency=1 tests/timeline-audio-preview-*.test.mjs tests/timeline-audio-continuous-*.test.mjs tests/native-audio-preview-*.test.mjs tests/native-audio-continuous.test.mjs tests/timeline-audio-filters.test.mjs tests/timeline-float-audio-check.test.mjs tests/i18n-timeline.test.mjs tests/i18n-catalog-integrity.test.mjs",
+    "exitCode": 0,
+    "tests": 370,
+    "passed": 370,
+    "failed": 0,
+    "skipped": 0
+  },
+  "typecheck": {
+    "command": "node scripts/tooling.mjs typecheck",
+    "exitCode": 0
+  },
+  "build": {
+    "command": "node scripts/tooling.mjs build",
+    "exitCode": 0
+  },
+  "extended": {
+    "passed": 37,
+    "failed": 1,
+    "reason": "Existing Mac /tmp symlink fixture; canonical temporary copy then fails because installed FFmpeg has no drawtext filter."
+  }
+}

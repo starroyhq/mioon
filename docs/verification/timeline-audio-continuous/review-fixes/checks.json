@@ -1,0 +1,39 @@
+{
+  "baseline": "e87fa309ed0a604657dcdf6bddc768c1c10eb2a1",
+  "reviewFindingsResolved": 4,
+  "addedTestCases": 83,
+  "regression": {
+    "command": "TMPDIR=/private/tmp node --test --test-concurrency=1 tests/timeline-audio-preview-*.test.mjs tests/timeline-audio-continuous-*.test.mjs tests/native-audio-preview-*.test.mjs tests/native-audio-continuous.test.mjs tests/timeline-audio-filters.test.mjs tests/timeline-float-audio-check.test.mjs tests/i18n-timeline.test.mjs tests/i18n-catalog-integrity.test.mjs tests/media-runtime-bounds.test.mjs tests/media-probe-resources.test.mjs",
+    "exitCode": 0,
+    "tests": 480,
+    "passed": 480,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 49374.196625
+  },
+  "typecheck": {
+    "command": "node scripts/tooling.mjs typecheck",
+    "exitCode": 0
+  },
+  "build": {
+    "command": "node scripts/tooling.mjs build",
+    "exitCode": 0
+  },
+  "numeric": {
+    "cases": 5,
+    "passed": 5,
+    "sourceFilesMatched": 20,
+    "exitCode": 0,
+    "remainingOwnedChildPids": []
+  },
+  "unchangedConstraints": [
+    "96 MiB admission",
+    "53,669,888-byte conservative PCM bound",
+    "V1 source PCM and frozen exports",
+    "No dependency, persistence, Agent permission or automatic playback expansion"
+  ],
+  "manualUIRepeated": false,
+  "physicalListeningVerified": false,
+  "committed": false,
+  "pushed": false
+}

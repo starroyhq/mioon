@@ -1,0 +1,2754 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "startedAt": "2026-10-15T10:58:43.955Z",
+  "scope": "Controlled original synthetic media, actual production service/HTTP/native proof/client/engine in sandboxed Electron renderer; silent pre-destination capture, no physical listening claim.",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "osRelease": "27.0.0",
+    "cpu": "Apple M2 Max",
+    "versions": {
+      "node": "24.21.0",
+      "acorn": "8.18.0",
+      "ada": "4.0.0",
+      "amaro": "1.1.11",
+      "ares": "1.34.8",
+      "brotli": "1.2.0",
+      "cldr": "48.0",
+      "icu": "78.2",
+      "llhttp": "9.4.3",
+      "merve": "1.2.2",
+      "modules": "149",
+      "napi": "10",
+      "nbytes": "0.1.4",
+      "ncrypto": "0.0.1",
+      "nghttp2": "1.70.0",
+      "nghttp3": "",
+      "ngtcp2": "",
+      "openssl": "0.0.0",
+      "simdjson": "4.6.7",
+      "simdutf": "7.7.0",
+      "sqlite": "3.53.4",
+      "tz": "2026d",
+      "undici": "7.29.1",
+      "unicode": "17.0",
+      "uv": "1.52.1",
+      "uvwasi": "0.0.23",
+      "v8": "15.2.124.28-electron.0",
+      "zlib": "1.3.2.1-motley",
+      "zstd": "1.6.0",
+      "electron": "44.7.0",
+      "chrome": "152.0.7977.130"
+    },
+    "launch": {
+      "launcherNode": "v26.9.0",
+      "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+      "ffprobe": "ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers"
+    }
+  },
+  "cases": [
+    {
+      "name": "controlled-25s",
+      "status": "passed",
+      "mode": "actual-Electron-AudioContext-worklet-pre-destination",
+      "sampleFrames": 1200000,
+      "captureFrames": 1265152,
+      "captureStartFrame": 0,
+      "capturedOffset": 61120,
+      "boundaries": [
+        {
+          "frame": 0,
+          "sample": 0,
+          "captureSample": 61120
+        },
+        {
+          "frame": 60,
+          "sample": 96000,
+          "captureSample": 157120
+        },
+        {
+          "frame": 120,
+          "sample": 192000,
+          "captureSample": 253120
+        },
+        {
+          "frame": 180,
+          "sample": 288000,
+          "captureSample": 349120
+        },
+        {
+          "frame": 240,
+          "sample": 384000,
+          "captureSample": 445120
+        },
+        {
+          "frame": 300,
+          "sample": 480000,
+          "captureSample": 541120
+        },
+        {
+          "frame": 360,
+          "sample": 576000,
+          "captureSample": 637120
+        },
+        {
+          "frame": 420,
+          "sample": 672000,
+          "captureSample": 733120
+        },
+        {
+          "frame": 480,
+          "sample": 768000,
+          "captureSample": 829120
+        },
+        {
+          "frame": 540,
+          "sample": 864000,
+          "captureSample": 925120
+        },
+        {
+          "frame": 600,
+          "sample": 960000,
+          "captureSample": 1021120
+        },
+        {
+          "frame": 660,
+          "sample": 1056000,
+          "captureSample": 1117120
+        },
+        {
+          "frame": 720,
+          "sample": 1152000,
+          "captureSample": 1213120
+        }
+      ],
+      "schedules": [
+        {
+          "when": 1.2733333333333334,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 61120
+        },
+        {
+          "when": 3.2733333333333334,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 157120
+        },
+        {
+          "when": 5.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 253120
+        },
+        {
+          "when": 7.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 349120
+        },
+        {
+          "when": 9.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 445120
+        },
+        {
+          "when": 11.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 541120
+        },
+        {
+          "when": 13.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 637120
+        },
+        {
+          "when": 15.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 733120
+        },
+        {
+          "when": 17.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 829120
+        },
+        {
+          "when": 19.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 925120
+        },
+        {
+          "when": 21.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 1021120
+        },
+        {
+          "when": 23.273333333333333,
+          "offset": 0,
+          "duration": 2,
+          "contextSample": 1117120
+        },
+        {
+          "when": 25.273333333333333,
+          "offset": 0,
+          "duration": 1,
+          "contextSample": 1213120
+        }
+      ],
+      "alignment": "Observed production AudioBufferSource.start absolute sample origin; no content-derived offset or tolerance-based search.",
+      "samples": 2400000,
+      "maximumAbsoluteError": 1.4901161193847656e-08,
+      "sumSquared": 3.304630539823782e-12,
+      "nonzeroExpected": 2399936,
+      "nonzeroActual": 2399936,
+      "maximumErrorAtSample": 114438,
+      "maximumErrorChannel": 0,
+      "maximumErrorActual": 0.13129381835460663,
+      "maximumErrorExpected": 0.13129380345344543,
+      "mismatchedSamples": 0,
+      "firstMismatch": null,
+      "rootMeanSquareError": 1.173426346897513e-09,
+      "absoluteTolerance": 2e-06,
+      "underruns": 0,
+      "peakHeldBytes": 3072000,
+      "heldBytesAtEnd": 0,
+      "firstPreparedBlockMs": 1299.1999999284744,
+      "firstSignalMs": 1319.5,
+      "realtimeWallSeconds": 25.021100000023843,
+      "audioClockSeconds": 25.024,
+      "endCallbackDriftSeconds": 0.004000000000000909,
+      "wallMinusAudioSeconds": -0.0028999999761580852,
+      "baseLatencySeconds": 0.005333333333333333,
+      "outputLatencySeconds": 0.028,
+      "captureReservedBytes": 10752000,
+      "productionAdmissionBytes": 100663296,
+      "note": "Additional test capture is bounded separately. AudioWorklet emits silence downstream; no physical-output or listening claim.",
+      "backend": {
+        "peakOwnedFfmpegProcesses": 3,
+        "remainingObservedFfmpeg": 0,
+        "originalVoiceSegmentUnits": 16,
+        "startedFfmpegProcesses": 16,
+        "measuredHashBytes": 10663372,
+        "measuredDecodeWorkFrames": 1274,
+        "peakConservativeBackendPcmBytes": 53669888,
+        "conservativeActivePcmBoundBytes": 100663296,
+        "allocationNote": "Production protocol admission is fixed96MiB; renderer reports actual retained mixed-buffer copies. Backend telemetry reports per-block PCM and active cursor count; this is not process RSS.",
+        "workNote": "workFrames is measured conservative session debit, including original-segment seek prefixes and bounded read-ahead. measuredHashBytes/workFrames report the largest session within a case, not an RSS measurement or the sum of repeated performance sessions.",
+        "mediaProcessCounts": {
+          "startedFfmpeg": 16,
+          "exitedFfmpeg": 16,
+          "startedFfprobe": 2,
+          "exitedFfprobe": 2
+        }
+      }
+    },
+    {
+      "name": "aac44100-25s",
+      "status": "passed",
+      "mode": "production-client-streamed-block-comparison",
+      "sampleFrames": 1200000,
+      "blocks": 13,
+      "boundaries": [
+        {
+          "startFrame": 0,
+          "endFrame": 60,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 60,
+          "endFrame": 120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 120,
+          "endFrame": 180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 180,
+          "endFrame": 240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 240,
+          "endFrame": 300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 300,
+          "endFrame": 360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 360,
+          "endFrame": 420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 420,
+          "endFrame": 480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 480,
+          "endFrame": 540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 540,
+          "endFrame": 600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 600,
+          "endFrame": 660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 660,
+          "endFrame": 720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 720,
+          "endFrame": 750,
+          "sampleFrames": 48000
+        }
+      ],
+      "samples": 2400000,
+      "maximumAbsoluteError": 1.4901161193847656e-08,
+      "sumSquared": 2.4476120592272885e-14,
+      "nonzeroExpected": 2397926,
+      "nonzeroActual": 2397926,
+      "maximumErrorAtSample": 114519,
+      "maximumErrorChannel": 0,
+      "maximumErrorActual": -0.13069911301136017,
+      "maximumErrorExpected": -0.13069912791252136,
+      "mismatchedSamples": 0,
+      "firstMismatch": null,
+      "rootMeanSquareError": 1.009870465956585e-10,
+      "absoluteTolerance": 2e-06,
+      "firstPreparedBlockMs": 334.7999999523163,
+      "peakClientPayloadAndAcquisitionBytes": 1536000,
+      "productionAdmissionBytes": 100663296,
+      "note": "The complete long timeline is compared block by block; neither production client nor test retains whole-timeline PCM.",
+      "backend": {
+        "peakOwnedFfmpegProcesses": 2,
+        "remainingObservedFfmpeg": 0,
+        "originalVoiceSegmentUnits": 10,
+        "startedFfmpegProcesses": 10,
+        "measuredHashBytes": 1011416,
+        "measuredDecodeWorkFrames": 1089,
+        "peakConservativeBackendPcmBytes": 53669888,
+        "conservativeActivePcmBoundBytes": 100663296,
+        "allocationNote": "Production protocol admission is fixed96MiB; renderer reports actual retained mixed-buffer copies. Backend telemetry reports per-block PCM and active cursor count; this is not process RSS.",
+        "workNote": "workFrames is measured conservative session debit, including original-segment seek prefixes and bounded read-ahead. measuredHashBytes/workFrames report the largest session within a case, not an RSS measurement or the sum of repeated performance sessions.",
+        "mediaProcessCounts": {
+          "startedFfmpeg": 10,
+          "exitedFfmpeg": 10,
+          "startedFfprobe": 1,
+          "exitedFfprobe": 1
+        }
+      }
+    },
+    {
+      "name": "controlled-2min",
+      "status": "passed",
+      "mode": "production-client-streamed-block-comparison",
+      "sampleFrames": 5760000,
+      "blocks": 60,
+      "boundaries": [
+        {
+          "startFrame": 0,
+          "endFrame": 60,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 60,
+          "endFrame": 120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 120,
+          "endFrame": 180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 180,
+          "endFrame": 240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 240,
+          "endFrame": 300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 300,
+          "endFrame": 360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 360,
+          "endFrame": 420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 420,
+          "endFrame": 480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 480,
+          "endFrame": 540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 540,
+          "endFrame": 600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 600,
+          "endFrame": 660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 660,
+          "endFrame": 720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 720,
+          "endFrame": 780,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 780,
+          "endFrame": 840,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 840,
+          "endFrame": 900,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 900,
+          "endFrame": 960,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 960,
+          "endFrame": 1020,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1020,
+          "endFrame": 1080,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1080,
+          "endFrame": 1140,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1140,
+          "endFrame": 1200,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1200,
+          "endFrame": 1260,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1260,
+          "endFrame": 1320,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1320,
+          "endFrame": 1380,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1380,
+          "endFrame": 1440,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1440,
+          "endFrame": 1500,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1500,
+          "endFrame": 1560,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1560,
+          "endFrame": 1620,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1620,
+          "endFrame": 1680,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1680,
+          "endFrame": 1740,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1740,
+          "endFrame": 1800,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1800,
+          "endFrame": 1860,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1860,
+          "endFrame": 1920,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1920,
+          "endFrame": 1980,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1980,
+          "endFrame": 2040,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2040,
+          "endFrame": 2100,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2100,
+          "endFrame": 2160,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2160,
+          "endFrame": 2220,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2220,
+          "endFrame": 2280,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2280,
+          "endFrame": 2340,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2340,
+          "endFrame": 2400,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2400,
+          "endFrame": 2460,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2460,
+          "endFrame": 2520,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2520,
+          "endFrame": 2580,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2580,
+          "endFrame": 2640,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2640,
+          "endFrame": 2700,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2700,
+          "endFrame": 2760,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2760,
+          "endFrame": 2820,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2820,
+          "endFrame": 2880,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2880,
+          "endFrame": 2940,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2940,
+          "endFrame": 3000,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3000,
+          "endFrame": 3060,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3060,
+          "endFrame": 3120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3120,
+          "endFrame": 3180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3180,
+          "endFrame": 3240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3240,
+          "endFrame": 3300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3300,
+          "endFrame": 3360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3360,
+          "endFrame": 3420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3420,
+          "endFrame": 3480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3480,
+          "endFrame": 3540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3540,
+          "endFrame": 3600,
+          "sampleFrames": 96000
+        }
+      ],
+      "samples": 11520000,
+      "maximumAbsoluteError": 0,
+      "sumSquared": 0,
+      "nonzeroExpected": 11519398,
+      "nonzeroActual": 11519398,
+      "maximumErrorAtSample": 0,
+      "maximumErrorChannel": 0,
+      "maximumErrorActual": 0,
+      "maximumErrorExpected": 0,
+      "mismatchedSamples": 0,
+      "firstMismatch": null,
+      "rootMeanSquareError": 0,
+      "absoluteTolerance": 2e-06,
+      "firstPreparedBlockMs": 1201.8999999761581,
+      "peakClientPayloadAndAcquisitionBytes": 1536000,
+      "productionAdmissionBytes": 100663296,
+      "note": "The complete long timeline is compared block by block; neither production client nor test retains whole-timeline PCM.",
+      "backend": {
+        "peakOwnedFfmpegProcesses": 1,
+        "remainingObservedFfmpeg": 0,
+        "originalVoiceSegmentUnits": 7,
+        "startedFfmpegProcesses": 7,
+        "measuredHashBytes": 9600088,
+        "measuredDecodeWorkFrames": 3607,
+        "peakConservativeBackendPcmBytes": 53669888,
+        "conservativeActivePcmBoundBytes": 100663296,
+        "allocationNote": "Production protocol admission is fixed96MiB; renderer reports actual retained mixed-buffer copies. Backend telemetry reports per-block PCM and active cursor count; this is not process RSS.",
+        "workNote": "workFrames is measured conservative session debit, including original-segment seek prefixes and bounded read-ahead. measuredHashBytes/workFrames report the largest session within a case, not an RSS measurement or the sum of repeated performance sessions.",
+        "mediaProcessCounts": {
+          "startedFfmpeg": 7,
+          "exitedFfmpeg": 7,
+          "startedFfprobe": 1,
+          "exitedFfprobe": 1
+        }
+      }
+    },
+    {
+      "name": "controlled-10min",
+      "status": "passed",
+      "mode": "production-client-streamed-block-comparison",
+      "sampleFrames": 28800000,
+      "blocks": 300,
+      "boundaries": [
+        {
+          "startFrame": 0,
+          "endFrame": 60,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 60,
+          "endFrame": 120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 120,
+          "endFrame": 180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 180,
+          "endFrame": 240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 240,
+          "endFrame": 300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 300,
+          "endFrame": 360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 360,
+          "endFrame": 420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 420,
+          "endFrame": 480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 480,
+          "endFrame": 540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 540,
+          "endFrame": 600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 600,
+          "endFrame": 660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 660,
+          "endFrame": 720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 720,
+          "endFrame": 780,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 780,
+          "endFrame": 840,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 840,
+          "endFrame": 900,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 900,
+          "endFrame": 960,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 960,
+          "endFrame": 1020,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1020,
+          "endFrame": 1080,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1080,
+          "endFrame": 1140,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1140,
+          "endFrame": 1200,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1200,
+          "endFrame": 1260,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1260,
+          "endFrame": 1320,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1320,
+          "endFrame": 1380,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1380,
+          "endFrame": 1440,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1440,
+          "endFrame": 1500,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1500,
+          "endFrame": 1560,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1560,
+          "endFrame": 1620,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1620,
+          "endFrame": 1680,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1680,
+          "endFrame": 1740,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1740,
+          "endFrame": 1800,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1800,
+          "endFrame": 1860,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1860,
+          "endFrame": 1920,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1920,
+          "endFrame": 1980,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 1980,
+          "endFrame": 2040,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2040,
+          "endFrame": 2100,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2100,
+          "endFrame": 2160,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2160,
+          "endFrame": 2220,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2220,
+          "endFrame": 2280,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2280,
+          "endFrame": 2340,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2340,
+          "endFrame": 2400,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2400,
+          "endFrame": 2460,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2460,
+          "endFrame": 2520,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2520,
+          "endFrame": 2580,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2580,
+          "endFrame": 2640,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2640,
+          "endFrame": 2700,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2700,
+          "endFrame": 2760,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2760,
+          "endFrame": 2820,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2820,
+          "endFrame": 2880,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2880,
+          "endFrame": 2940,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 2940,
+          "endFrame": 3000,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3000,
+          "endFrame": 3060,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3060,
+          "endFrame": 3120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3120,
+          "endFrame": 3180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3180,
+          "endFrame": 3240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3240,
+          "endFrame": 3300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3300,
+          "endFrame": 3360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3360,
+          "endFrame": 3420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3420,
+          "endFrame": 3480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3480,
+          "endFrame": 3540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3540,
+          "endFrame": 3600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3600,
+          "endFrame": 3660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3660,
+          "endFrame": 3720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3720,
+          "endFrame": 3780,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3780,
+          "endFrame": 3840,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3840,
+          "endFrame": 3900,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3900,
+          "endFrame": 3960,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 3960,
+          "endFrame": 4020,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4020,
+          "endFrame": 4080,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4080,
+          "endFrame": 4140,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4140,
+          "endFrame": 4200,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4200,
+          "endFrame": 4260,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4260,
+          "endFrame": 4320,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4320,
+          "endFrame": 4380,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4380,
+          "endFrame": 4440,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4440,
+          "endFrame": 4500,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4500,
+          "endFrame": 4560,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4560,
+          "endFrame": 4620,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4620,
+          "endFrame": 4680,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4680,
+          "endFrame": 4740,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4740,
+          "endFrame": 4800,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4800,
+          "endFrame": 4860,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4860,
+          "endFrame": 4920,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4920,
+          "endFrame": 4980,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 4980,
+          "endFrame": 5040,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5040,
+          "endFrame": 5100,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5100,
+          "endFrame": 5160,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5160,
+          "endFrame": 5220,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5220,
+          "endFrame": 5280,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5280,
+          "endFrame": 5340,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5340,
+          "endFrame": 5400,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5400,
+          "endFrame": 5460,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5460,
+          "endFrame": 5520,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5520,
+          "endFrame": 5580,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5580,
+          "endFrame": 5640,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5640,
+          "endFrame": 5700,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5700,
+          "endFrame": 5760,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5760,
+          "endFrame": 5820,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5820,
+          "endFrame": 5880,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5880,
+          "endFrame": 5940,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 5940,
+          "endFrame": 6000,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6000,
+          "endFrame": 6060,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6060,
+          "endFrame": 6120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6120,
+          "endFrame": 6180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6180,
+          "endFrame": 6240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6240,
+          "endFrame": 6300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6300,
+          "endFrame": 6360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6360,
+          "endFrame": 6420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6420,
+          "endFrame": 6480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6480,
+          "endFrame": 6540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6540,
+          "endFrame": 6600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6600,
+          "endFrame": 6660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6660,
+          "endFrame": 6720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6720,
+          "endFrame": 6780,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6780,
+          "endFrame": 6840,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6840,
+          "endFrame": 6900,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6900,
+          "endFrame": 6960,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 6960,
+          "endFrame": 7020,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7020,
+          "endFrame": 7080,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7080,
+          "endFrame": 7140,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7140,
+          "endFrame": 7200,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7200,
+          "endFrame": 7260,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7260,
+          "endFrame": 7320,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7320,
+          "endFrame": 7380,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7380,
+          "endFrame": 7440,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7440,
+          "endFrame": 7500,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7500,
+          "endFrame": 7560,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7560,
+          "endFrame": 7620,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7620,
+          "endFrame": 7680,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7680,
+          "endFrame": 7740,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7740,
+          "endFrame": 7800,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7800,
+          "endFrame": 7860,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7860,
+          "endFrame": 7920,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7920,
+          "endFrame": 7980,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 7980,
+          "endFrame": 8040,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8040,
+          "endFrame": 8100,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8100,
+          "endFrame": 8160,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8160,
+          "endFrame": 8220,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8220,
+          "endFrame": 8280,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8280,
+          "endFrame": 8340,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8340,
+          "endFrame": 8400,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8400,
+          "endFrame": 8460,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8460,
+          "endFrame": 8520,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8520,
+          "endFrame": 8580,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8580,
+          "endFrame": 8640,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8640,
+          "endFrame": 8700,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8700,
+          "endFrame": 8760,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8760,
+          "endFrame": 8820,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8820,
+          "endFrame": 8880,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8880,
+          "endFrame": 8940,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 8940,
+          "endFrame": 9000,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9000,
+          "endFrame": 9060,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9060,
+          "endFrame": 9120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9120,
+          "endFrame": 9180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9180,
+          "endFrame": 9240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9240,
+          "endFrame": 9300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9300,
+          "endFrame": 9360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9360,
+          "endFrame": 9420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9420,
+          "endFrame": 9480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9480,
+          "endFrame": 9540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9540,
+          "endFrame": 9600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9600,
+          "endFrame": 9660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9660,
+          "endFrame": 9720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9720,
+          "endFrame": 9780,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9780,
+          "endFrame": 9840,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9840,
+          "endFrame": 9900,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9900,
+          "endFrame": 9960,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 9960,
+          "endFrame": 10020,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10020,
+          "endFrame": 10080,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10080,
+          "endFrame": 10140,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10140,
+          "endFrame": 10200,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10200,
+          "endFrame": 10260,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10260,
+          "endFrame": 10320,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10320,
+          "endFrame": 10380,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10380,
+          "endFrame": 10440,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10440,
+          "endFrame": 10500,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10500,
+          "endFrame": 10560,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10560,
+          "endFrame": 10620,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10620,
+          "endFrame": 10680,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10680,
+          "endFrame": 10740,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10740,
+          "endFrame": 10800,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10800,
+          "endFrame": 10860,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10860,
+          "endFrame": 10920,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10920,
+          "endFrame": 10980,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 10980,
+          "endFrame": 11040,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11040,
+          "endFrame": 11100,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11100,
+          "endFrame": 11160,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11160,
+          "endFrame": 11220,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11220,
+          "endFrame": 11280,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11280,
+          "endFrame": 11340,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11340,
+          "endFrame": 11400,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11400,
+          "endFrame": 11460,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11460,
+          "endFrame": 11520,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11520,
+          "endFrame": 11580,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11580,
+          "endFrame": 11640,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11640,
+          "endFrame": 11700,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11700,
+          "endFrame": 11760,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11760,
+          "endFrame": 11820,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11820,
+          "endFrame": 11880,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11880,
+          "endFrame": 11940,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 11940,
+          "endFrame": 12000,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12000,
+          "endFrame": 12060,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12060,
+          "endFrame": 12120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12120,
+          "endFrame": 12180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12180,
+          "endFrame": 12240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12240,
+          "endFrame": 12300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12300,
+          "endFrame": 12360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12360,
+          "endFrame": 12420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12420,
+          "endFrame": 12480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12480,
+          "endFrame": 12540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12540,
+          "endFrame": 12600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12600,
+          "endFrame": 12660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12660,
+          "endFrame": 12720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12720,
+          "endFrame": 12780,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12780,
+          "endFrame": 12840,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12840,
+          "endFrame": 12900,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12900,
+          "endFrame": 12960,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 12960,
+          "endFrame": 13020,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13020,
+          "endFrame": 13080,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13080,
+          "endFrame": 13140,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13140,
+          "endFrame": 13200,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13200,
+          "endFrame": 13260,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13260,
+          "endFrame": 13320,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13320,
+          "endFrame": 13380,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13380,
+          "endFrame": 13440,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13440,
+          "endFrame": 13500,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13500,
+          "endFrame": 13560,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13560,
+          "endFrame": 13620,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13620,
+          "endFrame": 13680,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13680,
+          "endFrame": 13740,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13740,
+          "endFrame": 13800,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13800,
+          "endFrame": 13860,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13860,
+          "endFrame": 13920,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13920,
+          "endFrame": 13980,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 13980,
+          "endFrame": 14040,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14040,
+          "endFrame": 14100,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14100,
+          "endFrame": 14160,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14160,
+          "endFrame": 14220,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14220,
+          "endFrame": 14280,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14280,
+          "endFrame": 14340,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14340,
+          "endFrame": 14400,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14400,
+          "endFrame": 14460,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14460,
+          "endFrame": 14520,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14520,
+          "endFrame": 14580,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14580,
+          "endFrame": 14640,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14640,
+          "endFrame": 14700,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14700,
+          "endFrame": 14760,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14760,
+          "endFrame": 14820,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14820,
+          "endFrame": 14880,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14880,
+          "endFrame": 14940,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 14940,
+          "endFrame": 15000,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15000,
+          "endFrame": 15060,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15060,
+          "endFrame": 15120,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15120,
+          "endFrame": 15180,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15180,
+          "endFrame": 15240,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15240,
+          "endFrame": 15300,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15300,
+          "endFrame": 15360,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15360,
+          "endFrame": 15420,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15420,
+          "endFrame": 15480,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15480,
+          "endFrame": 15540,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15540,
+          "endFrame": 15600,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15600,
+          "endFrame": 15660,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15660,
+          "endFrame": 15720,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15720,
+          "endFrame": 15780,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15780,
+          "endFrame": 15840,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15840,
+          "endFrame": 15900,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15900,
+          "endFrame": 15960,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 15960,
+          "endFrame": 16020,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16020,
+          "endFrame": 16080,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16080,
+          "endFrame": 16140,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16140,
+          "endFrame": 16200,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16200,
+          "endFrame": 16260,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16260,
+          "endFrame": 16320,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16320,
+          "endFrame": 16380,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16380,
+          "endFrame": 16440,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16440,
+          "endFrame": 16500,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16500,
+          "endFrame": 16560,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16560,
+          "endFrame": 16620,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16620,
+          "endFrame": 16680,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16680,
+          "endFrame": 16740,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16740,
+          "endFrame": 16800,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16800,
+          "endFrame": 16860,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16860,
+          "endFrame": 16920,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16920,
+          "endFrame": 16980,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 16980,
+          "endFrame": 17040,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17040,
+          "endFrame": 17100,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17100,
+          "endFrame": 17160,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17160,
+          "endFrame": 17220,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17220,
+          "endFrame": 17280,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17280,
+          "endFrame": 17340,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17340,
+          "endFrame": 17400,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17400,
+          "endFrame": 17460,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17460,
+          "endFrame": 17520,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17520,
+          "endFrame": 17580,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17580,
+          "endFrame": 17640,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17640,
+          "endFrame": 17700,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17700,
+          "endFrame": 17760,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17760,
+          "endFrame": 17820,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17820,
+          "endFrame": 17880,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17880,
+          "endFrame": 17940,
+          "sampleFrames": 96000
+        },
+        {
+          "startFrame": 17940,
+          "endFrame": 18000,
+          "sampleFrames": 96000
+        }
+      ],
+      "samples": 57600000,
+      "maximumAbsoluteError": 0,
+      "sumSquared": 0,
+      "nonzeroExpected": 57596976,
+      "nonzeroActual": 57596976,
+      "maximumErrorAtSample": 0,
+      "maximumErrorChannel": 0,
+      "maximumErrorActual": 0,
+      "maximumErrorExpected": 0,
+      "mismatchedSamples": 0,
+      "firstMismatch": null,
+      "rootMeanSquareError": 0,
+      "absoluteTolerance": 2e-06,
+      "firstPreparedBlockMs": 1245.1000000238419,
+      "peakClientPayloadAndAcquisitionBytes": 1536000,
+      "productionAdmissionBytes": 100663296,
+      "note": "The complete long timeline is compared block by block; neither production client nor test retains whole-timeline PCM.",
+      "backend": {
+        "peakOwnedFfmpegProcesses": 1,
+        "remainingObservedFfmpeg": 0,
+        "originalVoiceSegmentUnits": 26,
+        "startedFfmpegProcesses": 26,
+        "measuredHashBytes": 9600088,
+        "measuredDecodeWorkFrames": 18026,
+        "peakConservativeBackendPcmBytes": 53669888,
+        "conservativeActivePcmBoundBytes": 100663296,
+        "allocationNote": "Production protocol admission is fixed96MiB; renderer reports actual retained mixed-buffer copies. Backend telemetry reports per-block PCM and active cursor count; this is not process RSS.",
+        "workNote": "workFrames is measured conservative session debit, including original-segment seek prefixes and bounded read-ahead. measuredHashBytes/workFrames report the largest session within a case, not an RSS measurement or the sum of repeated performance sessions.",
+        "mediaProcessCounts": {
+          "startedFfmpeg": 26,
+          "exitedFfmpeg": 26,
+          "startedFfprobe": 1,
+          "exitedFfprobe": 1
+        }
+      }
+    },
+    {
+      "name": "native-performance",
+      "status": "passed",
+      "mode": "actual-Electron-native-client-controls",
+      "coldFirstPreparedBlockMs": 1114.6000000238419,
+      "warmFirstPreparedBlockMs": {
+        "samples": [
+          1172.5999999046326,
+          1114.8999999761581,
+          1122.8999999761581,
+          1096.1000000238419
+        ],
+        "p50": 1114.8999999761581,
+        "p95": 1172.5999999046326
+      },
+      "bufferedPausedSeekMs": {
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "p50": 0,
+        "p95": 0
+      },
+      "unbufferedPausedSeekMs": {
+        "samples": [
+          175.5,
+          174.70000004768372,
+          174.5,
+          173.10000002384186,
+          174.79999995231628
+        ],
+        "p50": 174.70000004768372,
+        "p95": 175.5
+      },
+      "playPauseRounds": 50,
+      "note": "Preparation/paused-seek latency measures application readiness; it excludes output-device latency and is not a guaranteed first-audible-device target.",
+      "backend": {
+        "peakOwnedFfmpegProcesses": 1,
+        "remainingObservedFfmpeg": 0,
+        "originalVoiceSegmentUnits": 3,
+        "startedFfmpegProcesses": 20,
+        "measuredHashBytes": 9600088,
+        "measuredDecodeWorkFrames": 1036,
+        "peakConservativeBackendPcmBytes": 53669888,
+        "conservativeActivePcmBoundBytes": 100663296,
+        "allocationNote": "Production protocol admission is fixed96MiB; renderer reports actual retained mixed-buffer copies. Backend telemetry reports per-block PCM and active cursor count; this is not process RSS.",
+        "workNote": "workFrames is measured conservative session debit, including original-segment seek prefixes and bounded read-ahead. measuredHashBytes/workFrames report the largest session within a case, not an RSS measurement or the sum of repeated performance sessions.",
+        "mediaProcessCounts": {
+          "startedFfmpeg": 20,
+          "exitedFfmpeg": 20,
+          "startedFfprobe": 5,
+          "exitedFfprobe": 5
+        }
+      }
+    }
+  ],
+  "references": [
+    {
+      "name": "controlled-25s",
+      "samples": 1200000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 71,
+          "sourceVoices": 1,
+          "sampleFrames": 113600,
+          "sha256": "11af63ad70f67b98fc4980da0c6cea259fbae78a2fd719c9fadbe0316ffab257"
+        },
+        {
+          "beginFrame": 71,
+          "endFrame": 113,
+          "sourceVoices": 2,
+          "sampleFrames": 67200,
+          "sha256": "f7e4a2bb748b51d88eedc9f5fedc782ceb3230e0ee1d0f3f6d5af56b31db3d6d"
+        },
+        {
+          "beginFrame": 113,
+          "endFrame": 301,
+          "sourceVoices": 2,
+          "sampleFrames": 300800,
+          "sha256": "d5e55db5dda9d0647ea4e2934904f0ad23e35c6d5637c21cb12e64115139d3c5"
+        },
+        {
+          "beginFrame": 301,
+          "endFrame": 333,
+          "sourceVoices": 3,
+          "sampleFrames": 51200,
+          "sha256": "2b87853e2b1ce5d0b43ceb3eb26c15bc9e53c285e60e13163144e883e8fb4e02"
+        },
+        {
+          "beginFrame": 333,
+          "endFrame": 400,
+          "sourceVoices": 3,
+          "sampleFrames": 107200,
+          "sha256": "a8360ade7bf10b08af6f1f2e12e4e2d0294f5bcdd0bf23b1b0599b11518f141c"
+        },
+        {
+          "beginFrame": 400,
+          "endFrame": 480,
+          "sourceVoices": 2,
+          "sampleFrames": 128000,
+          "sha256": "e6a378684be84a33c893556a280e4eba8b71f2ade4ac19eba2906eb4b6423d61"
+        },
+        {
+          "beginFrame": 480,
+          "endFrame": 599,
+          "sourceVoices": 1,
+          "sampleFrames": 190400,
+          "sha256": "1e2464ccb48455d61adf629cc80bde3f14bb564dfdc3353a607d8e4f28594398"
+        },
+        {
+          "beginFrame": 599,
+          "endFrame": 604,
+          "sourceVoices": 1,
+          "sampleFrames": 8000,
+          "sha256": "fc8de0cb409dad15e04ecd98d19073eff4b21e1463316c6849c322be09606038"
+        },
+        {
+          "beginFrame": 604,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 233600,
+          "sha256": "986c7de9afa46f2b68d6aec5b743dfc1be3883afa42d98e14af3477c195bd97b"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "aac44100-25s",
+      "samples": 1200000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 71,
+          "sourceVoices": 1,
+          "sampleFrames": 113600,
+          "sha256": "6efdc9a2e983b51981125380bd3113505cbe94eef9b1890ea613a0eae3b680dc"
+        },
+        {
+          "beginFrame": 71,
+          "endFrame": 113,
+          "sourceVoices": 2,
+          "sampleFrames": 67200,
+          "sha256": "b33b442ff68f2f5b9646bd2cfbbe127e07847f6fccc84ec3922f82b178dda98e"
+        },
+        {
+          "beginFrame": 113,
+          "endFrame": 333,
+          "sourceVoices": 2,
+          "sampleFrames": 352000,
+          "sha256": "111fe21e19cb54d58d1727eb2d2663419dd1f623a6081bbf505fd48adf00a0c2"
+        },
+        {
+          "beginFrame": 333,
+          "endFrame": 400,
+          "sourceVoices": 2,
+          "sampleFrames": 107200,
+          "sha256": "ee96fdf0a09dc760a21506d0b08b6bc34fb49c8eb477c07d351715c715575814"
+        },
+        {
+          "beginFrame": 400,
+          "endFrame": 599,
+          "sourceVoices": 1,
+          "sampleFrames": 318400,
+          "sha256": "dfa038217d39958baf18af331af8c3a7c5243099b0ac762471870a0a88e5b36a"
+        },
+        {
+          "beginFrame": 599,
+          "endFrame": 604,
+          "sourceVoices": 1,
+          "sampleFrames": 8000,
+          "sha256": "09dc0aab898328396c696a355435b7c37243486341cd54836151be42444661cf"
+        },
+        {
+          "beginFrame": 604,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 233600,
+          "sha256": "e9dec0055091c21f3cf4d5972a224cd6bfc5053bad66643d0072f5afbdf2c683"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "controlled-2min",
+      "samples": 5760000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 17,
+          "sourceVoices": 1,
+          "sampleFrames": 27200,
+          "sha256": "8f24cdb9259ed7dd0a97e9c8b5c46f28d125fe102ba752abc69be6d2d304c6d4"
+        },
+        {
+          "beginFrame": 17,
+          "endFrame": 29,
+          "sourceVoices": 1,
+          "sampleFrames": 19200,
+          "sha256": "d987209bd3f5721c90ed3a5fae662bfaeb26c578a693cee1a7184633107216a1"
+        },
+        {
+          "beginFrame": 29,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 1153600,
+          "sha256": "e0d5a541203a9332d96475d4eeb50bc8987626dfaa036648605dc48e47933a40"
+        },
+        {
+          "beginFrame": 750,
+          "endFrame": 1500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 1500,
+          "endFrame": 2250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 2250,
+          "endFrame": 3000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 3000,
+          "endFrame": 3600,
+          "sourceVoices": 1,
+          "sampleFrames": 960000,
+          "sha256": "b13e13f38805d81bafe4e6f56fc44437f01cb006d880a73d9c7197370f1c6b3c"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "controlled-10min",
+      "samples": 28800000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 17,
+          "sourceVoices": 1,
+          "sampleFrames": 27200,
+          "sha256": "8f24cdb9259ed7dd0a97e9c8b5c46f28d125fe102ba752abc69be6d2d304c6d4"
+        },
+        {
+          "beginFrame": 17,
+          "endFrame": 29,
+          "sourceVoices": 1,
+          "sampleFrames": 19200,
+          "sha256": "d987209bd3f5721c90ed3a5fae662bfaeb26c578a693cee1a7184633107216a1"
+        },
+        {
+          "beginFrame": 29,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 1153600,
+          "sha256": "e0d5a541203a9332d96475d4eeb50bc8987626dfaa036648605dc48e47933a40"
+        },
+        {
+          "beginFrame": 750,
+          "endFrame": 1500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 1500,
+          "endFrame": 2250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 2250,
+          "endFrame": 3000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 3000,
+          "endFrame": 3750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 3750,
+          "endFrame": 4500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 4500,
+          "endFrame": 5250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 5250,
+          "endFrame": 6000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 6000,
+          "endFrame": 6750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 6750,
+          "endFrame": 7500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 7500,
+          "endFrame": 8250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 8250,
+          "endFrame": 9000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 9000,
+          "endFrame": 9750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 9750,
+          "endFrame": 10500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 10500,
+          "endFrame": 11250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 11250,
+          "endFrame": 12000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 12000,
+          "endFrame": 12750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 12750,
+          "endFrame": 13500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 13500,
+          "endFrame": 14250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 14250,
+          "endFrame": 15000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 15000,
+          "endFrame": 15750,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 15750,
+          "endFrame": 16500,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 16500,
+          "endFrame": 17250,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        },
+        {
+          "beginFrame": 17250,
+          "endFrame": 18000,
+          "sourceVoices": 1,
+          "sampleFrames": 1200000,
+          "sha256": "e75a3528e9ca83d5b456ddc11536ff12f4448b8d4b99b794217287e578490119"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    },
+    {
+      "name": "native-performance",
+      "samples": 1200000,
+      "compositionSegments": [
+        {
+          "beginFrame": 0,
+          "endFrame": 17,
+          "sourceVoices": 1,
+          "sampleFrames": 27200,
+          "sha256": "8f24cdb9259ed7dd0a97e9c8b5c46f28d125fe102ba752abc69be6d2d304c6d4"
+        },
+        {
+          "beginFrame": 17,
+          "endFrame": 29,
+          "sourceVoices": 1,
+          "sampleFrames": 19200,
+          "sha256": "d987209bd3f5721c90ed3a5fae662bfaeb26c578a693cee1a7184633107216a1"
+        },
+        {
+          "beginFrame": 29,
+          "endFrame": 750,
+          "sourceVoices": 1,
+          "sampleFrames": 1153600,
+          "sha256": "e0d5a541203a9332d96475d4eeb50bc8987626dfaa036648605dc48e47933a40"
+        }
+      ],
+      "referenceMethod": "Independent FFmpeg per ORIGINAL global composition segment; independent volume/afade/amix filters, unnormalized float output, then raw concatenation. Transport blocks do not create decoder segment edges."
+    }
+  ],
+  "artifacts": {
+    "main.cjs": "531b6be75fb8ede47c6353decebac91d79f42a06bf7e4195e565b64f350b1e81",
+    "preload.cjs": "9fe5cd238acba118c5124cccb408fed6669c21ce1ebfe56148b4d7c43278370d",
+    "web/entry.js": "ac965017bff5cb6e47355eb0ca74a13dddc186790a38e71ea722718e6fe14b4b",
+    "web/capture-worklet.js": "944ed57cf0417ab7b1b65bf041cd15b48d33e97fd4a0720cf9b15ff4f7058114",
+    "cases.json": "49e738bcfc7e57835d7d966d9611e8b0a3662e8312649250ab98462eb5fdefb9"
+  },
+  "sourceHashes": {
+    "baseCommit": "e87fa309ed0a604657dcdf6bddc768c1c10eb2a1",
+    "files": {
+      "apps/web/src/timeline-audio-continuous-client.ts": "9e5fb64163e8fc630acb34124c4b32d079cca28bff66a92240ebad58b06a4ee5",
+      "apps/web/src/timeline-audio-continuous-engine.ts": "01ccbe682b3144416087aaa21acfead52c66817d15b3caafeb411f1567516901",
+      "apps/web/src/native-audio-preview-adapter.ts": "cbe0257e8283389e4740def73bfebb166563493f82efa33baf839733e44545c8",
+      "packages/contracts/src/timeline-audio-continuous.ts": "dc7bfd5f1ab42d06eaaf86d56ee4cb8decf5bbe6f95b519411ae2190d5d6a0a8",
+      "packages/contracts/src/native-audio-preview.ts": "cb4f5168fbb44d9beb40dc322b483734b203f606c8d46557e55696f5c4166242",
+      "packages/business/src/timeline-audio-continuous.ts": "777514dce6aad1569159d4e65e0ea66b701bca6eb916d4fd70f626ac3e9224d8",
+      "packages/business/src/timeline-audio-continuous-decoder.ts": "e7354a6e03b3b96cd1f1ea1520532542ba6f1dbb608741393c739c94db16f887",
+      "packages/business/src/native-audio-preview.ts": "28196be37123c50bfb1c1dc5bdfb0eddd4a3107b8a8cadbc2ed5eef1427e29ae",
+      "packages/business/src/media-runtime.mjs": "2feb370f705852d7444b701f7b5a206c178a138d123301d80717cbf2b5e79b3e",
+      "apps/server/src/timeline-audio-continuous-http.ts": "579f234eb8862c87b0e5bd12f7809bc6e7b809b9479fe9df9e18593891912e10",
+      "apps/desktop/src/native-audio-preview-host.ts": "631f79ab1cfc7bf638aae40455d3a5c507f2c527f563ca8ba45f30d154c16d47",
+      "apps/desktop/src/native-audio-preview-preload.ts": "8861f91bb4c312273853a20bdfbe9232d598721311b6d48ba89f901525dadd57",
+      "tests/fixtures/timeline-audio-continuous/launch.mjs": "eeb6d3e83683641db0eb92839392028832ba9aaab151b89da7cf2f39c3d5d969",
+      "tests/fixtures/timeline-audio-continuous/main.mjs": "4026135368c14aa9dedcc55e1b81fa8ba683de5c41fa27029069fd7684965bd0",
+      "tests/fixtures/timeline-audio-continuous/preload.ts": "ba10bbf755b50eafc78c6f06a17202b55425e5f543bcc4927c31c90e5906ff6e",
+      "tests/fixtures/timeline-audio-continuous/renderer.ts": "1bcdcd2ccd02d909a3099d964439d2515696b307aa08f4c7f847222c8c3ae4c7",
+      "tests/fixtures/timeline-audio-continuous/capture-worklet.js": "944ed57cf0417ab7b1b65bf041cd15b48d33e97fd4a0720cf9b15ff4f7058114"
+    }
+  },
+  "remainingOwnedChildPids": [],
+  "completedAt": "2026-10-15T11:00:07.730Z",
+  "rawReportSha256": "6a3499833d21cbcfae5c1dbc58035cd1c9ff10a5f9a7e26d3d31d3fc0d9d5971",
+  "command": "node tests/fixtures/timeline-audio-continuous/launch.mjs <existing-synthetic-output-root> --reuse-fixtures",
+  "processOutcome": {
+    "code": 0,
+    "signal": null
+  },
+  "qualificationNotes": [
+    "The 25-second case uses an actual Electron AudioContext clock and a silent pre-destination worklet; two- and ten-minute cases are sequential offline block comparisons. No subjective listening or production UI claim.",
+    "All 17 recorded source hashes and all bundled artifact hashes were rechecked against the final files before this archive was created.",
+    "peakConservativeBackendPcmBytes is the backend-provided conservative APPLICATION PCM accounting formula, including six mixed-block copies; renderer held copies are included in that projection and must not be added to it. It is not observed RSS.",
+    "Cold is the first explicit fixture preparation without flushing filesystem caches. Warm readiness has four samples. Seek metrics measure paused application readiness, not physical output latency.",
+    "Production decode units are compared against the independent original voice/segment count; complete sequential cases must not reopen those units."
+  ]
+}

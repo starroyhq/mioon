@@ -5,6 +5,8 @@ import { AUDIO_PREVIEW_LIMITS, type AudioPreviewPlan, type AudioPreviewPlanInput
 import { createTimelineAudioPreviewClient, TimelineAudioPreviewError, type AudioPreviewPrepareOptions, type AudioPreviewReadOptions, type PreparedAudioPreview } from './timeline-audio-preview-client.ts';
 import { createTimelineAudioPreviewTransport, type AudioPreviewTransportOptions, type AudioPreviewTransportState, type TimelineAudioPreviewTransport } from './timeline-audio-preview-engine.ts';
 import type {NativeAudioPreviewAdmission,NativeAudioPreviewAttempt} from './native-audio-preview-adapter.ts';
+import type {ContinuousAudioPlan, ContinuousAudioPlanInput} from '@mioon/contracts/timeline-audio-continuous';
+import {createContinuousAudioPreviewController} from './timeline-audio-continuous-controller.ts';
 
 export interface TimelineAudioPreviewContext {
   /** Includes the workspace identity and project-open epoch, not just a project id. */
@@ -21,12 +23,17 @@ export interface TimelineAudioPreviewContext {
   restored: boolean;
   hasUnsavedDrafts: boolean;
 }
-export type TimelineAudioPreviewPhase = 'idle' | 'preparing' | 'ready' | 'starting' | 'playing' | 'paused' | 'ended' | 'cancelled' | 'error';
+export type TimelineAudioPreviewPhase = 'idle' | 'preparing' | 'ready' | 'starting' | 'playing' | 'buffering' | 'paused' | 'ended' | 'cancelled' | 'error';
 export interface TimelineAudioPreviewState extends TimelineAudioPreviewContext {
   phase: TimelineAudioPreviewPhase;
   retirement: 'none' | 'closing' | 'failed';
   nativeAdmission: 'none' | 'waiting' | 'blocked';
   plan: AudioPreviewPlan | null;
+  continuousPlan?: ContinuousAudioPlan | null;
+  continuous?: boolean;
+  underruns?: number;
+  heldPcmBytes?: number;
+  peakPcmBytes?: number;
   positionFrame: number | null;
   requestedStartFrame: number | null;
   preparedSources: number;
@@ -36,6 +43,7 @@ export interface TimelineAudioPreviewState extends TimelineAudioPreviewContext {
 }
 export interface TimelineAudioPreviewControllerOptions {
   readPlan: (input: AudioPreviewPlanInput, options: AudioPreviewReadOptions) => Promise<unknown>;
+  readContinuousPlan?: (input: ContinuousAudioPlanInput, options: AudioPreviewReadOptions) => Promise<unknown>;
   getContext?: () => TimelineAudioPreviewContext;
   getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   onChange?: (state: TimelineAudioPreviewState) => void;
@@ -258,7 +266,9 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
   };
   return controller;
 }
-export type TimelineAudioPreviewController = ReturnType<typeof createTimelineAudioPreviewController>;
+export type TimelineAudioPreviewController = ReturnType<typeof createTimelineAudioPreviewController> & {
+  start?: (startFrame: number, expected?: TimelineAudioPreviewContext) => Promise<boolean>;
+};
 export interface TimelineAudioPreviewView { state: TimelineAudioPreviewState; controller: TimelineAudioPreviewController }
 
 
@@ -292,11 +302,11 @@ export function timelineAudioPreviewSourceIdentity(timeline: unknown, assets: un
 }
 /** Only fully admitted sound owns the displayed ephemeral playhead. */
 export function timelineAudioPreviewPosition(view: Pick<TimelineAudioPreviewView, 'state'>, savedFrame: number): number {
-  return view.state.plan && view.state.positionFrame !== null ? view.state.positionFrame : savedFrame;
+  return (view.state.plan || view.state.continuousPlan || view.state.phase === 'preparing') && view.state.positionFrame !== null ? view.state.positionFrame : savedFrame;
 }
 /** Existing explicit seek behavior remains available when no audition owns it. */
 export function seekTimelineAudioPreview(view: TimelineAudioPreviewView, frame: number, fallback: (frame: number) => void): void {
-  if (view.state.plan || view.state.phase === 'preparing') view.controller.seek(frame, view.state);
+  if (view.state.plan || view.state.continuousPlan || view.state.phase === 'preparing') view.controller.seek(frame, view.state);
   else fallback(frame);
 }
 
@@ -306,13 +316,14 @@ function withPageVisibility(context: TimelineAudioPreviewContext,native=false): 
   return native || typeof document === 'undefined' || document.visibilityState !== 'hidden' ? context : { ...context, visible: false };
 }
 export function timelineAudioPreviewViewState(state: TimelineAudioPreviewState, context: TimelineAudioPreviewContext): TimelineAudioPreviewState {
-  return sameBinding(state, context) ? { ...state, hasUnsavedDrafts: context.hasUnsavedDrafts } : { ...initial(), ...context, retirement: state.retirement };
+  return sameBinding(state, context) ? { ...state, hasUnsavedDrafts: context.hasUnsavedDrafts } : { ...initial(), ...context, continuous: state.continuous, retirement: state.retirement };
 }
 export function useTimelineAudioPreview(options: TimelineAudioPreviewControllerOptions & { context: TimelineAudioPreviewContext }): TimelineAudioPreviewView {
   const callbacks = useRef(options); callbacks.current = options;
   const [state, setState] = useState<TimelineAudioPreviewState | null>(null);
   const controller = useRef<TimelineAudioPreviewController | null>(null);
-  if (!controller.current) controller.current = createTimelineAudioPreviewController({
+  if (!controller.current) {
+    const shared: TimelineAudioPreviewControllerOptions = {
     readPlan: (input, invocation) => callbacks.current.readPlan(input, invocation),
     getContext: () => withPageVisibility(callbacks.current.getContext?.() ?? callbacks.current.context,Boolean(callbacks.current.nativeAdmission)),
     getInvocation: () => callbacks.current.getInvocation?.() ?? {},
@@ -322,7 +333,11 @@ export function useTimelineAudioPreview(options: TimelineAudioPreviewControllerO
     ...(options.prepare ? { prepare: (input, invocation) => callbacks.current.prepare!(input, invocation) } : {}),
     ...(options.createTransport ? { createTransport: invocation => callbacks.current.createTransport!(invocation) } : {}),
     ...(options.nativeAdmission?{nativeAdmission:options.nativeAdmission}:{}),
-  });
+    };
+    controller.current = options.readContinuousPlan
+      ? createContinuousAudioPreviewController({...shared, readContinuousPlan: (input, invocation) => callbacks.current.readContinuousPlan!(input, invocation)})
+      : createTimelineAudioPreviewController(shared);
+  }
   const owned = controller.current;
   useLayoutEffect(() => {
     owned.attach(withPageVisibility(callbacks.current.context,Boolean(callbacks.current.nativeAdmission)));

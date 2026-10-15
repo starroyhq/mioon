@@ -1,5 +1,13 @@
 # Saved-timeline sound audition
 
+## Continuous preview checkpoint (15 October 2026)
+
+The record below describes the original V1 twenty-second audition and remains
+historical evidence. The editor now uses a separate V2 continuous pull session;
+V1's public plan/resource and the frozen export behavior remain supported.
+See [continuous design and verification](TIMELINE-AUDIO-CONTINUOUS.md) for the
+new protocol, resource accounting, integrity policy, and qualification limits.
+
 Implementation and qualification record for the first sound-audition slice, based on commit `1398eaa7e99b751357bf2888c9c213db2efdccbb`. Focused checks, actual browser PCM comparisons, a fresh production Linux package, and native controls/export/restart have completed as described below. Independent full-suite qualification completed successfully on 14 October 2026. No physical-device or subjective listening certification is claimed.
 
 ## What the controls audition
