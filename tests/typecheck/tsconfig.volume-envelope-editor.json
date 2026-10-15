@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.browser.json",
+  "include": ["../../apps/web/src/clip-volume-envelope-state.ts", "../../apps/web/src/ClipVolumeEnvelopeControls.tsx", "volume-envelope-editor.consumer.tsx"],
+  "exclude": []
+}

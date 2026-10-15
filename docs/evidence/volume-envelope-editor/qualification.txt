@@ -1,0 +1,9 @@
+Baseline: 99c87a1f6a0a78ecf60d4b2137abfbe963c3ca68
+Runtime: /workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node (v24.21.0)
+Focused command: [absolute runtime above] --test tests/clip-volume-envelope-foundation.test.mjs
+Result: 10 passed, 0 failed.
+Scoped types command: [absolute runtime above] node_modules/typescript/bin/tsc -p tests/typecheck/tsconfig.volume-envelope-editor.json --noEmit --pretty false
+Result: exit0, no diagnostics.
+Independent review: approved after property-order equality repair; both checks independently repeated successfully. Reviewed control SHA256109ecd995809a55cf2c0c0fbd6202153a32f617e034e4672c5d5cd1fa77ff81c, helper SHA25671c693f35c9e3144009122625c5a8871808b0f486c2a3a7404e0b37db5e84d08, test SHA25658cdf9014d5ef27a7109f354bed2d50212f5b29231b8bd907bc24b4e5861e421.
+No builds, installs, media work, native/GUI checks, network/provider work, GitHub/push or Mac operations performed. Existing local dependency symlinks only.
+Limitations: dormant and not mounted; no production persistence schema or sidecar version change; no completed capability, owner, navigation or close integration; deterministic event fixtures are not native IME qualification.
