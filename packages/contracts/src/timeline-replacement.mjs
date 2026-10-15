@@ -1,3 +1,4 @@
+import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isTimelineSubtitles} from './timeline-subtitles.mjs';
 import {timelineOutputPreset} from './timeline-format.mjs';
@@ -38,11 +39,12 @@ export function isTimelineRecord(value, {projectId} = {}) {
   }
   let duration = 0;
   for (const clip of value.clips) {
-    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour']) ||
+    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole']) ||
         !uuid(clip.id) || ids.has(clip.id) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
         !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
         clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
         !Number.isFinite(clip.gain) || clip.gain < 0 || clip.gain > 2 ||
+        Object.hasOwn(clip, 'audioRole') && !isClipAudioRole(clip.audioRole) ||
         provenance.some(key => Object.hasOwn(clip, key) && !uuid(clip[key])) ||
         Object.hasOwn(clip, 'colour') && (!isTimelineClipColour(clip.colour) || clip.colour !== null && trackKinds.get(clip.trackId) !== 'video')) return false;
     const rect = clip.rect;

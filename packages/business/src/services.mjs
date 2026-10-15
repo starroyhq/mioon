@@ -1,3 +1,5 @@
+import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
+import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts';
 import {createMutationReplay} from './mutation-replay.mjs';
 import {nullableTimelineClipColourSchema,timelineImageClipColourSchema} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineImageSourceServices} from './timeline-image-source.ts';
@@ -258,7 +260,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  ...luts.handlers,
  ...lookPacks.handlers,
  'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
- 'workspace.restore.inspect':()=>({restored:false}),
+ 'workspace.restore.inspect':input=>({restored:false,...(input.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{})}),
  ...frames.handlers,
  ...images.handlers,
  ...preflight.handlers,
@@ -379,10 +381,11 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
    if(restored){
     if(op==='asset.annotation.set'||op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.clip.loudness'||op==='timeline.audioPreview.plan'||op==='timeline.audioPreview.continuousPlan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
+    assertTimelineAudioRoleWorkspace(db,parsed);
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37,39].includes(restored.schemaVersion))throw workspaceRestoreError();
      const colour=op==='timeline.clip.add'?parsed.colour:parsed.patch.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
      if(restored.schemaVersion===33&&!nullableTimelineClipColourSchema.safeParse(colour).success&&!timelineImageClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();

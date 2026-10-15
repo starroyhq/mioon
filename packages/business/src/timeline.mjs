@@ -1,3 +1,4 @@
+import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {bindRestoredExport} from './workspace-restore-exports.mjs';
@@ -30,7 +31,8 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
  const {db,put,tx}=store;
  function find(projectId){
   const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
-  return row?JSON.parse(row.data):null;
+  if(!row)return null;
+  const value=JSON.parse(row.data);assertTimelineAudioRoleWorkspace(db,value);return value;
  }
  function ensure(projectId){
   required('projects',projectId);
@@ -58,6 +60,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   return result;
  }
  function transaction(operation,input,apply,boundary=createTimelineRecoveryBoundary(db,input)){
+  assertTimelineAudioRoleWorkspace(db,input);
   refuseRestoredOperation(store,operation,input);
   const state={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
   const write=()=>{state.writesStarted=true;};
@@ -232,7 +235,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   'timeline.clip.add':input=>mutate('timeline.clip.add',input,(timeline,boundary)=>{
    const source=boundary.inputAsset(input.assetId);
    timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(timeline),gain:input.gain??1,
-    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
+    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour','audioRole'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
   'timeline.clip.update':input=>updateClip(input),
   'timeline.clip.replaceSource':input=>{

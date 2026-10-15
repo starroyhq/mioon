@@ -1,3 +1,5 @@
+import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
+import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts';
 import {createMutationReplay} from './mutation-replay.mjs';
 import {createAssetAnnotationServices} from './asset-annotations.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
@@ -74,7 +76,7 @@ export function createRestoredReadServices(store,{signal}={}) {
   ...createWaveformHistoryReaders(store).handlers,
   ...createImageHistoryReaders(store).handlers,
   ...createFrameHistoryReaders(store).handlers,
-  'workspace.restore.inspect':()=>({restored:true,schemaVersion:restored.schemaVersion,workspaceOrigin:restored.workspaceOrigin,restorationId:restored.restorationId,
+  'workspace.restore.inspect':input=>({restored:true,...(input.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{}),schemaVersion:restored.schemaVersion,workspaceOrigin:restored.workspaceOrigin,restorationId:restored.restorationId,
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts).map(([kind,count])=>({kind,count})),
@@ -140,6 +142,7 @@ export function createRestoredReadServices(store,{signal}={}) {
   checkpoint(signal);getWorkspaceRestoreContext(store);
   if(operation==='lut.look.inspect')assertLookPackInspectInput(input);
   const parsed=parse(operation,input);
+  assertTimelineAudioRoleWorkspace(db,parsed);
   if(Object.hasOwn(readers,operation))return readers[operation](parsed,context);
   const saved=replay(operation,parsed);if(saved)return saved.response;
   refuseRestoredOperation(store,operation,parsed);

@@ -274,9 +274,13 @@ test('forty-two independently bounded source lineages remain editable and render
 test('legacy optional frozen fields remain omitted and replay bytes are never normalized',async t=>{
  const f=await fixture(t),timeline=await populated(f),input=params(f,timeline,{purpose:'preview'}),render=await f.call('timeline.render',input);
  for(const asset of render.snapshot.assets){delete asset.hasAudio;delete asset.relativePath;}
+ const protections=f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name IN ('immutable_timeline_responses','immutable_timeline_render_snapshot') ORDER BY name").all();
  f.store.db.exec('DROP TRIGGER immutable_timeline_responses; DROP TRIGGER immutable_timeline_render_snapshot;');
  f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(render),input.requestId);
- f.store.put('exports',render);const before=f.capture();f.restart();
+ f.store.put('exports',render);
+ // Synthetic legacy bytes are valid, but current38 requires complete guards.
+ for(const protection of protections)f.store.db.exec(protection.sql);
+ const before=f.capture();f.restart();
  assert.deepEqual(await f.call('timeline.render',input),render);assert.deepEqual(f.capture(),before);
 });
 

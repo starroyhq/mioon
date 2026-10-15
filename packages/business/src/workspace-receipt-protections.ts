@@ -188,3 +188,11 @@ export function repairWorkspaceReceiptProtectionsInTransaction(db: DatabaseSync)
   }
   validateWorkspaceReceiptProtections(db);
 }
+
+/** Marker-only migrations cannot repair safety objects as a side effect. Keep
+ * the historical repair preflight unchanged, but require every trusted guard. */
+export function assertCompleteWorkspaceReceiptProtections(db: DatabaseSync): void {
+  validateWorkspaceReceiptProtections(db);
+  const names = new Set(catalog(db, 'main').map(object => object.name));
+  if (PROTECTIONS.some(protection => !names.has(protection.name))) unsupported('missing receipt protection');
+}

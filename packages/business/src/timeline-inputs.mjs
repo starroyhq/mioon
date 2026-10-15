@@ -1,3 +1,4 @@
+import {getTimelineAudioRoleIssue,timelineAudioRoleSnapshotFields} from '../../contracts/src/timeline-audio-role.ts';
 import {timelineExportRangeFields} from '@mioon/contracts/timeline-export-range';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {projectTimelineColourPlan} from '../../contracts/src/timeline-colour.ts';
@@ -24,6 +25,7 @@ export function validateTimeline(timeline,assets,{structureOnly=false}={}){
   if(!integer(c.startFrame,0,18000)||!integer(c.durationFrames,1,18000)||!integer(c.sourceInFrame,0,Number.MAX_SAFE_INTEGER-18000)||c.startFrame+c.durationFrames>18000)invalid('Invalid frame range');
   if(!r||!integer(r.x,0,WIDTH)||!integer(r.y,0,HEIGHT)||!integer(r.width,2,WIDTH)||!integer(r.height,2,HEIGHT)||[r.x,r.y,r.width,r.height].some(v=>v%2)||r.x+r.width>WIDTH||r.y+r.height>HEIGHT)invalid('Invalid clip rectangle');
   if(!Number.isFinite(c.gain)||c.gain<0||c.gain>2)invalid('Invalid clip gain');
+  const roleIssue=getTimelineAudioRoleIssue(c,a);if(roleIssue)invalid(roleIssue.message);
   const fadeIssue=getTimelineFadeIssue(c,structureOnly?{...a,hasAudio:true}:a);if(fadeIssue)invalid(fadeIssue.message);
   const isImage=a.mimeType?.startsWith('image/'),isVideo=a.mimeType?.startsWith('video/'),isAudio=['audio/wav','audio/mpeg','audio/mp4'].includes(a.mimeType);
   if(t.kind==='video'?(!isImage&&!isVideo):!isAudio)invalid('Asset is not supported on this track');
@@ -42,7 +44,7 @@ export function validateTimeline(timeline,assets,{structureOnly=false}={}){
 // Keep this projection and source order identical for both new exports and
 // preflight digests. Omitted legacy fields stay omitted in frozen responses.
 export function freezeTimelineSnapshot(timeline,assets,exportSettings,deliveryInput={}){
- const snapshot=JSON.parse(JSON.stringify({timeline,...timelineDeliveryNameFields(deliveryInput),...timelineExportRangeFields(deliveryInput),...(exportSettings===undefined?{}:{delivery:resolveTimelineExportDelivery(timeline,exportSettings)}),...(timeline.subtitles?.cues.length?{subtitleProfile:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256}}:{}),assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
+ const snapshot=JSON.parse(JSON.stringify({timeline,...timelineAudioRoleSnapshotFields(timeline),...timelineDeliveryNameFields(deliveryInput),...timelineExportRangeFields(deliveryInput),...(exportSettings===undefined?{}:{delivery:resolveTimelineExportDelivery(timeline,exportSettings)}),...(timeline.subtitles?.cues.length?{subtitleProfile:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256}}:{}),assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
   const source=assets.get(id);
   if(!source)throw Object.assign(Error('Timeline snapshot does not match managed asset'),{code:'TIMELINE_SOURCE_UNAVAILABLE'});
   return {id:source.id,sha256:source.sha256,mimeType:source.mimeType,duration:source.duration,width:source.width,height:source.height,
@@ -64,6 +66,8 @@ export function validateSavedTimeline(timeline,{track,asset}){
    const lane=track(timeline,item.trackId),source=asset(timeline.projectId,item.assetId);
    if(!(lane.kind==='audio'?audioTypes:visualTypes).has(source.mimeType))
     throw new AppError('INVALID_CLIP_TYPE','视频轨道只接收图片/视频，音频轨道只接收音频',400,{clipId:item.id,trackId:lane.id,assetId:source.id});
+   const roleIssue=getTimelineAudioRoleIssue(item,source);
+   if(roleIssue)throw new AppError(roleIssue.code,roleIssue.message,400,{clipId:item.id});
    const fadeIssue=getTimelineFadeIssue(item,source);
    if(fadeIssue)throw new AppError(fadeIssue.code,fadeIssue.message,400,fadeIssue.details);
    const end=item.startFrame+item.durationFrames;

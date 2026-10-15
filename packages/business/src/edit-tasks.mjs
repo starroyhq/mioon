@@ -1,3 +1,4 @@
+import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
 import {refuseRestoredTask,safeWorkspaceRestoreError,assertWorkspaceRestoreOrigin,assertRestoreRequestVacant} from './workspace-restore-policy.mjs';
 import {withRestoreTaskInvocation} from './workspace-restore-invocation.mjs';
@@ -83,6 +84,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   const exact = plain(input), text = JSON.stringify(exact);
   if (Buffer.byteLength(text) > bounds.inputBytes) fail('EDIT_TASK_LIMIT');
   if (!schemas[operation].safeParse(exact).success || exact.projectId !== projectId) invalid();
+  assertTimelineAudioRoleWorkspace(db,exact);
   return {input:exact,text,requestId:exact.requestId,digest:hash({operation,input:exact}),lane:editTaskLane(operation)};
  }
  function decode(row, projectId) {
