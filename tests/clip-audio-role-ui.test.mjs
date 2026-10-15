@@ -41,7 +41,8 @@ test('restored capability binds exact verified origin and profile; old generic u
  assert.equal(isWorkspaceRestoreInspection(inspection),true);
  assert.equal(matches(inspection,{...inspection,audioRoleCapability:capability}),true);
  assert.equal(matches(inspection,{...inspection,workspaceOrigin:id(13),audioRoleCapability:capability}),false);
- assert.equal(matches(inspection,{...inspection,source:{...inspection.source,dbHash:'e'.repeat(64)},audioRoleCapability:capability}),false);
+ for (const [field,value] of [['restorationId',id(20)],['profile','restored-local-v7'],['schemaVersion',37]]) assert.equal(matches(inspection,{...inspection,[field]:value,audioRoleCapability:capability}),false);
+ for (const [field,value] of [['backupId',id(21)],['schemaVersion',36],['manifestHash','e'.repeat(64)],['dbHash','e'.repeat(64)]]) assert.equal(matches(inspection,{...inspection,source:{...inspection.source,[field]:value},audioRoleCapability:capability}),false);
  const legacy={...inspection,schemaVersion:37,profile:'restored-local-v7',source:{...inspection.source,schemaVersion:36}};
  assert.equal(isWorkspaceRestoreInspection(legacy),true);
  assert.equal(matches(legacy,{...legacy,audioRoleCapability:capability}),false);
@@ -98,9 +99,35 @@ test('optional capability observation never delays ordinary load and fences late
  let complete, current=true;const observed=[],order=[];
  const pending=new Promise(resolve=>{complete=resolve;});
  const returned=observeClipAudioRoleCapability({restored:false},()=>{order.push('probe');return pending;},isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>current,value=>observed.push(value));
- assert.equal(returned,undefined);order.push('ordinary-project-load');assert.deepEqual(order,['probe','ordinary-project-load']);assert.deepEqual(observed,[]);
+ assert.equal(typeof returned,'function');order.push('ordinary-project-load');assert.deepEqual(order,['ordinary-project-load']);await Promise.resolve();assert.deepEqual(order,['ordinary-project-load','probe']);assert.deepEqual(observed,[]);
  current=false;complete({restored:false,audioRoleCapability:capability});await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,[]);
  observeClipAudioRoleCapability({restored:false},async()=>({restored:false,audioRoleCapability:capability}),isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>observed.push(value));
- await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,[true]);
- const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');assert.match(app,/observeClipAudioRoleCapability\(verifiedWorkspace/);assert.doesNotMatch(app,/await observeClipAudioRoleCapability/);assert.match(app,/bootGuard\.current\.isCurrent\(ticket\) && workspaceRef\.current === verifiedWorkspace/);
+ await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(observed,['editable']);
+ const app=readFileSync(new URL('../apps/web/src/App.jsx',import.meta.url),'utf8');assert.match(app,/observeClipAudioRoleCapability\(verifiedWorkspace/);assert.doesNotMatch(app,/await observeClipAudioRoleCapability/);assert.match(app,/audioRoleProbeEpoch\.current === roleEpoch && importSession\.current\.active && workspaceRef\.current === verifiedWorkspace/);
+});
+
+
+test('unrelated save ACK cannot drop, alter or normalize a captured role, even when omitted from patch', async t => {
+ for (const [saved,returned] of [[{...raw,audioRole:'music'},{...raw,name:'Rename'}],[{...raw,audioRole:'music'},{...raw,name:'Rename',audioRole:'sfx'}],[raw,{...raw,name:'Rename',audioRole:null}]]) {
+  const h=harness(t,{audioRoleEditable:false,saved});await h.controller.load();h.controller.edit('name','Rename');
+  await h.controller.save(async(_,patch)=>{assert.equal(Object.hasOwn(patch,'audioRole'),false);return timeline(returned);});
+  assert.equal(h.controller.getState().dirty,true);assert.equal(h.envelope().draft.raw.name,'Rename');assert.equal(h.calls.some(call=>call[0]==='delete'),false);
+ }
+});
+test('recovered role change without capability remains blocked and retained',async t=>{
+ const h=harness(t,{audioRoleEditable:false});const row=h.envelope();h.setEnvelope({...row,revision:1,draft:{baseRevision:7,source,raw:{...raw,audioRole:'human'},updatedAt:stamp}});
+ await h.controller.load();assert.equal(h.controller.restore(),true);h.controller.edit('name','Rename');let called=false;await h.controller.save(async()=>{called=true;});
+ assert.equal(called,false);assert.equal(h.controller.getState().raw.audioRole,'human');assert.equal(h.controller.getState().dirty,true);assert.equal(h.envelope().draft.raw.audioRole,'human');
+});
+test('hung probe aborts and reports unavailable once; ignored abort cannot publish a late success',async()=>{
+ let resolve,signal;const results=[];const pending=new Promise(yes=>{resolve=yes;});
+ const cancel=observeClipAudioRoleCapability({restored:false},value=>{signal=value;return pending;},isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>results.push(value),5);
+ await new Promise(yes=>setTimeout(yes,20));assert.equal(signal.aborted,true);assert.deepEqual(results,['unavailable']);resolve({restored:false,audioRoleCapability:capability});await new Promise(yes=>setImmediate(yes));assert.deepEqual(results,['unavailable']);cancel();
+});
+test('reconnect cancels old read; unreadable and confirmed unsupported have distinct results',async()=>{
+ const results=[];let oldSignal,complete;const old=new Promise(yes=>{complete=yes;});
+ const cancel=observeClipAudioRoleCapability({restored:false},signal=>{oldSignal=signal;return old;},isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>results.push(value));await Promise.resolve();cancel();assert.equal(oldSignal.aborted,true);
+ observeClipAudioRoleCapability({restored:false},async()=>({restored:false,audioRoleCapability:{...capability,editable:false}}),isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>results.push(value));await new Promise(yes=>setImmediate(yes));assert.deepEqual(results,['unsupported']);
+ complete({restored:false,audioRoleCapability:capability});await new Promise(yes=>setImmediate(yes));assert.deepEqual(results,['unsupported']);
+ observeClipAudioRoleCapability({restored:false},async()=>({restored:false}),isWorkspaceRestoreInspection,canEditTimelineAudioRole,()=>true,value=>results.push(value));await new Promise(yes=>setImmediate(yes));assert.deepEqual(results,['unsupported','unavailable']);
 });

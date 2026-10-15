@@ -74,10 +74,10 @@ export function clipDraftSource(clip: Record<string, unknown>, asset: Record<str
   return { assetId: String(clip.assetId), assetSha256: typeof asset?.sha256 === 'string' ? asset.sha256 : '',
     ...Object.fromEntries(['versionId', 'shotId', 'jobId'].filter(key => own(clip, key)).map(key => [key, clip[key]])) } as ClipDraftSource;
 }
-function acknowledged(value: unknown, context: ClipDraftContext, base: number, source: ClipDraftSource, patch: Record<string, unknown>): Record<string, unknown> | null {
+function acknowledged(value: unknown, context: ClipDraftContext, base: number, source: ClipDraftSource, patch: Record<string, unknown>, expectedRaw: ClipDraftRaw): Record<string, unknown> | null {
   if (!object(value) || value.id !== context.timelineId || value.projectId !== context.projectId || value.revision !== base + 1 || !Array.isArray(value.clips)) return null;
   const saved: unknown = value.clips.find((item: unknown) => object(item) && item.id === context.clipId);
-  if (!object(saved) || saved.assetId !== source.assetId || !Object.entries(patch).every(([key, expected]) => sameClipDraftValue(saved[key], expected))) return null;
+  if (!object(saved) || clipAudioRoleChanged(saved, expectedRaw) || saved.assetId !== source.assetId || !Object.entries(patch).every(([key, expected]) => sameClipDraftValue(saved[key], expected))) return null;
   if (['versionId', 'shotId', 'jobId'].some(key => own(source, key) !== own(saved, key) || (source as unknown as Record<string, unknown>)[key] !== saved[key])) return null;
   return saved;
 }
@@ -274,7 +274,7 @@ export function createClipDraftController({ context: initial, client, validateTi
         if (clipAudioRoleChanged(state.raw, context.saved)) return null;
         delete patch.audioRole;
       }
-      const owner = generation, savedSerial = serial, original = copy(context), base = state.baseRevision, source = copy(state.source);
+      const owner = generation, savedSerial = serial, original = copy(context), base = state.baseRevision, source = copy(state.source), expectedRaw = copy(state.raw);
       emit({ submitting: true, businessPending: false });
       await flush();
       if (!belongs(owner)) return null;
@@ -287,7 +287,7 @@ export function createClipDraftController({ context: initial, client, validateTi
         const result = await onSave(original.clipId, patch, base, { canExecute });
         if (!belongs(owner)) return null;
         if (!result) { emit({ submitting: false, businessPending: false }); return null; }
-        const saved = validateTimeline(result, original.projectId) ? acknowledged(result, original, base, source, patch) : null;
+        const saved = validateTimeline(result, original.projectId) ? acknowledged(result, original, base, source, patch, expectedRaw) : null;
         if (!saved) throw recoveryDisplayError(Error('片段保存确认与原始输入不一致；本地草稿仍保留。'), displayMessage('recovery.clip.error.timelineAck'));
         if (context.timelineRevision > base + 1 || !sameClipDraftValue(context.source, source)) { emit({ submitting: false, businessPending: false, conflict: true, error: '时间线已有更新；本地草稿仍保留，请核对最新片段。', errorDisplay: displayMessage('recovery.clip.timelineChanged') }); return result; }
         if (savedSerial !== serial) { emit({ submitting: false, businessPending: false, conflict: true, error: '原输入已保存到时间线。之后的新输入仍保留，请核对更新后的片段。', errorDisplay: displayMessage('recovery.clip.newerInput') }); schedule(); return result; }

@@ -20,7 +20,24 @@ export async function readClipAudioRoleCapability(workspace: unknown, read: () =
   try { return clipAudioRoleCapabilityMatches(workspace, await read(), validateInspection, canEdit); } catch { return false; }
 }
 
-/** Start the optional probe without delaying project loading or ordinary editing. */
-export function observeClipAudioRoleCapability(workspace: unknown, read: () => Promise<unknown>, validateInspection: (value: unknown) => boolean, canEdit: (value: unknown) => boolean, isCurrent: () => boolean, publish: (editable: boolean) => void): void {
-  void readClipAudioRoleCapability(workspace, read, validateInspection, canEdit).then(editable => { if (isCurrent()) publish(editable); });
+export type ClipAudioRoleCapabilityStatus = 'loading' | 'editable' | 'unsupported' | 'unavailable';
+/** Start a bounded optional read without delaying ordinary editing. Cancellation
+ * abandons this read only; it is never a business request or mutation retry. */
+export function observeClipAudioRoleCapability(workspace: unknown, read: (signal: AbortSignal) => Promise<unknown>, validateInspection: (value: unknown) => boolean, canEdit: (value: unknown) => boolean, isCurrent: () => boolean, publish: (status: ClipAudioRoleCapabilityStatus) => void, timeoutMs = 5000): () => void {
+  const abort = new AbortController();
+  let active = true;
+  const finish = (status: ClipAudioRoleCapabilityStatus) => {
+    if (!active) return;
+    active = false; clearTimeout(timer);
+    if (isCurrent()) publish(status);
+  };
+  const timer = setTimeout(() => { finish('unavailable'); abort.abort(); }, timeoutMs);
+  void Promise.resolve().then(() => active ? read(abort.signal) : undefined).then(inspection => {
+    if (clipAudioRoleCapabilityMatches(workspace, inspection, validateInspection, canEdit)) { finish('editable'); return; }
+    // Confirmed unsupported differs from a failed/missing/malformed response.
+    const valid = object(inspection) && object(inspection.audioRoleCapability) && inspection.audioRoleCapability.editable === false &&
+      clipAudioRoleCapabilityMatches(workspace, inspection, validateInspection, value => validateInspection(value));
+    finish(valid ? 'unsupported' : 'unavailable');
+  }, () => finish('unavailable'));
+  return () => { active = false; clearTimeout(timer); abort.abort(); };
 }

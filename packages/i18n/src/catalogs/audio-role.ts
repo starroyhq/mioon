@@ -11,6 +11,8 @@ export const audioRoleMessages = {
     en: 'An editorial label only. It does not change sound or prove audible audio. Use Save clip to apply.',
     ja: '編集用の分類です。音は変わらず、聞こえる音声の存在を示すものでもありません。「クリップを保存」で適用します。'
   },
+  'audio.role.loading': { 'zh-Hans': '正在检查此工作区的音频分类支持；其他属性仍可编辑。', 'zh-Hant': '正在檢查此工作區的音訊分類支援；其他屬性仍可編輯。', en: 'Checking audio role support. Other properties remain editable.', ja: '音声分類への対応を確認中です。他の属性は編集できます。' },
+  'audio.role.unsupported': { 'zh-Hans': '此工作区版本不支持编辑音频分类；其他属性仍可编辑。', 'zh-Hant': '此工作區版本不支援編輯音訊分類；其他屬性仍可編輯。', en: 'This workspace version does not support audio role editing. Other properties remain editable.', ja: 'このワークスペースのバージョンは音声分類の編集に未対応です。他の属性は編集できます。' },
   'audio.role.unavailable': {
     'zh-Hans': '此工作区尚未确认支持编辑音频分类。其他片段属性仍可编辑。',
     'zh-Hant': '此工作區尚未確認支援編輯音訊分類。其他片段屬性仍可編輯。',

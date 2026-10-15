@@ -334,3 +334,11 @@ test('image inspector excludes audio role; restored supported editor can save wi
   restored.edit('clip-audio-role', 'human'); await restored.submit(); restored.render();
   assert.equal(restored.saves.length, 1); assert.equal(restored.saves[0].patch.audioRole, 'human');
 });
+
+
+test('captured enabled role selector cannot write after capability loss or owner unmount',async()=>{
+ const h=await inspectorHarness({draftContext:{audioRoleEditable:true}});
+ const captured=h.find('clip-audio-role').props.onChange;
+ h.render({draftContext:{audioRoleEditable:false}});captured({target:{value:'human'}});h.render();assert.equal(h.find('save-clip').props.disabled,true);
+ h.render({draftContext:{audioRoleEditable:true}});const later=h.find('clip-audio-role').props.onChange;h.unmount();later({target:{value:'music'}});assert.equal(h.saves.length,0);
+});
