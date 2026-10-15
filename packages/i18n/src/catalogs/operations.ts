@@ -344,6 +344,12 @@ export const operationMessages = {
     "en": "Read-only planning of an audio preview range of at most 20 seconds on the current saved timeline. Binds the project, version, and asset hashes and returns a bounded PCM preparation manifest. This call does not decode, play, initialize the timeline, or write. PCM is decoded separately through an explicit bounded operation on a fixed authenticated local resource; this is not a full-film or loudness/true-peak check.",
     "ja": "現在の保存済みタイムラインで最大20秒の音声試聴範囲を読み取り専用で計画します。プロジェクト、バージョン、素材ハッシュに紐づく、範囲制限付きPCM準備マニフェストを返します。この呼び出しではデコード、再生、タイムライン初期化、書き込みを行いません。PCMは固定された認証済みローカルリソースを通じて、別の明示的な範囲制限付き操作でデコードします。作品全体やラウドネス／トゥルーピークの検査には使用できません。"
   },
+  "operation.timeline.audioPreview.continuousPlan": {
+    "zh-Hans": "只读规划已保存时间线的 V2 连续音频预览会话；绑定项目、完整版本和源身份，固定 2 秒混音块，共享全会话 96 MiB 应用额度。仅返回元数据，不读取媒体字节、不解码、不播放、不初始化时间线、不写文件或数据库，不调用网络、模型或付费供应商。仅在显式播放操作后，由固定认证本地资源按需有界准备完整多轨混音。不是内置 Agent 工具，也不是视频合成或响度/真峰值检查；恢复副本拒绝该操作。",
+    "zh-Hant": "唯讀規劃已儲存時間軸的 V2 連續音訊預覽工作階段；綁定專案、完整版本和來源身分，固定 2 秒混音區塊，共用整個工作階段的 96 MiB 應用程式額度。僅傳回中繼資料，不讀取媒體位元組、不解碼、不播放、不初始化時間軸、不寫入檔案或資料庫，不呼叫網路、模型或付費供應商。僅在明確播放操作後，由固定認證本機資源按需有界準備完整多軌混音。不是內建 Agent 工具，也不是影片合成或響度／真峰值檢查；復原副本拒絕此操作。",
+    "en": "Read-only planning of a V2 continuous audio preview session for a saved timeline. Binds the project, full revision, and source identities; fixed 2-second mixed blocks share one 96 MiB application reservation for the entire session. Metadata only: no media-byte reads, decoding, playback, timeline initialization, file/database writes, network, model, or paid-provider calls. Only after an explicit playback gesture does a fixed authenticated local resource prepare complete multitrack mixes on demand within bounds. Not a built-in Agent tool, composed-video preview, or loudness/true-peak check; restored copies reject this operation.",
+    "ja": "保存済みタイムラインの V2 連続音声プレビューセッションを読み取り専用で計画します。プロジェクト、完全なリビジョン、ソース識別情報に紐づけ、固定 2 秒のミックスブロックでセッション全体の 96 MiB アプリケーション予約枠を共有します。メタデータのみを返し、メディアバイトの読み取り、デコード、再生、タイムライン初期化、ファイルやデータベースへの書き込み、ネットワーク、モデル、有料プロバイダーの呼び出しは行いません。明示的な再生操作後に限り、固定の認証済みローカルリソースが完全なマルチトラックミックスを必要に応じて範囲内で準備します。組み込み Agent ツール、合成映像プレビュー、ラウドネス／トゥルーピーク検査ではありません。復元コピーでは拒否されます。"
+  },
   "operation.timeline.export.capabilities": {
     "zh-Hans": "显式检查所选 MP4/H264 导出配置的本地编码能力；运行有界本地计算，不修改项目或导出，不调用供应商；结果绑定项目和时间线版本，实际导出会再次验证",
     "zh-Hant": "明確檢查所選MP4/H264匯出設定的本機編碼能力；執行有界本機計算，不修改專案或匯出，不呼叫供應商；結果綁定專案和時間軸版本，實際匯出會再次驗證。",

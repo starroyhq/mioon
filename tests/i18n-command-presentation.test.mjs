@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
 import {schemas, operationDefinition, discoverSchema} from '@mioon/client';
 import {LOCALES, catalogs, validateCatalogs, translate} from '../packages/i18n/src/index.ts';
-import {presentationLocale, localizeHelp} from '../packages/i18n/src/presentation.ts';
+import {presentationLocale, localizeHelp, localizeToolDescription} from '../packages/i18n/src/presentation.ts';
 import {operationMessages} from '../packages/i18n/src/catalogs/operations.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIOON_')));
@@ -38,11 +38,35 @@ test('presentation catalog is exhaustive in four locales, with unchanged operati
   const original={options:{'--input':'original'},connection:['original'],safety:'original'};
   assert.equal(localizeHelp(original),original);
 });
+test('continuous plan discovery has four explicit locales without changing machine definitions', () => {
+  const operation = 'timeline.audioPreview.continuousPlan';
+  const definition = operationDefinition(operation);
+  const before = JSON.stringify(definition);
+  const schema = JSON.stringify(discoverSchema({operation}));
+  for (const locale of LOCALES) {
+    for (const name of Object.keys(schemas)) {
+      const prose = localizeToolDescription(name, operationDefinition(name).description, locale);
+      assert.equal(prose, translate(locale, `operation.${name}`));
+      assert.ok(prose.length > 0);
+    }
+    const description = localizeToolDescription(operation, definition.description, locale);
+    assert.match(description, /V2/);
+    assert.match(description, /96 MiB/);
+    assert.match(description, /Agent/);
+    assert.notEqual(description, translate(locale, 'operation.timeline.audioPreview.plan'));
+    assert.equal(JSON.stringify(operationDefinition(operation)), before);
+    assert.equal(JSON.stringify(discoverSchema({operation})), schema);
+  }
+});
 test('CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact', {timeout:180000}, () => {
   const original=cli(['--help']);
   assert.equal(original.status,0);
   const snapshot=JSON.parse(readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8'));
-  assert.deepEqual(original.json,snapshot);
+  // Keep the frozen pre-V2 help fixture: only the explicitly added operation
+  // may differ, not legacy prose, schemas or operation ordering.
+  const expectedOperations = [...snapshot.data.operations];
+  expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');
+  assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, operations:expectedOperations}});
   const schema=cli(['schema','project.create']).stdout;
   const version=cli(['--version']).stdout;
   const bad=cli(['--unknown']).stdout;

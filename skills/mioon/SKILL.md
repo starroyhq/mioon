@@ -596,9 +596,17 @@ Present it as **已导出文件解码样本峰值** with the returned artifact h
 
 ## Saved timeline sound audition plan
 
-Discover `timeline audioPreview plan` / `timeline_audioPreview_plan` when asked about an existing saved sound-audition interval. Supply exactly the owned project/timeline IDs, saved `expectedRevision`, and inclusive `startFrame`. The returned plan binds a half-open window of at most600 composition frames (20seconds), source hashes and a bounded memory budget. This metadata read does not decode media, save edits, create jobs or prove playback succeeded. Restored-v1 refuses it; the built-in Agent catalog is unchanged.
+Discover `timeline audioPreview plan` / `timeline_audioPreview_plan` when asked about an existing saved sound-audition interval. Supply exactly the owned project/timeline IDs, saved `expectedRevision`, and inclusive `startFrame`. The returned plan binds a half-open window of at most 600 composition frames (20 seconds), source hashes and a bounded memory budget. This metadata read does not decode media, save edits, create jobs or prove playback succeeded. Restored-v1 refuses it; the built-in Agent catalog is unchanged.
 
 The UI prepares fixed authenticated PCM resources only on explicit action, then plays sound separately from rendered video. Do not turn a metadata plan into an automatic decode, render or model upload. A stale/unsupported/over-budget result is not permission to replace sources or silently omit audio. Saved mute/gain/fades apply; unsaved drafts do not. Float audition can differ from legacy s16 clipping and does not promise true-peak or loudness safety. See [sound audition scope](../../docs/TIMELINE-AUDIO-PREVIEW.md).
+
+## Continuous saved-timeline audio preview — V2
+
+Discover `timeline audioPreview continuousPlan` / `timeline_audioPreview_continuousPlan` for the V2 metadata-only plan. Use the same exact owned project/timeline IDs, saved `expectedRevision`, and `startFrame`; inspect its strict schema first. Unlike the unchanged V1 20-second window, this manifest binds the complete saved revision and source identities through the saved end, with fixed 60-frame (2-second) mixed blocks and one 96 MiB application reservation for the entire session. Existing limits remain 30 fps, 48 kHz stereo, 18,000 frames (10 minutes), 12 tracks and 100 clips. The reservation is not an Electron/FFmpeg RSS limit.
+
+Planning reads metadata only: no media bytes, decoding, playback, timeline initialization, file/database writes, network, model or paid-provider calls. Explicit UI playback uses a separate fixed authenticated local pull resource, with bounded buffering, pause/resume, seek and confirmed resource retirement. The metadata plan alone authorizes none of those effects. Saved mute/gain/fades apply; drafts stay excluded. Restore copies reject this operation, the built-in Agent catalog remains unchanged, and sound is not synchronized composed-video preview or a loudness/true-peak check. V1 `plan` and its PCM resource retain their original semantics.
+
+See [V2 protocol and limits](../../docs/TIMELINE-AUDIO-CONTINUOUS.md) and [acceptance evidence](../../docs/TIMELINE-AUDIO-CONTINUOUS-ACCEPTANCE.md). The verified 25-second real audio-clock run and accelerated 2/10-minute PCM comparisons are distinct evidence. They do not establish physical audible output, a full 10-minute wall-clock playback run, or the complete final product lifecycle matrix.
 
 ## Explicit float-checked final export
 
