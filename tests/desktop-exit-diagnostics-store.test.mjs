@@ -1,6 +1,9 @@
+import { ensurePrivateDirectory, validatePrivateDirectory } from '@mioon/contracts/private-storage';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { classifyBackendExit, createExitDiagnostics, EXIT_DIAGNOSTIC_LIMITS } from '../apps/desktop/src/exit-diagnostics.ts';
@@ -10,16 +13,17 @@ const validEvent = { event: 'exit', classification: 'normal', reason: 'stop-requ
   expected: true, forced: false, exitConfirmed: true, shutdownFailed: false, mediaExitConfirmed: true, code: 0 };
 
 async function fixture(t, metadata = { version: '2.3.4-rc.1+build.01', mioonDesktop: { channel: 'production' } }) {
-  const directory = await mkdtemp(path.join(tmpdir(), 'mioon-private-exit-diagnostics-'));
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-private-exit-diagnostics-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const modulePath = path.join(directory, 'build/backend.cjs');
   await mkdir(path.dirname(modulePath));
   if (metadata !== null) await writeFile(path.join(path.dirname(modulePath), 'package.json'), JSON.stringify(metadata));
   const dataDir = path.join(directory, 'private-user-data');
+  await mkdir(dataDir, { mode: 0o700 });
   const logDirectory = path.join(dataDir, 'diagnostics');
   const file = path.join(logDirectory, 'backend-exit.jsonl');
   return { directory, modulePath, dataDir, logDirectory, file,
-    create: options => createExitDiagnostics({ dataDir, modulePath, versions: runtime, ...options }) };
+    create: options => createExitDiagnostics({ dataDir, modulePath, versions: runtime, directoryPolicy: { ensurePrivateDirectory, validatePrivateDirectory }, ...options }) };
 }
 
 async function records(file) {
@@ -135,6 +139,7 @@ test('an oversized preexisting diagnostic is removed before bounded append', asy
 
 test('unavailable storage and malformed inputs return false without changing lifecycle', async t => {
   const f = await fixture(t);
+  await rm(f.dataDir, { recursive: true });
   await writeFile(f.dataDir, 'directory blocked');
   assert.equal(f.create().record(validEvent), false);
   assert.equal(f.create({ dataDir: undefined }).record(validEvent), false);
@@ -186,4 +191,84 @@ test('diagnostics inspect only explicit fields and snapshot each exit code once'
     assert.equal(f.create({ versions: { node } }).record({ event: 'start' }), true);
     assert.equal((await records(f.file)).at(-1).runtime.node, null);
   }
+});
+
+for (const suffix of ['', '.1', '.2']) {
+  test(`diagnostic ${suffix || 'current'} hardlink cannot change another file's bytes or permissions`, { skip: process.platform === 'win32' }, async t => {
+    const f = await fixture(t);
+    await mkdir(f.logDirectory, { mode: 0o700 });
+    const target = path.join(f.directory, 'unrelated-sentinel');
+    await writeFile(target, 'UNCHANGED_SYNTHETIC_SENTINEL', { mode: 0o644 });
+    await link(target, `${f.file}${suffix}`);
+    const before = await stat(target);
+    assert.equal(f.create().record(validEvent), false);
+    assert.equal(await readFile(target, 'utf8'), 'UNCHANGED_SYNTHETIC_SENTINEL');
+    const after = await stat(target);
+    assert.equal(after.mode, before.mode);
+    assert.equal(after.ino, before.ino);
+    assert.equal(after.nlink, 2);
+  });
+}
+
+for (const suffix of ['.1', '.2']) {
+  test(`diagnostic rotation slot ${suffix} refuses symlinks without changing the target`, { skip: process.platform === 'win32' }, async t => {
+    const f = await fixture(t);
+    await mkdir(f.logDirectory, { mode: 0o700 });
+    const target = path.join(f.directory, 'rotation-sentinel');
+    await writeFile(target, 'UNCHANGED_ROTATION_SENTINEL', { mode: 0o644 });
+    await symlink(target, `${f.file}${suffix}`);
+    assert.equal(f.create().record(validEvent), false);
+    assert.equal(await readFile(target, 'utf8'), 'UNCHANGED_ROTATION_SENTINEL');
+    assert.equal((await stat(target)).mode & 0o777, 0o644);
+  });
+}
+
+test('file replacement at open is refused before chmod or append', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t); const diagnostics = f.create();
+  assert.equal(diagnostics.record(validEvent), true);
+  const original = await readFile(f.file);
+  const replacement = path.join(f.directory, 'replacement-sentinel'), retained = `${f.file}.retained`;
+  await writeFile(replacement, 'UNCHANGED_REPLACEMENT', { mode: 0o644 });
+  const open = fs.openSync, rename = fs.renameSync;
+  let swapped = false;
+  fs.openSync = (...args) => {
+    if (args[0] === f.file && !swapped) {
+      swapped = true; rename(f.file, retained); rename(replacement, f.file);
+    }
+    return open(...args);
+  };
+  syncBuiltinESMExports();
+  try { assert.equal(diagnostics.record(validEvent), false); }
+  finally { fs.openSync = open; syncBuiltinESMExports(); }
+  assert.equal(swapped, true);
+  assert.equal(await readFile(f.file, 'utf8'), 'UNCHANGED_REPLACEMENT');
+  assert.equal((await stat(f.file)).mode & 0o777, 0o644);
+  assert.deepEqual(await readFile(retained), original);
+});
+
+test('rotation rechecks all slot identities after permission inspection', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t); const diagnostics = f.create();
+  await mkdir(f.logDirectory, { mode: 0o700 });
+  await writeFile(f.file, Buffer.alloc(EXIT_DIAGNOSTIC_LIMITS.maxBytes, 32), { mode: 0o600 });
+  await writeFile(`${f.file}.1`, 'OLDER', { mode: 0o600 });
+  await writeFile(`${f.file}.2`, 'OLDEST', { mode: 0o600 });
+  const previous = (await stat(`${f.file}.1`)).ino;
+  const chmod = fs.fchmodSync;
+  let swapped = false;
+  fs.fchmodSync = (descriptor, mode) => {
+    chmod(descriptor, mode);
+    if (!swapped && fs.fstatSync(descriptor).ino === previous) {
+      swapped = true;
+      fs.renameSync(`${f.file}.1`, `${f.file}.retained`);
+      fs.writeFileSync(`${f.file}.1`, 'UNCHANGED_ROTATION_REPLACEMENT', { mode: 0o644 });
+    }
+  };
+  syncBuiltinESMExports();
+  try { assert.equal(diagnostics.record(validEvent), false); }
+  finally { fs.fchmodSync = chmod; syncBuiltinESMExports(); }
+  assert.equal(swapped, true);
+  assert.equal(await readFile(`${f.file}.1`, 'utf8'), 'UNCHANGED_ROTATION_REPLACEMENT');
+  assert.equal((await stat(`${f.file}.1`)).mode & 0o777, 0o644);
+  assert.equal(await readFile(`${f.file}.2`, 'utf8'), 'OLDEST');
+  assert.equal((await stat(f.file)).size, EXIT_DIAGNOSTIC_LIMITS.maxBytes);
 });

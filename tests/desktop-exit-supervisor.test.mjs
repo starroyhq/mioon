@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, writeFile, rm } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -11,9 +11,9 @@ const sensitive = 'private-token-request-body-/Users/private/movie.mp4';
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 async function fixture(t, { graceful = true, ready = true, ...options } = {}) {
-  const directory = await mkdtemp(path.join(tmpdir(), 'mioon-exit-supervisor-'));
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-exit-supervisor-'));
   const dataDir = path.join(directory, 'workspace'), modulePath = path.join(directory, 'backend.cjs');
-  await mkdir(dataDir);
+  await mkdir(dataDir, { mode: 0o700 });
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ version: '0.4.1', mioonDesktop: { channel: 'production' } }));
   const children = [];
   const fork = () => {

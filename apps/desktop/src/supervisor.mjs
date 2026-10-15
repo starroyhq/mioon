@@ -1,3 +1,4 @@
+import { ensurePrivateDirectory, validatePrivateDirectory } from '@mioon/contracts/private-storage';
 import { EventEmitter } from 'node:events';
 import { trustedOrigin } from './security.mjs';
 import { createAgentSettingsBroker } from './secret-broker.mjs';
@@ -50,7 +51,8 @@ export class BackendSupervisor extends EventEmitter {
     this.stopForced = false;
     this.exitReason = null;
     this.termination = null;
-    this.diagnostics = createExitDiagnostics({ dataDir: config.dataDir, modulePath: this.modulePath });
+    this.diagnostics = createExitDiagnostics({ dataDir: config.dataDir, modulePath: this.modulePath,
+      directoryPolicy: { ensurePrivateDirectory, validatePrivateDirectory } });
     this.recordDiagnostic('start');
     return new Promise((resolve, reject) => {
       let settled = false;

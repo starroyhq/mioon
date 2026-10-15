@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmodSync, closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdirSync,
+import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdirSync,
   openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import path from 'node:path';
@@ -27,7 +27,17 @@ interface Metadata {
   readonly channel: typeof channels[number] | null;
   readonly runtime: { readonly node: string | null; readonly electron: string | null; readonly sqlite: string | null };
 }
-interface Options { readonly dataDir?: string | null; readonly modulePath: string; readonly versions?: RuntimeVersions }
+interface DirectoryPolicy {
+  ensurePrivateDirectory(directory: string, options: { create: true }): unknown;
+  validatePrivateDirectory(directory: string): unknown;
+}
+interface Options {
+  readonly dataDir?: string | null;
+  readonly modulePath: string;
+  readonly versions?: RuntimeVersions;
+  // Trusted main-process composition only, never supplied over IPC/config.
+  readonly directoryPolicy: DirectoryPolicy;
+}
 export interface ExitDiagnostics { record(event: unknown): boolean }
 export type ExitClassification = typeof classifications[number];
 interface ExitClassificationInput {
@@ -98,7 +108,7 @@ function readMetadata(modulePath: string, versions: RuntimeVersions): Metadata {
 function existingFile(file: string): Stats | null {
   try {
     const stat = lstatSync(file);
-    if (!stat.isFile()) throw new Error('Invalid diagnostic file');
+    ownedFile(stat);
     return stat;
   } catch (error) {
     if (isRecord(error) && error.code === 'ENOENT') return null;
@@ -106,9 +116,103 @@ function existingFile(file: string): Stats | null {
   }
 }
 
+function ownedFile(stat: Stats): Stats {
+  if (!stat.isFile() || typeof process.getuid !== 'function' || stat.uid !== process.getuid() || stat.nlink !== 1) {
+    throw new Error('Invalid diagnostic file');
+  }
+  return stat;
+}
+function sameFile(left: Stats | null, right: Stats | null): boolean {
+  return left === null || right === null ? left === right : left.dev === right.dev && left.ino === right.ino;
+}
+
+// Match private-storage's POSIX owner and canonical-parent boundary. As with
+// its pathname-only operations, this does not claim protection against root or
+// an actively racing process running as the same OS account.
+function appendDiagnostic(dataDir: string, directory: string, file: string, line: Buffer, policy: DirectoryPolicy): void {
+  policy.ensurePrivateDirectory(dataDir, { create: true });
+  try { mkdirSync(directory, { mode: 0o700 }); }
+  catch (error) { if (!isRecord(error) || error.code !== 'EEXIST') throw error; }
+  const directoryIdentity = lstatSync(directory);
+  const assertDirectory = () => {
+    policy.validatePrivateDirectory(dataDir);
+    const current = lstatSync(directory);
+    if (!current.isDirectory() || current.uid !== process.getuid!() || !sameFile(directoryIdentity, current)) {
+      throw new Error('Diagnostic directory changed');
+    }
+  };
+  assertDirectory();
+  const targets = [file, `${file}.1`, `${file}.2`];
+  const snapshots = targets.map(existingFile);
+  const assertTarget = (index: number) => {
+    assertDirectory();
+    if (!sameFile(snapshots[index]!, existingFile(targets[index]!))) throw new Error('Diagnostic file changed');
+  };
+  // Inspect every slot before mutating any existing file or permission.
+  let directoryDescriptor: number | undefined;
+  try {
+    directoryDescriptor = openSync(directory, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const opened = fstatSync(directoryDescriptor);
+    if (!opened.isDirectory() || !sameFile(directoryIdentity, opened) || opened.uid !== process.getuid!()) {
+      throw new Error('Diagnostic directory changed while opening');
+    }
+    assertDirectory();
+    fchmodSync(directoryDescriptor, 0o700);
+  } finally { if (directoryDescriptor !== undefined) closeSync(directoryDescriptor); }
+  const remove = (index: number) => {
+    assertTarget(index);
+    if (snapshots[index]) unlinkSync(targets[index]!);
+    snapshots[index] = null;
+  };
+  for (let index = 0; index < targets.length; index++) {
+    const snapshot = snapshots[index];
+    if (!snapshot) continue;
+    if (snapshot.size > EXIT_DIAGNOSTIC_LIMITS.maxBytes) { remove(index); continue; }
+    let descriptor: number | undefined;
+    try {
+      assertTarget(index);
+      descriptor = openSync(targets[index]!, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      if (!sameFile(snapshot, ownedFile(fstatSync(descriptor)))) throw new Error('Diagnostic file changed while opening');
+      assertTarget(index);
+      fchmodSync(descriptor, 0o600);
+    } finally { if (descriptor !== undefined) closeSync(descriptor); }
+  }
+  for (let index = 0; index < targets.length; index++) assertTarget(index);
+  if ((snapshots[0]?.size ?? 0) + line.length > EXIT_DIAGNOSTIC_LIMITS.maxBytes) {
+    remove(2);
+    for (const source of [1, 0]) {
+      assertTarget(source); assertTarget(source + 1);
+      if (!snapshots[source]) continue;
+      renameSync(targets[source]!, targets[source + 1]!);
+      snapshots[source + 1] = snapshots[source]!; snapshots[source] = null;
+      assertTarget(source + 1);
+    }
+  }
+  let descriptor: number | undefined;
+  try {
+    assertTarget(0);
+    descriptor = openSync(file, constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK
+      | (snapshots[0] ? 0 : constants.O_CREAT | constants.O_EXCL), 0o600);
+    const opened = ownedFile(fstatSync(descriptor));
+    if (snapshots[0] && !sameFile(snapshots[0]!, opened)) throw new Error('Diagnostic file changed while opening');
+    snapshots[0] = opened; assertTarget(0);
+    if (opened.size + line.length > EXIT_DIAGNOSTIC_LIMITS.maxBytes) throw new Error('Diagnostic capacity changed');
+    fchmodSync(descriptor, 0o600);
+    let written = 0;
+    while (written < line.length) {
+      ownedFile(fstatSync(descriptor)); assertTarget(0);
+      const count = writeSync(descriptor, line, written);
+      if (count <= 0) throw new Error('Incomplete diagnostic write');
+      written += count;
+    }
+    fsyncSync(descriptor);
+    ownedFile(fstatSync(descriptor)); assertTarget(0);
+  } finally { if (descriptor !== undefined) closeSync(descriptor); }
+}
+
 // Only fixed lifecycle fields reach this local JSONL. No error, config, request,
 // environment or path is serialized, including fields supplied by the backend.
-export function createExitDiagnostics({ dataDir, modulePath, versions = process.versions }: Options): ExitDiagnostics {
+export function createExitDiagnostics({ dataDir, modulePath, versions = process.versions, directoryPolicy }: Options): ExitDiagnostics {
   const runId = randomUUID();
   const metadata = readMetadata(modulePath, versions);
   const directory = typeof dataDir === 'string' && dataDir.length ? path.join(dataDir, 'diagnostics') : null;
@@ -116,7 +220,6 @@ export function createExitDiagnostics({ dataDir, modulePath, versions = process.
 
   return {
     record(event: unknown): boolean {
-      let descriptor: number | undefined;
       try {
         if (!file || !directory) return false;
         const input = isRecord(event) ? event : null;
@@ -139,41 +242,11 @@ export function createExitDiagnostics({ dataDir, modulePath, versions = process.
         };
         const line = Buffer.from(`${JSON.stringify(record)}\n`);
         if (line.length > EXIT_DIAGNOSTIC_LIMITS.maxBytes) return false;
-        // Keep backend-exit.jsonl and its .1/.2 rotations at most 64 KiB each.
-        // Factories share the fixed files, so later launches retain the cap.
-        mkdirSync(directory, { recursive: true, mode: 0o700 });
-        if (!lstatSync(directory).isDirectory()) return false;
-        chmodSync(directory, 0o700);
-        for (let index = 0; index < EXIT_DIAGNOSTIC_LIMITS.fileCount; index++) {
-          const target = index ? `${file}.${index}` : file;
-          const stat = existingFile(target);
-          if (stat && stat.size > EXIT_DIAGNOSTIC_LIMITS.maxBytes) unlinkSync(target);
-          else if (stat) chmodSync(target, 0o600);
-        }
-        if ((existingFile(file)?.size ?? 0) + line.length > EXIT_DIAGNOSTIC_LIMITS.maxBytes) {
-          if (existingFile(`${file}.2`)) unlinkSync(`${file}.2`);
-          if (existingFile(`${file}.1`)) renameSync(`${file}.1`, `${file}.2`);
-          if (existingFile(file)) renameSync(file, `${file}.1`);
-        }
-        descriptor = openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND
-          | (constants.O_NOFOLLOW ?? 0), 0o600);
-        if (!fstatSync(descriptor).isFile()) return false;
-        fchmodSync(descriptor, 0o600);
-        let written = 0;
-        while (written < line.length) {
-          const count = writeSync(descriptor, line, written);
-          if (count <= 0) return false;
-          written += count;
-        }
-        fsyncSync(descriptor);
+        appendDiagnostic(dataDir!, directory, file, line, directoryPolicy);
         return true;
       } catch {
         // Diagnostics are evidence only: I/O failures never change lifecycle.
         return false;
-      } finally {
-        if (descriptor !== undefined) {
-          try { closeSync(descriptor); } catch { /* Preserve lifecycle on I/O failure. */ }
-        }
       }
     }
   };
