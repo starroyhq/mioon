@@ -1,12 +1,104 @@
 # Mioon approved product roadmap
 
+Updated: 2026-10-15 UTC. Current index checked against local integration checkpoint
+`e87fa309ed0a604657dcdf6bddc768c1c10eb2a1`. This document distinguishes implemented
+slices, their actual acceptance boundaries and remaining approved scope. It does
+not promote a WIP checkpoint, certify the combined native application, or grant
+new execution, spending or publication authority. This documentation-only review
+reran no product tests, native acceptance or stopped issue investigations.
+
+## Current delivery and remaining work (2026-10-15)
+
+1. **Editing, audio and loudness.** Independent project home/windows, managed
+   media/source ranges, favorite/reject and current-timeline usage, raw-source
+   waveforms, clip fades and the three 30fps canvas presets have their earlier
+   bounded deliveries. [Saved-timeline sound audition](TIMELINE-AUDIO-PREVIEW.md)
+   is limited to 20 seconds; it is not full continuous timeline audio preview.
+   That continuous-preview work is assigned to the user; implementation/start is
+   not yet verified, and it is not delivered by this checkpoint. [Exported-file loudness observation](EXPORT-LOUDNESS.md)
+   and [full-current-mix candidates](TIMELINE-MIX-LOUDNESS.md) have separate
+   read-only acceptance. [Atomic gain application](TIMELINE-LOUDNESS-APPLY.md),
+   undo/redo and explicit float-v2 UI selection exist in `44c41a7`, but their
+   [WIP checkpoint](ATOMIC-LOUDNESS-WIP-CHECKPOINT.md) remains unaccepted after
+   incomplete/failing regression evidence. Do not describe these as wholly
+   unimplemented or as fully accepted. Per-clip/dialogue loudness matching,
+   keyframes, roles, crossfades, ducking, limiter/EQ/noise reduction, scoped proxy
+   performance and tags/notes remain separate work. No automatic target or AAC
+   loudness/true-peak guarantee is implied.
+2. **Colour and Looks.** Project-owned LUT resources (`a78abb0`) and the versioned
+   [Rec.709 SDR clip LUT workflow](SDR-CLIP-LUT.md) (`16b7b4d`) are implemented;
+   the latter commit records focused tests and packaged Linux feature acceptance,
+   not general release acceptance. The later [single-Look data pack](LOOK-PACK-ACCEPTANCE.md)
+   (`53c42fa`), [bounded mixed SDR PNG workflow](MIXED-SDR-IMAGES-ACCEPTANCE.md)
+   (`93a0575`) and [restricted JFIF JPEG inputs](JFIF-SDR-IMAGES-ACCEPTANCE.md)
+   (`75ad276`) have their own focused, production and synthetic Linux native
+   evidence. They are not general ICC/P3/Log/HDR/RAW support or a professional
+   colour compositor. Desktop cross-restart pending LUT import recovery remains
+   limited by [issue #2](https://github.com/starroyhq/mioon/issues/2).
+3. **Export, creation and versions.** Preflight, MP4/H.264 settings, named export
+   history, selected-range export, decoded sample-peak checks and backend opt-in
+   float-checked export retain their own evidence. Further codecs/containers,
+   hardware encoders, one bounded editable interchange format and multiple
+   editable delivery sequences still need separate implementation/acceptance.
+   Immutable generated versions, explicit source replacement, frame extraction,
+   versioned subjects and the bounded Images/PNG-editing/reference-input flows
+   are delivered within their documented limits. Richer comparison, motion/style
+   references and reviewed multistage creation remain open; synthetic protocols
+   do not establish real-model quality.
+4. **Agent and extensions.** Bounded project reads and reviewed shot-text,
+   selected-clip move/gain proposals use shared business/history/replay services.
+   Any further Agent action needs its own exact review and authority boundary.
+   The fixed Comfy connector now has [optional startup admission](COMFY-OPTIONAL-MODULE.md)
+   (`bbdeec4`), including bounded synthetic Linux native evidence. This is not a
+   dynamic plugin loader, installer, smaller distribution or real Comfy/GPU
+   acceptance. The bounded broker/SDK, second extension class, general external
+   result/version return and later optional Blender/catalog/store milestones
+   remain as scoped in [EXTENSIONS-ARCHITECTURE.md](EXTENSIONS-ARCHITECTURE.md).
+5. **Languages and interaction acceptance.** [Four-language GUI/native-copy
+   implementation](I18N-ACCEPTANCE.md) (`45da4df`) covers Simplified Chinese,
+   region-neutral Traditional Chinese, English and Japanese, with isolated
+   preferences, 365/365 targeted checks and bounded Linux native observations.
+   CLI/MCP human-readable localization remains a separate active phase, not
+   completed by that GUI commit. Narrow editor layout ([issue #4](https://github.com/starroyhq/mioon/issues/4)),
+   native 200% zoom, full screen-reader coverage and exhaustive native menus/file
+   choosers remain unverified. No repeated resize investigation is implied.
+6. **Reliability and delivery.** Local integration includes the user's
+   [source-process lifecycle/timeout diagnostics](SOURCE-PROCESS-TIMEOUTS.md)
+   (`630348f`), bounded backend-exit diagnostics (`64506e9`) and diagnostic-storage
+   identity hardening (`e87fa30`). The source-process report distinguishes the
+   reproduced fixture IPC race from the still-unproven cause of historical
+   readiness/CLI failures. These commits do not establish closure of historical
+   [issue #1](https://github.com/starroyhq/mioon/issues/1) or combined native
+   acceptance; additional diagnostics alone do not prove the earlier exit symptom
+   resolved. Do not restart stopped investigations merely to update this index.
+   Backup/restore, fixed schema roles, shared contracts and Linux packaging retain
+   their documented boundaries. Native macOS/Windows storage/vault/installer/
+   signing, real-provider configuration/media/budget gates and release publication
+   remain separate. Incremental TS migration or safety-boundary extraction should
+   address a concrete reproduced need, not duplicate completed features.
+
+These are scoped checkpoints, not an accumulated full-suite count or one combined
+release gate. Historical counts and limitations belong to their original source
+and package identities. Remote main and the user's Mac checkout were not queried
+by this documentation review; no current synchronization or push claim is made.
+The current index takes precedence over historical "pending", "next" and
+"current" wording below. Future work does not authorize paid calls, credential
+configuration, third-party installation, platform changes, push or publication.
+
+## Historical roadmap snapshot (2026-10-14)
+
+The following preserves the earlier roadmap and approvals. Its implementation
+status, test totals and Git observations are historical, not the current queue.
+In particular, later LUT/Look/image, optional Comfy and language checkpoints are
+indexed above; loudness application remains WIP rather than newly accepted.
+
 Updated: 2026-10-14 UTC. This is approved iteration scope, not a completion claim.
 Original roadmap baseline: `66a0193`; current status wording was checked against
 committed baseline `f8b9171`; the separate [atomic apply integration](TIMELINE-LOUDNESS-APPLY.md) is in progress and has not yet passed its final feature gate. Verified deliverables and historical test totals remain
 in STATUS.md and their dated acceptance reports. The latest independently completed full gate is the [fixed schema/profile prerequisite](WORKSPACE-SCHEMA-PROFILES.md): 7,399 total / 7,397 passed / 0 failed / 0 cancelled / 2 existing skips, with strict typecheck exit 0. Older feature gates retain their own baselines.
 The documentation check itself does not rerun product or platform acceptance.
 
-## Current delivery and remaining work (2026-10-14)
+## Historical delivery and remaining work (2026-10-14)
 
 Independent project home, per-project native windows with one shared backend,
 and bounded [20-second sound audition](TIMELINE-AUDIO-PREVIEW.md) have since been
@@ -126,7 +218,7 @@ Editing are complementary views of shared project data. External agents use MCP/
 an optional in-app Agent uses the same business services. Keep an editable handoff
 to established finishing tools in scope rather than duplicating an entire professional NLE.
 
-## Current committed foundations
+## Historical committed foundations
 
 - Electron monorepo, shadcn/Base UI, durable local assets/jobs/versions and real FFmpeg export.
 - Shared UI/API/MCP/CLI business services; split, snapping and durable timeline undo/redo.
