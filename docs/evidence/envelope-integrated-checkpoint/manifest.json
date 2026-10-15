@@ -1,0 +1,80 @@
+{
+  "testedMergeCommit": "63ce0f7fc71121663b8c4c3da73d9fe412a00a42",
+  "testedTree": "be0eed3a2c0e9f7925d09fd1f22a3026123ff4b7",
+  "parents": [
+    "9240f01c5adaf9516a7238c5f043dec7e53d81c0",
+    "4d74c192a1a61a79e5a4354b9edf92927d551d97"
+  ],
+  "runtime": {
+    "execPath": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+    "version": "v24.21.0",
+    "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+  },
+  "test": {
+    "command": [
+      "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+      "--experimental-test-module-mocks",
+      "--test",
+      "tests/timeline-volume-envelope-mutations.test.mjs",
+      "tests/workspace-volume-envelope-validation.test.mjs",
+      "tests/timeline-volume-envelope-durable-ingress.test.mjs",
+      "tests/workspace-frozen-evidence-v40.test.mjs",
+      "tests/workspace-schema40-dormant.test.mjs"
+    ],
+    "exitCode": 0,
+    "passed": 136,
+    "failed": 0,
+    "durationMilliseconds": 42094.076559,
+    "log": "envelope-integrated-mutation-profile-gate.log"
+  },
+  "typecheck": {
+    "command": [
+      "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+      "node_modules/typescript/lib/tsc.js",
+      "--noEmit",
+      "--strict",
+      "--allowJs",
+      "--checkJs",
+      "false",
+      "--skipLibCheck",
+      "false",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--target",
+      "ES2024",
+      "--allowImportingTsExtensions",
+      "--types",
+      "node",
+      "packages/business/src/timeline-volume-envelope-admission.ts",
+      "packages/business/src/timeline-loudness-transactions.ts",
+      "packages/business/src/workspace-volume-envelope-validation.ts",
+      "packages/business/src/workspace-frozen-evidence-v40.ts",
+      "packages/business/src/workspace-audio-role-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-schema-v40.ts",
+      "packages/business/src/workspace-restore-schema-v41.ts"
+    ],
+    "exitCode": 0,
+    "scope": "Strict selected TypeScript roots; imported legacy JavaScript is not statically checked.",
+    "log": "envelope-integrated-mutation-profile-typecheck.log"
+  },
+  "sourceHashes": "source-sha256.json",
+  "frozenManifestHashesMatched": 6,
+  "activation": false,
+  "mergeConflicts": false,
+  "unchanged": [
+    "packages/business/src/workspace-schema-dispatch.ts",
+    "packages/business/src/workspace-schema-v38.ts",
+    "packages/business/src/workspace-restore-schema-v39.ts",
+    "packages/business/src/services.mjs"
+  ],
+  "remainingGates": [
+    "Live ordinary40 dispatcher/startup/coordinator restart",
+    "Mixed role/colour live mutation dispatch",
+    "Restored41 mutation/epochs remain closed",
+    "Capability/UI activation"
+  ],
+  "evidenceWhitespace": "Historical raw failure logs remain unchanged, including four whitespace-only lines; source/test/document diff checks pass."
+}
