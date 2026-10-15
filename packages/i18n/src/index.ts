@@ -1,3 +1,4 @@
+import { audioRoleMessages } from './catalogs/audio-role.ts';
 import { clipLoudnessMessages } from './catalogs/clip-loudness.ts';
 import { comparisonMessages } from './catalogs/comparison.ts';
 import { annotationMessages } from './catalogs/annotations.ts';
@@ -14,8 +15,8 @@ export * from './types.ts';
 export * from './locale.ts';
 import { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
 export { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
-assertNoDuplicateMessageKeys(comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
-export const catalogs = Object.freeze({ ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
+assertNoDuplicateMessageKeys(audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
+export const catalogs = Object.freeze({ ...audioRoleMessages, ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
 export type MessageKey = keyof typeof catalogs;
 type TemplateText<T> = T extends string ? T : T extends { one: infer O extends string; other: infer R extends string } ? O | R : never;
 type Placeholders<T extends string> = T extends `${string}{${infer P}}${infer Rest}` ? P | Placeholders<Rest> : never;

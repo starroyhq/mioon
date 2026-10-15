@@ -1,3 +1,5 @@
+import * as roleState from '../apps/web/src/clip-audio-role-state.ts';
+import * as roleContract from '../packages/contracts/src/timeline-audio-role.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
 import test, { afterEach } from 'node:test';
@@ -60,6 +62,9 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
       if (id === './clip-audio-state.js') return audio;
       if (id === './timeline-format-state.js') return timelineFormat;
       if (id === './clip-draft-state.ts') return clipDraft;
+      if (id === './clip-audio-role-state.ts') return roleState;
+      if (id === '../../../packages/contracts/src/timeline-audio-role.ts') return roleContract;
+      if (id === './ClipAudioRoleControls.tsx') return load('ClipAudioRoleControls.tsx');
       if (id === './clip-lut-state.ts') return { ...clipLut, createClipLutController: options => clipLut.createClipLutController({ ...options, recovery: createClipLutRecovery({ storage: () => ({ getItem: () => null, setItem() {}, removeItem() {} }), lock: async (_name, action) => action() }) }) };
       if (id === './ClipLutControls.tsx') return load('ClipLutControls.tsx');
       if (id === './api.js') return { rpc: lutRpc };
@@ -285,4 +290,47 @@ test('real inspector adopts SDR, applies a declared creative LUT and saves throu
   assert.deepEqual(saved.look, { resourceId: lutId, resourceSha256: resource.sha256, resourceProfile: resource.profile, purpose: 'rec709-sdr-creative', declaredBy: 'user', enabled: false, strength: 0.37 });
   assert.equal(h.find('save-clip').props.disabled, true);
   assert.deepEqual(rpcCalls.map(call => call.operation), ['timeline.colour.source.inspect', 'lut.list', 'lut.inspect']);
+});
+
+
+test('actual inspector role selection uses shared dirty form and one existing Save revision', async () => {
+  const h = await inspectorHarness({ draftContext: { audioRoleEditable: true } });
+  assert.equal(h.find('clip-audio-role').props.disabled, false);
+  assert.equal(h.find('clip-audio-role').props.value, '');
+  assert.equal(h.saves.length, 0);
+  h.edit('clip-audio-role', 'music');
+  assert.equal(h.find('save-clip').props.disabled, false);
+  assert.equal(h.saves.length, 0, 'Selecting is not an independent business save');
+  await h.submit(); h.render();
+  assert.equal(h.saves.length, 1); assert.equal(h.saves[0].patch.audioRole, 'music'); assert.equal(h.saves[0].revision, 7);
+  assert.equal(h.find('clip-audio-role').props.value, 'music');
+  assert.equal(h.find('save-clip').props.disabled, true);
+  h.edit('clip-audio-role', ''); await h.submit(); h.render();
+  assert.equal(h.saves.length, 2); assert.equal(h.saves[1].patch.audioRole, null); assert.equal(h.saves[1].revision, 8);
+});
+
+test('missing role capability blocks captured selector callbacks but unrelated inspector edits save', async () => {
+  const h = await inspectorHarness();
+  assert.equal(h.find('clip-audio-role').props.disabled, true);
+  h.edit('clip-audio-role', 'human');
+  assert.equal(h.find('save-clip').props.disabled, true);
+  h.edit('clip-name', 'Renamed'); await h.submit(); h.render();
+  assert.equal(h.saves.length, 1); assert.equal(Object.hasOwn(h.saves[0].patch, 'audioRole'), false);
+});
+
+test('role eligibility includes silent video, zero gain and muted timeline without enabling fades', async () => {
+  const current = clip({ gain: 0 }); const saved = timeline(current); saved.tracks[0].muted = true;
+  const h = await inspectorHarness({ clip: current, timeline: saved, asset: asset({ hasAudio: false }), draftContext: { audioRoleEditable: true } });
+  assert.equal(h.find('clip-audio-role').props.disabled, false);
+  assert.equal(h.find('clip-fade-in').props.disabled, true);
+  h.edit('clip-audio-role', 'sfx'); await h.submit(); h.render();
+  assert.equal(h.saves[0].patch.audioRole, 'sfx'); assert.equal(h.saves[0].patch.gain, 0);
+});
+
+test('image inspector excludes audio role; restored supported editor can save without sidecar support', async () => {
+  const image = await inspectorHarness({ asset: asset({ mimeType: 'image/png', hasAudio: false }), draftContext: { audioRoleEditable: true } });
+  assert.equal(image.find('clip-audio-role'), undefined);
+  const restored = await inspectorHarness({ draftContext: { restored: true, audioRoleEditable: true } });
+  restored.edit('clip-audio-role', 'human'); await restored.submit(); restored.render();
+  assert.equal(restored.saves.length, 1); assert.equal(restored.saves[0].patch.audioRole, 'human');
 });

@@ -1,3 +1,5 @@
+import { isClipAudioRole } from '../../../packages/contracts/src/timeline-audio-role.ts';
+import { clipAudioRoleChanged } from './clip-audio-role-state.ts';
 import { message as displayMessage } from '../../../packages/i18n/src/index.ts';
 import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
 import { recoveryDisplayError, recoveryErrorMessage } from './recovery-display.ts';
@@ -17,6 +19,7 @@ export type ClipDraftRead = WireEnvelope;
 export interface ClipDraftClient { get(key: ClipDraftKey): Promise<ClipDraftRead>; put(value: ClipDraftWrite): Promise<ClipDraftEnvelope>; remove(value: ClipDraftDelete): Promise<ClipDraftEnvelope> }
 export interface ClipDraftContext extends ClipDraftKey {
   scope: string; restored: boolean; connected: boolean; busy: boolean; visible: boolean;
+  audioRoleEditable?: boolean;
   timelineRevision: number; source: ClipDraftSource; saved: ClipDraftRaw;
 }
 export interface ClipDraftCapture extends Readonly<ClipDraftKey> { readonly scope: string; readonly serial: number; readonly generation: number }
@@ -49,6 +52,10 @@ export function clipDraftPatch(raw: ClipDraftRaw): Record<string, unknown> | nul
   if (Object.values(rect).some(value => !Number.isSafeInteger(value) || value % 2 !== 0) || rect.x < 0 || rect.y < 0 || rect.width < 2 || rect.height < 2) return null;
   for (const field of ['fadeInFrames', 'fadeOutFrames']) if (own(patch, field) && (Number(patch[field]) < 0 || Number(patch[field]) > Number(patch.durationFrames))) return null;
   if (Number(patch.fadeInFrames ?? 0) + Number(patch.fadeOutFrames ?? 0) > Number(patch.durationFrames)) return null;
+  if (own(raw, 'audioRole')) {
+    if (!isClipAudioRole(raw.audioRole)) return null;
+    patch.audioRole = raw.audioRole;
+  }
   if (own(raw, 'colour')) {
     if (raw.colour !== null && !clipColourSchema.safeParse(raw.colour).success) return null;
     patch.colour = copy(raw.colour);
@@ -59,6 +66,7 @@ export function clipDraftRaw(clip: Record<string, unknown>): ClipDraftRaw {
   const rect = object(clip.rect) ? clip.rect : {};
   return { name: typeof clip.name === 'string' ? clip.name : '', trackId: String(clip.trackId), startFrame: clip.startFrame as number,
     durationFrames: clip.durationFrames as number, sourceInFrame: clip.sourceInFrame as number, rect: { x: rect.x as number, y: rect.y as number, width: rect.width as number, height: rect.height as number }, gain: clip.gain as number,
+    ...(own(clip, 'audioRole') ? { audioRole: clip.audioRole as ClipDraftRaw['audioRole'] } : {}),
     ...(own(clip, 'colour') ? { colour: copy(clip.colour as ClipColour | null) } : {}),
     ...(own(clip, 'fadeInFrames') ? { fadeInFrames: clip.fadeInFrames as number } : {}), ...(own(clip, 'fadeOutFrames') ? { fadeOutFrames: clip.fadeOutFrames as number } : {}) };
 }
@@ -221,7 +229,8 @@ export function createClipDraftController({ context: initial, client, validateTi
       schedule();
     },
     edit(key: keyof ClipDraftRaw, value: ClipDraftRaw[keyof ClipDraftRaw]) {
-      if (!active || !context.visible || !own(state.raw, key) && !['fadeInFrames', 'fadeOutFrames', 'colour'].includes(key)) return false;
+      if (key === 'audioRole' && (context.audioRoleEditable !== true || !context.connected || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict || !isClipAudioRole(value))) return false;
+      if (!active || !context.visible || !own(state.raw, key) && !['fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole'].includes(key)) return false;
       serial++; emit({ raw: { ...state.raw, [key]: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
     },
     restore(token = capture()) {
@@ -259,15 +268,21 @@ export function createClipDraftController({ context: initial, client, validateTi
     async save(onSave: (clipId: string, patch: Record<string, unknown>, baseRevision: number, options: { canExecute: () => boolean }) => Promise<unknown>): Promise<unknown> {
       if (!active || !context.visible || !context.connected || context.busy || state.conflict || state.submitting || !state.dirty || state.candidate) return null;
       const patch = clipDraftPatch(state.raw); if (!patch) return null;
+      // Unavailable role capability cannot block unrelated edits or silently drop
+      // a recovered role change. An unchanged role is omitted from that request.
+      if (context.audioRoleEditable !== true) {
+        if (clipAudioRoleChanged(state.raw, context.saved)) return null;
+        delete patch.audioRole;
+      }
       const owner = generation, savedSerial = serial, original = copy(context), base = state.baseRevision, source = copy(state.source);
       emit({ submitting: true, businessPending: false });
       await flush();
       if (!belongs(owner)) return null;
-      if (savedSerial !== serial || context.busy || !context.visible || !context.connected || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
+      if (savedSerial !== serial || context.busy || !context.visible || !context.connected || own(patch, 'audioRole') && context.audioRoleEditable !== true || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
       const stored = envelope ? copy(envelope) : null, localUnconfirmed = !context.restored && (!loaded || state.autosavePaused || state.phase === 'error');
       emit({ error: localUnconfirmed ? state.error : '', errorDisplay: localUnconfirmed ? state.errorDisplay : undefined });
       try {
-        const canExecute = () => belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
+        const canExecute = () => (!own(patch, 'audioRole') || context.audioRoleEditable === true) && belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
         emit({ businessPending: true });
         const result = await onSave(original.clipId, patch, base, { canExecute });
         if (!belongs(owner)) return null;

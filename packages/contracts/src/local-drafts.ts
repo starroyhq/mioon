@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {clipAudioRoleSchema} from './timeline-audio-role.ts';
 import {clipColourSchema} from './timeline-colour.ts';
 
 // UI-only local input. This is deliberately not a business-operation schema.
@@ -14,6 +15,7 @@ export const clipDraftRawSchema=z.object({
   rect:z.object({x:rawNumber,y:rawNumber,width:rawNumber,height:rawNumber}).strict(),gain:rawNumber,
   fadeInFrames:rawNumber.optional(),fadeOutFrames:rawNumber.optional(),
   colour:clipColourSchema.nullable().optional(),
+  audioRole:clipAudioRoleSchema.optional(),
 }).strict();
 export const clipDraftValueSchema=z.object({baseRevision:revision.min(1),source:clipDraftSourceSchema,raw:clipDraftRawSchema,updatedAt:z.string().datetime()}).strict();
 export const clipDraftProjectSchema=z.object({projectId:id}).strict();
