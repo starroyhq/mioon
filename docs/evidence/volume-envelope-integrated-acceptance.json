@@ -1,0 +1,51 @@
+{
+  "status": "passed",
+  "sourceCommit": "72d78150c559a1558580b2288563b7d78e869e18",
+  "sourceTree": "75ac4ff94ab18945b922ef742e60fe138ba1ec36",
+  "startedAt": "2026-10-15T22:21:58.528Z",
+  "finishedAt": "2026-10-15T22:22:15.005Z",
+  "elapsedMs": 16477,
+  "snapshots": 5,
+  "comparisons": 18,
+  "maximumAbsoluteError": 7.450580596923828e-09,
+  "fixedCrossPathTolerance": 2e-06,
+  "absentNullSamePathBitIdentical": true,
+  "children": {
+    "ffmpeg": 37,
+    "ffprobe": 17,
+    "total": 54
+  },
+  "allChildrenNormalExitCloseZeroRetiredWithoutSignals": true,
+  "activeChildId": null,
+  "pendingOperations": 0,
+  "managedHashCalls": 24,
+  "managedHashBytes": 27649920,
+  "sourceWorkFrames": 1341,
+  "capturedPcmBytes": 19276800,
+  "retainedBytes": 21387883,
+  "retainedByteCap": 33554432,
+  "sampledHarnessRssBytes": 163385344,
+  "production96MiBLimitQualified": false,
+  "unchangedPinnedSourceFiles": 22,
+  "sourceManifestSha256": "173fdb97ae525ebb43ed34951aa4dd1aefe222c9676215fb7abf9c9f9342cddc",
+  "evidenceSha256": {
+    "report.json": "bd3684af0e4b78a2b1adb1ba66ec79726dbf11d70da4ff315de54d64bafd75bb",
+    "REVIEW.md": "10241a1b929d05aebd41ca9d095c38ab2c93dc98adc4030aea6dceda99306a10",
+    "manifest.json": "78010fb997a9d2b15d7e2b4b29ca0ec58468b803bf68118103d9d904302f8e81",
+    "qualify.mjs": "de26342f4283ea7f9bcd76b2bab49faa65be1ca4dbe4e150be9917013004c9e1",
+    "runner.mjs": "9aa5d69a3039d979b1bfeca63e4d51f056e43b0ba863de13c7d2d668621a6020"
+  },
+  "seamsAndExclusions": [
+    "Synthetic immutable reader and owned-workspace assertion; no durable admission, mutations or replay.",
+    "Injected TERM-only runner; no default production supervisor qualification.",
+    "Actual shared graph via production decoder paths; no export orchestration or AAC qualification.",
+    "No native GUI or long-duration qualification.",
+    "Sampled harness RSS is not proof of the production 96 MiB admission bound."
+  ],
+  "priorCombinedTestResultUnchanged": {
+    "passed": 231,
+    "total": 232,
+    "isolatedDiagnosticPassed": 1,
+    "limitation": "Unchanged 10 ms cancellation fixture missed GET dispatch under concurrent load; one isolated diagnostic passed without erasing the combined failure."
+  }
+}
