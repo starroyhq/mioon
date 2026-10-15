@@ -8,34 +8,38 @@ export interface ClipVolumeEnvelopeControlsProps {
   value?: RawVolumeEnvelope | null;
   proposedDuration: number;
   disabled?: boolean;
-  onEdit: (value: RawVolumeEnvelope | null) => void;
+  onEdit: (value: RawVolumeEnvelope | null, session?: symbol) => void;
   /** Required synchronous dirty/guard notification; not a persistence callback.
    * Parent must keep this component/owner mounted while pending, or explicitly
    * end/cancel composition before navigation. Do not clear pending on unmount. */
   onCompositionChange: (state: VolumeEnvelopeComposition) => void;
 }
-type Pending = { row: number; field: VolumePointField; text: string; original: string };
+type Pending = { session: symbol; row: number; field: VolumePointField; text: string; original: string };
 /** Dormant reusable form fragment. It owns no Save, capability or durable state.
  * A caller must preserve absent versus null and bind all callbacks to its owner. */
 export default function ClipVolumeEnvelopeControls({ value, proposedDuration, disabled = false, onEdit, onCompositionChange }: ClipVolumeEnvelopeControlsProps) {
   const { t } = useI18n(), id = useId();
   const pending = useRef<Pending | null>(null);
+  const renderEpoch = useRef(0), rendered = ++renderEpoch.current;
   const [transient, setTransient] = useState<Pending | null>(null);
   const [rejected, setRejected] = useState<{ row: number; field: VolumePointField } | null>(null);
   const points = value?.points ?? [];
+  // Each rendered handler retains its originating session. Start can set this
+  // local holder synchronously before React has rendered the pending state.
+  const handlerSession = { value: transient?.session ?? null as symbol | null };
   const invalid = !validateRawVolumeEnvelope(value === undefined ? {} : { volumeEnvelope: value }, proposedDuration).valid;
   const publish = (next: Pending) => {
     pending.current = next; setTransient(next);
-    onCompositionChange({ pending: true, dirty: true, row: next.row, field: next.field, text: next.text });
+    onCompositionChange({ session: next.session, pending: true, dirty: true, row: next.row, field: next.field, text: next.text });
   };
-  const finish = () => { pending.current = null; setTransient(null); onCompositionChange({ pending: false, dirty: false }); };
-  const admit = (row: number, field: VolumePointField, text: string, input: HTMLInputElement) => {
+  const finish = (session: symbol) => { if (pending.current?.session !== session) return; pending.current = null; setTransient(null); onCompositionChange({ session, pending: false, dirty: false }); };
+  const admit = (row: number, field: VolumePointField, text: string, input: HTMLInputElement, session?: symbol) => {
     if (!acceptsVolumeEnvelopeText(field, text)) {
       input.value = points[row][field]; setRejected({ row, field }); return;
     }
     setRejected(null);
     if (text === points[row][field]) return;
-    onEdit({ profileId: VOLUME_ENVELOPE_PROFILE, points: points.map((point, i) => i === row ? { ...point, [field]: text } : { ...point }) });
+    onEdit({ profileId: VOLUME_ENVELOPE_PROFILE, points: points.map((point, i) => i === row ? { ...point, [field]: text } : { ...point }) }, session);
   };
   const structure = (next: RawVolumeEnvelope | null) => {
     if (disabled || pending.current) return;
@@ -56,19 +60,21 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
             disabled={disabled || !!transient && !composing} aria-invalid={error || undefined}
             aria-describedby={`${id}-bounds${error ? ` ${id}-error` : ''}`}
             onCompositionStart={event => {
-              if (disabled || pending.current) return;
-              setRejected(null); publish({ row, field, text: event.currentTarget.value, original: point[field] });
+              if (disabled || pending.current || rendered !== renderEpoch.current) return;
+              handlerSession.value = Symbol('volume-composition-event');
+              setRejected(null); publish({ session: handlerSession.value, row, field, text: event.currentTarget.value, original: point[field] });
             }}
             onChange={event => {
               const current = pending.current;
+              if (current && handlerSession.value !== current.session) return;
               if (current?.row === row && current.field === field) { publish({ ...current, text: event.currentTarget.value }); return; }
-              if (!disabled && !current) admit(row, field, event.currentTarget.value, event.currentTarget);
+              if (!disabled && !current && rendered === renderEpoch.current) admit(row, field, event.currentTarget.value, event.currentTarget);
             }}
             onCompositionEnd={event => {
               const current = pending.current;
-              if (!current || current.row !== row || current.field !== field) return;
+              if (!current || handlerSession.value !== current.session || current.row !== row || current.field !== field) return;
               // Commit/correct DOM before releasing the parent's pending guard.
-              admit(row, field, event.currentTarget.value, event.currentTarget); finish();
+              admit(row, field, event.currentTarget.value, event.currentTarget, current.session); finish(current.session);
             }}
  />
         </label>;

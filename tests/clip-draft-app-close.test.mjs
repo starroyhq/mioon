@@ -11,11 +11,12 @@ assert.equal(app.indexOf('  useEffect(() => {\n    const controller = preference
 const effect = app.slice(start, end + '\n  }, []);'.length);
 const deferred = () => Promise.withResolvers();
 
-function fixture({ native = false, restored = false, pending = true, result = true, held = null, viewHeld = null } = {}) {
+function fixture({ native = false, restored = false, pending = true, result = true, held = null, viewHeld = null, composing = false } = {}) {
   const calls = [], listeners = new Map(), global = {}, workspaceRef = { current: { restored } };
   let serial = 1, cleanup;
   const clip = {
     hasUnpersisted: () => pending,
+    hasPendingComposition: () => composing,
     capture: () => serial,
     isCurrent: value => value === serial,
     flushForClose: async () => { calls.push('clip'); const saved = held ? await held.promise : result; if (saved) pending = false; return saved; },
@@ -36,7 +37,7 @@ function fixture({ native = false, restored = false, pending = true, result = tr
   };
   Function(...Object.keys(scope), effect)(...Object.values(scope));
   return { calls, global, listeners, document, workspaceRef, clipDraftRef, clip, cleanup,
-    changed: () => { serial++; }, setUnpersisted: value => { pending = value; }, drain: () => global.__mioonFlushWorkspacePreferences() };
+    changed: () => { serial++; }, setComposing: value => { composing = value; serial++; }, setUnpersisted: value => { pending = value; }, drain: () => global.__mioonFlushWorkspacePreferences() };
 }
 
 test('actual App close drain immediately waits for the registered clip draft instead of its debounce', async () => {
@@ -146,4 +147,15 @@ test('desktop close warning describes unconfirmed local drafts and view without 
 test('native editor close drains its own clip and view while the launcher exclusively drains the shared locator', async () => {
   const f=fixture({native:true});assert.equal(await f.drain(),true);assert.deepEqual(f.calls,['view','clip']);
   f.calls.length=0;await f.listeners.get('window:pagehide')();assert.equal(f.calls.includes('locator'),false);assert.equal(f.calls.includes('view'),true);
+});
+
+for (const restored of [false, true]) test(`actual App composition blocks close drain and beforeunload for restored=${restored}`, async () => {
+ const f=fixture({restored,composing:true});
+ assert.equal(await f.drain(),false);assert.deepEqual(f.calls,[]);
+ let prevented=false;const event={type:'beforeunload',preventDefault(){prevented=true;}};
+ f.listeners.get('window:beforeunload')(event);assert.equal(prevented,true);assert.equal(event.returnValue,'');assert.deepEqual(f.calls,[]);
+ f.setComposing(false);assert.equal(await f.drain(),true);
+});
+test('actual App composition beginning during another drain rejects late close approval',async()=>{
+ const gate=deferred(),f=fixture({viewHeld:gate,pending:false});const closing=f.drain();await Promise.resolve();f.setComposing(true);gate.resolve();assert.equal(await closing,false);
 });

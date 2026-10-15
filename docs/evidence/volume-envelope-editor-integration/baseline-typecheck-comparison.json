@@ -1,0 +1,11 @@
+{
+  "baseline": "b86d0d3f8acd5ead0486ef015114a068e8b4c0c4",
+  "baselineErrors": 721,
+  "currentErrors": 721,
+  "identicalErrorIdentityMultisets": true,
+  "baselineOnly": [],
+  "currentOnly": [],
+  "fullNormalizedLogsEqual": true,
+  "baselineNormalizedSha256": "671973a109b264ae6e148361dbd65bb684c199e495fa91f5543836946fdeaaeb",
+  "currentNormalizedSha256": "671973a109b264ae6e148361dbd65bb684c199e495fa91f5543836946fdeaaeb"
+}

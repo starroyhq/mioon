@@ -233,7 +233,7 @@ test('recovery is embedded in the existing right inspector with explicit restore
   assert.match(inspector, /<ClipDraftRecovery state=\{state\}/); assert.match(view, /recovery\.clip\.shortDisclosure/); assert.match(i18n.translate('zh-Hans', 'recovery.clip.shortDisclosure'), /仅片段属性，本地明文；最后未确认输入可能丢失/);
   assert.match(view, /recovery\.clip\.restore/); assert.equal(i18n.translate('zh-Hans', 'recovery.clip.restore'), '恢复到属性表单'); assert.doesNotMatch(view, /mutateTimeline|edit_tasks|role="dialog"/);
   assert.doesNotMatch(inspector, /setBaseRevision|same\(latest, baseline/);
-  assert.match(inspector, /data-testid="remove-clip" disabled=\{busy \|\| dirty \|\| state.submitting \|\| Boolean\(state.candidate\)\}/);
+  assert.match(inspector, /data-testid="remove-clip" disabled=\{compositionPending \|\| busy \|\| dirty \|\| state.submitting \|\| Boolean\(state.candidate\)\}/);
   assert.match(inspector, /timeline\.inspector\.saveBeforeRemove/); assert.equal(i18n.translate('zh-Hans', 'timeline.inspector.saveBeforeRemove'), '先保存或放弃片段草稿，再移除此片段。');
 });
 

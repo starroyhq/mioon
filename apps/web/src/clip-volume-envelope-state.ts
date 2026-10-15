@@ -11,7 +11,7 @@ export type VolumePointField = keyof RawVolumePoint;
 /** Parent must synchronously treat pending as dirty and block Save, close and
  * owner/navigation changes. Transient text is NOT admitted or persisted input.
  * Bind callbacks to owner/serial; never clear this protection merely on unmount. */
-export type VolumeEnvelopeComposition = { pending: true; dirty: true; row: number; field: VolumePointField; text: string } | { pending: false; dirty: false };
+export type VolumeEnvelopeComposition = { session: symbol; pending: true; dirty: true; row: number; field: VolumePointField; text: string } | { session: symbol; pending: false; dirty: false };
 const own = (v: object, key: string) => Object.prototype.hasOwnProperty.call(v, key);
 const record = (v: unknown, keys: string[]): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) &&
   Object.keys(v).length === keys.length && keys.every(k => own(v, k));

@@ -1,0 +1,706 @@
+✔ capability is explicit and fail-closed, with no generic operation inference (10.3697ms)
+✔ restored capability binds exact verified origin and profile; old generic update support is insufficient (59.508696ms)
+✔ raw and patch preserve absent/null roles and reject invalid values without coercion (3.53272ms)
+✔ role state saves through draft CAS and business save; role ACK mismatch retains input (21.62132ms)
+✔ unknown business ACK preserves exact role input and sidecar, with no automatic resubmit (1.563142ms)
+✔ capability loss blocks role changes but omits unchanged role for unrelated edits (3.593944ms)
+✔ role draft restore and discard preserve ownership and reset absence (1.925803ms)
+✔ late role ACK cannot clear a changed owner; role capability is rechecked at dispatch (4.77882ms)
+✔ TSX control labels and handlers cover four locales, explicit clear, invalid events and disabled states (198.298055ms)
+✔ optional capability observation never delays ordinary load and fences late boot completions (6.283514ms)
+✔ unrelated save ACK cannot drop, alter or normalize a captured role, even when omitted from patch (4.865917ms)
+✔ recovered role change without capability remains blocked and retained (1.244774ms)
+✔ hung probe aborts and reports unavailable once; ignored abort cannot publish a late success (20.884259ms)
+✔ reconnect cancels old read; unreadable and confirmed unsupported have distinct results (1.099402ms)
+✔ actual App close drain immediately waits for the registered clip draft instead of its debounce (11.387554ms)
+✔ actual App close refusal remains false without retry, deletion or business submission (1.975078ms)
+✔ actual App late close ACK cannot approve replacement owner (2.481012ms)
+✔ actual App late close ACK cannot approve new input (0.970037ms)
+✔ actual App late close ACK cannot approve restored scope (1.70721ms)
+✔ actual App restored branch skips local draft I/O and preserves the original view drain (0.638578ms)
+✔ actual App rechecks clip input after the slower unrelated view drain settles (1.570783ms)
+✔ actual App initially missing clip cannot acknowledge a newly mounted owner (0.880404ms)
+✔ actual App checks renewed persistence uncertainty after clip ACK while other drains wait (1.641743ms)
+✔ actual App hidden/pagehide/beforeunload paths flush only unpersisted clip input (2.525077ms)
+✔ actual lifecycle cleanup retains a newer registered global close handler (1.380092ms)
+✔ desktop close warning describes unconfirmed local drafts and view without promising cancellation (3.560625ms)
+✔ native editor close drains its own clip and view while the launcher exclusively drains the shared locator (0.849254ms)
+✔ actual App composition blocks close drain and beforeunload for restored=false (0.947834ms)
+✔ actual App composition blocks close drain and beforeunload for restored=true (0.227034ms)
+✔ actual App composition beginning during another drain rejects late close approval (0.943387ms)
+✔ GET has a whole-request deadline while response headers hang (34.230103ms)
+✔ GET has a whole-request deadline while the response body hangs (10.046112ms)
+✔ PUT has a whole-request deadline while response headers hang (10.407606ms)
+✔ PUT has a whole-request deadline while the response body hangs (4.081389ms)
+✔ DELETE has a whole-request deadline while response headers hang (2.715408ms)
+✔ DELETE has a whole-request deadline while the response body hangs (2.093278ms)
+▶ deadline defaults to 10s, clamps to 60s, and remains finite for invalid options
+  ✔ timeoutMs=undefined uses 10000ms (2.579465ms)
+  ✔ timeoutMs=NaN uses 10000ms (2.833034ms)
+  ✔ timeoutMs=Infinity uses 10000ms (2.60794ms)
+  ✔ timeoutMs=120000 uses 60000ms (1.85411ms)
+  ✔ timeoutMs=0 uses 1ms (4.260012ms)
+  ✔ timeoutMs=-1 uses 1ms (2.225572ms)
+✔ deadline defaults to 10s, clamps to 60s, and remains finite for invalid options (19.650328ms)
+✔ expired PUT cannot accept a late ACK, alter its CAS, or issue another PUT (2.743341ms)
+✔ late fetch rejection is consumed after the deadline (4.681696ms)
+▶ declared oversized and malformed lengths are rejected before waiting for any body bytes
+  ✔ Content-Length 12289 (3.581666ms)
+  ✔ Content-Length 9007199254740992 (1.440649ms)
+  ✔ Content-Length -1 (1.329654ms)
+  ✔ Content-Length +1 (1.611004ms)
+  ✔ Content-Length 1.5 (1.247549ms)
+  ✔ Content-Length 01 (0.875709ms)
+✔ declared oversized and malformed lengths are rejected before waiting for any body bytes (11.448866ms)
+▶ actual streamed bytes are bounded even with absent or misleading Content-Length
+  ✔ Content-Length undefined (3.477923ms)
+  ✔ Content-Length 1 (2.517701ms)
+✔ actual streamed bytes are bounded even with absent or misleading Content-Length (7.037472ms)
+✔ the maximum legal stored row and success-envelope overhead fit the actual HTTP budget (3.785808ms)
+✔ UTF-8 sequences split across chunks survive strict decoding (9.672947ms)
+✔ invalid UTF-8 inside otherwise valid JSON never becomes replacement-character success (4.75846ms)
+✔ successful acknowledgements require status 200 and exactly own ok/data keys (2.76492ms)
+✔ error evidence requires exactly the outer and four inner keys (11.137075ms)
+✔ only exact code/status evidence distinguishes refused, conflict and unknown (7.132993ms)
+✔ existing fetcher-only calling convention preserves endpoints, request bodies and unsupported handling (3.837399ms)
+✔ close flush persists exact raw before the 250 ms timer and never calls business Save (23.196605ms)
+✔ ordinary flush remains Promise<void> and business dirty differs from unpersisted raw (2.438863ms)
+✔ a pristine fast-path close rechecks serial when its Promise settles (2.17237ms)
+✔ a persisted dirty fast-path close rechecks serial when its Promise settles (1.945084ms)
+✔ a pristine form and an untouched recovery candidate need no close write (3.048585ms)
+✔ dirty input before GET finishes returns false without implicit reads, writes, or lost raw (2.696132ms)
+✔ restored workspaces keep manual editing and close false for dirty raw with no sidecar I/O (1.760672ms)
+✔ offline dirty input and an unresolved different candidate cannot be acknowledged on close (3.781818ms)
+✔ concurrent close requests join the old PUT and perform at most one legal next CAS for current raw (10.21617ms)
+✔ concurrent ordinary flush callers share a bounded next write instead of recursively chasing edits (5.323598ms)
+✔ editing during the final close PUT returns false and leaves newer raw for the normal debounce (3.727682ms)
+✔ input changed back during close still invalidates the captured serial (2.355149ms)
+✔ editing while close awaits an old PUT does not start a hidden next submission (1.59039ms)
+✔ LOCAL_DRAFT_CAPACITY returns close false and preserves raw/CAS without automatic retry (3.66038ms)
+✔ LOCAL_DRAFT_CONFLICT returns close false and preserves raw/CAS without automatic retry (1.59709ms)
+✔ LOCAL_DRAFT_STALE_INSTANCE returns close false and preserves raw/CAS without automatic retry (3.308463ms)
+✔ LOCAL_DRAFT_SAVE_UNCERTAIN returns close false and preserves raw/CAS without automatic retry (1.258611ms)
+✔ close rejects a PUT acknowledgement with different raw (3.829609ms)
+✔ close rejects a PUT acknowledgement with different baseRevision (0.998211ms)
+✔ close rejects a PUT acknowledgement with different source (34.516039ms)
+✔ close rejects a PUT acknowledgement with different instanceId (2.782127ms)
+✔ close rejects a PUT acknowledgement with different workspaceScope (1.404208ms)
+✔ close rejects a PUT acknowledgement with different revision (1.503316ms)
+✔ close rejects a PUT acknowledgement with different key (1.457433ms)
+✔ a reread with a new service instance never grants close confirmation for the old draft (1.938773ms)
+✔ an explicit in-flight reread cannot reuse an old saved acknowledgement to release close (1.502273ms)
+✔ an in-flight DELETE cannot satisfy close even for an untouched recovery candidate (2.116277ms)
+✔ scope replacement fences an old close ACK and never marks its new owner persisted (1.057663ms)
+✔ abandonment cannot let an old close release a later owner (1.642363ms)
+✔ explicitly abandoned clean input may leave while retaining historical unknown evidence (1.916564ms)
+✔ disposing then activating the same object cannot reuse a previous close acknowledgement (1.562673ms)
+✔ real bounded client timeout keeps controller unknown through empty GET and later original PUT commit (32.710657ms)
+✔ whole raw form round-trips incomplete numeric strings and fade omission without business execution (17.638217ms)
+✔ invalid raw numbers and missing name never become valid zero-valued business patches (1.61463ms)
+✔ a delayed GET preserves newer typed input and requires explicit old-draft handling (2.375857ms)
+✔ restoration freezes base revision and complete source, including unrelated timeline updates (3.543357ms)
+✔ only a complete matching fresh applied business ACK clears the exact persisted draft (8.488173ms)
+✔ newer input typed while business save awaits survives and is never rebased or cleared (3.083352ms)
+✔ an older applied ACK never regresses an observed newer timeline or clears its draft (3.402164ms)
+✔ unknown business outcome and unmounted owner preserve draft without automatic replay (3.057882ms)
+✔ multiwindow write conflict fails closed and reread never silently overwrites foreign raw (1.043995ms)
+✔ delayed local PUT coalesces newer input only after the first exact CAS is accepted (1.650029ms)
+✔ explicit discard checks captured serial and never removes another window’s newer draft (2.024895ms)
+✔ typing during explicit stored-draft deletion preserves input and does not leave a phantom recovery candidate (1.365884ms)
+✔ backend identity changes require explicit page reload, never silently adopting a new authority (1.523012ms)
+✔ restored branch retains ordinary in-memory editing and discard without local draft I/O (0.956493ms)
+✔ lost autosave ACK followed by applied business ACK cannot falsely mark the sidecar cleared (1.542576ms)
+✔ busy lane and hidden view never dispatch a business save and recovery never does so (0.820642ms)
+✔ HTTP adapter uses same-origin sidecar only and rejects malformed/unsupported write acknowledgments (140.166274ms)
+✔ recovery is embedded in the existing right inspector with explicit restore and local plaintext warning (1.546815ms)
+✔ a delayed reread cannot resurrect a candidate after its exact DELETE is confirmed (18.396964ms)
+✔ offline input automatically schedules a local write after a safe reconnect (35.607488ms)
+✔ repeated Save while the local flush awaits cannot dispatch duplicate business edits (4.421353ms)
+✔ late durable preparation cannot execute after view, owner, source or base changes; its own busy state is allowed (12.053516ms)
+✔ actual HTTP client preserves structured LOCAL_DRAFT_CAPACITY/507 without interpreting message text (1.29387ms)
+✔ actual HTTP client preserves structured LOCAL_DRAFT_LIMIT/413 without interpreting message text (1.007377ms)
+✔ actual HTTP client preserves structured LOCAL_DRAFT_CONFLICT/409 without interpreting message text (0.985517ms)
+✔ actual HTTP client preserves structured LOCAL_DRAFT_STALE_INSTANCE/409 without interpreting message text (0.929519ms)
+✔ actual HTTP client preserves structured LOCAL_DRAFT_SAVE_UNCERTAIN/503 without interpreting message text (1.580637ms)
+✔ actual HTTP client preserves structured UNRECOGNIZED_FUTURE_CODE/409 without interpreting message text (0.625747ms)
+✔ actual HTTP client treats code/status mismatches, malformed 2xx and network loss as unknown outcomes (5.381116ms)
+✔ actual HTTP client refuses to treat malformed error envelopes as proof of a known refusal (4.441847ms)
+✔ capacity refusal pauses autosave through debounce, read-only GET null, typing and reconnect, then permits a local-only exit (306.70443ms)
+✔ unknown PUT followed by GET null never becomes a known refusal, and late server publication remains recoverable after local exit (42.634881ms)
+✔ a later verified GET refused cannot erase an earlier unknown write outcome (25.685957ms)
+✔ a later verified GET conflict cannot erase an earlier unknown write outcome (21.102499ms)
+✔ LOCAL_DRAFT_STALE_INSTANCE pauses new PUTs across reads, changed input and context without replacing either window's record (23.844793ms)
+✔ LOCAL_DRAFT_CONFLICT pauses new PUTs across reads, changed input and context without replacing either window's record (22.749994ms)
+✔ an unresolved autosave may be abandoned locally, and its late PUT cannot resurrect the form or erase newer input (22.276852ms)
+✔ abandoning a business Save waiting on an unresolved local PUT prevents every later business handoff (1.424034ms)
+✔ abandonment is fenced after actual business handoff and while the durable lane is pending (0.699116ms)
+✔ explicit local-only exit preserves an existing stored draft and its original restore base and source (0.862144ms)
+✔ a captured local-only exit cannot discard text changed back to the same value or a revisited owner (0.561701ms)
+✔ actual recovery confirmation preserves exact local-input ownership: cancel (64.22995ms)
+✔ actual recovery confirmation preserves exact local-input ownership: confirm (46.417096ms)
+✔ actual recovery confirmation preserves exact local-input ownership: new input (36.126305ms)
+✔ actual recovery confirmation preserves exact local-input ownership: changed back (47.967217ms)
+✔ actual recovery confirmation preserves exact local-input ownership: pending business (62.146047ms)
+✔ actual recovery confirmation preserves exact local-input ownership: pending prop (100.435657ms)
+✔ local-only exit fences a late GET without silently offering its old recovery candidate (0.865675ms)
+✔ late abandoned PUT completion cannot invalidate a newer explicit GET or attach an old write acknowledgement (1.231552ms)
+✔ navigation discard held behind autosave preserves input when target invalidates (0.949605ms)
+✔ navigation discard held behind autosave preserves input when new-input invalidates (0.877279ms)
+✔ navigation discard held behind autosave preserves input when owner invalidates (0.309264ms)
+✔ navigation discard held behind autosave preserves input when unknown-write invalidates (0.59159ms)
+✔ a valid dispatched draft DELETE is acknowledged but cannot clear input after target invalidates (1.335537ms)
+✔ false navigation fence cannot clear a restored-workspace local form (0.683813ms)
+✔ legacy is unchanged until explicit open, range choice and source declaration (18.743206ms)
+✔ known HDR/Log/tag/range conflicts cannot be overridden by declaration (17.287954ms)
+✔ source inspection binds project asset and exact hash and ignores stale owners (6.203956ms)
+✔ resource inspection and creative declaration are separate from import and source confirmation (3.868291ms)
+✔ selection races, disconnected controls and reconfirmed replacement preserve safe boundaries (3.507701ms)
+✔ explicit Cube imports are bounded, byte-exact and never change clip drafts (23.734352ms)
+✔ unknown imports block replacement files and retry only exact original bytes and request ID (4.292925ms)
+✔ hash-mismatched ACK is uncertain; same-session navigation retains exact retry without stale clip writes (5.659489ms)
+✔ stale chosen-file reads never dispatch import for a different clip or project (2.363145ms)
+✔ colour absent, null, disabled and full settings remain exact across raw patches and durable schema (5.287329ms)
+✔ common draft controller persists and restores LUT edits and rejects ACKs dropping colour (17.071266ms)
+✔ source replacement ACK must clear interpretation but retain exact creative look (0.795853ms)
+✔ actual controls disclose whole-timeline adoption, source-ungraded status and import versus save (103.643986ms)
+✔ retained controls cannot act after disposal; source reinspection revokes old approval (2.972683ms)
+✔ timed-out imports remain uncertain and exact replay resolves them without creating another request (28.937729ms)
+✔ LUT project/hash mismatches and stale selection replies never become applicable (7.556605ms)
+✔ shared source evidence classifier blocks opaque RGB, alpha, unsupported depth and forged compatibility (1.351991ms)
+✔ pending metadata survives a fresh controller and changed editor scope; only reselect plus explicit retry dispatches (7.503032ms)
+✔ reselected name, size or same-size different bytes cannot reuse the original request ID (5.278069ms)
+✔ verified workspace fingerprints isolate identical project IDs; live workspace changes block every import dispatch (7.106699ms)
+✔ unverified, foreign-key, restored and missing-clip workspace replies prevent storage or import (5.366244ms)
+✔ quota errors and unconfirmed writes fail before RPC; already-written metadata stays recoverable (5.136914ms)
+✔ corrupt, duplicate-key, foreign-identity, extra-field and oversized metadata is preserved and blocks import (9.798102ms)
+✔ new imports cannot overwrite another window’s pending metadata, and old success cannot clear a newer request (4.75405ms)
+✔ a verified import ACK with failed metadata cleanup stays visibly successful and can clean up without another import (5.087646ms)
+✔ actual reopened controls require reselect and explicit retry and disclose desktop and web persistence boundaries (38.03618ms)
+✔ browser storage requires cross-window lock support and preserves one canonical pending request under concurrent reserve (2.97754ms)
+✔ metadata published before a blocked dispatch is retained without submitting and can be reselected after reconnect (3.590397ms)
+✔ selected project Look declaration is read-only, identity-bound and stale-selection fenced (11.862403ms)
+✔ PNG controller uses dedicated inspection and explicit sRGB declaration with no range guess (3.609132ms)
+✔ PNG reply cannot widen colour, lose byte binding or survive kind/source changes (3.478629ms)
+✔ image controls disclose reference display, strict PNG admission, alpha and encoded composition (18.555153ms)
+✔ confirmed cleanup acknowledged after disposal retires only its exact shared map entry (14.574996ms)
+✔ lost cleanup ACK reconciles only confirmed outcomes after validated absent-hint read, without writes or retry (11.900113ms)
+✔ absent-hint reconciliation preserves newer, foreign, mismatching and unconfirmed records (6.654648ms)
+✔ candidate list is current-project, same media category, non-current and exactly range/fade compatible (13.016573ms)
+✔ review pins copied content and exact revision; only explicitly selected versions enter the payload (3.615888ms)
+✔ review requires saved selection, known timeline revision, online status and a clean draft (0.737714ms)
+✔ revision change invalidates pinned review without refreshing or reviving its approval (2.92498ms)
+✔ timeline ID change invalidates pinned review without refreshing or reviving its approval (1.136126ms)
+✔ clip timing change invalidates pinned review without refreshing or reviving its approval (20.943411ms)
+✔ clip rect change invalidates pinned review without refreshing or reviving its approval (1.144341ms)
+✔ clip gain change invalidates pinned review without refreshing or reviving its approval (1.034784ms)
+✔ clip fades change invalidates pinned review without refreshing or reviving its approval (1.35982ms)
+✔ candidate name change invalidates pinned review without refreshing or reviving its approval (1.766879ms)
+✔ candidate duration change invalidates pinned review without refreshing or reviving its approval (2.691267ms)
+✔ candidate hash change invalidates pinned review without refreshing or reviving its approval (1.734408ms)
+✔ candidate audio change invalidates pinned review without refreshing or reviving its approval (1.660593ms)
+✔ candidate byte size change invalidates pinned review without refreshing or reviving its approval (1.002927ms)
+✔ candidate video stream change invalidates pinned review without refreshing or reviving its approval (0.981508ms)
+✔ candidate managed path change invalidates pinned review without refreshing or reviving its approval (1.208167ms)
+✔ old source change invalidates pinned review without refreshing or reviving its approval (0.635439ms)
+✔ version number change invalidates pinned review without refreshing or reviving its approval (0.680817ms)
+✔ version hash change invalidates pinned review without refreshing or reviving its approval (0.821259ms)
+✔ version lineage change invalidates pinned review without refreshing or reviving its approval (0.567656ms)
+✔ version owner change invalidates pinned review without refreshing or reviving its approval (1.525628ms)
+✔ shot label change invalidates pinned review without refreshing or reviving its approval (0.576146ms)
+✔ dirty edits block even retained approval before React commits, and are never saved/discarded by replacement (2.928467ms)
+✔ choose and review are read-only; explicit approval is once-only and duplicate clicks do not re-key (1.268089ms)
+✔ cancelled review and retained choose/start/cancel callbacks cannot act on a newer review (2.425571ms)
+✔ Properties tab and dock collapse preserve review but hidden retained approval cannot submit (1.808763ms)
+✔ live owner fences late success and error before layout commit: {"projectId":"72000000-0000-4000-8000-000000000099"} (1.631783ms)
+✔ live owner fences late success and error before layout commit: {"scope":"72000000-0000-4000-8000-000000000001:2:0"} (1.532604ms)
+✔ live owner fences late success and error before layout commit: {"clipId":"72000000-0000-4000-8000-000000000099"} (0.909152ms)
+✔ unmount fences all callbacks and acknowledgements; StrictMode reattachment can begin a fresh review (1.913486ms)
+✔ null, malformed success and thrown errors including definitive 4xx remain unknown; no automatic reapproval (7.41067ms)
+✔ acknowledgement preserves every retained field and absent/explicit-zero fades and binds exact provenance (16.774602ms)
+✔ error copy is actionable and never echoes server locations or secrets (3.239354ms)
+✔ inline component renders accessible choose/review/explicit approval and every pinned source field (87.226102ms)
+✔ real component preserves review across tab/collapse, fences retained approval after cancel, and explains unknown recovery (50.662089ms)
+✔ real component blocks same-tick dirty callbacks and exposes an immutable stale review with no approval (34.093138ms)
+✔ actual parent guard rechecks current project, selection, scope, revision, metadata and unsaved draft before dispatch (22.804342ms)
+✔ actual parent replacement cannot use retained project metadata before session acceptance (2.408708ms)
+✖ actual App legacy session runner retains the exact replacement receipt for malformed success and unknown→404/409 replays (6.05497ms)
+✖ actual App legacy session runner clears replacement only for a matching request-bound fresh not-applied proof (3.566184ms)
+✖ source wiring uses the existing inline inspector, stable mutation key, session replay and no asset-only version inference (4.138535ms)
+✔ replacement history names the explicit source edit for undo and redo (1.371543ms)
+✔ retained acknowledgement copy is historical after later edits or undo (1.186952ms)
+✔ envelope capability requires exact profile and verified workspace identity, never generic update access (24.511323ms)
+✔ optional capability is bounded, failure-isolated and connection-epoch fenced (29.169168ms)
+✔ Inspector wires controller-owned envelope token across renders and blocks save/remove during composition (72.612602ms)
+✔ unsupported or silent assets retain visible recovered envelope and localized blocked message (190.176195ms)
+✔ App navigation refuses composition before confirmation and rechecks after async confirmation (5.472175ms)
+✔ App optional envelope probe is connection-scoped rather than project boot-scoped (3.513731ms)
+✔ retained old Inspector callbacks cannot retarget newer same-owner composition session (25.859002ms)
+✔ retained Inspector adapter keeps exact composing owner across auth loss, missing/replaced selected clip and settlement (2.328016ms)
+✔ late App boot inspect response cannot adopt workspace or project after composition begins (10.476493ms)
+✔ retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner (4.864036ms)
+✔ lexical limits are atomic admission, not numeric validation or normalization (2.787318ms)
+✔ preserves absent/null/value and requires complete ordered attenuation on proposed duration (2.783341ms)
+✔ unchanged comparison is independent of key insertion order but not raw strings or absence (0.440117ms)
+✔ Number-to-string round trips extremes and deterministic doubles without display rounding (232.003559ms)
+✔ four locales render text inputs, accessible labels, bounded rows and non-submit buttons (109.059206ms)
+✔ whole pasted events reject visibly, preserve prior value, allow malformed intermediate (229.904226ms)
+✔ IME transient stays observable, guards structure synchronously, commits before releasing pending (20.034304ms)
+✔ IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard (20.573685ms)
+✔ trailing input events after composition settlement preserve accepted or rejected values (12.594194ms)
+✔ exact raw field bound and complete legacy slot counterexamples do not widen any caps (8.666062ms)
+ℹ {"rawFieldBytes":1182,"legacySlotBytes":5430,"boundedCombinedBytes":6611,"unboundedEnvelopeCounterexampleBytes":15187,"fullLegalLegacyBytes":8192,"boundedOverflowBytes":9373}
+✔ retained old control handlers cannot edit or end a newer same-row composition (13.917622ms)
+✔ composition start and end can settle synchronously before pending rerender (11.679199ms)
+✔ raw projection, proposed shrink, explicit replacement and clear preserve envelope presence (4.67984ms)
+✔ bounded invalid intermediates persist exactly without becoming business Save (19.262531ms)
+✔ composition is controller-owned dirty close/navigation protection and cannot persist transient text (2.926153ms)
+✔ composition settlement retains admitted input under capability loss and disconnect (1.429947ms)
+✔ old owner/token cannot update form or release a later composition (1.523766ms)
+✔ business ACK checks omitted unchanged envelope absent (2.616635ms)
+✔ business ACK checks omitted unchanged envelope null (2.034778ms)
+✔ business ACK checks omitted unchanged envelope value (1.669962ms)
+✔ exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save (2.611023ms)
+✔ changed recovered unsupported curve remains visible and blocked (1.766857ms)
+✔ late business ACK cannot delete newer curve input (2.611661ms)
+✔ restored explicit capable business edits remain available without local companion IO (1.595968ms)
+✔ capability loss during flush cancels business submission without stripping saved draft (1.654105ms)
+✔ over-budget accepted form stays in memory with explicit refusal and close protection, no fetch (2.49565ms)
+✔ external owner-context replacement retains original pending composition and freezes effects (1.258154ms)
+✔ clip pure close reads have no sync, callbacks, transport or timer effects (28.520602ms)
+✔ shot pure close reads have no sync, callbacks, transport or timer effects (13.638335ms)
+✔ delivery pure close reads have no sync, callbacks, transport or timer effects (7.932043ms)
+✔ clip same-dirty programmatic input and owner replacement invalidate identity (3.18849ms)
+✔ shot same-dirty programmatic input and owner replacement invalidate identity (4.941552ms)
+✔ delivery same-dirty programmatic input and owner replacement invalidate identity (3.258772ms)
+✔ clip exact sidecar ACK permits stable input identity but does not waive dirty confirmation (3.408849ms)
+✔ shot exact sidecar ACK permits stable input identity but does not waive dirty confirmation (5.260401ms)
+✔ delivery exact sidecar ACK permits stable input identity but does not waive dirty confirmation (3.446895ms)
+✔ delivery lost preparation blocks even when legacy hasUnsaved is false, and explicit recovery releases it (14.741894ms)
+✔ delivery hidden project retained write remains blocked and same-request retry supplies the existing clear path (3.645053ms)
+✔ delivery active delete is blocked and unknown delete is not erased by input abandonment (4.485931ms)
+✔ shot retained hidden-slot identity catches one-for-one replacement and never contains draft text (3.066283ms)
+✔ shot lost preparation remains blocked after abandonment and resolves only through exact recovery (14.771356ms)
+✔ shot pending deletion survives abandonment; exact deletion retry releases retained owner (13.415327ms)
+✔ late shot PUT ACK cannot acknowledge a newer same-dirty programmatic edit (4.408559ms)
+✔ clip live write, deletion and uncertain deletion survive dirty-false abandonment (3.881596ms)
+✔ read-only transport failure without local owner does not invent an unresolved mutation (4.965495ms)
+✔ App-injected import and mutation identities block create/update/delete uncertainty independently of dirty (0.667589ms)
+✔ real export settings and range retain ephemeral edits and exact version while accepted jobs are absent (2.394079ms)
+✔ retained identity is bounded at contract slot limit while overflow stays blocked (10.518442ms)
+✔ known refusal is an ordinary dirty decision, but a later refusal cannot erase an earlier unknown write (14.564179ms)
+✔ unknown imports remain exact window-local evidence across successful refresh or later imports (3.846647ms)
+✔ only transient nondefault export selections are dirty, not hydration versions or backend jobs (0.568478ms)
+✔ navigation excludes only local orchestration latches while close still waits for the flow (0.214964ms)
+✔ pure reads never synchronize or write controller state and unknown DELETE is separate from dirty (0.520366ms)
+✔ native settings entry synchronously suspends consent before IPC and retains drafts across focus return (0.767157ms)
+✔ late failed settings request cannot reactivate a subsequently blurred/replaced interaction (0.682071ms)
+✔ dirty Agent native inspection pauses before capture; modal blur/focus cannot start a load or stale the commit (25.527997ms)
+✔ unknown-result risk close with dirty Agent keeps the exact unknown owner and requires separate discard (3.225664ms)
+✔ only the current cancellation resumes one Agent read and never restores old send consent (4.225642ms)
+✔ cancelling while still blurred waits for actual focus rather than reviving an inactive Agent (4.640956ms)
+✔ new inspection replaces pause ownership; late old cancel and commit cannot resume or authorize the new attempt (3.265425ms)
+✔ final unload veto never resumes reads inline; exact main cancellation resumes after consumed ticket (4.466028ms)
+✔ a disposed scope cannot be revived by a late modal cancellation or focus callback (3.539696ms)
+✔ native close detaches only observation of an accepted Agent run and never stops or repeats it (8.230412ms)
+✔ actual image draft stays unchanged through native modal focus and cancellation performs reads only (15.289242ms)
+✔ v2 native open requires exact explicit entry token and no business payload (1.652231ms)
+✔ automatic native startup is read-only; editors never call their locator callback (22.458101ms)
+✔ out-of-order A/B readiness remembers only newest explicit target through one launcher queue (10.307889ms)
+✔ one launcher serializes already-dispatched A then B with exact CAS revision (6.730395ms)
+✔ unknown locator PUT retains exact old body and blocks the next editor selection (7.077359ms)
+▶ failed/reloaded/closed target cannot supply late remember eligibility
+  ✔ failed (15.140282ms)
+  ✔ reload (2.765214ms)
+  ✔ close (2.749781ms)
+✔ failed/reloaded/closed target cannot supply late remember eligibility (23.481868ms)
+✔ wrong project and disposed editor cannot even report readiness (1.676142ms)
+✔ every composed UI and native catalog has exact four-locale and placeholder parity (166.043924ms)
+✔ UI literal ledger rejects unexplained, newly introduced and stale exceptions (3.059898ms)
+✔ current source has no unreviewed or stale static UI literal exceptions (1197.264444ms)
+✔ static semantic keys used by UI translation calls exist in the composed catalog (742.031776ms)
+✔ visible template guard distinguishes app copy from dynamic semantic keys (1.219563ms)
+✔ LUT recovery preserves application-owned error codes, independent of diagnostic language (3.949202ms)
+✔ LUT-like text from an arbitrary storage error cannot impersonate a recovery error (0.615521ms)
+✔ timeline catalog has all four locales and exact placeholders for every presentation message (66.252756ms)
+✔ real language store relabels the mounted subtitle inspector without recreating its controller or replaying uncertain input (35.597878ms)
+✔ language switches preserve frame extraction unknown identity, hash, source name and output format draft (8.432575ms)
+✔ presentation lifecycle does not key controllers or business effects by language (3.017149ms)
+✔ revision labels are localized rather than carrying English shorthand into non-English interfaces (8.754514ms)
+✔ actual App Cancel sees a synchronous clip edit before React rerender and preserves every draft (73.11739ms)
+✔ actual App late confirmation rejects newer typing (5.1744ms)
+✔ actual App late confirmation rejects newer typing even when text changes back (1.769555ms)
+✔ actual App late confirmation cannot discard a replacement controller with identical text (2.451069ms)
+✔ actual App project change while confirmation is open preserves the original clip draft (1.60509ms)
+✔ actual App clean registered controller permits navigation without a prompt or draft reset (1.121635ms)
+✔ actual App waits for the exact local-draft CAS delete before resetting other panels (3.99238ms)
+✔ actual App failed asynchronous discard retains local input and never resets other panels (2.762663ms)
+✔ actual App typing during CAS discard keeps navigation blocked and the newer input dirty (1.708828ms)
+✔ actual App project change while awaiting discard cannot reset the newer panel (2.067878ms)
+✔ actual App navigation epoch change while awaiting discard cannot reset the newer panel (1.342943ms)
+✔ actual App controller change while awaiting discard cannot reset the newer panel (1.204095ms)
+✔ actual App rechecks subtitle ownership after awaiting local clip discard (1.310778ms)
+✔ actual App registration cleanup releases only its still-registered controller (0.366505ms)
+✔ actual beforeunload reads synchronous clip state and follows registration ownership (2.736123ms)
+✔ actual App draft discard leaves the original pending timeline request and its blocking path untouched (1.847703ms)
+✔ actual Inspector save binding still routes the exact draft through the existing timeline mutation (1.261702ms)
+✔ GET/list are noncreating and draft writes retain raw text without changing business schemas or records (801.665354ms)
+✔ exact latest PUT/DELETE retries, two-window CAS and tombstones prevent ABA (1128.877585ms)
+✔ scope survives store reopen but old instance requests cannot write; copied sidecars and other channels fail closed (976.154908ms)
+✔ persisted baseline/source never rebase; deleted target draft stays discoverable and explicitly discardable (594.831177ms)
+✔ unreadable/corrupt/unknown-format storage never means empty and never gets overwritten (434.952314ms)
+✔ historical source ownership is required after clip removal before draft/name/revision disclosure or mutation (366.657454ms)
+✔ strict fields reject credentials, paths, getters, proxies, malformed raw and oversized text without writing (395.790132ms)
+✔ existing 200-character clip names remain exact while another raw field changes (386.095318ms)
+✔ unsafe sidecar files and unavailable storage refuse without repairing permissions or replacing links (533.499719ms)
+✔ lock:false stores cannot write companion files (391.450307ms)
+✔ duplicate slot identities and oversized companion files remain intact and unavailable (364.578242ms)
+✔ malformed UTF-8 in an otherwise valid draft envelope is preserved as corrupt evidence (697.150148ms)
+✔ restored profile is explicit unsupported without filesystem/project/provider access (1.354265ms)
+✔ failure at beforePersist preserves either old or exact newly-published bytes without domain work (510.409713ms)
+✔ failure at afterPersist preserves either old or exact newly-published bytes without domain work (561.668171ms)
+✔ failure at afterDirectorySync preserves either old or exact newly-published bytes without domain work (566.721943ms)
+✔ logical slot capacity includes tombstones, refuses new slot without eviction (396.49121ms)
+✔ exact PUT and DELETE retries require a successful durability checkpoint after an uncertain publication (678.263722ms)
+✔ SDR colour drafts survive actual sidecar reopen without normalizing omitted, null or source-invalidated looks (1028.147836ms)
+✔ put: owner revoked at beforePersist refuses publication and preserves old bytes (597.395988ms)
+✔ put: abort revoked at beforePersist refuses publication and preserves old bytes (451.648442ms)
+✔ put: scope revoked at beforePersist refuses publication and preserves old bytes (389.05012ms)
+✔ discard: owner revoked at beforePersist refuses publication and preserves old bytes (380.441969ms)
+✔ discard: abort revoked at beforePersist refuses publication and preserves old bytes (450.612501ms)
+✔ discard: scope revoked at beforePersist refuses publication and preserves old bytes (376.371943ms)
+✔ first PUT: owner revoked at beforePersist does not create a companion (369.487241ms)
+✔ first PUT: abort revoked at beforePersist does not create a companion (405.420084ms)
+✔ first PUT: scope revoked at beforePersist does not create a companion (476.054178ms)
+✔ put: owner revoked at afterPersist reports uncertain after exactly one publication (512.12762ms)
+✔ put: abort revoked at afterPersist reports uncertain after exactly one publication (457.094152ms)
+✔ put: scope revoked at afterPersist reports uncertain after exactly one publication (484.58299ms)
+✔ put: owner revoked at beforeDirectorySync reports uncertain after exactly one publication (556.06694ms)
+✔ put: abort revoked at beforeDirectorySync reports uncertain after exactly one publication (669.512627ms)
+✔ put: scope revoked at beforeDirectorySync reports uncertain after exactly one publication (507.566477ms)
+✔ put: owner revoked at afterDirectorySync reports uncertain after exactly one publication (459.001399ms)
+✔ put: abort revoked at afterDirectorySync reports uncertain after exactly one publication (464.387183ms)
+✔ put: scope revoked at afterDirectorySync reports uncertain after exactly one publication (589.18219ms)
+✔ discard: owner revoked at afterPersist reports uncertain after exactly one publication (719.671129ms)
+✔ discard: abort revoked at afterPersist reports uncertain after exactly one publication (1627.842787ms)
+✔ discard: scope revoked at afterPersist reports uncertain after exactly one publication (2389.411519ms)
+✔ discard: owner revoked at beforeDirectorySync reports uncertain after exactly one publication (576.023873ms)
+✔ discard: abort revoked at beforeDirectorySync reports uncertain after exactly one publication (1426.597748ms)
+✔ discard: scope revoked at beforeDirectorySync reports uncertain after exactly one publication (2962.690998ms)
+✔ discard: owner revoked at afterDirectorySync reports uncertain after exactly one publication (1402.815292ms)
+✔ discard: abort revoked at afterDirectorySync reports uncertain after exactly one publication (1024.662815ms)
+✔ discard: scope revoked at afterDirectorySync reports uncertain after exactly one publication (668.780864ms)
+✔ exact put retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot (801.246155ms)
+✔ exact put retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot (773.157828ms)
+✔ exact put retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot (584.502234ms)
+✔ exact put retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot (595.636387ms)
+✔ exact put retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot (694.156807ms)
+✔ exact put retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot (624.835606ms)
+✔ exact discard retry: owner revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot (554.183133ms)
+✔ exact discard retry: abort revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot (565.789086ms)
+✔ exact discard retry: scope revoked at beforeDirectorySync cannot ACK or rewrite the accepted slot (770.843331ms)
+✔ exact discard retry: owner revoked at afterDirectorySync cannot ACK or rewrite the accepted slot (662.551543ms)
+✔ exact discard retry: abort revoked at afterDirectorySync cannot ACK or rewrite the accepted slot (557.055609ms)
+✔ exact discard retry: scope revoked at afterDirectorySync cannot ACK or rewrite the accepted slot (644.641435ms)
+✔ fresh PUT: final response identity failure stays uncertain (631.451253ms)
+✔ exact PUT retry: final response identity failure stays uncertain (608.218927ms)
+✔ fresh PUT: final response owner revocation cannot ACK (566.111187ms)
+✔ fresh PUT: final response abort revocation cannot ACK (584.920798ms)
+✔ exact PUT retry: final response owner revocation cannot ACK (506.717213ms)
+✔ exact PUT retry: final response abort revocation cannot ACK (528.764309ms)
+✔ put: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones (531.513785ms)
+✔ discard: uncertain publication and failed exact retries preserve CAS, raw fields and tombstones (632.25515ms)
+✔ directory checkpoint rejects a real opened descriptor with identity mismatch before fsync (475.955034ms)
+✔ directory checkpoint rejects a real opened descriptor with type mismatch before fsync (635.222421ms)
+✔ directory checkpoint rejects a real opened descriptor with private-mode mismatch before fsync (808.170492ms)
+✔ put: owner revoked by the final prepublication identity read refuses the write (715.47781ms)
+✔ put: abort revoked by the final prepublication identity read refuses the write (571.537917ms)
+✔ discard: owner revoked by the final prepublication identity read refuses the write (508.355374ms)
+✔ discard: abort revoked by the final prepublication identity read refuses the write (472.866948ms)
+✔ fresh PUT: response source lookup failure after directory sync stays uncertain (515.820576ms)
+✔ exact PUT retry: response source lookup failure after directory sync stays uncertain (547.119271ms)
+✔ strict raw schema retains bounded editing strings and absent/null independently (17.138561ms)
+✔ v1 read is byte-preserving; legacy PUT stays v1; explicit null promotes all rows atomically; v2 never downgrades (95.684228ms)
+✔ actual frozen old service reads v1 but rejects v2 GET/list/PUT/DELETE without replacing bytes (30.319275ms)
+✔ strict v1 rejects envelope presence and strict v2 rejects future fields without repair (37.039664ms)
+✔ arrays only admitted at exact points path and all descriptors inspected without getters/proxy traps (5.348188ms)
+✔ promotion beforePersist retains old bytes or exact new bytes and supports qualified retry (7.786321ms)
+✔ promotion afterPersist retains old bytes or exact new bytes and supports qualified retry (10.075389ms)
+✔ promotion beforeDirectorySync retains old bytes or exact new bytes and supports qualified retry (10.875013ms)
+✔ published limits stay unchanged (0.229063ms)
+✔ complete ordinary6611/adversarial9373 fixtures qualify aggregate rows, requests and success wrappers (23.023882ms)
+ℹ {"legacySlotBytes":5430,"ordinaryEnvelopeSlotBytes":6611,"adversarialEnvelopeSlotBytes":9373,"completePutBytes":6706,"completeSuccessBytes":6817,"maximumRowSuccessBytes":8398}
+✔ serialized complete row 8191: inclusive real service read boundary and evidence preservation (7.988722ms)
+✔ serialized complete row 8192: inclusive real service read boundary and evidence preservation (5.986028ms)
+✔ serialized complete row 8193: inclusive real service read boundary and evidence preservation (5.247862ms)
+✔ actual HTTP handler accepts12287/12288 and refuses12289 bytes before mutation for declared and streamed requests (39.396231ms)
+✔ complete 128 maximum rows and mixed tombstones fit disk accounting; no 129th slot eviction (243.725291ms)
+ℹ {"max128RowsDiskBytes":1048814,"mixed127RowsOneTombstoneBytes":1040815,"tombstoneBytes":193,"metadataCommasNewlineBytes":238}
+✔ actual companion file 2097151 bytes: whitespace counts toward disk read cap (33.625513ms)
+✔ actual companion file 2097152 bytes: whitespace counts toward disk read cap (53.485762ms)
+✔ actual companion file 2097153 bytes: whitespace counts toward disk read cap (19.929407ms)
+✔ maximum-row success wrapper accepts12287/12288 and rejects12289 actual client response bytes (21.816671ms)
+✔ actual App close veto retains agent-chat unknown owner without depending on a React dirty effect (7.522196ms)
+✔ actual App close veto retains image-generation unknown owner without depending on a React dirty effect (0.518553ms)
+✔ actual App close veto retains agent-edits unknown owner without depending on a React dirty effect (0.659538ms)
+✔ actual App close uses synchronous home:agent configuration owner metadata (1.904393ms)
+✔ actual App close uses synchronous home:official configuration owner metadata (0.978779ms)
+✔ actual App close uses synchronous workbench:custom configuration owner metadata (1.728947ms)
+✔ actual App close uses synchronous workbench:comfy configuration owner metadata (0.99134ms)
+✔ actual App preserves each existing synchronous draft predicate (1.076702ms)
+✔ actual App project epoch and workspace replacement invalidate the exact native permission (6.195213ms)
+✔ actual App cleanup cannot delete a replacement document admission object (1.015818ms)
+✔ real delivery A-to-B edits and owner replacement invalidate an unchanged dirty decision (7.33635ms)
+✔ shot close snapshot is read-only: no getContext, timer, change callback or transport (35.251704ms)
+✔ shot pure predicate preserves matching persisted draft, abandoned input, and retained deletion semantics (8.083357ms)
+✔ shot local save/saved ACK changes no semantic close identity and performs no business request (3.835723ms)
+✔ real clip sidecar ACK keeps raw/base/source identity while edit and owner changes invalidate (5.867117ms)
+✔ real format draft/base inputs are read-only and independent of loading or copied saved metadata (3.684445ms)
+✔ adapter preserves exactly legacy dirty/submitting predicates and optional inspector input identity only (0.932772ms)
+✔ real subject focus refresh preserves clean reload commit without input changes (12.202857ms)
+✔ real subject focus refresh preserves clean reload unload without input changes (3.507663ms)
+✔ real subject focus refresh preserves dirty reload commit without input changes (3.276079ms)
+✔ real subject focus refresh preserves dirty reload unload without input changes (2.279901ms)
+✔ real subject draft, owner and target changes still invalidate captured reload decisions (13.270973ms)
+✔ subject refresh cannot hide a new saving or uncertain state from close identity (6.47872ms)
+✔ real subtitle equal-revision refresh already preserves identity while selection and edits invalidate (3.157092ms)
+✔ deferred Inspector input-mode continuation invalidates commit before layout, without final-reader effects (14.051753ms)
+✔ deferred Inspector input-mode continuation invalidates unload before layout, without final-reader effects (4.899206ms)
+✔ Inspector clearLastFrame control already synchronizes through edit; final close still reads purely (5.205615ms)
+✔ equal/older local dirty references do not revive controller-abandoned input (4.146509ms)
+✔ actual App same-controller replacement owns its close reader and ignores stale unregister (1.986812ms)
+✔ actual Agent draft and held send report before React rerender; accepted stream is close-neutral (116.030153ms)
+✔ Agent unrecovered receipt stays blocked on initial failed read, and stopping blocks synchronously (105.674571ms)
+✔ hidden Image constructor immediately reports restored generation/remote intents and corrupt storage (192.5093ms)
+✔ actual Image edits report synchronously and accepted durable generation never requires cancellation (79.477516ms)
+✔ actual Image lost rejection ACK remains blocked until an exact readonly rejected review is read (81.755178ms)
+✔ actual Agent proposal mutation and uncertainty are independent of chat source (33.883213ms)
+✔ replaced source owner cannot be released or updated by stale callback (114.779169ms)
+✔ metadata versions follow draft identity, not saved Image task polling or chat stream deltas (0.725755ms)
+✔ rejection proof retains multiple exact identities; pending/unrelated/older evidence never clears (2.291964ms)
+✔ one hundred loop turns cannot certify completion; actual hash publication alone settles the observer (7.404668ms)
+✔ real WebCrypto identity reconciliation publishes completion without a scheduler-turn assumption (1.094436ms)
+✔ identity corruption, existing-domain overflow and hash failure never release close proof (110.171975ms)
+✔ disposed hash/reconciliation completions cannot publish or reset a replacement owner (2.12538ms)
+✔ readonly concurrent approval/dispatched proof resolves lost rejection without cancelling durable work (114.939525ms)
+✔ a late failed hash for an older pending read cannot poison an already resolved review (2.084859ms)
+✔ registry accepts only fixed sources and unreported owners fail closed (20.971776ms)
+✔ replacement and retired callbacks cannot erase or certify another owner (6.370879ms)
+✔ malformed source report invalidates the previous clean snapshot (3.716507ms)
+✔ equal or older report versions never clear busy or unknown (5.218669ms)
+✔ busy cannot be converted into discard permission (12.008452ms)
+✔ blocked cannot be converted into discard permission (2.421449ms)
+✔ dirty confirmation is exact and consumed only once without changing source state (0.765629ms)
+✔ new same-boolean input invalidates confirmation, including edit then clear (0.804909ms)
+✔ DOM interaction and project/workspace changes invalidate an already armed close (1.900688ms)
+✔ all settings owners participate even while hidden and blocked is never discardable (1.596237ms)
+✔ settings same-dirty new input or newer owner invalidates prior approval (1.174779ms)
+✔ legacy dirty still needs explicit confirmation, and successful drain may remove it (0.227921ms)
+✔ expiry and cancellation cannot leave permission for a later unload (0.166576ms)
+✔ late commit after cancellation and old cancel after replacement never authorize or revoke another attempt (1.200255ms)
+✔ malformed and excessive commit leases fail closed (0.478103ms)
+✔ disposed renderer cannot grant or consume an outstanding native ticket (0.390702ms)
+✔ a failed synchronous owner read still vetoes unload rather than throwing past the browser guard (0.439132ms)
+✔ public inspection exposes only protocol token and disposition (1.135476ms)
+✔ reload ticket is bound to the exact current document and cannot authorize close or another navigation (0.304044ms)
+✔ reload rejects arbitrary target URLs and malformed actions; valid reload still requires exact dirty confirmation (1.834705ms)
+✔ actual delivery controller programmatic dirty-to-dirty edit cannot reuse native discard permission (258.630636ms)
+✔ commit and final unload use pure real shot getter without synchronizing, scheduling or transport (32.856047ms)
+✔ fade draft preserves omission, explicit zero and immutable copies (7.136208ms)
+✔ fade validation checks both integers, per-side bounds, their sum and confirmed audio (3.456528ms)
+✔ actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics (368.39331ms)
+✔ silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls (525.978622ms)
+✔ unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero (147.604948ms)
+✔ unrelated save preserves explicit zero and fade values while discard restores omission (300.045338ms)
+✔ trim never silently clamps either fade and invalid totals cannot submit (166.42423ms)
+✔ invalid local fade drafts stay visible and block even direct form submission (516.524504ms)
+✔ edits made during save survive its acknowledgment without silently rebasing the newer draft (153.825007ms)
+✔ failed or unacknowledged save preserves fade edits and does not retry (286.440766ms)
+✔ every newer timeline revision preserves the exact dirty fade input and requires explicit reload (211.132657ms)
+✔ keyed project unmount fences late fade acknowledgments and retained form submit (432.418835ms)
+✔ source playback copy stays explicit about dry audio and the shared render path (0.971104ms)
+✔ real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline (275.734598ms)
+✔ actual inspector role selection uses shared dirty form and one existing Save revision (201.236066ms)
+✔ missing role capability blocks captured selector callbacks but unrelated inspector edits save (173.754841ms)
+✔ role eligibility includes silent video, zero gain and muted timeline without enabling fades (113.039244ms)
+✔ image inspector excludes audio role; restored supported editor can save without sidecar support (217.14889ms)
+✔ captured enabled role selector cannot write after capability loss or owner unmount (133.580784ms)
+ℹ tests 519
+ℹ suites 0
+ℹ pass 516
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 80955.941436
+
+✖ failing tests:
+
+test at tests/clip-source-replacement-ui.test.mjs:287:1
+✖ actual App legacy session runner retains the exact replacement receipt for malformed success and unknown→404/409 replays (6.05497ms)
+  ReferenceError: clipConnectionBlocked is not defined
+      at Object.run (eval at runHarness (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-editor-integration/tests/clip-source-replacement-ui.test.mjs:283:15), <anonymous>:4:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-editor-integration/tests/clip-source-replacement-ui.test.mjs:292:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at tests/clip-source-replacement-ui.test.mjs:308:1
+✖ actual App legacy session runner clears replacement only for a matching request-bound fresh not-applied proof (3.566184ms)
+  ReferenceError: clipConnectionBlocked is not defined
+      at Object.run (eval at runHarness (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-editor-integration/tests/clip-source-replacement-ui.test.mjs:283:15), <anonymous>:4:5)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-editor-integration/tests/clip-source-replacement-ui.test.mjs:313:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at tests/clip-source-replacement-ui.test.mjs:319:1
+✖ source wiring uses the existing inline inspector, stable mutation key, session replay and no asset-only version inference (4.138535ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /chosenClip\.versionId === clipSource\.version\.id/. Input:
+  
+  "import { savedClipLoudnessFields } from './timeline-clip-loudness-context.ts';\n" +
+    "import './version-comparison.css';\n" +
+    "import VersionComparison from './VersionComparison.tsx';\n" +
+    "import { comparisonCurrent } from './version-comparison-state.ts';\n" +
+    "import { WorkspaceVisibilityProvider } from './workspace-visibility.jsx';\n" +
+    "import { preflightErrorMessage, preflightIssueMessage, exportCapabilityMessage } from './export-preflight-state.js';\n" +
+    "import ExportPreview from './ExportPreview.tsx';\n" +
+    "import { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from './export-preview-state.ts';\n" +
+    "import ComfyImageSettings from './ComfyImageSettings.jsx';\n" +
+    "import ImageSettings from './ImageSettings.jsx';\n" +
+    "import AgentSettings from './AgentSettings.jsx';\n" +
+    "import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';\n" +
+    "import ProjectHomeConnections from './ProjectHomeConnections.tsx';\n" +
+    "import { providerDisplayName } from './creation-i18n.ts';\n" +
+    "import { message as msg, renderMessage as renderCoreMessage } from '../../../packages/i18n/src/index.ts';\n" +
+    "import LanguageControl from './LanguageControl.tsx';\n" +
+    "import WebSettingsCenter from './WebSettingsCenter.tsx';\n" +
+    "import { hasOpenWorkbenchModal } from './workbench-modal-state.ts';\n" +
+    "import { useI18n } from './i18n/I18nProvider.tsx';\n" +
+    "import './timeline-audio-preview.css';\n" +
+    "import {useTimelineAudioPreview,timelineAudioPreviewSourceIdentity,timelineAudioPreviewPosition,seekTimelineAudioPreview} from './use-timeline-audio-preview.ts';\n" +
+    "import { createEditorWindowInputs } from './editor-window-inputs.ts';\n" +
+    "import { combineNativeEntryClose } from './native-entry-close.ts';\n" +
+    "import { createNativeProjectLocation } from './native-project-location.ts';\n" +
+    "import NativeLocatorStatus from './NativeLocatorStatus.tsx';\n" +
+    "import { createNativeAudioPreviewAdmission } from './native-audio-preview-adapter.ts';\n" +
+    "import { useEditorSettingsScope } from './editor-settings-scope.ts';\n" +
+    "import { editorInitialSelection, useEditorWindowStatus, openNativeSettings, revealNativeProjects } from './editor-native-window.ts';\n" +
+    "import EditorWindowOpening from './EditorWindowOpening.tsx';\n" +
+    "import { useExportRange } from './export-range-state.ts';\n" +
+    "import RestoredWorkspace, { RestoredUnavailable } from './RestoredWorkspace.jsx';\n" +
+    "import { deriveTimelineAssetUsage, retainTimelineAssetUsage } from './timeline-asset-usage.ts';\n" +
+    "import { locateTimelineAssetUse, matchesTimelineAssetUse, revealTimelineAssetUse } from './timeline-asset-navigation.ts';\n" +
+    "import { pinNewWorkspaceIntent, assertWorkspaceIntent, workspaceIntentDisposition, workspaceOriginScope, retainWorkspaceIdentity } from './workspace-origin.js';\n" +
+    "import { assertWorkspaceOperation, validateProjectWorkspace, RESTORE_DISABLED_MESSAGE } from './restored-workspace.js';\n" +
+    "import { Badge } from '@mioon/ui/components/badge';\n" +
+    "import { useConfirmation } from '@mioon/ui/components/workbench-confirm';\n" +
+    "import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@mioon/ui/components/dialog';\n" +
+    "import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@mioon/ui/components/dropdown-menu';\n" +
+    "import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';\n" +
+    "import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';\n" +
+    "import { WorkbenchTooltip } from './WorkspaceControls.jsx';\n" +
+    "import { Button } from '@mioon/ui/components/button';\n" +
+    "import { Input } from '@mioon/ui/components/input';\n" +
+    "import { Textarea } from '@mioon/ui/components/textarea';\n" +
+    "import { Label } from '@mioon/ui/components/label';\n" +
+    "import { WorkbenchSelect } from './WorkspaceControls.jsx';\n" +
+    "import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';\n" +
+    "import { schemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, isTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';\n" +
+    "import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';\n" +
+    "import { measuredFitPadding } from './canvas-fit.ts';\n" +
+    "import { staleClipSources } from './timeline-source-freshness.ts';\n" +
+    "import Icon from './icons.jsx';\n" +
+    "import ProjectHome from './ProjectHome.tsx';\n" +
+    "import './project-home.css';\n" +
+    "import { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';\n" +
+    "import { readNativeLegacyClose } from './native-close-legacy.ts';\n" +
+    "import { createSettingsNavigationRegistry } from './settings-navigation-state.ts';\n" +
+    "import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, hasProjectResponseOriginMismatch, projectOpenFailureKind } from './project-open-state.ts';\n" +
+    "import Inspector from './Inspector.jsx';\n" +
+    "import SubjectVideoSummary from './SubjectVideoSummary.jsx';\n" +
+    "import { subjectVideoIdentity, subjectVideoProfileIdentity, ARK_SUBJECT_WARNING_MESSAGE, MOCK_SUBJECT_WARNING_MESSAGE } from './subject-video.js';\n" +
+    "import { VideoFrameSummary } from './VideoFrameControls.jsx';\n" +
+    "import TaskCenter from './TaskCenter.jsx';\n" +
+    "import { captureTaskWorkspaceIntent, navigateTaskShot } from './task-workspace-intent.ts';\n" +
+    "import { createEditTaskController } from './edit-task-controller.js';\n" +
+    "import { isDurableEditOperation, taskInputKey } from './edit-task-client.js';\n" +
+    "import AgentWorkspace, { AgentDockPane } from './AgentWorkspace.jsx';\n" +
+    "import { makeAgentTimelineClipSelection, makeAgentTimelineGainSelection, agentTimelineGainBlockedReason, agentTimelineGainBlockedDescriptor } from './agent-timeline-context.js';\n" +
+    "import ImageGeneration from './ImageGeneration.jsx';\n" +
+    "import AssetLibrary from './AssetLibrary.jsx';\n" +
+    "import { useSubjects } from './use-subjects.js';\n" +
+    "import { useAssetAnnotations } from './use-asset-annotations.ts';\n" +
+    "import { annotationKey, annotationError } from './asset-annotation-state.ts';\n" +
+    "import { useAssetDispositions } from './use-asset-dispositions.js';\n" +
+    "import { dispositionKey } from './asset-disposition-state.js';\n" +
+    "import ExportHistoryList from './ExportHistoryList.jsx';\n" +
+    "import DeliveryWorkspace from './DeliveryWorkspace.tsx';\n" +
+    "import TimelineExportPreflight from './TimelineExportPreflight.jsx';\n" +
+    "import { useExportPreflight } from './use-export-preflight.js';\n" +
+    "import { useExportSamplePeak } from './use-export-sample-peak.ts';\n" +
+    "import { useExportLoudness } from './use-export-loudness.ts';\n" +
+    "import { useTimelineMixLoudness } from './use-timeline-mix-loudness.ts';\n" +
+    "import TimelineMixLoudness from './TimelineMixLoudness.tsx';\n" +
+    "import TimelineLoudnessApply from './TimelineLoudnessApply.tsx';\n" +
+    "import { useTimelineLoudnessApply } from './use-timeline-loudness-apply.ts';\n" +
+    "import { timelineLoudnessApplyRecoveryScope } from './timeline-loudness-apply-state.ts';\n" +
+    "import { submitTimelineLoudnessApply } from './timeline-loudness-apply-submit.ts';\n" +
+    "import { timelineMixLoudnessViewState } from './timeline-mix-loudness-state.ts';\n" +
+    "import { useExportSettings } from './use-export-settings.js';\n" +
+    "import { useTimelineDeliveryName } from './export-delivery-state.ts';\n" +
+    "import { useLocalDelivery } from './local-delivery-state.ts';\n" +
+    "import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';\n" +
+    "import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';\n" +
+    "import TimelineInspector from './TimelineInspector.jsx';\n" +
+    "import { retainClipInspector, retainClipWorkbench } from './clip-inspector-retention.ts';\n" +
+    "import { canEditTimelineAudioRole, canEditTimelineVolumeEnvelope, isWorkspaceRestoreInspection } from '@mioon/contracts';\n" +
+    "import { observeClipAudioRoleCapability } from './clip-audio-role-state.ts';\n" +
+    "import { observeClipVolumeEnvelopeCapability } from './clip-volume-envelope-capability.ts';\n" +
+    "import SubtitleInspector from './SubtitleInspector.jsx';\n" +
+    "import { useSubtitles } from './use-subtitles.js';\n" +
+    "import { subtitleAcknowledged } from './subtitle-state.js';\n" +
+    "import TimelineFormatPanel from './TimelineFormatPanel.jsx';\n" +
+    "import WorkspaceBackupPanel from './WorkspaceBackupPanel.jsx';\n" +
+    "import { useTimelineFormat } from './use-timeline-format.js';\n" +
+    "import { timelineFormatAcknowledged } from './timeline-format-state.js';\n" +
+    "import { clipReplacementAcknowledged, clipReplacementErrorDescriptor, clipReplacementReviewIssue } from './clip-source-replacement.js';\n" +
+    "import Preview from './Preview.jsx';\n" +
+    "import SourceRangeInspector from './SourceRangeInspector.jsx';\n" +
+    "import FrameExtractionPanel from './FrameExtractionPanel.jsx';\n" +
+    "import { useFrameExtraction } from './use-frame-extraction.js';\n" +
+    "import { frameCaptureBusy } from './frame-extraction.js';\n" +
+    "import { useSourceRange } from './use-source-range.js';\n" +
+    "import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.js';\n" +
+    "import { Media, nodeTypes } from './Nodes.jsx';\n" +
+    "import { rpc, requestId, activeJob, assetUrl, versionUrl } from './api.js';\n" +
+    "import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.js';\n" +
+    "import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity } from './generation-settings.js';\n" +
+    "import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending, isSubjectRetryPending } from './submissions.js';\n" +
+    "import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.js';\n" +
+    "import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';\n" +
+    "import { createWorkspacePreferences } from './workspace-preferences.js';\n" +
+    "import { createLastProjectController } from './last-project-state.ts';\n" +
+    "import LastProjectStatus from './LastProjectStatus.tsx';\n" +
+    "import TopbarSaveStatus from './TopbarSaveStatus.tsx';\n" +
+    'import { chooseInitialProject, retainL'... 201820 more characters
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-editor-integration/tests/clip-source-replacement-ui.test.mjs:323:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: "import { savedClipLoudnessFields } from './timeline-clip-loudness-context.ts';\nimport './version-comparison.css';\nimport VersionComparison from './VersionComparison.tsx';\nimport { comparisonCurrent } from './version-comparison-state.ts';\nimport { WorkspaceVisibilityProvider } from './workspace-visibility.jsx';\nimport { preflightErrorMessage, preflightIssueMessage, exportCapabilityMessage } from './export-preflight-state.js';\nimport ExportPreview from './ExportPreview.tsx';\nimport { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from './export-preview-state.ts';\nimport ComfyImageSettings from './ComfyImageSettings.jsx';\nimport ImageSettings from './ImageSettings.jsx';\nimport AgentSettings from './AgentSettings.jsx';\nimport SettingsNavigationSlot from './SettingsNavigationSlot.tsx';\nimport ProjectHomeConnections from './ProjectHomeConnections.tsx';\nimport { providerDisplayName } from './creation-i18n.ts';\nimport { message as msg, renderMessage as renderCoreMessage } from '../../../packages/i18n/src/index.ts';\nimport LanguageControl from './LanguageControl.tsx';\nimport WebSettingsCenter from './WebSettingsCenter.tsx';\nimport { hasOpenWorkbenchModal } from './workbench-modal-state.ts';\nimport { useI18n } from './i18n/I18nProvider.tsx';\nimport './timeline-audio-preview.css';\nimport {useTimelineAudioPreview,timelineAudioPreviewSourceIdentity,timelineAudioPreviewPosition,seekTimelineAudioPreview} from './use-timeline-audio-preview.ts';\nimport { createEditorWindowInputs } from './editor-window-inputs.ts';\nimport { combineNativeEntryClose } from './native-entry-close.ts';\nimport { createNativeProjectLocation } from './native-project-location.ts';\nimport NativeLocatorStatus from './NativeLocatorStatus.tsx';\nimport { createNativeAudioPreviewAdmission } from './native-audio-preview-adapter.ts';\nimport { useEditorSettingsScope } from './editor-settings-scope.ts';\nimport { editorInitialSelection, useEditorWindowStatus, openNativeSettings, revealNativeProjects } from './editor-native-window.ts';\nimport EditorWindowOpening from './EditorWindowOpening.tsx';\nimport { useExportRange } from './export-range-state.ts';\nimport RestoredWorkspace, { RestoredUnavailable } from './RestoredWorkspace.jsx';\nimport { deriveTimelineAssetUsage, retainTimelineAssetUsage } from './timeline-asset-usage.ts';\nimport { locateTimelineAssetUse, matchesTimelineAssetUse, revealTimelineAssetUse } from './timeline-asset-navigation.ts';\nimport { pinNewWorkspaceIntent, assertWorkspaceIntent, workspaceIntentDisposition, workspaceOriginScope, retainWorkspaceIdentity } from './workspace-origin.js';\nimport { assertWorkspaceOperation, validateProjectWorkspace, RESTORE_DISABLED_MESSAGE } from './restored-workspace.js';\nimport { Badge } from '@mioon/ui/components/badge';\nimport { useConfirmation } from '@mioon/ui/components/workbench-confirm';\nimport { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@mioon/ui/components/dialog';\nimport { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@mioon/ui/components/dropdown-menu';\nimport { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';\nimport { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';\nimport { WorkbenchTooltip } from './WorkspaceControls.jsx';\nimport { Button } from '@mioon/ui/components/button';\nimport { Input } from '@mioon/ui/components/input';\nimport { Textarea } from '@mioon/ui/components/textarea';\nimport { Label } from '@mioon/ui/components/label';\nimport { WorkbenchSelect } from './WorkspaceControls.jsx';\nimport React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';\nimport { schemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, isTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';\nimport { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, useReactFlow } from '@xyflow/react';\nimport { measuredFitPadding } from './canvas-fit.ts';\nimport { staleClipSources } from './timeline-source-freshness.ts';\nimport Icon from './icons.jsx';\nimport ProjectHome from './ProjectHome.tsx';\nimport './project-home.css';\nimport { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';\nimport { readNativeLegacyClose } from './native-close-legacy.ts';\nimport { createSettingsNavigationRegistry } from './settings-navigation-state.ts';\nimport { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, hasProjectResponseOriginMismatch, projectOpenFailureKind } from './project-open-state.ts';\nimport Inspector from './Inspector.jsx';\nimport SubjectVideoSummary from './SubjectVideoSummary.jsx';\nimport { subjectVideoIdentity, subjectVideoProfileIdentity, ARK_SUBJECT_WARNING_MESSAGE, MOCK_SUBJECT_WARNING_MESSAGE } from './subject-video.js';\nimport { VideoFrameSummary } from './VideoFrameControls.jsx';\nimport TaskCenter from './TaskCenter.jsx';\nimport { captureTaskWorkspaceIntent, navigateTaskShot } from './task-workspace-intent.ts';\nimport { createEditTaskController } from './edit-task-controller.js';\nimport { isDurableEditOperation, taskInputKey } from './edit-task-client.js';\nimport AgentWorkspace, { AgentDockPane } from './AgentWorkspace.jsx';\nimport { makeAgentTimelineClipSelection, makeAgentTimelineGainSelection, agentTimelineGainBlockedReason, agentTimelineGainBlockedDescriptor } from './agent-timeline-context.js';\nimport ImageGeneration from './ImageGeneration.jsx';\nimport AssetLibrary from './AssetLibrary.jsx';\nimport { useSubjects } from './use-subjects.js';\nimport { useAssetAnnotations } from './use-asset-annotations.ts';\nimport { annotationKey, annotationError } from './asset-annotation-state.ts';\nimport { useAssetDispositions } from './use-asset-dispositions.js';\nimport { dispositionKey } from './asset-disposition-state.js';\nimport ExportHistoryList from './ExportHistoryList.jsx';\nimport DeliveryWorkspace from './DeliveryWorkspace.tsx';\nimport TimelineExportPreflight from './TimelineExportPreflight.jsx';\nimport { useExportPreflight } from './use-export-preflight.js';\nimport { useExportSamplePeak } from './use-export-sample-peak.ts';\nimport { useExportLoudness } from './use-export-loudness.ts';\nimport { useTimelineMixLoudness } from './use-timeline-mix-loudness.ts';\nimport TimelineMixLoudness from './TimelineMixLoudness.tsx';\nimport TimelineLoudnessApply from './TimelineLoudnessApply.tsx';\nimport { useTimelineLoudnessApply } from './use-timeline-loudness-apply.ts';\nimport { timelineLoudnessApplyRecoveryScope } from './timeline-loudness-apply-state.ts';\nimport { submitTimelineLoudnessApply } from './timeline-loudness-apply-submit.ts';\nimport { timelineMixLoudnessViewState } from './timeline-mix-loudness-state.ts';\nimport { useExportSettings } from './use-export-settings.js';\nimport { useTimelineDeliveryName } from './export-delivery-state.ts';\nimport { useLocalDelivery } from './local-delivery-state.ts';\nimport DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';\nimport Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';\nimport TimelineInspector from './TimelineInspector.jsx';\nimport { retainClipInspector, retainClipWorkbench } from './clip-inspector-retention.ts';\nimport { canEditTimelineAudioRole, canEditTimelineVolumeEnvelope, isWorkspaceRestoreInspection } from '@mioon/contracts';\nimport { observeClipAudioRoleCapability } from './clip-audio-role-state.ts';\nimport { observeClipVolumeEnvelopeCapability } from './clip-volume-envelope-capability.ts';\nimport SubtitleInspector from './SubtitleInspector.jsx';\nimport { useSubtitles } from './use-subtitles.js';\nimport { subtitleAcknowledged } from './subtitle-state.js';\nimport TimelineFormatPanel from './TimelineFormatPanel.jsx';\nimport WorkspaceBackupPanel from './WorkspaceBackupPanel.jsx';\nimport { useTimelineFormat } from './use-timeline-format.js';\nimport { timelineFormatAcknowledged } from './timeline-format-state.js';\nimport { clipReplacementAcknowledged, clipReplacementErrorDescriptor, clipReplacementReviewIssue } from './clip-source-replacement.js';\nimport Preview from './Preview.jsx';\nimport SourceRangeInspector from './SourceRangeInspector.jsx';\nimport FrameExtractionPanel from './FrameExtractionPanel.jsx';\nimport { useFrameExtraction } from './use-frame-extraction.js';\nimport { frameCaptureBusy } from './frame-extraction.js';\nimport { useSourceRange } from './use-source-range.js';\nimport { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.js';\nimport { Media, nodeTypes } from './Nodes.jsx';\nimport { rpc, requestId, activeJob, assetUrl, versionUrl } from './api.js';\nimport { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.js';\nimport { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity } from './generation-settings.js';\nimport { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending, isSubjectRetryPending } from './submissions.js';\nimport { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.js';\nimport { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.js';\nimport { createWorkspacePreferences } from './workspace-preferences.js';\nimport { createLastProjectController } from './last-project-state.ts';\nimport LastProjectStatus from './LastProjectStatus.tsx';\nimport TopbarSaveStatus from './TopbarSaveStatus.tsx';\nimport { chooseInitialProject, retainL"... 201820 more characters,
+    expected: /chosenClip\.versionId === clipSource\.version\.id/,
+    operator: 'match',
+    diff: 'simple'
+  }

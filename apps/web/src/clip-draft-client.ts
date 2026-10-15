@@ -1,4 +1,4 @@
-import { clipDraftEnvelopeSchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
+import { clipDraftEnvelopeSchema, clipDraftWriteSchema, clipDraftDeleteSchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
 import type { ClipDraftClient, ClipDraftDelete, ClipDraftEnvelope, ClipDraftKey, ClipDraftRead, ClipDraftWrite } from './clip-draft-state.ts';
 
 export type ClipDraftFailureKind = 'refused' | 'conflict' | 'unknown';
@@ -51,10 +51,27 @@ async function boundedJSON(response: Response, signal: AbortSignal, expiresAt: n
     throw protocolError(response.status);
   } finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
 }
+const bytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+/** Complete outgoing admission, before fetch. A refusal does not replace any
+ * existing record or establish the outcome of an earlier uncertain write. */
+export function admitClipDraftRequest(method: 'PUT' | 'DELETE', input: ClipDraftWrite | ClipDraftDelete): void {
+  if (bytes(input) > LOCAL_DRAFT_LIMITS.httpBytes) throw new ClipDraftRequestError('Local draft input exceeds the size limit.', 'LOCAL_DRAFT_LIMIT', 413);
+  if (method === 'PUT') {
+    const write = input as ClipDraftWrite;
+    const row = { projectId: write.projectId, timelineId: write.timelineId, clipId: write.clipId, revision: write.expectedRevision + 1,
+      draft: { baseRevision: write.baseRevision, source: write.source, raw: write.raw, updatedAt: '2000-01-01T00:00:00.000Z' } };
+    if (bytes(row) > LOCAL_DRAFT_LIMITS.rowBytes || bytes({ ok: true, data: { supported: true, workspaceScope: write.workspaceScope, instanceId: write.instanceId,
+      key: { projectId: write.projectId, timelineId: write.timelineId, clipId: write.clipId }, revision: row.revision, targetStatus: 'matching', draft: row.draft } }) > LOCAL_DRAFT_LIMITS.httpBytes)
+      throw new ClipDraftRequestError('Local draft input exceeds the size limit.', 'LOCAL_DRAFT_LIMIT', 413);
+  }
+  const parsed = (method === 'PUT' ? clipDraftWriteSchema : clipDraftDeleteSchema).safeParse(input);
+  if (!parsed.success) throw new ClipDraftRequestError('Invalid local draft input.', 'LOCAL_DRAFT_VALIDATION', 400);
+}
 /** Deadlines bound HTTP transport only, including response headers and body.
  * They do not cancel backend writes, establish refusal, or authorize a retry. */
 export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch(...args), { timeoutMs = 10000 }: { timeoutMs?: number } = {}): ClipDraftClient {
   async function request(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftWrite | ClipDraftDelete): Promise<ClipDraftRead> {
+    if (method !== 'GET') admitClipDraftRequest(method, input as ClipDraftWrite | ClipDraftDelete);
     const deadline = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(60000, timeoutMs)) : 10000;
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
     const work = perform(method, input, controller.signal, Date.now() + deadline);
@@ -91,6 +108,7 @@ export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch
     if (response.status !== 200 || !Object.hasOwn(body, 'data')) throw protocol();
     const value = clipDraftEnvelopeSchema.safeParse(body.data);
     if (!value.success) throw protocol();
+    if (value.data.supported && value.data.draft && bytes({ ...value.data.key, revision: value.data.revision, draft: value.data.draft }) > LOCAL_DRAFT_LIMITS.rowBytes) throw protocol();
     return value.data;
   }
   async function write(method: 'PUT' | 'DELETE', input: ClipDraftWrite | ClipDraftDelete): Promise<ClipDraftEnvelope> {

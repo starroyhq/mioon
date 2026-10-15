@@ -1,0 +1,42 @@
+✔ envelope capability requires exact profile and verified workspace identity, never generic update access (26.836487ms)
+✔ optional capability is bounded, failure-isolated and connection-epoch fenced (43.883418ms)
+✔ Inspector wires controller-owned envelope token across renders and blocks save/remove during composition (236.508209ms)
+✔ unsupported or silent assets retain visible recovered envelope and localized blocked message (113.857615ms)
+✔ App navigation refuses composition before confirmation and rechecks after async confirmation (5.106212ms)
+✔ App optional envelope probe is connection-scoped rather than project boot-scoped (2.516817ms)
+✔ retained old Inspector callbacks cannot retarget newer same-owner composition session (9.783115ms)
+✔ lexical limits are atomic admission, not numeric validation or normalization (3.951279ms)
+✔ preserves absent/null/value and requires complete ordered attenuation on proposed duration (5.273313ms)
+✔ unchanged comparison is independent of key insertion order but not raw strings or absence (0.66967ms)
+✔ Number-to-string round trips extremes and deterministic doubles without display rounding (427.992033ms)
+✔ four locales render text inputs, accessible labels, bounded rows and non-submit buttons (206.950141ms)
+✔ whole pasted events reject visibly, preserve prior value, allow malformed intermediate (57.63892ms)
+✔ IME transient stays observable, guards structure synchronously, commits before releasing pending (5.759978ms)
+✔ IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard (4.718884ms)
+✔ trailing input events after composition settlement preserve accepted or rejected values (6.484816ms)
+✔ exact raw field bound and complete legacy slot counterexamples do not widen any caps (9.696034ms)
+ℹ {"rawFieldBytes":1182,"legacySlotBytes":5430,"boundedCombinedBytes":6611,"unboundedEnvelopeCounterexampleBytes":15187,"fullLegalLegacyBytes":8192,"boundedOverflowBytes":9373}
+✔ retained old control handlers cannot edit or end a newer same-row composition (5.665754ms)
+✔ composition start and end can settle synchronously before pending rerender (4.967615ms)
+✔ raw projection, proposed shrink, explicit replacement and clear preserve envelope presence (5.70751ms)
+✔ bounded invalid intermediates persist exactly without becoming business Save (28.913504ms)
+✔ composition is controller-owned dirty close/navigation protection and cannot persist transient text (2.965925ms)
+✔ composition settlement retains admitted input under capability loss and disconnect (2.264373ms)
+✔ old owner/token cannot update form or release a later composition (1.739252ms)
+✔ business ACK checks omitted unchanged envelope absent (3.426714ms)
+✔ business ACK checks omitted unchanged envelope null (2.779475ms)
+✔ business ACK checks omitted unchanged envelope value (1.740808ms)
+✔ exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save (3.509895ms)
+✔ changed recovered unsupported curve remains visible and blocked (1.842965ms)
+✔ late business ACK cannot delete newer curve input (3.545125ms)
+✔ restored explicit capable business edits remain available without local companion IO (1.427996ms)
+✔ capability loss during flush cancels business submission without stripping saved draft (2.895984ms)
+✔ over-budget accepted form stays in memory with explicit refusal and close protection, no fetch (3.61545ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1676.962538

@@ -81,7 +81,7 @@ test('IME transient stays observable, guards structure synchronously, commits be
  const h=harness(),input=h.input(),buttons=h.buttons();input.props.onCompositionStart(event('0'));
  for(const b of buttons)b.props.onClick();assert.equal(h.edits.length,0);
  input.props.onChange(event('一'));h.render();assert.equal(h.input().props.value,'一');assert.equal(h.events.at(-1).pending,true);assert.equal(h.events.at(-1).dirty,true);assert.equal(h.events.at(-1).text,'一');assert.ok(h.buttons().every(b=>b.props.disabled));
- h.input().props.onCompositionEnd(event('1e-'));assert.equal(h.edits.at(-1).points[0].frame,'1e-');assert.deepEqual(h.events.slice(-2),['edit',{pending:false,dirty:false}]);
+ h.input().props.onCompositionEnd(event('1e-'));assert.equal(h.edits.at(-1).points[0].frame,'1e-');assert.deepEqual(h.events.slice(-2),['edit',{session:h.events.at(-1).session,pending:false,dirty:false}]);
 });
 test('IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard',()=>{
  const h=harness();h.input().props.onCompositionStart(event('0'));h.input().props.onChange(event('１２'));h.render();const e=event('１２');h.input().props.onCompositionEnd(e);h.render();assert.equal(e.currentTarget.value,'0');assert.equal(h.edits.length,0);assert.equal(h.input().props['aria-invalid'],true);
@@ -94,7 +94,7 @@ test('trailing input events after composition settlement preserve accepted or re
  h.input().props.onCompositionStart(event('2'));h.input().props.onChange(event('２'));h.render();h.input().props.onCompositionEnd(event('２'));h.render();
  const rejected=event('２');h.input().props.onChange(rejected);assert.equal(rejected.currentTarget.value,'2');assert.equal(h.edits.length,1);h.render();assert.equal(h.input().props['aria-invalid'],true);
  h.input().props.onCompositionStart(event('2'));h.input().props.onChange(event('3'));h.render();h.input().props.onCompositionEnd(event('2'));h.render();h.input().props.onChange(event('2'));assert.equal(h.edits.length,1);
- assert.deepEqual(h.events.at(-1),{pending:false,dirty:false});
+ assert.deepEqual(h.events.at(-1),{session:h.events.at(-1).session,pending:false,dirty:false});
 });
 const bytes=value=>Buffer.byteLength(JSON.stringify(value),'utf8');
 test('exact raw field bound and complete legacy slot counterexamples do not widen any caps',t=>{
@@ -118,4 +118,18 @@ test('exact raw field bound and complete legacy slot counterexamples do not wide
  const overflow={...full,draft:{...full.draft,raw:{...legacy,volumeEnvelope:bounded}}};assert.ok(bytes(overflow)>8192);
  assert.deepEqual(LOCAL_DRAFT_LIMITS,{slots:128,rowBytes:8192,envelopeBytes:2097152,httpBytes:12288,urlBytes:2048});
  t.diagnostic(JSON.stringify({rawFieldBytes,legacySlotBytes:bytes(slot),boundedCombinedBytes:bytes(combined),unboundedEnvelopeCounterexampleBytes:bytes(unsafe),fullLegalLegacyBytes:bytes(full),boundedOverflowBytes:bytes(overflow)}));
+});
+
+test('retained old control handlers cannot edit or end a newer same-row composition',()=>{
+ const h=harness();h.input().props.onCompositionStart(event('0'));h.render();const old=h.input();
+ old.props.onCompositionEnd(event('1'));h.render();h.input().props.onCompositionStart(event('1'));h.render();
+ const current=h.input(),session=h.events.at(-1).session,before=h.edits.length;
+ old.props.onChange(event('99'));old.props.onCompositionEnd(event('99'));h.render();
+ assert.equal(h.edits.length,before);assert.equal(h.events.at(-1).pending,true);assert.equal(h.events.at(-1).session,session);assert.equal(h.input().props.value,'1');
+ assert.ok(h.buttons().every(b=>b.props.disabled));
+ current.props.onCompositionEnd(event('2'));h.render();assert.equal(h.edits.at(-1).points[0].frame,'2');assert.equal(h.events.at(-1).pending,false);
+});
+test('composition start and end can settle synchronously before pending rerender',()=>{
+ const h=harness(),input=h.input();input.props.onCompositionStart(event('0'));input.props.onChange(event('2'));input.props.onCompositionEnd(event('2'));h.render();
+ assert.equal(h.edits.at(-1).points[0].frame,'2');assert.equal(h.events.at(-1).pending,false);
 });

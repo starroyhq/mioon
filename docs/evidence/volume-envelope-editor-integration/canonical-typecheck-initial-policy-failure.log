@@ -1,0 +1,3 @@
+{"status":"failed","code":"TYPECHECK_SOURCE_POLICY_INVALID","message":"Runtime TypeScript source must use the checked .ts/.tsx extensions."}
+
+EXIT_CODE=1

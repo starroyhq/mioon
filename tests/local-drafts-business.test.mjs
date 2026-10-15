@@ -73,7 +73,7 @@ test('persisted baseline/source never rebase; deleted target draft stays discove
 
 test('unreadable/corrupt/unknown-format storage never means empty and never gets overwritten',async t=>{
   const f=await fixture(t);const input=f.input();
-  for(const contents of ['{','null',JSON.stringify({version:2,workspaceScope:input.workspaceScope,entries:[]}),JSON.stringify({version:1,workspaceScope:input.workspaceScope,entries:[],credentials:'PRIVATE'})]){
+  for(const contents of ['{','null',JSON.stringify({version:3,workspaceScope:input.workspaceScope,entries:[]}),JSON.stringify({version:1,workspaceScope:input.workspaceScope,entries:[],credentials:'PRIVATE'})]){
     writeFileSync(f.file,contents,{mode:0o600});const before=readFileSync(f.file);
     assert.throws(()=>f.drafts.get(f.key),code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));assert.throws(()=>f.drafts.put(input),code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));assert.deepEqual(readFileSync(f.file),before);
   }

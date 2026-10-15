@@ -273,7 +273,7 @@ test('actual parent replacement cannot use retained project metadata before sess
 
 function runHarness(rpc) {
   const currentProject = { current: projectId }, calls = [], notices = [], busy = new Set(), dataRef = { current: { project: { id: projectId }, timeline: timeline() } };
-  const deps = { msg: message, ...submissions, shotTextRef: { current: null }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage, clipReplacementErrorDescriptor: replacement.clipReplacementErrorDescriptor,
+  const deps = { msg: message, ...submissions, clipConnectionBlocked: { current: false }, shotTextRef: { current: null }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, mutationNotApplied, clipReplacementErrorMessage: replacement.clipReplacementErrorMessage, clipReplacementErrorDescriptor: replacement.clipReplacementErrorDescriptor,
     readableError: error => error.message, context: () => ({ projectId }), isCurrent: owner => owner.projectId === currentProject.current,
     isBusy: key => busy.has(key), markBusy: (_project, key, value) => value ? busy.add(key) : busy.delete(key),
     isReferenceOperation: () => false, currentProject, dataRef, requestCounter: { current: 0 }, setData: value => { if (typeof value === 'function') value(dataRef.current); },
@@ -320,7 +320,7 @@ test('source wiring uses the existing inline inspector, stable mutation key, ses
   const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.jsx', import.meta.url), 'utf8');
   assert.match(inspector, /ClipSourceReplacement context=\{\{ \.\.\.replacementContext, timeline, clipId: clip\.id, dirty \}\}/);
   assert.match(inspector, /getDirty=\{\(\) => dirtyRef\.current\}/); assert.match(inspector, /dirtyRef\.current = true/);
-  assert.match(appSource, /chosenClip\.versionId === clipSource\.version\.id/);
+  assert.match(appSource, /displayedClipInspector\.clip\.versionId === clipSource\.version\.id/);
   assert.match(appSource, /CollapsibleContent keepMounted className="inspector-region-content"/);
   assert.match(appSource, /return run\('timeline:mutation', operation/);
   const responseGuard = appSource.indexOf('!isTimelineMutationResponse(operation, input, result)'), exactClear = appSource.indexOf('clearPending(projectId, key, stored)');

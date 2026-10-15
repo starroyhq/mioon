@@ -1,0 +1,2 @@
+{"pid":6,"event":"guard-installed"}
+{"pid":6,"method":"spawn","allowed":false,"command":"ffprobe","args":[]}

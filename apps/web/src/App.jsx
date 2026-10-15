@@ -93,8 +93,10 @@ import { useLocalDelivery } from './local-delivery-state.ts';
 import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.jsx';
 import TimelineInspector from './TimelineInspector.jsx';
-import { canEditTimelineAudioRole, isWorkspaceRestoreInspection } from '@mioon/contracts';
+import { retainClipInspector, retainClipWorkbench } from './clip-inspector-retention.ts';
+import { canEditTimelineAudioRole, canEditTimelineVolumeEnvelope, isWorkspaceRestoreInspection } from '@mioon/contracts';
 import { observeClipAudioRoleCapability } from './clip-audio-role-state.ts';
+import { observeClipVolumeEnvelopeCapability } from './clip-volume-envelope-capability.ts';
 import SubtitleInspector from './SubtitleInspector.jsx';
 import { useSubtitles } from './use-subtitles.js';
 import { subtitleAcknowledged } from './subtitle-state.js';
@@ -228,8 +230,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
 
   const [showProjects, setShowProjects] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [rightDockTab, setRightDockTab] = useState('properties');
-  const [propertiesPage, setPropertiesPage] = useState('inspector');
+  const [rightDockTab, setRightDockTabState] = useState('properties');
+  const setRightDockTab = value => { if (!clipDraftRef.current?.hasPendingComposition()) setRightDockTabState(value); };
+  const [propertiesPage, setPropertiesPageState] = useState('inspector');
+  const setPropertiesPage = value => { if (!clipDraftRef.current?.hasPendingComposition()) setPropertiesPageState(value); };
   const [subtitleDirty, setSubtitleDirty] = useState(false);
   const subtitlesRef = useRef(null);
   const [formatDirty, setFormatDirty] = useState(false);
@@ -238,6 +242,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const deliveryNameRef = useRef(null);
   const localDeliveryRef = useRef(null);
   const clipDraftRef = useRef(null);
+  const [clipCompositionPending, setClipCompositionPending] = useState(false);
+  const clipInspectorRetention = useRef({ snapshot: null, retained: false });
+  const clipConnectionBlocked = useRef(false);
   const [agentClipDraftBlocked, setAgentClipDraftBlocked] = useState(true);
   const shotTextRef = useRef(null), shotCloseRef = useRef(null);
   const registerShotText = useCallback((controller, readLocalClose) => {
@@ -280,6 +287,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const [showGuide, setShowGuide] = useState(false);
   const [lastSync, setLastSync] = useState(null);
   const [online, setOnline] = useState(true);
+  const [volumeEnvelopeObservation, setVolumeEnvelopeObservation] = useState({ epoch: 0, status: 'loading' });
+  const volumeEnvelopeProbeEpoch = useRef(0), volumeEnvelopeConnection = useRef(null);
+  if (!volumeEnvelopeConnection.current || volumeEnvelopeConnection.current.workspace !== workspace || volumeEnvelopeConnection.current.online !== online || volumeEnvelopeConnection.current.auth !== auth) {
+    volumeEnvelopeConnection.current = { workspace, online, auth };
+    volumeEnvelopeProbeEpoch.current++;
+  }
+  const volumeEnvelopeCapability = volumeEnvelopeObservation.epoch === volumeEnvelopeProbeEpoch.current ? volumeEnvelopeObservation.status : online && auth === true ? 'loading' : 'unavailable';
+  const volumeEnvelopeEditable = volumeEnvelopeCapability === 'editable';
+  clipConnectionBlocked.current = !online || auth !== true || clipInspectorRetention.current.retained;
   const [zoom, setZoom] = useState(100);
 
   const [mobilePanel, setMobilePanel] = useState('canvas');
@@ -329,6 +345,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const updateView = useCallback((section, patch, { passive = false } = {}) => {
     if (!viewReady.current || dataRef.current.project?.id !== currentProject.current) return;
     const previous = viewRef.current;
+    if (clipDraftRef.current?.hasPendingComposition() && (section === 'activeMode' || section === 'editing')) return;
     const value = typeof patch === 'function' ? patch(previous[section]) : patch;
     const next = section === 'activeMode' ? { ...previous, activeMode: value } : { ...previous, [section]: { ...previous[section], ...value } };
     if (JSON.stringify(next) === JSON.stringify(previous)) return;
@@ -364,6 +381,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     updateView('layout', previous => ({ [mode]: { ...previous[mode], ...patch } }));
   }
   function setPanelOpen(name, open, mode = viewRef.current.activeMode) {
+    if (clipDraftRef.current?.hasPendingComposition()) return;
     markPanelIntent();
     if (name === 'timeline') updateView('editing', { timelineCollapsed: !open });
     else if (name === 'storyboard') updateView('canvas', { storyboardOpen: open });
@@ -373,6 +391,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     }
   }
   function resetPanelLayout() {
+    if (clipDraftRef.current?.hasPendingComposition()) return;
     markPanelIntent(); updateView('layout', { [workspaceMode]: defaultWorkspaceLayout()[workspaceMode] });
     if (workspaceMode === 'canvas') updateView('canvas', { storyboardOpen: false });
     else updateView('editing', { timelineCollapsed: false });
@@ -380,7 +399,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   }
   function resizePanel(field, value) { markPanelIntent(); updateModeLayout(workspaceMode, { [field]: value }); }
   const panelVisible = name => name === 'canvas' ? !geometry.narrow || mobilePanel === 'canvas' : !(name === 'assets' ? assetsCollapsed : name === 'inspector' ? inspectorCollapsed : timelineCollapsed) && (!geometry.narrow || mobilePanel === name);
-  function mobileNavigate(name) { if (name === 'canvas') { markPanelIntent(); setMobilePanel('canvas'); } else setPanelOpen(name, true); }
+  function mobileNavigate(name) { if (clipDraftRef.current?.hasPendingComposition()) return; if (name === 'canvas') { markPanelIntent(); setMobilePanel('canvas'); } else setPanelOpen(name, true); }
   const panelFallback = name => geometry.narrow ? `[data-testid=mobile-panel-${name}]` : `[data-testid=reopen-${name}]`;
   const resizeHandle = (name, field) => <PanelResizeHandle name={name} field={field} value={geometry.effective[field]} max={geometry.maxima[field]} scope={`${panelScope}:${geometry.size.width}:${geometry.size.height}`} enabled={!geometry.narrow && panelVisible(name) && !loading} onPreview={geometry.preview} onCommit={resizePanel} />;
   const setSelectedId = field('canvas', 'selectedId'), setSelectedEdgeId = field('canvas', 'selectedEdgeId'), setTab = field('canvas', 'inspectorTab'), setSequenceOpen = field('canvas', 'storyboardOpen'), setMiniMap = field('canvas', 'miniMap');
@@ -401,20 +420,22 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     setBusyByProject(all => ({ ...all, [scope]: { ...all[scope], [key]: value } }));
   }
   async function guardNavigation(message = msg('shell.confirm.switchWorkspace'), additionalDirty = false, canDiscard = () => true) {
+    if (clipDraftRef.current?.hasPendingComposition()) return false;
     if (nativeWindow && !editorWindowCanNavigate()) return false;
     if (nativeWindow) { const originalCanDiscard = canDiscard; canDiscard = () => originalCanDiscard() && editorWindowCanNavigate(); }
     const captured = context(), subtitleController = subtitlesRef.current?.controller, subtitleDraft = subtitleController?.getState(), subtitleUnsaved = subtitleController?.hasUnsaved();
     const clipController = clipDraftRef.current, clipCapture = clipController?.capture(), clipUnsaved = clipController?.hasUnsaved();
     const shotController = shotTextRef.current, shotCapture = shotController?.capture(), shotUnsaved = shotController?.hasUnsaved();
     if ((dirtyRef.current || subtitleUnsaved || clipUnsaved || shotUnsaved || additionalDirty) && !await confirm(message)) return false;
-    if (!isCurrent(captured) || !canDiscard() || shotController && (shotController !== shotTextRef.current || !shotController.isCurrent(shotCapture)) || subtitleController && (subtitleController !== subtitlesRef.current?.controller || subtitleController.getState() !== subtitleDraft) || clipController && (clipController !== clipDraftRef.current || !clipController.isCurrent(clipCapture))) return false;
+    if (clipDraftRef.current?.hasPendingComposition() || !isCurrent(captured) || !canDiscard() || shotController && (shotController !== shotTextRef.current || !shotController.isCurrent(shotCapture)) || subtitleController && (subtitleController !== subtitlesRef.current?.controller || subtitleController.getState() !== subtitleDraft) || clipController && (clipController !== clipDraftRef.current || !clipController.isCurrent(clipCapture))) return false;
     if (clipUnsaved && !await clipController.discard(clipCapture, canDiscard)) return false;
-    if (!isCurrent(captured) || !canDiscard() || shotController && (shotController !== shotTextRef.current || !shotController.isCurrent(shotCapture)) || clipController && clipController !== clipDraftRef.current || subtitleController && (subtitleController !== subtitlesRef.current?.controller || subtitleController.getState() !== subtitleDraft)) return false;
+    if (clipDraftRef.current?.hasPendingComposition() || !isCurrent(captured) || !canDiscard() || shotController && (shotController !== shotTextRef.current || !shotController.isCurrent(shotCapture)) || clipController && clipController !== clipDraftRef.current || subtitleController && (subtitleController !== subtitlesRef.current?.controller || subtitleController.getState() !== subtitleDraft)) return false;
     if (shotController && !shotController.abandonCurrentInput(shotCapture)) return false;
     if (dirtyRef.current || subtitleUnsaved || clipUnsaved || shotUnsaved) { subtitleController?.discardDraft(); subjectsRef.current?.controller.discardDrafts(subjectsRef.current.state?.scope); dirtyRef.current = false; setShotDirty(false); setClipDirty(false); setSourceDirty(false); setSubjectDirty(false); setSubtitleDirty(false); setInspectorEpoch(value => value + 1); }
     return true;
   }
   async function guardProjectNavigation(message, additionalDirty = false, canLeaveSettings = () => true) {
+    if (clipDraftRef.current?.hasPendingComposition()) return false;
     if (nativeWindow && !editorWindowCanNavigate()) return false;
     const retainedCurrent = () => !nativeWindow || editorWindowCanNavigate();
     const controller = timelineFormatRef.current?.controller, delivery = deliveryNameRef.current?.controller, deliveryCapture = delivery?.capture();
@@ -491,7 +512,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       if (!projectResponseMatches(next, projectId)) throw Object.assign(localizedError(msg('shell.error.projectIdentity')), { code: 'BACKEND_PROTOCOL_ERROR' });
       reconcilePending(projectId, next, { workspace: capturedWorkspace });
       dataRef.current = { ...emptyData, ...next }; setData(dataRef.current); setProviders(caps); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId));
-      const reconciled = reconcileWorkspaceState(viewRef.current, next);
+      const retainClipSelection = clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved();
+      const reconciled = retainClipSelection ? viewRef.current : reconcileWorkspaceState(viewRef.current, next);
       if (viewReady.current && JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled; setView(reconciled); preferencesRef.current.update(projectId, reconciled, { immediate: true }); }
       return next;
     } catch (e) {
@@ -577,7 +599,21 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     if (!await confirm(msg('shell.confirm.loadSavedView'))) return;
     if (isCurrent(captured)) await selectProject(captured.projectId, false, true, true);
   }
+  // Optional feature discovery has its own connection epoch. Project selection
+  // must not cancel it, and legacy servers must not delay ordinary boot/editing.
+  useEffect(() => {
+    const epoch = volumeEnvelopeProbeEpoch.current;
+    const publish = status => setVolumeEnvelopeObservation({ epoch, status });
+    publish(online && auth === true ? 'loading' : 'unavailable');
+    if (!online || auth !== true || !workspace || clipInspectorRetention.current.retained) return;
+    return observeClipVolumeEnvelopeCapability(workspace,
+      signal => rpc('workspace.restore.inspect', { includeVolumeEnvelopeCapability: true }, { signal }),
+      isWorkspaceRestoreInspection, canEditTimelineVolumeEnvelope,
+      () => volumeEnvelopeProbeEpoch.current === epoch && workspaceRef.current === workspace && !clipInspectorRetention.current.retained,
+      publish);
+  }, [workspace, online, auth]);
   async function boot() {
+    if (clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved()) return;
     const ticket = bootGuard.current.begin();
     preferenceScope.current = null;
     audioRoleProbe.current?.();
@@ -588,6 +624,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
       const observedWorkspace = await rpc('workspace.restore.inspect');
       if (!bootGuard.current.isCurrent(ticket)) return;
       const verifiedWorkspace = retainWorkspaceIdentity(workspaceRef.current, observedWorkspace);
+      // Never adopt/reconnect an authority while original input is retained.
+      if (clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved()) return;
       workspaceRef.current = verifiedWorkspace; setWorkspace(verifiedWorkspace);
       audioRoleProbe.current = observeClipAudioRoleCapability(verifiedWorkspace, signal => rpc('workspace.restore.inspect', { includeAudioRoleCapability: true }, { signal }), isWorkspaceRestoreInspection, canEditTimelineAudioRole,
         () => audioRoleProbeEpoch.current === roleEpoch && importSession.current.active && workspaceRef.current === verifiedWorkspace, setAudioRoleCapability);
@@ -596,6 +634,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
         verifiedWorkspace.restored ? Promise.resolve(null) : lastProjectRef.current.discover(),
       ]);
       if (!bootGuard.current.isCurrent(ticket)) return;
+      if (clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved()) return;
       assertLastProjectBootIdentity(lastProjectRef.current.getState());
       locatorIdentity.current = retainLastProjectScope(locatorIdentity.current, locator?.workspaceScope ?? null);
       preferenceScope.current = locator?.workspaceScope ?? null;
@@ -614,11 +653,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   useEffect(() => {
     const controller = preferencesRef.current;
     const locator = lastProjectRef.current;
-    const flush = event => { if (window.__mioonNativeCloseAdmission?.suppressLifecycleFlush?.(event) === true) return; void controller.flush({ keepalive: true }); if (!workspaceRef.current?.restored) { if (!nativeWindow) void locator.flush(); if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current.flush(); if (clipDraftRef.current?.hasUnpersisted()) void clipDraftRef.current.flushForClose(); } };
+    const flush = event => { if (clipDraftRef.current?.hasPendingComposition()) { if (event?.type === 'beforeunload') { event.preventDefault(); event.returnValue = ''; } return; } if (window.__mioonNativeCloseAdmission?.suppressLifecycleFlush?.(event) === true) return; void controller.flush({ keepalive: true }); if (!workspaceRef.current?.restored) { if (!nativeWindow) void locator.flush(); if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current.flush(); if (clipDraftRef.current?.hasUnpersisted()) void clipDraftRef.current.flushForClose(); } };
     const onHidden = event => { if (document.visibilityState === 'hidden') flush(event); };
     // An unprivileged lifecycle function: desktop main may await this fixed
     // function before closing; it exposes no Electron/IPC/native capability.
     const drain = async () => {
+      if (clipDraftRef.current?.hasPendingComposition()) return false;
       const restored = Boolean(workspaceRef.current?.restored), clip = restored ? null : clipDraftRef.current, clipCapture = clip?.capture();
       const [, remembered, titleSaved, shotSaved, clipSaved] = await Promise.all([
         controller.flush({ keepalive: true }), restored || nativeWindow ? true : locator.flush(),
@@ -626,7 +666,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
         restored || !shotTextRef.current?.hasUnpersisted() ? true : shotTextRef.current.flush(),
         clip ? clip.flushForClose() : true,
       ]);
-      return !controller.hasUnsaved() && remembered && titleSaved && shotSaved && clipSaved && restored === Boolean(workspaceRef.current?.restored)
+      return !clipDraftRef.current?.hasPendingComposition() && !controller.hasUnsaved() && remembered && titleSaved && shotSaved && clipSaved && restored === Boolean(workspaceRef.current?.restored)
         && (restored || clip === clipDraftRef.current && (!clip || clip.isCurrent(clipCapture) && !clip.hasUnpersisted()));
     };
     globalThis.__mioonFlushWorkspacePreferences = drain;
@@ -674,11 +714,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [auth, workbenchReady, data.project?.id, refresh]);
   async function run(key, operation, input, message, options = {}) {
+    if (clipConnectionBlocked.current) return null;
     const invocationOptions = { ...options, canRevealTasks: captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) };
     if (isDurableEditOperation(operation) && !options.replay) return runDurable(key, operation, input, message, invocationOptions);
     return runSession(key, operation, input, message, invocationOptions);
   }
   async function runDurable(key, operation, input, message, { returnAfterNavigation = false, validateResponse, onFailure, errorMessage = readableError, canExecute, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) } = {}) {
+    if (clipConnectionBlocked.current) return null;
     const captured = context(), projectId = captured.projectId;
     if (isBusy(key, projectId)) return null;
     markBusy(projectId, key, true);
@@ -697,7 +739,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
         (operation.startsWith('reference.') && isMutationOperation(entry.operation))))
         throw Object.assign(localizedError(msg('shell.error.previousSessionPending')), { code: 'MUTATION_PENDING' });
       const response = await tasksRef.current.submit({ projectId, operation, input, ...invocation }, { canExecute: preparedTask => {
-        if (!isCurrent(captured) || canExecute?.(preparedTask) === false) return false;
+        if (clipConnectionBlocked.current || !isCurrent(captured) || canExecute?.(preparedTask) === false) return false;
         dispatched = true; invalidateHistory(); return true;
       } });
       invalidateHistory();
@@ -734,13 +776,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     } finally { markBusy(projectId, key, false); }
   }
   async function recoverTask(task, acknowledgeOnly = false, canExecute = () => true) {
+    if (clipConnectionBlocked.current) return null;
     const captured = context(), loudnessRecoveryScope = task.operation === 'timeline.loudness.apply' ? readTimelineLoudnessRecoveryScope() : null;
     if (!canExecute()) return;
     if (task.projectId !== captured.projectId || isBusy(`task:${task.id}`, task.projectId)) return;
     markBusy(task.projectId, `task:${task.id}`, true);
     try {
-      const response = await tasksRef.current.recover(task, { canExecute: () => !acknowledgeOnly && isCurrent(captured) && canExecute() });
-      if (!response) return;
+      const response = await tasksRef.current.recover(task, { canExecute: () => !clipConnectionBlocked.current && !acknowledgeOnly && isCurrent(captured) && canExecute() });
+      if (!response || clipConnectionBlocked.current) return;
       if (['applied', 'not_applied'].includes(response.task.status)) {
         if (response.task.status === 'applied' && currentProject.current === task.projectId) {
           await refresh(task.projectId);
@@ -755,6 +798,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     finally { markBusy(task.projectId, `task:${task.id}`, false); }
   }
   async function adoptLegacyTask(entry) {
+    if (clipConnectionBlocked.current) return null;
     const captured = context();
     if (entry.projectId !== captured.projectId || isBusy(entry.key, entry.projectId)) return;
     markBusy(entry.projectId, entry.key, true);
@@ -773,6 +817,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     finally { markBusy(entry.projectId, entry.key, false); }
   }
   async function runSession(key, operation, input, message, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError, expectedSubjectReference, subjectRetry = false, expectedRetrySnapshot, pendingEntry, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) } = {}) {
+    if (clipConnectionBlocked.current) return null;
     const captured = context(), projectId = captured.projectId;
     if (operation === 'job.retry' && dataRef.current.jobs?.length) subjectRetry = subjectRetry || isSubjectRetryPending({ projectId, key, operation, input }, dataRef.current.jobs);
     const mutation = isMutationOperation(operation);
@@ -1527,11 +1572,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     return () => window.removeEventListener('keydown', onKeyDown);
   });
   async function mutateTimeline(operation, input = {}, expectedRevision, options) {
+    if (clipDraftRef.current?.hasPendingComposition()) return null;
     if (!dataRef.current.timeline) return null;
     if (tasksRef.current.blocked(currentProject.current, 'timeline:mutation') || timelinePending) { notify(msg('shell.timelinePending'), 'warning'); openTasks(); return null; }
     return run('timeline:mutation', operation, { projectId: currentProject.current, expectedRevision: expectedRevision ?? dataRef.current.timeline.revision, requestId: requestId(), ...input }, undefined, options);
   }
   async function selectClip(id, showPreview = true) {
+    if (clipDraftRef.current?.hasPendingComposition()) return;
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current.timeline?.id, timelineRevision = dataRef.current.timeline?.revision;
     const canDiscard = () => isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current.timeline?.id && timelineRevision === dataRef.current.timeline?.revision && dataRef.current.timeline?.clips.some(clip => clip.id === id);
     if ((id !== selectedClipId || quickAssetId || workspaceMode !== 'editing' || subtitlesRef.current?.controller.hasUnsaved()) && !await guardNavigation(msg('shell.confirm.changeClip'), false, canDiscard)) return;
@@ -1653,6 +1700,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const chosenShot = data.shots.find(s => s.id === selectedId);
   const chosenNode = data.nodes.find(n => n.id === selectedId);
   const chosenClip = timeline?.clips.find(c => c.id === selectedClipId);
+  const liveClipInspector = chosenClip ? { key: `${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`, scope: `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`, projectId: currentProject.current, clip: chosenClip, timeline, asset: data.assets.find(a => a.id === chosenClip.assetId), restored } : null;
+  clipInspectorRetention.current = retainClipInspector(clipInspectorRetention.current, liveClipInspector, { pending: clipCompositionPending || Boolean(clipDraftRef.current?.hasPendingComposition()), dirty: clipDirty, connected: online && auth === true && !loading });
+  const displayedClipInspector = clipInspectorRetention.current.snapshot;
+  const clipInspectorRetained = clipInspectorRetention.current.retained;
+  clipConnectionBlocked.current = !online || auth !== true || clipInspectorRetained;
+  const retainWorkbenchForClip = retainClipWorkbench(displayedClipInspector, clipCompositionPending || Boolean(clipDraftRef.current?.hasPendingComposition()), clipDirty);
   const staleClips = staleClipSources(timeline?.clips ?? [], data.shots, data.versions);
   const agentTimelineSelection = workspaceMode === 'editing' && propertiesPage === 'inspector' && !quickAssetId
     ? makeAgentTimelineClipSelection(timeline, selectedClipId, data.project?.id) : null;
@@ -1727,12 +1780,18 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
   const edges = useMemo(() => data.edges.map(edge => canvasEdge(edge, edge.id === selectedEdgeId, locale)), [data.edges, selectedEdgeId, locale]);
   const selectedEdge = data.edges.find(edge => edge.id === selectedEdgeId);
   const visibleAssets = data.assets.filter(a => (assetFilter === 'all' || a.mimeType?.startsWith(`${assetFilter}/`)) && a.name.toLowerCase().includes(assetSearch.toLowerCase()));
-  if (auth === false) return <Login onLogin={boot} />;
-  if (auth === null || auth === 'error') return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><Icon name="film" /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
-  if (nativeWindow && !workbenchReady) return <EditorWindowOpening error={projectOpening.error} onRetry={() => { void selectProject(currentProject.current || nativeWindow.context.initialProjectId, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} />;
+  const guardRetainedInputInteraction = event => {
+    if (!clipConnectionBlocked.current || !retainWorkbenchForClip) return;
+    if (event.target?.closest?.('[data-testid="clip-volume-envelope"], [data-retained-input-action]')) return;
+    event.preventDefault(); event.stopPropagation();
+  };
+  if (auth === false && !retainWorkbenchForClip) return <Login onLogin={boot} />;
+  if ((auth === null || auth === 'error') && !retainWorkbenchForClip) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><Icon name="film" /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
+  if (nativeWindow && !workbenchReady && !retainWorkbenchForClip) return <EditorWindowOpening error={projectOpening.error} onRetry={() => { void selectProject(currentProject.current || nativeWindow.context.initialProjectId, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} />;
   const webSettingsCenter = nativeWindow ? null : <WebSettingsCenter key="global-settings-center" request={webSettingsRequest} registry={settingsNavigation.current} onOpenChange={setWebSettingsOpen} connectionsAvailable={!restored} renderSettings={props => <SettingsConnectionForms {...props} />} />;
-  if (!workbenchReady) return <>{webSettingsCenter}<ProjectHome projects={projects} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage} onPage={changeHomePage} onOpen={id => { void selectProject(id); }} onRetry={() => { if (projectOpening.projectId) void selectProject(projectOpening.projectId, false, true); }} onRefresh={refreshHomeProjects} onCreate={createProject} status={<><LastProjectStatus state={lastProjectStatus || lastProjectRef.current.getState()} controller={lastProjectRef.current} restored={restored} />{restored && <RestoredUnavailable title={t('shell.restoredScope')} />}</>} settings={null} /></>;
-  return <>{webSettingsCenter}<main className={`workbench workbench-v2 dock-workbench ${geometry.narrow ? 'dock-narrow' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} style={geometry.style}>
+  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome projects={projects} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage} onPage={changeHomePage} onOpen={id => { void selectProject(id); }} onRetry={() => { if (projectOpening.projectId) void selectProject(projectOpening.projectId, false, true); }} onRefresh={refreshHomeProjects} onCreate={createProject} status={<><LastProjectStatus state={lastProjectStatus || lastProjectRef.current.getState()} controller={lastProjectRef.current} restored={restored} />{restored && <RestoredUnavailable title={t('shell.restoredScope')} />}</>} settings={null} /></>;
+  return <>{webSettingsCenter}<main className={`workbench workbench-v2 dock-workbench ${geometry.narrow ? 'dock-narrow' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} style={geometry.style}>
+    {retainWorkbenchForClip && clipConnectionBlocked.current && <div className="notice warning" role="status" data-testid="retained-clip-connection"><p>{t('volume.envelope.connectionRetained')}</p></div>}
     <WorkspaceVisibilityProvider visible={!comparisonId}>
     <Input ref={fileInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a" multiple aria-label={t('assets.importLocal')} data-testid="asset-upload" onChange={e => importFiles(Array.from(e.target.files))} />
     <header className="topbar"><a className="brand" href={window.location.pathname} onClick={nativeWindow ? event => { event.preventDefault(); void nativeProjectEntry?.show('open'); } : undefined} aria-label={t('shell.title')}><span className="brand-mark"><Icon name="film" size={19} /></span><span className="brand-name">Mioon</span></a><span className="topbar-divider" /><DropdownMenu open={showProjects} onOpenChange={setShowProjects}><DropdownMenuTrigger render={<Button variant="ghost" className="project-trigger" data-testid="project-switcher" />}><Icon name="folder" size={16} /><span>{data.project?.name || t('projects.choose')}</span><Icon name="down" size={13} /></DropdownMenuTrigger><DropdownMenuContent align="start" className="workbench-project-menu"><DropdownMenuGroup><DropdownMenuLabel>{t('projects.yourProjects')}</DropdownMenuLabel>{projects.map(p => <DropdownMenuItem key={p.id} onClick={() => nativeWindow ? nativeProjectEntry?.open(p.id) : selectProject(p.id)}><Icon name="folder" size={15} /><span>{p.name}</span>{p.id === data.project?.id && <Icon name="check" size={14} />}</DropdownMenuItem>)}</DropdownMenuGroup><DropdownMenuSeparator />{nativeWindow && <DropdownMenuItem onClick={() => { setShowProjects(false); void nativeProjectEntry?.show('open'); }}><Icon name="folder" size={15} />{t('projects.openWorkspace')}</DropdownMenuItem>}<DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem><DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu><Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs><details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online || ['error', 'conflict'].includes(preferenceStatus.phase) ? 'red' : inspectorDirty || formatDirty || annotations.state?.dirtyCount || preferenceStatus.pending ? 'orange' : 'green'}`} /><span className="topbar-status-label">{t('shell.status')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content"><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current.flush({ projectId: currentProject.current })} onReload={reloadPreferences} /><>{nativeWindow ? <NativeLocatorStatus context={nativeWindow.context} bridge={nativeWindow.bridge} /> : <LastProjectStatus state={lastProjectStatus || lastProjectRef.current.getState()} controller={lastProjectRef.current} restored={workspace?.restored === true} />}</></div></details><div className="topbar-actions">
@@ -1776,7 +1835,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null } =
     <PanelBoundary name="inspector" visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
     <Collapsible open={!inspectorCollapsed} onOpenChange={open => setInspectorCollapsed(!open)} className={`inspector-region ${inspectorCollapsed ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><header className="inspector-region-heading"><Tabs value={rightDockTab} onValueChange={value => { if (['properties', 'agent', 'image', 'delivery', 'tasks'].includes(value)) { markPanelIntent(); setRightDockTab(value); } }} className="right-dock-tabs"><TabsList aria-label={t('shell.rightWorkspace')} className="segmented"><TabsTrigger id="right-dock-properties-tab" value="properties" data-testid="right-dock-tab-properties" aria-controls="right-dock-properties">{t('shell.properties')}</TabsTrigger><TabsTrigger id="right-dock-agent-tab" value="agent" data-testid="right-dock-tab-agent" aria-controls="right-dock-agent"><Icon name="sparkle" size={12} />{t('shell.agentLabel')}</TabsTrigger><TabsTrigger id="right-dock-image-tab" value="image" data-testid="right-dock-tab-image" aria-controls="right-dock-image">{t('shell.images')}</TabsTrigger><TabsTrigger id="right-dock-delivery-tab" value="delivery" data-testid="right-dock-tab-delivery" aria-controls="right-dock-delivery">{t('shell.deliveryChecks')}</TabsTrigger><TabsTrigger id="right-dock-tasks-tab" value="tasks" data-testid="right-dock-tab-tasks" aria-controls="right-dock-tasks">{t('shell.tasks')}</TabsTrigger></TabsList></Tabs><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('shell.collapseInspector')} title={t('shell.collapseInspector')} data-testid="toggle-inspector" />}><Icon name="minus" size={16} /></CollapsibleTrigger></header><RestoredWorkspace workspace={workspace} /><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy="right-dock-properties-tab" visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{workspaceMode === 'canvas' ? <div className="inspector-container">
     <Inspector shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext }} onShotTextController={registerShotText} onShotTextAccepted={({ response }) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }} generationUnavailableReason={generationUnavailableReason} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} generationOptions={generationOptions[selectedId]} onGenerationOptionsChange={updateGenerationOptions} tab={tab} setTab={setTab} busy={busy} onSave={saveShot} onNodeSave={saveNode} onGenerate={generate} onSelectVersion={selectVersion} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots} nodes={data.nodes} edges={data.edges} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={(id, nextTab) => inspect(id, nextTab, null, { reveal: true })} onAddVersion={assetId => addTimelineAsset(assetId)} />
-    </div> : quickAssetId && sourceAsset ? <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange}>{restored ? <RestoredUnavailable title={t('shell.restoredFramesRetained')} /> : <FrameExtractionPanel controller={frameExtraction.controller} />}</SourceRangeInspector> : chosenClip ? <TimelineInspector key={`${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`} loudnessContext={clipLoudnessContext} loudnessInvocation={() => pinNewWorkspaceIntent({}, workspaceRef.current)} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={clipSource ? () => returnToSource(chosenClip.assetId) : undefined} sourceDescription={clipSource?.version && chosenClip.versionId === clipSource.version.id ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} replacementContext={clipReplacementContext()} staleSource={staleClips.get(chosenClip.id)} onReplaceSource={replaceTimelineClipSource} onOpenRequests={() => openTasks()} clip={chosenClip} timeline={timeline} asset={data.assets.find(a => a.id === chosenClip.assetId)} draftContext={{ scope: `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`, projectId: currentProject.current, restored, audioRoleEditable, audioRoleCapability }} draftConnected={online && auth === true && !loading} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={(clipId, patch, revision, draftOptions) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: draftOptions?.canExecute })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3><p>{t('shell.clipPropertiesHint')}</p></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="properties-format-pane" visible={propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane>{restored ? <RestoredUnavailable title={t('shell.restoredNoBackup')} backup /> : <WorkspaceBackupPanel scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} getScope={() => `${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} connected={online && auth === true && !loading} read={(input, options) => rpc('workspace.backup.inspect', input, options)} onUnauthorized={() => setAuth(false)} />}</AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredAgentHistory')} /> : <AgentWorkspace onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane><AgentDockPane id="right-dock-image" labelledBy="right-dock-image-tab" visible={rightDockTab === 'image'} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredImageHistory')} /> : <ImageGeneration onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} key={data.project?.id || 'no-project'} projectId={data.project?.id} projectName={data.project?.name} projectAssets={data.assets} onDirtyChange={onImageDraftChange} onGenerated={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} onRevealAsset={revealImageAsset} />}</AgentDockPane><AgentDockPane id="right-dock-delivery" labelledBy="right-dock-delivery-tab" visible={rightDockTab === 'delivery'} fallbackFocus="[data-testid=right-dock-tab-properties]"><DeliveryWorkspace page={showExports ? 'history' : 'compose'} onPage={page => { markPanelIntent(); setShowExports(page === 'history'); }}><AgentDockPane id="delivery-compose-pane" labelledBy="delivery-compose-tab" visible={!showExports} fallbackFocus="[data-testid=delivery-page-history]"><TimelineExportPreflight preview={<ExportPreview
+    </div> : quickAssetId && sourceAsset ? <SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange}>{restored ? <RestoredUnavailable title={t('shell.restoredFramesRetained')} /> : <FrameExtractionPanel controller={frameExtraction.controller} />}</SourceRangeInspector> : displayedClipInspector ? <TimelineInspector key={displayedClipInspector.key} loudnessContext={clipLoudnessContext} loudnessInvocation={() => pinNewWorkspaceIntent({}, workspaceRef.current)} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot.title} · V${clipSource.version.number}` : clipSource?.asset.name} replacementContext={clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id)} onReplaceSource={replaceTimelineClipSource} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId, restored: displayedClipInspector.restored, audioRoleEditable, audioRoleCapability, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true, volumeEnvelopeCapability }} draftConnected={!clipInspectorRetained && online && auth === true && !loading} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={(clipId, patch, revision, draftOptions) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: draftOptions?.canExecute })} onRemove={async clipId => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onDirtyChange={setClipDirty} busy={timelineBusy} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3><p>{t('shell.clipPropertiesHint')}</p></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="properties-format-pane" visible={propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentDockPane>{restored ? <RestoredUnavailable title={t('shell.restoredNoBackup')} backup /> : <WorkspaceBackupPanel scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} getScope={() => `${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} connected={online && auth === true && !loading} read={(input, options) => rpc('workspace.backup.inspect', input, options)} onUnauthorized={() => setAuth(false)} />}</AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredAgentHistory')} /> : <AgentWorkspace onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane><AgentDockPane id="right-dock-image" labelledBy="right-dock-image-tab" visible={rightDockTab === 'image'} fallbackFocus="[data-testid=right-dock-tab-properties]">{restored ? <RestoredUnavailable title={t('shell.restoredImageHistory')} /> : <ImageGeneration onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} key={data.project?.id || 'no-project'} projectId={data.project?.id} projectName={data.project?.name} projectAssets={data.assets} onDirtyChange={onImageDraftChange} onGenerated={projectId => { if (currentProject.current === projectId) void refresh(projectId); }} onRevealAsset={revealImageAsset} />}</AgentDockPane><AgentDockPane id="right-dock-delivery" labelledBy="right-dock-delivery-tab" visible={rightDockTab === 'delivery'} fallbackFocus="[data-testid=right-dock-tab-properties]"><DeliveryWorkspace page={showExports ? 'history' : 'compose'} onPage={page => { markPanelIntent(); setShowExports(page === 'history'); }}><AgentDockPane id="delivery-compose-pane" labelledBy="delivery-compose-tab" visible={!showExports} fallbackFocus="[data-testid=delivery-page-history]"><TimelineExportPreflight preview={<ExportPreview
       result={exportPreviewResult(exportPreviewAttempt, data.exports, { scope: exportCheckView.scope, contextKey: sampleExportContextKey(), connected: exportCheckView.connected, isRenderRecord: isTimelineRenderRecord, heldExportIds: data.restore?.heldExportIds })}
       visible={!comparisonId && workbenchReady && rightDockTab === 'delivery' && !showExports && panelVisible('inspector')}
       canSelect={exportRangeContext().enabled && !localDelivery.state.busy && !pendingTimelineExport}

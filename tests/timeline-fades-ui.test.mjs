@@ -1,3 +1,4 @@
+import * as envelopeState from '../apps/web/src/clip-volume-envelope-state.ts';
 import * as roleState from '../apps/web/src/clip-audio-role-state.ts';
 import * as roleContract from '../packages/contracts/src/timeline-audio-role.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
@@ -63,6 +64,7 @@ async function inspectorHarness(patch = {}, lutRpc = async () => { throw Error('
       if (id === './timeline-format-state.js') return timelineFormat;
       if (id === './clip-draft-state.ts') return clipDraft;
       if (id === './clip-audio-role-state.ts') return roleState;
+      if (id === './clip-volume-envelope-state.ts') return envelopeState;
       if (id === '../../../packages/contracts/src/timeline-audio-role.ts') return roleContract;
       if (id === './ClipAudioRoleControls.tsx') return load('ClipAudioRoleControls.tsx');
       if (id === './clip-lut-state.ts') return { ...clipLut, createClipLutController: options => clipLut.createClipLutController({ ...options, recovery: createClipLutRecovery({ storage: () => ({ getItem: () => null, setItem() {}, removeItem() {} }), lock: async (_name, action) => action() }) }) };
@@ -251,7 +253,8 @@ test('keyed project unmount fences late fade acknowledgments and retained form s
   assert.equal(calls.length, 1); assert.equal(old.dirtyEvents.length, oldDirtyCount); assert.equal(old.dirtyEvents.at(-1), false);
   assert.equal(next.find('clip-fade-out').props.value, '8'); assert.equal(next.dirtyEvents.at(-1), true);
   const source = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.url), 'utf8');
-  assert.match(source, /TimelineInspector key=\{`\$\{data\.project\?\.id\}:\$\{chosenClip\.id\}:\$\{inspectorEpoch\}`\}/);
+  assert.match(source, /TimelineInspector key=\{displayedClipInspector.key\}/);
+  assert.match(source, /key: `\$\{data\.project\?\.id\}:\$\{chosenClip\.id\}:\$\{inspectorEpoch\}`/);
 });
 
 test('source playback copy stays explicit about dry audio and the shared render path', () => {

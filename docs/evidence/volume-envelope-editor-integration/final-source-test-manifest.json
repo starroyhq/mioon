@@ -1,0 +1,32 @@
+{
+  "baseline": "b86d0d3f8acd5ead0486ef015114a068e8b4c0c4",
+  "files": {
+    "apps/web/src/App.jsx": "4ad68fc49fe8b27347cfc9fad3c02dbf0de821589e41a2ecab8b844203ba1be5",
+    "apps/web/src/ClipDraftRecovery.tsx": "caaf1da4d457b5d3657c3c8c850a0b8e398bd9469091709ff0eaeb967adf0b18",
+    "apps/web/src/ClipVolumeEnvelopeControls.tsx": "cccd0ff7c0f9c7b82df6049a1c2a39c03bb0f390497bd882eef84cab1b58583d",
+    "apps/web/src/TimelineInspector.jsx": "e7a1c3b13ce55cd4353fd16c858c02f5d016e548ad78b926623292b238c78750",
+    "apps/web/src/clip-draft-client.ts": "b900940b4e394c6129a51268d6e3caa64dd41edf7ee21ff5d146044bfffbbfd1",
+    "apps/web/src/clip-draft-hook.ts": "e429e4304d3871994191a6c11d819a6d4d1c233d4e070a41083cc0f74d18abd9",
+    "apps/web/src/clip-draft-state.ts": "e7cda85bd70d330392f03d662d6d469310e952e5aa2013fef692c5206ee1493e",
+    "apps/web/src/clip-inspector-retention.ts": "4a223762b2393fbc6856de2571fec7f0919baed7f67aa280e161db6234d7792c",
+    "apps/web/src/clip-volume-envelope-capability.ts": "d7384d0ddbbd4560c2a3772af983310112c6f30b28a64493f1155bafe09dd240",
+    "apps/web/src/clip-volume-envelope-state.ts": "21e982a0764db76db061c4d4a512746a252155b5f9cc7e78fc32fb2fa7e604dc",
+    "packages/business/src/local-drafts.ts": "7df69764a3bfc494b441054843135620f03f5a74f3e2a50d8344fcad4095c867",
+    "packages/contracts/src/local-drafts.ts": "b9ff76b22fa0e0f94f42053ac727859f1cd0f04a778a893d8f373eebc7979bcb",
+    "packages/i18n/src/catalogs/volume-envelope.ts": "9588e5260a2514f910e2350c3939597bf7dd54492a3227b643a64cd4c2632cd8",
+    "tests/clip-draft-app-close.test.mjs": "e7248a5567af433d42645ba0c89e8810cbf3fe6dfc7737fdc69ec3c028df5f93",
+    "tests/clip-draft-ui.test.mjs": "130a33a4d0f7bf3268a49632bd7d92f5b5a914badc5e3c5d974087a34ba03cc4",
+    "tests/clip-source-replacement-ui.test.mjs": "6f9f38727daa415ddebb4e9586dc769435d2f4e474b61a560e882bd4b64d93f2",
+    "tests/clip-volume-envelope-capability-ui.test.mjs": "3ca538afed250f9b74c06ab0de95abff78a60100f029bd08f69f9c877ad8c406",
+    "tests/clip-volume-envelope-foundation.test.mjs": "a37a5ad67120990ced9a4fef1df751b11b8fe4fee93fecae3f73713e61685b27",
+    "tests/clip-volume-envelope-integration.test.mjs": "bb6502bfafc47dd00f14f32e1d83eecf82a4afe73485b92c5ff5354b7ea940ba",
+    "tests/fixtures/local-drafts-v1-contracts.ts": "47f9904afacd467d66f60f7c1152e85466a73cd92bcb4bc09fbfeab908d31e4d",
+    "tests/fixtures/local-drafts-v1-reader.ts": "3347c35ca277d7e1794189100e654383879ad72b1bc10d194c21f0cdf24b9f7b",
+    "tests/helpers/envelope-editor-nonmedia-preload.mjs": "3832ef04c2f1b6822bdc3f7500b15f2ced5cefd20483209261987b3805d66f57",
+    "tests/local-drafts-app.test.mjs": "6d0f92d3f338fc4dcbc96e9361ad61a51fac662b2b4b16c7b3cbb2f984565404",
+    "tests/local-drafts-business.test.mjs": "90377e0783566fbf3a4bbce944b09c2756482896ca5dd67d3f548c495e6ce8b9",
+    "tests/local-drafts-volume-envelope-format.test.mjs": "a68af2eb8c8287b109d457c62f59b30443d081c904c20ce6816a750ac4e26cd8",
+    "tests/timeline-fades-ui.test.mjs": "6a09ee644b789c6001100898f92f188c886cbe5e277dbd921952cf38d6d690b3",
+    "tests/typecheck/volume-envelope-editor.consumer.tsx": "d9be1e830df1cff150086775ec57d5a08847054d64386f09409291f9bd10cfe3"
+  }
+}

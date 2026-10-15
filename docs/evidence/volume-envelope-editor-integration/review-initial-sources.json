@@ -1,0 +1,17 @@
+{
+  "baseline": "b86d0d3f8acd5ead0486ef015114a068e8b4c0c4",
+  "sources": {
+    "apps/web/src/App.jsx": "76ef31a8daa6d750cc3c231fa40333bf1d6f9f2dcf1b754b704bb7f148881932",
+    "apps/web/src/ClipDraftRecovery.tsx": "f15319a95a6d7a283a9bea8b86e0a303277523c121e7a7f0fa9f04c2dd85dda3",
+    "apps/web/src/ClipVolumeEnvelopeControls.tsx": "cccd0ff7c0f9c7b82df6049a1c2a39c03bb0f390497bd882eef84cab1b58583d",
+    "apps/web/src/TimelineInspector.jsx": "5e0982ee93322f0a03824478522da0f6f1e7e1f07f177dc548b643fde2f8a8a4",
+    "apps/web/src/clip-draft-client.ts": "b900940b4e394c6129a51268d6e3caa64dd41edf7ee21ff5d146044bfffbbfd1",
+    "apps/web/src/clip-draft-hook.ts": "4461ae48bf63e4eb2870e3b67ef123ec3dae2e2feb9cbe779739d55778d485d9",
+    "apps/web/src/clip-draft-state.ts": "48dad65a52d0d179c37c3007e7186beb0832c8ec02146e401f0e245f8ad531c1",
+    "apps/web/src/clip-volume-envelope-state.ts": "21e982a0764db76db061c4d4a512746a252155b5f9cc7e78fc32fb2fa7e604dc",
+    "packages/business/src/local-drafts.ts": "7df69764a3bfc494b441054843135620f03f5a74f3e2a50d8344fcad4095c867",
+    "packages/contracts/src/local-drafts.ts": "b9ff76b22fa0e0f94f42053ac727859f1cd0f04a778a893d8f373eebc7979bcb",
+    "packages/i18n/src/catalogs/volume-envelope.ts": "c9690ed34b8e90fa2357b2b25fe34d5656afdba3ae08fa49f6aec844200e3a09",
+    "apps/web/src/clip-volume-envelope-capability.ts": "d7384d0ddbbd4560c2a3772af983310112c6f30b28a64493f1155bafe09dd240"
+  }
+}

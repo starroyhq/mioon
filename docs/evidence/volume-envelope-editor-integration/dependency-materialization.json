@@ -1,0 +1,70 @@
+{
+  "source": "/workspace/scratch/6877817dff0d/mioon-audio-role-ui",
+  "destination": "/workspace/scratch/6877817dff0d/mioon-volume-envelope-editor-integration",
+  "backup": "/workspace/scratch/6877817dff0d/envelope-deps-original-links-20261015-162722",
+  "lockSha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+  "trees": [
+    "node_modules",
+    "apps/cli/node_modules",
+    "apps/desktop/node_modules",
+    "apps/mcp/node_modules",
+    "apps/server/node_modules",
+    "apps/web/node_modules",
+    "packages/business/node_modules",
+    "packages/client/node_modules",
+    "packages/contracts/node_modules",
+    "packages/ui/node_modules"
+  ],
+  "verification": {
+    "node_modules": {
+      "files": 20363,
+      "bytes": 547216490,
+      "treeDigest": "0043022ed7e525405d2f9bb264d5c52b8697fc976bcf09cdc27e4d9a0e53ed5d"
+    },
+    "apps/cli/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "3a02f373eb19979f4d295f66b1718acdf287fda0d243573c207ba4afd5532ec3"
+    },
+    "apps/desktop/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "e6bdc2584d7be12912a6803baeb77f8a206fd6d8ebdf1f737fd9de405a28e241"
+    },
+    "apps/mcp/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "7c32215d9af325649da65d445050738dd881d86c9b120ad2152b1ef8923c7971"
+    },
+    "apps/server/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "8c4eff7de3eb1afc35b18b9766efb952b47ca8632fd3f78afc2d3b5228edcd5d"
+    },
+    "apps/web/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "cc264c35b3af0296eb01d3d1cd2c59b96397bb69142c6b290511653b90cb533a"
+    },
+    "packages/business/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "931feafca86a1d0026cf19604afdf9ba049775c2dabf6d104b9f7a0c8409a594"
+    },
+    "packages/client/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "2b879e40d4416fcaee7306493b61bc500b15327ade4322bc18b047406c2d2cfe"
+    },
+    "packages/contracts/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "eb7b5a935081683686a9a1de361e58bdb5bd67c460f6bec8658dfddbf1f37f38"
+    },
+    "packages/ui/node_modules": {
+      "files": 0,
+      "bytes": 0,
+      "treeDigest": "170b4b27a3c12cf7386a918794a1787070d64024683d687b2e2fd1f64804e142"
+    }
+  }
+}

@@ -24,3 +24,12 @@ A distinct adversarial schema-valid legacy timestamp with an extended fractional
 ## Narrow checks
 
 Use only the pinned absolute Node 24.21 executable for the focused test and scoped TypeScript project. The component tests run deterministic React hook/event-handler fixtures, not a browser or native IME. Actual platform IME sequencing, keyboard/focus/layout and close integration still require later authorized browser qualification before mounting the editor.
+
+## Subsequent integration
+
+The dormant state described above is the historical foundation checkpoint. The
+accepted backend is now merged and the editor is wired through the existing
+controller. See [integration qualification](VOLUME-ENVELOPE-EDITOR-INTEGRATION.md).
+Composition notifications now include an opaque session, and composed onEdit
+carries that same session; both rendered Controls handlers and the Inspector
+adapter preserve its origin before controller owner/serial validation.

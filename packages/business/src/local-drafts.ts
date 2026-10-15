@@ -32,16 +32,32 @@ export function safeLocalDraftError(error:unknown):{status:number;code:ErrorCode
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item:unknown)=>object(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 const same=(left:unknown,right:unknown):boolean=>canonical(left)===canonical(right);
-function plain(value:unknown,depth=0,budget={nodes:0}):void{
+function plain(value:unknown,depth=0,budget={nodes:0},fieldPath:string[]=[]):void{
   if(++budget.nodes>128||depth>8)fail('LOCAL_DRAFT_VALIDATION');
   if(value===null||typeof value==='boolean')return;
   if(typeof value==='number'){if(!Number.isFinite(value))fail('LOCAL_DRAFT_VALIDATION');return;}
   if(typeof value==='string'){if(value.length>8192)fail('LOCAL_DRAFT_LIMIT');return;}
-  if(!object(value)||isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))fail('LOCAL_DRAFT_VALIDATION');
+  if(value!==null&&typeof value==='object'&&isProxy(value))fail('LOCAL_DRAFT_VALIDATION');
+  // Arrays are admitted only at the typed raw envelope points path, not in
+  // arbitrary request objects. Inspect descriptors before touching any value.
+  if(Array.isArray(value)){
+    if((fieldPath.length!==3||fieldPath[0]!=='raw'||fieldPath[1]!=='volumeEnvelope'||fieldPath[2]!=='points')||Object.getPrototypeOf(value)!==Array.prototype)fail('LOCAL_DRAFT_VALIDATION');
+    const length=Object.getOwnPropertyDescriptor(value,'length');
+    if(!length||!Object.hasOwn(length,'value')||!Number.isInteger(length.value)||length.value<0||length.value>16)fail('LOCAL_DRAFT_VALIDATION');
+    const keys=Reflect.ownKeys(value);
+    if(keys.length!==length.value+1)fail('LOCAL_DRAFT_VALIDATION');
+    for(let index=0;index<length.value;index++){
+      const entry=Object.getOwnPropertyDescriptor(value,String(index));
+      if(!entry?.enumerable||!Object.hasOwn(entry,'value'))fail('LOCAL_DRAFT_VALIDATION');
+      plain(entry.value,depth+1,budget,[...fieldPath,String(index)]);
+    }
+    return;
+  }
+  if(!object(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))fail('LOCAL_DRAFT_VALIDATION');
   for(const key of Reflect.ownKeys(value)){
     const entry=Object.getOwnPropertyDescriptor(value,key);
     if(typeof key!=='string'||key==='__proto__'||!entry?.enumerable||!Object.hasOwn(entry,'value'))fail('LOCAL_DRAFT_VALIDATION');
-    plain(entry.value,depth+1,budget);
+    plain(entry.value,depth+1,budget,[...fieldPath,key]);
   }
 }
 function parsed<T>(schema:{safeParse(input:unknown):{success:true;data:T}|{success:false}},input:unknown):T{plain(input);const result=schema.safeParse(input);if(!result.success)fail('LOCAL_DRAFT_VALIDATION');return result.data;}
@@ -193,7 +209,10 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
       const row:Slot={...keyOnly(args),revision:args.expectedRevision+1,draft:{...value,updatedAt:new Date().toISOString()}};
       if(Buffer.byteLength(JSON.stringify(row))>LOCAL_DRAFT_LIMITS.rowBytes)fail('LOCAL_DRAFT_LIMIT');
       if(index<0)disk.entries.push(row);else disk.entries[index]=row;
-      persist(disk);return savedResponse(args,row,current);
+      // Only a successful explicit envelope-bearing PUT promotes the complete
+      // companion, including null. Reads and legacy writes never migrate it.
+      const next:Disk=Object.hasOwn(args.raw,'volumeEnvelope')?{...disk,version:2}:disk;
+      persist(next);return savedResponse(args,row,current);
     });},
     discard(input:unknown):ClipDraftEnvelope{return guarded(()=>{
       if(!active())return unsupported;const args=parsed(clipDraftDeleteSchema,input);writable(args);

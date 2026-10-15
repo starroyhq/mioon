@@ -1,3 +1,5 @@
+import { rawVolumeEnvelopeFields, validateRawVolumeEnvelope, rawVolumeEnvelopeChanged, isRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
+import type { RawVolumeEnvelope, VolumeEnvelopeComposition } from './clip-volume-envelope-state.ts';
 import { isClipAudioRole } from '../../../packages/contracts/src/timeline-audio-role.ts';
 import { clipAudioRoleChanged } from './clip-audio-role-state.ts';
 import { message as displayMessage } from '../../../packages/i18n/src/index.ts';
@@ -20,13 +22,16 @@ export interface ClipDraftClient { get(key: ClipDraftKey): Promise<ClipDraftRead
 export interface ClipDraftContext extends ClipDraftKey {
   scope: string; restored: boolean; connected: boolean; busy: boolean; visible: boolean;
   audioRoleEditable?: boolean;
+  volumeEnvelopeEditable?: boolean;
   timelineRevision: number; source: ClipDraftSource; saved: ClipDraftRaw;
 }
 export interface ClipDraftCapture extends Readonly<ClipDraftKey> { readonly scope: string; readonly serial: number; readonly generation: number }
+export interface ClipVolumeCompositionToken { readonly owner: symbol }
 export type ClipDraftPhase = 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'conflict' | 'unsupported';
 export interface ClipDraftState {
   raw: ClipDraftRaw; dirty: boolean; baseRevision: number; source: ClipDraftSource; conflict: boolean;
   phase: ClipDraftPhase; error: string; errorDisplay?: MessageDescriptor; candidate: ClipDraftRecord | null; savedAt: string | null; submitting: boolean; businessPending: boolean;
+  compositionPending: boolean;
   autosavePaused: boolean; failure: ClipDraftFailure | null; retainedRecord: boolean;
 }
 const own = (value: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(value, key);
@@ -60,12 +65,15 @@ export function clipDraftPatch(raw: ClipDraftRaw): Record<string, unknown> | nul
     if (raw.colour !== null && !clipColourSchema.safeParse(raw.colour).success) return null;
     patch.colour = copy(raw.colour);
   }
-  return { ...patch, rect };
+  const envelope = validateRawVolumeEnvelope(raw, Number(patch.durationFrames));
+  if (!envelope.valid) return null;
+  return { ...patch, rect, ...envelope.fields };
 }
 export function clipDraftRaw(clip: Record<string, unknown>): ClipDraftRaw {
   const rect = object(clip.rect) ? clip.rect : {};
   return { name: typeof clip.name === 'string' ? clip.name : '', trackId: String(clip.trackId), startFrame: clip.startFrame as number,
     durationFrames: clip.durationFrames as number, sourceInFrame: clip.sourceInFrame as number, rect: { x: rect.x as number, y: rect.y as number, width: rect.width as number, height: rect.height as number }, gain: clip.gain as number,
+    ...rawVolumeEnvelopeFields(clip as unknown as Parameters<typeof rawVolumeEnvelopeFields>[0]),
     ...(own(clip, 'audioRole') ? { audioRole: clip.audioRole as ClipDraftRaw['audioRole'] } : {}),
     ...(own(clip, 'colour') ? { colour: copy(clip.colour as ClipColour | null) } : {}),
     ...(own(clip, 'fadeInFrames') ? { fadeInFrames: clip.fadeInFrames as number } : {}), ...(own(clip, 'fadeOutFrames') ? { fadeOutFrames: clip.fadeOutFrames as number } : {}) };
@@ -77,6 +85,8 @@ export function clipDraftSource(clip: Record<string, unknown>, asset: Record<str
 function acknowledged(value: unknown, context: ClipDraftContext, base: number, source: ClipDraftSource, patch: Record<string, unknown>, expectedRaw: ClipDraftRaw): Record<string, unknown> | null {
   if (!object(value) || value.id !== context.timelineId || value.projectId !== context.projectId || value.revision !== base + 1 || !Array.isArray(value.clips)) return null;
   const saved: unknown = value.clips.find((item: unknown) => object(item) && item.id === context.clipId);
+  const expectedEnvelope = validateRawVolumeEnvelope(expectedRaw, Number(patch.durationFrames));
+  if (!expectedEnvelope.valid || !object(saved) || own(saved, 'volumeEnvelope') !== own(expectedEnvelope.fields, 'volumeEnvelope') || !sameClipDraftValue(saved.volumeEnvelope, expectedEnvelope.fields.volumeEnvelope)) return null;
   if (!object(saved) || clipAudioRoleChanged(saved, expectedRaw) || saved.assetId !== source.assetId || !Object.entries(patch).every(([key, expected]) => sameClipDraftValue(saved[key], expected))) return null;
   if (['versionId', 'shotId', 'jobId'].some(key => own(source, key) !== own(saved, key) || (source as unknown as Record<string, unknown>)[key] !== saved[key])) return null;
   return saved;
@@ -85,25 +95,26 @@ function acknowledged(value: unknown, context: ClipDraftContext, base: number, s
 export function createClipDraftController({ context: initial, client, validateTimeline = () => false, onChange = () => {}, delay = 250 }: { context: ClipDraftContext; client: ClipDraftClient; validateTimeline?: (value: unknown, projectId: string) => boolean; onChange?: (state: ClipDraftState) => void; delay?: number }) {
   let context = copy(initial), generation = 1, serial = 0, active = true, readSerial = 0, loaded = false;
   let deleting: object | null = null;
+  let composition: { token: ClipVolumeCompositionToken; generation: number; serial: number } | null = null;
   let envelope: ClipDraftEnvelope | null = null, timer: ReturnType<typeof setTimeout> | undefined, flight: Promise<void> | null = null;
   let closeFlight: Promise<boolean> | null = null;
   let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false,
-    phase: context.restored ? 'unsupported' : 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
+    compositionPending: false, phase: context.restored ? 'unsupported' : 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
   const captures = new WeakSet<ClipDraftCapture>();
   const emit = (patch: Partial<ClipDraftState>) => { state = { ...state, ...patch }; if (active) onChange(state); };
   function pausePersistence(error: unknown, prefix = '', readOnly = false, display?: MessageDescriptor) {
     const observed = clipDraftFailure(error);
     // A failed reread cannot rewrite evidence about an earlier write.
     const failure = state.failure && (state.failure.kind === 'unknown' || readOnly) ? state.failure : observed;
-    emit({ autosavePaused: true, failure, phase: 'error', error: prefix + message(error), errorDisplay: display ?? recoveryErrorMessage(error) });
+    emit({ autosavePaused: true, failure, phase: 'error', error: prefix + message(error), errorDisplay: display ?? (observed.code === 'LOCAL_DRAFT_LIMIT' ? displayMessage('volume.envelope.oversize') : recoveryErrorMessage(error)) });
   }
   const belongs = (owner: number) => active && owner === generation;
   const conflict = () => context.timelineRevision !== state.baseRevision || !sameClipDraftValue(context.source, state.source);
   const draftMatches = () => Boolean(envelope?.draft && sameClipDraftValue(envelope.draft.raw, state.raw) && envelope.draft.baseRevision === state.baseRevision && sameClipDraftValue(envelope.draft.source, state.source));
   // Business dirty remains true after a sidecar ACK. A clean form (including an
   // explicit local-only abandonment) has no current raw input left to persist.
-  const hasUnpersisted = () => Boolean(flight || deleting || state.dirty && (!active || context.restored || !loaded || state.autosavePaused || ['loading', 'error', 'unsupported'].includes(state.phase) || !draftMatches()));
-  const readyToWrite = () => active && !state.autosavePaused && !deleting && loaded && envelope && context.connected && !context.restored && state.dirty && !state.candidate && !['loading', 'error', 'unsupported'].includes(state.phase);
+  const hasUnpersisted = () => Boolean(composition || flight || deleting || state.dirty && (!active || context.restored || !loaded || state.autosavePaused || ['loading', 'error', 'unsupported'].includes(state.phase) || !draftMatches()));
+  const readyToWrite = () => active && !composition && !state.autosavePaused && !deleting && loaded && envelope && context.connected && !context.restored && state.dirty && !state.candidate && !['loading', 'error', 'unsupported'].includes(state.phase);
   function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToWrite() && !flight && !closeFlight) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
   function accept(next: ClipDraftEnvelope, expected: ClipDraftEnvelope | null, write = false) {
     if (!sameClipDraftValue(next.key, keyOf(context)) || expected && (next.workspaceScope !== expected.workspaceScope || next.instanceId !== expected.instanceId || next.revision !== expected.revision + (write ? 1 : 0))) throw recoveryDisplayError(Error('本地草稿确认与当前记录不一致；已停止覆盖。'), displayMessage('recovery.clip.error.ackMismatch'));
@@ -111,7 +122,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     envelope = copy(next);
   }
   async function load() {
-    if (!active || context.restored || flight || deleting || state.submitting) return;
+    if (!active || composition || context.restored || flight || deleting || state.submitting) return;
     const owner = generation, reading = ++readSerial, key = keyOf(context), existing = envelope;
     emit({ phase: 'loading', error: state.autosavePaused ? state.error : '', errorDisplay: state.autosavePaused ? state.errorDisplay : undefined });
     try {
@@ -162,9 +173,9 @@ export function createClipDraftController({ context: initial, client, validateTi
     if (timer) clearTimeout(timer); timer = undefined;
     const token = capture();
     const draining = (async () => {
-      if (!isCurrent(token) || deleting) return false;
+      if (!isCurrent(token) || composition || deleting) return false;
       if (flight) await flight;
-      if (!isCurrent(token) || deleting) return false;
+      if (!isCurrent(token) || composition || deleting) return false;
       if (!hasUnpersisted()) return true;
       if (!readyToWrite()) return false;
       // At most one current-raw PUT after an older flight, under its accepted
@@ -193,10 +204,11 @@ export function createClipDraftController({ context: initial, client, validateTi
     } finally { if (deleting === deletion) deleting = null; }
   }
   const controller = {
-    getState: () => state, getDirty: () => state.dirty, hasUnsaved: () => state.dirty || state.submitting, hasUnpersisted,
+    getState: () => state, getDirty: () => state.dirty || !!composition, hasUnsaved: () => state.dirty || !!composition || state.submitting, hasUnpersisted,
+    hasPendingComposition: () => !!composition,
     getEditorCloseSnapshot: (): EditorCloseOwnerSnapshot => Object.freeze({
-      dirty: state.dirty,
-      inflight: Boolean(flight || deleting || state.submitting || state.businessPending),
+      dirty: state.dirty || !!composition,
+      inflight: Boolean(composition || flight || deleting || state.submitting || state.businessPending),
       // Abandoning raw input does not acknowledge an uncertain PUT or DELETE.
       // A failed GET with no input/record alone is not a mutation owner.
       unknown: state.failure?.kind === 'unknown' && (state.retainedRecord || state.dirty || state.candidate !== null),
@@ -205,7 +217,7 @@ export function createClipDraftController({ context: initial, client, validateTi
         context.source.versionId, context.source.shotId, context.source.jobId]),
     }),
     capture, isCurrent,
-    canAbandon(token?: ClipDraftCapture) { return (!token || isCurrent(token)) && active && context.visible && !context.busy && !state.businessPending && !deleting && state.dirty; },
+    canAbandon(token?: ClipDraftCapture) { return (!token || isCurrent(token)) && active && !composition && context.visible && !context.busy && !state.businessPending && !deleting && state.dirty; },
     abandonCurrentInput(token: ClipDraftCapture): boolean {
       if (!isCurrent(token) || !controller.canAbandon(token)) return false;
       // This only abandons the form owner. It neither cancels an in-flight PUT
@@ -221,26 +233,58 @@ export function createClipDraftController({ context: initial, client, validateTi
     },
     setContext(next: ClipDraftContext) {
       if (!active) return;
-      if (next.scope !== context.scope || !sameClipDraftValue(keyOf(next), keyOf(context))) { controller.dispose(); return; } // A different mounted owner needs a fresh controller.
+      if (next.scope !== context.scope || !sameClipDraftValue(keyOf(next), keyOf(context))) {
+        if (composition) {
+          // An external context replacement cannot revoke the old input owner.
+          // Keep its composing DOM/token available to settle, but freeze effects.
+          context = { ...context, connected: false, volumeEnvelopeEditable: false };
+          emit({ conflict: true }); return;
+        }
+        controller.dispose(); return;
+      } // A different mounted owner needs a fresh controller.
       if (sameClipDraftValue(context, next)) return;
       context = copy(next);
-      if (state.dirty || state.submitting) { if (conflict()) emit({ conflict: true }); }
+      if (state.dirty || composition || state.submitting) { if (conflict()) emit({ conflict: true }); }
       else emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), conflict: false });
       schedule();
     },
+    beginVolumeComposition(token: ClipDraftCapture): ClipVolumeCompositionToken | null {
+      if (!isCurrent(token) || composition || context.volumeEnvelopeEditable !== true || !context.connected || !context.visible || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict) return null;
+      serial++;
+      const ticket = Object.freeze({ owner: Symbol('volume-composition') });
+      composition = { token: ticket, generation, serial };
+      if (timer) clearTimeout(timer); timer = undefined;
+      emit({ compositionPending: true }); return ticket;
+    },
+    updateVolumeComposition(token: ClipVolumeCompositionToken, update: VolumeEnvelopeComposition): boolean {
+      if (!active || !composition || composition.token !== token || composition.generation !== generation || composition.serial !== serial || !update.pending) return false;
+      serial++; composition.serial = serial; emit({ compositionPending: true }); return true;
+    },
+    endVolumeComposition(token: ClipVolumeCompositionToken): boolean {
+      if (!active || !composition || composition.token !== token || composition.generation !== generation || composition.serial !== serial) return false;
+      composition = null; serial++; emit({ compositionPending: false }); schedule(); return true;
+    },
+    editVolumeEnvelope(value: RawVolumeEnvelope | null, token: ClipDraftCapture | ClipVolumeCompositionToken): boolean {
+      const pending = composition && composition.token === token && composition.generation === generation && composition.serial === serial;
+      if (!active || value !== null && !isRawVolumeEnvelope(value) || !pending && (!isCurrent(token as ClipDraftCapture) || composition || context.volumeEnvelopeEditable !== true || !context.connected || !context.visible || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict)) return false;
+      serial++; if (composition) composition.serial = serial;
+      emit({ raw: { ...state.raw, volumeEnvelope: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
+    },
     edit(key: keyof ClipDraftRaw, value: ClipDraftRaw[keyof ClipDraftRaw]) {
+      if (composition) return false;
+      if (key === 'volumeEnvelope') return controller.editVolumeEnvelope(value as RawVolumeEnvelope | null, capture());
       if (key === 'audioRole' && (context.audioRoleEditable !== true || !context.connected || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict || !isClipAudioRole(value))) return false;
       if (!active || !context.visible || !own(state.raw, key) && !['fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole'].includes(key)) return false;
       serial++; emit({ raw: { ...state.raw, [key]: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
     },
     restore(token = capture()) {
-      if (!isCurrent(token) || !context.visible || state.dirty || !state.candidate || !envelope) return false;
+      if (!isCurrent(token) || composition || !context.visible || state.dirty || !state.candidate || !envelope) return false;
       const candidate = state.candidate; serial++;
       emit({ raw: copy(candidate.raw), baseRevision: candidate.baseRevision, source: copy(candidate.source), dirty: true, candidate: null,
         conflict: envelope.targetStatus !== 'matching' || context.timelineRevision !== candidate.baseRevision || !sameClipDraftValue(context.source, candidate.source), phase: 'saved', savedAt: candidate.updatedAt, error: state.autosavePaused ? state.error : '', errorDisplay: state.autosavePaused ? state.errorDisplay : undefined }); return true;
     },
     async discard(token: ClipDraftCapture, canDiscard: () => boolean = () => true): Promise<boolean> {
-      if (!isCurrent(token) || state.submitting || !canDiscard()) return false;
+      if (!isCurrent(token) || composition || state.submitting || !canDiscard()) return false;
       if (timer) clearTimeout(timer); timer = undefined;
       const owner = generation;
       if (context.restored) { serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'unsupported', error: '', errorDisplay: undefined }); return true; }
@@ -257,7 +301,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       } catch (error) { if (belongs(owner)) pausePersistence(error); return false; }
     },
     async discardStored(token = capture()): Promise<boolean> {
-      if (!isCurrent(token) || !state.candidate || !envelope || state.submitting || deleting) return false;
+      if (!isCurrent(token) || composition || !state.candidate || !envelope || state.submitting || deleting) return false;
       const candidate = copy(state.candidate), owner = generation;
       try {
         if (!await clearRecord(copy(envelope), owner)) return false;
@@ -266,7 +310,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       } catch (error) { if (belongs(owner)) pausePersistence(error); return false; }
     },
     async save(onSave: (clipId: string, patch: Record<string, unknown>, baseRevision: number, options: { canExecute: () => boolean }) => Promise<unknown>): Promise<unknown> {
-      if (!active || !context.visible || !context.connected || context.busy || state.conflict || state.submitting || !state.dirty || state.candidate) return null;
+      if (!active || composition || !context.visible || !context.connected || context.busy || state.conflict || state.submitting || !state.dirty || state.candidate) return null;
       const patch = clipDraftPatch(state.raw); if (!patch) return null;
       // Unavailable role capability cannot block unrelated edits or silently drop
       // a recovered role change. An unchanged role is omitted from that request.
@@ -274,15 +318,20 @@ export function createClipDraftController({ context: initial, client, validateTi
         if (clipAudioRoleChanged(state.raw, context.saved)) return null;
         delete patch.audioRole;
       }
+      // A legacy recovered draft cannot erase a saved envelope by omission.
+      if (!own(state.raw, 'volumeEnvelope') && own(context.saved, 'volumeEnvelope')) return null;
+      const envelopeChanged = rawVolumeEnvelopeChanged(state.raw, context.saved);
+      if (context.volumeEnvelopeEditable !== true && envelopeChanged) return null;
+      if (!envelopeChanged) delete patch.volumeEnvelope;
       const owner = generation, savedSerial = serial, original = copy(context), base = state.baseRevision, source = copy(state.source), expectedRaw = copy(state.raw);
       emit({ submitting: true, businessPending: false });
       await flush();
       if (!belongs(owner)) return null;
-      if (savedSerial !== serial || context.busy || !context.visible || !context.connected || own(patch, 'audioRole') && context.audioRoleEditable !== true || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
+      if (savedSerial !== serial || composition || context.busy || !context.visible || !context.connected || own(patch, 'audioRole') && context.audioRoleEditable !== true || own(patch, 'volumeEnvelope') && context.volumeEnvelopeEditable !== true || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
       const stored = envelope ? copy(envelope) : null, localUnconfirmed = !context.restored && (!loaded || state.autosavePaused || state.phase === 'error');
       emit({ error: localUnconfirmed ? state.error : '', errorDisplay: localUnconfirmed ? state.errorDisplay : undefined });
       try {
-        const canExecute = () => (!own(patch, 'audioRole') || context.audioRoleEditable === true) && belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
+        const canExecute = () => !composition && serial === savedSerial && (!own(patch, 'volumeEnvelope') || context.volumeEnvelopeEditable === true) && (!own(patch, 'audioRole') || context.audioRoleEditable === true) && belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
         emit({ businessPending: true });
         const result = await onSave(original.clipId, patch, base, { canExecute });
         if (!belongs(owner)) return null;
@@ -302,7 +351,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     },
     load, flush, flushForClose,
     activate() { active = true; },
-    dispose() { active = false; generation++; readSerial++; if (timer) clearTimeout(timer); timer = undefined; flight = null; closeFlight = null; deleting = null; loaded = false; },
+    dispose() { active = false; composition = null; generation++; readSerial++; if (timer) clearTimeout(timer); timer = undefined; flight = null; closeFlight = null; deleting = null; loaded = false; },
   };
   return controller;
 }
