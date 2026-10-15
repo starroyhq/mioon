@@ -1,0 +1,22 @@
+✔ all retained evidence families refuse old profiles including explicit null, without writes (25.347245ms)
+✔ complete current/history/receipt rows and exact partial intents admit in compatible profiles (31.269778ms)
+✔ historical update survives missing current clip, Undo duration changes and missing source (6.44821ms)
+✔ historical intent lexical bounds remain strict without generic array relaxation (21.256572ms)
+✔ frozen snapshots use their own metadata and ownership, never current cache (4.950012ms)
+✔ snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives (14.229428ms)
+✔ explicit null snapshot has no active profile and preserves original shape (4.508638ms)
+✔ frozen source cannot be an image, missing, duplicate or out of source bounds (20.250921ms)
+✔ escaped and duplicate keys cannot hide evidence before parsing, including nested arrays (23.240318ms)
+✔ unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses (4.359718ms)
+✔ oversized cells and non-text storage are never parsed, schema views reject (141.322631ms)
+✔ depth/node and complete snapshot byte guards remain bounded (167.081286ms)
+✔ processing digest/profile and orphan declarations are positive evidence, never candidate protocol (20.685329ms)
+✔ all retained task errors are inspected and unknown envelope error namespace is not admitted (6.446187ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1146.33674

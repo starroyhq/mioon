@@ -1,0 +1,52 @@
+packages/business/src/asset-annotation-validation.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resource-validation.ts(1,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/lut-resource-validation.ts(2,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-audio-role-validation.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-audio-role-validation.ts(52,89): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-colour-validation.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-colour-validation.ts(95,89): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-receipt-protections.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(6,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(7,26): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(21,34): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(58,119): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(135,52): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(135,56): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(248,82): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(267,126): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(358,47): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-restore-schema-v41.ts(416,29): error TS7006: Parameter 'item' implicitly has an 'any' type.
+packages/business/src/workspace-restore-schema-v41.ts(454,29): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v26.ts(1,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v26.ts(136,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v26.ts(136,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v28.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v28.ts(136,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v28.ts(136,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v30.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v30.ts(137,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v30.ts(137,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v32.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v32.ts(138,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v32.ts(138,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v34.ts(1,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v34.ts(138,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v34.ts(138,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v36.ts(2,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v36.ts(139,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v36.ts(139,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v38.ts(3,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v38.ts(140,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v38.ts(140,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v40.ts(4,28): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-schema-v40.ts(141,54): error TS7006: Parameter 'value' implicitly has an 'any' type.
+packages/business/src/workspace-schema-v40.ts(141,61): error TS7006: Parameter 'index' implicitly has an 'any' type.
+packages/business/src/workspace-volume-envelope-validation.ts(3,33): error TS2591: Cannot find name 'node:sqlite'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-volume-envelope-validation.ts(73,242): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-volume-envelope-validation.ts(93,43): error TS2550: Property 'isWellFormed' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2024' or later.
+packages/business/src/workspace-volume-envelope-validation.ts(121,32): error TS2591: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/business/src/workspace-volume-envelope-validation.ts(128,58): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'Record<string, unknown> | { status: "ready"; projectId: string; measurement: { sampleFrames: number; sampleRate: 48000; channels: 2; decodedDurationSeconds: number; integratedLufs: number | null; ... 8 more ...; relativeGateLufs: number | null; }; ... 11 more ...; volumeEnvelopeProcessingProfile?: "mioon-clip-linear...'.
+  No index signature with a parameter of type 'string' was found on type 'Record<string, unknown> | { status: "ready"; projectId: string; measurement: { sampleFrames: number; sampleRate: 48000; channels: 2; decodedDurationSeconds: number; integratedLufs: number | null; ... 8 more ...; relativeGateLufs: number | null; }; ... 11 more ...; volumeEnvelopeProcessingProfile?: "mioon-clip-linear...'.
+packages/business/src/workspace-volume-envelope-validation.ts(128,90): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'Record<string, unknown> | { status: "ready"; projectId: string; measurement: { sampleFrames: number; sampleRate: 48000; channels: 2; decodedDurationSeconds: number; integratedLufs: number | null; ... 8 more ...; relativeGateLufs: number | null; }; ... 11 more ...; volumeEnvelopeProcessingProfile?: "mioon-clip-linear...'.
+  No index signature with a parameter of type 'string' was found on type 'Record<string, unknown> | { status: "ready"; projectId: string; measurement: { sampleFrames: number; sampleRate: 48000; channels: 2; decodedDurationSeconds: number; integratedLufs: number | null; ... 8 more ...; relativeGateLufs: number | null; }; ... 11 more ...; volumeEnvelopeProcessingProfile?: "mioon-clip-linear...'.
+packages/business/src/workspace-volume-envelope-validation.ts(139,89): error TS7006: Parameter 'row' implicitly has an 'any' type.

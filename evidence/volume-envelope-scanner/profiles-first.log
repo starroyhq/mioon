@@ -1,0 +1,71 @@
+✔ dormant38 to40 is marker-only and preserves integer task sequence storage (1136.72262ms)
+✔ dormant38 to40 is marker-only and preserves real task sequence storage (813.166911ms)
+✔ dormant38 to40 is marker-only and preserves wide integer task sequence storage (482.499054ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38 (313.82333ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13 (327.895059ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39) (313.701509ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41) (297.486118ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999) (464.046862ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_responses without repairs (471.112649ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_history without repairs (353.477106ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs (448.194551ms)
+✔ ordinary40 refuses missing inherited agent_chat_one_active without repairs (310.543118ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null} (318.257059ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volume\u0045nvelope":null} (2241.344918ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0} (1732.027185ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope": (986.251768ms)
+✔ ordinary40 interruption after marker insertion rolls back without touching prior bytes (472.10051ms)
+✔ ordinary40 rejects bounded blob task sequence projection (843.236186ms)
+✔ ordinary40 rejects bounded text task sequence projection (612.955237ms)
+✔ ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes (1734.875816ms)
+✔ ordinary40 and exact restored41 preserve null timeline/history/receipt shapes (1593.756741ms)
+✔ ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes (1360.747196ms)
+✖ restored41 held tasks, receipt vacancy and execution epochs remain isolated (804.680672ms)
+✔ restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted (1770.635939ms)
+✔ restored41 rejects forged metadata pair sourceSchema=38 (898.147442ms)
+✔ restored41 rejects forged metadata pair profile='restored-local-v8' (732.906762ms)
+✔ ordinary40 and restored41 retain inherited roles, annotation and image/colour admission (922.685269ms)
+✔ ordinary40 invalid inherited feature data fails without repair (332.389163ms)
+✔ ordinary40 invalid inherited feature data fails without repair (304.578196ms)
+✔ ordinary40 invalid inherited feature data fails without repair (338.521903ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 29
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24431.699228
+
+✖ failing tests:
+
+test at tests/workspace-schema40-dormant.test.mjs:126:1
+✖ restored41 held tasks, receipt vacancy and execution epochs remain isolated (804.680672ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /RESTORE_ORIGIN_REQUIRED/. Input:
+  
+  'Error: RESTORED_RECORD_HELD'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-scanner/tests/workspace-schema40-dormant.test.mjs:138:59)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: RESTORED_RECORD_HELD
+        at insert (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-scanner/tests/workspace-schema26-fixtures.mjs:60:20)
+        at file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-scanner/tests/workspace-schema40-dormant.test.mjs:138:70
+        at getActual (node:assert:611:5)
+        at strict.throws (node:assert:759:24)
+        at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-volume-envelope-scanner/tests/workspace-schema40-dormant.test.mjs:138:59)
+        at Test.runInAsyncScope (node:async_hooks:227:14)
+        at Test.run (node:internal/test_runner/test:1402:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+        at Test.postRun (node:internal/test_runner/test:1542:19)
+        at Test.run (node:internal/test_runner/test:1467:12),
+    expected: /RESTORE_ORIGIN_REQUIRED/,
+    operator: 'throws',
+    diff: 'simple'
+  }

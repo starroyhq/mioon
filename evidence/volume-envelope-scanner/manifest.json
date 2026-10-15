@@ -1,0 +1,31 @@
+{
+  "base": "72d78150c559a1558580b2288563b7d78e869e18",
+  "scope": "Dormant historical evidence scanner and exact ordinary40/restored41 constructors only. No active dispatch.",
+  "node": {
+    "path": "/workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node",
+    "version": "v24.21.0",
+    "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+  },
+  "sources": {
+    "packages/business/src/workspace-volume-envelope-validation.ts": "483e0761e702ab39d7305f9e5fa0c0beb65f2b045d3e9e7dd74d6562e56d65dc",
+    "packages/business/src/workspace-schema-v40.ts": "3a2f6f0c393a99e595e6a3f7f4be598fd26dcd5ab62d3b8cba648f244115037c",
+    "packages/business/src/workspace-restore-schema-v41.ts": "0480b1f5e82f6a045233ecb9afbb9cfbf63d4f54695b6d6eaaead0c95d8d2d59",
+    "tests/workspace-volume-envelope-validation.test.mjs": "ed45afee03123d9fdf320d97de800a6c9e1945107b05214ea5608bc8e2fd800d",
+    "tests/workspace-schema40-dormant.test.mjs": "f65e232678d9459d4ffbcb6edc96b3d97e563d754983c595fa4d65f83642e5c7",
+    "docs/VOLUME-ENVELOPE-DORMANT-WORKSPACE.md": "81771cf7f54d9b26fd7fff105611396edc5a1fa57969556f4cdc58621a2a9c44"
+  },
+  "tests": {
+    "scanner_initial": "14/14; scanner-tests.log",
+    "scanner_extended": "16/16; scanner-tests-final.log",
+    "constructors_initial": "29/30; profiles-first.log; one assertion incorrectly expected epoch error ahead of inherited held-lane trigger; fixture corrected, SQL unchanged",
+    "constructors_extended": "32/32; profiles-second.log",
+    "independent_combined": "48/48; review-combined-tests.log; exit0"
+  },
+  "typecheck": "Strict scoped noEmit passes, allowJs imports inferred, checkJs false, Node types and ES2024; initial configuration/typing failures retained separately.",
+  "activation_blockers": [
+    "Unchanged inherited audio-role and colour validators reinterpret frozen receipt metadata through current cache; exact repro retained. Requires future profile-specific frozen-evidence validation, not historical validator widening.",
+    "No live admission/contracts/mutations/history/replay/capability integration or media/resource qualification claimed."
+  ],
+  "historical_processing_outcome": "Existing combined231/232 retained; these separate scoped tests do not replace it.",
+  "independent_review": "Bounded dormant-slice signoff; not activation approval. independent-review.md"
+}

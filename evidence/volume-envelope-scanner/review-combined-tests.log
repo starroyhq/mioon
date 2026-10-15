@@ -1,0 +1,59 @@
+Independent read-only review run
+Command: /workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node --test tests/workspace-volume-envelope-validation.test.mjs tests/workspace-schema40-dormant.test.mjs
+✔ dormant38 to40 is marker-only and preserves integer task sequence storage (1155.87729ms)
+✔ dormant38 to40 is marker-only and preserves real task sequence storage (473.787112ms)
+✔ dormant38 to40 is marker-only and preserves wide integer task sequence storage (590.173187ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38 (378.723152ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13 (321.044476ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39) (318.66423ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41) (308.624632ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999) (372.083586ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_responses without repairs (349.632908ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_history without repairs (325.581927ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs (337.893319ms)
+✔ ordinary40 refuses missing inherited agent_chat_one_active without repairs (325.97641ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null} (363.712708ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volume\u0045nvelope":null} (410.871688ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0} (343.762833ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope": (323.77141ms)
+✔ ordinary40 interruption after marker insertion rolls back without touching prior bytes (405.152907ms)
+✔ ordinary40 rejects bounded blob task sequence projection (666.063245ms)
+✔ ordinary40 rejects bounded text task sequence projection (612.607859ms)
+✔ ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes (1304.814119ms)
+✔ ordinary40 and exact restored41 preserve null timeline/history/receipt shapes (887.000527ms)
+✔ ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes (1022.894373ms)
+✔ restored41 held tasks, receipt vacancy and execution epochs remain isolated (535.602563ms)
+✔ restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted (1403.748584ms)
+✔ restored41 rejects forged metadata pair sourceSchema=38 (466.454793ms)
+✔ restored41 rejects forged metadata pair profile='restored-local-v8' (497.152349ms)
+✔ ordinary40 and restored41 retain inherited roles, annotation and image/colour admission (505.670766ms)
+✔ ordinary40 invalid inherited feature data fails without repair (348.783584ms)
+✔ ordinary40 invalid inherited feature data fails without repair (334.870088ms)
+✔ ordinary40 invalid inherited feature data fails without repair (392.590755ms)
+✔ ordinary40 and restored41 preserve every historical task state and raw non-input storage class (533.060869ms)
+✔ supported40 malformed positive evidence rejects restoration before any DDL or capture (386.165504ms)
+✔ all retained evidence families refuse old profiles including explicit null, without writes (17.528653ms)
+✔ complete current/history/receipt rows and exact partial intents admit in compatible profiles (18.633364ms)
+✔ historical update survives missing current clip, Undo duration changes and missing source (3.89565ms)
+✔ historical intent lexical bounds remain strict without generic array relaxation (14.605897ms)
+✔ frozen snapshots use their own metadata and ownership, never current cache (3.175857ms)
+✔ snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives (7.55271ms)
+✔ explicit null snapshot has no active profile and preserves original shape (1.860565ms)
+✔ frozen source cannot be an image, missing, duplicate or out of source bounds (15.683878ms)
+✔ escaped and duplicate keys cannot hide evidence before parsing, including nested arrays (11.783585ms)
+✔ unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses (2.593708ms)
+✔ oversized cells and non-text storage are never parsed, schema views reject (57.283989ms)
+✔ depth/node and complete snapshot byte guards remain bounded (71.143477ms)
+✔ processing digest/profile and orphan declarations are positive evidence, never candidate protocol (8.416578ms)
+✔ all retained task errors are inspected and unknown envelope error namespace is not admitted (3.684659ms)
+✔ actual production full/isolated processing reports admit their exact profile and digest identities (8.459983ms)
+✔ incomplete frozen wrappers cannot fall back to current source cache (4.096445ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17822.655048
+Exit status: 0

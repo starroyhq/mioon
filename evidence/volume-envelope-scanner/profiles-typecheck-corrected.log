@@ -1,0 +1,1 @@
+packages/business/src/workspace-volume-envelope-validation.ts(7,23): error TS7016: Could not find a declaration file for module '../../contracts/src/index.mjs'. '/workspace/scratch/6877817dff0d/mioon-volume-envelope-scanner/packages/contracts/src/index.mjs' implicitly has an 'any' type.

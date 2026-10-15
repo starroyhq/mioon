@@ -1,0 +1,10 @@
+Command: /workspace/scratch/6877817dff0d/toolchains/node24.21/node-v24.21.0-linux-x64/bin/node evidence/volume-envelope-scanner/review-frozen-inheritance-repro.mjs
+audioRole: ordinary40 admits before current metadata changes
+audioRole: envelope scanner admits retained frozen snapshot after current metadata changes
+audioRole: ordinary40 now refuses with WORKSPACE_AUDIO_ROLE_INVALID
+audioRole: source40/restored41 classifier likewise refuses with WORKSPACE_AUDIO_ROLE_INVALID
+colour: ordinary40 admits before current metadata changes
+colour: envelope scanner admits retained frozen snapshot after current metadata changes
+colour: ordinary40 now refuses with WORKSPACE_COLOUR_INVALID
+colour: source40/restored41 classifier likewise refuses with WORKSPACE_COLOUR_INVALID
+Exit status: 0

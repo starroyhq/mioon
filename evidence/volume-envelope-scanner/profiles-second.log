@@ -1,0 +1,40 @@
+✔ dormant38 to40 is marker-only and preserves integer task sequence storage (1918.541586ms)
+✔ dormant38 to40 is marker-only and preserves real task sequence storage (566.475442ms)
+✔ dormant38 to40 is marker-only and preserves wide integer task sequence storage (582.074585ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=38 (523.248876ms)
+✔ ordinary40 rejects a non-exact source marker chain: DELETE FROM schema_version WHERE version=13 (498.33993ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(39) (400.701419ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(41) (407.74744ms)
+✔ ordinary40 rejects a non-exact source marker chain: INSERT INTO schema_version VALUES(999) (396.151438ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_responses without repairs (479.330608ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_history without repairs (534.342365ms)
+✔ ordinary40 refuses missing inherited immutable_timeline_render_snapshot without repairs (414.984785ms)
+✔ ordinary40 refuses missing inherited agent_chat_one_active without repairs (433.800992ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null} (472.919892ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volume\u0045nvelope":null} (517.502831ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope":null,"volumeEnvelope":0} (578.002247ms)
+✔ ordinary38 positive envelope evidence is rejected before marker writes: {"volumeEnvelope": (511.121988ms)
+✔ ordinary40 interruption after marker insertion rolls back without touching prior bytes (692.147251ms)
+✔ ordinary40 rejects bounded blob task sequence projection (934.577602ms)
+✔ ordinary40 rejects bounded text task sequence projection (675.151342ms)
+✔ ordinary40 and exact restored41 preserve absent timeline/history/receipt shapes (2213.818645ms)
+✔ ordinary40 and exact restored41 preserve null timeline/history/receipt shapes (2705.69633ms)
+✔ ordinary40 and exact restored41 preserve non-null timeline/history/receipt shapes (2283.240423ms)
+✔ restored41 held tasks, receipt vacancy and execution epochs remain isolated (906.245998ms)
+✔ restored41 source40 pair is exact and historical restored39 is never upgraded or reinterpreted (2946.596715ms)
+✔ restored41 rejects forged metadata pair sourceSchema=38 (976.579102ms)
+✔ restored41 rejects forged metadata pair profile='restored-local-v8' (843.461181ms)
+✔ ordinary40 and restored41 retain inherited roles, annotation and image/colour admission (947.351134ms)
+✔ ordinary40 invalid inherited feature data fails without repair (564.673446ms)
+✔ ordinary40 invalid inherited feature data fails without repair (631.683937ms)
+✔ ordinary40 invalid inherited feature data fails without repair (2929.752379ms)
+✔ ordinary40 and restored41 preserve every historical task state and raw non-input storage class (4082.357951ms)
+✔ supported40 malformed positive evidence rejects restoration before any DDL or capture (1092.611252ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 35927.91815
