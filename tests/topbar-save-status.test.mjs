@@ -152,7 +152,7 @@ let projectElement;
 function appElement(env) {
   const actual = view('extracted');
   if (!projectElement) {
-    const code = transformSync(`function project({ online, busy, inspectorDirty, formatDirty, lastSync, preferenceStatus, preferencesRef, currentProject, reloadPreferences }) { return ${callsite}; }`,
+    const code = transformSync(`function project({ online, busy, inspectorDirty, formatDirty, annotations = { state: null }, lastSync, preferenceStatus, preferencesRef, currentProject, reloadPreferences }) { return ${callsite}; }`,
       { loader: 'jsx', jsx: 'transform' }).code;
     projectElement = compile(code, 'project', { React: actual.React, TopbarSaveStatus: actual.Component });
   }
@@ -217,10 +217,10 @@ test('parent rerender, hidden/restored status and project replacement never call
   assert.deepEqual(calls, ['reload', 'reload', 'reload', 'retry']);
 });
 
-test('App owns the one busy projection, original dirty scope, late-bound Retry and unchanged reload fence', () => {
+test('App owns one busy projection, annotation-aware dirty status, late-bound Retry and unchanged reload fence', () => {
   assert.match(app, /import TopbarSaveStatus from '\.\/TopbarSaveStatus\.tsx';/);
   assert.equal(callsite.match(/Object\.values\(busy\)\.some\(Boolean\)/g)?.length, 1);
-  assert.match(callsite, /dirty=\{inspectorDirty \|\| formatDirty\}/);
+  assert.match(callsite, /dirty=\{inspectorDirty \|\| formatDirty \|\| Boolean\(annotations\.state\?\.dirtyCount\)\}/);
   assert.match(callsite, /onRetry=\{\(\) => preferencesRef\.current\.flush\(\{ projectId: currentProject\.current \}\)\}/);
   assert.match(callsite, /onReload=\{reloadPreferences\}/);
   assert.equal(statusSource, '(projectId, status) => { if (currentProject.current === projectId) setPreferenceStatus(status); }');
@@ -407,4 +407,10 @@ test('actual conflict has only Reload and passive rerenders during held saves ca
   assert.equal(h.server.puts().length, 1); assert.equal(h.state.inspectorDirty, true); assert.equal(h.state.formatDirty, true);
   assert.deepEqual(h.state.inspectorDraft, before.inspectorDraft); assert.deepEqual(h.state.formatDraft, before.formatDraft);
   assert.deepEqual(h.state.paidReview, before.paidReview); assert.equal(h.state.mobilePanel, before.mobilePanel);
+});
+
+test('actual App status reports annotation drafts without broadening timeline dirty inputs', () => {
+  const element = appElement({ online: true, busy: {}, inspectorDirty: false, formatDirty: false, annotations: { state: { dirtyCount: 1 } }, lastSync: null, preferenceStatus: {}, preferencesRef: { current: {} }, currentProject: { current: null }, reloadPreferences() {} });
+  assert.equal(element.props.dirty, true);
+  assert.match(app, /const inspectorDirty = shotDirty \|\| clipDirty \|\| sourceDirty \|\| subjectDirty \|\| subtitleDirty;/);
 });

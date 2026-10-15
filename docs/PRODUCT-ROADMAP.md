@@ -739,3 +739,13 @@ build/package and Linux native checks passed, followed by the final parent gate
 latency cause are retained in acceptance. Real-provider and Mac/Windows
 verification remain separate. Broader image editing, compositing and provider capability work remains
 on the existing roadmap rather than being declared complete by this slice.
+
+### Asset annotation editor integration
+
+- Selected-asset tag/plain-text note editor, explicit Save/Discard/Clear/Refresh,
+  composed tag filter and four-locale error/status descriptors are implemented.
+- Dirty drafts are bounded and retained across selection/filter/navigation;
+  uncertain session receipts retain exact request identity and independent
+  native-close protection. No automatic conflict merge or timeline undo coupling.
+- See [asset annotation UI boundaries](ASSET-ANNOTATIONS-UI.md). Validation is
+  component/service based; no new native GUI verification is implied.

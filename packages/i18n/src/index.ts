@@ -1,3 +1,4 @@
+import { annotationMessages } from './catalogs/annotations.ts';
 import { commandMessages } from './catalogs/command.ts';
 import { operationMessages } from './catalogs/operations.ts';
 import { foundationMessages } from './catalogs/foundation.ts';
@@ -11,8 +12,8 @@ export * from './types.ts';
 export * from './locale.ts';
 import { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
 export { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
-assertNoDuplicateMessageKeys(commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
-export const catalogs = Object.freeze({ ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
+assertNoDuplicateMessageKeys(annotationMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
+export const catalogs = Object.freeze({ ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
 export type MessageKey = keyof typeof catalogs;
 type TemplateText<T> = T extends string ? T : T extends { one: infer O extends string; other: infer R extends string } ? O | R : never;
 type Placeholders<T extends string> = T extends `${string}{${infer P}}${infer Rest}` ? P | Placeholders<Rest> : never;

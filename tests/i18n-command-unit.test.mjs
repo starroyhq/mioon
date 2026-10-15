@@ -16,8 +16,8 @@ function parse(argv) {
 test('pure help retains exact legacy bytes and schema object content in every presentation locale',()=>{
   const original=help(undefined,dependencies);
   const frozen = readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8');
-  // Only V2 discovery is added; retain the frozen legacy bytes and ordering.
-  const expected = frozen.replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",');
+  // Only explicit V2 and annotation discovery additions differ; retain frozen legacy bytes and ordering.
+  const expected = frozen.replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",').replace('"asset.disposition.set",', '"asset.disposition.set","asset.annotation.list","asset.annotation.set",');
   assert.notEqual(expected, frozen);
   assert.equal(JSON.stringify(successEnvelope(original))+'\n', expected);
   assert.equal(localizeHelp(original),original);

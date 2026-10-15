@@ -1,3 +1,4 @@
+import { message as msg } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -247,7 +248,7 @@ async function inspectorContinuation(t) {
   let resolveConfirmation, unregister; const confirmation = new Promise(resolve => { resolveConfirmation = resolve; });
   const scope = { scope: 'inspector:1', connected: true, restored: false, busy: false, executionEpoch: 'execution:1' };
   const register = actualShotRegistration(appShot, appLocal);
-  const env = { ...refs, shotText, shot: { id: shotId, revision: 4, ...baseText }, project: { id: projectId }, draft: refs.draftRef.current,
+  const env = { msg, ...refs, shotText, shot: { id: shotId, revision: 4, ...baseText }, project: { id: projectId }, draft: refs.draftRef.current,
     shotTextContext: { ...scope, getCurrent: () => { counts.getCurrent++; return scope; } }, actionScope: 'action:1', actionEpoch: { current: 0 }, frameEpoch: { current: 0 },
     renderedAction: { frameEpoch: 0 }, renderSerial: 0, actionState: { current: { actionScope: 'action:1', referenceBlocked: false, referenceLocked: false } },
     visibleRef: { current: true }, tab: 'settings', referenceBusy: false, referencePending: false, busy: {}, generationOptionsKey: 'options:1',

@@ -15,8 +15,12 @@ import AssetDispositionControls, { useDispositionInteraction } from './AssetDisp
 import { dispositionCounts, dispositionFilters, filterLibraryAssets } from './asset-disposition-state.js';
 import AssetTimelineUsage, { AssetTimelineUsageFilters, useAssetTimelineUsageFilter } from './AssetTimelineUsage.tsx';
 
+import './asset-annotations.css';
+import AssetAnnotations from './AssetAnnotations.tsx';
+import { annotationMatches, annotationTags, annotationRow } from './asset-annotation-state.ts';
+
 const filterKeys = [['all', 'assets.all'], ['image', 'assets.image'], ['video', 'assets.video'], ['audio', 'assets.audio']];
-export default function AssetLibrary({ assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set(), onShowTasks, subjects, subjectBlocked, onInspectShot, timelineUsage, onLocateTimelineUse }) {
+export default function AssetLibrary({ assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set(), onShowTasks, subjects, subjectBlocked, onInspectShot, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked, restored, confirm }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const editing = mode === 'editing';
   const [libraryTab, setLibraryTab] = useState({ scope: null, value: 'assets' });
@@ -28,14 +32,18 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
   const interaction = useDispositionInteraction(state?.scope, controller);
   const chooseDispositionFilter = value => interaction.admit(() => setLocalFilter({ scope: state.scope, value }));
   const usageProps = { projectId: project?.id, scope: state?.scope || libraryScope, usage: timelineUsage, visible: interaction.visible && !collapsed && libraryView === 'assets' };
-  const usageFilter = useAssetTimelineUsageFilter({ ...usageProps, assets: filterLibraryAssets(assets, { type: filter, search, disposition: dispositionFilter, state }) });
-  const resetFilters = () => interaction.admit(() => { setLocalFilter({ scope: state.scope, value: 'all' }); usageFilter.reset(); onFilter('all'); onSearch(''); });
+  const [tagChoice, setTagChoice] = useState({ scope: null, value: '' });
+  const tagFilter = tagChoice.scope === annotations?.state?.ownerScope ? tagChoice.value : '';
+  const tags = annotationTags(annotations?.state);
+  const unknownAnnotations = annotations ? assets.filter(asset => asset.projectId === project?.id && !annotationRow(annotations.state, asset.id)).length : 0;
+  const usageFilter = useAssetTimelineUsageFilter({ ...usageProps, assets: filterLibraryAssets(assets.filter(asset => asset.projectId === project?.id && annotationMatches(annotations?.state, asset.id, tagFilter)), { type: filter, search, disposition: dispositionFilter, state }) });
+  const resetFilters = () => interaction.admit(() => { setLocalFilter({ scope: state.scope, value: 'all' }); usageFilter.reset(); setTagChoice({ scope: annotations?.state?.ownerScope, value: '' }); onFilter('all'); onSearch(''); });
   const visible = usageFilter.visibleAssets;
   const visibleIds = new Set(visible.map(asset => asset.id)), counts = dispositionCounts(state, assets);
   const failed = assets.filter(asset => state?.entries?.[asset.id]?.phase === 'error').length;
   const hiddenUsed = assets.filter(asset => inUseAssetIds.has(asset.id) && !visibleIds.has(asset.id)).length;
   const outsideSelected = selectedAsset && selectedAsset.projectId === project?.id && !visibleIds.has(selectedAsset.id) ? selectedAsset : null;
-  const filtered = dispositionFilter !== 'all' || filter !== 'all' || Boolean(search) || usageFilter.filter !== 'all';
+  const filtered = Boolean(tagFilter) || dispositionFilter !== 'all' || filter !== 'all' || Boolean(search) || usageFilter.filter !== 'all';
 
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label={t('assets.indexedLibrary')} />} data-testid="asset-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); } }}>
     <div className="asset-panel-heading"><h2>{t('assets.library')}</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>
@@ -51,6 +59,7 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
         <Button variant="ghost" className="text-button" type="button" data-testid="asset-disposition-refresh" aria-label={t('assets.reloadMarks')} disabled={!interaction.visible || !state?.scope || state.loading || Boolean(state.savingAssetId)} onClick={() => interaction.admit(() => controller.read())}>{t('shell.refresh')}</Button>
         <Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-reset" aria-label={t('assets.resetFilters')} disabled={!interaction.visible || !state?.scope} onClick={resetFilters}>{t('shell.reset')}</Button>
       </div>
+      {annotations && <><label className="annotation-tag-filter" htmlFor="annotation-tag-filter">{t('annotations.filter')}<select id="annotation-tag-filter" data-testid="annotation-tag-filter" value={tagFilter} disabled={!interaction.visible || !annotations.state?.scope} onChange={event => { const value = event.target.value; interaction.admit(() => setTagChoice({ scope: annotations.state.ownerScope, value })); }}><option value="">{t('annotations.allTags')}</option>{[...new Set([...tags, ...(tagFilter ? [tagFilter] : [])])].map(tag => <option value={tag} key={tag}>{tag}</option>)}</select></label>{unknownAnnotations > 0 && <p className="annotation-unverified" role="status">{t('annotations.unknownCount', { count: unknownAnnotations })}</p>}</>}
       <Tabs value={filter} onValueChange={onFilter} className="asset-filter-surface">
         <TabsList variant="line" className="asset-tabs" aria-label={t('assets.type')}>{filterKeys.map(([value, label]) => <TabsTrigger key={value} value={value} className={filter === value ? 'active' : ''}>{t(label)}</TabsTrigger>)}</TabsList>
         <ScrollArea className="asset-scroll-area">
@@ -68,6 +77,7 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
           {visible.map(asset => { const kind = assetKind(asset); const version = versions.find(item => item.assetId === asset.id); const shot = version ? shots.find(item => item.id === version.shotId) : null; return <div className={`asset-card ${kind}`} key={asset.id} data-testid={`asset-card-${asset.id}`} draggable onPointerDownCapture={event => { event.currentTarget.draggable = !event.target.closest?.('[data-no-asset-drag]'); }} onPointerUp={event => { event.currentTarget.draggable = true; }} onPointerCancel={event => { event.currentTarget.draggable = true; }} onDragStart={e => { if (e.target.closest?.('[data-no-asset-drag]')) { e.preventDefault(); return; } dragAsset(e, asset.id); }}>
             <Button variant="ghost" className="asset-thumbnail" onClick={() => onPreview(asset)} aria-label={t('assets.previewNamed', { name: asset.name })}><Media asset={asset} /><span className="asset-kind"><Icon name={kind === 'video' ? 'play' : kind === 'audio' ? 'music' : 'image'} size={11} />{kind === 'image' ? t('assets.image') : `${kind === 'audio' ? t('assets.audio') : t('assets.video')} · ${asset.duration ? formatNumber(Number(asset.duration), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 's' : '—'}`}</span></Button>
             <div className="asset-card-meta"><div><strong title={asset.name}>{asset.name}</strong><span>{asset.width && asset.height ? `${asset.width} × ${asset.height}` : `${formatNumber(asset.sizeBytes / 1024, { maximumFractionDigits: 0 })} KB`}</span>{version && <span className="asset-generated-badge" data-testid={`generated-badge-${asset.id}`} title={t('assets.generatedVersion', { name: shot?.title || t('assets.generatedShot'), number: version.number })}><Icon name="sparkle" size={10} /><span>{shot?.title || t('assets.generatedShot')} · V{version.number}</span>{shot?.selectedVersionId === version.id && <b>{t('assets.selected')}</b>}</span>}</div></div>
+            {annotations && !annotationRow(annotations.state, asset.id) && <p className="annotation-unverified" data-testid={`annotation-unverified-${asset.id}`}>{t('annotations.unknown')}</p>}
             <AssetDispositionControls asset={asset} state={state} controller={controller} blocked={dispositionBlocked} />
             <AssetTimelineUsage {...usageProps} assetId={asset.id} assetName={asset.name} onLocate={onLocateTimelineUse} />
             <div className="asset-card-actions"><WorkbenchTooltip content={t('assets.addCanvasHint')}><Button variant="ghost" className={!editing ? 'mode-primary-action' : ''} data-testid={`asset-to-canvas-${asset.id}`} aria-label={t('assets.addCanvasNamed', { name: asset.name })} onClick={() => onCanvas(kind, asset)}><Icon name="grid" size={12} />{t('assets.addToCanvas')}</Button></WorkbenchTooltip><WorkbenchTooltip content={t('assets.addTimelineHint')}><Button variant="ghost" className={editing ? 'mode-primary-action' : ''} aria-label={t('assets.addTimelineNamed', { name: asset.name })} data-testid={`asset-to-timeline-${asset.id}`} disabled={!project || busy.timeline} onClick={() => onTimeline(asset.id)}><Icon name="plus" size={12} />{t('assets.addToEditing')}</Button></WorkbenchTooltip></div>
@@ -75,6 +85,7 @@ export default function AssetLibrary({ assets, filter, onFilter, search, onSearc
           {!visible.length && <div className="asset-empty"><div className="dashed-icon"><Icon name="folder" size={25} /></div><h4>{filtered ? t('assets.noMatches') : t('assets.emptyTitle')}</h4><p>{filtered ? t('assets.filterHint') : t('assets.emptyHint')}</p><span>PNG · JPG · MP4 · WAV · MP3</span></div>}
         </TabsContent></ScrollArea>
       </Tabs>
+      {annotations && <AssetAnnotations visible={!collapsed && libraryView === 'assets'} asset={selectedAsset} state={annotations.state} controller={annotations.controller} blocked={annotationBlocked} restored={restored} onShowTasks={onShowTasks} confirm={confirm} />}
       <div className="asset-bottom"><Icon name="lock" size={12} /><span>{t('assets.localOnly')}</span></div>
       </div></WorkspaceVisibilityProvider>
       {subjects && <WorkspaceVisibilityProvider visible={libraryView === 'subjects'}><div className="library-view-pane" id="library-subjects-pane" role="tabpanel" aria-labelledby="library-subjects-tab" hidden={libraryView !== 'subjects'} inert={libraryView !== 'subjects'}><SubjectLibrary subjects={subjects} assets={assets} shots={shots} blocked={subjectBlocked} onShowTasks={onShowTasks} onInspectShot={onInspectShot} /></div></WorkspaceVisibilityProvider>}

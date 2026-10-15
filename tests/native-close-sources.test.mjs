@@ -1,3 +1,6 @@
+import * as i18n from '../packages/i18n/src/index.ts';
+import * as creationI18n from '../apps/web/src/creation-i18n.ts';
+import * as comfySettings from '../apps/web/src/comfy-image-settings.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -101,6 +104,8 @@ function renderer(filename, fixture, options = {}) {
   const module = { exports: {} }, primitives = new Proxy({}, { get: (_, name) => String(name) });
   const require = name => {
     if (name === 'react') return react;
+    if (name === './i18n/I18nProvider.tsx') return { useI18n: () => ({ t: (key, params) => i18n.translate('zh-Hans', key, params), renderMessage: value => i18n.renderMessage('zh-Hans', value), formatDate: (value, options) => i18n.formatDate('zh-Hans', value, options), formatNumber: (value, options) => i18n.formatNumber('zh-Hans', value, options) }) };
+    if (name === './creation-i18n.ts') return creationI18n;
     if (name === './editor-settings-scope.ts') {
       // Run the real optional native-activity hook against this renderer's hook
       // scheduler. No native scope is passed by the existing Web close cases.
@@ -121,7 +126,7 @@ function renderer(filename, fixture, options = {}) {
     if (name === './agent-timeline-context.js') return timing;
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
     if (name === './image-settings.js') return { createImageSettingsClient: () => fixture.settingsClient };
-    if (name === './comfy-image-settings.js') return { createComfyImageSettingsClient: () => fixture.comfySettingsClient };
+    if (name === './comfy-image-settings.js') return { ...comfySettings, createComfyImageSettingsClient: () => fixture.comfySettingsClient };
     if (name === './AgentTimelineGain.tsx' || name === './ComfyImageDetails.jsx') return primitives;
     if (['./AgentEditProposal.jsx', './AgentRunActivity.jsx', './ImageSettings.jsx', './ComfyImageSettings.jsx', './SettingsNavigationSlot.tsx', './icons.jsx'].includes(name)) return { __esModule: true, default: name };
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.jsx') return primitives;

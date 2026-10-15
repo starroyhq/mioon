@@ -49,7 +49,7 @@ for(const version of [24,26])for(const [label,sql] of artifacts)test(`source${ve
  assert.deepEqual(tree(f.source),before);assert.deepEqual(fs.readdirSync(f.root).sort(),siblings);
 });
 for(const version of [24,26])test(`source${version} unknown marker without restore evidence is still rejected as unsupported`,async t=>{
- const f=fixture(t,version,'INSERT INTO schema_version VALUES(28)'),before=tree(f.source);
+ const f=fixture(t,version,'INSERT INTO schema_version VALUES(999)'),before=tree(f.source);
  const db=new DatabaseSync(f.file,{readOnly:true});try{assert.equal(hasWorkspaceBackupRestoreEvidence(db),false);}finally{db.close();}
  await assert.rejects(createWorkspaceBackup({source:f.source,destination:f.destination}),{code:'WORKSPACE_BACKUP_IO'});
  assert.equal(fs.existsSync(f.destination),false);assert.deepEqual(tree(f.source),before);

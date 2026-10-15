@@ -1,3 +1,4 @@
+import * as annotations from '../apps/web/src/asset-annotation-state.ts';
 import { i18nTestModule, renderMessage as renderI18nMessage, message as msg } from './helpers/i18n.ts';
 import test from 'node:test';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
@@ -202,6 +203,27 @@ test('actual App recovery replays the exact key and refreshes current marks sepa
   assert.equal(replayed, null); assert.deepEqual(calls[0], calls[1]); assert.equal(markRefreshes, 1); assert.equal(readPending(projectId, original.key), null); assert.ok(refreshes >= 2);
 });
 
+test('actual App annotation recovery preserves the exact session intent and rereads separately from historical ACK', async t => {
+  storage(t); let lost = true, refreshes = 0, markRefreshes = 0; const calls = [], busy = new Set();
+  const input = { projectId, assetId: assetId(1), expectedRevision: 0, tags: ['tag'], note: 'literal <text>' };
+  const scope = { msg, localizedError: value => Object.assign(new Error(renderI18nMessage('zh-Hans', value)), { displayMessage: value }), shotTextRef: { current: null }, context: () => ({ projectId, epoch: 1 }), currentProject: { current: projectId }, isCurrent: () => true,
+    isBusy: key => busy.has(key), markBusy: (_id, key, value) => value ? busy.add(key) : busy.delete(key),
+    TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
+    isMutationOperation, assertMutationOwner, prepareMutation, validateMutationResponse, mutationNotApplied, prepareSubmission, clearPending, pendingForProject,
+    isReferenceOperation: () => false, dataRef: { current: { project: { id: projectId }, assets: [asset()] } }, setPending() {}, openTasks() {}, setAuth() {}, notify() {}, readableError: error => error.message,
+    refresh: async () => { refreshes++; }, setAnnotationRefresh: updater => { markRefreshes++; updater({}); },
+    rpc: async (operation, current) => { calls.push({ operation, input: structuredClone(current) }); if (lost) throw Error('Lost'); return { id: assetId(1), assetId: assetId(1), projectId, revision: 1, tags: ['tag'], note: 'literal <text>' }; },
+  };
+  const source = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
+  const run = Function(...Object.keys(scope), `${source}; return run;`)(...Object.values(scope));
+  await run(annotations.annotationKey(assetId(1)), 'asset.annotation.set', input);
+  const original = readPending(projectId, annotations.annotationKey(assetId(1))); assert.ok(original);
+  await run(annotations.annotationKey(assetId(1)), 'asset.annotation.set', { ...input, tags: ['changed'], note: 'different' }); assert.equal(calls.length, 1);
+  lost = false; const replayed = await run(original.key, original.operation, original.input, undefined, { replay: true });
+  assert.equal(replayed, null); assert.deepEqual(calls[0], calls[1]); assert.equal(markRefreshes, 1); assert.equal(readPending(projectId, original.key), null); assert.ok(refreshes >= 2);
+});
+
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 function controlHarness() {
   const source = readFileSync(new URL('../apps/web/src/AssetDispositionControls.jsx', import.meta.url), 'utf8');
@@ -255,7 +277,7 @@ test('shared library keeps an excluded source editable and resets filters withou
     if (id === '@mioon/ui/components/button') return { Button: 'Button' };
     throw Error(`Unexpected usage control import: ${id}`);
   }, usageModule, usageModule.exports);
-  Function('require', 'module', 'exports', code)(id => id.endsWith('/i18n/I18nProvider.tsx') ? i18nTestModule() : id === 'react' ? { ...react, default: react } : id.endsWith('AssetTimelineUsage.tsx') ? usageModule.exports : id.endsWith('asset-disposition-state.js') ? { dispositionCounts, dispositionFilters, filterLibraryAssets } : id.endsWith('AssetDispositionControls.jsx') ? { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) } : id.endsWith('Timeline.jsx') ? { assetKind: () => 'video', dragAsset() {} } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)(id => id.endsWith('/i18n/I18nProvider.tsx') ? i18nTestModule() : id === 'react' ? { ...react, default: react } : id.endsWith('AssetTimelineUsage.tsx') ? usageModule.exports : id.endsWith('asset-annotation-state.ts') ? annotations : id.endsWith('asset-disposition-state.js') ? { dispositionCounts, dispositionFilters, filterLibraryAssets } : id.endsWith('AssetDispositionControls.jsx') ? { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) } : id.endsWith('Timeline.jsx') ? { assetKind: () => 'video', dragAsset() {} } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const render = props => { cursor = 0; const result = module.exports.default(props); for (const [index, fn] of effects) { slots[index].cleanup?.(); slots[index].cleanup = fn(); } effects.clear(); return nodes(result); };
   const assets = [asset(1), asset(2)], state = { scope: local.scope, entries: { [assetId(1)]: { phase: 'ready', row: row(1, 1, 'favorite') }, [assetId(2)]: { phase: 'ready', row: row(2, 1, 'rejected') } } };
   const props = { assets, filter: 'all', search: '', onFilter: value => changes.push(['type', value]), onSearch: value => changes.push(['search', value]), busy: {}, project: { id: projectId }, selectedAsset: assets[1], dispositions: { state, controller: {} }, inUseAssetIds: new Set([assetId(2)]) };

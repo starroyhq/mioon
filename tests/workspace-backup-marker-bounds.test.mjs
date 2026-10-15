@@ -58,7 +58,7 @@ test('bounded marker projection refuses unsafe integer values without JavaScript
  assert.throws(()=>readWorkspaceBackupSchemaVersion(db),{code:'WORKSPACE_BACKUP_DATABASE_INVALID'});
 });
 
-test('ordinary24 unknown journal survives startup migration and cold32 archive while fixed33 restore refuses it',async t=>{
+test('ordinary24 unknown journal survives startup migration and cold36 archive while fixed37 restore refuses it',async t=>{
  const {openStore}=await import('../packages/business/src/db.mjs');
  const {restoreWorkspaceBackup}=await import('../packages/business/src/workspace-restore.mjs');
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'backup-custom-journal-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -77,12 +77,12 @@ test('ordinary24 unknown journal survives startup migration and cold32 archive w
  assert.equal((await verifyWorkspaceBackup({directory:backup24})).restoration,'not_tested');
  const store=openStore(source);
  try{
-  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n,32);
+  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n,36);
   const read=store.db.prepare('SELECT rowid AS rowid,* FROM unknown_retained_journal');read.setReadBigInts(true);
   const actual=read.get();assert.equal(actual.rowid,9007199254740993n);assert.deepEqual(actual.data,new Uint8Array([0,255,13,10]));assert.equal(actual.n,123.25);
  }finally{store.close();}
  const original28=fs.readFileSync(file),created=await createWorkspaceBackup({source,destination:backup28});
- assert.equal(created.databaseSchemaVersion,32);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
+ assert.equal(created.databaseSchemaVersion,36);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
  assert.deepEqual(fs.readFileSync(path.join(backup28,'payload/workbench.sqlite')),original28);
  assert.deepEqual(await verifyWorkspaceBackup({directory:backup28}),created);
  await assert.rejects(restoreWorkspaceBackup({directory:backup28,destination}),{code:'WORKSPACE_RESTORE_SOURCE_SCHEMA_UNSUPPORTED'});

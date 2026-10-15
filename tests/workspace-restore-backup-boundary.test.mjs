@@ -42,7 +42,7 @@ test('ordinary capture still retains unknown non-restoration data and creates a 
  const f=fixture(t),db=new DatabaseSync(f.file);
  try{db.exec("CREATE TABLE unrelated_private_note(id INTEGER PRIMARY KEY,note TEXT); INSERT INTO unrelated_private_note VALUES(1,'synthetic retained note');");}finally{db.close();}
  const bytes=fs.readFileSync(f.file),created=await createWorkspaceBackup({source:f.source,destination:f.destination});
- assert.equal(created.databaseSchemaVersion,26);
+ assert.equal(created.databaseSchemaVersion,36);
  assert.deepEqual(await verifyWorkspaceBackup({directory:f.destination}),created);
  assert.deepEqual(fs.readFileSync(path.join(f.destination,'payload/workbench.sqlite')),bytes);
  assert.deepEqual(fs.readFileSync(f.file),bytes);

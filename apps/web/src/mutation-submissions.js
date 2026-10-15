@@ -8,7 +8,7 @@ const canonical = value => JSON.stringify(value, (_, item) => item && typeof ite
 
 export function assertMutationOwner(entry, snapshot) {
   const projectId = entry.projectId;
-  const assetMutation = ['asset.range.set', 'asset.disposition.set'].includes(entry.operation);
+  const assetMutation = ['asset.range.set', 'asset.disposition.set', 'asset.annotation.set'].includes(entry.operation);
   const target = assetMutation ? entry.input.assetId : entry.input.shotId || entry.input.nodeId;
   const records = assetMutation ? snapshot?.assets : entry.input.nodeId ? snapshot?.nodes : snapshot?.shots;
   if (!projectId || snapshot?.project?.id !== projectId || (assetMutation && !target) ||
