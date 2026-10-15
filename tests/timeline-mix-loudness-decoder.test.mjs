@@ -36,8 +36,17 @@ test('shared filter literals retain legacy omitted fades, stream fallback, gain 
   }
 });
 
-test('renderer has no argv or non-audio behavior changes relative to frozen b9e7d1e source',async()=>{
-  let source=await readFile(new URL('../packages/business/src/timeline-media.mjs',import.meta.url),'utf8');
+test('historical 0343ed3 audio extraction preserves frozen b9e7d1e renderer bytes',async()=>{
+  // This is a historical extraction proof, not a whole-file freeze on the live
+  // renderer: accepted SDR LUT, PNG and JPEG features subsequently changed it.
+  const fixture=JSON.parse(await readFile(new URL('./fixtures/timeline-mix-loudness/renderer-extraction-0343ed3.json',import.meta.url),'utf8'));
+  assert.equal(fixture.sourceCommit,'0343ed390a85c319210b5f179180cf9c8c3985c2');
+  assert.equal(fixture.sourcePath,'packages/business/src/timeline-media.mjs');
+  assert.equal(fixture.beforeExtractionCommit,'b9e7d1e57a687010407ae284cb55c0d4eed23abb');
+  assert.equal(fixture.sourceSha256,'4b5f850dfc388d972ab42decfff5f76b5951315b16ab73902a7dcaec411fae37');
+  assert.equal(createHash('sha256').update(fixture.source).digest('hex'),fixture.sourceSha256);
+  assert.equal(fixture.beforeExtractionSha256,'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95');
+  let source=fixture.source;
   for(const [replacement,original] of [
     ["import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';","import {timelineAudioFadeFilters} from './timeline-audio.mjs';"],
     ['timelineAudioSilenceFilter(samples)','`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[silence]`'],
@@ -45,6 +54,19 @@ test('renderer has no argv or non-audio behavior changes relative to frozen b9e7
     ['timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim)','`${sounds.map(s=>`[${s}]`).join(\'\')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},${selected.audioOutputTrim}asetpts=N/SR/TB[outa]`'],
   ]){assert.equal(source.split(replacement).length,2);source=source.replace(replacement,original);}
   assert.equal(createHash('sha256').update(source).digest('hex'),'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95');
+});
+
+test('current renderer retains exact shared audio helper wiring and unchanged trusted filter literals',async()=>{
+  const source=await readFile(new URL('../packages/business/src/timeline-media.mjs',import.meta.url),'utf8');
+  for(const wiring of [
+    "import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';",
+    "`,timelineAudioSilenceFilter(samples)];\n   let visual='base';const sounds=['silence'];",
+    "filters.push(timelineClipAudioFilter(clip,begin,samples,input,asset.audioStreamIndex));sounds.push(label);",
+    "filters.push(timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim));",
+  ])assert.equal(source.split(wiring).length,2,`exact single production wiring: ${wiring}`);
+  const helper=await readFile(new URL('../packages/business/src/timeline-audio-filter-graph.ts',import.meta.url));
+  // This audio-only module remains byte-identical to the accepted extraction.
+  assert.equal(createHash('sha256').update(helper).digest('hex'),'7701c38b8b2001da046d4801bb981607cbedf24635e489acdfc776cf477c5779');
 });
 
 test('typed fade extraction preserves the old helper body byte-for-byte and its public import path',async()=>{

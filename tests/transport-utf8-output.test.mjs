@@ -68,6 +68,11 @@ test('actual full shared catalog survives the reproduced version-list descriptio
 // the same file are counted separately. SDK-owned stdout has no such listener:
 // the SDK concatenates its protocol Buffers before decoding complete messages.
 const textSites = {
+  'tests/comfy-module-http.test.mjs': 2,
+  'tests/desktop-exit-recovery.test.mjs': 1,
+  'tests/desktop-lut-recovery-restart.test.mjs': 2,
+  'tests/i18n-command-presentation.test.mjs': 1,
+  'tests/timeline-audio-continuous-transports.test.mjs': 1,
   // Two CLI collectors plus official MCP stderr; all continuously decode UTF-8.
   'tests/timeline-audio-preview-transports.test.mjs': 3,
   'tests/float-capability-http-cancel.test.mjs': 1,
@@ -175,6 +180,30 @@ const binarySites = {
   'tests/private-storage-qa-native.mjs': 1,
   'tests/agent-chat-qa-native.mjs': 1,
 };
+// These are not appendFile loggers or streaming text decoders. Keep each exact
+// Buffer collection and final sink explicit: no directory/file-wide exemption.
+const bufferedSites = {
+  'tests/desktop-exit-backend.test.mjs': {
+    count: 1, kind: 'complete-message',
+    registration: "child.stdout.on('data', chunk => chunks.push(chunk))",
+    sink: "const output = Buffer.concat(chunks).toString('utf8');",
+  },
+  'tests/desktop-lut-recovery-qa-native.mjs': {
+    count: 1, kind: 'bounded-diagnostic',
+    registration: "child.stderr.on('data', part => {\n      if (errors.length < stderrLimit) errors = Buffer.concat([errors, part.subarray(0, stderrLimit - errors.length)]);\n    })",
+    sink: "${errors.toString('utf8')}",
+  },
+  'tests/fixtures/timeline-audio-continuous/launch.mjs': {
+    count: 1, kind: 'buffered-file',
+    registration: "stream.on('data',bytes=>{if(logs.reduce((n,b)=>n+b.length,0)<2*1024*1024)logs.push(Buffer.from(bytes));})",
+    sink: "await writeFile(path.join(root,'electron.log'),Buffer.concat(logs),{mode:0o600});",
+  },
+  'tests/fixtures/timeline-audio-continuous/origin-sweep.mjs': {
+    count: 1, kind: 'buffered-file',
+    registration: "stream.on('data', bytes => {if (logBytes < 1024 * 1024) {logs.push(Buffer.from(bytes)); logBytes += bytes.length;}})",
+    sink: "await writeFile(path.join(root, 'electron.log'), Buffer.concat(logs), {mode: 0o600});",
+  },
+};
 const root = fileURLToPath(new URL('..', import.meta.url));
 async function sourceFiles(directory) {
   const files = [];
@@ -199,7 +228,17 @@ test('every inventoried test/QA text collector configures continuous decoding at
     const sites = [...source.matchAll(registrationPattern)];
     if (!sites.length) continue;
     found[name] = sites.length;
-    assert.ok(Object.hasOwn(textSites, name) || Object.hasOwn(binarySites, name), `${name}: classify each newly introduced stream consumer`);
+    assert.ok(Object.hasOwn(textSites, name) || Object.hasOwn(binarySites, name) || Object.hasOwn(bufferedSites, name), `${name}: classify each newly introduced stream consumer`);
+    if (Object.hasOwn(bufferedSites, name)) {
+      const specification = bufferedSites[name];
+      assert.equal(sites.length, specification.count, name);
+      assert.ok(source.includes(specification.sink), `${name}: retain the audited ${specification.kind} sink`);
+      for (const site of sites) {
+        assert.equal(site.groups.decode, undefined, `${name}: retain Buffer bytes until the final sink`);
+        assert.ok(source.startsWith(specification.registration, site.index), `${name}: exact audited Buffer collector, not per-chunk string coercion`);
+      }
+      continue;
+    }
     if (Object.hasOwn(binarySites, name)) {
       assert.equal(sites.length, binarySites[name], name);
       assert.match(source, /appendFile\(/, `${name}: raw file logging preserves Buffer bytes`);
@@ -228,5 +267,5 @@ test('every inventoried test/QA text collector configures continuous decoding at
       if (site.groups.access === '?.') assert.doesNotThrow(() => register({}, () => {}), location);
     }
   }
-  assert.deepEqual(found, Object.fromEntries(Object.entries({...textSites, ...binarySites}).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
+  assert.deepEqual(found, Object.fromEntries(Object.entries({...textSites, ...binarySites, ...Object.fromEntries(Object.entries(bufferedSites).map(([name, value]) => [name, value.count]))}).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
 });

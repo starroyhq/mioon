@@ -21,8 +21,7 @@ async function mcp(t, args = [], env = {}) {
   let buffer = '', next = 0; const pending = new Map();
   child.stderr.resume();
   t.after(() => { child.kill('SIGKILL'); for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(new Error('MCP closed')); } });
-  child.stdout.setEncoding('utf8');
-  child.stdout.on('data', bytes => { buffer += bytes; let end; while ((end=buffer.indexOf('\n'))>=0) { const line=buffer.slice(0,end); buffer=buffer.slice(end+1); if (!line) continue; const result=JSON.parse(line), entry=pending.get(result.id); if (entry) {pending.delete(result.id); clearTimeout(entry.timer); entry.resolve(result);}} });
+  child.stdout.setEncoding('utf8').on('data', bytes => { buffer += bytes; let end; while ((end=buffer.indexOf('\n'))>=0) { const line=buffer.slice(0,end); buffer=buffer.slice(end+1); if (!line) continue; const result=JSON.parse(line), entry=pending.get(result.id); if (entry) {pending.delete(result.id); clearTimeout(entry.timer); entry.resolve(result);}} });
   child.on('error', error => { for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(error); } pending.clear(); });
   function request(method, params={}) { return new Promise((resolve,reject) => { const id=++next, timer=setTimeout(() => {pending.delete(id); child.kill('SIGKILL'); reject(new Error(`MCP ${method} exceeded 30 seconds`));},30000); pending.set(id,{resolve,reject,timer}); child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n'); }); }
   const initialized = await request('initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'presentation-test',version:'1'}});

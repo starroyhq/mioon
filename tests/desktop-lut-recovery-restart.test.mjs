@@ -45,8 +45,8 @@ async function startBackend(t, dataDir) {
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let diagnostics = '';
-  child.stdout.on('data', chunk => { diagnostics += chunk; });
-  child.stderr.on('data', chunk => { diagnostics += chunk; });
+  child.stdout.setEncoding('utf8').on('data', chunk => { diagnostics += chunk; });
+  child.stderr.setEncoding('utf8').on('data', chunk => { diagnostics += chunk; });
   // Register the exit promise immediately, including before readiness failures.
   const exited = once(child, 'exit');
   let stopped = false;
