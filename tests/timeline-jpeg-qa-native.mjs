@@ -1,0 +1,361 @@
+/** Synthetic restricted-JFIF native QA. Do not prepare or launch merely to inspect this helper.
+ * Preparation is the only direct fixture mutation (later cold restore uses the public CLI).
+ * All later product changes must come from ordinary supported native UI input.
+ * Audits open SQLite read-only. Cold backup/restore uses the public offline CLI.
+ * Never launches a browser driver, injects RPCs, changes fuses, disables sandbox,
+ * removes a backend lock, or accesses a provider/network/deployment service. */
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
+import {spawn} from 'node:child_process';
+import {createHash, randomUUID} from 'node:crypto';
+import {constants} from 'node:fs';
+import {readFile, writeFile, readdir, lstat, open, mkdir} from 'node:fs/promises';
+import {DatabaseSync} from 'node:sqlite';
+import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.mjs';
+import {openStore, createServices} from '../packages/business/src/index.mjs';
+import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.mjs';
+import {defaultWorkspaceState} from '../apps/web/src/workspace-state.js';
+import {inspectStaticSrgbPng} from '../packages/business/src/timeline-image-admission.ts';
+import {inspectStaticSrgbJfif} from '../packages/business/src/timeline-jpeg-admission.ts';
+import {JFIF_INPUT_ARGS, JFIF_RGB24_FILTER} from '../packages/business/src/timeline-jpeg-decode.ts';
+import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
+import {png} from './helpers/timeline-image-fixtures.mjs';
+
+const repo = fileURLToPath(new URL('../', import.meta.url));
+const root = path.join(repo, 'evidence/jfif-images/native');
+const runtime = path.join(root, 'private-runtime'), report = path.join(root, 'report');
+const userData = path.join(runtime, 'user-data'), workspace = path.join(userData, 'workspace');
+const restoredUserData = path.join(runtime, 'restored-user-data'), restoredWorkspace = path.join(restoredUserData, 'workspace');
+const backup = path.join(runtime, 'verified-schema34-backup');
+const fixtureFile = path.join(runtime, 'fixture.json');
+const executable = path.join(repo, 'release/desktop/production/linux-unpacked/mioon');
+const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+const json = value => JSON.stringify(value, null, 2) + '\n';
+const stamp = () => new Date().toISOString();
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const q = name => { assert.match(name, /^[a-zA-Z_][a-zA-Z0-9_]*$/u); return '"' + name + '"'; };
+async function exists(file) { try { await lstat(file); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } }
+async function readJson(file) { const s = await lstat(file); assert.ok(s.isFile() && !s.isSymbolicLink() && s.size < 32 * 1024 * 1024); return JSON.parse(await readFile(file, 'utf8')); }
+async function save(name, value) { assert.match(name, /^[a-z0-9-]+\.json$/u); const bytes = Buffer.from(json(value)); assert.ok(bytes.length < 32 * 1024 * 1024); await writeFile(path.join(report, name), bytes, {mode: 0o600, flag: 'wx'}); }
+async function fileHash(file, max = 512 * 1024 * 1024) {
+  const before = await lstat(file); assert.ok(before.isFile() && !before.isSymbolicLink() && before.size <= max);
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW), digest = createHash('sha256'), buffer = Buffer.alloc(1024 * 1024); let count = 0;
+  try {
+    for (;;) { const {bytesRead} = await handle.read(buffer, 0, buffer.length, null); if (!bytesRead) break; count += bytesRead; assert.ok(count <= max); digest.update(buffer.subarray(0, bytesRead)); }
+    const after = await handle.stat(); for (const key of ['dev', 'ino', 'size', 'mtimeMs']) assert.equal(after[key], before[key], 'File changed while hashing'); assert.equal(count, before.size);
+  } finally { await handle.close(); }
+  return {bytes: count, sha256: digest.digest('hex')};
+}
+async function tree(directory) {
+  const files = {}; let count = 0, bytes = 0;
+  async function visit(relative, depth) {
+    assert.ok(depth < 9 && ++count <= 512); const file = path.join(directory, relative), s = await lstat(file); assert.ok(!s.isSymbolicLink());
+    if (s.isDirectory()) { for (const name of (await readdir(file)).sort()) await visit(path.join(relative, name), depth + 1); }
+    else { files[relative] = await fileHash(file); bytes += files[relative].bytes; assert.ok(bytes < 1024 * 1024 * 1024); }
+  }
+  await visit('', 0); return files;
+}
+function environment(data = userData) {
+  return {...Object.fromEntries(['PATH', 'HOME', 'LANG', 'LC_ALL', 'DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'TMPDIR'].filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]])),
+    MIOON_DESKTOP_USER_DATA: data, MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe'};
+}
+function own(child) {
+  let closed = false;
+  const done = new Promise(resolve => { let error; child.on('error', e => { error = e.message; }); child.once('close', (code, signal) => { closed = true; resolve({code, signal, ...(error ? {error} : {})}); }); });
+  return {child, done, get closed() { return closed; }, async stop() {
+    if (closed) return done; child.kill('SIGTERM'); let timer;
+    try { return await Promise.race([done, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Owned child cleanup unconfirmed; do not relaunch')), 10000); })]); }
+    finally { clearTimeout(timer); }
+  }};
+}
+async function command(binary, args, label) {
+  assert.match(label, /^[a-z0-9-]{1,60}$/u);
+  const stdout = await open(path.join(runtime, label + '.stdout'), 'wx', 0o600), stderr = await open(path.join(runtime, label + '.stderr'), 'wx', 0o600);
+  const owned = own(spawn(binary, args, {cwd: repo, env: environment(), stdio: ['ignore', stdout.fd, stderr.fd]})); let timer;
+  try {
+    const result = await Promise.race([owned.done, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Bounded offline command timed out')), 120000); })]);
+    await save(label + '-command.json', {synthetic: true, at: stamp(), binary, args, result}); assert.deepEqual(result, {code: 0, signal: null});
+    assert.ok((await lstat(path.join(runtime, label + '.stdout'))).size < 4 * 1024 * 1024); return result;
+  } catch (e) { await owned.stop(); throw e; } finally { clearTimeout(timer); await stdout.close(); await stderr.close(); }
+}
+async function cold(directory) {
+  assert.equal(await exists(path.join(directory, 'server.lock')), false, 'Close the exact owned backend normally; never remove its lock');
+  for (const suffix of ['-wal', '-journal']) { const file = path.join(directory, 'workbench.sqlite' + suffix); if (await exists(file)) assert.equal((await lstat(file)).size, 0, 'Checkpointed cold SQLite required'); }
+}
+function rawTable(db, name, columns) {
+  columns ??= db.prepare(`PRAGMA table_info(${q(name)})`).all().map(r => r.name); assert.ok(columns.length <= 64);
+  const budget = db.prepare(`SELECT count(*) AS n, coalesce(sum(${columns.map(c => `coalesce(length(CAST(${q(c)} AS BLOB)),0)`).join('+')}),0) AS bytes FROM ${q(name)}`).get();
+  assert.ok(budget.n <= 1000 && budget.bytes <= 8 * 1024 * 1024);
+  const rows = db.prepare(`SELECT CAST(rowid AS TEXT) AS capturedRowid,${columns.flatMap((c, n) => [`typeof(${q(c)}) AS t${n}`, `hex(CAST(${q(c)} AS BLOB)) AS v${n}`]).join(',')} FROM ${q(name)} ORDER BY rowid`).all();
+  return {columns, rows: rows.map(r => ({rowid: r.capturedRowid, values: columns.map((_, n) => ({type: r['t' + n], hex: r['v' + n]}))}))};
+}
+function cell(row, table, column) { const c = row.values[table.columns.indexOf(column)]; assert.ok(c); return c.type === 'null' ? null : Buffer.from(c.hex, 'hex').toString('utf8'); }
+function decode(table, column = 'data') { return table.rows.map(r => JSON.parse(cell(r, table, column))); }
+function readDb(directory, callback) {
+  const db = new DatabaseSync(path.join(directory, 'workbench.sqlite'), {readOnly: true});
+  try { db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; BEGIN'); const value = callback(db); db.exec('COMMIT'); return value; }
+  finally { if (db.isTransaction) db.exec('ROLLBACK'); db.close(); }
+}
+async function fixture() { const f = await readJson(fixtureFile); assert.equal(f.synthetic, true); assert.equal(f.workspace, workspace); return f; }
+async function writeLauncher(label) {
+  await writeFile(path.join(runtime, 'launch-' + label + '.sh'), `#!/bin/bash\nset -e\ncd ${JSON.stringify(repo)}\nexec ${JSON.stringify(process.execPath)} tests/timeline-jpeg-qa-native.mjs launch ${label}\n`, {mode: 0o700, flag: 'wx'});
+}
+// Generation is deliberately deferred until an explicit prepare action. Pillow must
+// already be installed; this helper never installs packages or fetches encoders.
+async function prepare(includePng = true) {
+  await mkdir(path.dirname(root), {recursive: true}); ensurePrivateDirectory(root, {create: true});
+  for (const dir of [runtime, report]) { assert.equal(await exists(dir), false, 'Preserve any earlier fixture; never silently resume or overwrite preparation'); ensurePrivateDirectory(dir, {create: true}); }
+  ensurePrivateDirectory(userData, {create: true});
+  const source = path.join(runtime, 'synthetic-rec709-green.mp4'), image = path.join(runtime, 'synthetic-untagged-jfif-gray.jpg'), replacement = path.join(runtime, 'synthetic-replacement-jfif-light.jpg'), overlay = path.join(runtime, 'synthetic-half-alpha-overlay.png');
+  await command('/usr/bin/ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=3', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-color_range', 'tv', '-colorspace', 'bt709', '-color_trc', 'bt709', '-color_primaries', 'bt709', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv', '-movflags', '+faststart', '-n', source], 'prepare-video');
+  // Broad uniform interiors make quantization/chroma-edge effects irrelevant to
+  // gray samples. Color panels make source/replacement unmistakable in native UI.
+  const generator = `import os, sys
+os.umask(0o077)
+from PIL import Image, ImageDraw, __version__
+for name, gray, left, right in [(sys.argv[1], 128, (230, 60, 30), (30, 80, 230)), (sys.argv[2], 176, (20, 190, 200), (230, 150, 20))]:
+    image = Image.new('RGB', (320, 180), (gray, gray, gray))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 63, 179), fill=left)
+    draw.rectangle((256, 0, 319, 179), fill=right)
+    with open(name, 'xb') as target:
+        image.save(target, format='JPEG', quality=95, subsampling=0, optimize=False, progressive=False, exif=b'', icc_profile=None)
+print('Synthetic baseline JFIF; installed Pillow ' + __version__)
+`;
+  await command('/usr/bin/python3', ['-c', generator, image, replacement], 'prepare-jpeg');
+  const expectedImageEvidence = await inspectStaticSrgbJfif(await readFile(image));
+  const replacementEvidence = await inspectStaticSrgbJfif(await readFile(replacement));
+  for (const evidence of [expectedImageEvidence, replacementEvidence]) {
+    assert.equal(evidence.status, 'needs_interpretation'); assert.equal(evidence.alphaMode, 'opaque');
+    assert.equal(evidence.colourTag, 'untagged'); assert.equal(evidence.orientation, 1); assert.equal(evidence.sampling, '444');
+    assert.equal(evidence.width, 320); assert.equal(evidence.height, 180);
+  }
+  const decodedSources = {};
+  for (const [name, file, expectedGray] of [['image', image, 128], ['replacement', replacement, 176]]) {
+    const rgbFile = path.join(runtime, name + '-source.rgb');
+    await command('/usr/bin/ffmpeg', ['-v', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1', ...JFIF_INPUT_ARGS, '-noautorotate', '-i', file, '-map', '0:v:0', '-vf', JFIF_RGB24_FILTER, '-frames:v', '1', '-an', '-threads', '1', '-c:v', 'rawvideo', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-n', rgbFile], 'prepare-' + name + '-decode');
+    const rgb = await readFile(rgbFile), center = (90 * 320 + 160) * 3;
+    assert.equal(rgb.length, 320 * 180 * 3); assert.deepEqual([...rgb.subarray(center, center + 3)], [expectedGray, expectedGray, expectedGray]);
+    decodedSources[name] = {gray: expectedGray, rgbHash: await fileHash(rgbFile)};
+  }
+  if (includePng) await writeFile(overlay, png({width: 320, height: 160, tagged: true, pixel: x => x < 96 ? [255, 0, 255, 0] : [192, 192, 192, 128]}), {mode: 0o600, flag: 'wx'});
+  const originalEnvironment = {MIOON_FFMPEG_PATH: process.env.MIOON_FFMPEG_PATH, MIOON_FFPROBE_PATH: process.env.MIOON_FFPROBE_PATH};
+  process.env.MIOON_FFMPEG_PATH = '/usr/bin/ffmpeg'; process.env.MIOON_FFPROBE_PATH = '/usr/bin/ffprobe';
+  const store = openStore(workspace), services = createServices(store, new Map()); let f;
+  try {
+    const project = await services.call('project.create', {name: 'JFIF JPEG · PNG · 视频混合 SDR 合成验收'}), assets = {};
+    const imports = [['video', source, 'video/mp4'], ['image', image, 'image/jpeg'], ['replacement', replacement, 'image/jpeg'], ...(includePng ? [['overlay', overlay, 'image/png']] : [])];
+    for (const [key, file, mimeType] of imports) {
+      const imported = await services.call('asset.import', {projectId: project.id, name: path.basename(file), mimeType, dataBase64: (await readFile(file)).toString('base64')});
+      assets[key] = {...store.get('assets', imported.id), fixtureFile: file, fixtureHash: await fileHash(file)};
+    }
+    assert.notEqual(assets.image.sha256, assets.replacement.sha256);
+    const videoInspection = await services.call('timeline.colour.source.inspect', {projectId: project.id, assetId: assets.video.id}); assert.equal(videoInspection.status, 'compatible');
+    const videoColour = {profileId: 'mioon-rec709-sdr-clip-v1', source: {assetSha256: assets.video.sha256, streamIndex: 0, profileId: 'rec709-yuv-sdr-v1', range: 'limited', declaredBy: 'user', declaredAt: stamp()}, look: null};
+    let timeline = await services.call('timeline.format.set', {projectId: project.id, expectedProjectRevision: project.revision, expectedRevision: 0, requestId: randomUUID(), presetId: 'landscape_720'});
+    const mutate = async (operation, extra) => { timeline = await services.call(operation, {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), ...extra}); };
+    await mutate('timeline.clip.add', {assetId: assets.video.id, trackId: timeline.tracks.find(t => t.kind === 'video').id, startFrame: 0, sourceInFrame: 0, durationFrames: 90, name: 'Rec709 green background', colour: videoColour});
+    const videoClipId = timeline.clips[0].id;
+    await mutate('timeline.track.add', {kind: 'video', name: 'JFIF image'});
+    const imageTrack = timeline.tracks.find(t => t.name === 'JFIF image');
+    // 16:9 image contained inside a 640x400 rectangle: 20px transparent bars.
+    await mutate('timeline.clip.add', {assetId: assets.image.id, trackId: imageTrack.id, startFrame: 0, sourceInFrame: 0, durationFrames: 90, name: 'Untagged JFIF: confirm sRGB', rect: {x: 320, y: 160, width: 640, height: 400}});
+    const imageClipId = timeline.clips.find(c => c.assetId === assets.image.id).id;
+    let overlayClipId = null;
+    if (includePng) {
+      const {status: _status, ...evidence} = await inspectStaticSrgbPng(await readFile(overlay));
+      const colour = {profileId: 'mioon-srgb-image-clip-v1', source: {assetSha256: assets.overlay.sha256, profileId: 'png-rgb8-srgb-v1', interpretation: 'srgb', declaredBy: 'user', declaredAt: stamp(), evidence}, look: null};
+      await mutate('timeline.track.add', {kind: 'video', name: 'Declared half-alpha PNG'});
+      await mutate('timeline.clip.add', {assetId: assets.overlay.id, trackId: timeline.tracks.find(t => t.name === 'Declared half-alpha PNG').id, startFrame: 0, sourceInFrame: 0, durationFrames: 90, name: 'PNG transparent + half-alpha gray', rect: {x: 480, y: 340, width: 320, height: 160}, colour});
+      overlayClipId = timeline.clips.find(c => c.assetId === assets.overlay.id).id;
+    }
+    await mutate('timeline.subtitle.add', {text: 'JFIF SDR subtitle', startFrame: 30, durationFrames: 30});
+    assert.equal(Object.hasOwn(timeline.clips.find(c => c.id === imageClipId), 'colour'), false);
+    assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n, 34);
+    const state = defaultWorkspaceState(); state.activeMode = 'editing'; state.editing.selectedClipId = imageClipId; state.editing.previewKind = 'source'; state.shared.inspectorCollapsed = false; delete state.shared.assetSearch;
+    createWorkspacePreferences(store).put(project.id, {expectedRevision: 0, state});
+    f = {synthetic: true, id: randomUUID(), at: stamp(), userData, workspace, restoredUserData, restoredWorkspace, backup, projectId: project.id, timelineId: timeline.id, videoClipId, imageClipId, imageTrackId: imageTrack.id, overlayClipId, includePng, baseRevision: timeline.revision, initialTimeline: timeline, assets, videoInspection,
+      expectedImageEvidence, replacementEvidence, decodedSources, setupOnly: 'Imports, video interpretation, and optional PNG interpretation were seeded. JFIF parser/decode above only validate the synthetic fixture. JPEG inspection/interpretation/save/undo/redo/replacement/export must be performed through native UI after preparation; no JPEG declaration has been saved.'};
+  } finally { await services.drain(); store.close(); for (const [key, value] of Object.entries(originalEnvironment)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+  await writeFile(fixtureFile, json(f), {mode: 0o600, flag: 'wx'}); await save('fixture.json', f); await audit('prepared');
+  for (const label of ['first', 'reopen']) await writeLauncher(label);
+  return {synthetic: true, projectId: f.projectId, imageClipId: f.imageClipId, includePng, baseRevision: f.baseRevision, userData, commands: ['launch-first.sh', 'launch-reopen.sh'].map(name => path.join(runtime, name))};
+}
+async function audit(label, branch = 'original') {
+  assert.match(label, /^[a-z0-9-]{1,45}$/u); assert.ok(['original', 'restored'].includes(branch)); const f = await fixture(), directory = branch === 'restored' ? restoredWorkspace : workspace;
+  const raw = readDb(directory, db => {
+    const names = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name LIMIT 129").all(); assert.ok(names.length <= 128);
+    return Object.fromEntries(names.map(({name}) => [name, rawTable(db, name)]));
+  });
+  assert.ok(Buffer.byteLength(json(raw)) < 24 * 1024 * 1024);
+  const assets = decode(raw.assets), originals = {};
+  for (const [name, asset] of Object.entries(f.assets)) {
+    assert.match(asset.relativePath, /^media\/[a-zA-Z0-9._-]+$/u); originals[name] = {managed: await fileHash(path.join(directory, asset.relativePath)), fixture: await fileHash(asset.fixtureFile)};
+    assert.equal(originals[name].managed.sha256, asset.sha256); assert.deepEqual(originals[name].fixture, asset.fixtureHash);
+  }
+  const draftFile = path.join(directory, 'local-drafts-v1.json'), timeline = decode(raw.timelines).find(t => t.id === f.timelineId);
+  const result = {synthetic: true, at: stamp(), branch, schemaVersion: readDb(directory, db => db.prepare('SELECT max(version) AS n FROM schema_version').get().n),
+    tables: Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, {count: value.rows.length, sha256: sha(json(value))}])), raw, timeline, assets, exports: decode(raw.exports),
+    draft: await exists(draftFile) ? await readJson(draftFile) : null, media: await tree(path.join(directory, 'media')), originals};
+  assert.equal(result.schemaVersion, branch === 'restored' ? 35 : 34);
+  await save(label + '-audit.json', result);
+  return {label, branch, schemaVersion: result.schemaVersion, revision: timeline.revision, imageClip: timeline.clips.find(c => c.id === f.imageClipId), exports: result.exports.map(e => ({id: e.id, status: e.status, purpose: e.purpose}))};
+}
+async function artifacts() {
+  const require = createRequire(import.meta.url), builder = createRequire(require.resolve('electron-builder')), dependencies = createRequire(builder.resolve('app-builder-lib'));
+  const asar = dependencies('@electron/asar'), {getCurrentFuseWire, FuseV1Options} = dependencies('@electron/fuses');
+  const archive = path.join(path.dirname(executable), 'resources/app.asar'), metadata = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
+  assert.equal(metadata.name, 'mioon-desktop'); assert.equal(metadata.mioonDesktop.channel, 'production');
+  const wire = await getCurrentFuseWire(executable), fuses = {};
+  for (const name of ['RunAsNode', 'EnableNodeOptionsEnvironmentVariable', 'EnableNodeCliInspectArguments', 'GrantFileProtocolExtraPrivileges']) { assert.equal(wire[FuseV1Options[name]], 48); fuses[name] = false; }
+  for (const name of ['EnableCookieEncryption', 'EnableEmbeddedAsarIntegrityValidation', 'OnlyLoadAppFromAsar']) { assert.equal(wire[FuseV1Options[name]], 49); fuses[name] = true; }
+  return {executable: await fileHash(executable), asar: await fileHash(archive), helper: await fileHash(fileURLToPath(import.meta.url)), ffmpeg: await fileHash('/usr/bin/ffmpeg'), ffprobe: await fileHash('/usr/bin/ffprobe'), productionIdentity: metadata.mioonDesktop, fuses, subtitles: await tree(path.join(path.dirname(executable), 'resources/subtitles'))};
+}
+async function launch(label) {
+  assert.ok(['first', 'reopen', 'restored'].includes(label)); await fixture(); const directory = label === 'restored' ? restoredWorkspace : workspace;
+  await cold(directory); const frozenArtifacts = await artifacts();
+  if (label !== 'first') { const first = await readJson(path.join(report, 'first-launch.json')); assert.deepEqual(frozenArtifacts, first.artifacts, 'Native reopen must use the exact unchanged production package and helper'); }
+  if (label === 'restored') await readJson(path.join(report, 'cold-restore.json'));
+  const log = await open(path.join(runtime, label + '-native.log'), 'wx', 0o600);
+  const owned = own(spawn(executable, [], {cwd: repo, env: environment(label === 'restored' ? restoredUserData : userData), stdio: ['ignore', log.fd, log.fd]}));
+  const initial = {synthetic: true, at: stamp(), label, pid: owned.child.pid, executable, artifacts: frozenArtifacts, argv: [], sandboxUnchanged: true, debugging: false, liveProviderEnabled: false};
+  let timer, failure, result;
+  const stop = () => { failure ??= 'Launcher interrupted; not a normal UI exit'; owned.stop().catch(() => {}); };
+  process.once('SIGINT', stop); process.once('SIGTERM', stop);
+  try {
+    // Every post-spawn await stays inside the owned child's cleanup boundary.
+    await save(label + '-launch.json', initial);
+    result = await Promise.race([owned.done, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Native observation budget ended')), 45 * 60 * 1000); })]);
+  } catch (error) { failure = error.message; result = await owned.stop(); }
+  finally { clearTimeout(timer); process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop); await log.close(); }
+  const until = Date.now() + 45000; while (await exists(path.join(directory, 'server.lock')) && Date.now() < until) await pause(250);
+  const backendLockReleased = !await exists(path.join(directory, 'server.lock'));
+  await save(label + '-exit.json', {...initial, endedAt: stamp(), result, backendLockReleased, normal: !failure && result.code === 0 && result.signal === null && !result.error, ...(failure ? {failure} : {})});
+  assert.equal(failure, undefined); assert.deepEqual(result, {code: 0, signal: null}); assert.ok(backendLockReleased); await cold(directory);
+  assert.deepEqual(await artifacts(), frozenArtifacts); await audit(label + '-exit', label === 'restored' ? 'restored' : 'original');
+}
+async function offline(commandName) {
+  const args = ['apps/cli/src/backup.mjs', commandName, ...(commandName === 'create' ? ['--source', workspace, '--destination', backup] : commandName === 'restore' ? ['--directory', backup, '--destination', restoredWorkspace] : ['--directory', backup])];
+  await command(process.execPath, args, 'offline-' + commandName); const value = await readJson(path.join(runtime, 'offline-' + commandName + '.stdout')); assert.equal(value.ok, true); assert.equal(value.data.warnings, undefined);
+  if (commandName === 'restore') { assert.equal(value.data.publication, 'confirmed'); assert.equal(value.data.databaseSchemaVersion, 35); assert.equal(value.data.sourceSchema, 34); assert.equal(value.data.profile, 'restored-local-v6'); }
+  else { assert.equal(value.data.integrity, 'verified'); assert.equal(value.data.databaseSchemaVersion, 34); }
+  return value.data;
+}
+function assertRestoreRaw(before, directory) {
+  return readDb(directory, db => {
+    for (const [name, original] of Object.entries(before)) { if (name === 'schema_version') continue; assert.deepEqual(rawTable(db, name, original.columns), original, 'Immediate restore exact original cells: ' + name); }
+    for (const [name, target] of [['timeline_history', 'workspace_restore_timeline_history'], ['timeline_history_cursors', 'workspace_restore_timeline_cursors']]) assert.deepEqual(rawTable(db, target, before[name].columns), before[name], 'Exact history archive: ' + name);
+    return {holds: rawTable(db, 'workspace_restore_holds'), history: rawTable(db, 'workspace_restore_timeline_history'), cursors: rawTable(db, 'workspace_restore_timeline_cursors'), metadata: rawTable(db, 'workspace_restoration'), evidence: rawTable(db, 'workspace_restore_evidence')};
+  });
+}
+async function coldRestore() {
+  const exited = await readJson(path.join(report, 'first-exit.json')); assert.equal(exited.normal, true); assert.equal(exited.backendLockReleased, true); await cold(workspace);
+  assert.equal(await exists(backup), false); assert.equal(await exists(restoredUserData), false); ensurePrivateDirectory(restoredUserData, {create: true});
+  const sourceAudit = await readJson(path.join(report, 'first-exit-audit.json')); assert.equal(sourceAudit.schemaVersion, 34);
+  const sourceDatabase = await fileHash(path.join(workspace, 'workbench.sqlite')), sourceMedia = await tree(path.join(workspace, 'media'));
+  const created = await offline('create'), verified = await offline('verify'), backupFiles = await tree(backup), restored = await offline('restore'); await cold(restoredWorkspace);
+  assert.deepEqual(await fileHash(path.join(workspace, 'workbench.sqlite')), sourceDatabase); assert.deepEqual(await tree(path.join(workspace, 'media')), sourceMedia); assert.deepEqual(await tree(backup), backupFiles);
+  assert.deepEqual(await fileHash(path.join(backup, 'payload/workbench.sqlite')), sourceDatabase); assert.deepEqual(await tree(path.join(restoredWorkspace, 'media')), sourceMedia);
+  const exact = assertRestoreRaw(sourceAudit.raw, restoredWorkspace);
+  await save('cold-restore.json', {synthetic: true, at: stamp(), sourceSchema: 34, restoredSchema: 35, sourceDatabase, sourceMedia, backupFiles, created, verified, restored, exact});
+  await audit('restored-before-launch', 'restored'); await writeLauncher('restored');
+  return {synthetic: true, sourceSchema: 34, restoredSchema: 35, originalUnchanged: true, restoredOriginalCellsExact: true, launch: path.join(runtime, 'launch-restored.sh')};
+}
+const imageClip = (audit, f) => audit.timeline.clips.find(c => c.id === f.imageClipId);
+const cleanDraft = audit => audit.draft === null || audit.draft.entries.every(e => e.draft === null);
+async function verifyOutput(audit, purpose, f) {
+  const record = audit.exports.filter(e => e.status === 'succeeded' && e.purpose === purpose).at(-1); assert.ok(record, 'Missing successful native UI ' + purpose);
+  const asset = audit.assets.find(a => a.id === record.assetId); assert.ok(asset); assert.match(asset.relativePath, /^media\/[a-zA-Z0-9._-]+\.mp4$/u); const file = path.join(workspace, asset.relativePath);
+  assert.equal(record.snapshot.colourPlan.profileId, 'mioon-mixed-sdr-render-v3'); const bindings = record.snapshot.colourPlan.clips;
+  assert.equal(bindings.find(c => c.clipId === f.imageClipId).kind, 'image'); assert.equal(bindings.find(c => c.clipId === f.imageClipId).assetSha256, f.assets.image.sha256); assert.equal(bindings.find(c => c.clipId === f.videoClipId).kind, 'video');
+  const jpegBinding = bindings.find(c => c.clipId === f.imageClipId);
+  assert.equal(jpegBinding.sourceProfileId, 'jfif-ycbcr8-srgb-v1');
+  assert.equal(jpegBinding.decodeProfile, 'ffmpeg-mjpeg-int-bt601-full-bilinear-rgb24-v1');
+  assert.equal(jpegBinding.alpha, 'opaque-transform-look-premultiply-resize');
+  assert.equal(jpegBinding.evidence.alphaMode, 'opaque');
+  assert.deepEqual(jpegBinding.evidence, imageClip(audit, f).colour.source.evidence);
+  if (f.includePng) {
+    const pngBinding = bindings.find(c => c.clipId === f.overlayClipId);
+    assert.equal(pngBinding.sourceProfileId, 'png-rgb8-srgb-v1'); assert.equal(pngBinding.assetSha256, f.assets.overlay.sha256);
+    assert.equal(pngBinding.alpha, 'straight-transform-look-premultiply-resize');
+    assert.equal(bindings.length, 3);
+  } else assert.equal(bindings.length, 2);
+  assert.deepEqual(record.snapshot.timeline.subtitles, f.initialTimeline.subtitles);
+  await command('/usr/bin/ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], purpose + '-probe');
+  const probe = await readJson(path.join(runtime, purpose + '-probe.stdout')), video = probe.streams.find(s => s.codec_type === 'video');
+  for (const key of ['color_space', 'color_transfer', 'color_primaries']) assert.equal(video[key], 'bt709'); assert.equal(video.color_range, 'tv'); assert.equal(video.pix_fmt, 'yuv420p'); assert.equal(Number(video.nb_frames), 90); assert.equal(video.width, 1280); assert.equal(video.height, 720);
+  await command('/usr/bin/ffmpeg', ['-v', 'error', '-i', file, '-f', 'null', '-'], purpose + '-decode');
+  const rgbFile = path.join(runtime, purpose + '-frames-0-45.rgb');
+  await command('/usr/bin/ffmpeg', ['-v', 'error', '-threads', '1', '-i', file, '-vf', `select='eq(n,0)+eq(n,45)',${timelineColourInputFilter('limited')},format=rgb24`, '-an', '-fps_mode', 'passthrough', '-threads', '1', '-f', 'rawvideo', '-n', rgbFile], purpose + '-samples');
+  const rgb = await readFile(rgbFile); assert.equal(rgb.length, 2 * 1280 * 720 * 3);
+  const pixel = (frame, x, y) => [...rgb.subarray((frame * 1280 * 720 + y * 1280 + x) * 3, (frame * 1280 * 720 + y * 1280 + x) * 3 + 3)];
+  // Decode the output back into the explicit Rec.709 encoded RGB working space.
+  // JPEG RGB128 is transformed into display-matched RGB135, not kept at 128.
+  // Samples avoid both lossy JPEG edges and H.264 chroma boundaries.
+  const displayCode = code => { const v = code / 255, linear = v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; return Math.round(255 * linear ** (1 / 2.4)); };
+  const expectedGray = displayCode(f.decodedSources.image.gray); assert.equal(expectedGray, 135);
+  const background = pixel(0, 120, 300), paddingTop = pixel(0, 640, 170), paddingBottom = pixel(0, 640, 550), gray = pixel(0, 640, 300);
+  assert.ok(background[1] > background[0] + 80 && background[1] > background[2] + 60, 'Tagged green video must remain visible');
+  for (const padding of [paddingTop, paddingBottom]) assert.ok(padding.every((v, i) => Math.abs(v - background[i]) <= 5), 'Opaque JPEG content must not make contain padding opaque/black');
+  assert.ok(gray.every(v => Math.abs(v - expectedGray) <= 4), 'JPEG decoded 128 must receive the explicit sRGB display transform to 135');
+  const pngSamples = f.includePng ? {transparent: pixel(0, 544, 420), halfAlpha: pixel(0, 704, 420), expectedHalfAlpha: displayCode(192) * (128 / 255) + expectedGray * (127 / 255)} : null;
+  if (pngSamples) {
+    assert.ok(pngSamples.transparent.every((v, i) => Math.abs(v - gray[i]) <= 4), 'PNG hidden alpha 0 magenta must not leak over JPEG');
+    assert.ok(pngSamples.halfAlpha.every(v => Math.abs(v - pngSamples.expectedHalfAlpha) <= 5), 'PNG half-alpha gray must composite over transformed JPEG gray, not video or black');
+  }
+  const whites = [0, 0]; for (let frame = 0; frame < 2; frame++) for (let y = 552; y < 672; y++) for (let x = 48; x < 1232; x++) if (pixel(frame, x, y).every(v => v > 220)) whites[frame]++;
+  assert.equal(whites[0], 0); assert.ok(whites[1] > 200, 'Subtitle must appear only inside its saved interval');
+  return {purpose, id: record.id, fileHash: await fileHash(file), sampledDecodedHash: await fileHash(rgbFile), video, colourPlan: record.snapshot.colourPlan, pixels: {background, paddingTop, paddingBottom, gray, expectedGray, pngSamples, subtitleWhitePixels: whites}, fullDecodeExit: 0};
+}
+async function final() {
+  const f = await fixture(), labels = ['prepared', 'inspected', 'saved', 'undo', 'redo', 'rendered', 'replaced', 'replacement-undo', 'first-exit', 'reopen-exit', 'restored-before-launch', 'restored-exit'];
+  const a = Object.fromEntries(await Promise.all(labels.map(async label => [label, await readJson(path.join(report, label + '-audit.json'))])));
+  assert.deepEqual(a.inspected.timeline, a.prepared.timeline, 'Inspecting the image must not save a declaration');
+  const base = imageClip(a.prepared, f), saved = imageClip(a.saved, f); assert.equal(Object.hasOwn(base, 'colour'), false);
+  assert.deepEqual({...saved, colour: undefined}, {...base, colour: undefined}); assert.equal(saved.colour.profileId, 'mioon-jfif-image-clip-v1'); assert.equal(saved.colour.source.interpretation, 'srgb'); assert.equal(saved.colour.source.declaredBy, 'user'); assert.equal(saved.colour.source.assetSha256, f.assets.image.sha256); assert.equal(saved.colour.source.evidence.colourTag, 'untagged'); assert.equal(saved.colour.source.evidence.alphaMode, 'opaque'); assert.equal(saved.colour.look, null);
+  assert.equal(saved.colour.source.profileId, 'jfif-ycbcr8-srgb-v1'); assert.equal(saved.colour.source.evidence.decoderPolicy, 'ffmpeg-mjpeg-int-bt601-full-bilinear-rgb24-v1');
+  const {status: _status, ...expectedEvidence} = f.expectedImageEvidence; assert.deepEqual(saved.colour.source.evidence, expectedEvidence);
+  assert.deepEqual(imageClip(a.undo, f), base); assert.deepEqual(imageClip(a.redo, f), saved);
+  assert.deepEqual(imageClip(a.rendered, f), saved); assert.equal(imageClip(a.replaced, f).assetId, f.assets.replacement.id); assert.deepEqual(imageClip(a.replaced, f).colour, {...saved.colour, source: null}); assert.deepEqual(imageClip(a['replacement-undo'], f), saved);
+  for (const [label, delta] of [['saved', 1], ['undo', 2], ['redo', 3], ['replaced', 4], ['replacement-undo', 5]]) assert.equal(a[label].timeline.revision, f.baseRevision + delta, 'Unexpected UI mutation sequence: ' + label);
+  for (const label of ['first-exit', 'reopen-exit', 'restored-before-launch', 'restored-exit']) { assert.deepEqual(a[label].timeline, a['replacement-undo'].timeline, 'Exact saved timeline after ' + label); assert.ok(cleanDraft(a[label]), 'No stale local draft at ' + label); }
+  for (const value of Object.values(a)) { if (f.includePng) assert.deepEqual(value.timeline.clips.find(c => c.id === f.overlayClipId), f.initialTimeline.clips.find(c => c.id === f.overlayClipId)); assert.deepEqual(value.timeline.clips.find(c => c.id === f.videoClipId), f.initialTimeline.clips.find(c => c.id === f.videoClipId)); assert.deepEqual(value.timeline.subtitles, f.initialTimeline.subtitles); }
+  const edits = a.saved.raw.edit_tasks, applied = edits.rows.filter(r => cell(r, edits, 'status') === 'applied' && cell(r, edits, 'acknowledged') === '1');
+  assert.ok(applied.some(r => cell(r, edits, 'operation') === 'timeline.clip.update' && JSON.parse(cell(r, edits, 'input')).patch?.colour?.profileId === 'mioon-jfif-image-clip-v1'), 'UI save must have a durable acknowledged edit task');
+  const restore = await readJson(path.join(report, 'cold-restore.json')); assert.deepEqual(await tree(backup), restore.backupFiles); assert.equal(a['restored-exit'].schemaVersion, 35);
+  for (const [name, expected] of [['workspace_restore_holds', restore.exact.holds], ['workspace_restore_timeline_history', restore.exact.history], ['workspace_restore_timeline_cursors', restore.exact.cursors], ['workspace_restoration', restore.exact.metadata], ['workspace_restore_evidence', restore.exact.evidence]]) assert.deepEqual(a['restored-exit'].raw[name], expected, 'Captured restore evidence remained exact');
+  const held = restore.exact.holds;
+  for (const row of held.rows) { const name = cell(row, held, 'kind'), rowid = cell(row, held, 'capturedRowid'), original = a['first-exit'].raw[name], current = a['restored-exit'].raw[name]; const before = original.rows.find(r => r.rowid === rowid), after = current.rows.find(r => r.rowid === rowid); assert.ok(before && after); assert.deepEqual(original.columns.map((c, i) => after.values[current.columns.indexOf(c)]), before.values, 'Held original row changed: ' + name); }
+  const launches = await Promise.all(['first', 'reopen', 'restored'].map(label => readJson(path.join(report, label + '-exit.json'))));
+  for (const launch of launches) { assert.equal(launch.normal, true); assert.equal(launch.backendLockReleased, true); assert.deepEqual(launch.artifacts, launches[0].artifacts); assert.deepEqual(launch.argv, []); }
+  assert.deepEqual(await artifacts(), launches[0].artifacts); await cold(workspace); await cold(restoredWorkspace);
+  const observations = await readJson(path.join(report, 'ui-observations.json')); assert.equal(observations.synthetic, true); assert.equal(observations.method, 'supported-native-cua');
+  const required = ['inspect-untagged', 'declare-and-save-srgb', 'undo', 'redo', 'preview', 'export', 'replace-invalidates', 'replacement-undo', 'reopen', 'restored-reopen'];
+  const uiEvidence = [];
+  for (const action of required) { const entry = observations.actions.find(e => e.action === action); assert.ok(entry && entry.observed === true && typeof entry.notes === 'string' && entry.notes.length > 0, 'Missing actual native observation: ' + action); assert.match(entry.screenshot, /^[a-z0-9-]+\.png$/u); uiEvidence.push({...entry, file: await fileHash(path.join(report, entry.screenshot), 20 * 1024 * 1024)}); }
+  const output = []; for (const purpose of ['preview', 'export']) output.push(await verifyOutput(a['reopen-exit'], purpose, f));
+  assert.deepEqual(output[0].sampledDecodedHash, output[1].sampledDecodedHash, 'Preview/export must share decoded pixels');
+  const summary = {synthetic: true, at: stamp(), platform: 'linux-x64', packagedProduction: true, jpegWorkflowVerified: true, mixedVideoJpegPngVerified: f.includePng, jpegDecoded128To135Verified: true, transparentContainPaddingVerified: true, sourceOriginalHashesUnchanged: true, explicitUntaggedSrgbSaved: true, undoRedoExact: true, replacementInvalidatedAndUndoExact: true, reopenedTimelineExact: true, coldBackupSchema: 34, restoredSchema: 35, restoredCapturedRowsAndEvidenceExact: true, savedImageColour: saved.colour, output, launches, uiEvidence, macOSVerified: false, hdrLogSupported: false,
+    scope: 'Synthetic Linux production native UI observations plus read-only durable-state/output verification. No claim of OS-wide network tracing, macOS verification, or live provider validation.'};
+  await save('summary.json', summary); return summary;
+}
+
+// Native sequence, with read-only audits after the named UI steps:
+// 1. Inspect selected JPEG (audit inspected); explicitly interpret sRGB and use
+//    common Save (saved); Undo (undo); Redo (redo).
+// 2. Run Preview and Export, await successful completion (rendered).
+// 3. Replace with the imported lighter/cyan JPEG (replaced), verify source is
+//    unconfirmed, then Undo replacement (replacement-undo).
+// 4. Close normally; launch reopen and close without edits. Run cold-restore
+//    only while original is cold; launch restored, inspect saved state, close.
+// Record actual supported-native-cua screenshots and notes in ui-observations.json
+// under the action names required by final(). The helper never fabricates them.
+const [action, label, branch] = process.argv.slice(2);
+if (action === 'prepare') { assert.ok(label === undefined || label === 'without-png'); assert.equal(branch, undefined); console.log(json(await prepare(label !== 'without-png'))); }
+else if (action === 'audit') console.log(json(await audit(label, branch)));
+else if (action === 'launch') await launch(label);
+else if (action === 'cold-restore') console.log(json(await coldRestore()));
+else if (action === 'final') console.log(json(await final()));
+else throw Error('Expected prepare [without-png], audit LABEL [original|restored], launch first|reopen|restored, cold-restore, or final');

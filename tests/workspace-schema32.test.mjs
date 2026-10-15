@@ -133,14 +133,14 @@ for(const version of [24,26,28,30,32])test(`current dispatcher retains exact sou
 });
 
 test('wire contracts admit only exact32/33 v5 pairing and keep restored schemas out of backup sources',()=>{
- for(const value of [1,24,26,28,30,32])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
- for(const value of [25,27,29,31,33,34,35,32.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
- for(const [index,profile] of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5'].entries())for(const sourceSchema of [24,26,28,30,32])for(const databaseSchemaVersion of [25,27,29,31,33])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+2*index&&databaseSchemaVersion===25+2*index);
+ for(const value of [1,24,26,28,30,32,34])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,true);
+ for(const value of [25,27,29,31,33,35,36,37,32.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(value).success,false);
+ for(const [index,profile] of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6'].entries())for(const sourceSchema of [24,26,28,30,32,34])for(const databaseSchemaVersion of [25,27,29,31,33,35])assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+2*index&&databaseSchemaVersion===25+2*index);
 });
 
 for(const change of ['future marker','missing32','missing30','missing28','missing26','restored33 without32','restored31 with32'])test(`mixed-role reader rejects corrupt or downgraded markers: ${change}`,t=>{
  const db=database(t);seed(db);
- const sql={'future marker':'INSERT INTO schema_version VALUES(34)',missing32:'DELETE FROM schema_version WHERE version=32',missing30:'DELETE FROM schema_version WHERE version=30',missing28:'DELETE FROM schema_version WHERE version=28',missing26:'DELETE FROM schema_version WHERE version=26','restored33 without32':'DELETE FROM schema_version WHERE version=32;INSERT INTO schema_version VALUES(33)','restored31 with32':'INSERT INTO schema_version VALUES(31)'}[change];db.exec(sql);
+ const sql={'future marker':'INSERT INTO schema_version VALUES(36)',missing32:'DELETE FROM schema_version WHERE version=32',missing30:'DELETE FROM schema_version WHERE version=30',missing28:'DELETE FROM schema_version WHERE version=28',missing26:'DELETE FROM schema_version WHERE version=26','restored33 without32':'DELETE FROM schema_version WHERE version=32;INSERT INTO schema_version VALUES(33)','restored31 with32':'INSERT INTO schema_version VALUES(31)'}[change];db.exec(sql);
  const before=snapshot(db);assert.throws(()=>classifyCurrentWorkspaceSchema(db));assert.throws(()=>validateCurrentWorkspaceColourProfile(db));assert.throws(()=>initializeWorkspaceSchema32(db));assert.throws(()=>readWorkspaceBackupSchemaVersion(db),{code:'WORKSPACE_BACKUP_DATABASE_INVALID'});assert.deepEqual(snapshot(db),before);
 });
 
@@ -223,7 +223,7 @@ for(const fragment of ['CREATE TABLE workspace_restoration','INSERT INTO workspa
 test('cold backup32→restored33 preserves exact mixed image evidence, raw receipts/history, v2 snapshot, LUT/source bytes across reopen',async t=>{
  const base=mkdtempSync(path.join(tmpdir(),'mioon-mixed-backup-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
  const root=path.join(base,'source'),backup=path.join(base,'backup'),restored=path.join(base,'restored');
- const store=openStore(root),f=seed(store.db,{task:true}),before=snapshot(store.db);
+ const store=openStore(root);store.db.exec('DELETE FROM schema_version WHERE version=34');const f=seed(store.db,{task:true}),before=snapshot(store.db);
  assert.equal(classifyCurrentWorkspaceSchema(store.db).schemaVersion,32);
  for(const asset of f.assets)writeFileSync(path.join(root,asset.relativePath),asset.mimeType==='image/png'?imageBytes:videoBytes,{mode:0o600});store.close();
  const sourceBytes=readFileSync(path.join(root,'workbench.sqlite'));
@@ -257,7 +257,7 @@ for(const location of ['live timeline','archive','held snapshot'])test(`restored
 
 test('restored33 keeps source inspection and LUT import denied; reads and explicit-origin local actions retain existing fences',async t=>{
  const root=mkdtempSync(path.join(tmpdir(),'mioon-mixed-permissions-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
- let store=openStore(root);const f=seed(store.db);store.close();const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
+ let store=openStore(root);store.db.exec('DELETE FROM schema_version WHERE version=34');const f=seed(store.db);store.close();const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
  const info=installCurrentWorkspaceRestoreSchema(db,meta());db.close();store=openStore(root);const services=createServices(store,new Map());
  try{
   const context={expectedWorkspaceOrigin:info.workspaceOrigin};assert.deepEqual(await services.call('timeline.get',{projectId:f.projectId}),f.timeline);
@@ -280,7 +280,7 @@ test('restored33 keeps source inspection and LUT import denied; reads and explic
 test('cold capture and migration refuse missing32 and corrupt image evidence before publishing a destination',async t=>{
  for(const kind of ['missing32','corrupt evidence']){
   const base=mkdtempSync(path.join(tmpdir(),'mioon-mixed-refuse-'));t.after(()=>rmSync(base,{recursive:true,force:true}));const root=path.join(base,'source'),backup=path.join(base,'backup');
-  const store=openStore(root);seed(store.db,{render:false});if(kind==='missing32')store.db.exec('DELETE FROM schema_version WHERE version=32');else changeTimeline(store.db,value=>{value.clips[1].colour.source.evidence.sha256='f'.repeat(64);});store.close();
+  const store=openStore(root);store.db.exec('DELETE FROM schema_version WHERE version=34');seed(store.db,{render:false});if(kind==='missing32')store.db.exec('DELETE FROM schema_version WHERE version=32');else changeTimeline(store.db,value=>{value.clips[1].colour.source.evidence.sha256='f'.repeat(64);});store.close();
   const bytes=readFileSync(path.join(root,'workbench.sqlite'));let consumed=false;await assert.rejects(withOrdinaryMigrationSource(path.join(root,'workbench.sqlite'),()=>{consumed=true;}));assert.equal(consumed,false);
   await assert.rejects(createWorkspaceBackup({source:root,destination:backup}),{code:'WORKSPACE_BACKUP_DATABASE_INVALID'});assert.equal(existsSync(path.join(backup,'COMPLETE.json')),false);assert.deepEqual(readFileSync(path.join(root,'workbench.sqlite')),bytes);
  }

@@ -124,10 +124,10 @@ for(const kind of ['receipt mismatch','invalid semantic metadata'])test(`metadat
  const before=snapshot(db);assert.throws(()=>initializeWorkspaceSchema28(db),{code:'LUT_RESOURCE_INVALID'});assert.deepEqual(snapshot(db),before);
 });
 
-test('new pair contracts accept exactly24/25,26/27,28/29,30/31 and32/33, never numerical neighbors or cross-pairs',()=>{
- for(const version of [1,24,26,28,30,32])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
- for(const version of [0,25,27,29,31,33,34,28.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
- for(const [index,profile]of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5'].entries())for(const sourceSchema of [24,26,28,30,32])for(const databaseSchemaVersion of [25,27,29,31,33]){
+test('new pair contracts accept exactly24/25,26/27,28/29,30/31 32/33 and34/35, never numerical neighbors or cross-pairs',()=>{
+ for(const version of [1,24,26,28,30,32,34])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
+ for(const version of [0,25,27,29,31,33,35,36,28.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
+ for(const [index,profile]of ['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6'].entries())for(const sourceSchema of [24,26,28,30,32,34])for(const databaseSchemaVersion of [25,27,29,31,33,35]){
   assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,sourceSchema===24+index*2&&databaseSchemaVersion===25+index*2);
  }
 });

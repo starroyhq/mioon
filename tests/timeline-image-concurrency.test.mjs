@@ -266,6 +266,7 @@ for (const location of ['export', 'receipt']) {
       status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp};
     store.put('exports', rendered);
     db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(rendered.requestId, 'a'.repeat(64), JSON.stringify(rendered));
+    db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
     assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, 32);
     assert.equal(installCurrentWorkspaceRestoreSchema(db, {restorationId: randomUUID(),
       workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64),

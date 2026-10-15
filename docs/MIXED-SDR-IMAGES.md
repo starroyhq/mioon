@@ -1,5 +1,9 @@
 # Mixed SDR static PNG profile
 
+This document describes the closed PNG generation (schema32/33). The later,
+separately versioned restricted JFIF extension is documented in
+`JFIF-SDR-IMAGES.md`; it does not widen this PNG profile.
+
 This increment is opt-in. Existing unadopted image/video timelines keep their
 historical renderer. Existing managed-video source, clip and render-v1 schemas
 remain closed and retain their original graph and scaling. It is **not** HDR,

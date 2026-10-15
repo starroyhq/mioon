@@ -1,4 +1,4 @@
-import {nullableTimelineClipColourSchema} from '../../contracts/src/timeline-colour.ts';
+import {nullableTimelineClipColourSchema,timelineImageClipColourSchema} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineImageSourceServices} from './timeline-image-source.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
 import {createLutResourceServices} from './lut-resources.ts';
@@ -186,7 +186,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   decode:createTimelineAudioPreviewDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:signal=>terminateMediaProcesses({signal}),waitForClose:signal=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
- const imageColourSource=restored?{...inactive(),handlers:{'timeline.colour.image.inspect':disabled}}:createTimelineImageSourceServices(store,{signal:ownerSignal,runtime:{validateSource:validateManagedSource,
+ const imageColourSource=restored?{...inactive(),handlers:{'timeline.colour.image.inspect':disabled,'timeline.colour.jpeg.inspect':disabled}}:createTimelineImageSourceServices(store,{signal:ownerSignal,runtime:{validateSource:validateManagedSource,runStreaming,waitForMediaProcesses,
   assertOrdinaryWorkspace:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();},ownsLock:()=>ownsStoreLock(store),
   readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(db,projectId,assetId),
  }});
@@ -349,14 +349,15 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   checkpoint(signal);
   const operation=(async()=>{
    if(restored){
-    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect')throw workspaceRestoreError();
+    if(op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.audioPreview.plan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op,input));
     // Frozen restored profiles admit only their own colour generation: video
-    // in 31, and the separately versioned PNG/mixed generation in 33.
+    // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35].includes(restored.schemaVersion))throw workspaceRestoreError();
      const colour=op==='timeline.clip.add'?parsed.colour:parsed.patch.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
+     if(restored.schemaVersion===33&&!nullableTimelineClipColourSchema.safeParse(colour).success&&!timelineImageClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
     }
     if(Object.hasOwn(restoredReads.readers,op))return restoredReads.call(op,parsed,{signal});
     const saved=restoredReads.replay(op,parsed);if(saved)return publicValue(saved.response);

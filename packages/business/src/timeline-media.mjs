@@ -18,7 +18,7 @@ import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {createTimelineFloatStaging} from './timeline-float-staging.ts';
 import {planTimelineExportRange,validateTimelineExportRangeOutputStart} from './timeline-export-range-plan.ts';
-import {isTimelineColourSnapshot,projectTimelineColourPlan,assertTimelineImageCompositorInputCount,TIMELINE_MIXED_COLOUR_RENDER_PROFILE} from '../../contracts/src/timeline-colour.ts';
+import {isTimelineColourSnapshot,projectTimelineColourPlan,assertTimelineImageCompositorInputCount,TIMELINE_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE} from '../../contracts/src/timeline-colour.ts';
 import {prepareTimelineColourLuts,timelineColourInputFilter,TIMELINE_COLOUR_OUTPUT_FILTER,TIMELINE_COLOUR_OUTPUT_ARGS} from './timeline-colour-lut.ts';
 import {validateTimelineColourSourceInterpretation} from './timeline-colour-source.ts';
 
@@ -84,7 +84,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
  checkMediaEffect(beforeEffect,signal);
  const timeline=snapshot?.timeline,tracks=validateTimeline(timeline,assets);
  validateSubtitleSnapshotProfile(snapshot);
- if(snapshot?.colourPlan?.profileId===TIMELINE_MIXED_COLOUR_RENDER_PROFILE)projectTimelineColourPlan(snapshot);
+ if([TIMELINE_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE].includes(snapshot?.colourPlan?.profileId))projectTimelineColourPlan(snapshot);
  if(!isTimelineExportSnapshot(snapshot)||!isTimelineColourSnapshot(snapshot))throw Object.assign(Error('The saved export delivery profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
  const colour=snapshot.colourPlan,colourClips=new Map((colour?.clips??[]).map(item=>[item.clipId,item]));
  if(colour)for(const item of colour.clips){const clip=timeline.clips.find(value=>value.id===item.clipId),asset=assets.get(item.assetId);
@@ -111,7 +111,7 @@ export async function renderTimeline(snapshot,assets,destination,{signal,beforeE
    effect=colourStage.effect;
    const images=colour.clips.filter(item=>item.kind==='image').map(item=>{
     const clip=timeline.clips.find(value=>value.id===item.clipId),asset=assets.get(item.assetId),creativeLutPath=colourStage.path(item.clipId);
-    return {clipId:item.clipId,assetSha256:item.assetSha256,sourcePath:asset.path,sourceWidth:item.evidence.width,sourceHeight:item.evidence.height,
+    return {clipId:item.clipId,assetSha256:item.assetSha256,sourcePath:asset.path,sourceWidth:item.evidence.width,sourceHeight:item.evidence.height,...(item.sourceProfileId==='jfif-ycbcr8-srgb-v1'?{jpegEvidence:item.evidence}:{}),
      width:clip.rect.width,height:clip.rect.height,creativeLutPath,lookCacheKey:creativeLutPath?JSON.stringify(item.look):null};
    });
    if(images.length){imageStage=await prepareTimelineImageLayers(images,destination,{signal,beforeEffect:effect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses});effect=imageStage.effect;}

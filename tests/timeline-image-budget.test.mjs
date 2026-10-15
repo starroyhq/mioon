@@ -374,6 +374,7 @@ test('cold backup32 and restored33 preserve exact-limit evidence, receipts and h
   const changed = await f.call('timeline.track.update', f.params(f.timeline, {trackId: track.id, patch: {name: track.name + 'x'}}));
   assert.equal(encodedBytes(changed), limit);
   const before = captureEdits(f.store.db);
+  f.store.db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
   await f.close();
   const dbBytes = readFileSync(path.join(f.root, 'workbench.sqlite'));
   const base = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-restore-'));
@@ -405,6 +406,7 @@ test('restored33 install rolls back exact-limit timeline, receipt and history by
   await f.close();
   const db = new DatabaseSync(path.join(f.root, 'workbench.sqlite'));
   try {
+    db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
     const before = snapshot(db);
     let reached = false;
     const interrupted = facade(db, event => {

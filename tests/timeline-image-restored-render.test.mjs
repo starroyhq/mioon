@@ -153,6 +153,7 @@ test('cold backup32→restored33 explicitly rerenders mixed PNG/video/subtitle w
     const sourceFiles = new Map([[store.get('assets', video.id).relativePath, videoBytes],
       [store.get('assets', image.id).relativePath, imageBytes],
       [baseline.asset.relativePath, await readFile(baseline.file)]]);
+    store.db.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
     assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 32, profile: 'ordinary'});
     await close();
     const coldDb = await readFile(path.join(source, 'workbench.sqlite'));

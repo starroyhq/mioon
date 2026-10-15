@@ -7,7 +7,7 @@ export function timelineImageResponseBudgetIssue(timeline:TimelineWithClips,maxB
  code:'TIMELINE_IMAGE_AGGREGATE_BUDGET';message:string;status:409;details:{maxBytes:number;actualBytes:number};
 }|null {
  if(!Array.isArray(timeline.clips)||timeline.clips.length>100||!timeline.clips.some(clip=>clip!==null&&typeof clip==='object'&&clip.colour!==null&&typeof clip.colour==='object'&&
-  'profileId' in clip.colour&&clip.colour.profileId==='mioon-srgb-image-clip-v1'))return null;
+  'profileId' in clip.colour&&['mioon-srgb-image-clip-v1','mioon-jfif-image-clip-v1'].includes(String(clip.colour.profileId))))return null;
  const actualBytes=new TextEncoder().encode(JSON.stringify(timeline)).byteLength;
  if(actualBytes<=maxBytes)return null;
  return {code:'TIMELINE_IMAGE_AGGREGATE_BUDGET',status:409,

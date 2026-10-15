@@ -4,7 +4,7 @@ import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue,isTi
 import {createOwnedMediaGraphReader} from './inspection.mjs';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.mjs';
 import {validateManagedSource,verifiedManagedHash,sameManagedFile} from './managed-media.mjs';
-import {run,checkMediaEffect} from './media-runtime.mjs';
+import {run,runStreaming,checkMediaEffect} from './media-runtime.mjs';
 import {parseProbeOutput,withProbePermit} from './media-probe.mjs';
 import {validateTimeline,freezeTimelineSnapshot} from './timeline-inputs.mjs';
 import {isTimelineColourSnapshot} from '../../contracts/src/timeline-colour.ts';
@@ -95,10 +95,13 @@ export function readTimelinePreflightSnapshot(store,projectId,exportSettings,del
 
 // Both worker and preflight use one restricted local-only metadata probe. The
 // allowlist includes all supported still/audio/video containers, not playlists.
-export async function probeTimelineSource(file,{signal,timeout,beforeSpawn,beforeEffect}={}){
+export async function probeTimelineSource(file,{signal,timeout,beforeSpawn,beforeEffect,verifiedJfif=false}={}){
  return withProbePermit(signal,async()=>{
   const output=await run('ffprobe',['-v','error','-protocol_whitelist','file,pipe',
-   '-format_whitelist','mov,matroska,mp3,wav,png_pipe,jpeg_pipe,webp_pipe',
+   // Only a hash-owned, structurally admitted and decoded JFIF receives this
+   // closed demuxer choice. Never admit image2 or its filename patterns globally.
+   ...(verifiedJfif===true?['-format_whitelist','jpeg_pipe','-f','jpeg_pipe']:
+    ['-format_whitelist','mov,matroska,mp3,wav,png_pipe,jpeg_pipe,webp_pipe']),
    '-show_format','-show_streams','-of','json',file],{signal,timeout,beforeSpawn,beforeEffect});
   checkMediaEffect(beforeEffect,signal);return parseProbeOutput(output);
  });
@@ -139,9 +142,9 @@ export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,s
   checkMediaEffect(beforeEffect,signal);
   const checkSource=()=>{checkMediaEffect(beforeEffect,signal);const latest=readAsset(frozen.id);if(!latest||latest.projectId!==projectId||latest.sha256!==a.sha256||latest.mimeType!==a.mimeType||latest.relativePath!==a.relativePath||!sameManagedFile(hashed.info,validateManagedSource(root,a,{maxBytes}).info))throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from frozen asset hash');};
   checkSource();
-  const imageColour=snapshot.colourPlan?.clips.some(item=>item.assetId===a.id&&item.kind==='image')?await readManagedTimelineImage(root,a,{signal,beforeEffect:checkSource,expected:hashed.info},{validateSource:validateManagedSource}):null;
+  const imageColour=snapshot.colourPlan?.clips.some(item=>item.assetId===a.id&&item.kind==='image')?await readManagedTimelineImage(root,a,{signal,beforeEffect:checkSource,expected:hashed.info},{validateSource:validateManagedSource,runStreaming}):null;
   checkSource();
-  const media=await probe(hashed.file,{signal,beforeSpawn:checkSource,beforeEffect});checkMediaEffect(beforeEffect,signal);checkSource();
+  const media=await probe(hashed.file,{signal,beforeSpawn:checkSource,beforeEffect,...(imageColour?.evidence.profileId==='jfif-ycbcr8-srgb-v1'?{verifiedJfif:true}:{})});checkMediaEffect(beforeEffect,signal);checkSource();
   if(snapshot.colourPlan)for(const planned of snapshot.colourPlan.clips.filter(item=>item.assetId===a.id)){
    const clip=snapshot.timeline.clips.find(item=>item.id===planned.clipId);
    if(planned.kind==='image')validateTimelineImageSourceInterpretation({source:clip?.colour?.source,evidence:imageColour?.evidence,probe:media.probe,assetSha256:hashed.sha256,streamIndex:media.videoStreamIndex});

@@ -1,4 +1,4 @@
-import {isTimelineImageSourceInspection} from '../../contracts/src/timeline-colour.ts';
+import {isTimelineImageSourceInspection,isTimelineJpegSourceInspection} from '../../contracts/src/timeline-colour.ts';
 import {isProxy} from 'node:util/types';
 import {isLookPackInspectInput,isLookPackInspectResponse} from '@mioon/contracts';
 import {isTimelineColourSourceInspection} from '@mioon/contracts/timeline-colour';
@@ -253,6 +253,8 @@ export function createClient(clientOptions = {}) {
     if(!imageReadValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid image record.');
     if (operation === 'export.get' && !isTimelineExportFloatReadResponse(result, parsed.exportId, isTimelineRenderRecord))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid float export report.');
+    if (operation === 'timeline.colour.jpeg.inspect' && !isTimelineJpegSourceInspection(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The JPEG source inspection reply does not match the request.');
     if (operation === 'timeline.colour.image.inspect' && !isTimelineImageSourceInspection(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid image colour inspection.', {details:{operation}});
     if (operation === 'timeline.colour.source.inspect' && !isTimelineColourSourceInspection(result, parsed))

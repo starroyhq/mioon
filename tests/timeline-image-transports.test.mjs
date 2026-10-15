@@ -252,7 +252,8 @@ async function fixture(t) {
       db.close(); db = undefined; await server.close(); server = undefined;
       const database = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'));
       let restored;
-      try { restored = installCurrentWorkspaceRestoreSchema(database, {restorationId: randomUUID(), workspaceOrigin: randomUUID(),
+      try { database.exec('DELETE FROM schema_version WHERE version=34'); // Explicit historical PNG-only fixture.
+        restored = installCurrentWorkspaceRestoreSchema(database, {restorationId: randomUUID(), workspaceOrigin: randomUUID(),
         sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: stamp}); }
       finally { database.close(); }
       assert.equal(restored.schemaVersion, 33); await open(); return restored;

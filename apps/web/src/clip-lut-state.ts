@@ -1,8 +1,8 @@
 import { isLookPackInspectResponse, lookPackInspectResponseSchema } from '../../../packages/contracts/src/look-pack-inspection.ts';
 import type { LookPackInspection } from '../../../packages/contracts/src/look-pack.ts';
 import { isLookPackBytes, parseLookPackBytes } from '../../../packages/business/src/look-pack.ts';
-import { isTimelineImageSourceInspection, TIMELINE_IMAGE_CLIP_COLOUR_PROFILE, TIMELINE_IMAGE_SOURCE_PROFILE, timelineImageEvidenceSchema, clipColourSchema, isTimelineColourSourceInspection, TIMELINE_CLIP_COLOUR_PROFILE, TIMELINE_COLOUR_SOURCE_PROFILE, timelineColourSourceEvidenceStatus } from '../../../packages/contracts/src/timeline-colour.ts';
-import type { ClipColour, TimelineColourSourceInspection, TimelineImageSourceInspection } from '../../../packages/contracts/src/timeline-colour.ts';
+import { isTimelineJpegSourceInspection, TIMELINE_JPEG_CLIP_COLOUR_PROFILE, TIMELINE_JPEG_SOURCE_PROFILE, timelineAnyImageEvidenceSchema, isTimelineImageSourceInspection, TIMELINE_IMAGE_CLIP_COLOUR_PROFILE, TIMELINE_IMAGE_SOURCE_PROFILE, timelineImageEvidenceSchema, clipColourSchema, isTimelineColourSourceInspection, TIMELINE_CLIP_COLOUR_PROFILE, TIMELINE_COLOUR_SOURCE_PROFILE, timelineColourSourceEvidenceStatus } from '../../../packages/contracts/src/timeline-colour.ts';
+import type { ClipColour, TimelineColourSourceInspection, TimelineImageSourceInspection, TimelineJpegSourceInspection } from '../../../packages/contracts/src/timeline-colour.ts';
 import { isLutResponse, lutImportInputSchema, lutImportResponseSchema, lutInspectResponseSchema, lutListResponseSchema, LUT_RESOURCE_LIMITS } from '../../../packages/contracts/src/lut-resources.ts';
 import { clipDraftEnvelopeSchema } from '../../../packages/contracts/src/local-drafts.ts';
 import type { ClipDraftKey } from '../../../packages/contracts/src/local-drafts.ts';
@@ -13,7 +13,7 @@ import type { LutImportInput, LutResource } from '../../../packages/contracts/sr
 export type ClipLutRpc = (operation: string, input: Record<string, unknown>, options?: { signal?: AbortSignal }) => Promise<unknown>;
 export interface ClipLutContext {
   scope: string; projectId: string; timelineId: string; clipId: string; assetId: string; assetSha256: string;
-  colour?: ClipColour | null; blocked: boolean; kind?: 'video' | 'image' | 'audio';
+  colour?: ClipColour | null; blocked: boolean; kind?: 'video' | 'image' | 'audio'; mimeType?: string;
 }
 type Range = '' | 'limited' | 'full';
 type Phase = 'idle' | 'loading' | 'ready' | 'error';
@@ -22,7 +22,7 @@ export interface ClipLutImportRecord {
   phase: 'sending' | 'unknown' | 'imported' | 'rejected'; error: string; resource: LutResource | null;
 }
 export interface ClipLutState {
-  opened: boolean; sourcePhase: Phase; inspection: TimelineColourSourceInspection | TimelineImageSourceInspection | null; sourceError: string;
+  opened: boolean; sourcePhase: Phase; inspection: TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection | null; sourceError: string;
   range: Range; sourceDeclared: boolean; listPhase: Phase; resources: LutResource[]; nextAfter: string | null; listError: string;
   selectedId: string; selected: LutResource | null; resourcePhase: Phase; resourceError: string; lookDeclared: boolean;
   importing: boolean; importRecord: ClipLutImportRecord | null; importError: string;
@@ -34,14 +34,14 @@ const pendingImports = new Map<string, ClipLutImportRecord>();
 const initial = (): ClipLutState => ({ opened: false, sourcePhase: 'idle', inspection: null, sourceError: '', range: '', sourceDeclared: false,
   listPhase: 'idle', resources: [], nextAfter: null, listError: '', selectedId: '', selected: null, resourcePhase: 'idle', resourceError: '', lookDeclared: false,
   importing: false, importRecord: null, importError: '', recoveryPhase: 'idle', recovery: null, recoveryError: '', packPhase: 'idle', pack: null, packError: '' });
-const ownerKey = (c: ClipLutContext): string => JSON.stringify([c.scope, c.projectId, c.timelineId, c.clipId, c.assetId, c.assetSha256, c.kind]);
+const ownerKey = (c: ClipLutContext): string => JSON.stringify([c.scope, c.projectId, c.timelineId, c.clipId, c.assetId, c.assetSha256, c.kind, c.mimeType]);
 const normalized = (tag: string | null): string => (tag ?? '').trim().toLowerCase();
 const absent = (tag: string | null): boolean => ['', 'unknown', 'unspecified', 'reserved'].includes(normalized(tag));
 /** Declarations cannot override known HDR/Log, conflicting colour tags or range.
  * The backend additionally verifies the selected stream and supported format. */
-export function clipLutSourceIssue(value: TimelineColourSourceInspection | TimelineImageSourceInspection | null, range: Range): string {
+export function clipLutSourceIssue(value: TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection | null, range: Range): string {
   if (!value) return '请先检查当前来源。';
-  if ('kind' in value) return timelineImageEvidenceSchema.safeParse(value.evidence).success ? '' : '图片证据无效，请重新检查。';
+  if ('kind' in value) return timelineAnyImageEvidenceSchema.safeParse(value.evidence).success ? '' : '图片证据无效，请重新检查。';
   if (value.status === 'unsupported' || timelineColourSourceEvidenceStatus(value.evidence) === 'unsupported') return value.reason || '此来源不支持当前 Rec.709 SDR 流程；HDR / Log、冲突标签、RGB / alpha 与不受支持的像素格式不能通过声明覆盖。';
   if (value.streamIndex === null || value.evidence.hdrMetadata || [value.evidence.primaries, value.evidence.transfer, value.evidence.matrix].some(tag => !absent(tag) && normalized(tag) !== 'bt709')) return '来源存在 HDR、Log 或非 Rec.709 标签，不能用手动声明覆盖。';
   const known = normalized(value.evidence.range);
@@ -180,11 +180,11 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       const owner = generation, serial = ++sourceSerial, input = { projectId: context.projectId, assetId: context.assetId }, hash = context.assetSha256;
       emit({ sourcePhase: 'loading', inspection: null, sourceError: '', range: '', sourceDeclared: false });
       try {
-        const image = context.kind === 'image';
-        const value = await call(image ? 'timeline.colour.image.inspect' : 'timeline.colour.source.inspect', input);
+        const image = context.kind === 'image', jpeg = image && context.mimeType === 'image/jpeg';
+        const value = await call(jpeg ? 'timeline.colour.jpeg.inspect' : image ? 'timeline.colour.image.inspect' : 'timeline.colour.source.inspect', input);
         if (!owns(owner) || serial !== sourceSerial) return;
-        if (!(image ? isTimelineImageSourceInspection(value, input) : isTimelineColourSourceInspection(value, input)) || (value as TimelineColourSourceInspection | TimelineImageSourceInspection).assetSha256 !== hash) throw Error('来源检查回复与当前素材或文件指纹不一致。');
-        emit({ sourcePhase: 'ready', inspection: copy(value as TimelineColourSourceInspection | TimelineImageSourceInspection) });
+        if (!(jpeg ? isTimelineJpegSourceInspection(value, input) : image ? isTimelineImageSourceInspection(value, input) : isTimelineColourSourceInspection(value, input)) || (value as TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection).assetSha256 !== hash) throw Error('来源检查回复与当前素材或文件指纹不一致。');
+        emit({ sourcePhase: 'ready', inspection: copy(value as TimelineColourSourceInspection | TimelineImageSourceInspection | TimelineJpegSourceInspection) });
       } catch (error) { if (owns(owner) && serial === sourceSerial) emit({ sourcePhase: 'error', sourceError: errorMessage(error, '来源检查失败。') }); }
     },
     chooseRange(value: string): void { if (allowed() && ['', 'limited', 'full'].includes(value)) emit({ range: value as Range, sourceDeclared: false }); },
@@ -193,7 +193,7 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       if (!allowed() || !state.sourceDeclared || state.sourcePhase !== 'ready' || clipLutSourceIssue(state.inspection, state.range)) return false;
       const inspected = state.inspection!;
       if (inspected.assetId !== context.assetId || inspected.assetSha256 !== context.assetSha256) return false;
-      const next: ClipColour = 'kind' in inspected ? {profileId: TIMELINE_IMAGE_CLIP_COLOUR_PROFILE, source: {assetSha256: inspected.assetSha256, profileId: TIMELINE_IMAGE_SOURCE_PROFILE, interpretation: 'srgb', declaredBy: 'user', declaredAt: now(), evidence: copy(inspected.evidence)}, look: context.colour?.look ?? null} : { profileId: TIMELINE_CLIP_COLOUR_PROFILE, source: { assetSha256: inspected.assetSha256, streamIndex: inspected.streamIndex!,
+      const next: ClipColour = 'kind' in inspected ? {profileId: inspected.evidence.profileId===TIMELINE_JPEG_SOURCE_PROFILE ? TIMELINE_JPEG_CLIP_COLOUR_PROFILE : TIMELINE_IMAGE_CLIP_COLOUR_PROFILE, source: {assetSha256: inspected.assetSha256, profileId: inspected.evidence.profileId, interpretation: 'srgb', declaredBy: 'user', declaredAt: now(), evidence: copy(inspected.evidence)}, look: context.colour?.look ?? null} as ClipColour : { profileId: TIMELINE_CLIP_COLOUR_PROFILE, source: { assetSha256: inspected.assetSha256, streamIndex: inspected.streamIndex!,
         profileId: TIMELINE_COLOUR_SOURCE_PROFILE, range: state.range as 'limited' | 'full', declaredBy: 'user', declaredAt: now() }, look: context.colour?.look ?? null };
       edit(clipColourSchema.parse(next)); emit({ sourceDeclared: false }); return true;
     },

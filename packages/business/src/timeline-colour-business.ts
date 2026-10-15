@@ -18,7 +18,7 @@ export function validateTimelineColourBindings(db:DatabaseSync,timeline:ColourTi
     if(!parsed.success||parsed.data===null)throw fault('TIMELINE_COLOUR_SOURCE_MISMATCH');
     const source=assets.get(clip.assetId),track=timeline.tracks.find(item=>item.id===clip.trackId),colour=parsed.data;
     if(!source||source.id!==clip.assetId||source.projectId!==undefined&&source.projectId!==timeline.projectId||
-      track?.kind!=='video'||(colour.source===null?!['video/mp4','video/webm','image/png'].includes(source.mimeType):colour.profileId==='mioon-srgb-image-clip-v1'?source.mimeType!=='image/png':!source.mimeType.startsWith('video/'))||colour.source!==null&&colour.source.assetSha256!==source.sha256)
+      track?.kind!=='video'||(colour.source===null?!['video/mp4','video/webm','image/png','image/jpeg'].includes(source.mimeType):colour.profileId==='mioon-srgb-image-clip-v1'?source.mimeType!=='image/png':colour.profileId==='mioon-jfif-image-clip-v1'?source.mimeType!=='image/jpeg':!source.mimeType.startsWith('video/'))||colour.source!==null&&colour.source.assetSha256!==source.sha256)
       throw fault('TIMELINE_COLOUR_SOURCE_MISMATCH');
     // source:null is a deliberately invalidated state, not authority to render.
     // The independent creative look remains editable and survives replacement.

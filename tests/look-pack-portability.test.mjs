@@ -11,7 +11,7 @@ import { run } from '../packages/business/src/media-runtime.mjs';
 import { createWorkspaceBackup } from '../packages/business/src/workspace-backup.mjs';
 import { restoreWorkspaceBackup } from '../packages/business/src/workspace-restore.mjs';
 
-test('project-owned Look survives removed source file, cold reopen, render and restored33 backup', { timeout: 120000 }, async t => {
+for (const sourceSchema of [32, 34]) test(`project-owned Look survives removed source file, cold reopen, render and restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');
   t.after(() => rm(base, { recursive: true, force: true }));
   const localPack = path.join(base, 'selected.mioon-look.cube'), source = path.join(base, 'source.mp4');
@@ -41,10 +41,10 @@ test('project-owned Look survives removed source file, cold reopen, render and r
     const accepted = await services.call('timeline.render', { projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export' });
     worker = startWorker(store, services, new Map()); await worker.tick();
     const result = await services.call('export.get', { exportId: accepted.id }); assert.equal(result.status, 'succeeded', JSON.stringify(result.error));
-  } finally { await worker?.stop(); await services.drain(); store.close(); }
+  } finally { await worker?.stop(); await services.drain(); if (sourceSchema === 32) store.db.exec('DELETE FROM schema_version WHERE version=34'); /* Explicit historical PNG-generation fixture. */ store.close(); }
   const backup = path.join(base, 'backup'), restored = path.join(base, 'restored');
-  assert.equal((await createWorkspaceBackup({ source: root, destination: backup })).databaseSchemaVersion, 32);
-  assert.equal((await restoreWorkspaceBackup({ directory: backup, destination: restored })).databaseSchemaVersion, 33);
+  assert.equal((await createWorkspaceBackup({ source: root, destination: backup })).databaseSchemaVersion, sourceSchema);
+  assert.equal((await restoreWorkspaceBackup({ directory: backup, destination: restored })).databaseSchemaVersion, sourceSchema + 1);
   store = openStore(restored); services = createServices(store, new Map()); worker = undefined;
   try {
     assert.deepEqual(await services.call('lut.look.inspect', { projectId: project.id, lutId: imported.resource.id }), inspection);

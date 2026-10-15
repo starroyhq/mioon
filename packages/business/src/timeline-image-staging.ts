@@ -1,3 +1,5 @@
+import {JFIF_INPUT_ARGS,JFIF_RGB24_FILTER,jpegDecodeIdentity} from './timeline-jpeg-decode.ts';
+import type {TimelineJpegEvidence} from '../../contracts/src/timeline-colour.ts';
 import {constants,openSync,fstatSync,readSync,closeSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -14,6 +16,8 @@ export interface TimelineImageLayerInput {
  readonly clipId:string;readonly assetSha256:string;readonly sourcePath:string;
  readonly sourceWidth:number;readonly sourceHeight:number;readonly width:number;readonly height:number;
  readonly creativeLutPath?:string;
+ /** Present only for the separately admitted JPEG generation. */
+ readonly jpegEvidence?:TimelineJpegEvidence;
  /** Exact canonical creative binding identity, including strength and profile. */
  readonly lookCacheKey?:string|null;
 }
@@ -78,6 +82,7 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
    !/^[a-f0-9]{64}$/u.test(item.assetSha256)||!Number.isSafeInteger(item.width)||!Number.isSafeInteger(item.height)||item.width<1||item.height<1||item.width>4096||item.height>4096||item.width*item.height>TIMELINE_IMAGE_LAYER_LIMITS.outputPixels||
    !Number.isSafeInteger(item.sourceWidth)||!Number.isSafeInteger(item.sourceHeight)||item.sourceWidth<1||item.sourceHeight<1||item.sourceWidth>4096||item.sourceHeight>4096||item.sourceWidth*item.sourceHeight>TIMELINE_IMAGE_LAYER_LIMITS.sourcePixels||
    (item.creativeLutPath===undefined?item.lookCacheKey!=null:!validPath(item.creativeLutPath)||typeof item.lookCacheKey!=='string'||item.lookCacheKey.length<1||item.lookCacheKey.length>2048))throw fault();
+  if(item.jpegEvidence){jpegDecodeIdentity(item.jpegEvidence);if(item.jpegEvidence.sha256!==item.assetSha256||item.jpegEvidence.width!==item.sourceWidth||item.jpegEvidence.height!==item.sourceHeight)throw fault();}
   ids.add(item.clipId);
  }
  if(!inputs.length)return {path:()=>undefined,effect:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),verifyBytes:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),cleanup:()=>true,totalBytes:0,totalPixels:0};
@@ -92,14 +97,18 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
    verifyBytes();activeSource={file:item.sourcePath,maximum:TIMELINE_IMAGE_LAYER_LIMITS.sourceBytes,...inspect(item.sourcePath,TIMELINE_IMAGE_LAYER_LIMITS.sourceBytes)};
    if(activeSource.sha256!==item.assetSha256)throw fault();
    activeLook=item.creativeLutPath===undefined?undefined:{file:item.creativeLutPath,maximum:21*1024*1024,...inspect(item.creativeLutPath,21*1024*1024)};
-   const key=digest(JSON.stringify(['static-image-evaluation-v1',item.assetSha256,'png-rgb8-srgb-v1',TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_DISPLAY_TABLE_SHA256,
-    TIMELINE_IMAGE_RESIZE_PROFILE_ID,'straight-source-premultiplied-rgba8-output',item.sourceWidth,item.sourceHeight,item.width,item.height,item.lookCacheKey??null,activeLook?.sha256??null]));
+   const identity=['static-image-evaluation-v1',item.assetSha256,'png-rgb8-srgb-v1',TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_DISPLAY_TABLE_SHA256,
+    TIMELINE_IMAGE_RESIZE_PROFILE_ID,'straight-source-premultiplied-rgba8-output',item.sourceWidth,item.sourceHeight,item.width,item.height,item.lookCacheKey??null,activeLook?.sha256??null];
+   const jpegIdentity=item.jpegEvidence?[...identity]:null;
+   if(jpegIdentity){jpegIdentity[0]='static-jfif-evaluation-v1';jpegIdentity[2]=item.jpegEvidence!.profileId;}
+   const key=digest(JSON.stringify(jpegIdentity?[...jpegIdentity,...jpegDecodeIdentity(item.jpegEvidence!)]:identity));
    let file=files.get(key);
    if(file===undefined){
     const pixels=item.width*item.height;if(pixels>TIMELINE_IMAGE_LAYER_LIMITS.totalOutputPixels-totalPixels||totalBytes>TIMELINE_IMAGE_LAYER_LIMITS.totalBytes-TIMELINE_IMAGE_LAYER_LIMITS.fileBytes)throw fault(true);
     file=path.join(owned.work,`image-${String(files.size).padStart(3,'0')}-${key}.png`);owned.reserve(file);verifyBytes();
-    const filters=timelineImageFilterGraph({input:'0:v:0',label:'layer',sourceWidth:item.sourceWidth,sourceHeight:item.sourceHeight,width:item.width,height:item.height,displayTablePath:tablePath,creativeLutPath:item.creativeLutPath});
-    await runtime.run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y','-threads','1','-filter_threads','1','-filter_complex_threads','1','-noautorotate','-i',item.sourcePath,
+    const filters=timelineImageFilterGraph({input:item.jpegEvidence?'jpeg_rgb':'0:v:0',label:'layer',sourceWidth:item.sourceWidth,sourceHeight:item.sourceHeight,width:item.width,height:item.height,displayTablePath:tablePath,creativeLutPath:item.creativeLutPath});
+    if(item.jpegEvidence)filters.unshift(`[0:v:0]${JFIF_RGB24_FILTER}[jpeg_rgb]`);
+    await runtime.run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y','-threads','1','-filter_threads','1','-filter_complex_threads','1',...(item.jpegEvidence?JFIF_INPUT_ARGS:[]),'-noautorotate','-i',item.sourcePath,
      '-filter_complex',filters.join(';'),'-map','[layer]','-frames:v','1','-an','-threads','1','-c:v','png','-pix_fmt','rgba','-compression_level','1','-map_metadata','-1',
      '-fs',String(TIMELINE_IMAGE_LAYER_LIMITS.fileBytes),'-f','image2','-update','1',file],{timeout:TIMELINE_IMAGE_LAYER_LIMITS.deriveTimeoutMs,maxStdoutBytes:0,maxStderrBytes:65536,signal:options.signal,beforeEffect:verifyBytes});
     verifyBytes();const recorded=inspect(file,TIMELINE_IMAGE_LAYER_LIMITS.fileBytes,undefined,{width:item.width,height:item.height});
