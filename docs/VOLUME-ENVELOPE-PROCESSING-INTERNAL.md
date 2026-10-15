@@ -93,8 +93,41 @@ Its retained report SHA-256 is
 `34028bb01b5ff3d3374557444c94d8b573860e13aafd986f17a6400a76b168b1`.
 That isolates compiler/parser/fence behavior, not this integrated consumer graph.
 
-Still required before feature activation: exact short integrated render/continuous/
+At the processing checkpoint, still required before feature activation: exact short integrated render/continuous/
 full/isolated PCM and segmentation/seek equivalence, resource qualification,
 complete durable/workspace admission and history/replay/replacement proofs,
 then separately bounded drafts/capability/UI. No GUI, CLI transport, long media
 acceptance, installation, build, public push or Mac operation occurred here.
+
+
+## Subsequent one-shot integrated media acceptance
+
+The bounded gate subsequently passed on the exact source commit
+`72d78150c559a1558580b2288563b7d78e869e18`, without source changes. It ran once
+from 2026-10-15 22:21:58.528 UTC to 22:22:15.005 UTC (16,477 ms).
+The five snapshots exercised actual shared graph and decoder paths, full/isolated
+analysis, continuous blocks/seeks, unrelated segment edges and a rebased split.
+All 18 comparisons passed: maximum absolute error
+`7.450580596923828e-09` against the predeclared fixed `2e-6` cross-path threshold.
+Absent/null same-path PCM remained bit-identical.
+
+All 54 children (37 FFmpeg, 17 FFprobe) exited and closed normally with code zero;
+identities retired, no signals were attempted, and no children or operations
+remained active/pending. Recorded work: 24 managed hashes, 27,649,920 hash bytes,
+1,341 source-work frames and 19,276,800 captured PCM bytes. Total retained evidence
+was 21,387,883 bytes, below the 32 MiB cap. Sampled harness RSS was 163,385,344 bytes:
+this is explicitly **not** proof of the production 96 MiB admission bound.
+
+The harness uses a synthetic immutable reader/owned-workspace assertion and an
+injected TERM-only runner. This qualifies the short integrated processing gate,
+not durable admission/mutation/replay, the default production supervisor, export
+orchestration/AAC, native GUI, long-duration behavior or feature activation.
+The original 231/232 combined test result and its separate 1/1 cancellation
+diagnostic above remain unchanged and are not superseded by this media result.
+
+The sanitized [acceptance summary](evidence/volume-envelope-integrated-acceptance.json)
+records the report, preparation review, manifest and harness SHA-256 values.
+Report SHA-256:
+`bd3684af0e4b78a2b1adb1ba66ec79726dbf11d70da4ff315de54d64bafd75bb`.
+All 22 pinned source hashes were reverified unchanged during this docs-only
+follow-up. No tests, media processes or source edits were performed for it.
