@@ -4,12 +4,20 @@ import {ListToolsRequestSchema, CallToolRequestSchema} from '@modelcontextprotoc
 import {createClient, workspaceOriginOptions, schemas, operationDefinition, discoverySchemas, discoveryEffects, effectAnnotations, discoverSchema, validateDiscovery, jsonSchema, successEnvelope, errorEnvelope, ClientError, VERSION} from '@mioon/client';
 
 import {translate} from '@mioon/i18n';
-import {presentationLocale, localizeToolDescription} from '@mioon/i18n/presentation';
+import {localizeToolDescription} from '@mioon/i18n/presentation';
+
+import {localizedLaunchOptions} from './launch-presentation.ts';
+const displayErrors = new WeakMap();
+function launchFailure(text, key) {
+  const error = new ClientError('VALIDATION_ERROR', text);
+  displayErrors.set(error, key);
+  throw error;
+}
 
 // Use the official SDK's low-level tool handlers deliberately: validation failures
 // and backend errors share the same safe, structured result envelope as the CLI.
 // No backend or credentials are required just to initialize/list/schema-discover.
-function launchOptions(argv) {
+function launchOptions(argv, onLocale) {
   // Preserve every legacy launch diagnostic when no presentation option is used.
   if (!argv.some(argument => argument === '--locale' || argument.startsWith('--locale='))) {
     let origin, supplied = false;
@@ -23,29 +31,17 @@ function launchOptions(argv) {
     }
     return Object.freeze({invocation: Object.freeze(workspaceOriginOptions(origin)), locale: undefined});
   }
-  let origin, locale;
-  const supplied = new Set();
-  for (let index = 0; index < argv.length; index++) {
-    const match = /^--(workspace-origin|locale)(?:=(.*))?$/s.exec(argv[index]);
-    if (!match || supplied.has(match[1]))
-      throw new ClientError('VALIDATION_ERROR', locale === undefined ? 'MCP accepts only one optional --workspace-origin UUID at process launch.' : 'MCP accepts only one optional --workspace-origin UUID and --locale zh-Hans|zh-Hant|en|ja at process launch.');
-    const [, name, inline] = match;
-    supplied.add(name);
-    const value = inline === undefined ? argv[++index] : inline;
-    if (value === undefined) throw new ClientError('VALIDATION_ERROR', name === 'workspace-origin' ? '--workspace-origin requires an explicit UUID.' : '--locale requires an explicit value.');
-    if (name === 'workspace-origin') origin = value;
-    else {
-      try { locale = presentationLocale(value); }
-      catch { throw new ClientError('VALIDATION_ERROR', '--locale must be one of zh-Hans, zh-Hant, en, ja.'); }
-    }
-  }
-  return Object.freeze({invocation: Object.freeze(workspaceOriginOptions(origin)), locale});
+  return localizedLaunchOptions(argv, value => {
+    try { return workspaceOriginOptions(value); }
+    catch (error) { displayErrors.set(error, 'mcp.error.origin'); throw error; }
+  }, launchFailure, onLocale);
 }
 let invocation, locale;
-try { ({invocation, locale} = launchOptions(process.argv.slice(2))); }
+try { ({invocation, locale} = launchOptions(process.argv.slice(2), value => { locale = value; })); }
 catch (error) {
   const envelope = errorEnvelope(error);
-  process.stderr.write(`${envelope.error.code}: ${envelope.error.message}\n`);
+  const key = displayErrors.get(error);
+  process.stderr.write(`${envelope.error.code}: ${locale === undefined || !key ? envelope.error.message : translate(locale, key)}\n`);
   process.exit(2);
 }
 // Immutable for this process. Connection/token reloads never update this pin.
@@ -81,4 +77,4 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   return {content: [{type: 'text', text: JSON.stringify(result)}], structuredContent: result, isError: !result.ok};
 });
 try { await server.connect(new StdioServerTransport()); }
-catch { process.stderr.write('Mioon MCP could not start the stdio transport.\n'); process.exitCode = 1; }
+catch { process.stderr.write(`${locale === undefined ? 'Mioon MCP could not start the stdio transport.' : translate(locale, 'mcp.error.transport')}\n`); process.exitCode = 1; }

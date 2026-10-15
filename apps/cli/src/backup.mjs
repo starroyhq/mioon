@@ -3,6 +3,7 @@
 // credentials, initialize services or contact a provider. Restore only installs
 // the fixed offline guard into a private candidate before atomic publication.
 import path from 'node:path';
+import {backupPresentationArguments, localizeBackupHelp, backupDiagnostic} from './backup-presentation.ts';
 import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
 
@@ -50,18 +51,24 @@ function absoluteDirectory(value) {
   return value;
 }
 
-export function parseBackupArguments(argv) {
+export function parseBackupArguments(argv, onLocale = () => {}) {
   if (!Array.isArray(argv) || argv.some(value => typeof value !== 'string')) fail();
-  if (argv.length === 0 || (argv.length === 1 && argv[0] === '--help')) return {command: 'help'};
-  if (argv.length === 1 && argv[0] === '--version') return {command: 'version'};
+  let visit = () => {};
+  if (argv.some(value => value === '--locale' || value.startsWith('--locale='))) ({argv, visit} = backupPresentationArguments(argv, fail, onLocale));
+  visit(0);
+  if (argv.length === 0 || (argv.length === 1 && argv[0] === '--help')) { visit(Infinity); return {command: 'help'}; }
+  if (argv.length === 1 && argv[0] === '--version') { visit(Infinity); return {command: 'version'}; }
   const [command, ...options] = argv;
   if (!['create', 'verify', 'restore', 'restore-status'].includes(command)) fail();
-  if (options.length === 1 && options[0] === '--help') return {command: 'help', topic: command};
+  if (options.length === 1 && options[0] === '--help') { visit(Infinity); return {command: 'help', topic: command}; }
   const allowed = command === 'create' ? ['--source', '--destination'] : command === 'restore' ? ['--directory', '--destination'] : command === 'restore-status' ? (options.includes('--directory') ? ['--directory', '--destination'] : ['--destination', '--restoration-id', '--backup-id', '--manifest-hash', '--source-db-hash']) : ['--directory'];
   const values = Object.create(null);
   for (let index = 0; index < options.length; index += 2) {
+    visit(index + 1);
     const flag = options[index], value = options[index + 1];
-    if (!allowed.includes(flag) || Object.hasOwn(values, flag) || value === undefined || value.startsWith('--')) fail();
+    if (!allowed.includes(flag) || Object.hasOwn(values, flag)) fail();
+    visit(index + 2, false);
+    if (value === undefined || value.startsWith('--')) fail();
     if (['--source', '--destination', '--directory'].includes(flag)) values[flag] = absoluteDirectory(value);
     else {
       const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -69,6 +76,7 @@ export function parseBackupArguments(argv) {
       values[flag] = value;
     }
   }
+  visit(Infinity);
   if (allowed.some(flag => !Object.hasOwn(values, flag))) fail();
   if (command === 'restore') return {command, directory: values['--directory'], destination: values['--destination']};
   if (command === 'restore-status' && values['--directory']) return {command, directory: values['--directory'], destination: values['--destination']};
@@ -161,13 +169,13 @@ function output(stream, text) {
 }
 
 export async function runBackupCli(argv = process.argv.slice(2)) {
-  let firstSignal, command;
+  let firstSignal, command, locale;
   let data;
   let error;
   try {
-    const input = parseBackupArguments(argv);
+    const input = parseBackupArguments(argv, value => { locale = value; });
     command = input.command;
-    if (input.command === 'help') data = help(input.topic);
+    if (input.command === 'help') data = localizeBackupHelp(help(input.topic), locale);
     else if (input.command === 'version') data = {name: 'mioon-backup', version: version()};
     else {
       const controller = new AbortController();
@@ -210,7 +218,7 @@ export async function runBackupCli(argv = process.argv.slice(2)) {
   }
   if (error) {
     await output(process.stdout, `${JSON.stringify({ok: false, error})}\n`);
-    await output(process.stderr, `${error.code}: ${error.message}\n`);
+    await output(process.stderr, `${error.code}: ${backupDiagnostic(error.code, error.message, locale)}\n`);
     return error.code === 'VALIDATION_ERROR' || ['WORKSPACE_BACKUP_INVALID_PATH', 'WORKSPACE_RESTORE_INVALID_PATH'].includes(error.code) ? 2
       : ['WORKSPACE_BACKUP_CANCELLED', 'WORKSPACE_RESTORE_CANCELLED'].includes(error.code) ? (firstSignal === 'SIGTERM' ? 143 : 130) : 1;
   }
