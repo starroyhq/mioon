@@ -1,3 +1,4 @@
+import {timelineAudioRoleCapabilitySchema} from './timeline-audio-role.ts';
 import {z} from 'zod';
 import {workspaceRestoreProfile,workspaceRestoreSourceVersion,workspaceRestoreDatabaseVersion,validateWorkspaceRestorationPair} from './workspace-schema-profiles.ts';
 
@@ -20,9 +21,10 @@ export const WORKSPACE_RESTORE_REASONS=Object.freeze(['AVAILABLE','RESTORE_OPERA
 const policy=z.object({operation,available:z.boolean(),reason:z.enum(WORKSPACE_RESTORE_REASONS)}).strict()
   .refine(value=>value.available===(value.reason==='AVAILABLE'),{message:'Restore operation availability and reason disagree.'});
 export const workspaceRestoreSchemas=Object.freeze({
-  'workspace.restore.inspect':z.object({}).strict(),
+  'workspace.restore.inspect':z.object({includeAudioRoleCapability:z.literal(true).optional()}).strict(),
 });
 const restoredInspection=z.object({
+  audioRoleCapability:timelineAudioRoleCapabilitySchema.optional(),
   restored:z.literal(true),schemaVersion:workspaceRestoreDatabaseVersion,profile:workspaceRestoreProfile,
   workspaceOrigin:uuid,restorationId:uuid,createdAt:z.string().datetime(),
   source:z.object({backupId:uuid,schemaVersion:workspaceRestoreSourceVersion,manifestHash:hash,dbHash:hash}).strict(),
@@ -30,13 +32,17 @@ const restoredInspection=z.object({
   operationPolicy:z.array(policy).max(WORKSPACE_RESTORE_LIMITS.operations),
   backupCreate:z.object({available:z.literal(false),reason:z.literal('RESTORE_BACKUP_UNAVAILABLE')}).strict(),
 }).strict().superRefine((value,ctx)=>{
+  if(value.audioRoleCapability&&value.audioRoleCapability.editable!==(value.schemaVersion===39))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Audio role capability does not match the exact restored profile.'});
   validateWorkspaceRestorationPair({profile:value.profile,sourceSchema:value.source.schemaVersion,databaseSchemaVersion:value.schemaVersion},ctx);
   for(const [field,key] of [['heldCounts','kind'],['operationPolicy','operation']])
     if(new Set(value[field].map(item=>item[key])).size!==value[field].length)
       ctx.addIssue({code:z.ZodIssueCode.custom,path:[field],message:'Restore disclosure contains duplicate identities.'});
 });
-export const workspaceRestoreInspectionSchema=z.union([z.object({restored:z.literal(false)}).strict(),restoredInspection]);
+export const workspaceRestoreInspectionSchema=z.union([z.object({restored:z.literal(false),audioRoleCapability:timelineAudioRoleCapabilitySchema.optional()}).strict(),restoredInspection]);
 export const isWorkspaceRestoreInspection=value=>workspaceRestoreInspectionSchema.safeParse(value).success;
+/** Missing capability means an older backend, never permission to edit. */
+export function canEditTimelineAudioRole(inspection){return isWorkspaceRestoreInspection(inspection)&&inspection.audioRoleCapability?.editable===true;}
+
 
 const epoch=z.union([z.literal('captured'),uuid]);
 export const workspaceRestoreTaskContextSchema=z.object({workspaceOrigin:uuid,executionEpoch:epoch,held:z.boolean()}).strict()

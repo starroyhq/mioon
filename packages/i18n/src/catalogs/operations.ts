@@ -51,10 +51,10 @@ export const operationMessages = {
     "ja": "ワークスペース全体のデータベース件数を、処理範囲を制限して読み取り専用で確認します。ファイルのコピー、タスクの復旧、シークレットの読み取りは行いません。コールドバックアップの前に、アプリと同じワークスペースを使用するバックエンドを正常に終了する必要があります。"
   },
   "operation.workspace.restore.inspect": {
-    "zh-Hans": "只读查看工作区恢复分支身份、隔离计数与可用操作；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。",
-    "zh-Hant": "唯讀查看工作區復原分支身分、隔離計數與可用操作；不接收路徑、不復原或執行舊任務、不授予模型或付費權限。",
-    "en": "Read-only inspection of the workspace restore-branch identity, isolation counts, and available operations; accepts no paths, does not recover or execute old tasks, and grants no model or paid-use permissions.",
-    "ja": "ワークスペースの復元ブランチの識別情報、隔離件数、利用可能な操作を読み取り専用で確認します。パスの受け取り、過去のタスクの復旧や実行、モデル利用権限や有料利用権限の付与は行いません。"
+    "zh-Hans": "只读查看工作区恢复分支身份、隔离计数与可用操作；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。显式 includeAudioRoleCapability:true 可查询当前音频角色编辑能力。",
+    "zh-Hant": "唯讀查看工作區復原分支身分、隔離計數與可用操作；不接收路徑、不復原或執行舊任務、不授予模型或付費權限。明確 includeAudioRoleCapability:true 可查詢目前音訊角色編輯能力。",
+    "en": "Read-only inspection of the workspace restore-branch identity, isolation counts, and available operations; accepts no paths, does not recover or execute old tasks, and grants no model or paid-use permissions. Explicit includeAudioRoleCapability:true reports current audio-role editing capability.",
+    "ja": "ワークスペースの復元ブランチの識別情報、隔離件数、利用可能な操作を読み取り専用で確認します。パスの受け取り、過去のタスクの復旧や実行、モデル利用権限や有料利用権限の付与は行いません。includeAudioRoleCapability:true を明示すると、現在の音声役割の編集可否を確認できます。"
   },
   "operation.timeline.format.get": {
     "zh-Hans": "只读查询当前时间线输出规格、版本与初始设置资格；不创建时间线",
@@ -561,16 +561,16 @@ export const operationMessages = {
     "ja": "タイムラインのバージョンを照合し、トラック名、映像の非表示、ミュートを更新します。"
   },
   "operation.timeline.clip.add": {
-    "zh-Hans": "在指定轨道与帧位置添加固定素材片段；同轨不可重叠",
-    "zh-Hant": "在指定軌道與影格位置新增固定素材片段；同軌不可重疊。",
-    "en": "Add a pinned-asset clip at the specified track and frame position; clips on the same track may not overlap.",
-    "ja": "指定したトラックとフレーム位置に、素材を固定したクリップを追加します。同じトラック内では重複できません。"
+    "zh-Hans": "在指定轨道与帧位置添加固定素材片段；同轨不可重叠。音频或视频片段可明确标记人声、音乐或音效角色，仅作分类，不改变声音。",
+    "zh-Hant": "在指定軌道與影格位置新增固定素材片段；同軌不可重疊。音訊或影片片段可明確標記人聲、音樂或音效角色，僅作分類，不改變聲音。",
+    "en": "Add a pinned-asset clip at a track and frame position; same-track clips cannot overlap. Audio/video clips may explicitly classify their audio role as human, music or sfx without changing sound.",
+    "ja": "指定トラックとフレーム位置に素材を固定したクリップを追加します。同一トラック内では重複できません。音声・動画クリップの人声、音楽、効果音の役割は分類のみで、音は変わりません。"
   },
   "operation.timeline.clip.update": {
-    "zh-Hans": "按时间线版本移动、裁切或调整片段，保留固定素材引用",
-    "zh-Hant": "按時間軸版本移動、裁切或調整片段，保留固定素材引用。",
-    "en": "Move, trim, or adjust a clip against the timeline version, preserving its pinned asset reference.",
-    "ja": "タイムラインのバージョンを照合してクリップを移動、トリミング、調整します。固定された素材参照は保持します。"
+    "zh-Hans": "按时间线版本移动、裁切或调整片段，保留固定素材引用。audioRole 可为 human（人声）、music（音乐）、sfx（音效）；null 明确清除，省略保留。角色编辑可撤销并更新版本与快照，不改变音量、静音或路由。",
+    "zh-Hant": "按時間軸版本移動、裁切或調整片段，保留固定素材參照。audioRole 可為 human（人聲）、music（音樂）、sfx（音效）；null 明確清除，省略保留。角色編輯可復原並更新版本與快照，不改變音量、靜音或路由。",
+    "en": "Move, trim or adjust a clip against its timeline version, preserving its pinned source. audioRole accepts human, music or sfx; null explicitly clears, omission preserves. Role edits are undoable and change revision/snapshots, not volume, mute or routing.",
+    "ja": "タイムラインのバージョンを照合してクリップを移動・調整し、固定素材参照を保持します。audioRole は human（人声）、music（音楽）、sfx（効果音）。null は明示的な解除、省略は保持です。役割の編集は取り消し可能で、バージョンとスナップショットは更新されますが、音量・ミュート・ルーティングは変わりません。"
   },
   "operation.timeline.clip.replaceSource": {
     "zh-Hans": "按时间线版本显式替换片段的固定素材；仅同类视频、音频或图片互换，保留片段ID、位置、时长、源入点、画面、音量和淡入淡出；可选versionId须精确匹配新素材并固定来源镜头，不跟随镜头后续选用版本；使用必填稳定requestId精确重放，可撤销，不生成或处理媒体",

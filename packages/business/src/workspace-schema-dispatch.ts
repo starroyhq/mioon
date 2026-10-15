@@ -1,3 +1,6 @@
+import {initializeWorkspaceSchema38} from './workspace-schema-v38.ts';
+import {createWorkspaceRestoreProfileV39} from './workspace-restore-schema-v39.ts';
+import {hasWorkspaceAudioRoleEvidence,validateWorkspaceAudioRoleRows} from './workspace-audio-role-validation.ts';
 import {initializeWorkspaceSchema36,assertNoAssetAnnotationSchema} from './workspace-schema-v36.ts';
 import {createWorkspaceRestoreProfileV37} from './workspace-restore-schema-v37.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -15,7 +18,7 @@ import {createWorkspaceRestoreProfileV29} from './workspace-restore-schema-v29.t
 import {createWorkspaceRestoreProfileV27} from './workspace-restore-schema-v27.ts';
 import type {WorkspaceRestoreMetadataV27} from './workspace-restore-schema-v27.ts';
 
-export type CurrentWorkspaceRole = 'ordinary-through-24' | 'ordinary-26' | 'ordinary-28' | 'ordinary-30' | 'ordinary-32' | 'ordinary-36' | 'ordinary-34' | 'restored-25-evidence' | 'restored-27-evidence' | 'restored-29-evidence' | 'restored-31-evidence' | 'restored-33-evidence' | 'restored-35-evidence' | 'restored-37-evidence';
+export type CurrentWorkspaceRole = 'ordinary-through-24' | 'ordinary-26' | 'ordinary-28' | 'ordinary-30' | 'ordinary-32' | 'ordinary-38' | 'ordinary-36' | 'ordinary-34' | 'restored-25-evidence' | 'restored-27-evidence' | 'restored-29-evidence' | 'restored-31-evidence' | 'restored-33-evidence' | 'restored-35-evidence' | 'restored-37-evidence' | 'restored-39-evidence';
 interface Classification {readonly schemaVersion: number; readonly profile: string}
 export interface LegacyWorkspaceProfile<T extends object> {
   initializeThrough24(db: DatabaseSync): void;
@@ -89,7 +92,7 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
     if (loudnessApplyEvidence || lutEvidence || annotationEvidence) return unsupported();
     return restoreEvidence ? 'restored-25-evidence' : 'ordinary-through-24';
   }
-  const extra = db.prepare('SELECT CAST(version AS TEXT) AS version,typeof(version) AS type FROM main.schema_version WHERE version NOT IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 8').all().map(row);
+  const extra = db.prepare('SELECT CAST(version AS TEXT) AS version,typeof(version) AS type FROM main.schema_version WHERE version NOT IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 9').all().map(row);
   if (extra.length === 0) {
     if (loudnessApplyEvidence || lutEvidence || annotationEvidence) return unsupported();
     return restoreEvidence ? 'restored-25-evidence' : 'ordinary-through-24';
@@ -111,25 +114,28 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
   const restored35 = extra.length === 6 && extra[0]?.version === '26' && extra[1]?.version === '28' && extra[2]?.version === '30' && extra[3]?.version === '32' && extra[4]?.version === '34' && extra[5]?.version === '35';
   const ordinary36 = extra.length===6 && extra.slice(0,5).every((value,index)=>value.version===['26','28','30','32','34'][index]) && extra[5]?.version==='36';
   const restored37 = extra.length===7 && extra.slice(0,6).every((value,index)=>value.version===['26','28','30','32','34','36'][index]) && extra[6]?.version==='37';
-  if(annotationEvidence && !ordinary36 && !restored37) return unsupported();
-  if (!ordinary26 && !restored27 && !ordinary28 && !restored29 && !ordinary30 && !restored31 && !ordinary32 && !restored33 && !ordinary34 && !restored35 && !ordinary36 && !restored37) return unsupported();
+  const ordinary38 = extra.length===7 && extra.every((value,index)=>value.version===['26','28','30','32','34','36','38'][index]);
+  const restored39 = extra.length===8 && extra.every((value,index)=>value.version===['26','28','30','32','34','36','38','39'][index]);
+  if(annotationEvidence && !ordinary38 && !restored39 && !ordinary36 && !restored37) return unsupported();
+  if (!ordinary26 && !restored27 && !ordinary28 && !restored29 && !ordinary30 && !restored31 && !ordinary32 && !restored33 && !ordinary34 && !restored35 && !ordinary36 && !restored37 && !ordinary38 && !restored39) return unsupported();
   if ((ordinary26 || restored27) && lutEvidence) return unsupported();
   const known = db.prepare('SELECT CAST(version AS TEXT) AS version FROM main.schema_version WHERE version IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 25').all().map(row);
   if (known.length !== 24 || known.some((value, index) => value.version !== String(index + 1))) return unsupported();
-  if ((ordinary26 || ordinary28 || ordinary30 || ordinary32 || ordinary34 || ordinary36) && restoreEvidence) return unsupported();
-  return ordinary36 ? 'ordinary-36' : restored37 ? 'restored-37-evidence' : ordinary34 ? 'ordinary-34' : restored35 ? 'restored-35-evidence' : ordinary32 ? 'ordinary-32' : restored33 ? 'restored-33-evidence' : ordinary30 ? 'ordinary-30' : restored31 ? 'restored-31-evidence' : ordinary26 ? 'ordinary-26' : ordinary28 ? 'ordinary-28' : restored29 ? 'restored-29-evidence' : 'restored-27-evidence';
+  if ((ordinary26 || ordinary28 || ordinary30 || ordinary32 || ordinary34 || ordinary36 || ordinary38) && restoreEvidence) return unsupported();
+  return ordinary38 ? 'ordinary-38' : restored39 ? 'restored-39-evidence' : ordinary36 ? 'ordinary-36' : restored37 ? 'restored-37-evidence' : ordinary34 ? 'ordinary-34' : restored35 ? 'restored-35-evidence' : ordinary32 ? 'ordinary-32' : restored33 ? 'restored-33-evidence' : ordinary30 ? 'ordinary-30' : restored31 ? 'restored-31-evidence' : ordinary26 ? 'ordinary-26' : ordinary28 ? 'ordinary-28' : restored29 ? 'restored-29-evidence' : 'restored-27-evidence';
 }
 
 function colourAdmission(role:CurrentWorkspaceRole) {
-  return {allowColour:['ordinary-30','restored-31-evidence','ordinary-32','restored-33-evidence','ordinary-34','restored-35-evidence','ordinary-36','restored-37-evidence'].includes(role),
-    allowMixedImages:['ordinary-32','restored-33-evidence','ordinary-34','restored-35-evidence','ordinary-36','restored-37-evidence'].includes(role),
-    allowJpegImages:['ordinary-34','restored-35-evidence','ordinary-36','restored-37-evidence'].includes(role)};
+  return {allowColour:['ordinary-30','restored-31-evidence','ordinary-32','restored-33-evidence','ordinary-34','restored-35-evidence','ordinary-36','restored-37-evidence','ordinary-38','restored-39-evidence'].includes(role),
+    allowMixedImages:['ordinary-32','restored-33-evidence','ordinary-34','restored-35-evidence','ordinary-36','restored-37-evidence','ordinary-38','restored-39-evidence'].includes(role),
+    allowJpegImages:['ordinary-34','restored-35-evidence','ordinary-36','restored-37-evidence','ordinary-38','restored-39-evidence'].includes(role)};
 }
 
 /** Read-only row admission for callers which need a migration guard without
  * claiming fixed-catalog restoration capability or mutating the source. */
 export function validateCurrentWorkspaceColourProfile(db: DatabaseSync): void {
   const role=readCurrentWorkspaceRole(db);
+  validateWorkspaceAudioRoleRows(db,{allowAudioRoles:role==='ordinary-38'||role==='restored-39-evidence'});
   validateWorkspaceColourRows(db, colourAdmission(role));
 }
 
@@ -140,16 +146,19 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   const restored29 = createWorkspaceRestoreProfileV29(legacy.initializeThrough24);
   const restored31 = createWorkspaceRestoreProfileV31(legacy.initializeThrough24);
   const restored33 = createWorkspaceRestoreProfileV33(legacy.initializeThrough24);
+  const restored39 = createWorkspaceRestoreProfileV39(legacy.initializeThrough24);
   const restored37 = createWorkspaceRestoreProfileV37(legacy.initializeThrough24);
   const restored35 = createWorkspaceRestoreProfileV35(legacy.initializeThrough24);
   const detect = (db: WorkspaceSchemaReader): boolean => {
     const role = readCurrentWorkspaceRole(db);
     if (role === 'ordinary-through-24' || role === 'restored-25-evidence') return legacy.detectRestoreEvidence(db);
-    return role === 'restored-27-evidence' || role === 'restored-29-evidence' || role === 'restored-31-evidence' || role === 'restored-33-evidence' || role === 'restored-35-evidence' || role === 'restored-37-evidence';
+    return role === 'restored-27-evidence' || role === 'restored-29-evidence' || role === 'restored-31-evidence' || role === 'restored-33-evidence' || role === 'restored-35-evidence' || role === 'restored-37-evidence' || role === 'restored-39-evidence';
   };
   const classify = (db: DatabaseSync): Classification => {
     const role = readCurrentWorkspaceRole(db);
+    validateWorkspaceAudioRoleRows(db,{allowAudioRoles:role==='ordinary-38'||role==='restored-39-evidence'});
     validateWorkspaceColourRows(db, colourAdmission(role));
+    if (role === 'ordinary-38' || role === 'restored-39-evidence') return restored39.classifyWorkspaceSchemaV38V39(db);
     if (role === 'ordinary-36' || role === 'restored-37-evidence') return restored37.classifyWorkspaceSchemaV36V37(db);
     if (role === 'ordinary-34' || role === 'restored-35-evidence') return restored35.classifyWorkspaceSchemaV34V35(db);
     if (role === 'ordinary-32' || role === 'restored-33-evidence') return restored33.classifyWorkspaceSchemaV32V33(db);
@@ -160,7 +169,9 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   };
   const validateRestore = (db: DatabaseSync) => {
     const role = readCurrentWorkspaceRole(db);
+    validateWorkspaceAudioRoleRows(db,{allowAudioRoles:role==='ordinary-38'||role==='restored-39-evidence'});
     validateWorkspaceColourRows(db, colourAdmission(role));
+    if (role === 'restored-39-evidence') return restored39.validateWorkspaceRestoreSchemaV39(db);
     if (role === 'restored-37-evidence') return restored37.validateWorkspaceRestoreSchemaV37(db);
     if (role === 'restored-35-evidence') return restored35.validateWorkspaceRestoreSchemaV35(db);
     if (role === 'restored-33-evidence') return restored33.validateWorkspaceRestoreSchemaV33(db);
@@ -172,17 +183,19 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   };
   const initialize = (db: DatabaseSync) => {
     const role = readCurrentWorkspaceRole(db);
-    if (role === 'restored-25-evidence' || role === 'restored-27-evidence' || role === 'restored-29-evidence' || role === 'restored-31-evidence' || role === 'restored-33-evidence' || role === 'restored-35-evidence' || role === 'restored-37-evidence') return validateRestore(db);
+    if (role === 'restored-25-evidence' || role === 'restored-27-evidence' || role === 'restored-29-evidence' || role === 'restored-31-evidence' || role === 'restored-33-evidence' || role === 'restored-35-evidence' || role === 'restored-37-evidence' || role === 'restored-39-evidence') return validateRestore(db);
+    validateWorkspaceAudioRoleRows(db,{allowAudioRoles:role==='ordinary-38'});
     validateWorkspaceColourRows(db, colourAdmission(role));
-    if(role!=='ordinary-36')assertNoAssetAnnotationSchema(db);
-    if (role === 'ordinary-36' || role === 'ordinary-34') {initializeWorkspaceSchema36(db); return null;}
-    if (role === 'ordinary-32') {initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); return null;}
-    if (role === 'ordinary-30') {initializeWorkspaceSchema32(db); initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); return null;}
-    if (role === 'ordinary-28') {initializeWorkspaceSchema30(db); initializeWorkspaceSchema32(db); initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); return null;}
+    if(role!=='ordinary-36'&&role!=='ordinary-38')assertNoAssetAnnotationSchema(db);
+    if (role === 'ordinary-38' || role === 'ordinary-36') {initializeWorkspaceSchema38(db); return null;}
+    if (role === 'ordinary-34') {initializeWorkspaceSchema36(db); initializeWorkspaceSchema38(db); return null;}
+    if (role === 'ordinary-32') {initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); initializeWorkspaceSchema38(db); return null;}
+    if (role === 'ordinary-30') {initializeWorkspaceSchema32(db); initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); initializeWorkspaceSchema38(db); return null;}
+    if (role === 'ordinary-28') {initializeWorkspaceSchema30(db); initializeWorkspaceSchema32(db); initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); initializeWorkspaceSchema38(db); return null;}
     // The28 additive initializer validates the retained26 structures and repairs
     // allowed receipt guards in its own transaction. Do not commit an earlier
     // repair before28 has rejected a conflicting imported LUT object.
-    if (role === 'ordinary-26') {initializeWorkspaceSchema28(db); initializeWorkspaceSchema30(db); initializeWorkspaceSchema32(db); initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); return null;}
+    if (role === 'ordinary-26') {initializeWorkspaceSchema28(db); initializeWorkspaceSchema30(db); initializeWorkspaceSchema32(db); initializeWorkspaceSchema34(db); initializeWorkspaceSchema36(db); initializeWorkspaceSchema38(db); return null;}
     // Completed24 enters the strict migration before any historical bootstrap
     // writes. In particular INSERT OR IGNORE still fires BEFORE INSERT
     // triggers, so rerunning the old constructor here is not a read-only check.
@@ -197,6 +210,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     initializeWorkspaceSchema32(db);
     initializeWorkspaceSchema34(db);
     initializeWorkspaceSchema36(db);
+    initializeWorkspaceSchema38(db);
     return null;
   };
   const installRestore = (db: DatabaseSync, metadata: WorkspaceRestoreMetadataV27) => {
@@ -204,6 +218,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     if (profile.schemaVersion === 24 && profile.profile === 'ordinary') return legacy.install(db, metadata);
     if (profile.schemaVersion === 26 && profile.profile === 'ordinary') return restored27.installWorkspaceRestoreSchemaV27(db, metadata);
     if (profile.schemaVersion === 28 && profile.profile === 'ordinary') return restored29.installWorkspaceRestoreSchemaV29(db, metadata);
+    if (profile.schemaVersion === 38 && profile.profile === 'ordinary') return restored39.installWorkspaceRestoreSchemaV39(db, metadata);
     if (profile.schemaVersion === 36 && profile.profile === 'ordinary') return restored37.installWorkspaceRestoreSchemaV37(db, metadata);
     if (profile.schemaVersion === 34 && profile.profile === 'ordinary') return restored35.installWorkspaceRestoreSchemaV35(db, metadata);
     if (profile.schemaVersion === 32 && profile.profile === 'ordinary') return restored33.installWorkspaceRestoreSchemaV33(db, metadata);
@@ -215,5 +230,12 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
 
 /** Positive schema-role gate; absence or table-name probing never grants compatibility. */
 export function usesAssetAnnotationSchema(db:WorkspaceSchemaReader):boolean{
- const role=readCurrentWorkspaceRole(db);return role==='ordinary-36'||role==='restored-37-evidence';
+ const role=readCurrentWorkspaceRole(db);return role==='ordinary-36'||role==='restored-37-evidence'||role==='ordinary-38'||role==='restored-39-evidence';
+}
+
+/** Runtime negative capability gate; existing invocation/origin checks still apply. */
+export function assertTimelineAudioRoleWorkspace(db:WorkspaceSchemaReader,value:unknown):void {
+ if(!hasWorkspaceAudioRoleEvidence(value))return;
+ const role=readCurrentWorkspaceRole(db);
+ if(role!=='ordinary-38'&&role!=='restored-39-evidence')unsupported();
 }

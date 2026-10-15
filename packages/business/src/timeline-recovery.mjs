@@ -1,3 +1,4 @@
+import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {timelineImageResponseBudgetIssue} from './timeline-image-budget.ts';
 import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
@@ -32,7 +33,7 @@ export function restoreTimelineEditableSnapshot(timeline,saved){
 
 const bounded=(column,bytes)=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${bytes} THEN ${column} END`;
 const identity=column=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
-const definiteRejections=new Set(['TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE','EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
+const definiteRejections=new Set(['AUDIO_ROLE_CLIP_UNSUPPORTED','TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE','EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
  'SUBTITLE_LIMIT','SUBTITLE_BOUNDS','SUBTITLE_OVERLAP','SUBTITLE_NOT_FOUND','INVALID_FADE','FADE_AUDIO_UNSUPPORTED','AUDIO_HIDDEN_UNSUPPORTED','TIMELINE_LIMIT','CLIP_OVERLAP','SPLIT_BOUNDS','SPLIT_FADE_BOUNDS',
  'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE',...TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES]);
 
@@ -44,7 +45,7 @@ export function rejectTimelineMutation(db,input,error,{receiptAbsent,writesStart
  // binding; never fall back to the legacy optional operation/project proof.
  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return;
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
-  error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
+  error.details={...error.details,mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='AUDIO_ROLE_CLIP_UNSUPPORTED'||error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
 }
 
 export function readTimelineReceipt(db,input,operation){
@@ -82,6 +83,7 @@ export function createTimelineRecoveryBoundary(db,input){
   return assets;
  }
  function validate(timeline){
+  assertTimelineAudioRoleWorkspace(db,timeline);
   const assets=sources(timeline);
   validateSavedTimeline(timeline,{track:(value,id)=>{
    const track=value.tracks.find(track=>track.id===id);
@@ -92,6 +94,7 @@ export function createTimelineRecoveryBoundary(db,input){
   return timeline;
  }
  function validateReadonly(timeline){
+  assertTimelineAudioRoleWorkspace(db,timeline);
   if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
   try{const checked=validate(clone(timeline));if(checked.durationFrames!==timeline.durationFrames)invalidTimeline();}
   catch(error){if(['TIMELINE_SOURCE_UNAVAILABLE','INSPECTION_BUDGET_EXCEEDED'].includes(error.code))throw error;invalidTimeline();}
@@ -105,6 +108,7 @@ export function createTimelineRecoveryBoundary(db,input){
   if(!row)return null;
   let timeline;try{timeline=JSON.parse(row.data);}catch{unavailable();}
   if(!object(timeline)||!uuid(row.id)||row.id!==timeline.id||row.projectId!==input.projectId||timeline.projectId!==input.projectId)unavailable();
+  assertTimelineAudioRoleWorkspace(db,timeline);
   if(sourceSemantics)return validateReadonly(timeline);
   // Historical render acknowledgements retain their own frozen media metadata.
   // Current structure and source ownership remain mandatory even when later
@@ -147,6 +151,7 @@ export function createTimelineRecoveryBoundary(db,input){
   return current;
  }
  function responseSources(operation,response,{historical=false}={}){
+  assertTimelineAudioRoleWorkspace(db,response);
   const timeline=operation==='timeline.render'?response.snapshot.timeline:response;
   if(operation==='timeline.render'&&historical){
    // The shared ACK validator checked frame/fade semantics against the frozen

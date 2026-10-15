@@ -1,3 +1,5 @@
+import {clipAudioRoleSchema} from './timeline-audio-role.ts';
+export * from './timeline-audio-role.ts';
 export * from './comfy-availability.ts';
 import {lookPackInspectSchemas,lookPackInspectDescriptions} from './look-pack-inspection.ts';
 export * from './look-pack-inspection.ts';
@@ -91,7 +93,7 @@ const even=(minimum,maximum)=>z.number().int().min(minimum).max(maximum).multipl
 // against their own exact preset pair, including historical acknowledgements.
 const rect=z.object({x:even(0,1278),y:even(0,1278),width:even(2,1280),height:even(2,1280)}).strict().refine(r=>r.x+r.width<=1280&&r.y+r.height<=1280,{message:'Rectangle exceeds the supported output envelope'});
 const timelineMutation={projectId:id,expectedRevision:z.number().int().positive(),requestId:key};
-const clipFields={colour:clipColourSchema.optional(),trackId:id,name:z.string().min(1).max(200),startFrame:frame,durationFrames,sourceInFrame:sourceFrame,rect,gain:z.number().finite().min(0).max(2),
+const clipFields={audioRole:clipAudioRoleSchema.optional(),colour:clipColourSchema.optional(),trackId:id,name:z.string().min(1).max(200),startFrame:frame,durationFrames,sourceInFrame:sourceFrame,rect,gain:z.number().finite().min(0).max(2),
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
@@ -238,7 +240,7 @@ Object.assign(descriptions,{
  'timeline.track.add':'按时间线版本新增视频或音频轨道，最多12轨',
  'timeline.track.update':'按时间线版本更新轨道名称、画面隐藏或静音',
  'timeline.clip.add':'在指定轨道与帧位置添加固定素材片段；同轨不可重叠',
- 'timeline.clip.update':'按时间线版本移动、裁切或调整片段，保留固定素材引用',
+ 'timeline.clip.update':'按时间线版本移动、裁切或调整片段及音频角色分类，保留固定素材引用；角色不改变声音，可撤销',
  'timeline.clip.replaceSource':'按时间线版本显式替换片段的固定素材；仅同类视频、音频或图片互换，保留片段ID、位置、时长、源入点、画面、音量和淡入淡出；可选versionId须精确匹配新素材并固定来源镜头，不跟随镜头后续选用版本；使用必填稳定requestId精确重放，可撤销，不生成或处理媒体',
  'timeline.clip.remove':'按时间线版本移除指定片段',
  'timeline.clip.split':'在所选片段内部的整数时间线帧原子分割；左段保留ID，右段固定新ID；保留素材和源范围，不移动其他片段，可一次撤销，使用稳定requestId',
