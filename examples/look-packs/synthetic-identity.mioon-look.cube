@@ -1,0 +1,18 @@
+# MIOON_LOOK_PACK_V1
+# {"schemaVersion":1,"kind":"look-pack","id":"mioon.synthetic-identity","version":"1.0.0","title":"Synthetic identity demonstration","publisher":{"id":"mioon.synthetic-fixtures","name":"Mioon synthetic test fixtures"},"provenance":{"url":"https://exa
+# mple.invalid/mioon/synthetic-identity"},"license":{"identifier":"LicenseRef-Mioon-Synthetic-Test","text":"Original synthetic numeric demonstration data authored for this repository. Permission is granted to use, copy, modify, and redistribute this 
+# fixture for any purpose, without warranty."},"asset":{"id":"synthetic-identity","purpose":"rec709-sdr-creative","profile":"mioon-cube3d-normalized-tetrahedral-v1","input":"rec709-sdr","output":"rec709-sdr","sha256":"4d82151b899220e23804818625e91c94
+# 664a28137f29cd4028fcbee3cec7d76d","sizeBytes":137}}
+# MIOON_LOOK_PACK_END
+TITLE "Synthetic identity demonstration"
+LUT_3D_SIZE 2
+DOMAIN_MIN 0 0 0
+DOMAIN_MAX 1 1 1
+0 0 0
+1 0 0
+0 1 0
+1 1 0
+0 0 1
+1 0 1
+0 1 1
+1 1 1

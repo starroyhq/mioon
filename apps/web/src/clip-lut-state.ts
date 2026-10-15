@@ -1,3 +1,6 @@
+import { isLookPackInspectResponse, lookPackInspectResponseSchema } from '../../../packages/contracts/src/look-pack-inspection.ts';
+import type { LookPackInspection } from '../../../packages/contracts/src/look-pack.ts';
+import { isLookPackBytes, parseLookPackBytes } from '../../../packages/business/src/look-pack.ts';
 import { clipColourSchema, isTimelineColourSourceInspection, TIMELINE_CLIP_COLOUR_PROFILE, TIMELINE_COLOUR_SOURCE_PROFILE, timelineColourSourceEvidenceStatus } from '../../../packages/contracts/src/timeline-colour.ts';
 import type { ClipColour, TimelineColourSourceInspection } from '../../../packages/contracts/src/timeline-colour.ts';
 import { isLutResponse, lutImportInputSchema, lutImportResponseSchema, lutInspectResponseSchema, lutListResponseSchema, LUT_RESOURCE_LIMITS } from '../../../packages/contracts/src/lut-resources.ts';
@@ -24,12 +27,13 @@ export interface ClipLutState {
   selectedId: string; selected: LutResource | null; resourcePhase: Phase; resourceError: string; lookDeclared: boolean;
   importing: boolean; importRecord: ClipLutImportRecord | null; importError: string;
   recoveryPhase: Phase; recovery: ClipLutRecoveryMetadata | null; recoveryError: string;
+  packPhase: Phase; pack: LookPackInspection | null; packError: string;
 }
 const copy = <T>(value: T): T => structuredClone(value);
 const pendingImports = new Map<string, ClipLutImportRecord>();
 const initial = (): ClipLutState => ({ opened: false, sourcePhase: 'idle', inspection: null, sourceError: '', range: '', sourceDeclared: false,
   listPhase: 'idle', resources: [], nextAfter: null, listError: '', selectedId: '', selected: null, resourcePhase: 'idle', resourceError: '', lookDeclared: false,
-  importing: false, importRecord: null, importError: '', recoveryPhase: 'idle', recovery: null, recoveryError: '' });
+  importing: false, importRecord: null, importError: '', recoveryPhase: 'idle', recovery: null, recoveryError: '', packPhase: 'idle', pack: null, packError: '' });
 const ownerKey = (c: ClipLutContext): string => JSON.stringify([c.scope, c.projectId, c.timelineId, c.clipId, c.assetId, c.assetSha256]);
 const normalized = (tag: string | null): string => (tag ?? '').trim().toLowerCase();
 const absent = (tag: string | null): boolean => ['', 'unknown', 'unspecified', 'reserved'].includes(normalized(tag));
@@ -206,7 +210,7 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
     async selectResource(resourceId: string): Promise<void> {
       if (!allowed() || resourceId && !state.resources.some(item => item.id === resourceId)) return;
       const owner = generation, serial = ++resourceSerial;
-      emit({ selectedId: resourceId, selected: null, resourcePhase: resourceId ? 'loading' : 'idle', resourceError: '', lookDeclared: false });
+      emit({ selectedId: resourceId, selected: null, resourcePhase: resourceId ? 'loading' : 'idle', resourceError: '', lookDeclared: false, packPhase: 'idle', pack: null, packError: '' });
       if (!resourceId) return;
       const input = { projectId: context.projectId, lutId: resourceId };
       try {
@@ -216,6 +220,22 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
         if (!listed || resource.sha256 !== listed.sha256 || resource.profile !== listed.profile) throw Error('LUT 指纹已变化，请重新读取列表。');
         emit({ selected: resource, resourcePhase: 'ready' });
       } catch (error) { if (owns(owner) && serial === resourceSerial) emit({ resourcePhase: 'error', resourceError: errorMessage(error, 'LUT 核验失败。') }); }
+    },
+    async inspectSelectedPack(): Promise<void> {
+      if (!allowed() || state.resourcePhase !== 'ready' || !state.selected || state.packPhase === 'loading') return;
+      const owner = generation, selected = copy(state.selected), serial = resourceSerial;
+      const input = { projectId: context.projectId, lutId: selected.id };
+      emit({ packPhase: 'loading', pack: null, packError: '' });
+      try {
+        const value = await call('lut.look.inspect', input);
+        if (!owns(owner) || serial !== resourceSerial) return;
+        if (!isLookPackInspectResponse(value, input)) throw Error('数据包检查回复与所选项目资源不一致。');
+        const result = lookPackInspectResponseSchema.parse(value);
+        if (result.resource.sha256 !== selected.sha256 || result.resource.sizeBytes !== selected.sizeBytes) throw Error('数据包资源指纹已变化，请重新读取列表。');
+        emit({ packPhase: 'ready', pack: result.pack });
+      } catch (error) {
+        if (owns(owner) && serial === resourceSerial) emit({ packPhase: 'error', packError: errorMessage(error, '无法核验所选资源的数据包声明。') });
+      }
     },
     declareLook(value: boolean): void { if (allowed()) emit({ lookDeclared: value }); },
     applyLook(): boolean {
@@ -232,12 +252,20 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       if (!clipColourSchema.safeParse(next).success) return false; edit(next); return true;
     },
     removeLook(): boolean { if (!allowed() || !context.colour) return false; edit({ ...context.colour, look: null }); return true; },
-    async importFile(file: Pick<File, 'name' | 'size' | 'arrayBuffer'>): Promise<boolean> {
+    async importFile(file: Pick<File, 'name' | 'size' | 'arrayBuffer'>, options?: { lookPackConfirmed: true }): Promise<boolean> {
       if (!allowed() || state.importing || state.recoveryPhase !== 'ready' || workspaceScope === null) return false;
       if (state.recovery) { emit({ importError: '已有导入请求待确认，请重新选择原文件恢复原请求。' }); return false; }
       const owner = generation, projectId = context.projectId; emit({ importing: true, importError: '' });
       let record: ClipLutImportRecord;
-      try { record = await prepareClipLutImport(file, projectId, newRequestId()); }
+      try {
+        record = await prepareClipLutImport(file, projectId, newRequestId());
+        // Data packs are still exact Cube bytes, but this UI never silently
+        // bypasses the preview / publisher-license acknowledgement step.
+        const bytes = Uint8Array.from(atob(record.input.dataBase64), char => char.charCodeAt(0));
+        const packed = /\.mioon-look\.cube$/iu.test(file.name) || isLookPackBytes(bytes);
+        if (packed && !options?.lookPackConfirmed) throw Error('这是单 Look 数据包，请使用“预览单 Look 数据包”入口查看声明后明确采用。');
+        if (options?.lookPackConfirmed) await parseLookPackBytes(bytes);
+      }
       catch (error) { if (owns(owner)) emit({ importing: false, importError: errorMessage(error, '文件读取失败。') }); return false; }
       if (!owns(owner) || context.blocked) { if (owns(owner)) emit({ importing: false }); return false; }
       return await sendImport(record, owner, false);

@@ -169,6 +169,7 @@ function renderControls(state, ctx = context(), kind = 'video') {
   const output = transformSync(readFileSync(new URL('../apps/web/src/ClipLutControls.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   Function('require', 'module', 'exports', output)(name => {
     if (name === 'react') return react;
+    if (name === './LookPackControls.tsx') return { default: 'LookPackControls', LookPackDetails: 'LookPackDetails' };
     if (name === './clip-draft-client.ts') return { createClipDraftClient: () => ({ get: noop }) };
     if (name === './clip-lut-state.ts') return { createClipLutController: () => controller, clipLutSourceIssue };
     if (name.startsWith('@mioon/ui/components/')) return { [name.split('/').at(-1).replace(/^./, value => value.toUpperCase())]: name };
@@ -341,4 +342,23 @@ test('metadata published before a blocked dispatch is retained without submittin
   assert.equal(await h.controller.importFile(file()), false); assert.equal(h.calls.some(call => call[0] === 'lut.import'), false);
   assert.equal(data.size, 1); assert.equal(h.state().importing, false); assert.ok(h.state().recovery);
   h.set({ blocked: false }); assert.equal(await h.controller.reselectImportFile(file()), true); assert.equal(h.calls.some(call => call[0] === 'lut.import'), false);
+});
+
+test('selected project Look declaration is read-only, identity-bound and stale-selection fenced', async t => {
+  const { parseLookPackBytes } = await import('../packages/business/src/look-pack.ts');
+  const bytes = readFileSync(new URL('../examples/look-packs/synthetic-nonlinear.mioon-look.cube', import.meta.url));
+  const pack = await parseLookPackBytes(bytes), packed = resource({ sha256: createHash('sha256').update(bytes).digest('hex'), sizeBytes: bytes.length, metadata: pack.cubeMetadata });
+  let gate = null, bad = false;
+  const h = harness(t, { handler: (operation, input) => {
+    if (operation === 'lut.list') return { projectId, items: [packed], nextAfter: null };
+    if (operation === 'lut.inspect') return { resource: packed, integrity: 'verified' };
+    if (operation === 'lut.look.inspect') return gate?.promise ?? { resource: { ...packed, ...(bad ? { sha256: 'c'.repeat(64) } : {}) }, integrity: 'verified', status: 'verified', pack };
+  } });
+  h.controller.open(); await tick(); await h.controller.selectResource(packed.id);
+  assert.equal(h.calls.some(([op]) => op === 'lut.look.inspect'), false, 'metadata read is explicit');
+  await h.controller.inspectSelectedPack(); assert.deepEqual(h.state().pack, pack); assert.deepEqual(h.edits, []);
+  bad = true; await h.controller.inspectSelectedPack(); assert.equal(h.state().packPhase, 'error'); assert.equal(h.state().pack, null);
+  bad = false; gate = deferred(); const pending = h.controller.inspectSelectedPack();
+  await h.controller.selectResource(''); gate.resolve({ resource: packed, integrity: 'verified', status: 'verified', pack }); await pending;
+  assert.equal(h.state().packPhase, 'idle'); assert.equal(h.state().pack, null); assert.deepEqual(h.edits, []);
 });

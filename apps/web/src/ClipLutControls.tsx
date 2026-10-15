@@ -1,3 +1,4 @@
+import LookPackControls, { LookPackDetails } from './LookPackControls.tsx';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
@@ -57,6 +58,7 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
         <legend className="field-label">2. 选择 Rec.709 → Rec.709 创意外观</legend>
         <p className="input-hint">资源格式验证不代表色彩适用性。只使用输入、输出均为 Rec.709 SDR 的创意 LUT，不使用 Log 转换或 HDR 色调映射 LUT。</p>
         <p className="input-hint" data-testid="clip-lut-domain-disclosure">创意 LUT 会将归一化 RGB 中小于 0 或大于 1 的值裁到 0–1 范围，不适合保留 HDR / Log 高光细节。关闭 LUT 或设为 0% 只绕过创意外观，已启用的 Rec.709 SDR 转换仍会执行。</p>
+        <LookPackControls scope={identity} disabled={blocked || importUnavailable} adopt={file => controller.importFile(file, { lookPackConfirmed: true })} />
         <Label className="field-label" htmlFor="clip-lut-file">导入项目 LUT（.cube，最多 7 MiB）</Label>
         <Input id="clip-lut-file" data-testid="clip-lut-file" type="file" accept=".cube" disabled={importUnavailable} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void controller.importFile(file); }} />
         {state.importing && <p className="input-hint" role="status">正在读取或导入所选文件…</p>}
@@ -82,6 +84,12 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
         {state.listError && <p className="notice warning" role="alert">{state.listError}</p>}
         {state.resourcePhase === 'loading' && <p role="status" className="input-hint">正在核验所选 LUT…</p>}
         {state.resourceError && <p className="notice warning" role="alert">{state.resourceError}</p>}
+        {state.selected && state.resourcePhase === 'ready' && <>
+          <Button type="button" variant="ghost" size="sm" data-testid="inspect-project-look-pack" disabled={state.packPhase === 'loading'} onClick={() => { void controller.inspectSelectedPack(); }}>{state.packPhase === 'loading' ? '正在核验包声明…' : '查看此项目 LUT 的数据包声明'}</Button>
+          {state.packPhase === 'ready' && !state.pack && <p className="input-hint" data-testid="project-lut-not-pack">这是普通 Cube 资源，没有单 Look 数据包声明。</p>}
+          {state.pack && <LookPackDetails value={state.pack} />}
+          {state.packError && <p className="notice warning" role="alert">{state.packError}</p>}
+        </>}
         <label className="field-label"><input type="checkbox" data-testid="clip-lut-look-declaration" checked={state.lookDeclared} disabled={!state.selected || state.resourcePhase !== 'ready'} onChange={event => controller.declareLook(event.target.checked)} />我确认所选 LUT 是 Rec.709 SDR → Rec.709 SDR 创意外观，不是技术转换。</label>
         <Button size="sm" type="button" data-testid="apply-clip-lut" disabled={!source || source.assetSha256 !== context.assetSha256 || !state.selected || !state.lookDeclared || state.resourcePhase !== 'ready'} onClick={() => controller.applyLook()}>将所选 LUT 写入片段草稿</Button>
         {look && <>

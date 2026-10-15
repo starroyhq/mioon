@@ -1,4 +1,20 @@
-# Current checkpoint — 2026-10-13
+# Local single-Look increment — 2026-10-15
+
+On isolated `feat/look-pack`, based on `16b7b4de75e19e4166742ace52e68357d99eefd1`:
+one declarative `.mioon-look.cube` can be previewed, explicitly adopted into the
+existing immutable project LUT store, and inspected after the source file is
+gone. No executable plugin loader, preset catalog, dependency, schema or receipt
+change. Final independent focused tests **71/71** and normal typecheck passed;
+production Linux GUI verified preview/cancel, adoption without auto-application,
+65% saved Look with undo/redo, source-file removal, reopen and actual export.
+Both native exits were 0 with locks released; real FFmpeg decode and automated
+cold backup/restore continuity passed. [Format](docs/LOOK-PACK-FORMAT.md) and
+[acceptance with precise limits](docs/LOOK-PACK-ACCEPTANCE.md). No full-suite,
+Mac/Windows, HDR/Log, license-authenticity, push or release claim. Existing
+desktop pending-import recovery issue #2 and stopped issues #1/#3 are unchanged.
+The older checkpoints below retain their original dated scope and Git facts.
+
+# Prior checkpoint — 2026-10-13
 
 Current committed application code: `dc3bbe8cf664017f4c1a3d0dbb56d3ece5e1e374`
 (0.4.1). The limited local Linux engineering trial remains usable. This index

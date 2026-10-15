@@ -1,3 +1,5 @@
+import {isProxy} from 'node:util/types';
+import {isLookPackInspectInput,isLookPackInspectResponse} from '@mioon/contracts';
 import {isTimelineColourSourceInspection} from '@mioon/contracts/timeline-colour';
 import {isLutRpcResponse} from './lut-resources.ts';
 import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_CLIENT_MS} from './timeline-loudness-apply.ts';
@@ -210,6 +212,7 @@ export function createClient(clientOptions = {}) {
     // Parse the exact shared contracts before sending. Required and opt-in request
     // IDs stay caller-owned; this client never creates them and never resubmits.
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
+    if(operation==='lut.look.inspect'&&(isProxy(input)||!isLookPackInspectInput(input)))throw new ClientError('VALIDATION_ERROR','Expected only a project ID and LUT resource ID.');
     const parsed = parse(operation, input);
     const {expectedWorkspaceOrigin, ...transportOptions} = options ?? {};
     const body = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
@@ -255,6 +258,8 @@ export function createClient(clientOptions = {}) {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
     if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+    if(operation==='lut.look.inspect'&&!isLookPackInspectResponse(result,parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid Look Pack inspection.',{details:{operation}});
     if (['lut.import','lut.list','lut.inspect'].includes(operation) && !isLutRpcResponse(operation,parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid LUT resource response.',{details:operation==='lut.import'?uncertainRequestDetails(body):{operation}});
     if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(result))

@@ -1,3 +1,4 @@
+import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
 import {createLutResourceServices} from './lut-resources.ts';
 import {createTimelineColourSourceServices,createTimelineColourSourceProbe} from './timeline-colour-source.ts';
 import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
@@ -57,6 +58,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const active=new Set(),restoredLifetime=restored?new AbortController():null;let shutdownFailure;
  const {db,root,get,list,put,tx}=store;
  const luts=restored?inactive():createLutResourceServices(store,{signal:ownerSignal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>{},assertImportAllowed:()=>{if(getWorkspaceRestoreContext(store))disabled();}}});
+ const lookPacks=restored?inactive():createLookPackInspectionServices(store,{signal:ownerSignal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>{}}});
  const required=(t,id)=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v;};
  const check=(v,rev)=>{if(v.revision!==rev)throw new AppError('REVISION_CONFLICT','内容已有新版本，请重新读取后再修改',409,{entityId:v.id,expectedRevision:rev,currentRevision:v.revision,current:publicValue(v)});};
  const dedupe=(scope,requestId,requestHash,table)=>{const r=db.prepare(scope==='generation'?`SELECT CASE WHEN typeof(requestHash)='text' AND length(CAST(requestHash AS BLOB))=64 THEN requestHash END AS requestHash,CASE WHEN typeof(resourceId)='text' AND length(CAST(resourceId AS BLOB))=36 THEN resourceId END AS resourceId FROM idempotency WHERE scope=? AND requestId=?`:'SELECT * FROM idempotency WHERE scope=? AND requestId=?').get(scope,requestId);if(!r)return null;if(r.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同内容',409,{requestId});return required(table,r.resourceId);};
@@ -222,6 +224,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
   .map(row=>subjectDisclosure('exports',JSON.parse(row.data),row.projectId,row.id));
  const handlers={
  ...luts.handlers,
+ ...lookPacks.handlers,
  'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
  'workspace.restore.inspect':()=>({restored:false}),
  ...frames.handlers,
@@ -331,6 +334,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  const domainHandlers={...handlers};
  if(restored)for(const op of Object.keys({...domainHandlers,...restoredReads.handlers}))handlers[op]=(input,context={})=>call(op,input,context);
  async function call(op,input,context={}){
+  if(op==='lut.look.inspect')assertLookPackInspectInput(input);
   const {signal:callSignal}=context;
   const signals=[ownerSignal,callSignal,restoredLifetime?.signal].filter(Boolean);
   const signal=restored?(signals.length>1?AbortSignal.any(signals):signals[0]):ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;

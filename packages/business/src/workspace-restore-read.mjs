@@ -1,3 +1,4 @@
+import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
 import {createLutResourceServices,assertLutReadProfile} from './lut-resources.ts';
 import {lutRestorePolicy} from '../../contracts/src/lut-resources.ts';
 import {ownsStoreLock} from './db.mjs';
@@ -36,6 +37,7 @@ export function createRestoredReadServices(store,{signal}={}) {
  const required=(table,id)=>{const value=get(table,id);if(!value)throw new AppError('NOT_FOUND','找不到记录',404,{id});return value;};
  const denied=()=>{throw workspaceRestoreError();};
  const luts=createLutResourceServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertLutReadProfile(restored.schemaVersion),assertImportAllowed:denied}});
+ const lookPacks=createLookPackInspectionServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertLutReadProfile(restored.schemaVersion)}});
  const timeline=createTimelineServices(store,{required,check:denied,hash,now});
  const inspection=createInspectionServices(store);
  const ranges=createSourceRangeServices(store,{canonical,readOnly:true});
@@ -65,6 +67,7 @@ export function createRestoredReadServices(store,{signal}={}) {
   .map(row=>disclose('exports',JSON.parse(row.data),row.projectId,row.id));
  const readers={
   ...luts.readers,
+  ...lookPacks.readers,
   ...createWaveformHistoryReaders(store).handlers,
   ...createImageHistoryReaders(store).handlers,
   ...createFrameHistoryReaders(store).handlers,
@@ -130,15 +133,16 @@ export function createRestoredReadServices(store,{signal}={}) {
  }
  const handlers=Object.freeze(Object.fromEntries([...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS,...RESTORE_DENIED_OPERATIONS].map(operation=>[operation,(input,context={})=>{
   checkpoint(signal);getWorkspaceRestoreContext(store);
+  if(operation==='lut.look.inspect')assertLookPackInspectInput(input);
   const parsed=parse(operation,input);
-  if(Object.hasOwn(readers,operation))return readers[operation](parsed);
+  if(Object.hasOwn(readers,operation))return readers[operation](parsed,context);
   const saved=replay(operation,parsed);if(saved)return saved.response;
   refuseRestoredOperation(store,operation,parsed);
  }])));
  async function call(operation,input,context={}) {
   checkpoint(signal);checkpoint(context?.signal);
   if(!Object.hasOwn(handlers,operation)){parse(operation,input);throw workspaceRestoreError();}
-  const result=handlers[operation](input,context);
+  const result=await handlers[operation](input,context);
   checkpoint(signal);checkpoint(context?.signal);
   return publicValue(result);
  }

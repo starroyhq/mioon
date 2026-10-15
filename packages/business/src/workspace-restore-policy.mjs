@@ -6,7 +6,7 @@ import {ownsStoreLock} from './db.mjs';
 // This catalogue is an execution boundary, not an inference from readOnly hints
 // or operation suffixes. New local effects require a live pinned invocation.
 export const RESTORE_READ_OPERATIONS = Object.freeze([
- 'workspace.restore.inspect', 'project.list', 'project.get', 'asset.list', 'lut.list', 'lut.inspect',
+ 'workspace.restore.inspect', 'project.list', 'project.get', 'asset.list', 'lut.list', 'lut.inspect', 'lut.look.inspect',
  'job.get', 'job.list', 'version.list', 'export.get', 'timeline.get',
  'timeline.history.get', 'timeline.format.get', 'project.inspect', 'asset.inspect',
  'shot.inspect', 'timeline.inspect', 'asset.range.get', 'asset.disposition.list',

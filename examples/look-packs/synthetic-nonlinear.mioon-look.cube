@@ -1,0 +1,37 @@
+# MIOON_LOOK_PACK_V1
+# {"schemaVersion":1,"kind":"look-pack","id":"mioon.synthetic-nonlinear","version":"1.0.0","title":"Synthetic nonlinear demonstration","publisher":{"id":"mioon.synthetic-fixtures","name":"Mioon synthetic test fixtures"},"provenance":{"url":"https://e
+# xample.invalid/mioon/synthetic-nonlinear"},"license":{"identifier":"LicenseRef-Mioon-Synthetic-Test","text":"Original synthetic numeric demonstration data authored for this repository. Permission is granted to use, copy, modify, and redistribute th
+# is fixture for any purpose, without warranty."},"asset":{"id":"synthetic-nonlinear","purpose":"rec709-sdr-creative","profile":"mioon-cube3d-normalized-tetrahedral-v1","input":"rec709-sdr","output":"rec709-sdr","sha256":"d29196a208c3ea9c0b078b67c158
+# 55941d964f596321d67a988b495c5927385f","sizeBytes":360}}
+# MIOON_LOOK_PACK_END
+TITLE "Synthetic nonlinear demonstration"
+LUT_3D_SIZE 3
+DOMAIN_MIN 0 0 0
+DOMAIN_MAX 1 1 1
+0 0 0
+0.25 0 0
+1 0 0
+0 0.4625 0
+0.25 0.4625 0
+1 0.4625 0
+0 1 0
+0.25 1 0
+1 1 0
+0 0 0.475
+0.25 0 0.475
+1 0 0.475
+0 0.4625 0.475
+0.25 0.4625 0.475
+1 0.4625 0.475
+0 1 0.475
+0.25 1 0.475
+1 1 0.475
+0 0 1
+0.25 0 1
+1 0 1
+0 0.4625 1
+0.25 0.4625 1
+1 0.4625 1
+0 1 1
+0.25 1 1
+1 1 1
