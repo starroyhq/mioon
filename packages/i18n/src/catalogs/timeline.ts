@@ -351,10 +351,10 @@ const timelineCoreMessages = {
     "ja": "ファイルは追加されませんでした。"
   },
   "colour.lut.recoveryDisclosure": {
-    "zh-Hans": "导入前会在当前站点的浏览器存储中保存原请求编号、文件名、大小、SHA-256 与项目/工作区标识，不保存 LUT 文件内容或路径。在同一站点地址关闭重开后，可重新选择同一文件，再明确重试原请求；不会自动导入或应用。清除浏览器数据或更换站点地址会丢失这条恢复记录。桌面应用完全退出后本地地址可能变化，暂不能保证跨应用重启找回。",
-    "zh-Hant": "匯入前會在目前網站的瀏覽器儲存空間中保存原請求編號、檔名、大小、SHA-256 與專案／工作區識別碼，不保存 LUT 檔案內容或路徑。在同一網站位址關閉重開後，可重新選擇同一檔案，再明確重試原請求；不會自動匯入或套用。清除瀏覽器資料或更換網站位址會遺失這筆還原記錄。桌面應用程式完全結束後，本機位址可能改變，目前無法保證重新啟動後找回。",
-    "en": "Before import, browser storage for this site saves the original request ID, filename, size, SHA-256, and project/workspace IDs, but not LUT contents or paths. After reopening at the same site address, reselect the same file and explicitly retry the original request; nothing is imported or applied automatically. Clearing browser data or changing the site address loses this recovery record. The local address may change after fully quitting the desktop app, so recovery across app restarts is not guaranteed.",
-    "ja": "読み込み前に、このサイトのブラウザーストレージへ元のリクエスト ID、ファイル名、サイズ、SHA-256、プロジェクト／ワークスペース ID を保存します。LUT の内容やパスは保存しません。同じサイトのアドレスで開き直した後、同じファイルを再選択し、元のリクエストを明示的に再試行できます。自動で追加や適用はしません。ブラウザーのデータを消去したりサイトのアドレスを変更したりすると、この復元記録は失われます。デスクトップアプリを完全に終了するとローカルアドレスが変わる場合があり、アプリ再起動後の復元は保証できません。"
+      "zh-Hans": "导入前只保存原请求编号、文件名、大小、SHA-256 与项目/工作区标识，不保存 LUT 内容或路径。桌面版将记录保存在当前应用的私有本地存储中，正常退出重启或本地地址变化后仍可恢复；网页版仍仅支持同一站点地址的浏览器存储。重新选择完全相同的文件后，必须明确重试原请求；不会自动导入或应用。清除相应本地数据会丢失记录，更换工作区不会读取原工作区的记录。",
+      "zh-Hant": "匯入前只保存原請求編號、檔名、大小、SHA-256 與專案／工作區識別碼，不保存 LUT 內容或路徑。桌面版將記錄保存在目前應用程式的私有本機儲存空間，正常結束後重新啟動或本機位址改變仍可還原；網頁版仍僅支援同一網站位址的瀏覽器儲存空間。重新選擇完全相同的檔案後，必須明確重試原請求；不會自動匯入或套用。清除對應的本機資料會遺失記錄，切換工作區不會讀取原工作區的記錄。",
+      "en": "Before import, only the original request ID, filename, size, SHA-256 and project/workspace IDs are saved, never LUT contents or paths. Desktop records use this app’s private local storage and survive an ordinary app restart or local address change. Web records still require browser storage at the same site address. Reselect the exact same file, then explicitly retry the original request; nothing is imported or applied automatically. Clearing the relevant local data loses these records. Switching workspaces does not expose the original workspace’s records.",
+      "ja": "読み込み前に保存するのは元のリクエスト ID、ファイル名、サイズ、SHA-256、プロジェクト／ワークスペース ID のみです。LUT の内容やパスは保存しません。デスクトップ版ではアプリの非公開ローカルストレージを使い、通常のアプリ再起動やローカルアドレスの変更後も復元できます。Web 版では引き続き同じサイトアドレスのブラウザーストレージが必要です。完全に同じファイルを再選択し、元のリクエストを明示的に再試行してください。自動で追加や適用はしません。該当するローカルデータを消去すると記録は失われます。別のワークスペースから元の記録を読み取ることはできません。"
   },
   "colour.lut.pendingOriginal": {
     "zh-Hans": "原导入请求待核对：{name} · {bytes} 字节。不会创建新编号；先恢复这一条请求，再导入其他文件。",
@@ -627,10 +627,10 @@ const timelineCoreMessages = {
     "ja": "元のファイルの検証に失敗したため、読み込みリクエストは送信していません。"
   },
   "colour.recovery.unavailable": {
-    "zh-Hans": "无法安全读写浏览器的 LUT 恢复记录，已阻止导入。请允许此站点的本地存储后重新检查；不要清除待确认记录。",
-    "zh-Hant": "無法安全讀寫瀏覽器的 LUT 還原記錄，已阻止匯入。請允許此網站使用本機儲存空間後重新檢查；不要清除待確認記錄。",
-    "en": "The browser’s LUT recovery record cannot be accessed safely. Import is blocked. Allow local storage for this site and check again; do not clear records awaiting confirmation.",
-    "ja": "ブラウザーの LUT 復元記録を安全に読み書きできないため、読み込みをブロックしました。このサイトのローカルストレージを許可してから再確認してください。確認待ちの記録は削除しないでください。"
+      "zh-Hans": "无法安全读写本地 LUT 恢复记录，已阻止导入。请检查本地存储后重新检查；网页版还需允许此站点的本地存储。不要清除待确认记录。",
+      "zh-Hant": "無法安全讀寫本機 LUT 還原記錄，已阻止匯入。請檢查本機儲存空間後重新檢查；網頁版也須允許此網站的本機儲存。不要清除待確認的記錄。",
+      "en": "The local LUT recovery record cannot be accessed safely. Import is blocked. Check local storage and recheck; the web version also needs storage access for this site. Do not clear records awaiting confirmation.",
+      "ja": "ローカルの LUT 復元記録に安全にアクセスできないため、読み込みを停止しました。ローカルストレージを確認して再確認してください。Web 版ではこのサイトのストレージへのアクセスも必要です。確認待ちの記録は消去しないでください。"
   },
   "colour.recovery.conflict": {
     "zh-Hans": "LUT 恢复记录已变化或存在另一条待确认请求。请重新检查并恢复原请求，不会覆盖记录。",

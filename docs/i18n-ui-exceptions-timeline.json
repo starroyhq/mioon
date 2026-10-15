@@ -72,27 +72,6 @@
       "reason": "Technical media/identity token or editing unit, intentionally invariant: SHA-256. Surrounding prose and accessible action labels use the catalog. Display boundary: VideoFrameControls.jsx."
     },
     {
-      "file": "apps/web/src/clip-lut-recovery.ts",
-      "category": "cjk-source",
-      "hash": "0d5ce1bdffa9f8d9d2bfd4bf92ea2e0b2b677b789b5584e985218fc741ff1861",
-      "owner": "timeline",
-      "reason": "The exact legacy diagnostic is retained on the Error instance. Classification uses instanceof and the closed code union, not this text; the UI renders colour.recovery.* from the descriptor. Display boundary: ClipLutRecoveryError.code → timelineErrorMessage → recoveryErrorMessage → ClipLutControls.tsx. Compatibility purpose: Typed exception diagnostic compatibility. Reviewed original literal: '无法安全读写浏览器的 LUT 恢复记录，已阻止导入。请允许此站点的本地存储后重新检查；不要清除待确认记录。'."
-    },
-    {
-      "file": "apps/web/src/clip-lut-recovery.ts",
-      "category": "cjk-source",
-      "hash": "33454b0b805273428a59db762397bdea9b3fe3a0b3b85a155a4fabc1bce3c71d",
-      "owner": "timeline",
-      "reason": "The exact legacy diagnostic is retained on the Error instance. Classification uses instanceof and the closed code union, not this text; the UI renders colour.recovery.* from the descriptor. Display boundary: ClipLutRecoveryError.code → timelineErrorMessage → recoveryErrorMessage → ClipLutControls.tsx. Compatibility purpose: Typed exception diagnostic compatibility. Reviewed original literal: 'LUT 恢复记录已变化或存在另一条待确认请求。请重新检查并恢复原请求，不会覆盖记录。'."
-    },
-    {
-      "file": "apps/web/src/clip-lut-recovery.ts",
-      "category": "cjk-source",
-      "hash": "82c8da132435bb92d1d2a82339dfb6a528adc29588ddab9e4911e591f30ab643",
-      "owner": "timeline",
-      "reason": "The exact legacy diagnostic is retained on the Error instance. Classification uses instanceof and the closed code union, not this text; the UI renders colour.recovery.* from the descriptor. Display boundary: ClipLutRecoveryError.code → timelineErrorMessage → recoveryErrorMessage → ClipLutControls.tsx. Compatibility purpose: Typed exception diagnostic compatibility. Reviewed original literal: 'LUT 恢复记录损坏、重复或超出限制，已停止导入且保留原记录；请勿清除记录后重复导入。'."
-    },
-    {
       "file": "apps/web/src/clip-lut-state.ts",
       "category": "cjk-source",
       "hash": "61d78deab76e12190ac5a054e27fd641727773b4f134f54362daf3669bc11cdc",

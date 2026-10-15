@@ -385,6 +385,13 @@
       "hash": "57bdaac9a9568648a3c5430c68bd62015b338573452293e8f47729c809f8506f",
       "owner": "shell",
       "reason": "Canonical missing-name fallback is retained in timeline usage records for compatibility. Explicit clipNameMissing marks only generated fallbacks; AssetTimelineUsage.tsx renders assets.usage.unnamedClip. A user-authored identical name is never translated."
+    },
+    {
+      "file": "apps/web/src/WebSettingsCenter.tsx",
+      "category": "visible-jsx",
+      "hash": "e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235",
+      "owner": "shell",
+      "reason": "Product brand, deliberately unchanged in every language, matching other mioon brand placements."
     }
   ]
 }

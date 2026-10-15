@@ -166,22 +166,32 @@ export function createClipLutController({ getContext, rpc, edit, onChange = () =
       const owner = generation, serial = ++recoverySerial;
       emit({ recoveryPhase: 'loading', recoveryError: '' });
       try {
-        const identity = await verifyWorkspace(owner), metadata = await recovery.read(identity);
+        const identity = await verifyWorkspace(owner), key = clipLutRecoveryKey(identity), record = imports.get(key);
+        const metadata = await recovery.read(identity);
         if (!owns(owner) || serial !== recoverySerial) return;
-        const record = imports.get(clipLutRecoveryKey(identity));
-        if (record && (!metadata || !sameClipLutRecovery(metadata, clipLutRecoveryMetadata(identity, record)))) throw new TimelineUiError(message('colour.error.recoveryChanged'));
+        if (imports.get(key) !== record) throw new TimelineUiError(message('colour.error.recoveryChanged'));
+        // A cleanup may commit and lose its ACK. A validated absent hint can
+        // retire only a proven terminal record, never an unknown import. This
+        // reconciliation is memory-only; opening never writes or retries.
+        if (record && !metadata && ['imported', 'rejected'].includes(record.phase)) imports.delete(key);
+        else if (record && (!metadata || !sameClipLutRecovery(metadata, clipLutRecoveryMetadata(identity, record)))) throw new TimelineUiError(message('colour.error.recoveryChanged'));
         emit({ recoveryPhase: 'ready', recovery: metadata, importRecord: record ? copy(record) : null });
       } catch (error) { if (owns(owner) && serial === recoverySerial) emit({ recoveryPhase: 'error', ...timelineFailure('recoveryError', error, message('colour.error.recoveryCheckFailed')) }); }
     },
     async clearConfirmedRecovery(): Promise<boolean> {
       if (!allowed() || state.importing || !state.recovery || !state.importRecord || !['imported', 'rejected'].includes(state.importRecord.phase)) return false;
-      const owner = generation, metadata = copy(state.recovery);
+      const owner = generation, metadata = copy(state.recovery), key = clipLutRecoveryKey(metadata), confirmed = imports.get(key);
       try {
         const identity = await verifyWorkspace(owner);
         if (identity.workspaceScope !== metadata.workspaceScope || identity.projectId !== metadata.projectId) return false;
         await recovery.complete(metadata);
+        // Successful cleanup belongs to the captured request, even if its UI
+        // was disposed while the acknowledgement crossed the desktop bridge.
+        // Never remove a replacement record from another window/attempt.
+        if (confirmed && imports.get(key) === confirmed && ['imported', 'rejected'].includes(confirmed.phase) &&
+            sameClipLutRecovery(metadata, clipLutRecoveryMetadata(identity, confirmed))) imports.delete(key);
         if (!owns(owner)) return false;
-        imports.delete(clipLutRecoveryKey(identity)); emit({ recovery: null, recoveryPhase: 'ready', recoveryError: '' }); return true;
+        emit({ recovery: null, recoveryPhase: 'ready', recoveryError: '' }); return true;
       } catch (error) { if (owns(owner)) emit({ ...timelineFailure('recoveryError', error, message('colour.error.confirmedCleanupFailed')) }); return false; }
     },
     async inspectSource(): Promise<void> {
