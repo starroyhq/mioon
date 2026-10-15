@@ -13,9 +13,9 @@
 test at tests/timeline-fades-ui.test.mjs:214:1
 ✖ failed or unacknowledged save preserves fade edits and does not retry (453.852585ms)
   AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Offline/. Input:
-  
+
   '时间线片段固定素材画面片段 未保存本地草稿已保存 · 17:00:00仅片段属性，本地明文；最后未确认输入可能丢失。草稿不会自动应用到时间线。本地保存什么？保存片段属性的原始输入、原时间线版本和素材来源，包括名称、轨道、时间、矩形、音量与淡入淡出。读取或恢复到属性表单不会保存到时间线，也不会调用模型；原业务请求仍由任务中心单独核对。草稿在本机私有目录中以明文保存，不保存账号或认证配置；片段名称等自由文本仍可能包含隐私。最后未收到确认的输入可能丢失。本工作区累计最多 128 个项目/时间线/片段目标槽位；清除草稿后保留的版本记录仍占位。尚未提供槽位清理，已有记录不会自动删除；容量限制不表示磁盘已满。放弃已保存草稿不会取消原业务请求或清除其记录。“放弃当前输入，保留草稿记录”只重置表单，不取消在途草稿写入；已保存或稍后写入的草稿可能再次出现。此草稿旁文件不包含在工作区离线备份中。恢复分支不读写本地片段草稿，原有允许的手动片段编辑与保存仍可使用。本地状态尚未确认，当前输入与原请求仍保留。请重新核对；不会自动重试。片段名称所在轨道Video开始帧持续帧数30 帧 = 1 秒 · 时间线 0 → 120素材入点（源素材帧）源素材 10.00 秒；入点与时间线开始帧各自独立。来源已冻结Source后续生成或切换镜头版本，不会替换此片段。查看原始源素材（未调色）画面位置与尺寸720 × 1280X (px)Y (px)宽 (px)高 (px)偶数像素，画面完整包含于矩形内。矩形留白透明，会显示下层；无任何画面的时间段为黑色。Rec.709 SDR · 创意 LUT保存片段后，重新渲染的时间线预览与导出才会应用。源素材快速查看始终是原始、未调色画面。当前保持原有色彩路径，不会自动迁移。明确启用后，整条时间线使用 Rec.709 SDR 流程：所有可见视频都必须逐一确认 Rec.709 解释，图片必须是已检查并明确声明为 sRGB 的受支持 PNG 或基线 JFIF JPEG。HDR / Log、ICC、EXIF（包括旋转信息）、渐进式 JPEG 与技术转换 LUT 不在此范围内。检查并启用 Rec.709 SDR音量增益（0–2）音频淡入/淡出（帧）淡入（帧）淡出（帧）30 帧 = 1 秒 · 每项 0–120 帧，两项合计不得超过片段时长。0 表示关闭。淡入/淡出在重新渲染时间线预览与导出时生效；源素材快速查看播放原始声音。保存片段放弃修改先保存或放弃片段草稿，再移除此片段。从时间线移除片段'
-  
+
       at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-version-comparison/tests/timeline-fades-ui.test.mjs:221:25)
       at async Test.run (node:internal/test_runner/test:1409:7)
       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {

@@ -1,5 +1,8 @@
 # Saved clip loudness UI verification
 
+Text logs retain the original findings, with trailing whitespace removed from
+blank lines in failure output. Raw local logs are also retained.
+
 This evidence belongs to the runtime source inventory in `sources.json` and the
 production staging hashes in `manifest.json`. The source tree hash is a custom
 path-sorted SHA-256 inventory root, not a Git commit or Git tree ID.
