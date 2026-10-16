@@ -1,0 +1,239 @@
+{
+  "capturedAt": "2026-10-16T10:39:13.007Z",
+  "sourceParent": "52e535738412c3add29ba5b5eec6d33e5cc79eb7",
+  "scope": "Read-only Inspector information from the existing explicit source inspection; no Log/HDR processing capability",
+  "implemented": [
+    "Display selected video stream and nullable bit depth alongside existing primaries, transfer, matrix, range, pixel format and HDR side-data observation.",
+    "Separate unchecked state, saved user interpretation, byte/stream-bound observations and restricted SDR processing in zh-Hans, region-free zh-Hant, en and ja.",
+    "Require ready inspection with matching media kind, project, asset and SHA before displaying evidence or using its interpretation issue/range eligibility.",
+    "Retain existing explicit open/check RPC and declaration workflow. New disclosures add no RPC, edit, save, import or render action.",
+    "Archive pending crossfade design/atomic acceptance and future colour sequence in existing roadmaps."
+  ],
+  "metadata": {
+    "existingAcquisition": "timeline.colour.source.inspect; bounded hash-verified stream metadata, not frame scanning",
+    "fields": [
+      "primaries",
+      "transfer",
+      "matrix",
+      "range",
+      "pixelFormat",
+      "bitDepth",
+      "hdrMetadata"
+    ],
+    "bitDepthOrigin": "Existing DTO combines reported sample bits or recognized pixel-layout inference; it does not distinguish these origins.",
+    "hdrMetadata": "Reported stream-side-data type marker only; false does not rule out frame-only HDR data or untagged camera Log.",
+    "persistedAssetTags": false,
+    "ordinaryImport": "media.fileInfo omits colour tags when constructing the asset information. No import/persistence changes in this slice.",
+    "futureCollectionProposal": "A separate bounded observation bound to source SHA, selected stream and observation method; define missing vendor Log parameters, frame-level HDR SEI, luminance payload and finer depth provenance before extending the existing frozen import path.",
+    "noGuessing": "Filename, brand, compatible tags and 10-bit depth do not establish Log or prove SDR."
+  },
+  "unchanged": [
+    "Frozen import/render contracts, schema, constructors and dispatch",
+    "DSP, encoded RGB8 working profile and default delivery formats",
+    "Restored workspace execution permissions",
+    "Legacy JavaScript allowlist and strict compiler configuration"
+  ],
+  "checks": [
+    {
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "tests/clip-lut-ui.test.mjs"
+      ],
+      "log": "focused.tap",
+      "exitCode": 0,
+      "tests": 58,
+      "pass": 58,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "sha256": "6c983cb4ee878114420d06e221954fe2db19a921ecafaed1f03e691ea9e43fbb",
+      "newTests": 23,
+      "name": "Compiled actual TSX with existing controller, four locales and synthetic inspection fixtures"
+    },
+    {
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "tests/timeline-colour-client.test.mjs",
+        "tests/timeline-colour-source.test.mjs",
+        "tests/timeline-colour-contracts.test.mjs",
+        "tests/timeline-fades-ui.test.mjs",
+        "tests/i18n-timeline.test.mjs",
+        "tests/i18n-catalog-integrity.test.mjs"
+      ],
+      "log": "related-regressions.tap",
+      "exitCode": 0,
+      "tests": 54,
+      "pass": 54,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "sha256": "73fd24239a8cc15e94db0d5b5d1e58250b71e8bb52a9dbf123b4ba4fcccac4f3",
+      "name": "Disjoint client, memory-only source services/contracts, fades and catalogue regressions"
+    },
+    {
+      "name": "Canonical strict foundation/browser typecheck and source-language guard",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "scripts/tooling.mjs",
+        "typecheck"
+      ],
+      "log": "node24-typecheck.log",
+      "exitCode": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "Auxiliary Node26 default Web and development Desktop source build",
+      "command": [
+        "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+        "scripts/tooling.mjs",
+        "build"
+      ],
+      "log": "node26-auxiliary-build.log",
+      "exitCode": 0,
+      "formalNode24Qualification": false,
+      "packagedProductQualification": false,
+      "sha256": "52dc1afe64f98dcb4daff4f10ca6410d4692a5ec84516ce6825bb8f431be3747"
+    }
+  ],
+  "totalDistinctTests": 112,
+  "earlierSuccessfulRuns": {
+    "countTowardTotal": false,
+    "reason": "Initial runs and later display/copy hardening runs are retained as raw evidence. The final runs above use final source. No failed run occurred.",
+    "logs": [
+      {
+        "log": "focused-initial.tap",
+        "exitCode": 0,
+        "sha256": "5bd4d2747349195db1f8b3e387bc87b18e220ba01fef1c2bd54c708aae55fabc"
+      },
+      {
+        "log": "focused-kind-display.tap",
+        "exitCode": 0,
+        "sha256": "d35bf4afe5e150062034564dc1e0acd2bf7d2b663e2b6faf53f5f7bd9ef91382"
+      },
+      {
+        "log": "related-regressions-initial.tap",
+        "exitCode": 0,
+        "sha256": "96ca482d92cd2f403da854103494aa65cf56d04b5c108415e863b36eebd90d9a"
+      },
+      {
+        "log": "related-regressions-kind-display.tap",
+        "exitCode": 0,
+        "sha256": "c4dbad41013ee470ed2d11ee3704b8d691c4a7a633172bf78b033df50e0268e4"
+      },
+      {
+        "log": "node24-typecheck-initial.log",
+        "exitCode": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "log": "node24-typecheck-kind-display.log",
+        "exitCode": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "log": "node26-auxiliary-build-initial.log",
+        "exitCode": 0,
+        "sha256": "94b4258aa8a844172035d3dcc39e98c1201bc1a25f95157e5fc9bda63c254efd"
+      },
+      {
+        "log": "node26-auxiliary-build-kind-display.log",
+        "exitCode": 0,
+        "sha256": "ae1b32705d5e62248c495f4776cfb9ed9e56749215848cb45dae16dbfc77e9df"
+      }
+    ]
+  },
+  "sourceSha256": {
+    "apps/web/src/ClipLutControls.tsx": "6fb77583bfd965271c7ebe91352782cb7e1e246edbc8b19064361c7724eb659d",
+    "packages/i18n/src/catalogs/timeline.ts": "f19b93e4158104221da796f232a2f4433987745ceb3f9d1702313f70f14cf48a",
+    "tests/clip-lut-ui.test.mjs": "ad8b8e22cbd6ad43e15760bcd1a6f603af2cf0a0941697c5b0cdfa7041c038a6",
+    "tests/timeline-colour-client.test.mjs": "2f84c8bd9373c3972871f23eaa38374273db7b704dd65d61b6ae589bb2c31a33",
+    "tests/timeline-colour-source.test.mjs": "ac708816461d130045640564de68ec49974b54f9862bd5b707c7087cdf943fff",
+    "tests/timeline-colour-contracts.test.mjs": "42db85f9bbfe2864087601d401c6e7016747ae45ccd7a1e773839b6cac15b00e",
+    "tests/timeline-fades-ui.test.mjs": "a4ae213a4f8917029283f29f458e893ed4a4ae3737d38706ff40daaa84acd9c4",
+    "tests/i18n-timeline.test.mjs": "977c683bacf78d3508980058e1fcb0be563b66794f9f33859e3d48191a4a977e",
+    "tests/i18n-catalog-integrity.test.mjs": "f22610410e6637a41d0b2cf778d25ca153c21784dfb6defcde80394f8b68fba8"
+  },
+  "artifacts": {
+    "webHtml": {
+      "path": "apps/web/dist/index.html",
+      "sha256": "395693bc349158964a45d7e3c57780837e99a980f4420689b3eb4a6334b12e3a"
+    },
+    "webJavascript": {
+      "path": "apps/web/dist/assets/index-B1V0s91m.js",
+      "sha256": "24183e9f3c1e92a93460bda92629aada75e191b04fb4e541141642f2efa49f58"
+    },
+    "desktopWebJavascript": {
+      "path": "apps/desktop/build/web/assets/index-B1V0s91m.js",
+      "sha256": "24183e9f3c1e92a93460bda92629aada75e191b04fb4e541141642f2efa49f58"
+    },
+    "sameBuiltWeb": true,
+    "desktopChannel": "development"
+  },
+  "frozenIntegrity": "frozen-integrity.json",
+  "independentReview": {
+    "agent": "release_frontend_audit",
+    "method": "Read-only runtime, four-language copy, test fixtures, final TAP and final kind gate review",
+    "remainingFindings": 0
+  },
+  "limits": {
+    "component": "Compiled TSX and existing real controller handlers with synthetic React/event/RPC fixtures; no ReactDOM or native GUI qualification.",
+    "sourceServices": "Memory-only SQLite and synthetic hash/probe/runtime fixtures. No real ffprobe or codec execution.",
+    "realGUI": false,
+    "realHDRDisplay": false,
+    "actualUserMediaOrProjects": false,
+    "providers": false,
+    "listeners": false,
+    "newDependencies": false,
+    "systemOrCredentialsChanges": false,
+    "push": false,
+    "designs": "Untouched; only git status metadata observed"
+  },
+  "pending": [
+    {
+      "action": "Log/HDR processing and output",
+      "status": "Unimplemented by design",
+      "scope": "Input identification → technical transform distinct from creative LUT → working space → monitoring → verified output encoding/metadata."
+    },
+    {
+      "action": "Persistent asset colour observations",
+      "status": "Design proposal only; no collection or schema change"
+    },
+    {
+      "action": "Crossfade atomic pair operation",
+      "status": "Pending contract/profile decision; no pair edit or half-success Save implemented"
+    },
+    {
+      "action": "Real GUI and HDR-screen acceptance",
+      "status": "Not run"
+    },
+    {
+      "action": "Formal Node24 default Web build",
+      "status": "Existing blocker retained, not retried",
+      "reason": "macOS Rollup native-addon process/module Team ID mismatch",
+      "evidence": "../opacity-release-check/build-default.txt"
+    },
+    {
+      "action": "Historical ordinary24/restored25 BLOB startup compatibility",
+      "status": "Six independent pre-existing failures retained, not changed or retested",
+      "evidence": "../blob-admission-baselines/qualification.json"
+    }
+  ],
+  "deniedActions": [],
+  "uncertainActions": [],
+  "diffCheck": {
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--check"
+    ],
+    "exitCode": 0
+  },
+  "outcome": "Implemented and locally verified within the recorded scope; no full product, GUI, HDR or formal Node24 build qualification"
+}

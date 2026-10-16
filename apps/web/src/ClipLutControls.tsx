@@ -29,8 +29,9 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
   const state = observed ?? controller.getState(), colour = context.colour, blocked = context.blocked;
   if (kind === 'audio') return null;
   if (kind !== 'video' && kind !== 'image') return null;
-  const image = kind === 'image', imageInspection = state.inspection && 'kind' in state.inspection ? state.inspection : null, videoInspection = state.inspection && !('kind' in state.inspection) ? state.inspection : null;
-  const issue = clipLutSourceMessage(state.inspection, state.range), source = colour?.source, look = colour?.look;
+  const inspection = state.sourcePhase === 'ready' && state.inspection && (kind === 'image') === ('kind' in state.inspection) && state.inspection.projectId === context.projectId && state.inspection.assetId === context.assetId && state.inspection.assetSha256 === context.assetSha256 ? state.inspection : null;
+  const image = kind === 'image', imageInspection = image && inspection && 'kind' in inspection ? inspection : null, videoInspection = !image && inspection && !('kind' in inspection) ? inspection : null;
+  const issue = clipLutSourceMessage(inspection, state.range), source = colour?.source, look = colour?.look;
   const importRecord = state.importRecord;
   const importUnavailable = state.recoveryPhase !== 'ready' || Boolean(state.recovery) || state.importing;
   const resourceName = look && state.resources.find(item => item.id === look.resourceId)?.name;
@@ -39,6 +40,8 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
     <Separator className="section-divider" />
     <div className="section-heading"><span id="clip-lut-title">{t('colour.lut.title')}</span></div>
     <p className="input-hint" data-testid="clip-lut-render-disclosure">{t('colour.lut.renderDisclosure')}</p>
+    {!image && <p className="notice warning" data-testid="clip-lut-video-limits">{t('colour.lut.videoLimits')}</p>}
+    {!image && !videoInspection && <p className="input-hint" data-testid="clip-lut-source-uninspected">{t('colour.lut.sourceUninspected')}</p>}
     {!colour && <p className="notice warning" data-testid="clip-lut-adoption-warning">{t('colour.lut.adoptionWarning')}</p>}
     {colour && !source && <p className="notice warning" role="alert" data-testid="clip-lut-reconfirm-source">{t('colour.lut.reconfirmSource')}</p>}
     {source && <p className="input-hint" data-testid="clip-lut-source-confirmed">{'evidence' in source ? t('colour.lut.sourceImage', { format: source.evidence.profileId === 'jfif-ycbcr8-srgb-v1' ? 'JFIF JPEG' : 'PNG', width: source.evidence.width, height: source.evidence.height, alpha: source.evidence.alphaMode === 'straight' ? t('colour.lut.alphaPreserved') : t('colour.lut.opaque') }) : t('colour.lut.sourceVideo', { range: source.range === 'limited' ? 'Limited' : 'Full', stream: source.streamIndex })}</p>}
@@ -49,13 +52,17 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
         <legend className="field-label">{t('colour.lut.sourceLegend')}</legend>
         <Button variant="outline" size="sm" type="button" data-testid="inspect-clip-colour-source" disabled={state.sourcePhase === 'loading'} onClick={() => { void controller.inspectSource(); }}>{state.sourcePhase === 'loading' ? t('colour.lut.inspecting') : t('colour.lut.inspectAgain')}</Button>
         {videoInspection && <p className="input-hint" data-testid="clip-lut-source-evidence">{t('colour.lut.videoEvidence', { primaries: videoInspection.evidence.primaries ?? t('colour.lut.untagged'), transfer: videoInspection.evidence.transfer ?? t('colour.lut.untagged'), matrix: videoInspection.evidence.matrix ?? t('colour.lut.untagged'), range: videoInspection.evidence.range ?? t('colour.lut.untagged'), pixel: videoInspection.evidence.pixelFormat ?? t('colour.lut.unknown'), hdr: t(videoInspection.evidence.hdrMetadata ? 'colour.lut.hdrMetadata' : 'colour.lut.noHdrMetadata') })}</p>}
+        {videoInspection && <>
+          <p className="input-hint" data-testid="clip-lut-source-depth">{t('colour.lut.videoBitDepth', { stream: videoInspection.streamIndex ?? t('colour.lut.unknown'), depth: videoInspection.evidence.bitDepth ?? t('colour.lut.unknown') })}</p>
+          <p className="input-hint" data-testid="clip-lut-source-provenance">{t('colour.lut.videoEvidenceLimits')}</p>
+        </>}
         {imageInspection && <p className="input-hint" data-testid="clip-image-source-evidence">{t('colour.lut.imageEvidence', { verification: t(imageInspection.evidence.profileId === 'jfif-ycbcr8-srgb-v1' ? 'colour.lut.jpegVerified' : 'colour.lut.pngVerified'), width: imageInspection.evidence.width, height: imageInspection.evidence.height, alpha: imageInspection.evidence.alphaMode === 'straight' ? 'Straight alpha' : t('colour.lut.noAlpha'), tag: t(imageInspection.evidence.colourTag === 'srgb' ? 'colour.lut.srgbTag' : 'colour.lut.noSrgbTag') })}</p>}
         {state.sourceError && <p className="notice warning" role="alert">{state.sourceErrorMessage ? renderMessage(state.sourceErrorMessage) : t('colour.error.sourceCheckFailed')}</p>}
         {!image && <><Label className="field-label" htmlFor="clip-lut-source-range">{t('colour.lut.rangeLabel')}</Label>
-        <Select id="clip-lut-source-range" data-testid="clip-lut-source-range" value={state.range} disabled={state.sourcePhase !== 'ready' || state.inspection?.status === 'unsupported'} onChange={event => controller.chooseRange(event.target.value)}>
+        <Select id="clip-lut-source-range" data-testid="clip-lut-source-range" value={state.range} disabled={state.sourcePhase !== 'ready' || !videoInspection || videoInspection.status === 'unsupported'} onChange={event => controller.chooseRange(event.target.value)}>
           <option value="">{t('colour.lut.chooseRange')}</option><option value="limited">{t('colour.lut.limited')}</option><option value="full">{t('colour.lut.full')}</option>
         </Select></>}
-        {state.inspection && issue && <p className="notice warning" role="status" data-testid="clip-lut-source-issue">{renderMessage(issue)}</p>}
+        {inspection && issue && <p className="notice warning" role="status" data-testid="clip-lut-source-issue">{renderMessage(issue)}</p>}
         <label className="field-label"><input type="checkbox" data-testid="clip-lut-source-declaration" checked={state.sourceDeclared} disabled={Boolean(issue)} onChange={event => controller.declareSource(event.target.checked)} />{image ? t('colour.lut.declareImage') : t('colour.lut.declareVideo')}</label>
         <Button size="sm" type="button" data-testid="confirm-clip-colour-source" disabled={Boolean(issue) || !state.sourceDeclared || state.sourcePhase !== 'ready'} onClick={() => controller.confirmSource()}>{colour ? t('colour.lut.confirmSource') : t('colour.lut.enableSource')}</Button>
       </fieldset>

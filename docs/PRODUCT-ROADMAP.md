@@ -197,6 +197,23 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
    evidence, but exact-file reselection/explicit retry and the complete native
    restart gate remain unaccepted. This is not verified closure of
    [issue #2](https://github.com/starroyhq/mioon/issues/2).
+   The [source-colour information follow-up](SDR-CLIP-LUT.md) is locally implemented:
+   it exposes bit depth from the existing explicit source inspection and
+   distinguishes unchecked state, user declaration, probe evidence and processing
+   limits in four languages. A probe reporting no HDR side data does not prove SDR;
+   filename, brand or 10-bit depth cannot identify Log. Imported assets do not
+   persist these tags. A future media-library observation needs a bounded
+   hash/stream/method binding; vendor Log parameters, frame-level HDR SEI,
+   luminance payloads and finer bit-depth provenance are not collected here.
+   Selecting a clip does not probe it; the explicit settings entry uses existing
+   checks, and the display adds no calls, acquisition, persistence, DTO or permission. Future input
+   identification → technical conversion (separate from creative LUT looks) →
+   working space → monitoring → output metadata remains unimplemented; current
+   encoded RGB8 plus transient float buffers is not an HDR compositor. Bounded
+   tests passed 58/58 feature plus 54/54 related checks (112 distinct, including
+   23 new); Node24 strict types and auxiliary Node26 source builds passed.
+   [Evidence and limits](evidence/source-colour-info/qualification.json) retain
+   unverified real GUI/HDR-display acceptance and the known Node24 Team ID build gap.
 3. **Export, creation and versions.** Preflight, MP4/H.264 settings, named export
    history, selected-range export, decoded sample-peak checks and backend opt-in
    float-checked export retain their own evidence. Further codecs/containers,

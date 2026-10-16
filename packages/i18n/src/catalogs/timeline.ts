@@ -8,6 +8,30 @@ const timelineCoreMessages = {
     "en": "Rec.709 SDR · Creative LUT",
     "ja": "Rec.709 SDR · クリエイティブ LUT"
   },
+  "colour.lut.videoLimits": {
+    "zh-Hans": "当前仅提供受限的 Rec.709 SDR 处理，不支持 Log 技术转换、HDR 输出或自动色彩管理。创意 LUT 不能代替技术转换。",
+    "zh-Hant": "目前僅提供有限的 Rec.709 SDR 處理，不支援 Log 技術轉換、HDR 輸出或自動色彩管理。創意 LUT 不能取代技術轉換。",
+    "en": "Only the restricted Rec.709 SDR workflow is available. Log technical conversion, HDR output and automatic color management are unsupported. A creative LUT does not replace a technical transform.",
+    "ja": "現在は限定的な Rec.709 SDR 処理のみ利用できます。Log の技術変換、HDR 出力、自動カラーマネジメントには対応していません。クリエイティブ LUT は技術変換の代わりにはなりません。"
+  },
+  "colour.lut.sourceUninspected": {
+    "zh-Hans": "尚无当前素材的本次色彩检查结果。已保存的来源解释是用户声明；未检查或缺失标签不能默认视为 SDR。选择片段不会自动探测，点击检查来源才会探测。",
+    "zh-Hant": "尚無目前素材的本次色彩檢查結果。已儲存的來源解讀是使用者聲明；未檢查或缺少標記不能預設視為 SDR。選取片段不會自動探測，點擊檢查來源才會探測。",
+    "en": "There is no current color inspection for this source. A saved source interpretation is a user declaration. Uninspected or untagged does not mean SDR. Selecting a clip does not probe; choosing the source check does.",
+    "ja": "このソースの今回の色検査結果はまだありません。保存済みのソース解釈はユーザーの宣言です。未検査やタグなしを SDR と見なしません。クリップの選択では検査せず、ソース検査を押すと検査します。"
+  },
+  "colour.lut.videoBitDepth": {
+    "zh-Hans": "所选视频流 {stream} · 位深：{depth}（探测值或已识别像素格式推导；未知不补默认值）",
+    "zh-Hant": "所選影片串流 {stream} · 位元深度：{depth}（探測值或由已識別像素格式推導；未知不補預設值）",
+    "en": "Selected video stream {stream} · bit depth: {depth} (reported or derived from a recognized pixel layout; unknown stays unknown)",
+    "ja": "選択した動画ストリーム {stream} · ビット深度：{depth}（報告値または識別されたピクセル形式からの推定値。不明な値に既定値は補いません）"
+  },
+  "colour.lut.videoEvidenceLimits": {
+    "zh-Hans": "以上是绑定素材字节与所选流的探测信息，不是色彩转换结果，也不保证标签描述了真实编码。标签兼容、10 位或未报告 HDR 侧数据都不能证明为 SDR；流级检查不能排除逐帧 HDR 信息或未标记的相机 Log。不按文件名或厂商品牌识别 Log。",
+    "zh-Hant": "以上是綁定素材位元組與所選串流的探測資訊，並非色彩轉換結果，也不保證標記描述了實際編碼。標記相容、10 位元或未報告 HDR 側資料都不能證明為 SDR；串流層級檢查不能排除逐幀 HDR 資訊或未標記的相機 Log。不按檔名或廠商品牌識別 Log。",
+    "en": "These observations are bound to the source bytes and selected stream. They are not a color transform and do not establish that the tags describe the actual encoding. Compatible tags, 10-bit depth or no reported HDR side data do not prove SDR. Stream metadata cannot exclude frame-only HDR data or untagged camera Log. Log is not inferred from filenames or brands.",
+    "ja": "これは素材のバイト列と選択したストリームに紐づく検査情報です。色変換の結果ではなく、タグが実際の符号化を表す保証もありません。互換タグ、10 ビット、HDR サイドデータの報告なしだけでは SDR と証明できません。ストリーム情報だけではフレーム内 HDR 情報やタグのないカメラ Log を除外できず、ファイル名やメーカー名から Log を推測しません。"
+  },
   "colour.lut.renderDisclosure": {
     "zh-Hans": "保存片段后，重新渲染的时间线预览与导出才会应用。源素材快速查看始终是原始、未调色画面。",
     "zh-Hant": "儲存片段後，重新算繪的時間軸預覽與匯出才會套用。來源素材快速查看始終是原始、未調色畫面。",
@@ -69,16 +93,16 @@ const timelineCoreMessages = {
     "ja": "ソースを検査して LUT を調整"
   },
   "colour.lut.inspectEnable": {
-    "zh-Hans": "检查并启用 Rec.709 SDR",
-    "zh-Hant": "檢查並啟用 Rec.709 SDR",
-    "en": "Inspect and enable Rec.709 SDR",
-    "ja": "検査して Rec.709 SDR を有効化"
+    "zh-Hans": "检查来源并查看 SDR 设置",
+    "zh-Hant": "檢查來源並檢視 SDR 設定",
+    "en": "Check the source and view SDR settings",
+    "ja": "ソースを検査して SDR 設定を表示"
   },
   "colour.lut.sourceLegend": {
-    "zh-Hans": "1. 明确源素材解释",
-    "zh-Hant": "1. 明確指定來源素材解讀",
-    "en": "1. Declare the source interpretation",
-    "ja": "1. ソース素材の解釈を宣言"
+    "zh-Hans": "1. 来源检查与用户解释",
+    "zh-Hant": "1. 來源檢查與使用者解讀",
+    "en": "1. Source inspection and user interpretation",
+    "ja": "1. ソース検査とユーザーの解釈"
   },
   "colour.lut.inspecting": {
     "zh-Hans": "正在检查来源…",
@@ -105,16 +129,16 @@ const timelineCoreMessages = {
     "ja": "不明"
   },
   "colour.lut.hdrMetadata": {
-    "zh-Hans": "含 HDR 元数据",
-    "zh-Hant": "含 HDR 中繼資料",
-    "en": "Contains HDR metadata",
-    "ja": "HDR メタデータあり"
+    "zh-Hans": "所查流报告 HDR 侧数据标记",
+    "zh-Hant": "所查串流報告 HDR 側資料標記",
+    "en": "HDR side-data markers reported in the inspected stream",
+    "ja": "検査対象ストリームに HDR サイドデータの報告あり"
   },
   "colour.lut.noHdrMetadata": {
-    "zh-Hans": "无 HDR 元数据",
-    "zh-Hant": "無 HDR 中繼資料",
-    "en": "No HDR metadata",
-    "ja": "HDR メタデータなし"
+    "zh-Hans": "所查流未报告 HDR 侧数据标记",
+    "zh-Hant": "所查串流未報告 HDR 側資料標記",
+    "en": "No HDR side-data markers reported in the inspected stream",
+    "ja": "検査対象ストリームに HDR サイドデータの報告なし"
   },
   "colour.lut.rangeLabel": {
     "zh-Hans": "源素材范围（必须明确选择）",
@@ -273,8 +297,8 @@ const timelineCoreMessages = {
     "ja": "このクリップを元の色処理に戻す"
   },
   "colour.lut.videoEvidence": {
-    "zh-Hans": "文件标签：原色 {primaries} · 转换 {transfer} · 矩阵 {matrix} · 范围 {range} · 像素 {pixel} · {hdr}",
-    "zh-Hant": "檔案標記：原色 {primaries} · 轉換 {transfer} · 矩陣 {matrix} · 範圍 {range} · 像素 {pixel} · {hdr}",
+    "zh-Hans": "文件标签：原色 {primaries} · 传递特性 {transfer} · 矩阵 {matrix} · 范围 {range} · 像素 {pixel} · {hdr}",
+    "zh-Hant": "檔案標記：原色 {primaries} · 傳遞特性 {transfer} · 矩陣 {matrix} · 範圍 {range} · 像素 {pixel} · {hdr}",
     "en": "File tags: primaries {primaries} · transfer {transfer} · matrix {matrix} · range {range} · pixels {pixel} · {hdr}",
     "ja": "ファイルのタグ：原色 {primaries} · 伝達関数 {transfer} · マトリクス {matrix} · レンジ {range} · ピクセル {pixel} · {hdr}"
   },
