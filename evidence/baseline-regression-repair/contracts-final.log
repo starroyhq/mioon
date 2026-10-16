@@ -1,0 +1,13 @@
+✔ restore origin is optional only by omission and never normalized or coerced (4.97528ms)
+✔ restore inspection is a strict non-path public read and does not grant effects (7.073721ms)
+✔ restore disclosure is bounded, excludes arbitrary fields and reports backup unavailable (11.868458ms)
+✔ ordinary task and ACK shapes remain byte-identical with optional outer restored projection (1.516856ms)
+✔ restore task page projection must match every returned identity in order (1.91146ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 449.46673

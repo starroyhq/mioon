@@ -1,0 +1,10 @@
+✔ ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact (488.034755ms)
+✔ ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows (465.403461ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1591.561065

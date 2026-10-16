@@ -1,0 +1,25 @@
+✖ ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact (397.275714ms)
+✔ ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows (387.734743ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1443.432566
+
+✖ failing tests:
+
+test at tests/workspace-restore-schema.test.mjs:98:1
+✖ ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact (397.275714ms)
+  Error: timeline request responses are immutable
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-baseline-regression-repair/tests/workspace-restore-schema.test.mjs:105:63)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 1811,
+    errstr: 'constraint failed'
+  }

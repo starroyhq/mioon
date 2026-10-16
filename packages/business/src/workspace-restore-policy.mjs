@@ -19,6 +19,7 @@ export const RESTORE_LOCAL_OPERATIONS = Object.freeze([
 ]);
 export const RESTORE_DENIED_OPERATIONS = Object.freeze([
  'asset.annotation.set', 'lut.import',
+ 'timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
  'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
  'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
 ]);

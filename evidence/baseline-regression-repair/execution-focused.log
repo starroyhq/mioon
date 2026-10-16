@@ -1,0 +1,14 @@
+✔ restored profile has fixed catalogue coverage with no hint-based or suffix-based authority (3.412981ms)
+✔ restored catalogue reports four disabled media operations and refuses calls without writes (1266.564718ms)
+✔ restored composition and automatic/manual workers leave all captured rows exact (1444.042342ms)
+✔ captured task reads stay exact, pending lanes exclude holds, all state-changing entries refuse (2087.801972ms)
+✔ exact saved timeline acknowledgement is read without origin, mutation, or worker dispatch (2601.739706ms)
+✔ direct shared local mutation and export-compute boundaries cannot bypass pinned admission (2545.577007ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11081.018324

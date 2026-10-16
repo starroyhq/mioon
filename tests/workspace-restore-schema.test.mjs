@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore,installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
+import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {classifyWorkspaceSchema,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema,getWorkspaceRestoreContext,isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.mjs';
 const info=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-12T00:00:00.000Z'});
@@ -22,6 +23,24 @@ function seed(db){
  db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('export',requestId,'a'.repeat(64),exportId);
  db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(jobId,Buffer.from([0,255,13,10]),'at');
  db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(randomUUID(),'hash',Buffer.from([0,255,13,10]));
+ db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(randomUUID(),projectId,1,'timeline.track.add','at',raw({name:'界',n:1}),raw({name:'界',n:2}));
+ db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(randomUUID(),projectId,2,'timeline.track.add','at',raw({name:'界',n:2}),raw({name:'界',n:3}));
+ db.prepare('INSERT INTO timeline_history_cursors VALUES(?,1)').run(projectId);
+ const taskId=randomUUID(),taskRequest=randomUUID(),input=raw({projectId,requestId:taskRequest,expectedRevision:1});
+ db.prepare("INSERT INTO edit_tasks(position,id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,claim,claimInstance,receiptDigest,errorCode,createdAt,updatedAt,bytes) VALUES(17,?,?,'timeline.undo',?,?,?,'timeline:mutation','new','prepared',1,0,NULL,NULL,NULL,NULL,'at','at',16384)").run(taskId,projectId,input,taskRequest,'d'.repeat(64));
+ db.exec("UPDATE sqlite_sequence SET seq=7001 WHERE name='edit_tasks'");return {projectId,jobId,exportId,taskId,taskRequest};
+}
+// Current admission requires TEXT JSON receipts; the legacy BLOB fixture above
+// remains unchanged for historical retention and refusal tests.
+function seedOrdinary(db,receipt){
+ const projectId=randomUUID(),jobId=randomUUID(),exportId=randomUUID(),requestId=randomUUID();
+ const raw=value=>' \n'+JSON.stringify(value,null,'\t').replaceAll('界','\\u754c')+'\n ';
+ db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,raw({id:projectId,name:'界'}));
+ db.prepare('INSERT INTO jobs VALUES(?,?,?)').run(jobId,projectId,raw({id:jobId,projectId,status:'unknown-future-state',requestId}));
+ db.prepare('INSERT INTO exports VALUES(?,?,?)').run(exportId,projectId,raw({id:exportId,projectId,status:'running',requestId,mode:'storyboard'}));
+ db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('export',requestId,'a'.repeat(64),exportId);
+ db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(jobId,Buffer.from([0,255,13,10]),'at');
+ db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(randomUUID(),'hash',receipt);
  db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(randomUUID(),projectId,1,'timeline.track.add','at',raw({name:'界',n:1}),raw({name:'界',n:2}));
  db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(randomUUID(),projectId,2,'timeline.track.add','at',raw({name:'界',n:2}),raw({name:'界',n:3}));
  db.prepare('INSERT INTO timeline_history_cursors VALUES(?,1)').run(projectId);
@@ -96,7 +115,23 @@ test('metadata UUID/hash validation rejects trailing newline and construction le
  const db=fresh(t),before=snapshot(db);for(const key of ['restorationId','workspaceOrigin','sourceBackupId','manifestHash','sourceDbHash']){const value=info();value[key]+='\n';assert.throws(()=>installWorkspaceRestoreSchema(db,value),/RESTORE_METADATA_INVALID/);assert.deepEqual(snapshot(db),before);}
 });
 test('ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact',t=>{
- const root=mkdtempSync(path.join(tmpdir(),'restore-ordinary-'));t.after(()=>rmSync(root,{recursive:true,force:true}));let store=openStore(root);seed(store.db);const before=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),before);assert.equal(getWorkspaceRestoreContext(store),null);store.close();
+ const root=mkdtempSync(path.join(tmpdir(),'restore-ordinary-'));t.after(()=>rmSync(root,{recursive:true,force:true}));let store=openStore(root);
+ try{
+  const receipt=' \n'+JSON.stringify({name:'界',retained:true},null,'\t')+'\n ';
+  seedOrdinary(store.db,receipt);
+  const before=snapshot(store.db),profile=readCurrentWorkspaceRole(store.db);assert.equal(profile,'ordinary-40');
+  store.close();store=openStore(root);
+  assert.deepEqual(snapshot(store.db),before);assert.deepEqual(readCurrentWorkspaceRole(store.db),profile);
+  assert.deepEqual({...store.db.prepare('SELECT typeof(response) AS type,response FROM timeline_requests').get()},{type:'text',response:receipt});
+  assert.equal(getWorkspaceRestoreContext(store),null);
+ }finally{if(store.db.isOpen)store.close();}
+});
+test('ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows',t=>{
+ const root=mkdtempSync(path.join(tmpdir(),'restore-ordinary-blob-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const store=openStore(root);
+ seed(store.db);const before=snapshot(store.db);assert.equal(store.db.prepare('SELECT typeof(response) AS type FROM timeline_requests').get().type,'blob');store.close();
+ assert.throws(()=>openStore(root),error=>error.code==='WORKSPACE_VOLUME_ENVELOPE_INVALID');
+ const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});
+ try{assert.deepEqual(snapshot(db),before);}finally{db.close();}
 });
 test('quoted keyword lookalikes are not equivalent fixed schema objects',t=>{
  const db=fresh(t);db.exec('DROP TABLE workspace_preferences;CREATE TABLE workspace_preferences(projectId TEXT PRIMARY KEY REFERENCES projects(id), revision INTEGER "NOT" "NULL" CHECK(revision>0 AND revision<=9007199254740991),state TEXT NOT NULL CHECK(json_valid(state) AND length(CAST(state AS BLOB))<=16384))');

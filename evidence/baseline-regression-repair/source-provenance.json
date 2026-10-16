@@ -1,0 +1,10 @@
+{
+  "baseline": "c2000a1118c57585cc94a42f53ff6febf86bbec9",
+  "legacySeedByteExact": true,
+  "legacySeedSha256": "d38587e5d065c1ae34732cf07a7e060627fd0a07939524ec343a089ed335ee6d",
+  "modifiedFiles": {
+    "packages/business/src/workspace-restore-policy.mjs": "4f8bf21c89de733cdd39ca444e5fb7459a5b27ee5d76bf5d8e84f31f77b37d51",
+    "tests/workspace-restore-schema.test.mjs": "77b4959b91043e8a469c5039b2ac08b26ca81c09ccd8711109c96c91f6e7f931",
+    "tests/workspace-restore-execution.test.mjs": "f2682e17b57d9742c3e415a6c1ee952dba97da40511e4989f0d73efa87024126"
+  }
+}

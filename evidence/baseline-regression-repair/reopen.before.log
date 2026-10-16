@@ -1,0 +1,26 @@
+✖ ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact (429.584773ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1059.810708
+
+✖ failing tests:
+
+test at tests/workspace-restore-schema.test.mjs:98:1
+✖ ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact (429.584773ms)
+  Error: Workspace volume-envelope evidence is invalid.
+      at invalid (file:///workspace/scratch/6877817dff0d/mioon-baseline-regression-repair/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+      at validateWorkspaceVolumeEnvelopeRows (file:///workspace/scratch/6877817dff0d/mioon-baseline-regression-repair/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+      at Object.initialize (file:///workspace/scratch/6877817dff0d/mioon-baseline-regression-repair/packages/business/src/workspace-schema-dispatch.ts:205:5)
+      at openStore (file:///workspace/scratch/6877817dff0d/mioon-baseline-regression-repair/packages/business/src/db.mjs:97:40)
+      at TestContext.<anonymous> (file:///workspace/scratch/6877817dff0d/mioon-baseline-regression-repair/tests/workspace-restore-schema.test.mjs:99:213)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    code: 'WORKSPACE_VOLUME_ENVELOPE_INVALID'
+  }

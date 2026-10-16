@@ -1,0 +1,27 @@
+✔ schema25 adds durable quarantine, retains every raw old column/SQL type/rowid/sequence, and archives redo-tail evidence (613.089787ms)
+✔ current-epoch pending lane coexists without releasing captured task, request identity, sequence or immutable epoch (226.484125ms)
+✔ main-database marker and captured-row guards reject INSERT/IGNORE/REPLACE/UPSERT/update/delete with recursive_triggers=0 (650.28615ms)
+✔ main-database marker and captured-row guards reject INSERT/IGNORE/REPLACE/UPSERT/update/delete with recursive_triggers=1 (263.958774ms)
+✔ offline source24 rejects unknown imported triggers before any construction statement (133.089459ms)
+✔ every construction DDL boundary rolls back schema/rows/guards/sequence in a single transaction (1292.329989ms)
+✔ partial metadata/profile/marker/guard/epoch structures refuse with no ordinary fallback (4066.020756ms)
+✔ unregistered/copied/mutated/closed stores cannot manufacture a verified restoration or ordinary context (1269.640763ms)
+✔ metadata UUID/hash validation rejects trailing newline and construction leaves source24 unchanged (139.891043ms)
+✔ ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact (796.366085ms)
+✔ ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows (418.390693ms)
+✔ quoted keyword lookalikes are not equivalent fixed schema objects (137.379706ms)
+✔ history and cursor positions are bounded real integers before archival, not coercible affinity values (260.34763ms)
+✔ source sequence identity rejects corrupt type, duplicate name and regressed high-water without changing anything (412.148238ms)
+✔ strict restore source classification supports independently frozen historical schemas after their ordinary upgrade to24 (568.266773ms)
+✔ synthetic legacy export projection without JSON requestId binds its unique original receipt without rewriting JSON (671.863832ms)
+✔ restart archive byte limits run before hashing and include cursor values (596.910554ms)
+✔ restart captured-record limits run before hash scan without counting new live receipts (577.15428ms)
+✔ captured export request IDs must be JSON text or absent, never objects/arrays/numbers even with a receipt (871.410849ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14480.860574

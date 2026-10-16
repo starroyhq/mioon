@@ -60,6 +60,27 @@ test('restored profile has fixed catalogue coverage with no hint-based or suffix
  assert.deepEqual([...names].sort(),Object.keys(schemas).sort());
 });
 
+test('restored catalogue reports four disabled media operations and refuses calls without writes',async t=>{
+ const root=mkdtempSync(path.join(tmpdir(),'restore-denied-catalogue-'));
+ const store=openStore(root);installCurrentWorkspaceRestoreSchema(store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});store.close();
+ const restored=openStore(root),services=createServices(restored,new Proxy(new Map(),{get(){throw Error('Disabled catalogue inspected a provider');}}));
+ t.after(async()=>{await services.drain();restored.close();rmSync(root,{recursive:true,force:true});});
+ const before=snapshot(restored.db),changes=restored.db.prepare('SELECT total_changes() AS n').get().n;
+ const inspection=await services.call('workspace.restore.inspect',{});
+ assert.ok(isWorkspaceRestoreInspection(inspection));
+ assert.deepEqual(inspection.operationPolicy.map(item=>item.operation).sort(),Object.keys(schemas).sort());
+ for(const operation of ['timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect']){
+  assert.ok(RESTORE_DENIED_OPERATIONS.includes(operation));
+  assert.deepEqual(inspection.operationPolicy.filter(item=>item.operation===operation),[{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}]);
+  for(const context of [{},{expectedWorkspaceOrigin:inspection.workspaceOrigin}]){
+   await assert.rejects(services.call(operation,{},context),isCode('RESTORE_OPERATION_UNAVAILABLE'));
+   await assert.rejects(services.handlers[operation]({},context),isCode('RESTORE_OPERATION_UNAVAILABLE'));
+  }
+ }
+ assert.equal(restored.db.prepare('SELECT total_changes() AS n').get().n,changes);
+ assert.equal(snapshot(restored.db),before);
+});
+
 test('restored composition and automatic/manual workers leave all captured rows exact',async t=>{
  const f=await fixture(t),before=snapshot(f.store.db),changes=f.store.db.prepare('SELECT total_changes() n').get().n;
  const bomb=()=>{throw Error('Disabled runtime was entered');};

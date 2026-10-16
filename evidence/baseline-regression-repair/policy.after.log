@@ -1,0 +1,10 @@
+✔ restored profile has fixed catalogue coverage with no hint-based or suffix-based authority (3.685576ms)
+✔ restored catalogue reports four disabled media operations and refuses calls without writes (1345.631109ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2635.597587
