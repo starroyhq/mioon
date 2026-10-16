@@ -11,7 +11,8 @@ Local-only opacity development now follows `ec01753056c0f31706d29ed279ae1944c822
 the [fresh42 application slice](docs/OPACITY-CANDIDATE-APPLICATION.md) connects
 project/import/edit/Inspector v3/tasks/preview/download in the shared App, with
 synthetic no-listen qualification and canonical builds. Default40/41 remains;
-GUI/media acceptance, existing42 reopening and42→43 backup are still pending.
+Explicit ordinary42 [reopening](docs/OPACITY-CANDIDATE-REOPEN.md) now preserves
+saved edits/drafts; GUI/media acceptance and42→43 backup are still pending.
 Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 - **Implemented:** independent Settings center, four-language presentation,

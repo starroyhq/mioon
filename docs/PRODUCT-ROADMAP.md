@@ -18,7 +18,8 @@ No native acceptance or stopped issue investigation was resumed.
   preview/export preparation and guarded media delivery. Default40/41 and
   historical constructors remain unchanged. [Application scope and evidence](OPACITY-CANDIDATE-APPLICATION.md)
   separate pure/synthetic qualification from pending GUI/media acceptance,
-  existing42 reopening,42→43 backup and40/41 migration. No push or release.
+  [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md), and the remaining
+  42→43 backup and40/41 migration. No push or release.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI

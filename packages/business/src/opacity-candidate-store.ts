@@ -10,7 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import type {SQLInputValue, StatementSync} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {initializeWorkspaceSchema42} from './workspace-schema-v42.ts';
+import {initializeWorkspaceSchema42, classifyWorkspaceSchema42} from './workspace-schema-v42.ts';
 import {classifyWorkspaceSchemaV42V43, validateWorkspaceRestoreSchemaV43} from './workspace-restore-schema-v43.ts';
 import {captureOpacityRenderInput, captureOpacityPreflightInput, captureOpacityCapabilitiesInput} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 
@@ -126,7 +126,7 @@ interface Registration {readonly assembly: OpacityCandidateAssembly; readonly ch
 const assemblies = new WeakMap<object, Registration>();
 const applicationStores = new WeakSet<object>();
 /** Explicit internal application assembly only. Restored43 and copied handles
- * cannot acquire the fresh42 application operation set. No wire field grants it. */
+ * cannot acquire the ordinary42 application operation set. No wire field grants it. */
 function registerOpacityCandidateApplicationStore(store: unknown): void {
   const assembly = getOpacityCandidateAssembly(store);
   if (!assembly || !store || typeof store !== 'object' || assembly.getRestoreContext()) unavailable();
@@ -141,6 +141,13 @@ export function openNewOpacityCandidateApplicationStore(directory: string): Opac
   let store: OpacityCandidateStore | undefined;
   try {store = openOpacityCandidateStore(root); registerOpacityCandidateApplicationStore(store); return store;}
   catch (error) {try {store?.close();} catch {} try {rmdirSync(root);} catch {} throw error;}
+}
+/** Explicit reopen only: the directory and managed database must exist, and
+ * exact ordinary42 admission runs under the same lease before any RW open. */
+export function reopenOpacityCandidateApplicationStore(directory: string): OpacityCandidateStore {
+  const store = openCandidateStore(directory, true);
+  try {registerOpacityCandidateApplicationStore(store); return store;}
+  catch (error) {store.close(); throw error;}
 }
 export function isOpacityCandidateApplicationStore(store: unknown): boolean {
   if (!store || typeof store !== 'object' || !applicationStores.has(store)) return false;
@@ -163,20 +170,43 @@ export function getOpacityCandidateAssembly(store: unknown): OpacityCandidateAss
 /** No options or supplied implementations can choose a profile or suppress the
  * exclusive lease. Existing ordinary40/restored41 are deliberately refused. */
 export function openOpacityCandidateStore(directory: string): OpacityCandidateStore {
+  return openCandidateStore(directory, false);
+}
+function openCandidateStore(directory: string, existingApplication: boolean): OpacityCandidateStore {
   const root = path.resolve(directory), storage = storageRuntime();
   preflight(root, storage);
-  legacyCall(storage, 'ensurePrivateDirectory', [root, {create: true}]);
+  const databaseFile = path.join(root, 'workbench.sqlite');
+  const databaseIdentity = (): {dev: number; ino: number} => {
+    const info = legacyCall(storage, 'validateManagedFile', [databaseFile, {root}]);
+    if (!object(info) || typeof info.dev !== 'number' || typeof info.ino !== 'number') return unverified();
+    return {dev: info.dev, ino: info.ino};
+  };
+  if (existingApplication) {legacyCall(storage, 'validatePrivateDirectory', [root]); databaseIdentity();}
+  else legacyCall(storage, 'ensurePrivateDirectory', [root, {create: true}]);
   preflight(root, storage);
   let db: DatabaseSync | undefined, lease: Lease | undefined;
   try {
     lease = acquireLease(root); preflight(root, storage);
-    db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
+    let retained: {dev: number; ino: number} | undefined;
+    const assertExistingIdentity = (): void => {
+      if (!retained || !lease?.isOwned()) return unverified();
+      const current = databaseIdentity();
+      if (current.dev !== retained.dev || current.ino !== retained.ino) unverified();
+    };
+    if (existingApplication) {
+      retained = databaseIdentity();
+      const inspection = new DatabaseSync(databaseFile, {readOnly: true});
+      try {classifyWorkspaceSchema42(inspection);} finally {inspection.close();}
+      assertExistingIdentity();
+    }
+    db = new DatabaseSync(databaseFile);
     db.exec('PRAGMA trusted_schema=OFF;');
     if (db.prepare('PRAGMA trusted_schema').get()?.trusted_schema !== 0) unverified();
+    if (existingApplication) {assertExistingIdentity(); classifyWorkspaceSchema42(db); assertExistingIdentity();}
     db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL;');
     const markersExist = db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='schema_version'").get();
     const restoredMarker = markersExist && db.prepare('SELECT 1 FROM main.schema_version WHERE version=43').get();
-    if (!restoredMarker) initializeWorkspaceSchema42(db);
+    if (!existingApplication && !restoredMarker) initializeWorkspaceSchema42(db);
     const classification = classifyWorkspaceSchemaV42V43(db);
     const restored: RestoreInfo | null = classification.schemaVersion === 43 ? validateWorkspaceRestoreSchemaV43(db) : null;
     if (db.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 1) unverified();

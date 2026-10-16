@@ -9,7 +9,7 @@ import {DatabaseSync} from 'node:sqlite';
 import http from 'node:http';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {createFreshOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch, assertOpacityCandidateBuild} from '../apps/server/src/opacity-candidate-launch.ts';
+import {createFreshOpacityCandidateLaunch, createExistingOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch, assertOpacityCandidateBuild} from '../apps/server/src/opacity-candidate-launch.ts';
 import {parseOpacityCandidateArguments} from '../apps/server/src/opacity-candidate-cli.ts';
 import {createOpacityCandidateRequestApplication, startServer} from '../apps/server/src/index.mjs';
 import {onMediaProcess} from '../packages/business/src/media-processes.mjs';
@@ -75,7 +75,7 @@ test('candidate launch is explicit, one-shot, fresh-only and requires the isolat
   assert.throws(() => parseOpacityCandidateArguments([]), /new-workspace/);
   assert.throws(() => parseOpacityCandidateArguments(['--new-workspace', 'relative']), /absolute/);
   assert.throws(() => parseOpacityCandidateArguments(['--profile', '42']), /new-workspace/);
-  assert.deepEqual(parseOpacityCandidateArguments(['--new-workspace', f.root]), {directory: f.root, port: 4319});
+  assert.deepEqual(parseOpacityCandidateArguments(['--new-workspace', f.root]), {directory: f.root, port: 4319, mode: 'new'});
   const launch = createFreshOpacityCandidateLaunch(f.root);
   assert.throws(() => createFreshOpacityCandidateLaunch(f.root), {code: 'EEXIST'});
   for (const copy of [{...launch}, Object.create(launch), JSON.parse(JSON.stringify(launch))])
@@ -171,9 +171,31 @@ test('actual project, timeline, task ACK, v3 draft and delivery endpoints retain
   const nextPreferences=await request(f.app,`/api/workspace-preferences/${project.id}`,{method:'PUT',input:{expectedRevision:1,state:nextPreferenceState}});
   assert.equal(nextPreferences.data.ok,true,nextPreferences.text);assert.equal(nextPreferences.data.data.revision,2);
   assert.equal((await request(f.app,`/api/workspace-preferences/${project.id}`,{method:'PUT',input:{expectedRevision:0,state:preferenceState}})).data.error.code,'PREFERENCES_CONFLICT');
+  const beforeReopen=(await rpc(f.app,'project.get',{projectId:project.id})).data.data;
   await f.app.close();
   const closed = new DatabaseSync(path.join(f.root, 'workbench.sqlite'));
   try {assert.equal(closed.prepare('SELECT max(version) AS v FROM schema_version').get().v, 42);assert.deepEqual(JSON.parse(closed.prepare('SELECT data FROM timelines WHERE id=?').get(timeline.id).data).clips[0].opacityEnvelope, curve);} finally {closed.close();}
+  const reopened=await createOpacityCandidateRequestApplication({opacityCandidateLaunch:createExistingOpacityCandidateLaunch(f.root),port:4319,distDir:f.dist,token});
+  try {
+    const retained=await rpc(reopened,'project.get',{projectId:project.id});assert.equal(retained.data.ok,true,retained.text);
+    assert.deepEqual(retained.data.data.timeline,currentTimeline);
+    assert.deepEqual(retained.data.data,beforeReopen);
+    assert.equal((await request(reopened,`/api/workspace-preferences/${project.id}`)).data.data.revision,2);
+    const resumedDraft=await request(reopened,`/api/local-drafts/clip?projectId=${project.id}&timelineId=${timeline.id}&clipId=${clipId}`);
+    assert.equal(resumedDraft.data.data.workspaceScope,draftValue.workspaceScope);
+    assert.notEqual(resumedDraft.data.data.instanceId,draftValue.instanceId);
+    assert.deepEqual(resumedDraft.data.data.draft,savedDraft.data.data.draft);
+    const staleDraft=await request(reopened,'/api/local-drafts/clip',{method:'PUT',input:{projectId:project.id,timelineId:timeline.id,clipId,
+      workspaceScope:draftValue.workspaceScope,instanceId:draftValue.instanceId,expectedRevision:savedDraft.data.data.revision,
+      baseRevision:currentTimeline.revision,source:clipDraftSource(currentClip,asset),raw}});
+    assert.equal(staleDraft.data.error.code,'LOCAL_DRAFT_STALE_INSTANCE');
+    const resumedDelivery=await request(reopened,`/api/local-delivery?projectId=${project.id}`);
+    assert.deepEqual(resumedDelivery.data.data.intent,preparedDelivery.data.data.intent,'reopening never executes a pending export');
+    const undone=await applyTask(reopened,project.id,'timeline.undo',{projectId:project.id,requestId:randomUUID(),expectedRevision:currentTimeline.revision});
+    assert.equal(Object.hasOwn(undone.clips[0],'opacityEnvelope'),false);
+    const redone=await applyTask(reopened,project.id,'timeline.redo',{projectId:project.id,requestId:randomUUID(),expectedRevision:undone.revision});
+    assert.deepEqual(redone.clips[0].opacityEnvelope,curve);
+  } finally {await reopened.close();}
 });
 
 test('ordinary startServer rejects forged candidate proof before opening a directory or listening', async t => {

@@ -7,7 +7,7 @@
 已接入现有时间线与编辑任务事务，默认 40/41 未启用或迁移。
 [候选 Inspector／四语言／v3 草稿](OPACITY-CANDIDATE-EDITOR.md)、共享renderer、
 preflight及[全新独立42应用入口](OPACITY-CANDIDATE-APPLICATION.md)已接线。
-默认40/41仍不启用；真实GUI／媒体验收、已有42应用重开及42→43冷备份仍待完成，
+默认40/41仍不启用；已有42已补[安全重开](OPACITY-CANDIDATE-REOPEN.md)。真实GUI／媒体验收及42→43冷备份仍待完成，
 不能算正式发布或完整画面动画套件。
 
 2026-10-14 进展：独立首页及[多项目窗口](MULTIPLE-PROJECT-WINDOWS.md)已交付，

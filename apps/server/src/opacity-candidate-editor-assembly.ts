@@ -19,8 +19,8 @@ export function createOpacityCandidateEditorAssembly(store: unknown) {
   return createEditor(store, false);
 }
 
-/** The application factory independently requires the exact, newly-created42
- * store marker. Neither an HTTP field nor a reopened candidate can select it. */
+/** The application factory independently requires the exact ordinary42 app
+ * store marker. HTTP fields and generic candidate handles cannot select it. */
 export function createOpacityCandidateApplicationEditorAssembly(store: unknown, options: {signal?: AbortSignal} = {}) {
   return createEditor(store, true, options.signal);
 }

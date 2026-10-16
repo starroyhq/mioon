@@ -1,4 +1,4 @@
-/** Fixed fresh42 application delivery adapter. Wire data and copied adapters
+/** Fixed ordinary42 application delivery adapter. Wire data and copied adapters
  * cannot select the candidate playback/download rules. */
 import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';

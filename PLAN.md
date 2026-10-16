@@ -28,7 +28,8 @@ Inspector reopen, CJK IME and four-language native acceptance remain unfinished;
 this is not all-platform acceptance. Continuous-audio wall-clock/resource gates
 and LUT exact-file reselection/restart qualification retain their separate limits.
 Clip opacity keyframes now have the isolated fresh42 application slice; GUI and
-real-media acceptance, existing42 reopening and42→43 backup remain open. Other
+real-media acceptance and42→43 backup remain open. Explicit ordinary42 reopening
+now has [safe internal admission](docs/OPACITY-CANDIDATE-REOPEN.md). Other
 visual keyframes, transitions, Full Log/HDR and a general plugin broker/SDK remain
 future feature work.
 

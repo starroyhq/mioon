@@ -1,31 +1,35 @@
-/** Explicit internal development launcher. This command always creates a new
- * independent42 workspace. It cannot select/migrate/reopen an existing root. */
+/** Explicit internal development launcher. Only a new independent42 or an
+ * existing exact ordinary42 can be selected; historical profiles never migrate. */
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
-import {createFreshOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch, assertOpacityCandidateBuild} from './opacity-candidate-launch.ts';
+import {createFreshOpacityCandidateLaunch, createExistingOpacityCandidateLaunch, closeUnusedOpacityCandidateLaunch, assertOpacityCandidateBuild} from './opacity-candidate-launch.ts';
 
 const require = createRequire(import.meta.url);
 const defaultDist = fileURLToPath(new URL('../../web/dist-opacity-candidate', import.meta.url));
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function parseOpacityCandidateArguments(args: readonly string[]) {
-  let directory: string | undefined, port = 4319;
+  let directory: string | undefined, port = 4319, mode: 'new' | 'open' | undefined;
   const seen = new Set<string>();
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index], value = args[index + 1];
-    if (!key || !value || seen.has(key) || !['--new-workspace', '--port'].includes(key)) throw new Error('Use --new-workspace /absolute/new/directory [--port 4319].');
+    if (!key || !value || seen.has(key) || !['--new-workspace', '--open-workspace', '--port'].includes(key)) throw new Error('Use exactly one --new-workspace or --open-workspace /absolute/directory [--port 4319].');
     seen.add(key);
-    if (key === '--new-workspace') {if (!path.isAbsolute(value)) throw new Error('The new workspace path must be absolute.');directory = path.resolve(value);}
+    if (key === '--new-workspace' || key === '--open-workspace') {
+      if (mode) throw new Error('Use exactly one --new-workspace or --open-workspace.');
+      if (!path.isAbsolute(value)) throw new Error('The workspace path must be absolute.');
+      directory = path.resolve(value); mode = key === '--new-workspace' ? 'new' : 'open';
+    }
     else {if (!/^[0-9]{4,5}$/u.test(value) || Number(value) < 1024 || Number(value) > 65535) throw new Error('The loopback port must be 1024–65535.');port = Number(value);}
   }
-  if (!directory) throw new Error('An explicit --new-workspace /absolute/new/directory is required.');
-  return Object.freeze({directory, port});
+  if (!directory) throw new Error('An explicit --new-workspace or --open-workspace /absolute/directory is required.');
+  return Object.freeze({directory, port, mode});
 }
 
 export async function runOpacityCandidateDevelopment(args: readonly string[] = process.argv.slice(2)) {
-  const {directory, port} = parseOpacityCandidateArguments(args);
+  const {directory, port, mode} = parseOpacityCandidateArguments(args);
   assertOpacityCandidateBuild(defaultDist);
-  const proof = createFreshOpacityCandidateLaunch(directory);
+  const proof = mode === 'open' ? createExistingOpacityCandidateLaunch(directory) : createFreshOpacityCandidateLaunch(directory);
   try {
     const module: unknown = require('./index.mjs');
     if (!object(module) || typeof module.startServer !== 'function') throw new Error('The local server runtime is unavailable.');
@@ -39,7 +43,7 @@ export async function runOpacityCandidateDevelopment(args: readonly string[] = p
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
     const service = await runOpacityCandidateDevelopment();
-    console.log(`Mioon internal opacity42 ready at ${service.url}; new workspace: ${service.dataDir}; local token file: ${service.tokenFile}`);
+    console.log(`Mioon internal opacity42 ready at ${service.url}; workspace: ${service.dataDir}; local token file: ${service.tokenFile}`);
     let closing: Promise<void> | undefined;
     const close = (): void => {closing ??= service.close().catch((error: unknown) => {console.error('Candidate shutdown failed:', object(error) && typeof error.code === 'string' ? error.code : 'SERVER_STOP_FAILED');process.exitCode = 1;});};
     process.on('SIGTERM', close);process.on('SIGINT', close);
