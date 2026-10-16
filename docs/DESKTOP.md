@@ -22,6 +22,8 @@ Electron 主进程
 
 macOS 通知保护钩子要求目标 framework/config 版本和尚未改写的 `Electron.app/Contents/Info.plist` 版本与根清单 Electron 固定版本一致；正常解包会在钩子前移除根目录 `version`，所以不依赖该文件。输入与输出拒绝符号链接、非普通文件、空文件和超限文件；Electron 通知上限 256 KiB、Chromium 通知上限 32 MiB、原始 plist 上限 1 MiB。版本证据是解包上下文和原始 bundle 元数据，不构成运行时签名认证。2026-10-11 留存的旧 arm64 development/production `.app` 验收仍缺少两份通知，development DMG 也没有重新生成或重新挂载检查；此处源码修复与云端契约测试不能替代新的 Mac 验收。
 
+界面品牌使用 `apps/web/src/assets/mioon-mark.png` 透明猫耳片带；浏览器 favicon 与桌面应用使用同一主体的黑底版。桌面图标源文件位于 `apps/desktop/resources/icon.png`（1024×1024）和 `icon.icns`（macOS 多尺寸）。构建把 PNG 复制为暂存目录内的 `icons/icon.png`，由窗口及 macOS Dock 使用；正式版和开发版打包配置共用该品牌资源。包检查白名单相应增加 `icons/`，并核对图标与暂存文件一致。
+
 ## 从源码启动
 
 Mac 首次源码试用见 [Mac 源码试用指南](MAC-SOURCE-TRIAL.zh-CN.md) 与 [试用记录表](MAC-TRIAL-CHECKLIST.zh-CN.md)；Mac 原生行为仍未验证。

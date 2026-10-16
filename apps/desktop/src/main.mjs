@@ -144,6 +144,7 @@ async function loadOwnedWindow(window, context) {
 async function openWindow(context = windowContext) {
   if (!ownsWindowContext(context) || (win && !win.isDestroyed())) return;
   const window = new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
+    icon: path.join(app.getAppPath(), 'icons/icon.png'),
     minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
     autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(), webPreferences: secureWebPreferences(context.session) });
   win = window;
@@ -319,6 +320,7 @@ else {
   process.on('SIGTERM', () => app.quit());
   process.on('SIGINT', () => app.quit());
   app.whenReady().then(async () => {
+    if (process.platform === 'darwin') app.dock?.setIcon(path.join(app.getAppPath(), 'icons/icon.png'));
     installMenu();
     const report = await start();
     if (smokeOutput) {
