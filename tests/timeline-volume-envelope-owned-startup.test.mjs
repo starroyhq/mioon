@@ -11,7 +11,7 @@ import {VOLUME_ENVELOPE_PROFILE,VOLUME_ENVELOPE_LIMITS,createVolumeEnvelopeEvalu
 import {hasRequestNotAppliedProof} from '../packages/contracts/src/index.mjs';
 import {validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
 import {clipDraftRaw,clipDraftPatch} from '../apps/web/src/clip-draft-state.ts';
-import {createVolumeEnvelopeFadePreset} from '../apps/web/src/clip-volume-envelope-state.ts';
+import {createVolumeEnvelopeFadePreset,createManualDuckingEnvelope,manualDuckingEnvelopeFromRaw} from '../apps/web/src/clip-volume-envelope-state.ts';
 import {snapshot} from './workspace-schema26-fixtures.mjs';
 
 // Genuine owned startup only: no restore-policy mock, facade, manual ordinary
@@ -70,6 +70,46 @@ for(const kind of ['in','out'])for(const fadeFrames of [15,60])test(`owned ordin
  await f.reopen();assert.deepEqual(f.timeline.clips[0],original);await f.call('timeline.redo');assertSaved(f.timeline.clips[0]);
  await f.reopen();assertSaved(f.timeline.clips[0]);
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(input.requestId).n,1,'durable replay does not create a second Save receipt');
+});
+
+for(const spec of [
+ {name:'four-point interval',durationFrames:90,input:{startFrame:15,endFrame:75,multiplier:.25,attackFrames:10,releaseFrames:20},points:[{frame:15,multiplier:1},{frame:25,multiplier:.25},{frame:55,multiplier:.25},{frame:75,multiplier:1}],samples:[[0,1],[20,.625],[40,.25],[65,.625]],endpoint:1,last:1},
+ {name:'triangle with a shared ramp anchor',durationFrames:90,input:{startFrame:10,endFrame:70,multiplier:.5,attackFrames:20,releaseFrames:40},points:[{frame:10,multiplier:1},{frame:30,multiplier:.5},{frame:70,multiplier:1}],samples:[[0,1],[20,.75],[30,.5],[50,.75]],endpoint:1,last:1},
+ {name:'full-range zero-ramp attenuation',durationFrames:60,input:{startFrame:0,endFrame:60,multiplier:.25,attackFrames:0,releaseFrames:0},points:[{frame:0,multiplier:.25},{frame:60,multiplier:.25}],samples:[[0,.25],[30,.25]],endpoint:.25,last:.25},
+ {name:'one-frame full-range attack',durationFrames:1,input:{startFrame:0,endFrame:1,multiplier:.25,attackFrames:1,releaseFrames:0},points:[{frame:0,multiplier:1},{frame:1,multiplier:.25}],samples:[[0,1],[.5,.625]],endpoint:.25,last:.25+.75/VOLUME_ENVELOPE_LIMITS.samplesPerFrame},
+])test(`owned ordinary40 manual ducking ${spec.name} saves exact anchors and preserves source identity through history and reopen`,async t=>{
+ const f=await fixture(t),source=f.asset({provenance:'generated'}),durationFrames=spec.durationFrames;
+ const shot=await f.services.call('shot.create',{projectId:f.project.id,title:'Metadata-only generated source'}),jobId=randomUUID(),versionId=randomUUID();
+ const sourceSnapshot={projectId:f.project.id,shotId:shot.id,referenceAssetIds:[],referenceAssets:[]};
+ f.store.put('jobs',{id:jobId,projectId:f.project.id,shotId:shot.id,versionId,assetId:source.id,status:'succeeded',providerId:'mock',requestId:randomUUID(),snapshot:sourceSnapshot});
+ f.store.put('versions',{id:versionId,projectId:f.project.id,shotId:shot.id,assetId:source.id,jobId,number:1,sha256:source.sha256,snapshot:sourceSnapshot});
+ await f.call('timeline.clip.add',addInput(f,source,{durationFrames,startFrame:23,sourceInFrame:7,gain:.75,fadeInFrames:durationFrames===1?1:5,fadeOutFrames:durationFrames===1?0:7,
+  rect:{x:40,y:80,width:360,height:640},audioRole:'human',colour:null,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:.9},{frame:durationFrames,multiplier:.8}]}}));
+ // A complete synthetic generated-reference record exercises all optional
+ // source pins; ordinary40 validation precedes genuine owned Save dispatch.
+ Object.assign(f.timeline.clips[0],{versionId,shotId:shot.id,jobId});f.store.put('timelines',f.timeline);validateWorkspaceSchema40(f.store.db);
+ const original=structuredClone(f.timeline.clips[0]),clipId=original.id,outside=f.state().tables;
+ const preset=createManualDuckingEnvelope(durationFrames,spec.input),rawInput=Object.fromEntries(Object.entries(spec.input).map(([key,value])=>[key,String(value)]));
+ const fromRaw=manualDuckingEnvelopeFromRaw(durationFrames,rawInput),expected={profileId:VOLUME_ENVELOPE_PROFILE,points:spec.points};
+ assert.ok(preset);assert.deepEqual(fromRaw,preset);assert.deepEqual(preset,{profileId:expected.profileId,points:expected.points.map(point=>({frame:String(point.frame),multiplier:String(point.multiplier)}))});
+ const raw={...clipDraftRaw(original),volumeEnvelope:fromRaw},rawBefore=structuredClone(raw),patch=clipDraftPatch(raw);
+ assert.ok(patch);assert.deepEqual(patch.volumeEnvelope,expected);assert.deepEqual(raw,rawBefore);
+ const input=f.input({clipId,patch}),prepared=f.prepare('timeline.clip.update',input),done=await f.execute(prepared);
+ assert.equal(done.task.status,'applied');assert.deepEqual(prepared.task.input.patch.volumeEnvelope,expected);f.ack(done);
+ const assertSaved=clip=>{
+  assert.deepEqual(clip,{...original,volumeEnvelope:expected},'only the complete envelope changes; gain, legacy fades, geometry and every fixed source field remain exact');
+  const evaluate=createVolumeEnvelopeEvaluator(clip),end=durationFrames*VOLUME_ENVELOPE_LIMITS.samplesPerFrame;
+  for(const [frame,multiplier]of spec.samples)assert.ok(Math.abs(evaluate.atSample(frame*VOLUME_ENVELOPE_LIMITS.samplesPerFrame)-multiplier)<1e-14,`sample at local frame ${frame}`);
+  assert.equal(evaluate.limitAtSample(end),spec.endpoint);assert.equal(evaluate.atSample(end),0,'closed curve endpoint is outside half-open playback membership');
+  assert.ok(Math.abs(evaluate.atSample(end-1)-spec.last)<1e-14,'the final playable sample uses the retained ramp, not the outside-clip zero');
+ };
+ assertSaved(done.result.clips[0]);await f.reopen();assertSaved(f.timeline.clips[0]);
+ const retained=f.tasks.get({projectId:f.project.id,taskId:prepared.task.id});assert.equal(retained.task.acknowledged,true);assert.deepEqual((await f.execute(retained)).result,done.result);
+ await f.call('timeline.undo');assert.deepEqual(f.timeline.clips[0],original);await f.reopen();assert.deepEqual(f.timeline.clips[0],original);
+ await f.call('timeline.redo');assertSaved(f.timeline.clips[0]);await f.reopen();assertSaved(f.timeline.clips[0]);
+ assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:40,profile:'ordinary'});
+ for(const name of ['projects','assets','shots','jobs','versions'])assert.deepEqual(f.state().tables[name],outside[name],`${name} identity and metadata bytes remain unchanged`);
+ assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(input.requestId).n,1);
 });
 
 test('owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts',async t=>{

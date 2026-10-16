@@ -92,18 +92,27 @@ export default function TimelineInspector({ clip, timeline, asset, onSave, onRem
   const opacityComposition = useRef(new Map());
   const opacityImeSubmit = useRef(null);
   if (opacity && !opacityImeSubmit.current) opacityImeSubmit.current = createOpacityImeSubmitGuard();
+  // Reuse the existing Inspector confirmation fence for the auxiliary tool.
+  // It blocks implicit Save after compositionend without cancelling native IME.
+  const duckingImeSubmit = useRef(null);
   function guardOpacityCompositionKey(event) {
-    if (!opacity) return;
     const native = event.nativeEvent || event;
-    if (opacityImeSubmit.current.keyDown({key: event.key, keyCode: native.keyCode, isComposing: native.isComposing === true || event.isComposing === true,
+    if (opacity && opacityImeSubmit.current.keyDown({key: event.key, keyCode: native.keyCode, isComposing: native.isComposing === true || event.isComposing === true,
       repeat: native.repeat === true || event.repeat === true, opacityTarget: Boolean(event.target?.getAttribute?.('data-testid')?.startsWith('opacity-envelope-')),
       pending: controller.getPendingEnvelopeKind() === 'opacity'})) event.stopPropagation();
+    const duckingTarget = Boolean(event.target?.getAttribute?.('data-testid')?.startsWith('ducking-'));
+    if (duckingTarget && !duckingImeSubmit.current) duckingImeSubmit.current = createOpacityImeSubmitGuard();
+    if (duckingImeSubmit.current?.keyDown({key: event.key, keyCode: native.keyCode, isComposing: native.isComposing === true || event.isComposing === true,
+      repeat: native.repeat === true || event.repeat === true, opacityTarget: duckingTarget,
+      pending: controller.hasPendingComposition()})) event.stopPropagation();
   }
   function releaseOpacityCompositionKey(event) {
     if (opacity) opacityImeSubmit.current.keyUp({key: event.key, keyCode: event.nativeEvent?.keyCode ?? event.keyCode, pending: controller.getPendingEnvelopeKind() === 'opacity'});
+    duckingImeSubmit.current?.keyUp({key: event.key, keyCode: event.nativeEvent?.keyCode ?? event.keyCode, pending: controller.hasPendingComposition()});
   }
   function releaseOpacityCompositionClick() {
     if (opacity) opacityImeSubmit.current.pointerDown(controller.hasPendingComposition());
+    duckingImeSubmit.current?.pointerDown(controller.hasPendingComposition());
   }
   function opacityCompositionChange(next) {
     if (next.pending) {
@@ -127,7 +136,7 @@ export default function TimelineInspector({ clip, timeline, asset, onSave, onRem
   function reset() { if (!draftAvailable || controller.hasPendingComposition()) return; void controller.discard(controller.capture()); }
   async function save(e) {
     e.preventDefault();
-    if (opacity && opacityImeSubmit.current.blocksSubmit()) return;
+    if (opacity && opacityImeSubmit.current.blocksSubmit() || duckingImeSubmit.current?.blocksSubmit()) return;
     if (controller.hasPendingComposition() || !mounted.current || busy || conflict || audioIssue || rectIssue || draftIssue) return;
     await controller.save(onSave);
   }

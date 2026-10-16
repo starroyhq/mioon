@@ -124,6 +124,24 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   blocker. [Evidence and limits](evidence/volume-fade-presets/qualification.json)
   retain previous release-check failures and formal Node24 build/GUI/native gaps;
   this is not a completed release qualification.
+  Manual interval reduction is locally implemented: user-set
+  start/end frames, target linear multiplier (0 mute, 1 unity), and entry/recovery
+  lengths generate at most four existing envelope points. The selected interval
+  includes both ramps; invalid, overlapping or discontinuous interior ramps are
+  refused without clamping. Only an explicit Apply to draft and replace all
+  keyframes action replaces the curve, which remains editable through the same
+  Save/Cancel, draft recovery and Undo/Redo flow. Tool parameters are temporary
+  panel input until applied and may be lost on switch/close. This ordinary 40 /
+  restored 41 slice retains audio/capability/IME/owner guards and gain/fade
+  multiplication; it adds no voice detection, loudness analysis, DSP, schema,
+  frozen-history change or 42/43 permission. Node24 focused tests passed 82/82
+  (21 new), with 73/73 disjoint related regressions and no skips; canonical
+  strict types and the auxiliary Node26 default Web/development Desktop source
+  build passed. Independent review found no remaining issue. [Evidence](evidence/manual-ducking/qualification.json)
+  preserves actual GUI, OS IME and listening gaps, the formal Node24 Team ID
+  blocker and six historical compatibility failures. Source-driven voice-range
+  analysis and candidate review remain later ducking work; manual editing does
+  not complete automatic detection or dialogue loudness matching.
 
 ## Current delivery and remaining work (2026-10-16)
 
@@ -162,7 +180,7 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
    fallback; see [draft scope](OPACITY-RESTORED-DRAFTS.md). The explicit
    [ordinary40→42 copy upgrade](OPACITY-ORDINARY-UPGRADE.md) and remaining
    [release gates](OPACITY-RELEASE-CHECK.md) retain their separate boundaries. Other visual
-   keyframes/transitions, audio crossfades, ducking, limiter/EQ/noise
+   keyframes/transitions, audio crossfades, source-driven ducking analysis, limiter/EQ/noise
    reduction and scoped proxy performance
    remain separate work; local media tags/notes are no longer pending. No automatic
    target or AAC loudness/true-peak guarantee is implied.

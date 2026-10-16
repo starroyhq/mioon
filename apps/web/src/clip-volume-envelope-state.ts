@@ -8,10 +8,16 @@ export type RawVolumeEnvelope = { profileId: typeof VOLUME_ENVELOPE_PROFILE; poi
 export type RawVolumeEnvelopeFields = { volumeEnvelope?: RawVolumeEnvelope | null };
 export type VolumeEnvelopeFields = { volumeEnvelope?: VolumeEnvelope | null };
 export type VolumePointField = keyof RawVolumePoint;
+export const MANUAL_DUCKING_FIELDS = ['startFrame', 'endFrame', 'multiplier', 'attackFrames', 'releaseFrames'] as const;
+export type ManualDuckingField = typeof MANUAL_DUCKING_FIELDS[number];
+export type RawManualDucking = Record<ManualDuckingField, string>;
+export type ManualDuckingInput = Record<ManualDuckingField, number>;
 /** Parent must synchronously treat pending as dirty and block Save, close and
  * owner/navigation changes. Transient text is NOT admitted or persisted input.
  * Bind callbacks to owner/serial; never clear this protection merely on unmount. */
-export type VolumeEnvelopeComposition = { session: symbol; pending: true; dirty: true; row: number; field: VolumePointField; text: string } | { session: symbol; pending: false; dirty: false };
+export type VolumeEnvelopeComposition = { session: symbol; pending: true; dirty: true; row: number; field: VolumePointField; text: string }
+  | { session: symbol; pending: true; dirty: true; target: 'ducking'; field: ManualDuckingField; text: string }
+  | { session: symbol; pending: false; dirty: false };
 /** Form-only replacement. It grants no editing capability and never changes
  * scalar gain or legacy fades. The existing draft owner still owns Save. */
 export function createVolumeEnvelopeFadePreset(kind: 'in' | 'out', durationFrames: number, fadeFrames: number): RawVolumeEnvelope | undefined {
@@ -20,6 +26,32 @@ export function createVolumeEnvelopeFadePreset(kind: 'in' | 'out', durationFrame
   return { profileId: VOLUME_ENVELOPE_PROFILE, points: kind === 'in'
     ? [{ frame: '0', multiplier: '0' }, { frame: String(fadeFrames), multiplier: '1' }]
     : [{ frame: String(durationFrames - fadeFrames), multiplier: '1' }, { frame: String(durationFrames), multiplier: '0' }] };
+}
+/** The selected interval includes both ramps. Internal discontinuities cannot
+ * be represented by this continuous profile; zero ramps require a clip edge.
+ * This creates a complete replacement, never merges or edits an existing curve. */
+export function createManualDuckingEnvelope(durationFrames: number, input: ManualDuckingInput): RawVolumeEnvelope | undefined {
+  if (!Number.isSafeInteger(durationFrames) || durationFrames < 1 || durationFrames > VOLUME_ENVELOPE_LIMITS.frames || !input || typeof input !== 'object') return undefined;
+  const { startFrame: start, endFrame: end, multiplier, attackFrames: attack, releaseFrames: release } = input;
+  if (![start, end, attack, release].every(value => Number.isSafeInteger(value) && value >= 0 && !Object.is(value, -0)) || start >= end || end > durationFrames ||
+    attack + release > end - start || !Number.isFinite(multiplier) || multiplier < 0 || multiplier > 1 || Object.is(multiplier, -0) ||
+    multiplier < 1 && (attack === 0 && start !== 0 || release === 0 && end !== durationFrames)) return undefined;
+  const candidates = [{ frame: start, multiplier: attack === 0 ? multiplier : 1 }, { frame: start + attack, multiplier },
+    { frame: end - release, multiplier }, { frame: end, multiplier: release === 0 ? multiplier : 1 }];
+  const points: RawVolumePoint[] = [];
+  for (const point of candidates) {
+    const previous = points.at(-1), frame = String(point.frame), value = String(point.multiplier);
+    if (previous?.frame === frame) { if (previous.multiplier !== value) return undefined; continue; }
+    points.push({ frame, multiplier: value });
+  }
+  return { profileId: VOLUME_ENVELOPE_PROFILE, points };
+}
+/** Incomplete auxiliary tool text is retained in the form, never coerced to 0. */
+export function manualDuckingEnvelopeFromRaw(durationFrames: number, raw: RawManualDucking): RawVolumeEnvelope | undefined {
+  if (!raw || typeof raw !== 'object' || !MANUAL_DUCKING_FIELDS.every(field => typeof raw[field] === 'string' && numeral.test(raw[field]) &&
+    acceptsVolumeEnvelopeText(field === 'multiplier' ? 'multiplier' : 'frame', raw[field]))) return undefined;
+  return createManualDuckingEnvelope(durationFrames, { startFrame: Number(raw.startFrame), endFrame: Number(raw.endFrame), multiplier: Number(raw.multiplier),
+    attackFrames: Number(raw.attackFrames), releaseFrames: Number(raw.releaseFrames) });
 }
 const own = (v: object, key: string) => Object.prototype.hasOwnProperty.call(v, key);
 const record = (v: unknown, keys: string[]): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) &&

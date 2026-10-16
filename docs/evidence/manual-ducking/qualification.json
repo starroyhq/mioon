@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-16",
+  "sourceParent": "48bdc0f7e5f2069741115248d4aa2ad54d8e4f02",
+  "feature": "Manual range attenuation creates an explicitly approved replacement volume-envelope draft; no automatic voice detection or loudness matching",
+  "semantics": {
+    "duration": "Existing 30fps clip duration D, 1..18000 frames",
+    "input": "S/E clip-local range start/end, m target linear multiplier 0..1, I/O entry/recovery lengths",
+    "range": "[S,E) includes both ramps; 0<=S<E<=D integer frames; nonnegative integer I/O; I+O<=E-S",
+    "plateau": "S+I through E-O; equal anchors when ramps meet are combined only when their values agree",
+    "zeroRamps": "When m<1, I=0 only at S=0 and O=0 only at E=D. m=1 has no discontinuity and permits internal zero ramps.",
+    "construction": "[(S,I==0?m:1),(S+I,m),(E-O,m),(E,O==0?m:1)], with identical-frame identical-value anchors combined; at most4 points, no sorting or clamping",
+    "oneFrame": "Full-range D=1 supports (I,O)=(0,0),(1,0),(0,1); (1,1) refuses. Curve endpoint D is excluded from playback.",
+    "replacement": "Explicit Apply replaces every existing draft keyframe; no merging or automatic curve change when tool settings are edited",
+    "parameters": "Temporary panel input. Not persisted or counted as a clip edit until Apply; switching clips or closing may lose them.",
+    "drafts": "Generated envelope uses existing Save/Cancel/recovery and Undo/Redo. Restored41 keeps its existing memory-only draft restrictions.",
+    "processing": "Existing scalar gain and legacy fades remain unchanged and multiply the envelope"
+  },
+  "scope": {
+    "profiles": [
+      "ordinary40",
+      "restored41"
+    ],
+    "unchanged": [
+      "frozen contracts/constructors/validators/dispatch",
+      "schema and default profile selection",
+      "DSP",
+      "editing and execution permissions",
+      "legacy JS allowlist and strict compiler configuration"
+    ],
+    "providers": false,
+    "realUserProjects": false,
+    "mediaProcessing": false,
+    "listener": false,
+    "newDependencies": false,
+    "systemOrCredentialsChanges": false,
+    "push": false,
+    "designs": "Untouched; only git status metadata observed"
+  },
+  "checks": [
+    {
+      "name": "Focused controls, controller drafts, real Inspector confirmation fence and owned ordinary40 SQLite history",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "tests/clip-volume-envelope-foundation.test.mjs",
+        "tests/clip-volume-envelope-integration.test.mjs",
+        "tests/clip-volume-envelope-capability-ui.test.mjs",
+        "tests/timeline-volume-envelope-owned-startup.test.mjs"
+      ],
+      "originalRedirect": "focused-initial.tap",
+      "log": "focused.tap",
+      "capture": "First execution passed; focused.tap is a byte-identical copy of the directly captured focused-initial.tap, not a second execution.",
+      "sameCapture": true,
+      "exitCode": 0,
+      "tests": 82,
+      "newTests": 21,
+      "pass": 82,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "sha256": "bd470ff1c51392b16127760da99816f4967ebba2718f7d305398fa90e942fe06"
+    },
+    {
+      "name": "Disjoint legacy fades, catalogs, pure envelope and42/43 Inspector/IME regressions",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "tests/timeline-fades-ui.test.mjs",
+        "tests/i18n-catalog-integrity.test.mjs",
+        "tests/timeline-volume-envelope-pure.test.mjs",
+        "tests/clip-opacity-inspector-candidate.test.mjs",
+        "tests/clip-opacity-ime-session.test.mjs",
+        "tests/opacity-restored-draft-ime.test.mjs",
+        "tests/clip-opacity-envelope-controls.test.mjs"
+      ],
+      "log": "related-regressions.tap",
+      "exitCode": 0,
+      "tests": 73,
+      "pass": 73,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "sha256": "38da10706cf7c7775e18d0bcef8554cebee4db605b049e9251d428ace6b32f5f"
+    },
+    {
+      "name": "Canonical strict foundation/browser typecheck and source-language guard",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "scripts/tooling.mjs",
+        "typecheck"
+      ],
+      "log": "node24-typecheck.log",
+      "exitCode": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "Auxiliary Node26 default Web and development Desktop source build",
+      "command": [
+        "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+        "scripts/tooling.mjs",
+        "build"
+      ],
+      "log": "node26-auxiliary-build.log",
+      "exitCode": 0,
+      "formalNode24Qualification": false,
+      "packagedProductQualification": false,
+      "sha256": "9b882c2c496b0d49f84e823cf6ce3fe3f8f2882379f610aa1a70a3a0421e9306"
+    }
+  ],
+  "totalDistinctTests": 155,
+  "sourceSha256": {
+    "apps/web/src/ClipVolumeEnvelopeControls.tsx": "f8017b7bc100feb83a3cdc3468efef525be2f310a565cfce5c5ee54f6c2bbc6b",
+    "apps/web/src/TimelineInspector.jsx": "597190002af31638b451c81ebaa4eca0912fcd3b2fe4b01e0d12f740707f7b3a",
+    "apps/web/src/clip-volume-envelope-state.ts": "11dea022925356cabe663bb26ecfb6942b5aaf080fe695c6611fd60d43420e97",
+    "packages/i18n/src/catalogs/volume-envelope.ts": "21da59fe729d74fe8c84020246ee4d045f15d7d8440c50174dafb42b805d0845",
+    "tests/clip-volume-envelope-foundation.test.mjs": "52844cdc290c13bdac8ac5248f000a1bae59a7b492268e292ffbe828c8e7e321",
+    "tests/clip-volume-envelope-integration.test.mjs": "06912c11633c35952213ca475c417c9d5edabf51a41a0b01be59ea268c76bc0c",
+    "tests/clip-volume-envelope-capability-ui.test.mjs": "7a2e71cbdced6472e930f9a5f4d278ff5e12ae7f561e83f3caa3d0ba24353568",
+    "tests/timeline-volume-envelope-owned-startup.test.mjs": "3847529d7647718dcea0a9a6e055f71ce759c23ec5a24ec51d35719c56eb857e",
+    "tests/timeline-fades-ui.test.mjs": "a4ae213a4f8917029283f29f458e893ed4a4ae3737d38706ff40daaa84acd9c4",
+    "tests/i18n-catalog-integrity.test.mjs": "f22610410e6637a41d0b2cf778d25ca153c21784dfb6defcde80394f8b68fba8",
+    "tests/timeline-volume-envelope-pure.test.mjs": "9c270df65e14209e77206bdfe7f0d6a545ba3917fe8f4f9c73267bb49f05fe77",
+    "tests/clip-opacity-inspector-candidate.test.mjs": "6214ad9b089e3a2254858ff598ebcd2bf05361fa78c69fa48c2a952ef8f9b1a9",
+    "tests/clip-opacity-ime-session.test.mjs": "26510bc730951ed5c55029e2497a75629db76b2700bf6702b9804e57e37a24bb",
+    "tests/opacity-restored-draft-ime.test.mjs": "0f2ff172231dbf92baaf40df18cd0a2811c4524bcdfa4a7ec9c855937e15071a",
+    "tests/clip-opacity-envelope-controls.test.mjs": "4ded7c48273345e3203a72ec13d9cb1c5cce194cc4ac9a5297673f3e626ea114"
+  },
+  "artifacts": {
+    "webHtml": {
+      "path": "apps/web/dist/index.html",
+      "sha256": "89e80b43a33844c93e7a7d0c07dc19c8422046eff5ed92f68bb1a2f34c3018f5"
+    },
+    "webJavascript": {
+      "path": "apps/web/dist/assets/index-BimQQ79G.js",
+      "sha256": "69975539ff58bad53a7ce3e012f025c45596515ee82afc474e4c0ee2238abb37"
+    },
+    "desktopWebJavascript": {
+      "path": "apps/desktop/build/web/assets/index-BimQQ79G.js",
+      "sha256": "69975539ff58bad53a7ce3e012f025c45596515ee82afc474e4c0ee2238abb37"
+    },
+    "sameBuiltWeb": true,
+    "desktopChannel": "development"
+  },
+  "frozenIntegrity": "frozen-integrity.json",
+  "independentReview": {
+    "agent": "release_frontend_audit",
+    "method": "Read-only runtime, four-language, tests and final TAP review",
+    "remainingFindings": 0,
+    "resolvedBeforeFirstTestRun": "Initial child key handler cancelled IME Enter default. It now preserves native IME defaults and reuses the existing Inspector confirmation fence through compositionend/key-up default submission."
+  },
+  "testLimits": {
+    "componentAndDraft": "Actual Controls/controller/form handlers using synthetic React/event/CAS fixtures, not browser or OS IME execution",
+    "persistence": "Real task-owned ordinary40 SQLite and durable edit services, exact responses, Undo/Redo and cold reopen; metadata-only source fixtures without provider or media execution"
+  },
+  "retainedGaps": [
+    {
+      "action": "Formal Node24 default Web build",
+      "status": "Existing blocker retained, not retried",
+      "reason": "macOS Rollup native-addon process/module Team ID mismatch",
+      "evidence": "../opacity-release-check/build-default.txt"
+    },
+    {
+      "action": "Historical ordinary24/restored25 BLOB startup compatibility",
+      "status": "Independent pre-existing six failures retained, not changed or retested in this slice",
+      "evidence": "../blob-admission-baselines/qualification.json"
+    },
+    {
+      "action": "Real GUI, OS IME, listening, codec and packaged-platform acceptance",
+      "status": "Not run; stopped GUI/listener paths remain stopped"
+    }
+  ],
+  "nextFeature": "Source-driven voice-range analysis and explicit candidate review remain unimplemented; this manual tool does not perform automatic ducking or dialogue loudness matching",
+  "outcome": "Locally implemented and verified within the recorded scope; not full production release qualification",
+  "diffCheck": {
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--check"
+    ],
+    "exitCode": 0
+  }
+}

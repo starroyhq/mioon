@@ -1,0 +1,448 @@
+TAP version 13
+# Subtest: opacity form and v3 raw draft have identical lexical limits while incomplete values cannot Save
+ok 1 - opacity form and v3 raw draft have identical lexical limits while incomplete values cannot Save
+  ---
+  duration_ms: 2.958417
+  type: 'test'
+  ...
+# Subtest: final opacity uses proposed duration, exact clip-local points, absence and explicit clear
+ok 2 - final opacity uses proposed duration, exact clip-local points, absence and explicit clear
+  ---
+  duration_ms: 0.869292
+  type: 'test'
+  ...
+# Subtest: stored opacity double values round trip without percentage rounding
+ok 3 - stored opacity double values round trip without percentage rounding
+  ---
+  duration_ms: 28.592583
+  type: 'test'
+  ...
+# Subtest: four locale catalogs and installed React render accessible numeric-text controls
+ok 4 - four locale catalogs and installed React render accessible numeric-text controls
+  ---
+  duration_ms: 71.38025
+  type: 'test'
+  ...
+# Subtest: real React renders incomplete and nonfinite duration recovery in four locales without accepting the invalid draft
+ok 5 - real React renders incomplete and nonfinite duration recovery in four locales without accepting the invalid draft
+  ---
+  duration_ms: 14.200917
+  type: 'test'
+  ...
+# Subtest: bounded structure never normalizes absence and rejects retained stale click handlers
+ok 6 - bounded structure never normalizes absence and rejects retained stale click handlers
+  ---
+  duration_ms: 0.996875
+  type: 'test'
+  ...
+# Subtest: whole pasted events reject visibly in all languages and retain incomplete draft values
+ok 7 - whole pasted events reject visibly in all languages and retain incomplete draft values
+  ---
+  duration_ms: 3.757584
+  type: 'test'
+  ...
+# Subtest: IME guards structure synchronously and admits one owner-tagged edit before releasing pending
+ok 8 - IME guards structure synchronously and admits one owner-tagged edit before releasing pending
+  ---
+  duration_ms: 0.410375
+  type: 'test'
+  ...
+# Subtest: IME rejection rolls back, cancellation retains original, disabled controls cannot edit
+ok 9 - IME rejection rolls back, cancellation retains original, disabled controls cannot edit
+  ---
+  duration_ms: 0.23975
+  type: 'test'
+  ...
+# Subtest: retained handlers cannot edit or settle a newer same-row IME session
+ok 10 - retained handlers cannot edit or settle a newer same-row IME session
+  ---
+  duration_ms: 0.431417
+  type: 'test'
+  ...
+# Subtest: IME synchronous start/change/end before React rerender still forwards its session
+ok 11 - IME synchronous start/change/end before React rerender still forwards its session
+  ---
+  duration_ms: 0.153083
+  type: 'test'
+  ...
+# Subtest: synthetic IME Enter commits text without implicitly saving 42 v3 draft in all locales
+ok 12 - synthetic IME Enter commits text without implicitly saving 42 v3 draft in all locales
+  ---
+  duration_ms: 116.638917
+  type: 'test'
+  ...
+# Subtest: synthetic IME Enter commits text without implicitly saving 43 memory input in all locales
+ok 13 - synthetic IME Enter commits text without implicitly saving 43 memory input in all locales
+  ---
+  duration_ms: 10.365916
+  type: 'test'
+  ...
+# Subtest: 42 Save cannot enter while Cancel is deleting a persisted draft or waiting on its earlier PUT
+ok 14 - 42 Save cannot enter while Cancel is deleting a persisted draft or waiting on its earlier PUT
+  ---
+  duration_ms: 7.119584
+  type: 'test'
+  ...
+# Subtest: synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 42
+ok 15 - synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 42
+  ---
+  duration_ms: 30.931333
+  type: 'test'
+  ...
+# Subtest: synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 43
+ok 16 - synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 43
+  ---
+  duration_ms: 17.330833
+  type: 'test'
+  ...
+# Subtest: synthetic Enter229 after compositionend and stale keyup remain fenced, while a later ordinary Enter keeps explicit form behavior
+ok 17 - synthetic Enter229 after compositionend and stale keyup remain fenced, while a later ordinary Enter keeps explicit form behavior
+  ---
+  duration_ms: 3.92825
+  type: 'test'
+  ...
+# Subtest: synthetic Process229 cannot block a later mouse-focused field Enter Save in 42
+ok 18 - synthetic Process229 cannot block a later mouse-focused field Enter Save in 42
+  ---
+  duration_ms: 7.696
+  type: 'test'
+  ...
+# Subtest: synthetic Process229 cannot block a later mouse-focused field Enter Save in 43
+ok 19 - synthetic Process229 cannot block a later mouse-focused field Enter Save in 43
+  ---
+  duration_ms: 4.656708
+  type: 'test'
+  ...
+# Subtest: synthetic held confirmation Enter repeats cannot Save after compositionend in 42
+ok 20 - synthetic held confirmation Enter repeats cannot Save after compositionend in 42
+  ---
+  duration_ms: 6.084458
+  type: 'test'
+  ...
+# Subtest: synthetic held confirmation Enter repeats cannot Save after compositionend in 43
+ok 21 - synthetic held confirmation Enter repeats cannot Save after compositionend in 43
+  ---
+  duration_ms: 1.1625
+  type: 'test'
+  ...
+# Subtest: synthetic final nonnumeric composition is visibly rejected in four locales without normalizing or saving
+ok 22 - synthetic final nonnumeric composition is visibly rejected in four locales without normalizing or saving
+  ---
+  duration_ms: 7.74325
+  type: 'test'
+  ...
+# Subtest: synthetic stale update/end handlers cannot settle or overwrite a later opacity session
+ok 23 - synthetic stale update/end handlers cannot settle or overwrite a later opacity session
+  ---
+  duration_ms: 1.965333
+  type: 'test'
+  ...
+# Subtest: 42 delayed GET, PUT and DELETE acknowledgments do not release a newer composition or replace its raw draft
+ok 24 - 42 delayed GET, PUT and DELETE acknowledgments do not release a newer composition or replace its raw draft
+  ---
+  duration_ms: 9.915542
+  type: 'test'
+  ...
+# Subtest: repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 42
+ok 25 - repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 42
+  ---
+  duration_ms: 13.075875
+  type: 'test'
+  ...
+# Subtest: repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 43
+ok 26 - repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 43
+  ---
+  duration_ms: 5.456458
+  type: 'test'
+  ...
+# Subtest: default, fake and copied candidate bindings never reveal controls or select the candidate client
+ok 27 - default, fake and copied candidate bindings never reveal controls or select the candidate client
+  ---
+  duration_ms: 36.235875
+  type: 'test'
+  ...
+# Subtest: exact internal binding selects its original candidate factory client and preserves saved opacity text
+ok 28 - exact internal binding selects its original candidate factory client and preserves saved opacity text
+  ---
+  duration_ms: 8.755875
+  type: 'test'
+  ...
+# Subtest: actual Inspector forwards opacity composition tokens and blocks Save, discard and Remove until settlement
+ok 29 - actual Inspector forwards opacity composition tokens and blocks Save, discard and Remove until settlement
+  ---
+  duration_ms: 4.882333
+  type: 'test'
+  ...
+# Subtest: old Inspector callbacks cannot route old sessions into a newer opacity composition
+ok 30 - old Inspector callbacks cannot route old sessions into a newer opacity composition
+  ---
+  duration_ms: 4.158417
+  type: 'test'
+  ...
+# Subtest: Inspector enables only the composing envelope owner and rejects cross-kind publication while all destructive actions stay blocked
+ok 31 - Inspector enables only the composing envelope owner and rejects cross-kind publication while all destructive actions stay blocked
+  ---
+  duration_ms: 4.962583
+  type: 'test'
+  ...
+# Subtest: candidate Inspector saves exact opacity through the shared controller and clears only the acknowledged raw draft
+ok 32 - candidate Inspector saves exact opacity through the shared controller and clears only the acknowledged raw draft
+  ---
+  duration_ms: 3.38225
+  type: 'test'
+  ...
+# Subtest: Inspector discard restores exact saved absence or null after the v3 draft is acknowledged and deleted
+ok 33 - Inspector discard restores exact saved absence or null after the v3 draft is acknowledged and deleted
+  ---
+  duration_ms: 6.278209
+  type: 'test'
+  ...
+# Subtest: candidate ACK projection validates the complete old timeline and rejects opacity outside the visual field path
+ok 34 - candidate ACK projection validates the complete old timeline and rejects opacity outside the visual field path
+  ---
+  duration_ms: 1.194291
+  type: 'test'
+  ...
+# Subtest: incomplete or mismatching opacity ACK retains current input and never deletes its persisted draft
+ok 35 - incomplete or mismatching opacity ACK retains current input and never deletes its persisted draft
+  ---
+  duration_ms: 3.620541
+  type: 'test'
+  ...
+# Subtest: actual Inspector localizes unsupported recovered opacity and active input hints in all four languages
+ok 36 - actual Inspector localizes unsupported recovered opacity and active input hints in all four languages
+  ---
+  duration_ms: 3.779917
+  type: 'test'
+  ...
+# Subtest: incomplete and infinite duration drafts remain visible and cannot submit through the candidate Inspector
+ok 37 - incomplete and infinite duration drafts remain visible and cannot submit through the candidate Inspector
+  ---
+  duration_ms: 4.847333
+  type: 'test'
+  ...
+# Subtest: every composed UI and native catalog has exact four-locale and placeholder parity
+ok 38 - every composed UI and native catalog has exact four-locale and placeholder parity
+  ---
+  duration_ms: 133.747625
+  type: 'test'
+  ...
+# Subtest: UI literal ledger rejects unexplained, newly introduced and stale exceptions
+ok 39 - UI literal ledger rejects unexplained, newly introduced and stale exceptions
+  ---
+  duration_ms: 0.450916
+  type: 'test'
+  ...
+# Subtest: current source has no unreviewed or stale static UI literal exceptions
+ok 40 - current source has no unreviewed or stale static UI literal exceptions
+  ---
+  duration_ms: 1069.790583
+  type: 'test'
+  ...
+# Subtest: static semantic keys used by UI translation calls exist in the composed catalog
+ok 41 - static semantic keys used by UI translation calls exist in the composed catalog
+  ---
+  duration_ms: 381.690583
+  type: 'test'
+  ...
+# Subtest: visible template guard distinguishes app copy from dynamic semantic keys
+ok 42 - visible template guard distinguishes app copy from dynamic semantic keys
+  ---
+  duration_ms: 0.289917
+  type: 'test'
+  ...
+# Subtest: synthetic zh-Hans composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 43 - synthetic zh-Hans composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 46.67325
+  type: 'test'
+  ...
+# Subtest: synthetic zh-Hant composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 44 - synthetic zh-Hant composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 7.809125
+  type: 'test'
+  ...
+# Subtest: synthetic en composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 45 - synthetic en composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 4.9005
+  type: 'test'
+  ...
+# Subtest: synthetic ja composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+ok 46 - synthetic ja composition uses the exact43 new-origin client without persisting partial composition or implicit Save
+  ---
+  duration_ms: 4.321209
+  type: 'test'
+  ...
+# Subtest: synthetic43 late GET/PUT/DELETE responses retain a later Chinese/Japanese composition and fresh raw owner
+ok 47 - synthetic43 late GET/PUT/DELETE responses retain a later Chinese/Japanese composition and fresh raw owner
+  ---
+  duration_ms: 10.54425
+  type: 'test'
+  ...
+# Subtest: synthetic43 repeated Save cannot race an active Cancel waiting for PUT/DELETE
+ok 48 - synthetic43 repeated Save cannot race an active Cancel waiting for PUT/DELETE
+  ---
+  duration_ms: 4.914209
+  type: 'test'
+  ...
+# Subtest: fade draft preserves omission, explicit zero and immutable copies
+ok 49 - fade draft preserves omission, explicit zero and immutable copies
+  ---
+  duration_ms: 1.139583
+  type: 'test'
+  ...
+# Subtest: fade validation checks both integers, per-side bounds, their sum and confirmed audio
+ok 50 - fade validation checks both integers, per-side bounds, their sum and confirmed audio
+  ---
+  duration_ms: 0.622791
+  type: 'test'
+  ...
+# Subtest: actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics
+ok 51 - actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics
+  ---
+  duration_ms: 141.536208
+  type: 'test'
+  ...
+# Subtest: silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls
+ok 52 - silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls
+  ---
+  duration_ms: 49.585042
+  type: 'test'
+  ...
+# Subtest: unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero
+ok 53 - unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero
+  ---
+  duration_ms: 15.598625
+  type: 'test'
+  ...
+# Subtest: unrelated save preserves explicit zero and fade values while discard restores omission
+ok 54 - unrelated save preserves explicit zero and fade values while discard restores omission
+  ---
+  duration_ms: 33.483917
+  type: 'test'
+  ...
+# Subtest: trim never silently clamps either fade and invalid totals cannot submit
+ok 55 - trim never silently clamps either fade and invalid totals cannot submit
+  ---
+  duration_ms: 14.815583
+  type: 'test'
+  ...
+# Subtest: invalid local fade drafts stay visible and block even direct form submission
+ok 56 - invalid local fade drafts stay visible and block even direct form submission
+  ---
+  duration_ms: 67.413125
+  type: 'test'
+  ...
+# Subtest: edits made during save survive its acknowledgment without silently rebasing the newer draft
+ok 57 - edits made during save survive its acknowledgment without silently rebasing the newer draft
+  ---
+  duration_ms: 20.203458
+  type: 'test'
+  ...
+# Subtest: failed or unacknowledged save preserves fade edits and does not retry
+ok 58 - failed or unacknowledged save preserves fade edits and does not retry
+  ---
+  duration_ms: 56.992875
+  type: 'test'
+  ...
+# Subtest: every newer timeline revision preserves the exact dirty fade input and requires explicit reload
+ok 59 - every newer timeline revision preserves the exact dirty fade input and requires explicit reload
+  ---
+  duration_ms: 14.926459
+  type: 'test'
+  ...
+# Subtest: keyed project unmount fences late fade acknowledgments and retained form submit
+ok 60 - keyed project unmount fences late fade acknowledgments and retained form submit
+  ---
+  duration_ms: 32.121042
+  type: 'test'
+  ...
+# Subtest: source playback copy stays explicit about dry audio and the shared render path
+ok 61 - source playback copy stays explicit about dry audio and the shared render path
+  ---
+  duration_ms: 0.497541
+  type: 'test'
+  ...
+# Subtest: real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline
+ok 62 - real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline
+  ---
+  duration_ms: 23.023042
+  type: 'test'
+  ...
+# Subtest: actual inspector role selection uses shared dirty form and one existing Save revision
+ok 63 - actual inspector role selection uses shared dirty form and one existing Save revision
+  ---
+  duration_ms: 17.663583
+  type: 'test'
+  ...
+# Subtest: missing role capability blocks captured selector callbacks but unrelated inspector edits save
+ok 64 - missing role capability blocks captured selector callbacks but unrelated inspector edits save
+  ---
+  duration_ms: 14.128584
+  type: 'test'
+  ...
+# Subtest: role eligibility includes silent video, zero gain and muted timeline without enabling fades
+ok 65 - role eligibility includes silent video, zero gain and muted timeline without enabling fades
+  ---
+  duration_ms: 13.763791
+  type: 'test'
+  ...
+# Subtest: image inspector excludes audio role; restored supported editor can save without sidecar support
+ok 66 - image inspector excludes audio role; restored supported editor can save without sidecar support
+  ---
+  duration_ms: 20.658583
+  type: 'test'
+  ...
+# Subtest: captured enabled role selector cannot write after capability loss or owner unmount
+ok 67 - captured enabled role selector cannot write after capability loss or owner unmount
+  ---
+  duration_ms: 16.4535
+  type: 'test'
+  ...
+# Subtest: strict bounded values, ordering and non-normalization
+ok 68 - strict bounded values, ordering and non-normalization
+  ---
+  duration_ms: 1.107458
+  type: 'test'
+  ...
+# Subtest: legacy absent, explicit null, constants and closed endpoint versus half-open samples
+ok 69 - legacy absent, explicit null, constants and closed endpoint versus half-open samples
+  ---
+  duration_ms: 0.401959
+  type: 'test'
+  ...
+# Subtest: immutable evaluator and edit fields preserve presence without aliasing
+ok 70 - immutable evaluator and edit fields preserve presence without aliasing
+  ---
+  duration_ms: 2.062917
+  type: 'test'
+  ...
+# Subtest: all interior frame cuts preserve exact anchors and numerical curve including held regions
+ok 71 - all interior frame cuts preserve exact anchors and numerical curve including held regions
+  ---
+  duration_ms: 12.570625
+  type: 'test'
+  ...
+# Subtest: fade times automation is quadratic, not a combined endpoint ramp
+ok 72 - fade times automation is quadratic, not a combined endpoint ramp
+  ---
+  duration_ms: 0.4325
+  type: 'test'
+  ...
+# Subtest: serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission
+ok 73 - serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission
+  ---
+  duration_ms: 0.278792
+  type: 'test'
+  ...
+1..73
+# tests 73
+# suites 0
+# pass 73
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5511.062541

@@ -22,13 +22,14 @@ function harness(t,{saved={},candidate=null,editable=true,restored=false,putHook
  const result=patch=>({id:key.timelineId,projectId:key.projectId,revision:8,clips:[{id:key.clipId,...source,...base,...saved,...patch}]});
  return {c,ctx,calls,client,result};
 }
-function presetControls(controller) {
+function presetControls(controller,{bridgeComposition=false}={}) {
  const hooks=[];let cursor=0,tree;
- const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useId:()=> 'controller-preset',useRef:initial=>hooks[cursor++]??={current:initial},useState(initial){const index=cursor++;hooks[index]??={value:initial};return [hooks[index].value,next=>{hooks[index].value=next;}];}};react.default=react;
+ const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useId:()=> 'controller-preset',useRef:initial=>hooks[cursor++]??={current:initial},useState(initial){const index=cursor++;hooks[index]??={value:typeof initial==='function'?initial():initial};return [hooks[index].value,next=>{hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];}};react.default=react;
  const module={exports:{}};
  Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipVolumeEnvelopeControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>name==='react'?react:name.includes('I18nProvider')?i18nTestModule('en'):name.endsWith('clip-volume-envelope-state.ts')?volumeState:name.endsWith('timeline-volume-envelope.ts')?volumeContract:assert.fail(name),module,module.exports);
  const nodes=value=>!value||typeof value!=='object'?[]:Array.isArray(value)?value.flatMap(nodes):[value,...nodes(value.props?.children)];
- const h={render(){cursor=0;const captured=controller.capture(),raw=controller.getState().raw;tree=module.exports.default({value:raw.volumeEnvelope,proposedDuration:Number(raw.durationFrames),onEdit:value=>controller.editVolumeEnvelope(value,captured),onCompositionChange:()=>assert.fail('preset click is not composition')});},node(id){return nodes(tree).find(node=>node.props?.['data-testid']===id);}};h.render();return h;
+ let composition=null,session=null;const compositions=[];
+ const h={compositions,render(){cursor=0;const captured=controller.capture(),raw=controller.getState().raw;tree=module.exports.default({value:raw.volumeEnvelope,proposedDuration:Number(raw.durationFrames),onEdit:(value,eventSession)=>controller.editVolumeEnvelope(value,eventSession===session&&composition?composition:captured),onCompositionChange:update=>{assert.equal(bridgeComposition,true,'preset click is not composition');compositions.push(update);if(update.pending){if(session!==update.session){composition=controller.beginVolumeComposition(controller.capture());session=update.session;assert.ok(composition);}assert.equal(controller.updateVolumeComposition(composition,update),true);}else {assert.equal(update.session,session);assert.equal(controller.endVolumeComposition(composition),true);composition=null;session=null;}}});},node(id){return nodes(tree).find(node=>node.props?.['data-testid']===id);}};h.render();return h;
 }
 for(const kind of ['in','out'])test(`real ${kind} preset edits only the draft until ordinary Save, preserving gain and legacy fades`,async t=>{
  const saved={volumeEnvelope:curve,gain:.5,fadeInFrames:8,fadeOutFrames:12},f=harness(t,{saved});await f.c.load();const controls=presetControls(f.c);
@@ -50,6 +51,36 @@ test('preset draft recovery is explicit and Cancel restores the original curve w
  assert.equal(await recovered.c.discard(recovered.c.capture()),true);assert.deepEqual(recovered.c.getState().raw.volumeEnvelope,curve);assert.equal(recovered.c.hasUnsaved(),false);
  for(const field of ['gain','fadeInFrames','fadeOutFrames'])assert.equal(recovered.c.getState().raw[field],saved[field]);
  assert.equal(recovered.calls.filter(([method])=>method==='remove').length,1);assert.equal(recovered.calls.filter(([method])=>method==='put').length,0);
+});
+function setDuckingParameters(controls,values){for(const [field,value] of Object.entries(values)){controls.node(`ducking-${field}`).props.onChange({currentTarget:{value:String(value)}});controls.render();}}
+const manualDuckingParameters={startFrame:20,endFrame:100,multiplier:.25,attackFrames:10,releaseFrames:20};
+test('manual tool parameter edits stay temporary; real Apply persists only its curve through original Save',async t=>{
+ const saved={volumeEnvelope:curve,gain:.5,fadeInFrames:8,fadeOutFrames:12},f=harness(t,{saved});await f.c.load();const controls=presetControls(f.c);
+ setDuckingParameters(controls,manualDuckingParameters);assert.equal(f.c.hasUnsaved(),false);await f.c.flush();assert.equal(f.calls.length,0);assert.deepEqual(f.c.getState().raw.volumeEnvelope,curve);
+ controls.node('ducking-apply').props.onClick();const expected=volumeState.createManualDuckingEnvelope(120,manualDuckingParameters);
+ assert.deepEqual(f.c.getState().raw.volumeEnvelope,expected);assert.equal(f.c.hasUnsaved(),true);
+ await f.c.flush();assert.equal(f.calls.filter(([method])=>method==='put').length,1);assert.deepEqual(f.calls[0][1].raw.volumeEnvelope,expected);
+ assert.equal(Object.hasOwn(f.calls[0][1].raw,'ducking'),false);assert.equal(f.calls[0][1].raw.startFrame,base.startFrame);for(const field of ['endFrame','multiplier','attackFrames','releaseFrames'])assert.equal(Object.hasOwn(f.calls[0][1].raw,field),false);
+ let submissions=0;assert.ok(await f.c.save(async(clipId,patch,revision,options)=>{submissions++;assert.equal(clipId,key.clipId);assert.equal(revision,7);assert.equal(options.canExecute(),true);assert.deepEqual(patch.volumeEnvelope,{profileId,points:[{frame:20,multiplier:1},{frame:30,multiplier:.25},{frame:80,multiplier:.25},{frame:100,multiplier:1}]});for(const field of ['gain','fadeInFrames','fadeOutFrames'])assert.equal(patch[field],saved[field]);return f.result(patch);}));
+ assert.equal(submissions,1);assert.equal(f.c.hasUnsaved(),false);assert.equal(f.calls.filter(([method])=>method==='remove').length,1);
+});
+test('manual Apply recovery requires explicit restore and Cancel retains the original complete raw clip',async t=>{
+ const saved={volumeEnvelope:curve,gain:.75,fadeInFrames:4,fadeOutFrames:6},first=harness(t,{saved});await first.c.load();const controls=presetControls(first.c);
+ setDuckingParameters(controls,manualDuckingParameters);controls.node('ducking-apply').props.onClick();await first.c.flush();
+ const record={baseRevision:7,source,raw:structuredClone(first.calls[0][1].raw),updatedAt:'2026-10-16T00:00:00.000Z'},recovered=harness(t,{saved,candidate:record});await recovered.c.load();
+ assert.deepEqual(recovered.c.getState().raw.volumeEnvelope,curve);assert.equal(recovered.c.hasUnsaved(),false);assert.equal(recovered.c.restore(),true);assert.deepEqual(recovered.c.getState().raw.volumeEnvelope,record.raw.volumeEnvelope);
+ assert.equal(await recovered.c.discard(recovered.c.capture()),true);assert.deepEqual(recovered.c.getState().raw,{...base,...saved});assert.equal(recovered.calls.filter(([method])=>method==='remove').length,1);assert.equal(recovered.calls.filter(([method])=>method==='put').length,0);
+});
+test('manual parameter IME reaches the real controller close/Save guard but never persists transient tool text',async t=>{
+ const f=harness(t,{saved:{volumeEnvelope:curve}});await f.c.load();const controls=presetControls(f.c,{bridgeComposition:true}),start=controls.node('ducking-startFrame'),apply=controls.node('ducking-apply');
+ start.props.onCompositionStart({currentTarget:{value:'0'}});start.props.onChange({currentTarget:{value:'二'}});apply.props.onClick();controls.render();
+ assert.equal(f.c.hasPendingComposition(),true);assert.equal(f.c.getEditorCloseSnapshot().inflight,true);assert.equal(await f.c.flushForClose(),false);assert.equal(await f.c.save(()=>assert.fail('IME cannot submit business Save')),null);await f.c.flush();assert.equal(f.calls.length,0);assert.deepEqual(f.c.getState().raw.volumeEnvelope,curve);
+ assert.equal(controls.compositions.at(-1).target,'ducking');controls.node('ducking-startFrame').props.onCompositionEnd({currentTarget:{value:'20'}});controls.render();
+ assert.equal(f.c.hasPendingComposition(),false);assert.equal(f.c.hasUnsaved(),false);assert.equal(await f.c.flushForClose(),true);assert.equal(f.calls.length,0);
+});
+test('retained manual Apply cannot send a replacement into a changed draft owner',async t=>{
+ const f=harness(t,{saved:{volumeEnvelope:curve}});await f.c.load();const controls=presetControls(f.c);setDuckingParameters(controls,manualDuckingParameters);const apply=controls.node('ducking-apply');
+ f.c.setContext({...f.ctx,scope:'foreign',projectId:id(99),connected:false});apply.props.onClick();await f.c.flush();assert.deepEqual(f.c.getState().raw.volumeEnvelope,curve);assert.equal(f.calls.length,0);assert.equal(await f.c.save(()=>assert.fail('foreign owner Save')),null);
 });
 test('raw projection, proposed shrink, explicit replacement and clear preserve envelope presence',()=>{
  assert.equal(Object.hasOwn(clipDraftRaw(base),'volumeEnvelope'),false);

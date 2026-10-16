@@ -1,0 +1,503 @@
+TAP version 13
+# Subtest: envelope capability requires exact profile and verified workspace identity, never generic update access
+ok 1 - envelope capability requires exact profile and verified workspace identity, never generic update access
+  ---
+  duration_ms: 7.007834
+  type: 'test'
+  ...
+# Subtest: optional capability is bounded, failure-isolated and connection-epoch fenced
+ok 2 - optional capability is bounded, failure-isolated and connection-epoch fenced
+  ---
+  duration_ms: 13.228292
+  type: 'test'
+  ...
+# Subtest: actual Inspector Enter/13 ducking IME confirmation survives compositionend and submit until keyup release
+ok 3 - actual Inspector Enter/13 ducking IME confirmation survives compositionend and submit until keyup release
+  ---
+  duration_ms: 54.770875
+  type: 'test'
+  ...
+# Subtest: actual Inspector Process/229 ducking IME confirmation survives compositionend and submit until keyup release
+ok 4 - actual Inspector Process/229 ducking IME confirmation survives compositionend and submit until keyup release
+  ---
+  duration_ms: 4.802375
+  type: 'test'
+  ...
+# Subtest: actual Inspector ducking confirmation is released only by a later independent pointer after composition
+ok 5 - actual Inspector ducking confirmation is released only by a later independent pointer after composition
+  ---
+  duration_ms: 2.700375
+  type: 'test'
+  ...
+# Subtest: an older ducking keyup microtask cannot clear a newer Inspector composition confirmation
+ok 6 - an older ducking keyup microtask cannot clear a newer Inspector composition confirmation
+  ---
+  duration_ms: 4.659125
+  type: 'test'
+  ...
+# Subtest: Inspector wires controller-owned envelope token across renders and blocks save/remove during composition
+ok 7 - Inspector wires controller-owned envelope token across renders and blocks save/remove during composition
+  ---
+  duration_ms: 3.096833
+  type: 'test'
+  ...
+# Subtest: unsupported or silent assets retain visible recovered envelope and localized blocked message
+ok 8 - unsupported or silent assets retain visible recovered envelope and localized blocked message
+  ---
+  duration_ms: 58.195875
+  type: 'test'
+  ...
+# Subtest: App navigation refuses composition before confirmation and rechecks after async confirmation
+ok 9 - App navigation refuses composition before confirmation and rechecks after async confirmation
+  ---
+  duration_ms: 0.789542
+  type: 'test'
+  ...
+# Subtest: App optional envelope probe is connection-scoped rather than project boot-scoped
+ok 10 - App optional envelope probe is connection-scoped rather than project boot-scoped
+  ---
+  duration_ms: 0.526458
+  type: 'test'
+  ...
+# Subtest: retained old Inspector callbacks cannot retarget newer same-owner composition session
+ok 11 - retained old Inspector callbacks cannot retarget newer same-owner composition session
+  ---
+  duration_ms: 3.494708
+  type: 'test'
+  ...
+# Subtest: retained Inspector adapter keeps exact composing owner across auth loss, missing/replaced selected clip and settlement
+ok 12 - retained Inspector adapter keeps exact composing owner across auth loss, missing/replaced selected clip and settlement
+  ---
+  duration_ms: 1.811625
+  type: 'test'
+  ...
+# Subtest: late App boot inspect response cannot adopt workspace or project after composition begins
+ok 13 - late App boot inspect response cannot adopt workspace or project after composition begins
+  ---
+  duration_ms: 3.134708
+  type: 'test'
+  ...
+# Subtest: retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner
+ok 14 - retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner
+  ---
+  duration_ms: 2.889209
+  type: 'test'
+  ...
+# Subtest: lexical limits are atomic admission, not numeric validation or normalization
+ok 15 - lexical limits are atomic admission, not numeric validation or normalization
+  ---
+  duration_ms: 0.98775
+  type: 'test'
+  ...
+# Subtest: preserves absent/null/value and requires complete ordered attenuation on proposed duration
+ok 16 - preserves absent/null/value and requires complete ordered attenuation on proposed duration
+  ---
+  duration_ms: 1.085625
+  type: 'test'
+  ...
+# Subtest: unchanged comparison is independent of key insertion order but not raw strings or absence
+ok 17 - unchanged comparison is independent of key insertion order but not raw strings or absence
+  ---
+  duration_ms: 0.513792
+  type: 'test'
+  ...
+# Subtest: Number-to-string round trips extremes and deterministic doubles without display rounding
+ok 18 - Number-to-string round trips extremes and deterministic doubles without display rounding
+  ---
+  duration_ms: 112.646417
+  type: 'test'
+  ...
+# Subtest: fade preset helper is bounded, exact and returns independent raw replacement curves
+ok 19 - fade preset helper is bounded, exact and returns independent raw replacement curves
+  ---
+  duration_ms: 0.594584
+  type: 'test'
+  ...
+# Subtest: preset curves retain linear endpoint limits and half-open playback samples
+ok 20 - preset curves retain linear endpoint limits and half-open playback samples
+  ---
+  duration_ms: 0.669416
+  type: 'test'
+  ...
+# Subtest: all four locales expose explicit replacement presets, fixed frame choices and Save disclosure
+ok 21 - all four locales expose explicit replacement presets, fixed frame choices and Save disclosure
+  ---
+  duration_ms: 78.838708
+  type: 'test'
+  ...
+# Subtest: real preset buttons replace every point only on click and leave point editing available
+ok 22 - real preset buttons replace every point only on click and leave point editing available
+  ---
+  duration_ms: 2.764292
+  type: 'test'
+  ...
+# Subtest: too-long and invalid-duration presets refuse clicks without clamping or clearing the draft
+ok 23 - too-long and invalid-duration presets refuse clicks without clamping or clearing the draft
+  ---
+  duration_ms: 18.073541
+  type: 'test'
+  ...
+# Subtest: preset event guards synchronously reject disabled, IME-pending and retained old-render actions
+ok 24 - preset event guards synchronously reject disabled, IME-pending and retained old-render actions
+  ---
+  duration_ms: 5.008125
+  type: 'test'
+  ...
+# Subtest: four locales render text inputs, accessible labels, bounded rows and non-submit buttons
+ok 25 - four locales render text inputs, accessible labels, bounded rows and non-submit buttons
+  ---
+  duration_ms: 13.316083
+  type: 'test'
+  ...
+# Subtest: whole pasted events reject visibly, preserve prior value, allow malformed intermediate
+ok 26 - whole pasted events reject visibly, preserve prior value, allow malformed intermediate
+  ---
+  duration_ms: 26.637292
+  type: 'test'
+  ...
+# Subtest: IME transient stays observable, guards structure synchronously, commits before releasing pending
+ok 27 - IME transient stays observable, guards structure synchronously, commits before releasing pending
+  ---
+  duration_ms: 2.907792
+  type: 'test'
+  ...
+# Subtest: IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard
+ok 28 - IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard
+  ---
+  duration_ms: 2.248167
+  type: 'test'
+  ...
+# Subtest: trailing input events after composition settlement preserve accepted or rejected values
+ok 29 - trailing input events after composition settlement preserve accepted or rejected values
+  ---
+  duration_ms: 2.03325
+  type: 'test'
+  ...
+# Subtest: exact raw field bound and complete legacy slot counterexamples do not widen any caps
+ok 30 - exact raw field bound and complete legacy slot counterexamples do not widen any caps
+  ---
+  duration_ms: 3.149709
+  type: 'test'
+  ...
+# {"rawFieldBytes":1182,"legacySlotBytes":5430,"boundedCombinedBytes":6611,"unboundedEnvelopeCounterexampleBytes":15187,"fullLegalLegacyBytes":8192,"boundedOverflowBytes":9373}
+# Subtest: retained old control handlers cannot edit or end a newer same-row composition
+ok 31 - retained old control handlers cannot edit or end a newer same-row composition
+  ---
+  duration_ms: 2.347125
+  type: 'test'
+  ...
+# Subtest: composition start and end can settle synchronously before pending rerender
+ok 32 - composition start and end can settle synchronously before pending rerender
+  ---
+  duration_ms: 1.420208
+  type: 'test'
+  ...
+# Subtest: manual ducking constructs exact ramps, plateau anchors and boundary-only zero slopes
+ok 33 - manual ducking constructs exact ramps, plateau anchors and boundary-only zero slopes
+  ---
+  duration_ms: 1.995291
+  type: 'test'
+  ...
+# Subtest: manual ducking rejects invalid numbers and impossible internal edges without inventing frames
+ok 34 - manual ducking rejects invalid numbers and impossible internal edges without inventing frames
+  ---
+  duration_ms: 0.842958
+  type: 'test'
+  ...
+# Subtest: manual ducking evaluator holds unity outside the selected range and preserves half-open playback
+ok 35 - manual ducking evaluator holds unity outside the selected range and preserves half-open playback
+  ---
+  duration_ms: 0.173333
+  type: 'test'
+  ...
+# Subtest: manual ducking parameters are temporary text controls and Apply alone replaces the draft
+ok 36 - manual ducking parameters are temporary text controls and Apply alone replaces the draft
+  ---
+  duration_ms: 2.376958
+  type: 'test'
+  ...
+# Subtest: all four manual ducking copies disclose temporary settings, full replacement and original Save
+ok 37 - all four manual ducking copies disclose temporary settings, full replacement and original Save
+  ---
+  duration_ms: 10.480916
+  type: 'test'
+  ...
+# Subtest: one-frame manual Apply supports exact boundary zero ramps and refuses overlapping ramps
+ok 38 - one-frame manual Apply supports exact boundary zero ramps and refuses overlapping ramps
+  ---
+  duration_ms: 8.525792
+  type: 'test'
+  ...
+# Subtest: manual ducking invalid/oversize inputs and disabled Apply retain the complete existing curve
+ok 39 - manual ducking invalid/oversize inputs and disabled Apply retain the complete existing curve
+  ---
+  duration_ms: 22.542875
+  type: 'test'
+  ...
+# Subtest: manual ducking Enter never bubbles a submit and stale render handlers cannot replace or change parameters
+ok 40 - manual ducking Enter never bubbles a submit and stale render handlers cannot replace or change parameters
+  ---
+  duration_ms: 1.972041
+  type: 'test'
+  ...
+# Subtest: manual ducking IME uses one synchronous pending owner and rejects old sessions and point/preset actions
+ok 41 - manual ducking IME uses one synchronous pending owner and rejects old sessions and point/preset actions
+  ---
+  duration_ms: 3.578208
+  type: 'test'
+  ...
+# Subtest: real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 42 - real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 105.615875
+  type: 'test'
+  ...
+# Subtest: real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 43 - real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 10.83125
+  type: 'test'
+  ...
+# Subtest: preset draft recovery is explicit and Cancel restores the original curve without business Save
+ok 44 - preset draft recovery is explicit and Cancel restores the original curve without business Save
+  ---
+  duration_ms: 3.737708
+  type: 'test'
+  ...
+# Subtest: manual tool parameter edits stay temporary; real Apply persists only its curve through original Save
+ok 45 - manual tool parameter edits stay temporary; real Apply persists only its curve through original Save
+  ---
+  duration_ms: 5.742041
+  type: 'test'
+  ...
+# Subtest: manual Apply recovery requires explicit restore and Cancel retains the original complete raw clip
+ok 46 - manual Apply recovery requires explicit restore and Cancel retains the original complete raw clip
+  ---
+  duration_ms: 4.599041
+  type: 'test'
+  ...
+# Subtest: manual parameter IME reaches the real controller close/Save guard but never persists transient tool text
+ok 47 - manual parameter IME reaches the real controller close/Save guard but never persists transient tool text
+  ---
+  duration_ms: 4.092875
+  type: 'test'
+  ...
+# Subtest: retained manual Apply cannot send a replacement into a changed draft owner
+ok 48 - retained manual Apply cannot send a replacement into a changed draft owner
+  ---
+  duration_ms: 4.300666
+  type: 'test'
+  ...
+# Subtest: raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+ok 49 - raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+  ---
+  duration_ms: 0.222417
+  type: 'test'
+  ...
+# Subtest: bounded invalid intermediates persist exactly without becoming business Save
+ok 50 - bounded invalid intermediates persist exactly without becoming business Save
+  ---
+  duration_ms: 4.000125
+  type: 'test'
+  ...
+# Subtest: composition is controller-owned dirty close/navigation protection and cannot persist transient text
+ok 51 - composition is controller-owned dirty close/navigation protection and cannot persist transient text
+  ---
+  duration_ms: 1.01725
+  type: 'test'
+  ...
+# Subtest: composition settlement retains admitted input under capability loss and disconnect
+ok 52 - composition settlement retains admitted input under capability loss and disconnect
+  ---
+  duration_ms: 1.400208
+  type: 'test'
+  ...
+# Subtest: old owner/token cannot update form or release a later composition
+ok 53 - old owner/token cannot update form or release a later composition
+  ---
+  duration_ms: 0.194292
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope absent
+ok 54 - business ACK checks omitted unchanged envelope absent
+  ---
+  duration_ms: 0.376667
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope null
+ok 55 - business ACK checks omitted unchanged envelope null
+  ---
+  duration_ms: 0.739
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope value
+ok 56 - business ACK checks omitted unchanged envelope value
+  ---
+  duration_ms: 0.233208
+  type: 'test'
+  ...
+# Subtest: exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+ok 57 - exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+  ---
+  duration_ms: 0.433292
+  type: 'test'
+  ...
+# Subtest: changed recovered unsupported curve remains visible and blocked
+ok 58 - changed recovered unsupported curve remains visible and blocked
+  ---
+  duration_ms: 0.167709
+  type: 'test'
+  ...
+# Subtest: late business ACK cannot delete newer curve input
+ok 59 - late business ACK cannot delete newer curve input
+  ---
+  duration_ms: 0.346875
+  type: 'test'
+  ...
+# Subtest: restored explicit capable business edits remain available without local companion IO
+ok 60 - restored explicit capable business edits remain available without local companion IO
+  ---
+  duration_ms: 0.216625
+  type: 'test'
+  ...
+# Subtest: capability loss during flush cancels business submission without stripping saved draft
+ok 61 - capability loss during flush cancels business submission without stripping saved draft
+  ---
+  duration_ms: 0.520625
+  type: 'test'
+  ...
+# Subtest: over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+ok 62 - over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+  ---
+  duration_ms: 0.845042
+  type: 'test'
+  ...
+# Subtest: external owner-context replacement retains original pending composition and freezes effects
+ok 63 - external owner-context replacement retains original pending composition and freezes effects
+  ---
+  duration_ms: 0.211042
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 in preset 15/60 replaces the curve through durable Save, history and reopen
+ok 64 - owned ordinary40 in preset 15/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 2812.874541
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 in preset 60/60 replaces the curve through durable Save, history and reopen
+ok 65 - owned ordinary40 in preset 60/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1354.71625
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 out preset 15/60 replaces the curve through durable Save, history and reopen
+ok 66 - owned ordinary40 out preset 15/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 2335.880334
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 out preset 60/60 replaces the curve through durable Save, history and reopen
+ok 67 - owned ordinary40 out preset 60/60 replaces the curve through durable Save, history and reopen
+  ---
+  duration_ms: 1793.388292
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 manual ducking four-point interval saves exact anchors and preserves source identity through history and reopen
+ok 68 - owned ordinary40 manual ducking four-point interval saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1975.576208
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 manual ducking triangle with a shared ramp anchor saves exact anchors and preserves source identity through history and reopen
+ok 69 - owned ordinary40 manual ducking triangle with a shared ramp anchor saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1805.391667
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 manual ducking full-range zero-ramp attenuation saves exact anchors and preserves source identity through history and reopen
+ok 70 - owned ordinary40 manual ducking full-range zero-ramp attenuation saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1466.394084
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 manual ducking one-frame full-range attack saves exact anchors and preserves source identity through history and reopen
+ok 71 - owned ordinary40 manual ducking one-frame full-range attack saves exact anchors and preserves source identity through history and reopen
+  ---
+  duration_ms: 1495.430125
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+ok 72 - owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts
+  ---
+  duration_ms: 874.32
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 source replacement, atomic shrink/clear, split and history preserve exact anchors
+ok 73 - owned ordinary40 source replacement, atomic shrink/clear, split and history preserve exact anchors
+  ---
+  duration_ms: 1237.906666
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 durable invalid source is terminal not_applied with no domain writes
+ok 74 - owned ordinary40 durable invalid source is terminal not_applied with no domain writes
+  ---
+  duration_ms: 315.080875
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 afterClaim interruption recovers without dispatch and rejects stale instance
+ok 75 - owned ordinary40 afterClaim interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 498.047084
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+ok 76 - owned ordinary40 afterBusinessCommit interruption recovers without dispatch and rejects stale instance
+  ---
+  duration_ms: 695.132167
+  type: 'test'
+  ...
+# Subtest: owned restored41 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+ok 77 - owned restored41 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch
+  ---
+  duration_ms: 3071.710709
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 durable updates distinguish absent/null/value and retain inherited role/colour fields
+ok 78 - owned ordinary40 durable updates distinguish absent/null/value and retain inherited role/colour fields
+  ---
+  duration_ms: 1229.875375
+  type: 'test'
+  ...
+# Subtest: owned restored41 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+ok 79 - owned restored41 current-epoch afterClaim recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 1404.595541
+  type: 'test'
+  ...
+# Subtest: owned restored41 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+ok 80 - owned restored41 current-epoch afterBusinessCommit recovery preserves captured holds and rejects stale instances
+  ---
+  duration_ms: 1276.322958
+  type: 'test'
+  ...
+# Subtest: owned ordinary40 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 81 - owned ordinary40 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 1037.532583
+  type: 'test'
+  ...
+# Subtest: owned restored41 complete envelope budget fails atomically before history/redo/receipt/task writes
+ok 82 - owned restored41 complete envelope budget fails atomically before history/redo/receipt/task writes
+  ---
+  duration_ms: 1464.2525
+  type: 'test'
+  ...
+1..82
+# tests 82
+# suites 0
+# pass 82
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 30580.465542

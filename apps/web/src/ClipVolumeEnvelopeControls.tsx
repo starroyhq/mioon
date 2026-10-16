@@ -1,8 +1,8 @@
 import React, { useId, useRef, useState } from 'react';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { VOLUME_ENVELOPE_PROFILE } from '../../../packages/contracts/src/timeline-volume-envelope.ts';
-import { acceptsVolumeEnvelopeText, createVolumeEnvelopeFadePreset, RAW_VOLUME_ENVELOPE_LIMITS, validateRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
-import type { RawVolumeEnvelope, VolumeEnvelopeComposition, VolumePointField } from './clip-volume-envelope-state.ts';
+import { acceptsVolumeEnvelopeText, createVolumeEnvelopeFadePreset, MANUAL_DUCKING_FIELDS, manualDuckingEnvelopeFromRaw, RAW_VOLUME_ENVELOPE_LIMITS, validateRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
+import type { ManualDuckingField, RawManualDucking, RawVolumeEnvelope, VolumeEnvelopeComposition, VolumePointField } from './clip-volume-envelope-state.ts';
 
 export interface ClipVolumeEnvelopeControlsProps {
   value?: RawVolumeEnvelope | null;
@@ -14,7 +14,8 @@ export interface ClipVolumeEnvelopeControlsProps {
    * end/cancel composition before navigation. Do not clear pending on unmount. */
   onCompositionChange: (state: VolumeEnvelopeComposition) => void;
 }
-type Pending = { session: symbol; row: number; field: VolumePointField; text: string; original: string };
+type Pending = { session: symbol; text: string; original: string } &
+  ({ kind: 'point'; row: number; field: VolumePointField } | { kind: 'ducking'; field: ManualDuckingField });
 /** Dormant reusable form fragment. It owns no Save, capability or durable state.
  * A caller must preserve absent versus null and bind all callbacks to its owner. */
 export default function ClipVolumeEnvelopeControls({ value, proposedDuration, disabled = false, onEdit, onCompositionChange }: ClipVolumeEnvelopeControlsProps) {
@@ -25,6 +26,8 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
   const [rejected, setRejected] = useState<{ row: number; field: VolumePointField } | null>(null);
   // A preset choice is only a form tool; selecting a length is not an edit.
   const [presetFrames, setPresetFrames] = useState(30);
+  const [ducking, setDucking] = useState<RawManualDucking>({ startFrame: '0', endFrame: Number.isFinite(proposedDuration) ? String(proposedDuration) : '', multiplier: '0.25', attackFrames: '30', releaseFrames: '30' });
+  const [duckingRejected, setDuckingRejected] = useState<ManualDuckingField | null>(null);
   const points = value?.points ?? [];
   // Each rendered handler retains its originating session. Start can set this
   // local holder synchronously before React has rendered the pending state.
@@ -35,7 +38,9 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
   const displayedDuration = Number.isFinite(proposedDuration) ? proposedDuration : 0;
   const publish = (next: Pending) => {
     pending.current = next; setTransient(next);
-    onCompositionChange({ session: next.session, pending: true, dirty: true, row: next.row, field: next.field, text: next.text });
+    onCompositionChange(next.kind === 'point'
+      ? { session: next.session, pending: true, dirty: true, row: next.row, field: next.field, text: next.text }
+      : { session: next.session, pending: true, dirty: true, target: 'ducking', field: next.field, text: next.text });
   };
   const finish = (session: symbol) => { if (pending.current?.session !== session) return; pending.current = null; setTransient(null); onCompositionChange({ session, pending: false, dirty: false }); };
   const admit = (row: number, field: VolumePointField, text: string, input: HTMLInputElement, session?: symbol) => {
@@ -55,6 +60,13 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
     if (rendered !== renderEpoch.current) return;
     const next = createVolumeEnvelopeFadePreset(kind, proposedDuration, presetFrames);
     if (next) structure(next);
+  };
+  const duckingEnvelope = manualDuckingEnvelopeFromRaw(proposedDuration, ducking);
+  const admitDucking = (field: ManualDuckingField, text: string, input: HTMLInputElement) => {
+    if (!acceptsVolumeEnvelopeText(field === 'multiplier' ? 'multiplier' : 'frame', text)) {
+      input.value = ducking[field]; setDuckingRejected(field); return;
+    }
+    setDuckingRejected(null); setDucking({ ...ducking, [field]: text });
   };
   return <fieldset disabled={disabled} aria-describedby={`${id}-effect ${id}-bounds`}>
     <legend>{t('volume.envelope.title')}</legend>
@@ -78,9 +90,54 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
         <button type="button" data-testid="envelope-preset-out" disabled={disabled || !!transient || !presetAvailable} onClick={() => applyPreset('out')}>{t('volume.envelope.preset.out')}</button>
       </div>
     </fieldset>
+    <fieldset disabled={disabled} aria-describedby={`${id}-ducking-hint ${id}-ducking-bounds ${id}-ducking-temporary`}>
+      <legend>{t('volume.ducking.title')}</legend>
+      <p id={`${id}-ducking-hint`} className="input-hint">{t('volume.ducking.hint')}</p>
+      <p id={`${id}-ducking-temporary`} className="input-hint">{t('volume.ducking.temporary')}</p>
+      <p id={`${id}-ducking-bounds`} className="input-hint" role={!duckingEnvelope ? 'status' : undefined}>{t('volume.ducking.bounds')}</p>
+      {MANUAL_DUCKING_FIELDS.map(field => {
+        const composing = transient?.kind === 'ducking' && transient.field === field;
+        const error = duckingRejected === field;
+        return <label key={field} htmlFor={`${id}-ducking-${field}`}>
+          {t(`volume.ducking.${field}`)}
+          <input id={`${id}-ducking-${field}`} data-testid={`ducking-${field}`} type="text" inputMode="text" autoComplete="off" spellCheck={false}
+            value={composing ? transient.text : ducking[field]} disabled={disabled || !!transient && !composing} aria-invalid={error || undefined}
+            aria-describedby={`${id}-ducking-bounds${error ? ` ${id}-ducking-error` : ''}`}
+            onKeyDown={event => {
+              // Keep native CJK confirmation defaults. The Inspector's existing
+              // submit fence retains confirmation ownership through its tail.
+              if (pending.current?.kind === 'ducking' || event.nativeEvent?.isComposing || event.nativeEvent?.keyCode === 229) {
+                if (event.key === 'Enter' || event.key === 'Escape' || event.nativeEvent?.keyCode === 229) event.stopPropagation();
+                return;
+              }
+              if (event.key === 'Enter' || event.nativeEvent?.keyCode === 13) { event.preventDefault(); event.stopPropagation(); }
+            }}
+            onCompositionStart={event => {
+              if (disabled || pending.current || rendered !== renderEpoch.current) return;
+              handlerSession.value = Symbol('ducking-composition-event'); setDuckingRejected(null);
+              publish({ kind: 'ducking', session: handlerSession.value, field, text: event.currentTarget.value, original: ducking[field] });
+            }}
+            onChange={event => {
+              const current = pending.current;
+              if (current && handlerSession.value !== current.session) return;
+              if (current?.kind === 'ducking' && current.field === field) { publish({ ...current, text: event.currentTarget.value }); return; }
+              if (!disabled && !current && rendered === renderEpoch.current) admitDucking(field, event.currentTarget.value, event.currentTarget);
+            }}
+            onCompositionEnd={event => {
+              const current = pending.current;
+              if (current?.kind !== 'ducking' || handlerSession.value !== current.session || current.field !== field) return;
+              admitDucking(field, event.currentTarget.value, event.currentTarget); finish(current.session);
+            }} />
+        </label>;
+      })}
+      {duckingRejected && <p id={`${id}-ducking-error`} role="alert">{t('volume.envelope.rejected', { limit: RAW_VOLUME_ENVELOPE_LIMITS[duckingRejected === 'multiplier' ? 'multiplier' : 'frame'] })}</p>}
+      <button type="button" data-testid="ducking-apply" disabled={disabled || !!transient || !duckingEnvelope} onClick={() => {
+        if (rendered === renderEpoch.current && duckingEnvelope) structure(duckingEnvelope);
+      }}>{t('volume.ducking.apply')}</button>
+    </fieldset>
     {points.map((point, row) => <div key={row} className="volume-envelope-row">
       {(['frame', 'multiplier'] as const).map(field => {
-        const composing = transient?.row === row && transient.field === field;
+        const composing = transient?.kind === 'point' && transient.row === row && transient.field === field;
         const error = rejected?.row === row && rejected.field === field;
         return <label key={field} htmlFor={`${id}-${row}-${field}`}>
           {t(`volume.envelope.${field}`)} {row + 1}
@@ -91,17 +148,17 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
             onCompositionStart={event => {
               if (disabled || pending.current || rendered !== renderEpoch.current) return;
               handlerSession.value = Symbol('volume-composition-event');
-              setRejected(null); publish({ session: handlerSession.value, row, field, text: event.currentTarget.value, original: point[field] });
+              setRejected(null); publish({ kind: 'point', session: handlerSession.value, row, field, text: event.currentTarget.value, original: point[field] });
             }}
             onChange={event => {
               const current = pending.current;
               if (current && handlerSession.value !== current.session) return;
-              if (current?.row === row && current.field === field) { publish({ ...current, text: event.currentTarget.value }); return; }
+              if (current?.kind === 'point' && current.row === row && current.field === field) { publish({ ...current, text: event.currentTarget.value }); return; }
               if (!disabled && !current && rendered === renderEpoch.current) admit(row, field, event.currentTarget.value, event.currentTarget);
             }}
             onCompositionEnd={event => {
               const current = pending.current;
-              if (!current || handlerSession.value !== current.session || current.row !== row || current.field !== field) return;
+              if (current?.kind !== 'point' || handlerSession.value !== current.session || current.row !== row || current.field !== field) return;
               // Commit/correct DOM before releasing the parent's pending guard.
               admit(row, field, event.currentTarget.value, event.currentTarget, current.session); finish(current.session);
             }}

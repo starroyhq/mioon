@@ -11,6 +11,7 @@ import { i18nTestModule } from './helpers/i18n.ts';
 import { rawVolumeEnvelopeChanged } from '../apps/web/src/clip-volume-envelope-state.ts';
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
 import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
+import * as imeSubmitGuard from '../apps/web/src/opacity-ime-submit-guard.ts';
 const capability={profileId:VOLUME_ENVELOPE_PROFILE,editable:true};
 const normal={restored:false};
 const id=n=>`a1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -57,6 +58,7 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.endsWith('clip-volume-envelope-state.ts'))return {rawVolumeEnvelopeChanged};
   if(name.endsWith('clip-opacity-envelope-state.ts'))return opacityState;
   if(name.endsWith('clip-opacity-candidate-assembly.ts'))return opacityAssembly;
+  if(name.endsWith('opacity-ime-submit-guard.ts'))return imeSubmitGuard;
   if(name.endsWith('clip-audio-role-state.ts'))return {clipAudioRoleChanged:()=>false};
   if(name.endsWith('clip-audio-state.js'))return {clipAudioIssue:()=>''};
   if(name.endsWith('timeline-format-state.js'))return {timelineRectIssue:()=>'',timelineRectMessage:()=>''};
@@ -66,8 +68,37 @@ function inspector(locale='en', eligible=true, supported=true){
   return {__esModule:true,default:stub(name)};
  },module,module.exports);
  const props={clip:{id:id(5),assetId:id(6),volumeEnvelope:undefined},timeline:{projectId:id(1),id:id(2),revision:1,width:720,height:1280,tracks:[]},asset:{mimeType:'audio/wav',hasAudio:eligible},draftContext:{volumeEnvelopeEditable:supported,volumeEnvelopeCapability:supported?'editable':'unsupported'},onSave:()=>{},onRemove:()=>calls.push('remove')};
- const h={calls,state,controller,token,props,render(){cursor=0;tree=module.exports.default(props);return tree;},all:()=>nodes(tree),editor:()=>nodes(tree).find(n=>n.type===stubs['./ClipVolumeEnvelopeControls.tsx']),button:testid=>nodes(tree).find(n=>n.props?.['data-testid']===testid)};h.render();return h;
+ const h={calls,state,controller,token,props,render(){cursor=0;tree=module.exports.default(props);return tree;},all:()=>nodes(tree),editor:()=>nodes(tree).find(n=>n.type===stubs['./ClipVolumeEnvelopeControls.tsx']),form:()=>nodes(tree).find(n=>n.type==='form'),button:testid=>nodes(tree).find(n=>n.props?.['data-testid']===testid)};h.render();return h;
 }
+function duckingKey(key='Enter',keyCode=13,isComposing=false,repeat=false){
+ const observed={prevented:0,stopped:0};return {observed,key,nativeEvent:{keyCode,isComposing,repeat},target:{getAttribute:name=>name==='data-testid'?'ducking-startFrame':null},preventDefault(){observed.prevented++;},stopPropagation(){observed.stopped++;}};
+}
+function beginDucking(h,session){h.editor().props.onCompositionChange({session,pending:true,dirty:true,target:'ducking',field:'startFrame',text:'二'});h.render();}
+function endDucking(h,session){h.editor().props.onCompositionChange({session,pending:false,dirty:false});h.render();}
+const submitDucking=h=>h.form().props.onSubmit({preventDefault(){}});
+const saves=h=>h.calls.filter(call=>call==='save').length;
+for(const [key,keyCode] of [['Enter',13],['Process',229]])test(`actual Inspector ${key}/${keyCode} ducking IME confirmation survives compositionend and submit until keyup release`,async()=>{
+ const h=inspector(),session=Symbol('duck-confirm');beginDucking(h,session);const event=duckingKey(key,keyCode,true);
+ h.form().props.onKeyDownCapture(event);assert.equal(event.observed.prevented,0,'native IME default must not be cancelled');
+ if(key==='Enter')assert.ok(event.observed.stopped>0);
+ endDucking(h,session);assert.equal(h.state.compositionPending,false);assert.equal(h.button('save-clip').props.disabled,false);
+ await submitDucking(h);assert.equal(saves(h),0,'compositionend must not turn confirmation into implicit Save');
+ if(key==='Enter'){const repeat=duckingKey('Enter',13,false,true);h.form().props.onKeyDownCapture(repeat);assert.equal(repeat.observed.prevented,0);await submitDucking(h);assert.equal(saves(h),0);}
+ h.form().props.onKeyUpCapture(duckingKey(key,keyCode));await submitDucking(h);assert.equal(saves(h),0,'same-event default submission precedes the queued keyup release');
+ await Promise.resolve();await submitDucking(h);assert.equal(saves(h),1);
+});
+test('actual Inspector ducking confirmation is released only by a later independent pointer after composition',async()=>{
+ const h=inspector(),session=Symbol('duck-pointer');beginDucking(h,session);h.form().props.onKeyDownCapture(duckingKey('Enter',13,true));
+ h.form().props.onPointerDownCapture();await submitDucking(h);assert.equal(saves(h),0);endDucking(h,session);
+ await submitDucking(h);assert.equal(saves(h),0);h.form().props.onPointerDownCapture();await submitDucking(h);assert.equal(saves(h),1);
+});
+test('an older ducking keyup microtask cannot clear a newer Inspector composition confirmation',async()=>{
+ const h=inspector(),first=Symbol('first-duck'),second=Symbol('second-duck');
+ beginDucking(h,first);h.form().props.onKeyDownCapture(duckingKey('Enter',13,true));endDucking(h,first);h.form().props.onKeyUpCapture(duckingKey());
+ beginDucking(h,second);h.form().props.onKeyDownCapture(duckingKey('Enter',13,true));endDucking(h,second);
+ await Promise.resolve();await submitDucking(h);assert.equal(saves(h),0,'first release owns the earlier confirmation only');
+ h.form().props.onKeyUpCapture(duckingKey());await submitDucking(h);assert.equal(saves(h),0);await Promise.resolve();await submitDucking(h);assert.equal(saves(h),1);
+});
 test('Inspector wires controller-owned envelope token across renders and blocks save/remove during composition',async()=>{
  const h=inspector();const editor=h.editor();const session=Symbol('first');assert.equal(editor.props.disabled,false);
  editor.props.onCompositionChange({session,pending:true,dirty:true,row:0,field:'frame',text:'一'});h.render();assert.equal(h.button('save-clip').props.disabled,true);assert.equal(h.button('remove-clip').props.disabled,true);
