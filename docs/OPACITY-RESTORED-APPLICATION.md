@@ -68,3 +68,5 @@ canonical `node scripts/tooling.mjs typecheck`、`node scripts/tooling.mjs build
 真实GUI仅覆盖系统选择的无地区标签繁中；完整四语言GUI／IME、GUI默认下载目录、Node24、产品固定FFmpeg、长片资源、安装包和跨平台仍分别验收。其他三语言和繁中文案有组件断言；本片HTTP下载不冒充GUI下载。本机为Node26.9.0、已安装FFmpeg／ffprobe9.0.2。43未保存输入仍仅内存，普通dirty关闭可丢失；完整草稿持久化／递归备份是后续独立能力，不能从本片推出。
 
 之前Safari工具断连、首次CLI退出码及旧窗口状态不确定，保留[原验收记录](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)。本片不盲目操作旧PID／窗口，不重试已停止的旧文件选择器问题。无用户项目访问、40／41迁移、依赖安装、凭据修改、付费服务或push。
+
+2026-10-16 后续：[四语言／组合输入专项](OPACITY-LANGUAGE-IME-ACCEPTANCE.md)修复组合Enter误保存及42取消／保存竞态，241/241定向和另组5/5通过。新一轮GUI完成43简中／繁中／英语，日语设置后工具断连；真实中文／日文IME及最终修复构建GUI仍未验。该记录独立于上版本片正常退出／10帧媒体结论，不以新断连覆盖或改写旧结果。

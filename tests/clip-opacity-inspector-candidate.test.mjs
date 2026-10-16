@@ -7,6 +7,7 @@ import * as draftState from '../apps/web/src/clip-draft-state.ts';
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
 import * as volumeState from '../apps/web/src/clip-volume-envelope-state.ts';
 import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
+import * as imeSubmit from '../apps/web/src/opacity-ime-submit-guard.ts';
 import { createClipDraftClient, isOpacityCandidateClipDraftClient } from '../apps/web/src/clip-draft-client.ts';
 import { OPACITY_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-opacity-envelope.ts';
 import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.ts';
@@ -75,6 +76,7 @@ function inspector(t, { locale = 'en', binding = 'exact', kind = 'image', clipPa
     if (name.endsWith('clip-draft-state.ts')) return draftState;
     if (name.endsWith('clip-opacity-envelope-state.ts')) return opacityState;
     if (name.endsWith('clip-opacity-candidate-assembly.ts')) return opacityAssembly;
+    if (name.endsWith('opacity-ime-submit-guard.ts')) return imeSubmit;
     if (name.endsWith('clip-volume-envelope-state.ts')) return volumeState;
     if (name.endsWith('clip-audio-role-state.ts')) return { clipAudioRoleChanged: () => false };
     if (name.endsWith('clip-audio-state.js')) return { clipAudioIssue: () => '' };

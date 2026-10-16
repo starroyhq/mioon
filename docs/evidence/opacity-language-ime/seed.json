@@ -1,0 +1,69 @@
+{
+  "base": "/private/tmp/mioon-opacity-language-20261016-x0bK0C",
+  "source": "/private/tmp/mioon-opacity-language-20261016-x0bK0C/source42",
+  "backup": "/private/tmp/mioon-opacity-language-20261016-x0bK0C/backup42",
+  "target": "/private/tmp/mioon-opacity-language-20261016-x0bK0C/restored43",
+  "main": {
+    "projectId": "95705f61-5867-42bd-aa5f-5791bf3f4c37",
+    "timelineId": "73540e48-93e8-4feb-80ea-b1760579f0db",
+    "clipId": "167c1978-e717-4a0f-bfed-a42846d39e4d",
+    "assetId": "09e5595a-798f-4ff3-b2e6-beb93ed4abef"
+  },
+  "history": {
+    "projectId": "0787c901-2957-430d-8e1c-9e1ee84115bf",
+    "timelineId": "afe0d89f-0ec2-4626-bfa1-587a6bcead4f",
+    "clipId": "08071ea1-63cf-4353-b7ea-06c2aa15e355",
+    "assetId": "f008647d-3602-450d-ae54-2e747889d6b5"
+  },
+  "heldTaskId": "66fd55cc-f24e-47fc-ac3f-eea2c4cd4376",
+  "heldTaskDigest": "15f5302b4b0ff37db1334aeba25dc31065a0b2a4d9db6febd5e44c2139e54ad9",
+  "pngBytes": 165,
+  "pngSha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827",
+  "durationFrames": 10,
+  "captured": {
+    "format": "mioon-workspace-backup",
+    "formatVersion": 1,
+    "backupId": "1910d2b6-84ba-4075-b42a-967bc5907470",
+    "integrity": "verified",
+    "restoration": "not_tested",
+    "databaseSchemaVersion": 42,
+    "fileCount": 3,
+    "payloadBytes": 860490,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    },
+    "draftPolicy": "excluded"
+  },
+  "restored": {
+    "restorationId": "ec3bc7a4-f8e2-4812-9890-4f2888865bb7",
+    "workspaceOrigin": "34fbc351-f706-4ad9-9905-4ec5945893b7",
+    "sourceBackupId": "1910d2b6-84ba-4075-b42a-967bc5907470",
+    "manifestHash": "f6a695d32c3972c1f6e0ec993d527a476ce5fa9c00637b17ade0daa85180fc74",
+    "sourceDbHash": "444f5f1f981e07b09e43338a2534a8d4969d1eefabb63071182aa9d2ec50864a",
+    "profile": "restored-local-v10",
+    "sourceSchema": 42,
+    "databaseSchemaVersion": 43,
+    "publication": "confirmed",
+    "createdAt": "2026-10-16T07:33:59.442Z",
+    "fileCount": 3,
+    "payloadBytes": 860490,
+    "databaseBytes": 966656,
+    "additionalDiskBytesEstimate": 2215453002,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    },
+    "heldCounts": {
+      "agent_chat_quota": 1,
+      "edit_tasks": 1,
+      "timeline_requests": 2
+    },
+    "draftPolicy": "excluded"
+  },
+  "sourceClosed": true
+}

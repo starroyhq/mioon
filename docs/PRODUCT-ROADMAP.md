@@ -33,6 +33,11 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   close/reopen passed. Guarded HTTP download and RGB decode passed; full
   four-language/IME and packaging/platform gates remain. Ordinary42 creation/import
   permissions and40/41 migration are not granted to43. No push or release.
+  A later [language/IME follow-up](OPACITY-LANGUAGE-IME-ACCEPTANCE.md) repairs
+  composition-Enter and Cancel/Save races (241/241 plus separate5/5 checks).
+  Its partial43 GUI covers three locales on the prior build; CUA disconnected
+  after Japanese settings. Real IME and final fixed-build/native acceptance
+  remain open; no push or release.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI

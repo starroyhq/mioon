@@ -1,0 +1,95 @@
+{
+  "baseCommit": "1e95a4492633dd2f4e1db16793f5b86dabdcabe3",
+  "status": "partial-GUI-tool-unavailable",
+  "profile": 43,
+  "workspace": "/private/tmp/mioon-opacity-language-20261016-x0bK0C/restored43",
+  "projectId": "95705f61-5867-42bd-aa5f-5791bf3f4c37",
+  "browser": "Safari27.0.1",
+  "build": "previous committed candidate build from1e95a449; final IME/copy fixes were not GUI-qualified",
+  "originalLanguagePreference": "system",
+  "finalObservedLanguagePreference": "ja",
+  "languagePreferenceRestoration": "not performed because CUA disconnected; app-only browser preference remains Japanese, no OS input/source setting changed",
+  "passed": [
+    {
+      "locale": "zh-Hans",
+      "startRevision": 2,
+      "savedRevision": 3,
+      "savedOpacity": 0.41,
+      "invalidInput": ".",
+      "keyboard": "ordinary Enter/Escape did not save invalid input",
+      "save": "native double-click Save advanced revision once",
+      "cancel": "native double-click Discard returned to .41",
+      "reload": "refresh+reselect showed .41, synchronized"
+    },
+    {
+      "locale": "zh-Hant",
+      "label": "繁體中文; no region label",
+      "startRevision": 3,
+      "savedRevision": 4,
+      "savedOpacity": 0.42,
+      "invalidInput": "1.2",
+      "keyboard": "ordinary Enter/Escape did not save invalid input",
+      "save": "native double-click Save advanced revision once",
+      "cancel": "native double-click Discard returned to .42",
+      "reload": "refresh+reselect showed .42, synchronized"
+    },
+    {
+      "locale": "en",
+      "startRevision": 4,
+      "savedRevision": 5,
+      "savedOpacity": 0.43,
+      "invalidInput": ".",
+      "keyboard": "ordinary Enter/Escape did not save invalid input",
+      "save": "native double-click Save advanced revision once",
+      "cancel": "native double-click Discard returned to .43",
+      "reload": "refresh+reselect showed .43, synchronized"
+    }
+  ],
+  "japanese": {
+    "passed": [
+      "application language changed to 日本語; settings labels Japanese"
+    ],
+    "notVerified": [
+      "Japanese Inspector",
+      "Japanese restore notice/errors",
+      "Save/Cancel/reopen in Japanese"
+    ]
+  },
+  "realIME": {
+    "status": "not_verified",
+    "probe": "Current unchanged input source: native pressKey n,i in opacity field produced ordinary-character rejection and retained .25; no candidate window or composition-pending state observed",
+    "notClaimed": [
+      "real Chinese IME",
+      "real Japanese IME"
+    ],
+    "staticConfigEvidence": "input-source-readonly.json",
+    "enabledInputMethodsNotProofOfComposition": true,
+    "OSInputSourceOrSettingsChanged": false
+  },
+  "blockedAction": {
+    "action": "Read Japanese settings AX state from already retrieved variable; no mutation in failing call",
+    "target": "task-created Safari window70830844-C559-420A-B95D-392B825E8E30 / localhost4319 own43 project",
+    "reason": "cua_repl Transport closed after45.292s",
+    "state": "tool unavailable; not denied; read failed",
+    "retry": false
+  },
+  "cleanup": {
+    "ownServiceSession": 61632,
+    "ownServicePid": 71123,
+    "closeAttempt": "write_stdin close failed: exec-server transport disconnected/unknown session",
+    "exitCode": "unconfirmed",
+    "exactPidCheck": "ps -p71123 exit1, zero rows",
+    "port4319": "lsof exit1, zero listener rows",
+    "residualLock": "captured in disconnect-lifecycle-before.json then existing fixed43 owner-lease stale-lock admission and normal store.close removed it; no manual removal or process signals",
+    "nativeWindowClosure": "unconfirmed; no blind window action after disconnect"
+  },
+  "screenshots": "one live screenshot observed; none persisted",
+  "notVerified": [
+    "42 GUI in this round",
+    "native-window close/reopen in this round",
+    "final fixed-build GUI",
+    "real Chinese/Japanese IME",
+    "complete four-language GUI matrix"
+  ],
+  "recordedAt": "2026-10-16T07:45:21.194708+00:00"
+}

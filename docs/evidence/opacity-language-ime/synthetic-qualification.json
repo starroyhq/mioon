@@ -1,0 +1,97 @@
+{
+  "baseline": "1e95a4492633dd2f4e1db16793f5b86dabdcabe3",
+  "node": "v26.9.0",
+  "scope": "Synthetic React events through actual opacity Controls, Inspector, controller and in-memory v3 CAS client; no OS IME, GUI, listener, media, provider or actual user projects.",
+  "before": {
+    "tests": 3,
+    "pass": 0,
+    "fail": 3,
+    "exitCode": 1,
+    "evidence": "synthetic-before-fix.txt",
+    "reproductions": [
+      "42/43 composition Enter then compositionend then implicit form submit incorrectly Saves",
+      "42 Cancel waiting for DELETE (and earlier PUT) races Save"
+    ]
+  },
+  "final": {
+    "tests": 241,
+    "pass": 241,
+    "fail": 0,
+    "exitCode": 0,
+    "command": "node --test tests/clip-opacity-*.test.mjs tests/clip-draft-*.test.mjs tests/clip-volume-envelope-*.test.mjs tests/opacity-restored-application-ui.test.mjs",
+    "evidence": "synthetic-focusfix-targeted.txt",
+    "includesNewSyntheticTests": 15
+  },
+  "typecheck": {
+    "command": "node scripts/tooling.mjs typecheck",
+    "exitCode": 0,
+    "evidence": "synthetic-focusfix-typecheck.txt"
+  },
+  "independentReview": {
+    "agent": "/root/restored43_ui_survey/async_draft_audit",
+    "result": "No new runtime defect found after fixes; 52/52 narrow controller/IME/close/timeout checks passed. Legacy volume mock missing isDiscarding was corrected without making the runtime API optional."
+  },
+  "remaining": [
+    "Native OS IME event order is not verified by synthetic events. Parent owns GUI evidence and its separate limits."
+  ],
+  "sha256": {
+    "synthetic-focusfix-targeted.txt": "7da7afb2e2e35b5bb82c589f93c83f44d94d22eb365298480ff87b68a5560c7a",
+    "synthetic-targeted-final.txt": "6b66ca1ab4ed0ab5f33905b13b0acedfbcceaae009a93ba51c8c35d13747b8e8",
+    "synthetic-focusfix-typecheck.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "synthetic-typecheck.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "synthetic-before-fix.txt": "05b8e2e0f28818c1243c5bbfec488b169cd99d8b53f8ca2998c8c829916dcc38",
+    "synthetic-regression-attempt1.txt": "8425e0bdfa48d0b812ba3141134c3a3f77c84ab06bbe8c65304791af185c732d",
+    "synthetic-process229-before-fix.txt": "2c20756f676c35338ed150610d3661168d9b5e5f8ff452c20b0b829a2208662c"
+  },
+  "intermediateRegression": {
+    "tests": 236,
+    "pass": 233,
+    "fail": 3,
+    "exitCode": 1,
+    "evidence": "synthetic-regression-attempt1.txt",
+    "cause": "The older volume capability UI fixture lacked the new real controller isDiscarding method. The stub was updated with isDiscarding:()=>false; the runtime API was not made optional or weakened.",
+    "otherBaselineFixture": "A pre-existing source-regex assertion expected <ClipDraftRecovery state={state} as its leading prop. The Inspector restored state as the leading prop while retaining memoryOnly; the assertion was not weakened.",
+    "rerun": "The final 237/237 log includes the corrected fixture and one additional synthetic keyboard ownership regression."
+  },
+  "preFocusFix": {
+    "tests": 237,
+    "pass": 237,
+    "fail": 0,
+    "exitCode": 0,
+    "command": "node --test tests/clip-opacity-*.test.mjs tests/clip-draft-*.test.mjs tests/clip-volume-envelope-*.test.mjs tests/opacity-restored-application-ui.test.mjs",
+    "evidence": "synthetic-targeted-final.txt",
+    "includesNewSyntheticTests": 11
+  },
+  "preFocusTypecheck": {
+    "command": "node scripts/tooling.mjs typecheck",
+    "exitCode": 0,
+    "evidence": "synthetic-typecheck.txt"
+  },
+  "focusReviewReproduction": {
+    "tests": 15,
+    "pass": 11,
+    "fail": 4,
+    "exitCode": 1,
+    "evidence": "synthetic-process229-before-fix.txt",
+    "scope": "Initial uncommitted Enter-fence repair: Process229 mouse-focus path and held Enter repeat,42/43. Independent review found the missing user-action release; not a shipped baseline regression."
+  },
+  "finalGuard": "apps/web/src/opacity-ime-submit-guard.ts: current-owner release for Process/229 keyup and subsequent user actions, while held confirmation Enter repeat remains blocked",
+  "finalIndependentReview": {
+    "agent": "/root/restored43_backend_survey",
+    "result": "OriginalP2 resolved; independent final IME15 +volume10 +candidate Inspector11=36/36. No remaining runtime finding. No GUI or realIME claim."
+  },
+  "copiedLogNormalization": [
+    {
+      "file": "synthetic-before-fix.txt",
+      "normalization": "Copied evidence only: strip trailing spaces/tabs from lines; original test/source/assertions unchanged",
+      "originalSha256": "9c71f37ac35a319ceb5ddc89a713f2666f7e4b0691afbb421653666670efaa9d",
+      "savedSha256": "05b8e2e0f28818c1243c5bbfec488b169cd99d8b53f8ca2998c8c829916dcc38"
+    },
+    {
+      "file": "synthetic-process229-before-fix.txt",
+      "normalization": "Copied evidence only: strip trailing spaces/tabs from lines; original test/source/assertions unchanged",
+      "originalSha256": "33da3be4116a2fe6dfc084ebad47b4f493f008d486d284b874c2d004d47dd6a8",
+      "savedSha256": "2c20756f676c35338ed150610d3661168d9b5e5f8ff452c20b0b829a2208662c"
+    }
+  ]
+}

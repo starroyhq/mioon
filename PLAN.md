@@ -45,6 +45,13 @@ now has [safe internal admission](docs/OPACITY-CANDIDATE-REOPEN.md). Other
 visual keyframes, transitions, Full Log/HDR and a general plugin broker/SDK remain
 future feature work.
 
+The [opacity language/IME follow-up](docs/OPACITY-LANGUAGE-IME-ACCEPTANCE.md)
+repairs two reproduced input/cancellation races, with241/241 targeted and separate
+5/5 session/copy checks. GUI stopped after three43 locales when CUA disconnected;
+real OS IME, Japanese Inspector, final fixed-build GUI and native close/reopen
+remain open. No test service is alive; the lost service exit code/window closure
+remain uncertain, and original stale-lock admission released the owned lock.
+
 The limited local Linux trial remains available. New logic uses TS; preserve the
 user's workbench, media, shared services, drafts and receipts. The earlier documentation
 alignment ran no tests or build; current opacity qualification is linked above.

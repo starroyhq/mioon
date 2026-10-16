@@ -1,0 +1,14 @@
+[
+  {
+    "log": "build-summary-before-focus-fix.txt",
+    "exitCode": 0,
+    "status": "passed before independent review focus-fence repair; final gates will be recorded separately",
+    "sha256": "561a7b5b5a30d6e7ad4b06c15ab835e0884b95b63491a695135515052157e7bb"
+  },
+  {
+    "log": "candidate-build-summary-before-focus-fix.txt",
+    "exitCode": 0,
+    "status": "passed before independent review focus-fence repair; final gates will be recorded separately",
+    "sha256": "28b179a0ea51e00adc4fbdcf3085578f6b18b7e8730a72f6c5af1cd75c3a70ef"
+  }
+]

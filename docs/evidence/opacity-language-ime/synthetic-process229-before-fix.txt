@@ -1,0 +1,93 @@
+✔ synthetic IME Enter commits text without implicitly saving 42 v3 draft in all locales (40.876958ms)
+✔ synthetic IME Enter commits text without implicitly saving 43 memory input in all locales (5.154292ms)
+✔ 42 Save cannot enter while Cancel is deleting a persisted draft or waiting on its earlier PUT (5.6555ms)
+✔ synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 42 (22.518375ms)
+✔ synthetic Chinese/Japanese update, blur and Escape preserve the input owner until compositionend in 43 (10.95775ms)
+✔ synthetic Enter229 after compositionend and stale keyup remain fenced, while a later ordinary Enter keeps explicit form behavior (3.113083ms)
+✖ synthetic Process229 cannot block a later mouse-focused field Enter Save in 42 (2.073625ms)
+✖ synthetic Process229 cannot block a later mouse-focused field Enter Save in 43 (2.030917ms)
+✖ synthetic held confirmation Enter repeats cannot Save after compositionend in 42 (2.793667ms)
+✖ synthetic held confirmation Enter repeats cannot Save after compositionend in 43 (1.328208ms)
+✔ synthetic final nonnumeric composition is visibly rejected in four locales without normalizing or saving (4.698125ms)
+✔ synthetic stale update/end handlers cannot settle or overwrite a later opacity session (2.511459ms)
+✔ 42 delayed GET, PUT and DELETE acknowledgments do not release a newer composition or replace its raw draft (4.985041ms)
+✔ repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 42 (4.41925ms)
+✔ repeated Save/Cancel and a late business ACK retain newer Chinese/Japanese input in 43 (3.8695ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 11
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 451.922208
+
+✖ failing tests:
+
+test at tests/clip-opacity-ime-session.test.mjs:64:39
+✖ synthetic Process229 cannot block a later mouse-focused field Enter Save in 42 (2.073625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/clip-opacity-ime-session.test.mjs:73:29)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/clip-opacity-ime-session.test.mjs:64:39
+✖ synthetic Process229 cannot block a later mouse-focused field Enter Save in 43 (2.030917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/clip-opacity-ime-session.test.mjs:73:29)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/clip-opacity-ime-session.test.mjs:77:39
+✖ synthetic held confirmation Enter repeats cannot Save after compositionend in 42 (2.793667ms)
+  AssertionError [ERR_ASSERTION]: held repeats are still the original confirmation, not a new Save
+
+  1 !== 0
+
+      at TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/clip-opacity-ime-session.test.mjs:81:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/clip-opacity-ime-session.test.mjs:77:39
+✖ synthetic held confirmation Enter repeats cannot Save after compositionend in 43 (1.328208ms)
+  AssertionError [ERR_ASSERTION]: held repeats are still the original confirmation, not a new Save
+
+  1 !== 0
+
+      at TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/clip-opacity-ime-session.test.mjs:81:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: real42 language sessions preserve typed/raw/business boundaries across Save, Cancel and close/reopen
+ok 1 - real42 language sessions preserve typed/raw/business boundaries across Save, Cancel and close/reopen
+  ---
+  duration_ms: 7586.711458
+  type: 'test'
+  ...
+# Subtest: real43 language sessions preserve typed/raw/business boundaries across Save, Cancel and close/reopen
+ok 2 - real43 language sessions preserve typed/raw/business boundaries across Save, Cancel and close/reopen
+  ---
+  duration_ms: 7620.957292
+  type: 'test'
+  ...
+# Subtest: restored asset copy distinguishes previewable imports from retained but held outputs
+ok 3 - restored asset copy distinguishes previewable imports from retained but held outputs
+  ---
+  duration_ms: 1590.637792
+  type: 'test'
+  ...
+# Subtest: Japanese opacity guidance matches duplicate-frame and full-width input refusal
+ok 4 - Japanese opacity guidance matches duplicate-frame and full-width input refusal
+  ---
+  duration_ms: 0.574084
+  type: 'test'
+  ...
+# Subtest: opacity messages keep all four catalogs complete and OS regions normalize to region-neutral labels
+ok 5 - opacity messages keep all four catalogs complete and OS regions normalize to region-neutral labels
+  ---
+  duration_ms: 0.438583
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15687.49375

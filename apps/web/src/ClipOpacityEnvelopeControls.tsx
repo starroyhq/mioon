@@ -68,6 +68,11 @@ export default function ClipOpacityEnvelopeControls({ value, proposedDuration, d
               handlerSession.value = Symbol('opacity-composition-event');
               setRejected(null); publish({ session: handlerSession.value, row, field, text: event.currentTarget.value });
             }}
+            onCompositionUpdate={event => {
+              const current = pending.current;
+              if (current && handlerSession.value === current.session && current.row === row && current.field === field)
+                publish({ ...current, text: event.currentTarget.value });
+            }}
             onChange={event => {
               const current = pending.current;
               if (current && handlerSession.value !== current.session) return;

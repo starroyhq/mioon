@@ -27,6 +27,14 @@ normal close; original v3 drafts remain in the42 source. This43 slice passed
 actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
 close/reopen with saved curve retained. HTTP download bytes and RGB decode
 passed; full four-language/IME and package/platform gates remain separate.
+The subsequent [language/IME qualification](docs/OPACITY-LANGUAGE-IME-ACCEPTANCE.md)
+fixes composition-Enter implicit saving and42 Cancel/Save races.241/241 targeted
+checks and a separate5/5 language/session group passed. Its43 GUI run covered
+Simplified/Traditional Chinese and English on the previous build; Japanese stopped
+after settings when CUA disconnected. Real OS IME and the final fixed-build GUI
+remain unverified. The own server PID is absent and its stale lock was released
+through existing admission; the lost exec session exit code and test-window
+closure remain unconfirmed.
 Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 - **Implemented:** independent Settings center, four-language presentation,
