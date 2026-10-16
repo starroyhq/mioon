@@ -1,4 +1,41 @@
-# Local single-Look increment — 2026-10-15
+# Current iteration and delivery status — 2026-10-16
+
+Last verified GitHub main and application integration:
+`ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`. The Mac's subsequent
+`25609e98b8990eaa121124f35242f0bcf4a4b3ae` is a local test-fixture repair and
+has not been pushed. The push was verified by reading back the exact remote SHA;
+no workflow runs, check runs or commit statuses were visible at that query, so
+CI success is not claimed. This documentation update performs no fresh remote query.
+
+- **Implemented:** independent Settings center, four-language presentation,
+  1–300-frame sample export preview, continuous saved-timeline audio, and the
+  volume-envelope backend plus integrated row editor. Earlier prototype/dormant
+  labels describe earlier checkpoints; do not reopen these implementations.
+- **Source gates:** canonical TS/source-language guard and one canonical
+  production source build passed on `ff85c9a`, with 217 focused positive checks.
+  The old 721 TS diagnostics were resolved in `dc7a057`; retain the earlier
+  [failure evidence](docs/evidence/volume-envelope-editor-integration/qualification.md)
+  and [canonical repair](docs/evidence/volume-envelope-canonical-repair/qualification.md)
+  as history. A source build is not installer or native-platform acceptance.
+- **Local fixture repair:** `25609e9` changes only ownership/security tests.
+  The two original files pass 53/53, and pure-memory LUT host checks pass 11/11
+  under subprocess/network/filesystem-write guards. These replace the known
+  44 baseline fixture failures within that scope, not a full-suite qualification.
+  An extra preload bundling case attempted esbuild and was blocked before launch;
+  that command exited 1 and is not a passing gate. No product runtime changed.
+- **Volume-envelope acceptance:** `dc7a057` native Save/Undo/Redo and normal close
+  passed. Inspector reopen, CJK IME and four-language native acceptance remain
+  unfinished. Backend/row-editor implementation is separate from those gates;
+  [integration](docs/VOLUME-ENVELOPE-EDITOR-INTEGRATION.md) retains its earlier scope.
+- **Still separate:** 600-second wall-clock audio/resource qualification, exact-file
+  LUT reselection/native restart, complete platform/installer/signing and real-provider
+  gates. Full Log/HDR, a general plugin broker/SDK and visual keyframes/transitions
+  remain future features. See the [current queue](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-16).
+
+The dated entries below retain their original evidence, test counts and Git facts.
+This alignment changes documentation only; no tests, GUI, media or build were run.
+
+# Historical local single-Look increment — 2026-10-15
 
 On isolated `feat/look-pack`, based on `16b7b4de75e19e4166742ace52e68357d99eefd1`:
 one declarative `.mioon-look.cube` can be previewed, explicitly adopted into the

@@ -1,26 +1,38 @@
-# Current execution index — 2026-10-14
+# Current execution index — 2026-10-16
 
-The M0–M3 and V2–V4.1 checklists below are historical delivery records, not the
-remaining product queue. Current committed baseline is `f8b91713af0c8ed3994e32fa57447827a0ab3883`.
-[STATUS](STATUS.md) and dated acceptance reports record the independent project home,
-multiple project windows, bounded sound audition, exported-file loudness and complete
-current-mix candidates, plus fixed schema/profile prerequisite. Their actual gates
-are separate; the [atomic loudness apply slice](docs/TIMELINE-LOUDNESS-APPLY.md) is
-currently under integration and its final feature gate is not yet complete.
+The M0–M3 and V2–V4.1 checklists below are historical records. The last verified
+published application integration is `ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`
+on GitHub main. This Mac's latest code/test checkpoint is
+`25609e98b8990eaa121124f35242f0bcf4a4b3ae`: a local-only LUT test-fixture repair,
+not yet pushed. Identify later documentation descendants with `git rev-parse HEAD`.
 
-The limited local Linux trial is available. Follow the [source startup guide](docs/CORE-TRIAL.zh-CN.md)
-for commands and [STATUS](STATUS.md) for attributed code/Git observations. Identify
-this checkout with `git rev-parse HEAD`; a local checkpoint does not imply remote sync.
-Prioritize the current explicit apply/undo/output remeasurement slice, then bounded
-stability and useful stages within the [six remaining directions](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-14).
-They are feature directions, not six commits or a promised completion date.
-New logic uses TS; gradual legacy migration must not become a whole-repository
-rewrite. Preserve the user's workbench, original media, shared services and receipts.
+Implemented slices include the independent Settings center, four-language
+presentation, 1–300-frame sample export preview, continuous saved-timeline audio,
+and the volume-envelope backend plus integrated ordered-row editor. Do not
+restart them from older planning/prototype labels. See [STATUS](STATUS.md) and the
+[current delivery index](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-16)
+for attributed checkpoints and remaining acceptance. Atomic loudness application
+retains its separate WIP/acceptance boundary.
 
-Mac/Windows native acceptance and real-provider work remain separately scoped gates.
-The dated Git observations in STATUS and the roadmap are historical observations,
-not a fresh remote check. No platform candidate, source build or Mock result proves
-native/live quality, and later commits do not carry implicit push authority.
+Canonical TypeScript/source-language checks and one production source build
+passed on `ff85c9a`; the earlier 721-diagnostic blocker is historical and resolved.
+That integration recorded 217 passing focused checks, not a full-suite pass.
+The local `25609e9` repair passes the original two test files 53/53 and pure-memory
+LUT host checks 11/11. The extra preload bundling case was blocked by its esbuild
+subprocess guard and is not a passed gate. Do not add overlapping historical totals.
+
+Volume-envelope native Save/Undo/Redo and normal close passed on `dc7a057`.
+Inspector reopen, CJK IME and four-language native acceptance remain unfinished;
+this is not all-platform acceptance. Continuous-audio wall-clock/resource gates
+and LUT exact-file reselection/restart qualification retain their separate limits.
+Full Log/HDR, a general plugin broker/SDK, visual keyframes and transitions remain
+future feature work.
+
+The limited local Linux trial remains available. New logic uses TS; preserve the
+user's workbench, media, shared services, drafts and receipts. This documentation
+alignment runs no tests, build, GUI or media and performs no push. Platform/native,
+installer/signing and real-provider gates remain separately scoped; later work
+has no implicit spending or publication authority.
 
 ## Historical M0–M3 / V2–V4.1 records
 

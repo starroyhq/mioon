@@ -1,22 +1,23 @@
 # Mioon approved product roadmap
 
-Updated: 2026-10-15 UTC. Current index checked against local integration checkpoint
-`ad72c8f4be6abb5f351c05ebf3fc5ea089dd57cd`, preserving the accepted
-`41f09c3` integration ancestry. This document distinguishes implemented
+Updated: 2026-10-16 UTC. Current index checked against application integration
+`ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`, last verified on GitHub main,
+and local-only test-fixture repair `25609e98b8990eaa121124f35242f0bcf4a4b3ae`.
+Earlier accepted integration ancestry is preserved. This document distinguishes implemented
 slices, their actual acceptance boundaries and remaining approved scope. It does
 not promote a WIP checkpoint, certify the combined native application, or grant
 new execution, spending or publication authority. This documentation-only review
 reran no product tests, native acceptance or stopped issue investigations.
 
-## Current UI iteration (2026-10-15)
+## Current UI iteration (2026-10-16)
 
-- **Settings center: implemented locally in `92add7e`.** One explicit Settings
+- **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI
   languages. Existing connection forms, retained drafts, transient-secret
   handling, busy/recovery guards and close confirmation are preserved; project,
   clip and export options remain contextual. This is not plugin install,
   uninstall or dynamic-loading support, nor full native/platform acceptance.
-- **Sample export preview: implemented locally in `5a3751b`.** A
+- **Sample export preview: implemented in `5a3751b`, integrated through `ff85c9a`.** A
   separate 1–300-frame trial range uses current export settings, its own checks,
   the existing durable export path and an exact-output player with stale-result
   blocking. It does not change the final range or cancel a render when closed.
@@ -57,7 +58,19 @@ reran no product tests, native acceptance or stopped issue investigations.
   15-second CLI qualification failure remains unresolved; a diagnostic 30-second
   pass is not acceptance of that gate.
 
-## Current delivery and remaining work (2026-10-15)
+- **Four-language presentation: implemented and integrated.** GUI/native copy,
+  main-CLI and bounded backup/MCP diagnostics retain the distinct scopes below.
+  Exhaustive four-language native acceptance is unfinished.
+- **Volume-envelope backend and row editor: implemented and integrated through
+  `dc7a057` and `ff85c9a`.** Existing Save/history/replay/draft ownership carries
+  ordered points; there is no second persistence owner. The earlier
+  [editor checkpoint](VOLUME-ENVELOPE-EDITOR-INTEGRATION.md) and its 721 TS
+  diagnostics are historical: [canonical conformance repair](evidence/volume-envelope-canonical-repair/qualification.md)
+  resolved the blocker, and canonical TS plus a production source build passed
+  on `ff85c9a`. Native Save/Undo/Redo and normal close passed on `dc7a057`;
+  Inspector reopen, CJK IME and four-language native acceptance remain unfinished.
+
+## Current delivery and remaining work (2026-10-16)
 
 1. **Editing, audio and loudness.** Independent project home/windows, managed
    media/source ranges, favorite/reject and current-timeline usage, raw-source
@@ -84,10 +97,11 @@ reran no product tests, native acceptance or stopped issue investigations.
    incomplete/failing regression evidence. Do not describe these as wholly
    unimplemented or as fully accepted. Selected-clip read-only measurement and
    explicit editorial roles are now delivered within the limits indexed above;
-   they do not complete per-clip/dialogue loudness matching. Volume keyframes
-   remain outside production: a pure volume-envelope prototype is underway, with
-   no production integration or final support decision.
-   Crossfades, ducking, limiter/EQ/noise reduction and scoped proxy performance
+   they do not complete per-clip/dialogue loudness matching. The volume-envelope
+   backend and row editor are implemented and integrated; their remaining native
+   acceptance is indexed above. Do not restart the earlier pure prototype.
+   Visual keyframes/transitions, audio crossfades, ducking, limiter/EQ/noise
+   reduction and scoped proxy performance
    remain separate work; local media tags/notes are no longer pending. No automatic
    target or AAC loudness/true-peak guarantee is implied.
 2. **Colour and Looks.** Project-owned LUT resources (`a78abb0`) and the versioned
@@ -151,6 +165,16 @@ reran no product tests, native acceptance or stopped issue investigations.
    remain separate. Incremental TS migration or safety-boundary extraction should
    address a concrete reproduced need, not duplicate completed features.
 
+The current `ff85c9a` source integration passed 217 focused checks, canonical
+TypeScript/source-language guards and one production source build. Its known
+44 LUT fixture failures were reproduced on clean `a7fcf741`; local-only
+`25609e9` subsequently repairs the two stale test fixtures, passing 53/53 original
+checks plus 11/11 pure-memory host checks. The extra preload bundling case was
+blocked by an esbuild subprocess guard (command exit 1), not passed. No current
+full-suite, new installer or all-platform gate is claimed. `ff85c9a` was pushed
+and verified on GitHub main; `25609e9` remains unpushed. No CI runs/checks/statuses
+were visible at the publication query; this documentation refresh does not requery.
+
 The earlier combined `41f09c3` integration has 915/915 focused checks across 63 files,
 strict typecheck and an actual production-channel build passing. Source hashes
 were verified unchanged after the provenance commits. This is not the full
@@ -209,21 +233,20 @@ Continue approved local feature work when a separate acceptance or publication
 step is blocked; a blocked item does not pause the whole project. Preserve each
 item's evidence and permission boundary rather than silently treating it as done.
 
-1. Keep volume keyframes in planning/prototype scope: a pure volume-envelope
-   prototype is underway, not integrated into production. Define saved-clip
-   timing, interpolation, compatibility, history/replay and preview/export parity
-   boundaries before production integration or a final support decision. This
-   queue is not a feature completion or support commitment.
+1. Preserve the implemented volume-envelope backend/row editor and its documented
+   remaining acceptance gates. The earlier pure prototype is historical; its
+   production integration is complete, while full native acceptance remains open.
 2. Keep the completed bounded export preview, tags/notes, shot-video A/B,
    selected-clip measurement and audio-role slices closed at their documented
    source gates; do not restart them because older roadmap entries say pending.
    Broader comparison modes, loudness matching/application and effects need their
    own bounded implementation and acceptance.
-3. Preserve the bounded native outcome above without inferring an import cause
-   or feature acceptance. Native GUI acceptance, 600-second real-time audio
-   qualification, the role CLI gap and LUT reselection/restart acceptance remain
-   independent unresolved gates, not
-   implicit permission to rerun stopped investigations or widen deadlines.
+3. Keep native results attributed to their exact builds: `dc7a057` covers
+   Save/Undo/Redo and normal close, while Inspector reopen, CJK IME and four-language
+   native acceptance remain open. The earlier one-shot import outcome, 600-second
+   real-time audio qualification, role CLI gap and LUT reselection/restart remain
+   independent unresolved gates. Do not infer a cause, restart stopped
+   investigations or widen deadlines from this queue.
 
 The dated feature checkpoints record each slice’s actual implementation and
 acceptance; this queue grants no permission for broader external actions. Audio
