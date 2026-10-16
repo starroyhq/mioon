@@ -1,22 +1,25 @@
-import {assertTimelineVolumeEnvelopeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
+import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
+import {opacityEnvelopeFieldsAfterEdit} from '../../contracts/src/timeline-opacity-envelope.ts';
+import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
 import {ownsStoreLock} from './db.mjs';
-import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
+import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {bindRestoredExport} from './workspace-restore-exports.mjs';
-import {refuseRestoredOperation} from './workspace-restore-policy.mjs';
+import {refuseRestoredOperation as legacyRefuseRestoredOperation} from './workspace-restore-policy.mjs';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.mjs';
 import {createSubtitleMutations} from './timeline-subtitles.mjs';
 import {randomUUID} from 'node:crypto';
-import {AppError,sourceFrameCount,isTimelineMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '@mioon/contracts';
+import {AppError,sourceFrameCount,isTimelineMutationResponse as legacyMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '@mioon/contracts';
 import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assertTimelineFormatEligible} from './timeline-format.mjs';
 import {canonicalFormatValue} from './timeline-format-receipts.mjs';
 import {freezeTimelineSnapshot} from './timeline-inputs.mjs';
 export {TIMELINE_LIMITS} from './timeline-inputs.mjs';
 import {readTimelinePreflightSnapshot} from './timeline-sources.mjs';
 import {createTimelineReplacementBoundary} from './timeline-replacement.mjs';
-import {createTimelineRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.mjs';
+import {createTimelineRecoveryBoundary as legacyRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse as legacyAdmitImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.mjs';
 
 const defaultRect=timeline=>({x:0,y:0,width:timeline.width,height:timeline.height});
 // The shared wire schema admits every preset's envelope. Submitted rectangles
@@ -31,6 +34,13 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 // The timeline is its own aggregate: revision checks and idempotent responses
 // must be committed in the same SQLite transaction as every mutation.
 export function createTimelineServices(store,{required,check,hash,now,exportAdmission}){
+ const opacity=getOpacityCandidateAssembly(store),domain=opacity?createOpacityCandidateDomain(store):null;
+ const assertTimelineAudioRoleWorkspace=opacity?()=>opacity.checkpoint():legacyAssertAudioRoleWorkspace;
+ const assertTimelineVolumeEnvelopeWorkspace=opacity?()=>opacity.checkpoint():legacyAssertVolumeWorkspace;
+ const refuseRestoredOperation=opacity?(_store,operation,input)=>opacity.refuseOperation(operation,input):legacyRefuseRestoredOperation;
+ const createTimelineRecoveryBoundary=domain?(_db,input)=>domain.boundary(input):legacyRecoveryBoundary;
+ const isTimelineMutationResponse=domain?domain.isMutationResponse:legacyMutationResponse;
+ const admitTimelineImageResponse=value=>{legacyAdmitImageResponse(value);if(domain)domain.admit(value);};
  const {db,put,tx}=store;
  function find(projectId){
   const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
@@ -66,7 +76,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   assertTimelineAudioRoleWorkspace(db,input);
   assertTimelineVolumeEnvelopeWorkspace(db,input);
   refuseRestoredOperation(store,operation,input);
-  const state={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false,ownedScope:()=>ownsStoreLock(store)};
+  const state={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false,ownedScope:()=>opacity?opacity.ownsLock():ownsStoreLock(store)};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
    state.transactionEntered=true;
@@ -174,7 +184,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    const target=clip(timeline,input.clipId);let envelope;
    try{envelope=volumeEnvelopeFieldsAfterEdit(target,input.patch);}
    catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
-   Object.assign(target,input.patch,envelope);
+   Object.assign(target,input.patch,envelope,...(opacity?[opacityEnvelopeFieldsAfterEdit(target,input.patch)]:[]));
   },boundary);
  }
  function renderSnapshot(input,boundary,write,expectedTimelineId){
@@ -230,8 +240,8 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    write();put('timelines',timeline);
    return saveResponse('timeline.format.set',input,requestHash,timeline,boundary);
   }),
-  'timeline.get':input=>ensure(input.projectId),
-  'timeline.history.get':input=>history(input.projectId),
+  'timeline.get':input=>domain?domain.boundary(input).read({legacyMissingProject:true}):ensure(input.projectId),
+  'timeline.history.get':input=>{if(domain)domain.boundary(input).read({legacyMissingProject:true});return history(input.projectId);},
   'timeline.undo':input=>travel('timeline.undo',input,-1),
   'timeline.redo':input=>travel('timeline.redo',input,1),
   'timeline.track.add':input=>mutate('timeline.track.add',input,timeline=>{

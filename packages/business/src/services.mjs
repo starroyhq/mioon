@@ -1,3 +1,5 @@
+import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {createOpacityCandidateServices} from './opacity-candidate-services.ts';
 import {readTimelineVolumeEnvelopeCapability} from './timeline-volume-envelope-capability.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts';
@@ -63,6 +65,7 @@ export const now=()=>new Date().toISOString();
 export function canonical(v){return JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);}
 export const hash=v=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(store,providers,{env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions}={}){
+ if(getOpacityCandidateAssembly(store))return createOpacityCandidateServices(store,{signal:ownerSignal});
  const restored=getWorkspaceRestoreContext(store);
  const restoredReads=restored?createRestoredReadServices(store,{signal:ownerSignal}):null;
  const disabled=()=>{throw workspaceRestoreError();};
