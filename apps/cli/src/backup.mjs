@@ -225,6 +225,10 @@ export async function runBackupCli(argv = process.argv.slice(2)) {
   return await output(process.stdout, `${JSON.stringify({ok: true, data})}\n`) ? 0 : 1;
 }
 
+// Internal offline candidate CLI reuses the exact parser, sanitized diagnostics
+// and bounded output lifecycle; this does not change the ordinary commands.
+export {safeError as safeBackupCliError, output as writeBackupCliOutput};
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   process.exitCode = await runBackupCli();
 }

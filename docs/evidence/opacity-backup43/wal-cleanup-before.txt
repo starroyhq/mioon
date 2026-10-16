@@ -1,0 +1,25 @@
+✖ real read-only WAL close metadata changes are cleaned only for captured sidecar inodes (55.355375ms)
+✔ disposable cleanup allows metadata evolution of its original sidecar inode (243.185417ms)
+✔ disposable cleanup preserves a replacement sidecar inode (217.30875ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 911.890917
+
+✖ failing tests:
+
+test at tests/workspace-restore-disposable-cleanup.test.mjs:11:1
+✖ real read-only WAL close metadata changes are cleaned only for captured sidecar inodes (55.355375ms)
+  Error: A workspace or backup file changed during inspection. No complete backup was published.
+      at backupError (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:27:58)
+      at fail (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup-storage.mjs:28:36)
+      at withDisposableDatabase (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-backup.mjs:80:86)
+      at async TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-restore-disposable-cleanup.test.mjs:35:16)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    code: 'WORKSPACE_BACKUP_CHANGED'
+  }

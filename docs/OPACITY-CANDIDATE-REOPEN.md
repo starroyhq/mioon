@@ -22,7 +22,7 @@ node apps/server/src/opacity-candidate-cli.ts --open-workspace /private/tmp/mioo
 
 ## 42→43冷备份恢复的最小后续方案
 
-本片仅调查，没有执行备份／恢复或用户数据操作。现有`workspace-restore-schema-v43.ts`已具备固定43构造、校验、原始回执／历史字节、held、epoch及origin保护，缺口在产品流水线。
+重开初片仅调查，没有执行备份／恢复或用户数据操作。后续已完成[固定42冷备份→43离线产品入口](OPACITY-CANDIDATE-BACKUP-RESTORE.md)，仅对自建临时工作区验证；下面保留当时设计。现有`workspace-restore-schema-v43.ts`具备固定43构造、校验、原始回执／历史字节、held、epoch及origin保护，产品流水线现已沿这些边界接入。
 
 1. 新增固定候选42备份／43结果DTO和内部离线入口，不放宽冻结的默认版本枚举或旧dispatcher。
 2. 复用现有`workspace-backup.mjs`的owner lock、冷库检查、受管路径、库存、逐文件hash及COMPLETE发布；在`workspace-backup-inventory.mjs`增加候选固定reader接缝，仅接受普通42，拒绝43递归备份。

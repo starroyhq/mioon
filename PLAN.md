@@ -30,7 +30,9 @@ and LUT exact-file reselection/restart qualification retain their separate limit
 Clip opacity keyframes now have the isolated fresh42 application slice;
 [partial Safari and actual10-frame media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
 passed within its stated scope. GUI after the import picker remains blocked by
-CUA disconnection;42→43 backup remains design only. Explicit ordinary42 reopening
+CUA disconnection. The [fixed42 cold-backup→offline43 entry](docs/OPACITY-CANDIDATE-BACKUP-RESTORE.md)
+is implemented with original guards and explicit v3 draft exclusion;43 application
+admission remains separate. Explicit ordinary42 reopening
 now has [safe internal admission](docs/OPACITY-CANDIDATE-REOPEN.md). Other
 visual keyframes, transitions, Full Log/HDR and a general plugin broker/SDK remain
 future feature work.

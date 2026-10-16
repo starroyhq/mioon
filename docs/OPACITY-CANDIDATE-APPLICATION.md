@@ -34,7 +34,7 @@ node apps/server/src/opacity-candidate-cli.ts --new-workspace /private/tmp/mioon
 
 创建时该目录必须不存在，不允许改成用户已有工作区；该专用目录现已存在，不能重复使用`--new-workspace`覆盖。监听目标为`127.0.0.1:4319`。访问令牌由专用目录的`access-token`提供，不需要配置provider。Safari已实际登录、创建并打开项目，打开导入选择器后GUI连接中断；同一临时项目随后通过真实HTTP导入、保存、草稿持久化、Undo／Redo及10帧预览／导出与下载校验。完整界面操作仍待补验。
 
-初片只创建新目录；后续已补[已有普通42目录安全重开](OPACITY-CANDIDATE-REOPEN.md)，使用互斥`--open-workspace`并复用完整profile／owner校验。通用生产启动器仍拒绝42；43应用恢复、42冷备份→43恢复和完整GUI仍未验收。
+初片只创建新目录；后续已补[已有普通42目录安全重开](OPACITY-CANDIDATE-REOPEN.md)，使用互斥`--open-workspace`并复用完整profile／owner校验。通用生产启动器仍拒绝42；[42冷备份→43离线恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)已独立实现，43应用启动和完整GUI仍未开放／验收。
 
 ## 验证范围与剩余验收
 

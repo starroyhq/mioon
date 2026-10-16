@@ -1,0 +1,14 @@
+✔ real read-only WAL close metadata changes are cleaned only for captured sidecar inodes (21.973041ms)
+ℹ SQLite close sidecar observation: [{"suffix":"-wal","removed":false,"sameInode":true,"changedMetadata":[]},{"suffix":"-shm","removed":false,"sameInode":true,"changedMetadata":["ctimeMs"]}]
+✔ real WAL close never authorizes cleanup of a post-close replacement (25.819292ms)
+✔ real WAL close never authorizes cleanup of a post-close unknown-file (14.372ms)
+✔ disposable cleanup allows metadata evolution of its original sidecar inode (311.331375ms)
+✔ disposable cleanup preserves a replacement sidecar inode (319.939375ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 995.142541

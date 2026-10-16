@@ -1,0 +1,78 @@
+{
+  "checkedAt": "2026-10-16T06:50:36.036Z",
+  "sourceDbByteIdentical": true,
+  "archiveDbByteIdentical": true,
+  "sourceDraftByteIdentical": true,
+  "archiveAndTargetDraftAbsent": true,
+  "assetBytesPreserved": true,
+  "timelineTaskReceiptHistoryRawHashesPreserved": true,
+  "opacityPreserved": true,
+  "capturedTask": {
+    "status": "prepared",
+    "executionEpoch": "captured"
+  },
+  "restoredInfo": {
+    "restorationId": "570f44a2-6461-48ee-9b03-37b70f4429c8",
+    "workspaceOrigin": "570da27f-8544-487a-aa92-dad81d9676f5",
+    "sourceBackupId": "696d2d0f-0b79-4eea-bc28-306fed22f966",
+    "manifestHash": "81e9f38a527bf5b14cf666ad3a942bac0e7a7f8415342ac18fbe4c5c4fbdbcd5",
+    "sourceDbHash": "19844d04c75bae3a3fb1e15bc3c789ecbdab05e86c9ebb1ca62bf9612fa43d7b",
+    "createdAt": "2026-10-16T06:49:49.820Z",
+    "schemaVersion": 43,
+    "profile": "restored-local-v10",
+    "sourceSchema": 42,
+    "heldCounts": {
+      "agent_chat_quota": 1,
+      "edit_tasks": 1,
+      "timeline_requests": 1
+    }
+  },
+  "creation": {
+    "format": "mioon-workspace-backup",
+    "formatVersion": 1,
+    "backupId": "696d2d0f-0b79-4eea-bc28-306fed22f966",
+    "integrity": "verified",
+    "restoration": "not_tested",
+    "databaseSchemaVersion": 42,
+    "fileCount": 2,
+    "payloadBytes": 860187,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    },
+    "draftPolicy": "excluded"
+  },
+  "restoration": {
+    "restorationId": "570f44a2-6461-48ee-9b03-37b70f4429c8",
+    "workspaceOrigin": "570da27f-8544-487a-aa92-dad81d9676f5",
+    "sourceBackupId": "696d2d0f-0b79-4eea-bc28-306fed22f966",
+    "manifestHash": "81e9f38a527bf5b14cf666ad3a942bac0e7a7f8415342ac18fbe4c5c4fbdbcd5",
+    "sourceDbHash": "19844d04c75bae3a3fb1e15bc3c789ecbdab05e86c9ebb1ca62bf9612fa43d7b",
+    "profile": "restored-local-v10",
+    "sourceSchema": 42,
+    "databaseSchemaVersion": 43,
+    "publication": "confirmed",
+    "createdAt": "2026-10-16T06:49:49.820Z",
+    "fileCount": 2,
+    "payloadBytes": 860187,
+    "databaseBytes": 966656,
+    "additionalDiskBytesEstimate": 2215452699,
+    "inventory": {
+      "complete": true,
+      "totalIssues": 0,
+      "issues": [],
+      "truncated": false
+    },
+    "heldCounts": {
+      "agent_chat_quota": 1,
+      "edit_tasks": 1,
+      "timeline_requests": 1
+    },
+    "draftPolicy": "excluded"
+  },
+  "locksAbsent": true,
+  "mediaExecution": false,
+  "decodedMedia": false
+}

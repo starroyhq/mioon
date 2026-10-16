@@ -21,8 +21,10 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   media acceptance](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md): login/project creation
   passed, while CUA disconnected at the import picker. Actual HTTP persistence,
   Undo/Redo, FFmpeg preview/export and guarded downloads passed; later GUI items
-  remain unverified. It also records [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md), and the remaining
-  42→43 backup and40/41 migration. No push or release.
+  remain unverified. It also records [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md)
+  and the implemented [fixed42 cold-backup→offline43 entry](OPACITY-CANDIDATE-BACKUP-RESTORE.md),
+  with raw evidence/held/epoch/origin retained and v3 drafts explicitly excluded.
+  43 application admission and40/41 migration remain separate. No push or release.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI

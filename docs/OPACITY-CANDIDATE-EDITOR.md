@@ -53,7 +53,7 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 4. **播放、下载与完成状态。** server的`deliveryGuards`固定旧`isTimelineRenderRecord`。需将精确候选record校验接入同一source／held／文件响应守卫，确保worker成功后，用户能取得正确的preview/export媒体。
 5. **备份恢复产品链。** 公共backup DTO、DB classifier、离线restore、CLI和诊断仍只支持40/41。42→43构造器存在，但create/verify/restore/restore-status尚未贯通；43应继续拒绝递归备份。此闭环完成前，不向用户提供43恢复入口。
 
-以上1–4已由后续[全新42应用片](OPACITY-CANDIDATE-APPLICATION.md)接通，并补[普通42已有目录重开](OPACITY-CANDIDATE-REOPEN.md)，均限内部明确入口。43应用恢复及第5项备份恢复产品链尚未开放。preflight／capability无需重复实现。旧40/41升级继续按下节单独处理。
+以上1–4已由后续[全新42应用片](OPACITY-CANDIDATE-APPLICATION.md)接通，并补[普通42已有目录重开](OPACITY-CANDIDATE-REOPEN.md)，均限内部明确入口。第5项已有[固定42冷备份→43离线产品入口](OPACITY-CANDIDATE-BACKUP-RESTORE.md)，43应用启动仍未开放。preflight／capability无需重复实现。旧40/41升级继续按下节单独处理。
 
 ## 旧40/41升级条件与备份恢复策略
 

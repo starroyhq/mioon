@@ -52,4 +52,6 @@
 
 本次仅改共享Preview的条件显示与两项针对性测试；12/12通过，canonical build（严格TS、source-language guard、默认Web及development Desktop staging）和独立候选Web构建通过，具体见[汇总](evidence/opacity-native-acceptance/qualification.json)。实际媒体运行发生在此按钮修复之前；修复未改媒体代码，修复后未重新声称GUI／媒体验收。没有全库测试或安装包验收结论。
 
-下一项合理开发是[42冷备份→43离线恢复的固定候选产品入口](OPACITY-CANDIDATE-REOPEN.md#4243冷备份恢复的最小后续方案)，当前只有设计，仍须父任务判断恢复边界；本次没有扩大43执行权限或迁移40／41。GUI工具恢复后再补上述未验界面项；Node24／产品固定FFmpeg、长片资源、跨平台安装包和真实provider保留各自独立验收。
+本次验收结束时，下一项合理开发是[42冷备份→43离线恢复的固定候选产品入口](OPACITY-CANDIDATE-REOPEN.md#4243冷备份恢复的最小后续方案)，当时只有设计，仍须父任务判断恢复边界；本次没有扩大43执行权限或迁移40／41。GUI工具恢复后再补上述未验界面项；Node24／产品固定FFmpeg、长片资源、跨平台安装包和真实provider保留各自独立验收。
+
+后续独立切片已完成[固定42冷备份→43离线入口](OPACITY-CANDIDATE-BACKUP-RESTORE.md)。本页GUI／退出不确定性和未验范围保留，没有操作旧PID／窗口或重试已停止的文件选择器问题。

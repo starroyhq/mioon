@@ -15,7 +15,9 @@ Explicit ordinary42 [reopening](docs/OPACITY-CANDIDATE-REOPEN.md) now preserves
 saved edits/drafts. [Partial Safari and real short-media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
 now verifies login/project creation, actual HTTP persistence/Undo/Redo and10-frame
 FFmpeg preview/export/download. CUA disconnected at the import picker, so later
-GUI operations remain unverified;42→43 backup is still design only.
+GUI operations remain unverified. The [fixed42 cold-backup→offline43 entry](docs/OPACITY-CANDIDATE-BACKUP-RESTORE.md)
+now preserves raw evidence, held/epoch/origin and managed asset bytes, explicitly
+excludes v3 drafts, and keeps the43 application launcher closed.
 Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 - **Implemented:** independent Settings center, four-language presentation,
