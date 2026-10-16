@@ -1,7 +1,7 @@
 /** Created only by the separate internal candidate entry. A server response,
  * profile string or copy of this token cannot select the application branch. */
 import {createOpacityCandidateClientBinding} from './opacity-candidate-client-binding.ts';
-import {createOpacityCandidateInspectorBinding} from './clip-opacity-candidate-assembly.ts';
+import {createOpacityCandidateInspectorBinding, createRestoredOpacityCandidateInspectorBinding} from './clip-opacity-candidate-assembly.ts';
 import {createOpacityCandidateBrowserContracts, type OpacityBrowserLegacyContracts} from './opacity-candidate-browser-contracts.ts';
 
 export type OpacityCandidateApplication = Readonly<{kind: 'internal-opacity-application'}>;
@@ -26,8 +26,13 @@ function application(runtime: OpacityCandidateApplicationRuntime, fetcher: typeo
   const opacityBinding = createOpacityCandidateClientBinding(contracts);
   const taskClient = runtime.createEditTaskClient({fetcher, opacityBinding});
   let inspectedWorkspace: Value | null = null;
-  return Object.freeze({taskClient, inspectorBinding: createOpacityCandidateInspectorBinding(fetcher),
+  let inspectorBinding = createOpacityCandidateInspectorBinding(fetcher);
+  let restoredDraftOrigin: string | null = null;
+  return Object.freeze({taskClient, get inspectorBinding() {return inspectorBinding;},
     ...contracts,
+    supportsRestoredClipDrafts(value: unknown): boolean {
+      return contracts.isRestoredWorkspace(value) && value.localClipDrafts !== undefined && value.workspaceOrigin === restoredDraftOrigin;
+    },
     validateProjectSnapshot(value: unknown, projectId?: unknown): boolean {
       return contracts.validateProjectSnapshot(value, projectId, inspectedWorkspace);
     },
@@ -39,7 +44,16 @@ function application(runtime: OpacityCandidateApplicationRuntime, fetcher: typeo
         if (!contracts.isWorkspaceInspection(result) || !result || typeof result !== 'object') return fault();
         const observed = result as Value;
         if (inspectedWorkspace && (observed.restored !== inspectedWorkspace.restored || observed.workspaceOrigin !== inspectedWorkspace.workspaceOrigin)) return fault();
-        inspectedWorkspace ??= Object.freeze(structuredClone(observed));
+        if (!inspectedWorkspace) {
+          inspectedWorkspace = Object.freeze(structuredClone(observed));
+          // App finishes boot inspection before mounting its first Inspector.
+          // Existing mounted hooks pin their original binding and refuse a
+          // changed owner rather than silently replacing a dirty controller.
+          if (contracts.isRestoredWorkspace(observed) && observed.localClipDrafts) {
+            inspectorBinding = createRestoredOpacityCandidateInspectorBinding(observed, fetcher);
+            restoredDraftOrigin = observed.workspaceOrigin;
+          }
+        }
       }
       if (['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.undo', 'timeline.redo', 'timeline.render'].includes(operation) &&
         !contracts.isTimelineMutationResponse(operation, input, result)) return fault();

@@ -1,6 +1,7 @@
 /** Fixed restored43 application disclosure. This browser-safe contract grants
  * no store, origin or execution capability and never widens legacy profiles. */
 import {z} from 'zod';
+import {OPACITY_RESTORED_DRAFT_CAPABILITY, opacityRestoredDraftCapabilitySchema} from './local-drafts-opacity-restored.ts';
 
 export const OPACITY_RESTORED_APPLICATION_READ_OPERATIONS = Object.freeze([
   'project.list', 'project.get', 'asset.list', 'asset.get', 'export.list', 'export.get', 'provider.list', 'workspace.restore.inspect',
@@ -29,6 +30,7 @@ export const opacityRestoredApplicationInspectionSchema = z.object({
     reason: z.enum(['AVAILABLE', 'RESTORE_OPERATION_UNAVAILABLE'])}).strict()).length(operations.length),
   backupCreate: z.object({available: z.literal(false), reason: z.literal('RESTORE_BACKUP_UNAVAILABLE')}).strict(),
   draftPolicy: z.literal('excluded'),
+  localClipDrafts: opacityRestoredDraftCapabilitySchema.optional(),
 }).strict().superRefine((value, context) => {
   const entries = new Map(value.operationPolicy.map(entry => [entry.operation, entry]));
   if (entries.size !== operations.length || operationPolicy.some(expected => {
@@ -54,5 +56,6 @@ export function createOpacityRestoredApplicationInspection(info: unknown): Opaci
     workspaceOrigin: value.workspaceOrigin, restorationId: value.restorationId, createdAt: value.createdAt,
     source: {backupId: value.sourceBackupId, schemaVersion: 42, manifestHash: value.manifestHash, dbHash: value.sourceDbHash},
     heldCounts: Object.entries(value.heldCounts).sort(([left], [right]) => left.localeCompare(right)).map(([kind, count]) => ({kind, count})),
-    operationPolicy, backupCreate: {available: false, reason: 'RESTORE_BACKUP_UNAVAILABLE'}, draftPolicy: 'excluded'});
+    operationPolicy, backupCreate: {available: false, reason: 'RESTORE_BACKUP_UNAVAILABLE'}, draftPolicy: 'excluded',
+    localClipDrafts: OPACITY_RESTORED_DRAFT_CAPABILITY});
 }

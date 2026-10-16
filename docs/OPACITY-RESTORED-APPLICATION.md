@@ -2,6 +2,8 @@
 
 日期：2026-10-16 UTC。开发基线：`5df70103ffc636d9cbc2d32f516af8ebab3c1519`。
 
+后续能力更新：当前构建已支持**恢复后当前origin的新片段草稿**独立持久化及冷重开后的显式恢复／丢弃。源42的v3草稿仍排除、不迁移；视图与偏好仍仅窗口内存。协议、故障与独立进程证据见[43新草稿专项](OPACITY-RESTORED-DRAFTS.md)。下方历史验收数字属于原应用入口版本。
+
 固定42冷备份恢复得到的43目录，现可通过独立、显式的候选应用入口打开已有项目，修改并保存片段透明度，撤销／重做，并以新请求发起预览／导出。复用同一个App、时间线事务、编辑任务协调器、共享server和媒体worker。普通40／恢复41默认入口、新建42和普通42重开入口保持原范围；没有自动迁移、目录覆盖或旧任务重新授权。
 
 ## 使用流程
@@ -43,15 +45,15 @@ node apps/server/src/opacity-candidate-cli.ts --open-restored-workspace /absolut
 | 新建预览／导出、只读preflight／capabilities | `timeline.render`及准备操作要求当前origin；导出沿恢复分支RPC路径 |
 | 新项目、导入、track／clip增删、split、来源替换、seed、字幕与画幅 | 本入口未开放，包括`timeline.format.get/set` |
 | Agent、provider／Image生成、波形／抽帧、额外音频测量 | 本入口未开放，不构造真实provider |
-| 再次创建可恢复备份、持久偏好及companion | 继续拒绝；请保留原始42备份 |
+| 再次创建可恢复备份、持久偏好及其他companion | 继续拒绝；请保留原始42备份；当前origin的新片段草稿使用下述独立协议 |
 
 ## 未保存输入与视图
 
-**v3未保存草稿不随备份迁移，源`local-drafts-v3.json`原文保留。当前43应用未保存的输入和视图只存在于本窗口内存。即使是正常关闭，dirty输入也可能丢失；刷新／重开后无法自动恢复。请在关闭前明确保存或取消。**
+**源42的v3未保存草稿不随备份迁移，源`local-drafts-v3.json`原文保留。当前固定43应用将恢复后本origin的新片段输入独立保存在`local-drafts-restored43-v1.json`。只有收到耐久保存确认的输入才可冷重开恢复；未确认输入可能丢失。重开后须明确恢复或丢弃，草稿不会自动应用到时间线。**
 
-入口、Inspector和吸附提示用简中、无地区标签繁中、英文、日语说明上述范围。43 companion仍返回`RESTORED_WORKSPACE_UNSUPPORTED`，不读取、迁移或写回源草稿；`workspace.preferences.put`明确拒绝，选择、播放头、布局和吸附选择只在当前窗口有效。普通42继续原v3持久草稿及CAS偏好。
+入口和Inspector以简中、无地区标签繁中、英文、日语说明新草稿范围、明文存储与未确认状态。旧43草稿端点仍返回`RESTORED_WORKSPACE_UNSUPPORTED`，独立新协议不读取、迁移或写回源草稿。旧43 inspection缺少新能力声明时继续仅内存；畸形声明拒绝。`workspace.preferences.put`仍拒绝，选择、播放头、布局和吸附选择只在当前窗口有效。普通42继续原v3持久草稿及CAS偏好。
 
-普通未完成文本的关闭与IME组合期间保护须分开看待：当前窗口仍沿原编辑和组合输入守卫，但不承诺对所有dirty输入阻止浏览器关闭，也不承诺崩溃或断电恢复。已明确保存并取得业务回执的时间线修改继续持久化；未确认请求保留原身份，不自动重投。
+新草稿复用原CAS、原子文件写入、目录同步和未知结果暂停策略。关闭排空确认当前controller、origin及输入所有者；组合输入或未确认输入阻挡关闭准入，浏览器`pagehide`仅best effort。没有完整浏览器／原生窗口关闭保证或崩溃、断电验收结论。业务Save与草稿自动保存分开；未确认业务请求保留原身份，不自动重投。
 
 ## 本片验证与未验收范围
 
@@ -65,7 +67,7 @@ canonical `node scripts/tooling.mjs typecheck`、`node scripts/tooling.mjs build
 
 [真实HTTP／媒体审计](evidence/opacity-restored-application/http-media-qualification.json)分别核对预览和导出4477字节、720×1280／30fps／10帧（0.333333秒）、GET／HEAD／Range与导出下载字节相同，裸输出及preview下载拒绝。首RGB`[37,17,37]`到末`[88,39,88]`，亮度比2.3626，与`.4→1`变化一致。审计4个codec子进程均在5秒内正常close；产品服务观察中每个媒体子进程15秒上限且没有触发。两次临时审计脚本把public DTO当成原DB行导致的失败记录保留，最终用原DB记录完成只读核对，未改产品或新建job。
 
-真实GUI仅覆盖系统选择的无地区标签繁中；完整四语言GUI／IME、GUI默认下载目录、Node24、产品固定FFmpeg、长片资源、安装包和跨平台仍分别验收。其他三语言和繁中文案有组件断言；本片HTTP下载不冒充GUI下载。本机为Node26.9.0、已安装FFmpeg／ffprobe9.0.2。43未保存输入仍仅内存，普通dirty关闭可丢失；完整草稿持久化／递归备份是后续独立能力，不能从本片推出。
+原应用入口版本的真实GUI仅覆盖系统选择的无地区标签繁中；完整四语言GUI／IME、GUI默认下载目录、Node24、产品固定FFmpeg、长片资源、安装包和跨平台仍分别验收。其他三语言和繁中文案有组件断言；本片HTTP下载不冒充GUI下载。本机为Node26.9.0、已安装FFmpeg／ffprobe9.0.2。该历史版本43输入仅内存；当前新草稿持久化另见专项，不以原GUI结果代替新能力验收。递归备份仍未开放。
 
 之前Safari工具断连、首次CLI退出码及旧窗口状态不确定，保留[原验收记录](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)。本片不盲目操作旧PID／窗口，不重试已停止的旧文件选择器问题。无用户项目访问、40／41迁移、依赖安装、凭据修改、付费服务或push。
 

@@ -200,6 +200,8 @@ function openCandidateStore(directory: string, mode: 'generic' | 'ordinary-appli
   };
   const root = path.resolve(directory), storage = storageRuntime();
   preflight(root, storage);
+  if (mode === 'restored-application') legacyCall(storage, 'validateManagedFile', [path.join(root, 'local-drafts-restored43-v1.json'),
+    {root, allowMissing: true, private: true, maxBytes: 2 * 1024 * 1024}]);
   const databaseFile = path.join(root, 'workbench.sqlite');
   const databaseIdentity = (): {dev: number; ino: number} => {
     const info = legacyCall(storage, 'validateManagedFile', [databaseFile, {root}]);

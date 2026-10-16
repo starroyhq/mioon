@@ -8,6 +8,7 @@ import {randomUUID} from 'node:crypto';
 import * as legacy from '@mioon/contracts';
 import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceBackup} from '../packages/business/src/opacity-candidate-backup.ts';
 import {reopenOpacityCandidateApplicationStore, reopenRestoredOpacityCandidateApplicationStore} from '../packages/business/src/opacity-candidate-store.ts';
+import {createRestoredOpacityCandidateLocalDrafts} from '../packages/business/src/opacity-candidate-local-drafts.ts';
 import {createOpacityCandidateApplicationServices} from '../packages/business/src/opacity-candidate-services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
 import {opacityBackupFixture} from './helpers/opacity-backup-fixture.mjs';
@@ -44,6 +45,7 @@ async function fixture(t, {captureRender = false} = {}) {
   const store = reopenRestoredOpacityCandidateApplicationStore(f.destination);f.stores.push(store);
   const services = createOpacityCandidateApplicationServices(store), tasks = createEditTasks({store, services});
   f.manage(async () => {await tasks.drain(); await services.drain();});
+  const drafts = createRestoredOpacityCandidateLocalDrafts(store);
   const requests = [];
   const fetcher = async (url, options = {}) => {
     const address = new URL(url, 'http://in-process.invalid'), body = options.body ? JSON.parse(options.body) : {};
@@ -51,7 +53,8 @@ async function fixture(t, {captureRender = false} = {}) {
     try {
       let data;
       const context = body.expectedWorkspaceOrigin ? {expectedWorkspaceOrigin: body.expectedWorkspaceOrigin} : {};
-      if (address.pathname === '/api/rpc') data = await services.call(body.operation, body.input, context);
+      if (address.pathname === '/api/local-drafts/restored43/clip') data = options.method === 'PUT' ? drafts.put(body) : options.method === 'DELETE' ? drafts.discard(body) : drafts.get({...Object.fromEntries(address.searchParams), schemaVersion: 1});
+      else if (address.pathname === '/api/rpc') data = await services.call(body.operation, body.input, context);
       else if (address.pathname === '/api/tasks') data = tasks.list({projectId: address.searchParams.get('projectId'), limit: Number(address.searchParams.get('limit')), pendingOnly: address.searchParams.get('pendingOnly') !== 'false', ...(address.searchParams.has('cursor') ? {cursor: address.searchParams.get('cursor')} : {})});
       else if (address.pathname === '/api/tasks/prepare') {const {expectedWorkspaceOrigin, ...input} = body;data = tasks.prepare(input, context);}
       else {
@@ -112,7 +115,7 @@ test('only the exact candidate client binding accepts43; legacy API, copied bind
   await assert.rejects(application.rpc('workspace.restore.inspect'), {code: 'BACKEND_PROTOCOL_ERROR'});
 });
 
-test('real restored client and clip controller save opacity, cancel only memory, undo/redo and refuse captured pending without v3 traffic', async t => {
+test('real restored application binding and clip controller persist new-origin drafts, save/cancel, undo/redo and refuse captured pending without v3 traffic', async t => {
   const f = await fixture(t), {application, workspace} = f;
   const taskController = createEditTaskController({client: application.taskClient, getWorkspace: () => workspace});
   const loaded = await taskController.load(f.projectId);
@@ -123,11 +126,11 @@ test('real restored client and clip controller save opacity, cancel only memory,
   let timeline = (await application.rpc('project.get', {projectId: f.projectId})).timeline;
   const asset = f.store.get('assets', f.assetId), clip = () => timeline.clips[0];
   const context = () => ({scope: `${workspace.workspaceOrigin}:${f.projectId}:inspector`, projectId: f.projectId, timelineId: f.timelineId, clipId: f.clipId,
-    restored: true, connected: true, visible: true, busy: false, opacityEnvelopeEditable: true,
+    restored: true, workspaceOrigin: workspace.workspaceOrigin, connected: true, visible: true, busy: false, opacityEnvelopeEditable: true,
     timelineRevision: timeline.revision, source: clipDraftSource(clip(), asset), saved: {...clipDraftRaw(clip()), ...rawOpacityEnvelopeFields(clip())}});
   const controller = createClipDraftController({context: context(), client: readOpacityCandidateInspectorBinding(application.inspectorBinding).client,
     validateTimeline: (value, projectId) => application.isTimelineRecord(value, {projectId})});
-  t.after(() => controller.dispose());await controller.load();assert.equal(controller.getState().phase, 'unsupported');
+  t.after(() => controller.dispose());await controller.load();assert.equal(controller.getState().phase, 'ready');assert.equal(controller.supportsRestoredPersistence(workspace.workspaceOrigin), true);
   const input = {profileId: f.opacityEnvelope.profileId, points: [{frame: '0', opacity: '.6'}, {frame: '30', opacity: '1'}]};
   controller.editOpacityEnvelope(input, controller.capture());assert.equal(controller.hasUnsaved(), true);
   await controller.discard(controller.capture());assert.equal(controller.hasUnsaved(), false);
@@ -148,7 +151,9 @@ test('real restored client and clip controller save opacity, cancel only memory,
   assert.deepEqual({...f.store.db.prepare('SELECT status,acknowledged,executionEpoch FROM edit_tasks WHERE id=?').get(f.taskId)}, {status: 'prepared', acknowledged: 0, executionEpoch: 'captured'});
   const epochs = f.store.db.prepare('SELECT DISTINCT executionEpoch FROM edit_tasks WHERE id<>?').all(f.taskId);
   assert.deepEqual(epochs.map(row => row.executionEpoch), [workspace.workspaceOrigin]);
-  assert.equal(f.requests.some(item => /draft|delivery/u.test(item.path)), false);
+  assert.equal(f.requests.some(item => /delivery/u.test(item.path)), false);
+  assert.ok(f.requests.some(item => item.path === '/api/local-drafts/restored43/clip'));
+  assert.equal(f.requests.some(item => item.path === '/api/local-drafts/clip'), false);
   assert.equal(existsSync(path.join(f.destination, 'local-drafts-v3.json')), false);
   assert.deepEqual(readFileSync(path.join(f.source, 'local-drafts-v3.json')), f.draftBytes);
 });

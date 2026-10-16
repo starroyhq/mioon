@@ -45,7 +45,8 @@ function fixture({ native = true, unknown = true, writesChangeState = false } = 
   let additional = { dirty: false, busy: false, unknown, identity: [{}, 1, {}] };
   const record = { outcome: 'unknown', operation: 'original-operation', persisted: 'original-record' };
   const write = name => { calls.push(name); if (writesChangeState) additional = { ...additional, busy: true }; return Promise.resolve(true); };
-  const clip = { hasUnpersisted: () => { calls.push('clip-sync'); return true; }, flushForClose: () => write('clip-put'), capture: () => 1, isCurrent: () => true };
+  const clip = { hasPendingComposition: () => false, supportsRestoredPersistence: () => false,
+    hasUnpersisted: () => { calls.push('clip-sync'); return true; }, flushForClose: () => write('clip-put'), capture: () => 1, isCurrent: () => true };
   const env = { combineNativeEntryClose, nativeProjectEntry: null,
     nativeWindow: native ? { role: 'editor', projectId: 'a' } : null,
     nativeSettingsScope: { pauseObservation(paused) { pauses.push(paused); } },

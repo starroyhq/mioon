@@ -10,6 +10,7 @@ import * as opacityContract from '../../packages/contracts/src/timeline-opacity-
 import * as imeSubmit from '../../apps/web/src/opacity-ime-submit-guard.ts';
 import {i18nTestModule} from './i18n.ts';
 import {message, translate} from '../../packages/i18n/src/index.ts';
+import {createOpacityRestoredApplicationInspection} from '../../packages/contracts/src/opacity-restored-application.ts';
 
 const id = n => `b4000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-16T00:00:00.000Z';
@@ -23,7 +24,10 @@ const controlsCode = transformSync(readFileSync(new URL('../../apps/web/src/Clip
 /** Synthetic React event execution of the actual Inspector and opacity input
  * component, backed by the real controller and v3 HTTP client. Inert visual
  * children and an in-memory CAS transport do not simulate a native OS IME. */
-export function opacityInspectorImeFixture(t, {locale = 'en', restored = false, putGate, deleteGate, getGate, saveGate} = {}) {
+export function opacityInspectorImeFixture(t, {locale = 'en', restored = false, restoredPersistence = false, putGate, deleteGate, getGate, saveGate} = {}) {
+  assert.ok(!restoredPersistence || restored);
+  const workspace = createOpacityRestoredApplicationInspection({schemaVersion: 43, sourceSchema: 42, profile: 'restored-local-v10',
+    workspaceOrigin: id(7), restorationId: id(8), sourceBackupId: id(9), manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: stamp, heldCounts: {}});
   const savedClip = {id: id(3), assetId: id(4), trackId: id(5), name: 'Synthetic clip', startFrame: 0, durationFrames: 10, sourceInFrame: 0,
     rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1,
     opacityEnvelope: {profileId: opacityContract.OPACITY_ENVELOPE_PROFILE, points: [{frame: 0, opacity: .25}, {frame: 10, opacity: 1}]}};
@@ -32,11 +36,14 @@ export function opacityInspectorImeFixture(t, {locale = 'en', restored = false, 
   const requests = [], saves = [], callbacks = [], stubs = new Map();
   let row, controller, inspectorTree, controlsTree, controlsProps;
   const fetcher = async (url, options = {}) => {
-    assert.equal(restored, false, 'Restored43 memory-only input must not access v3');
+    assert.ok(!restored || restoredPersistence, 'Restored43 memory-only input must not access storage');
     const input = options.body ? JSON.parse(options.body) : Object.fromEntries(new URL(url, 'http://synthetic.invalid').searchParams);
+    const address = new URL(url, 'http://synthetic.invalid');
+    assert.equal(address.pathname, restoredPersistence ? '/api/local-drafts/restored43/clip' : '/api/local-drafts/clip');
+    if (restoredPersistence) {assert.equal(String(input.schemaVersion), '1');assert.equal(input.expectedWorkspaceOrigin, workspace.workspaceOrigin);}
     requests.push({method: options.method, input: structuredClone(input)});
     if (options.method === 'GET') {
-      row ??= {supported: true, workspaceScope: 'c'.repeat(64), instanceId: id(6), key: input, revision: 0, targetStatus: 'matching', draft: null};
+      row ??= {supported: true, ...(restoredPersistence ? {schemaVersion: 1, profileId: workspace.localClipDrafts.profileId, workspaceOrigin: workspace.workspaceOrigin} : {}), workspaceScope: 'c'.repeat(64), instanceId: id(6), key: {projectId: input.projectId, timelineId: input.timelineId, clipId: input.clipId}, revision: 0, targetStatus: 'matching', draft: null};
       const captured = structuredClone(row);if (getGate) await getGate.promise;return new Response(JSON.stringify({ok: true, data: captured}));
     }
     if (options.method === 'PUT' && putGate) await putGate.promise;
@@ -46,8 +53,8 @@ export function opacityInspectorImeFixture(t, {locale = 'en', restored = false, 
     return new Response(JSON.stringify({ok: true, data: row}));
   };
   const props = {clip: savedClip, timeline: timeline(savedClip), asset: {id: id(4), projectId: id(1), name: 'Synthetic image', mimeType: 'image/png', sha256: 'd'.repeat(64)},
-    draftContext: {scope: `${restored ? 'restored43' : 'ordinary42'}:synthetic:inspector`, projectId: id(1), restored},
-    opacityCandidate: assembly.createOpacityCandidateInspectorBinding(fetcher),
+    draftContext: {scope: `${restored ? 'restored43' : 'ordinary42'}:synthetic:inspector`, projectId: id(1), restored, ...(restoredPersistence ? {workspaceOrigin: workspace.workspaceOrigin} : {})},
+    opacityCandidate: restoredPersistence ? assembly.createRestoredOpacityCandidateInspectorBinding(workspace, fetcher) : assembly.createOpacityCandidateInspectorBinding(fetcher),
     onDirtyChange() {}, onCompositionPendingChange(value) {callbacks.push(value);}, onPreview() {}, onRemove() {},
     async onSave(clipId, patch, revision, options) {
       saves.push({clipId, patch: structuredClone(patch), revision, options});

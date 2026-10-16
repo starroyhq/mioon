@@ -1,0 +1,29 @@
+✔ actual App causal counterexample: disabling only suppression writes before validation (8.884125ms)
+✔ actual App risk close skips earlier flush then all exit lifecycle writes and controller synchronization (0.443459ms)
+✔ actual late ACK after prepare vetoes without a final write and restores subsequent lifecycle behavior (0.252792ms)
+✔ actual new owner after prepare vetoes without a final write and restores subsequent lifecycle behavior (0.142708ms)
+✔ actual new input after prepare vetoes without a final write and restores subsequent lifecycle behavior (2.281958ms)
+✔ actual new busy after prepare vetoes without a final write and restores subsequent lifecycle behavior (0.616791ms)
+✔ actual late ACK after flush vetoes without a final write and restores subsequent lifecycle behavior (0.320292ms)
+✔ actual new owner after flush vetoes without a final write and restores subsequent lifecycle behavior (0.420041ms)
+✔ actual new input after flush vetoes without a final write and restores subsequent lifecycle behavior (0.392917ms)
+✔ actual new busy after flush vetoes without a final write and restores subsequent lifecycle behavior (0.24375ms)
+✔ expired risk admission reaches the final veto without flushing and does not suppress later pagehide (0.810625ms)
+✔ hidden/pagehide alone cannot consume an armed risk ticket or suppress existing lifecycle writes (0.215708ms)
+✔ a cancelled risk dialog preserves ordinary cleanup and explicit save behavior (0.152083ms)
+✔ successful risk lifecycle suppression is revoked by exact cancel, new inspection, input or pageshow (0.329292ms)
+✔ actual ordinary Web and native normal-close lifecycle paths retain their flushes (0.167334ms)
+✔ ordinary native reload still flushes and cannot borrow risk suppression (0.081542ms)
+✔ observation pauses before capture, allowing synchronous visibility changes to become the captured owner (0.188583ms)
+✔ final veto is read-only; the exact later cancel resumes even after ticket consumption (0.092917ms)
+✔ old cancellation cannot resume a newer inspection and disposal never resumes a destroyed owner (0.069875ms)
+✔ throwing capture retains an exact cancellation handle for observation recovery (0.068791ms)
+✔ cancelled armed risk ticket cannot suppress a later beforeunload flush (0.075208ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 319.001542

@@ -1,0 +1,23 @@
+{
+  "scope": "Copied test/build evidence only; strip line-end spaces/tabs; no assertion/source changes.",
+  "records": [
+    {
+      "file": "aggregate-attempt1-tests.tap",
+      "originalSha256": "1d7e5ba360ca794642591e5d86b8189e5415ac7337955631163942586ea20f76",
+      "savedSha256": "1d7e5ba360ca794642591e5d86b8189e5415ac7337955631163942586ea20f76",
+      "changed": false
+    },
+    {
+      "file": "build.txt",
+      "originalSha256": "a48c00568c140e3b27afe9b497219d66382a68e749bff5922287efa68c391120",
+      "savedSha256": "a48c00568c140e3b27afe9b497219d66382a68e749bff5922287efa68c391120",
+      "changed": false
+    },
+    {
+      "file": "candidate-build.txt",
+      "originalSha256": "6dc10972796e4fbcac68bff68ca98c5e43b314ce11fcddf512ab51214c12e6c0",
+      "savedSha256": "6dc10972796e4fbcac68bff68ca98c5e43b314ce11fcddf512ab51214c12e6c0",
+      "changed": false
+    }
+  ]
+}

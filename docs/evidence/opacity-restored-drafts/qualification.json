@@ -1,0 +1,226 @@
+{
+  "date": "2026-10-16 UTC",
+  "baseline": "eee1db48686dff5db8f4f0c9434b96cdcecd0c52",
+  "outcome": "Current-origin restored43 clip drafts persist in a separate file, survive normal cold close/new-process reopen, and require explicit restore/discard. Source42 v3 remains excluded and unmodified.",
+  "aggregate": {
+    "startedAt": "2026-10-16T08:15:57.267Z",
+    "finishedAt": "2026-10-16T08:19:34.321Z",
+    "node": "v26.9.0",
+    "fileCount": 36,
+    "exitCode": 0,
+    "signal": null,
+    "tests": 429,
+    "pass": 429,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "selection": "aggregate-selection.json",
+    "log": "aggregate-tests.tap"
+  },
+  "coldProcesses": {
+    "evidence": "cold-process-record.json",
+    "script": "cold-process-qualification.mjs",
+    "phases": [
+      {
+        "phase": "create",
+        "pid": 68448,
+        "passed": true,
+        "normalClose": true,
+        "lockReleased": true,
+        "instanceId": "55f233d3-14ec-4073-b567-05a36fb11675",
+        "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+        "noListenNativeExternalAttempts": 0,
+        "mediaProcesses": 0
+      },
+      {
+        "phase": "restore",
+        "pid": 69898,
+        "passed": true,
+        "normalClose": true,
+        "lockReleased": true,
+        "instanceId": "91eacc5b-dfd2-409a-9066-a884ad5b28ee",
+        "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+        "noListenNativeExternalAttempts": 0,
+        "mediaProcesses": 0
+      },
+      {
+        "phase": "discard",
+        "pid": 70136,
+        "passed": true,
+        "normalClose": true,
+        "lockReleased": true,
+        "instanceId": "00d93881-8932-4be0-84ae-cbcae3caa2dc",
+        "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+        "noListenNativeExternalAttempts": 0,
+        "mediaProcesses": 0
+      },
+      {
+        "phase": "verify",
+        "pid": 70878,
+        "passed": true,
+        "normalClose": true,
+        "lockReleased": true,
+        "instanceId": "b3e4b622-552d-48d5-9e70-58270a728299",
+        "logicalHash": "5279ab17ece68a2106ee48a040c382e6ae4cf9a1b4649d1962cde95ddbe5cdd6",
+        "noListenNativeExternalAttempts": 0,
+        "mediaProcesses": 0
+      }
+    ],
+    "allBusinessHeldHistoryLogicalRowsUnchanged": true,
+    "sourceDbAndV3Unchanged": true,
+    "origin": "b1c044a0-6662-45ef-84a7-35a8de506ee6",
+    "heldCounts": {
+      "agent_chat_quota": 1,
+      "edit_tasks": 1,
+      "timeline_requests": 1
+    },
+    "draftPolicy": "excluded",
+    "normalCloseAndLockReleased": true
+  },
+  "builds": {
+    "baseline": "eee1db48686dff5db8f4f0c9434b96cdcecd0c52",
+    "typecheck": {
+      "command": "node scripts/tooling.mjs typecheck",
+      "exitCode": 0,
+      "evidence": "typecheck.txt"
+    },
+    "defaultBuild": {
+      "command": "node scripts/tooling.mjs build",
+      "exitCode": 0,
+      "evidence": "build.txt",
+      "scope": "Default Web plus development Desktop source bundles, includes canonical typecheck; not an installer build."
+    },
+    "candidateBuild": {
+      "command": "node node_modules/vite/bin/vite.js build --mode opacity-candidate",
+      "cwd": "apps/web",
+      "exitCode": 0,
+      "evidence": "candidate-build.txt"
+    },
+    "warnings": [
+      "Existing bundle size warnings; thresholds and build settings unchanged."
+    ],
+    "limitations": [
+      "Node26.9.0 only; no Node24 or cross-platform claim.",
+      "No GUI, real OS IME, native close/reopen or installer acceptance."
+    ]
+  },
+  "frozen": {
+    "manifest": "tests/fixtures/opacity-envelope-frozen-baseline.json",
+    "manifestSha256": "7381ed3486563b84cf4f4912dfde81ae07b0369cde4e479ad2b1bcfd88633f0d",
+    "entries": 64,
+    "unchanged": 63,
+    "existingExceptions": [
+      {
+        "file": "packages/business/src/timeline-media.mjs",
+        "sha256": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee",
+        "baseline": "b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde",
+        "existingException": true,
+        "passed": true
+      }
+    ],
+    "failed": []
+  },
+  "independentReview": {
+    "baseline": "eee1db48686dff5db8f4f0c9434b96cdcecd0c52",
+    "reviewer": "/root/restored_drafts_final_review",
+    "mode": "Independent read-only final review; no file edits",
+    "standards": {
+      "findings": 0,
+      "scope": [
+        "TypeScript runtime and checked legacy wiring",
+        "No new frozen source exception, JS allowlist, schema migration or typecheck exemption"
+      ]
+    },
+    "spec": {
+      "findings": 0,
+      "scope": [
+        "Exact restored43 store/private frontend binding",
+        "Optional old inspection fallback and strict present capability",
+        "Version/profile/origin/scope/project/timeline/clip/source/baseRevision/instance",
+        "CAS, atomic publication, directory fsync and SAVE_UNCERTAIN",
+        "Explicit restore/discard and current-origin business ACK cleanup",
+        "IME, Cancel, stale responses, close and retained owner",
+        "Source42 v3 exclusion and held/epoch/history protections"
+      ]
+    },
+    "independentTests": {
+      "files": [
+        "tests/opacity-restored-draft-client.test.mjs",
+        "tests/clip-draft-app-close.test.mjs"
+      ],
+      "tests": 24,
+      "pass": 24,
+      "fail": 0,
+      "skipped": 0,
+      "note": "Reviewer-reported separate run; overlaps final aggregate."
+    },
+    "copiedClientAssessment": "A manually copied closure can still be called by trusted code, but production TimelineInspector requires exact private WeakMap binding with restored43 context. No payload-accessible authority expansion found; no generic client framework added.",
+    "remaining": [
+      "Actual GUI",
+      "Real Chinese/Japanese OS IME",
+      "Native window cold close/reopen"
+    ],
+    "blockers": []
+  },
+  "supplementary": "supplementary-logs.json",
+  "firstAggregate": {
+    "evidence": "aggregate-attempt1-summary.json",
+    "tests": 434,
+    "pass": 415,
+    "fail": 19,
+    "causes": [
+      "17 existing native lifecycle fixture failures: missing actual hasPendingComposition API; fixed stub only, original assertions retained.",
+      "2 loopback transport tests accidentally selected outside no-listener scope; sandbox EPERM before listener or child startup. Entire5-test file removed from final scope; not counted as passing."
+    ]
+  },
+  "deniedOperations": [
+    {
+      "action": "Old workspace-origin-transports CLI/MCP test loopback listen",
+      "target": "127.0.0.1:0 (ephemeral port, never assigned)",
+      "reason": "Sandbox listen EPERM",
+      "status": "denied",
+      "alreadyCompleted": "Fixture setup only; listen failed before service startup, child spawn or signals.",
+      "retried": false,
+      "escalated": false,
+      "blocksCurrentFeature": false
+    }
+  ],
+  "remaining": [
+    "Actual new-draft GUI acceptance",
+    "Real Chinese/Japanese OS IME",
+    "Native window cold close/reopen",
+    "Node24, installer and cross-platform qualification"
+  ],
+  "priorUncertainOutcome": "Previous task CUA Transport closed: old GUI window closure and original service exit code remain unconfirmed. No retries or blind close this task; see OPACITY-LANGUAGE-IME-ACCEPTANCE.md.",
+  "git": {
+    "identity": "Howard Xie <39507089+KouzenSha@users.noreply.github.com>",
+    "localCommitAuthorized": true,
+    "pushAuthorizedForThisTask": false
+  },
+  "evidenceSha256": {
+    "aggregate-attempt1-summary.json": "a2538997a8f6dc6d808f2ff77dc35631925f6cfec93253836d6107172cc50c51",
+    "aggregate-attempt1-tests.tap": "1d7e5ba360ca794642591e5d86b8189e5415ac7337955631163942586ea20f76",
+    "aggregate-selection.json": "7accbf34d6810c71f156adc2dd890aa88bdb47f231d09e05bcc0ace34fdca493",
+    "aggregate-summary.json": "ef53bda363e7e787aadc07b00e49c052b27969bf0a6184b9614a124fb33fa4d7",
+    "aggregate-tests.tap": "565f6db17691bc7199ec6806917b10f418ab138b8c2f56c726112512c9f24dda",
+    "build-summary.json": "814bf217bc524c92c09c7081a88b8737c800e3e11b2228f23ea14ef96a90cfd0",
+    "build.txt": "a48c00568c140e3b27afe9b497219d66382a68e749bff5922287efa68c391120",
+    "candidate-build.txt": "6dc10972796e4fbcac68bff68ca98c5e43b314ce11fcddf512ab51214c12e6c0",
+    "cold-process-qualification.mjs": "b1c176370420ad405550b530c5b9083f525036f8dadfa3b0390a5b80150d3350",
+    "cold-process-record.json": "3034164d32e9481e8c3fe66cdff41eaccbeba6e0649abd88e4953240ea9af5eb",
+    "frontend-final.txt": "4215e2acf1496df4c11141ce288a78ae89eaad47c95d5af93c23513442067841",
+    "frozen-check.json": "fab13e819642ace28f52b2d0fca21b6a678f1d12c2e108581e799e14a0a9ae5f",
+    "independent-review.json": "3222792d61dfce0f2ac4abfb520e78b0a167c7574dd8cd800130e646c4e64f7d",
+    "log-normalization.json": "9ffc96f1b5dfaea03c4d9eb1557fd4a62ce574c09588581c62071be940e0d747",
+    "native-lifecycle-final.txt": "f2d8044fc4d023d4d219184b609358fc367bda028ed58bbc62bd58a3b4c21386",
+    "supplementary-logs.json": "5e5b53eed043c6d92c097b9da154820594ab4268b883b9eaec134a5256eca939",
+    "typecheck.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "workspacePreservation": {
+    "newUntrackedPath": "designs/",
+    "observed": "After staging owned task paths; not present in the earlier status snapshot.",
+    "origin": "Unknown; not created by this task.",
+    "untouched": true,
+    "excludedFromCommit": true
+  }
+}

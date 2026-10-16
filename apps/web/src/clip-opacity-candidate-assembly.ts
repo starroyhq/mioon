@@ -1,6 +1,6 @@
 /** Internal editor composition, never selected by a server payload or a stored
  * profile string. Default application mounts do not create this capability. */
-import {createOpacityCandidateClipDraftClient, isOpacityCandidateClipDraftClient} from './clip-draft-client.ts';
+import {createOpacityCandidateClipDraftClient, createRestoredOpacityCandidateClipDraftClient, isOpacityCandidateClipDraftClient, isRestoredOpacityCandidateClipDraftClient} from './clip-draft-client.ts';
 import type {ClipDraftClient} from './clip-draft-state.ts';
 import {validateOpacityEnvelope} from '../../../packages/contracts/src/timeline-opacity-envelope.ts';
 
@@ -11,10 +11,16 @@ export function createOpacityCandidateInspectorBinding(fetcher: typeof fetch = (
   bindings.set(binding, Object.freeze({client: createOpacityCandidateClipDraftClient(fetcher)}));
   return binding;
 }
+export function createRestoredOpacityCandidateInspectorBinding(inspection: unknown, fetcher: typeof fetch = (...args) => fetch(...args)): OpacityCandidateInspectorBinding {
+  const client = createRestoredOpacityCandidateClipDraftClient(inspection, fetcher);
+  const binding = Object.freeze({kind: 'internal-opacity-inspector'} as const);
+  bindings.set(binding, Object.freeze({client}));
+  return binding;
+}
 export function readOpacityCandidateInspectorBinding(value: unknown): Readonly<{client: ClipDraftClient}> | null {
   if (!value || typeof value !== 'object') return null;
   const binding = bindings.get(value);
-  return binding && isOpacityCandidateClipDraftClient(binding.client) ? binding : null;
+  return binding && (isOpacityCandidateClipDraftClient(binding.client) || isRestoredOpacityCandidateClipDraftClient(binding.client)) ? binding : null;
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 /** Validation-only projection of decoded HTTP data. The fixed legacy checker

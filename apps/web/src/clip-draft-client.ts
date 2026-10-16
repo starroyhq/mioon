@@ -1,7 +1,9 @@
-import { clipDraftEnvelopeSchema, clipDraftWriteSchema, clipDraftDeleteSchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
+import { clipDraftEnvelopeSchema, clipDraftWriteSchema, clipDraftDeleteSchema, clipDraftKeySchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
 import { clipDraftOpacityCandidateWriteSchema, clipDraftOpacityCandidateEnvelopeSchema } from '../../../packages/contracts/src/local-drafts-opacity-candidate.ts';
 import type { ClipDraftOpacityCandidateWrite, ClipDraftOpacityCandidateEnvelope } from '../../../packages/contracts/src/local-drafts-opacity-candidate.ts';
 import type { ClipDraftClient, ClipDraftDelete, ClipDraftKey, ClipDraftWrite } from './clip-draft-state.ts';
+import { isOpacityRestoredApplicationInspection } from '../../../packages/contracts/src/opacity-restored-application.ts';
+import { clipDraftOpacityRestoredEnvelopeSchema } from '../../../packages/contracts/src/local-drafts-opacity-restored.ts';
 
 export type OpacityCandidateClipDraftEnvelope = Extract<ClipDraftOpacityCandidateEnvelope, { supported: true }>;
 export interface OpacityCandidateClipDraftClient {
@@ -10,6 +12,15 @@ export interface OpacityCandidateClipDraftClient {
   remove(value: ClipDraftDelete): Promise<OpacityCandidateClipDraftEnvelope>;
 }
 const opacityCandidateClients = new WeakSet<object>();
+const restoredOpacityClients = new WeakMap<object, string>();
+/** Only this independently minted client can persist current-origin restored
+ * input. A capability payload or a copied client cannot authorize storage. */
+export function isRestoredOpacityCandidateClipDraftClient(value: unknown): value is OpacityCandidateClipDraftClient {
+  return value !== null && typeof value === 'object' && restoredOpacityClients.has(value);
+}
+export function matchesRestoredOpacityClipDraftOrigin(value: unknown, origin: unknown): boolean {
+  return isRestoredOpacityCandidateClipDraftClient(value) && typeof origin === 'string' && restoredOpacityClients.get(value) === origin;
+}
 /** Authority is the exact client created by the fixed candidate constructor;
  * payload flags, copied methods, wrappers and lookalike objects cannot grant it. */
 export function isOpacityCandidateClipDraftClient(value: unknown): value is OpacityCandidateClipDraftClient {
@@ -97,8 +108,18 @@ export function createOpacityCandidateClipDraftClient(fetcher: typeof fetch = (.
   opacityCandidateClients.add(client);
   return client;
 }
-function makeClient(fetcher: typeof fetch, timeoutMs: number, opacityCandidate: boolean): OpacityCandidateClipDraftClient {
+/** Fixed43 assembly. The origin comes only from the exact strict application
+ * inspection; callers still supply the original raw/CAS shape without wire
+ * authority fields. Source42 draft files are never addressed by this client. */
+export function createRestoredOpacityCandidateClipDraftClient(inspection: unknown, fetcher: typeof fetch = (...args) => fetch(...args), { timeoutMs = 10000 }: { timeoutMs?: number } = {}): OpacityCandidateClipDraftClient {
+  if (!isOpacityRestoredApplicationInspection(inspection) || !inspection.localClipDrafts) throw new ClipDraftRequestError('Invalid restored draft capability.', 'LOCAL_DRAFT_VALIDATION', 400);
+  const client = makeClient(fetcher, timeoutMs, true, inspection.workspaceOrigin);
+  restoredOpacityClients.set(client, inspection.workspaceOrigin);
+  return client;
+}
+function makeClient(fetcher: typeof fetch, timeoutMs: number, opacityCandidate: boolean, restoredOrigin?: string): OpacityCandidateClipDraftClient {
   async function request(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftOpacityCandidateWrite | ClipDraftDelete): Promise<ClipDraftOpacityCandidateEnvelope> {
+    if (method === 'GET' && restoredOrigin && !clipDraftKeySchema.safeParse(input).success) throw new ClipDraftRequestError('Invalid local draft input.', 'LOCAL_DRAFT_VALIDATION', 400);
     if (method !== 'GET') admitRequest(method, input as ClipDraftOpacityCandidateWrite | ClipDraftDelete, opacityCandidate);
     const deadline = Number.isFinite(timeoutMs) ? Math.max(1, Math.min(60000, timeoutMs)) : 10000;
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
@@ -110,9 +131,11 @@ function makeClient(fetcher: typeof fetch, timeoutMs: number, opacityCandidate: 
     } finally { if (timer !== undefined) clearTimeout(timer); }
   }
   async function perform(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftOpacityCandidateWrite | ClipDraftDelete, signal: AbortSignal, expiresAt: number): Promise<ClipDraftOpacityCandidateEnvelope> {
-    const query = method === 'GET' ? `?${new URLSearchParams(input as unknown as Record<string, string>)}` : '';
+    const wireInput = restoredOrigin ? {...input, schemaVersion: 1, expectedWorkspaceOrigin: restoredOrigin} : input;
+    if (bytes(wireInput) > LOCAL_DRAFT_LIMITS.httpBytes) throw new ClipDraftRequestError('Local draft input exceeds the size limit.', 'LOCAL_DRAFT_LIMIT', 413);
+    const query = method === 'GET' ? `?${new URLSearchParams(Object.fromEntries(Object.entries(wireInput).map(([key, value]) => [key, String(value)])))}` : '';
     let response: Response;
-    try { response = await fetcher(endpoint + query, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }) }); }
+    try { response = await fetcher((restoredOrigin ? '/api/local-drafts/restored43/clip' : endpoint) + query, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wireInput) }) }); }
     catch {
       if (signal.aborted || Date.now() >= expiresAt) throw timeoutError();
       throw new ClipDraftRequestError('本地草稿请求未收到确认；写入结果可能仍待确认。', 'LOCAL_DRAFT_NETWORK_UNKNOWN');
@@ -134,9 +157,15 @@ function makeClient(fetcher: typeof fetch, timeoutMs: number, opacityCandidate: 
       throw new ClipDraftRequestError(error.message, error.code, response.status);
     }
     if (response.status !== 200 || !Object.hasOwn(body, 'data')) throw protocol();
-    const value = (opacityCandidate ? clipDraftOpacityCandidateEnvelopeSchema : clipDraftEnvelopeSchema).safeParse(body.data);
+    const value = (restoredOrigin ? clipDraftOpacityRestoredEnvelopeSchema : opacityCandidate ? clipDraftOpacityCandidateEnvelopeSchema : clipDraftEnvelopeSchema).safeParse(body.data);
     if (!value.success) throw protocol();
     if (value.data.supported && value.data.draft && bytes({ ...value.data.key, revision: value.data.revision, draft: value.data.draft }) > LOCAL_DRAFT_LIMITS.rowBytes) throw protocol();
+    if (restoredOrigin) {
+      const restored = clipDraftOpacityRestoredEnvelopeSchema.safeParse(value.data);
+      if (!restored.success || restored.data.workspaceOrigin !== restoredOrigin) throw protocol();
+      const {schemaVersion: _version, profileId: _profile, workspaceOrigin: _origin, ...envelope} = restored.data;
+      return envelope;
+    }
     return value.data;
   }
   async function write(method: 'PUT' | 'DELETE', input: ClipDraftOpacityCandidateWrite | ClipDraftDelete): Promise<OpacityCandidateClipDraftEnvelope> {

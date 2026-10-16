@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-10-16T08:15:57.267Z",
+  "finishedAt": "2026-10-16T08:19:34.321Z",
+  "node": "v26.9.0",
+  "fileCount": 36,
+  "exitCode": 0,
+  "signal": null,
+  "tests": 429,
+  "pass": 429,
+  "fail": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "selection": "aggregate-selection.json",
+  "log": "aggregate-tests.tap"
+}

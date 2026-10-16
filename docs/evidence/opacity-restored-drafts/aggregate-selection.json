@@ -1,0 +1,48 @@
+{
+  "concurrency": 4,
+  "files": [
+    "tests/clip-draft-app-close.test.mjs",
+    "tests/clip-draft-client-boundary.test.mjs",
+    "tests/clip-draft-close-drain.test.mjs",
+    "tests/clip-draft-timeout-recovery.test.mjs",
+    "tests/clip-draft-ui.test.mjs",
+    "tests/clip-opacity-candidate-end-to-end.test.mjs",
+    "tests/clip-opacity-draft-client.test.mjs",
+    "tests/clip-opacity-draft-controller.test.mjs",
+    "tests/clip-opacity-envelope-controls.test.mjs",
+    "tests/clip-opacity-ime-session.test.mjs",
+    "tests/clip-opacity-inspector-candidate.test.mjs",
+    "tests/clip-volume-envelope-capability-ui.test.mjs",
+    "tests/clip-volume-envelope-foundation.test.mjs",
+    "tests/clip-volume-envelope-integration.test.mjs",
+    "tests/editor-window-close.test.mjs",
+    "tests/local-drafts-opacity-candidate.test.mjs",
+    "tests/native-close-app.test.mjs",
+    "tests/native-close-state.test.mjs",
+    "tests/native-window-close-lifecycle.test.mjs",
+    "tests/opacity-application-language-session.test.mjs",
+    "tests/opacity-candidate-app-entry.test.mjs",
+    "tests/opacity-candidate-browser-contracts.test.mjs",
+    "tests/opacity-candidate-local-drafts.test.mjs",
+    "tests/opacity-language-copy.test.mjs",
+    "tests/opacity-restored-application-admission.test.mjs",
+    "tests/opacity-restored-application-contracts.test.mjs",
+    "tests/opacity-restored-application-delivery.test.mjs",
+    "tests/opacity-restored-application-server.test.mjs",
+    "tests/opacity-restored-application-ui.test.mjs",
+    "tests/opacity-restored-draft-client.test.mjs",
+    "tests/opacity-restored-draft-copy.test.mjs",
+    "tests/opacity-restored-draft-faults.test.mjs",
+    "tests/opacity-restored-draft-ime.test.mjs",
+    "tests/opacity-restored-draft-server.test.mjs",
+    "tests/opacity-restored-local-drafts.test.mjs",
+    "tests/workspace-origin-context.test.mjs"
+  ],
+  "scope": "Targeted raw draft, opacity Inspector, synthetic IME, close/retention, origin, current43 HTTP/fault/backup/reopen and old42 protocol; no native media or GUI tests.",
+  "excluded": [
+    {
+      "file": "tests/workspace-origin-transports.test.mjs",
+      "reason": "Root mistakenly included this old suite. Two tests attempted loopback listen and sandbox returned EPERM before opening; no retry or escalation. Outside this task no-listener scope; the whole file is excluded from final pass count."
+    }
+  ]
+}

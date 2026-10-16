@@ -2,10 +2,11 @@
  * This is not selected by an HTTP payload and opens no listener or worker. */
 import {createRequire} from 'node:module';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
-import {getOpacityCandidateAssembly} from '../../../packages/business/src/opacity-candidate-store.ts';
+import {getOpacityCandidateAssembly, isRestoredOpacityCandidateApplicationStore} from '../../../packages/business/src/opacity-candidate-store.ts';
 import {createOpacityCandidateServices, createOpacityCandidateApplicationServices} from '../../../packages/business/src/opacity-candidate-services.ts';
-import {createOpacityCandidateLocalDrafts} from '../../../packages/business/src/opacity-candidate-local-drafts.ts';
+import {createOpacityCandidateLocalDrafts, createRestoredOpacityCandidateLocalDrafts} from '../../../packages/business/src/opacity-candidate-local-drafts.ts';
 import {createLocalDraftHttp} from './local-drafts-http.ts';
+import {createOpacityRestoredLocalDraftHttp} from './opacity-restored-local-drafts-http.ts';
 
 type Value = Record<string, unknown>;
 type Method = (...args: unknown[]) => unknown;
@@ -60,7 +61,11 @@ function createEditor(store: unknown, application: boolean, ownerSignal?: AbortS
     reconcileStartup: () => invoke('reconcileStartup', []),
   });
   const drafts = createOpacityCandidateLocalDrafts(store, {signal: lifetime.signal});
-  const localDraftHttp = createLocalDraftHttp({drafts, signal: lifetime.signal});
+  const ordinaryDraftHttp = createLocalDraftHttp({drafts, signal: lifetime.signal});
+  const restoredDraftHttp = application && isRestoredOpacityCandidateApplicationStore(store)
+    ? createOpacityRestoredLocalDraftHttp({drafts: createRestoredOpacityCandidateLocalDrafts(store, {signal}), signal}) : null;
+  const localDraftHttp = restoredDraftHttp ? async (...args: Parameters<typeof ordinaryDraftHttp>) =>
+    await restoredDraftHttp(...args) || ordinaryDraftHttp(...args) : ordinaryDraftHttp;
   let draining: Promise<void> | undefined;
   function drain(): Promise<void> {
     if (draining) return draining;

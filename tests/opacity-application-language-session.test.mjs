@@ -51,7 +51,7 @@ const memoryStorage = () => {
 };
 const language = storage => createLanguageStore({systemLanguages: ['en-US'], storage: () => storage});
 const rootOf = f => f.destination ?? f.root;
-const draftFile = f => path.join(rootOf(f), 'local-drafts-v3.json');
+const draftFile = f => path.join(rootOf(f), f.destination ? 'local-drafts-restored43-v1.json' : 'local-drafts-v3.json');
 const draftBytes = f => fs.existsSync(draftFile(f)) ? fs.readFileSync(draftFile(f)) : null;
 
 async function ordinaryApplicationFixture(t) {
@@ -100,7 +100,7 @@ async function editorSession(t, f) {
   const tasks = createEditTaskController({client: application.taskClient, getWorkspace: () => workspace});
   assert.equal((await tasks.load(f.projectId)).phase, 'ready');
   const context = () => ({scope: `${workspace.restored ? workspace.workspaceOrigin : 'ordinary42'}:${f.projectId}:inspector`,
-    projectId: f.projectId, timelineId: f.timelineId, clipId: f.clipId, restored: workspace.restored, connected: true, visible: true, busy: false,
+    projectId: f.projectId, timelineId: f.timelineId, clipId: f.clipId, restored: workspace.restored, workspaceOrigin: workspace.workspaceOrigin, connected: true, visible: true, busy: false,
     opacityEnvelopeEditable: true, timelineRevision: page.timeline.revision, source: clipDraftSource(page.timeline.clips[0], page.assets[0]),
     saved: {...clipDraftRaw(page.timeline.clips[0]), ...rawOpacityEnvelopeFields(page.timeline.clips[0])}});
   const controller = createClipDraftController({context: context(), client: readOpacityCandidateInspectorBinding(application.inspectorBinding).client,
@@ -151,27 +151,20 @@ for (const profile of [42, 43]) test(`real${profile} language sessions preserve 
     assert.ok(translate(locale, 'opacity.envelope.bounds', {duration: 30}).length > 10);
     assert.deepEqual(current.controller.getState().raw, invalidRaw);
     const canClose = await current.controller.flushForClose();
-    assert.equal(canClose, profile === 42);
-    assert.deepEqual(rows(f), beforeInvalid, 'close only drains raw42 drafts, never business Save or a43 task');
-    if (profile === 43) {
-      assert.equal(fs.existsSync(draftFile(f)), false);
-      assert.equal(await current.controller.discard(current.controller.capture()), true, '43 requires explicit Cancel before the dirty session can close');
-      assert.equal(await current.controller.flushForClose(), true);
-    }
+    assert.equal(canClose, true);
+    assert.deepEqual(rows(f), beforeInvalid, 'close only drains raw drafts, never a business Save or a43 task');
     current.controller.dispose(); languages.dispose(); await f.close(); await f.reopen();
     languages = language(storage); assert.equal(languages.getSnapshot().locale, locale);
     current = await editorSession(t, f);
     assert.deepEqual(rows(f), beforeInvalid); assert.equal(current.page.project.name, projectName); assert.deepEqual(current.page.assets[0], savedAsset);
-    if (profile === 42) {
-      assert.deepEqual(current.controller.getState().candidate.raw, invalidRaw);
-      assert.notDeepEqual(current.controller.getState().raw, invalidRaw, 'reopen does not silently adopt an unfinished draft');
-      assert.equal(current.controller.restore(), true);
-      assert.deepEqual(current.controller.getState().raw, invalidRaw);
-      assert.equal(await current.controller.save(() => assert.fail('Recovered incomplete text still cannot execute')), null);
-      assert.equal(await current.controller.discard(current.controller.capture()), true);
-    } else {
-      assert.equal(current.controller.getState().candidate, null);
-      assert.equal(current.controller.getState().phase, 'unsupported');
+    assert.deepEqual(current.controller.getState().candidate.raw, invalidRaw);
+    assert.notDeepEqual(current.controller.getState().raw, invalidRaw, 'reopen does not silently adopt an unfinished draft');
+    assert.equal(current.controller.restore(), true);
+    assert.deepEqual(current.controller.getState().raw, invalidRaw);
+    assert.equal(await current.controller.save(() => assert.fail('Recovered incomplete text still cannot execute')), null);
+    assert.equal(await current.controller.discard(current.controller.capture()), true);
+    if (profile === 43) {
+      assert.equal(current.controller.supportsRestoredPersistence(current.workspace.workspaceOrigin), true);
       assert.equal(current.workspace.workspaceOrigin, f.restored.workspaceOrigin);
       assert.deepEqual(rows(f, restoredTables), held);
       assert.deepEqual(f.readDb(db => db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(f.taskId)), capturedTask);
@@ -203,7 +196,9 @@ for (const profile of [42, 43]) test(`real${profile} language sessions preserve 
       assert.deepEqual(f.readDb(db => db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(f.taskId)), capturedTask);
       const epochs = f.readDb(db => db.prepare('SELECT DISTINCT executionEpoch FROM edit_tasks WHERE id<>?').all(f.taskId));
       assert.deepEqual(epochs.map(row => row.executionEpoch), [f.restored.workspaceOrigin]);
-      assert.equal(current.requests.some(row => /local-drafts|local-delivery/u.test(row.path)), false);
+      assert.equal(current.requests.some(row => /local-delivery/u.test(row.path)), false);
+      assert.ok(current.requests.some(row => row.path === '/api/local-drafts/restored43/clip'));
+      assert.equal(current.requests.some(row => row.path === '/api/local-drafts/clip'), false);
     }
   }
   const names = f.readDb(db => db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND (name LIKE '%language%' OR name LIKE '%locale%')").all());
