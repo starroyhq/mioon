@@ -2,6 +2,9 @@ import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts'
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
 import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
+import { CLIP_LUT_RECOVERY_CHANNEL } from '../packages/contracts/src/clip-lut-recovery.ts';
+import { calculateWorkspaceScope } from '../packages/contracts/src/workspace-scope.ts';
+import { createDesktopLutRecoveryHost } from '../apps/desktop/src/lut-recovery-host.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -40,7 +43,19 @@ async function until(predicate) {
 async function harness(t, options = {}) {
   const r = { scopes: [], validations: [], backends: [], children: [], sessions: [], windows: [],
     connections: [], connectionWrites: [], dialogs: [], dialogParents: [], syncDialogs: [], nativeChecks: [], drains: 0, removals: 0,
-    quits: 0, finished: 0, exits: [], settingsCloses: 0 };
+    quits: 0, finished: 0, exits: [], settingsCloses: 0, lutStoreCalls: [] };
+  // LUT metadata stays in memory; this lifecycle fixture never admits writes.
+  const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
+  const lutDatabase = Object.freeze({ dev: 1, ino: 3 });
+  const unexpectedLutFileAccess = () => assert.fail('LUT fixture must not access filesystem storage');
+  function createLutStore({ userData, guard }) {
+    assert.equal(userData, '/synthetic/userData');
+    return Object.fromEntries(['read', 'reserve', 'verify', 'complete'].map(action => [action, () => {
+      guard(); r.lutStoreCalls.push(action);
+      if (action !== 'read') assert.fail('Ownership cases must not mutate LUT recovery metadata');
+      return null;
+    }]));
+  }
   let menu, initial;
   const app = new EventEmitter();
   Object.assign(app, {
@@ -143,7 +158,14 @@ async function harness(t, options = {}) {
   }
   const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
-    prepareDesktopStorage: () => ({ dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
+    prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
+    CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
+    createDesktopLutRecoveryStore: createLutStore,
+    validatePrivateDirectory: root => { assert.equal(root, '/synthetic/workspace'); return lutDirectory; },
+    validateManagedFile: (file, { root }) => {
+      assert.equal(file, '/synthetic/workspace/workbench.sqlite'); assert.equal(root, '/synthetic/workspace'); return lutDatabase;
+    },
+    readPrivateFile: unexpectedLutFileAccess, removePrivateFile: unexpectedLutFileAccess, writePrivateFileAtomic: unexpectedLutFileAccess,
     ensureDataIdentity: async () => {}, readToolConfig: async () => tools,
     createDesktopStartup: () => {
       const index = r.scopes.length;
@@ -158,6 +180,12 @@ async function harness(t, options = {}) {
         super({ ...config, startupTimeout: 5000, stopTimeout: 5000, terminateTimeout: 100, exitTimeout: 100,
           forceKill: child => { child.hardKills++; } });
         r.backends.push(this);
+      }
+      // Persistence is an OS boundary, not part of the ownership scenarios.
+      // Keep diagnostic observations in memory and never publish sidecars.
+      recordDiagnostic(event, details = {}) {
+        (r.diagnosticEvents ??= []).push({ event, ...details });
+        this.diagnosticsAvailable = false;
       }
     },
     BrowserWindow: Window, windowChromeOptions: () => windowChromeOptions('darwin'),
@@ -180,7 +208,7 @@ async function harness(t, options = {}) {
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel, handler) {
-      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -201,12 +229,15 @@ async function harness(t, options = {}) {
     storageFailureDialog: error => ({ title: 'Storage failure', detail: error.message })
   });
   vm.runInContext(source, context, { filename: 'actual-desktop-main.mjs' });
+  assert.deepEqual([...r.ipcHandlers.keys()].sort(),
+    [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL].sort());
   const get = text => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true'); options.release?.();
     for (const child of r.children) child.emit('exit', 0);
     for (const window of r.windows) { window.destroy(); window.deliverClosed(); }
     await tick();
+    assert.deepEqual(r.lutStoreCalls, [], 'Window lifecycle must not read or mutate LUT recovery metadata');
   });
   await until(() => menu);
   return {
