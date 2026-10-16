@@ -1,3 +1,4 @@
+import {createManagedAssetImportHandler} from './managed-asset-import.ts';
 import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
 import {createOpacityCandidateServices} from './opacity-candidate-services.ts';
 import {readTimelineVolumeEnvelopeCapability} from './timeline-volume-envelope-capability.ts';
@@ -17,7 +18,6 @@ import {createTimelineAudioContinuousDecoder} from './timeline-audio-continuous-
 import {createTimelineAudioPreviewCoordinator,createSavedTimelineAudioReader} from './timeline-audio-preview-coordinator.ts';
 import {validateTimeline} from './timeline-inputs.mjs';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
-import {lstatSync} from 'node:fs';
 import {bindRestoredExport} from './workspace-restore-exports.mjs';
 import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,assertWorkspaceRestoreOrigin,refuseRestoredOperation,safeWorkspaceRestoreError,workspaceRestoreError} from './workspace-restore-policy.mjs';
 import {withRestoreInvocation,freezeRestoreInput,hasRestoreInvocation,restoreEffectFence} from './workspace-restore-invocation.mjs';
@@ -25,12 +25,9 @@ import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
 import {createRestoredReadServices} from './workspace-restore-read.mjs';
 import {inspectWorkspaceBackup} from './backup-readiness.mjs';
 import {randomUUID,createHash} from 'node:crypto';
-import {writeFile,rename,unlink,open,lstat} from 'node:fs/promises';
-import path from 'node:path';
 import {parse,AppError,publicValue,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
 import {normalizedCapabilities,generationLimit,providerSettings,usesInputProfiles} from './provider-registry.mjs';
 import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob} from './generation-inputs.mjs';
-import {fileInfo,safePath} from './media.mjs';
 import {createTimelineServices} from './timeline.mjs';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.mjs';
 import {createTimelinePreflightServices} from './timeline-preflight.mjs';
@@ -289,42 +286,7 @@ export function createServices(store,providers,{env=process.env,signal:ownerSign
  'project.create':i=>put('projects',{id:randomUUID(),name:i.name,description:i.description||'',revision:1,createdAt:now(),updatedAt:now()}),
  'project.list':()=>list('projects').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),
  'project.get':i=>tx(()=>{const project=required('projects',i.projectId);return {project,timeline:timeline.ensure(i.projectId),timelineHistory:timeline.history(i.projectId),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(i.projectId):list(t,i.projectId).map(value=>subjectDisclosure(t,value,i.projectId))).sort(t==='shots'?(a,b)=>a.orderIndex-b.orderIndex:(a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))]))};}),
- 'asset.import':async (i,{signal=ownerSignal}={})=>{
-  const invocationFence=restoreEffectFence(store);
-  checkpoint(signal);invocationFence?.();
-  const importProject=required('projects',i.projectId);
-  if(!/^[A-Za-z0-9+/]*={0,2}$/.test(i.dataBase64)||i.dataBase64.length%4)throw new AppError('INVALID_MEDIA','无效的 base64');
-  const bytes=Buffer.from(i.dataBase64,'base64');
-  if(bytes.length>30*1024*1024||bytes.length===0)throw new AppError('INVALID_MEDIA','素材大小须为 1 字节至 30 MiB');
-  const four=(start,value)=>bytes.toString('ascii',start,start+4)===value;
-  const mp3Frame=bytes.length>=4&&bytes[0]===255&&(bytes[1]&224)===224&&(bytes[1]&24)!==8&&(bytes[1]&6)!==0&&(bytes[2]&240)!==240&&(bytes[2]&12)!==12;
-  const detected=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png':
-   bytes[0]===255&&bytes[1]===216?'image/jpeg':
-   four(0,'RIFF')&&four(8,'WEBP')?'image/webp':
-   four(0,'RIFF')&&four(8,'WAVE')?'audio/wav':
-   bytes.toString('ascii',0,3)==='ID3'||mp3Frame?'audio/mpeg':
-   four(4,'ftyp')?'iso-bmff':
-   bytes.subarray(0,4).equals(Buffer.from([26,69,223,163]))?'video/webm':null;
-  const matches=detected==='iso-bmff'?['video/mp4','audio/mp4'].includes(i.mimeType):detected===i.mimeType;
-  if(!matches)throw new AppError('INVALID_MEDIA','文件类型与实际内容不符');
-  const id=randomUUID(),ext={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','audio/wav':'wav','audio/mpeg':'mp3','audio/mp4':'m4a'}[i.mimeType],relativePath=`media/${id}.${ext}`,file=path.join(root,relativePath);
-  checkpoint(signal);
-  const expectedByteHash=restored?createHash('sha256').update(bytes).digest('hex'):null;
-  let ownedHandle,ownedIdentity,writtenIdentity;
-  const beforeEffect=restored?()=>{invocationFence();const row=db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM projects WHERE id=?").get(i.projectId);let project;try{project=JSON.parse(row?.data);}catch{throw workspaceRestoreError();}if(!row||project?.id!==row.id||row.id!==i.projectId||project.createdAt!==importProject.createdAt)throw workspaceRestoreError();if(ownedIdentity){let actual;try{actual=lstatSync(file);}catch{throw workspaceRestoreError();}if(!actual.isFile()||actual.nlink!==1||actual.dev!==ownedIdentity.dev||actual.ino!==ownedIdentity.ino||writtenIdentity&&['size','mtimeMs','ctimeMs'].some(key=>actual[key]!==writtenIdentity[key]))throw workspaceRestoreError();}}:undefined;
-  beforeEffect?.();
-  if(!restored)await writeFile(file,bytes,{flag:'wx'});
-  try{
-   if(restored){ownedHandle=await open(file,'wx');ownedIdentity=await ownedHandle.stat();beforeEffect();await ownedHandle.writeFile(bytes);writtenIdentity=await ownedHandle.stat();beforeEffect();}
-   checkpoint(signal);
-   const info=await fileInfo(file,{signal,beforeEffect});checkpoint(signal);beforeEffect?.();
-   if(restored&&info.sha256!==expectedByteHash)throw workspaceRestoreError();
-   const hasVideo=info.hasVideo??(info.width>0&&info.height>0);
-   if(i.mimeType.startsWith('audio/')?(!info.hasAudio||hasVideo||!(info.duration>0)):!hasVideo)
-    throw Error('Declared media kind does not match decoded streams');
-   return put('assets',{id,projectId:i.projectId,name:i.name,mimeType:i.mimeType,...info,relativePath,url:`/media/${id}`,createdAt:now(),provenance:'user-import'});
-  }catch(e){if(!restored)await unlink(file).catch(()=>{});else if(ownedIdentity){const actual=await lstat(file).catch(()=>null);if(actual?.isFile()&&actual.dev===ownedIdentity.dev&&actual.ino===ownedIdentity.ino)await unlink(file).catch(()=>{});}if(e.terminationUnconfirmed||safeWorkspaceRestoreError(e))throw e;checkpoint(signal);throw new AppError('INVALID_MEDIA','无法解码素材或媒体类型不符，请检查文件');}finally{if(ownedHandle)await ownedHandle.close();}
- },
+ 'asset.import':createManagedAssetImportHandler(store,{required,now,signal:ownerSignal,guarded:Boolean(restored),effectFence:()=>restoreEffectFence(store),unsafe:workspaceRestoreError,safeError:safeWorkspaceRestoreError}),
  'asset.list':i=>{required('projects',i.projectId);return list('assets',i.projectId);},
  'edge.create':i=>{required('projects',i.projectId);for(const id of [i.source,i.target]){const n=get('shots',id)||get('nodes',id);if(!n||n.projectId!==i.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(i.source===i.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',i.projectId).find(e=>e.kind!=='reference'&&e.source===i.source&&e.target===i.target);return existing||put('edges',{id:randomUUID(),...i,kind:'decorative'});},
  'edge.delete':i=>{const edge=required('edges',i.edgeId);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(i.edgeId);return {deleted:true};},

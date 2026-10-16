@@ -9,10 +9,10 @@ import { isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-lou
 export class ApiError extends Error {
   constructor(message, code, details, definitive = false, status) { super(message); this.code = code; this.details = details; this.definitive = definitive; if (Number.isInteger(status)) this.status = status; }
 }
-export async function rpc(operation, input = {}, { signal, expectedWorkspaceOrigin } = {}) {
+export async function rpc(operation, input = {}, { signal, expectedWorkspaceOrigin, fetcher = (...args) => fetch(...args) } = {}) {
   const invocation = workspaceOriginOptions(expectedWorkspaceOrigin);
-  const mix = operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal }) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal }) : null;
-  const response = mix?.response ?? await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
+  const mix = operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal, fetch: fetcher }) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal, fetch: fetcher }) : null;
+  const response = mix?.response ?? await fetcher('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
   let body;
   try { body = mix ? mix.body : await response.json(); } catch { throw new ApiError('服务暂时没有返回有效数据，请检查服务后重试。', 'NETWORK'); }
   if (!body || typeof body !== 'object' || typeof body.ok !== 'boolean' ||

@@ -25,7 +25,7 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 
 ## 渲染与运行时边界
 
-后续渲染片已经将同一TypeScript编译器接入现有共享renderer的候选preview/export路径；raw snapshot、精确素材Map、来源hash/inode、LUT与发布fence均保留。4个获批2×2×3 RGBA像素探针在Node26.9.0／FFmpeg9.0.2下通过，详见[渲染接缝证据](OPACITY-RENDER-SEAM-PROPOSAL.md)。这不等于真实App已经挂载候选入口；Inspector仍保留旧的`renderPending`提示，激活时需改为实际后端能力状态。
+后续渲染片已经将同一TypeScript编译器接入现有共享renderer的候选preview/export路径；raw snapshot、精确素材Map、来源hash/inode、LUT与发布fence均保留。4个获批2×2×3 RGBA像素探针在Node26.9.0／FFmpeg9.0.2下通过，详见[渲染接缝证据](OPACITY-RENDER-SEAM-PROPOSAL.md)。上述是渲染片完成时的范围；后续已将全新42接入实际App，并更新候选渲染提示，见[全新42应用入口](OPACITY-CANDIDATE-APPLICATION.md)。真实GUI／媒体验收仍未完成。
 
 本轮限定检查PATH、Homebrew Cellar node/node@24、nvm、fnm、mise/rtx、asdf、Volta、`~/.codex/runtimes`及已知Codex bundle工具目录，未发现可用Node24，只确认`/opt/homebrew/Cellar/node/26.9.0/bin/node`（v26.9.0）。没有全盘扫描或安装。这不是Node24或旧固定FFmpeg验收证据。
 
@@ -41,7 +41,7 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 
 最终相关集合277/277通过、零跳过／取消；其中preflight runtime wrapper另执行14项真实链路用例。foundation和browser严格类型检查通过，legacy allowlist未变；独立审查发现的错误原因聚合、权限撤销透传及异步Promise持有问题均已修复。可复查[机器可读证据](evidence/opacity-preflight-candidate/qualification.json)和[测试摘要](evidence/opacity-preflight-candidate/tests-summary.txt)。
 
-## 从当前代码到用户可操作入口：代码缺口
+## preflight片结束时的入口缺口（历史记录）
 
 这不是单一flag的改动。最小发布顺序应先开放新建42工作区，再补42冷备份→43恢复；旧40/41升级单独处理。
 
@@ -51,7 +51,7 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 4. **播放、下载与完成状态。** server的`deliveryGuards`固定旧`isTimelineRenderRecord`。需将精确候选record校验接入同一source／held／文件响应守卫，确保worker成功后，用户能取得正确的preview/export媒体。
 5. **备份恢复产品链。** 公共backup DTO、DB classifier、离线restore、CLI和诊断仍只支持40/41。42→43构造器存在，但create/verify/restore/restore-status尚未贯通；43应继续拒绝递归备份。此闭环完成前，不向用户提供43恢复入口。
 
-候选内部preflight和capability接线已在本轮完成，不再列为代码缺口；真实App入口仍需上述五组改动。
+以上1–4已由后续[全新42应用片](OPACITY-CANDIDATE-APPLICATION.md)接通，仅限内部新建目录；现有42目录的正式重开、43应用恢复及第5项备份恢复产品链尚未开放。preflight／capability无需重复实现。旧40/41升级继续按下节单独处理。
 
 ## 旧40/41升级条件与备份恢复策略
 

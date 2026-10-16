@@ -1,0 +1,135 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "ec01753056c0f31706d29ed279ae1944c822ad94",
+  "runtime": "v26.9.0",
+  "scope": "Internal fresh independent42 actual shared App; no40/41 migration, existing42 application reopen or43 backup/restore activation",
+  "tests": {
+    "candidateRelated": {
+      "command": "TMPDIR=/private/tmp node --test tests/*opacity*.test.mjs tests/export-preflight-ui.test.mjs tests/project-specifications-preflight.test.mjs tests/subtitles-preflight.test.mjs tests/export-settings-business.test.mjs tests/workspace-preferences.test.mjs",
+      "tests": 327,
+      "passed": 327,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "summary": "candidateRelated-summary.txt"
+    },
+    "companionRegression": {
+      "command": "TMPDIR=/private/tmp node --test tests/clip-draft-app-close.test.mjs tests/clip-draft-close-drain.test.mjs tests/clip-draft-ui.test.mjs tests/named-delivery-contracts.test.mjs tests/local-delivery-business.test.mjs tests/local-delivery-ui.test.mjs",
+      "tests": 184,
+      "passed": 184,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "summary": "companionRegression-summary.txt"
+    },
+    "latestMediaGuards": {
+      "command": "TMPDIR=/private/tmp node --test tests/opacity-candidate-delivery-read.test.mjs tests/opacity-candidate-application-server.test.mjs",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "summary": "latestMediaGuards-summary.txt"
+    }
+  },
+  "note": "Test runs overlap; counts are not added. The latest9 media checks rerun the modified guard and shared server after final bounded reverse-owner refusal.",
+  "builds": {
+    "canonical": {
+      "command": "node scripts/tooling.mjs build",
+      "exitCode": 0,
+      "strictTypecheck": true,
+      "web": true,
+      "developmentDesktopStaging": true
+    },
+    "candidate": {
+      "command": "cd apps/web && node node_modules/vite/bin/vite.js build --mode opacity-candidate",
+      "exitCode": 0,
+      "outDir": "apps/web/dist-opacity-candidate"
+    },
+    "summary": "build-summary.txt",
+    "legacyAllowlistChanged": false
+  },
+  "review": {
+    "independentReadOnly": true,
+    "allConcreteFindingsClosed": [
+      "Return to source stays in editing",
+      "fresh42 preferences PUT keeps original CAS",
+      "post-consume startup cleanup releases safely-unused lock",
+      "pre-aborted basic calls do not write",
+      "exact nativeDB and adapter identity",
+      "bound validator wrappers retain original receipt proof",
+      "raw imports refuse output relabel/path and unreadable reverse owners",
+      "response headers revalidate after path/open/stat"
+    ]
+  },
+  "frozen": {
+    "manifestSha256": "7381ed3486563b84cf4f4912dfde81ae07b0369cde4e479ad2b1bcfd88633f0d",
+    "originalHashesRetained": 63,
+    "approvedRendererExceptionSha256": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee",
+    "unchangedSinceBase": true
+  },
+  "defaultBoundary": {
+    "server": "absence of exact internal launch proof still openStore40/41",
+    "frontend": "ordinary compiled entry creates no candidate capability and retains DesktopRoot",
+    "existingDirectory": "exclusive mkdir refuses every existing directory",
+    "rawOrCopiedProfileCannotEnable": true
+  },
+  "knownBaseline": {
+    "file": "tests/project-home-app.test.mjs",
+    "baseline": {
+      "passed": 12,
+      "failed": 17
+    },
+    "current": {
+      "passed": 12,
+      "failed": 17
+    },
+    "newFailureTitles": 0,
+    "reason": "Preexisting extracted App fixtures omit clipDraftRef and related boundaries; one explicit application:null fixture field preserves baseline. Independently compared by UI agent; no full-suite pass claimed."
+  },
+  "execution": {
+    "mediaProcesses": 0,
+    "providers": 0,
+    "listenerAttempts": 0,
+    "guiSessions": 0,
+    "dependencyInstalls": 0,
+    "credentialsChanged": false,
+    "userProjectsTouched": false,
+    "push": false
+  },
+  "pending": [
+    "GUI four-language and IME acceptance",
+    "real test-media preview/export/play/download and performance",
+    "Node24 and product fixed FFmpeg qualification",
+    "existing42 application reopen",
+    "42 cold backup to43 product recovery",
+    "separate40/41 migration"
+  ],
+  "futureApproval": {
+    "command": "node apps/server/src/opacity-candidate-cli.ts --new-workspace /private/tmp/mioon-opacity42-manual-20261016 --port 4319",
+    "target": "127.0.0.1:4319, new nonexistent isolated directory only",
+    "build": "apps/web/dist-opacity-candidate",
+    "purpose": "Manual shared-App GUI qualification; real import probes and renders need separately bounded test media",
+    "status": "not executed; previous listen EPERM not retried or bypassed"
+  },
+  "document": "../../OPACITY-CANDIDATE-APPLICATION.md",
+  "sourceSha256": {
+    "apps/server/src/index.mjs": "49c087302daf7d0a48aeba2ca8c47df24eeb62f21a0ce440d22889748bda4ec8",
+    "apps/server/src/opacity-candidate-launch.ts": "5de03dff9f631d2ee35c7b2c8c44102391e3671796ec7b9d2b5b0e8ff27c4821",
+    "apps/server/src/opacity-candidate-cli.ts": "5668ba228ebfc6a0ec8a59e10ffa597dc7991a35c10654438339fea318d6cc87",
+    "apps/server/src/opacity-candidate-editor-assembly.ts": "d0dc387667d03436989dd7769d65a50c3fa58250938f79f7901e7d346277c55f",
+    "apps/web/vite.config.mjs": "9481a86645df123613aad7ee05d37620a5f477d3880e6f9835d5934636b58dab",
+    "apps/web/src/main.jsx": "c250e7ab29b2d2fcb422489d7e8c49977c220ebfa984de2a10a776fd75869de5",
+    "apps/web/src/App.jsx": "9e9f90bb7f6535988bd24ee1bc2861e638e8edef2bf73f21434c544a8fce5fbc",
+    "apps/web/src/opacity-candidate-application.ts": "e6269af075d368d5371e449ea9634d5f8c4b3cf3de30a7e76b9fb0f5cd23a7a0",
+    "apps/web/src/opacity-candidate-browser-contracts.ts": "6758906511bd33d26913b1325724244eb4d3efe7e2a483b89b6e13a8ca400197",
+    "packages/business/src/opacity-candidate-store.ts": "cec34f2a460886beb641024ce4d3aa4f4d03e5b39d5cac5108bf15eb199df3e5",
+    "packages/business/src/opacity-candidate-services.ts": "435291c23b1cb5a1acc47633cad48f8c75789ceaf070950b31b38e119431c1ea",
+    "packages/business/src/opacity-candidate-application.ts": "f88aa3a7a33f0bc1909096c8c5083ab873503f0e1a2c2f1bf4b00e8523a3f498",
+    "packages/business/src/managed-asset-import.ts": "60e1afb081ad71b8f7a9a16dc785e4ee5b7feb8e1a43f07f1a0e081e1d621d02",
+    "packages/business/src/opacity-candidate-delivery.ts": "67d71e283e3db2c89593720c33dfbde82b7849af27c7943036ee2a188d244243",
+    "packages/business/src/timeline-delivery-read.ts": "64f87098f6cb8522b32c127f27d851dcb549390bee1d1fb8f010f029df31333f",
+    "packages/business/src/workspace-preferences.mjs": "b3ba42646fa193b26b81264fe66b67088c9cb6a633b759ab99f91875a76552f5",
+    "packages/contracts/src/timeline-opacity-persistence.ts": "3572bd4877e37d37ca72ad9224078ac28f0d8ef52423370a747a1789462c8e69"
+  }
+}

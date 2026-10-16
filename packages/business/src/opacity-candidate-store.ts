@@ -5,6 +5,7 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import path from 'node:path';
+import {mkdirSync, rmdirSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLInputValue, StatementSync} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
@@ -123,6 +124,33 @@ export interface OpacityCandidateAssembly {
 }
 interface Registration {readonly assembly: OpacityCandidateAssembly; readonly check: () => void}
 const assemblies = new WeakMap<object, Registration>();
+const applicationStores = new WeakSet<object>();
+/** Explicit internal application assembly only. Restored43 and copied handles
+ * cannot acquire the fresh42 application operation set. No wire field grants it. */
+function registerOpacityCandidateApplicationStore(store: unknown): void {
+  const assembly = getOpacityCandidateAssembly(store);
+  if (!assembly || !store || typeof store !== 'object' || assembly.getRestoreContext()) unavailable();
+  assembly.checkpoint(); applicationStores.add(store);
+}
+/** Deliberately refuses every existing directory, including ordinary40/41 and
+ * an earlier42. The developer launcher must name a new isolated directory. */
+export function openNewOpacityCandidateApplicationStore(directory: string): OpacityCandidateStore {
+  const root = path.resolve(directory);
+  preflight(root, storageRuntime());
+  mkdirSync(root, {mode: 0o700});
+  let store: OpacityCandidateStore | undefined;
+  try {store = openOpacityCandidateStore(root); registerOpacityCandidateApplicationStore(store); return store;}
+  catch (error) {try {store?.close();} catch {} try {rmdirSync(root);} catch {} throw error;}
+}
+export function isOpacityCandidateApplicationStore(store: unknown): boolean {
+  if (!store || typeof store !== 'object' || !applicationStores.has(store)) return false;
+  const assembly = getOpacityCandidateAssembly(store);
+  return Boolean(assembly && !assembly.getRestoreContext());
+}
+export const OPACITY_CANDIDATE_APPLICATION_OPERATIONS = Object.freeze([
+  'project.create', 'project.list', 'project.get', 'asset.import', 'asset.list', 'asset.get', 'export.list', 'export.get', 'provider.list', 'workspace.restore.inspect',
+  'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.remove',
+]);
 /** A copied handle never acquires registration. A once-registered but revoked
  * handle throws, so it cannot fall back into the ordinary production path. */
 export function getOpacityCandidateAssembly(store: unknown): OpacityCandidateAssembly | null {
@@ -234,7 +262,8 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
       if (entry.operation !== operation || entry.inputDigest !== digest(input)) unavailable();
     };
     const runInvocation = <T>(operation: string, input: unknown, options: InvocationOptions, validate: (() => void) | undefined, callback: (input: unknown) => T): T => {
-      if (!OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation) && !OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation)) unavailable();
+      if (!OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation) && !OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation) &&
+          !(applicationStores.has(store) && !restored && OPACITY_CANDIDATE_APPLICATION_OPERATIONS.includes(operation))) unavailable();
       if (operation === 'timeline.render') {try {captureOpacityRenderInput(input);} catch {unavailable();}}
       if (operation === 'timeline.export.preflight') {try {captureOpacityPreflightInput(input);} catch {unavailable();}}
       if (operation === 'timeline.export.capabilities') {try {captureOpacityCapabilitiesInput(input);} catch {unavailable();}}
@@ -268,6 +297,7 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
       },
       refuseOperation: (operation: string, input?: unknown) => {
         const restore = context();
+        if (!restore && applicationStores.has(store) && OPACITY_CANDIDATE_APPLICATION_OPERATIONS.includes(operation)) return;
         if (OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation)) {assertInvocation(operation, input); return;}
         if (OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation)) {if (restore || operation === 'timeline.render') {assertInvocation(operation, input); requestVacant(operation, input);} return;}
         if (OPACITY_CANDIDATE_RESTORE_READ_OPERATIONS.includes(operation)) return;

@@ -11,6 +11,7 @@ import { assetKind, framesLabel } from './Timeline.jsx';
 import { useWorkspaceVisibility } from './workspace-visibility.jsx';
 import { exportHistoryDelivery } from './export-settings-state.js';
 import { sourceFrameCount, sourcePositionFrame, sourceSeekMatchesTime, SOURCE_RANGE_FPS } from './source-range-state.js';
+import { opacityCandidateRenderPresentation } from './opacity-candidate-render-presentation.ts';
 
 // Media readiness belongs to the rendered binding. A retained click handler
 // always asks the current player again; its displayed enabled state is advisory.
@@ -41,7 +42,7 @@ export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCa
   return <div className="source-frame-capture"><Button type="button" variant="outline" size="sm" data-testid="source-frame-capture" disabled={captureBusy || submitting || ready?.key !== captureKey || !ready?.intent} onClick={capture}>{t('timeline.preview.capture')}</Button><span className="input-hint">{t('timeline.preview.captureHint')}</span></div>;
 }
 
-export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false }) {
+export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false, opacityApplication = null, heldExportIds = [], candidateConnected = false }) {
   const { t, renderMessage } = useI18n();
   const media = useRef(null);
   useLayoutEffect(() => onRegisterMediaPause?.(() => media.current?.pause()), [onRegisterMediaPause]);
@@ -49,9 +50,11 @@ export default function Preview({ onBeforePlay, audioPreview, onRegisterMediaPau
   visible = visible && ancestorVisible;
   const visibleRef = useRef(visible);
   const rendered = kind === 'timeline';
-  const ready = job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId);
+  const candidate = opacityApplication !== null;
+  const candidateOutput = candidate && rendered ? opacityCandidateRenderPresentation(opacityApplication, job, {projectId: timeline?.projectId, timelineId: timeline?.id, connected: candidateConnected, heldExportIds}) : null;
+  const ready = candidate ? Boolean(candidateOutput?.previewHref) : job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId);
   const stale = ready && job.timelineRevision !== timeline?.revision;
-  const url = rendered ? ready ? (job.url || `/media/${job.assetId}`) : '' : assetUrl(asset);
+  const url = rendered ? ready ? candidate ? candidateOutput.previewHref : (job.url || `/media/${job.assetId}`) : '' : assetUrl(asset);
   const type = rendered ? 'video' : assetKind(asset);
   const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}`;
   const activeMedia = useRef(null);

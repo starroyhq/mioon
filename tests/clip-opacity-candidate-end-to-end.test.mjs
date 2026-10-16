@@ -20,6 +20,11 @@ import {createClipDraftClient, createOpacityCandidateClipDraftClient} from '../a
 import {rawOpacityEnvelopeFields} from '../apps/web/src/clip-opacity-envelope-state.ts';
 import {createOpacityCandidateInspectorBinding, readOpacityCandidateInspectorBinding, opacityCandidateTimelineProjection}
   from '../apps/web/src/clip-opacity-candidate-assembly.ts';
+import * as legacyContracts from '@mioon/contracts';
+import {rpc} from '../apps/web/src/api.js';
+import {createEditTaskClient} from '../apps/web/src/edit-task-client.js';
+import {createEditTaskController} from '../apps/web/src/edit-task-controller.js';
+import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 
 const stamp = '2026-10-16T00:00:00.000Z';
 const profileId = 'mioon-clip-linear-opacity-v1';
@@ -29,6 +34,10 @@ const curve = () => ({profileId, points: [{frame: 0, opacity: 0}, {frame: 30, op
 const validateTimeline = (value, projectId) => {
   const projection = opacityCandidateTimelineProjection(value, projectId);
   return projection !== null && isTimelineRecord(projection, {projectId});
+};
+const application = fetcher => {
+  const token = createOpacityCandidateApplication({...legacyContracts, rpc, createEditTaskClient}, fetcher);
+  return {token, ...readOpacityCandidateApplication(token)};
 };
 
 /** In-memory transport only. Both handlers and all storage/business operations
@@ -119,6 +128,76 @@ function fixture(t) {
   t.after(async () => {try {await f.close();assert.deepEqual(media, []);} finally {off();rmSync(root, {recursive: true, force: true});}});
   return f;
 }
+
+test('exact candidate application client saves and acknowledges raw opacity through the actual durable controller and HTTP services', async t => {
+  const f = fixture(t), app = application(f.bridge.fetcher), controller = createEditTaskController({client: app.taskClient});
+  assert.equal(readOpacityCandidateApplication({...app.token}), null);
+  assert.equal(readOpacityCandidateApplication(JSON.parse(JSON.stringify(app.token))), null);
+  assert.equal((await controller.load(f.project.id)).phase, 'ready');
+  const input = {projectId: f.project.id, clipId: f.clip.id, expectedRevision: 1, requestId: randomUUID(), patch: {opacityEnvelope: curve()}};
+  const applied = await controller.submit({projectId: f.project.id, operation: 'timeline.clip.update', input});
+  assert.deepEqual(applied.result.clips[0].opacityEnvelope, curve());
+  assert.deepEqual(applied.task.input, input);assert.equal(controller.blocked(f.project.id, 'timeline:mutation'), true);
+  await controller.acknowledge(applied.task);
+  assert.equal(controller.blocked(f.project.id, 'timeline:mutation'), false);
+  assert.equal(f.store.db.prepare('SELECT acknowledged FROM edit_tasks').get().acknowledged, 1);
+  assert.deepEqual(f.store.get('timelines', f.timeline.id).clips[0].opacityEnvelope, curve());
+});
+
+test('default and copied task clients cannot select candidate ACK validation', async t => {
+  for (const copied of [false, true]) {
+    const f = fixture(t), app = application(f.bridge.fetcher);
+    const client = copied ? {...app.taskClient} : createEditTaskClient({fetcher: f.bridge.fetcher, opacityBinding: {kind: 'internal-opacity-client'}});
+    const controller = createEditTaskController({client});await controller.load(f.project.id);
+    const input = {projectId: f.project.id, clipId: f.clip.id, expectedRevision: 1, requestId: randomUUID(), patch: {opacityEnvelope: curve()}};
+    await assert.rejects(controller.submit({projectId: f.project.id, operation: 'timeline.clip.update', input}), {code: 'BACKEND_PROTOCOL_ERROR'});
+    assert.equal(f.store.db.prepare('SELECT status FROM edit_tasks').get().status, 'prepared');
+    assert.equal(f.bridge.calls.some(call => call.pathname.endsWith('/execute')), false);
+  }
+});
+
+test('lost candidate execute ACK retains exact unknown task and recovers by GET without replaying execution', async t => {
+  const f = fixture(t);let lose = true;
+  const app = application(async (url, init) => {
+    const response = await f.bridge.fetcher(url, init);
+    if (String(url).endsWith('/execute') && lose) {lose = false;throw new Error('Synthetic lost applied ACK');}
+    return response;
+  });
+  const controller = createEditTaskController({client: app.taskClient});await controller.load(f.project.id);
+  const input = {projectId: f.project.id, clipId: f.clip.id, expectedRevision: 1, requestId: randomUUID(), patch: {opacityEnvelope: curve()}};
+  await assert.rejects(controller.submit({projectId: f.project.id, operation: 'timeline.clip.update', input}), /lost applied ACK/);
+  const pending = controller.getState(f.project.id).items[0];
+  assert.deepEqual(pending.input, input);assert.deepEqual(controller.getState(f.project.id).uncertain, [pending.id]);
+  const recovered = await controller.recover(pending);
+  assert.equal(recovered.task.status, 'applied');assert.equal(Object.hasOwn(recovered, 'result'), false);
+  assert.deepEqual(f.store.get('timelines', f.timeline.id).clips[0].opacityEnvelope, curve());
+  assert.equal(f.bridge.calls.filter(call => call.pathname.endsWith('/execute')).length, 1);
+  await controller.acknowledge(recovered.task);
+  assert.equal(controller.blocked(f.project.id, 'timeline:mutation'), false);
+});
+
+test('candidate malformed applied opacity cannot clear a task and late prepare cannot dispatch after navigation', async t => {
+  const f = fixture(t);let release, entered;
+  const ready = new Promise(resolve => {entered = resolve;}), hold = new Promise(resolve => {release = resolve;});
+  const app = application(async (url, init) => {
+    const response = await f.bridge.fetcher(url, init);
+    if (String(url) === '/api/tasks/prepare') {entered();await hold;}
+    if (String(url).endsWith('/execute')) {const value = await response.json();delete value.data.result.clips[0].opacityEnvelope;return Response.json(value);}
+    return response;
+  });
+  const controller = createEditTaskController({client: app.taskClient});await controller.load(f.project.id);
+  let current = true;
+  const input = {projectId: f.project.id, clipId: f.clip.id, expectedRevision: 1, requestId: randomUUID(), patch: {opacityEnvelope: null}};
+  const pending = controller.submit({projectId: f.project.id, operation: 'timeline.clip.update', input}, {canExecute: () => current});
+  await ready;current = false;release();const prepared = await pending;
+  assert.equal(prepared.task.status, 'prepared');assert.equal(f.bridge.calls.some(call => call.pathname.endsWith('/execute')), false);
+  await assert.rejects(controller.recover(prepared.task), {code: 'BACKEND_PROTOCOL_ERROR'});
+  assert.equal(controller.getState(f.project.id).items[0].status, 'prepared');
+  assert.equal(controller.blocked(f.project.id, 'timeline:mutation'), true);
+  const recovered = await controller.recover(prepared.task);
+  assert.equal(recovered.task.status, 'applied');assert.equal(Object.hasOwn(recovered, 'result'), false);
+  assert.equal(f.store.get('timelines', f.timeline.id).clips[0].opacityEnvelope, null);
+});
 
 test('actual candidate controller preserves unfinished v3 text across reopen and saves through HTTP tasks into the existing transaction', async t => {
   const f = fixture(t), legacyFile = path.join(f.root, 'local-drafts-v1.json'), legacyBytes = Buffer.from('{"version":2,"untouched":"old companion"}\n');

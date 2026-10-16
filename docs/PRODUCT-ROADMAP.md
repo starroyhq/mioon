@@ -6,10 +6,19 @@ and local-only test-fixture repair `25609e98b8990eaa121124f35242f0bcf4a4b3ae`.
 Earlier accepted integration ancestry is preserved. This document distinguishes implemented
 slices, their actual acceptance boundaries and remaining approved scope. It does
 not promote a WIP checkpoint, certify the combined native application, or grant
-new execution, spending or publication authority. This documentation-only review
-reran no product tests, native acceptance or stopped issue investigations.
+new execution, spending or publication authority. The earlier documentation-only
+review reran no product tests; current local opacity qualification is linked below.
+No native acceptance or stopped issue investigation was resumed.
 
 ## Current UI iteration (2026-10-16)
+
+- **Clip opacity keyframes: local fresh42 application slice after `ec01753`.**
+  The same App now has an explicit independent development entry with project
+  creation/import, durable task ACKs, Inspector v3 drafts, raw opacity saves,
+  preview/export preparation and guarded media delivery. Default40/41 and
+  historical constructors remain unchanged. [Application scope and evidence](OPACITY-CANDIDATE-APPLICATION.md)
+  separate pure/synthetic qualification from pending GUI/media acceptance,
+  existing42 reopening,42→43 backup and40/41 migration. No push or release.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI
@@ -100,7 +109,8 @@ reran no product tests, native acceptance or stopped issue investigations.
    they do not complete per-clip/dialogue loudness matching. The volume-envelope
    backend and row editor are implemented and integrated; their remaining native
    acceptance is indexed above. Do not restart the earlier pure prototype.
-   Visual keyframes/transitions, audio crossfades, ducking, limiter/EQ/noise
+   Opacity keyframes now have the isolated fresh42 slice above. Other visual
+   keyframes/transitions, audio crossfades, ducking, limiter/EQ/noise
    reduction and scoped proxy performance
    remain separate work; local media tags/notes are no longer pending. No automatic
    target or AAC loudness/true-peak guarantee is implied.

@@ -2,7 +2,7 @@ import { message as localizedMessage } from '../../../packages/i18n/src/index.ts
 import { workspaceOriginScope, workspaceOriginOptions, assertWorkspaceIntent } from './workspace-origin.js';
 import { taskWorkspaceBinding, taskListWorkspaceBindings, requireTaskWorkspace } from './workspace-task-origin.js';
 import { EDIT_TASK_LIMITS, editTaskLane } from '@mioon/contracts';
-import { createEditTaskClient, isDurableEditOperation, taskInputKey, taskProtocolError, validateTaskEnvelope, validateTaskList } from './edit-task-client.js';
+import { createEditTaskClient, editTaskClientValidation, isDurableEditOperation, taskInputKey, taskProtocolError } from './edit-task-client.js';
 
 const fail = (code, message, displayMessage) => Object.assign(new Error(message), { code, displayMessage });
 const terminal = task => ['applied', 'not_applied'].includes(task.status);
@@ -17,6 +17,7 @@ function frozen(value) {
 // No renderer storage is the authority for these fifteen operations. Loading is
 // read-only, and the project remains fenced until every bounded page is known.
 export function createEditTaskController({ client = createEditTaskClient(), onChange = () => {}, getWorkspace = () => ({ restored: false }) } = {}) {
+  const {validateTaskEnvelope, validateTaskList} = editTaskClientValidation(client);
   const projects = new Map();
   function state(projectId, workspace = getWorkspace()) {
     const scope = workspaceOriginScope(workspace), key = JSON.stringify([scope, projectId]);

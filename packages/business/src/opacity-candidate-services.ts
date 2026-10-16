@@ -5,12 +5,15 @@ import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {isPromise} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {getOpacityCandidateAssembly, isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
+import type {OpacityCandidateStore} from './opacity-candidate-store.ts';
 import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
+import {createOpacityCandidateApplicationHandlers, OPACITY_CANDIDATE_APPLICATION_BASIC_OPERATIONS, parseOpacityCandidateApplicationInput} from './opacity-candidate-application.ts';
 
 type Value = Record<string, unknown>;
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const require = createRequire(import.meta.url);
+const lifecycle: unknown = require('./operation-lifecycle.mjs');
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => object(item)
   ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
 const hash = (value: unknown): string => createHash('sha256').update(canonical(value)).digest('hex');
@@ -28,6 +31,7 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   const candidate = getOpacityCandidateAssembly(store);
   if (!candidate || !object(store) || typeof store.get !== 'function') return unavailable();
   const assembly = candidate;
+  const application = isOpacityCandidateApplicationStore(store);
   assembly.checkpoint();
   const domain = createOpacityCandidateDomain(store);
   const lifetime = new AbortController();
@@ -61,18 +65,33 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   });
   if (!object(made) || !object(made.handlers)) return unavailable();
   const handlers = {...made.handlers, ...preflight.handlers, ...exportAdmission.handlers};
-  const reads = new Set(['timeline.get', 'timeline.history.get']);
-  const mutations = new Set(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render']);
+  if (application) {
+    if (typeof made.ensure !== 'function' || typeof made.history !== 'function') return unavailable();
+    const ensure = made.ensure, history = made.history;
+    const typedStore = store as unknown as OpacityCandidateStore;
+    const ensureTimeline = (projectId: string): unknown => {ensure(projectId); return domain.boundary({projectId}).read({legacyMissingProject: true});};
+    Object.assign(handlers, createOpacityCandidateApplicationHandlers(typedStore, {signal,
+      ensureTimeline, history: (projectId: string) => history(projectId)}));
+    handlers['timeline.get'] = (input: Value) => typedStore.tx(() => typeof input.projectId === 'string' ? ensureTimeline(input.projectId) : unavailable());
+  }
+  const reads = new Set(['timeline.get', 'timeline.history.get', ...(application ? OPACITY_CANDIDATE_APPLICATION_BASIC_OPERATIONS : [])]);
+  const mutations = new Set(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render', ...(application ? ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.remove'] : [])]);
   const preparations = new Set(['timeline.export.preflight', 'timeline.export.capabilities']);
-  async function call(operation: string, input: unknown, context: Value = {}): Promise<unknown> {
+  const pending = new Set<Promise<unknown>>();
+  async function invokeCall(operation: string, input: unknown, context: Value = {}): Promise<unknown> {
     assembly.checkpoint();
     if (lifetime.signal.aborted || options.signal?.aborted || !reads.has(operation) && !mutations.has(operation) && !preparations.has(operation)) return unavailable();
-    if (preparations.has(operation) && context.signal !== undefined && !(context.signal instanceof AbortSignal)) return unavailable();
-    const callSignal = preparations.has(operation) && context.signal instanceof AbortSignal ? AbortSignal.any([signal, context.signal]) : signal;
-    const parsed = domain.parse(operation, input), handler = handlers[operation];
+    if ((application || preparations.has(operation)) && context.signal !== undefined && !(context.signal instanceof AbortSignal)) return unavailable();
+    const callSignal = (application || preparations.has(operation)) && context.signal instanceof AbortSignal ? AbortSignal.any([signal, context.signal]) : signal;
+    const parsed = application && OPACITY_CANDIDATE_APPLICATION_BASIC_OPERATIONS.includes(operation)
+      ? parseOpacityCandidateApplicationInput(operation, input) : domain.parse(operation, input), handler = handlers[operation];
     if (typeof handler !== 'function') return unavailable();
     const invoke = (frozen: unknown): unknown => {
       assembly.refuseOperation(operation, frozen);
+      if (application) {
+        if (!object(lifecycle) || typeof lifecycle.checkpoint !== 'function') return unavailable();
+        lifecycle.checkpoint(callSignal);
+      }
       const result: unknown = handler(frozen, {signal: callSignal});
       // Retain the actual asynchronous handler before checking its owner again.
       // A synchronous revocation must not discard an already rejecting read.
@@ -86,14 +105,25 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
     }
     return invoke(parsed);
   }
+  function call(operation: string, input: unknown, context: Value = {}): Promise<unknown> {
+    const result = invokeCall(operation, input, context); pending.add(result);
+    void result.then(() => pending.delete(result), () => pending.delete(result));
+    return result;
+  }
   const services = Object.freeze({call, handlers: Object.freeze(Object.fromEntries([...reads, ...mutations, ...preparations].map(operation =>
     [operation, (input: unknown, context?: Value) => call(operation, input, context)]))),
     async drain(): Promise<void> {
       lifetime.abort();
-      const settled = await Promise.allSettled([drainAdmission(), drainPreflight()]);
+      const settled = await Promise.allSettled([drainAdmission(), drainPreflight(), ...pending]);
       for (const result of settled) if (result.status === 'rejected') throw result.reason;
     },
   });
   serviceStores.set(services, store);
   return services;
+}
+/** Called only by the explicit developer assembly for its newly created42
+ * handle. Merely opening/reopening42 does not acquire this operation set. */
+export function createOpacityCandidateApplicationServices(store: unknown, options: {signal?: AbortSignal} = {}) {
+  if (!isOpacityCandidateApplicationStore(store)) return unavailable();
+  return createOpacityCandidateServices(store, options);
 }

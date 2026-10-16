@@ -7,9 +7,10 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import {
   captureOpacityTimelineRecord, captureOpacityTimelineIntent, captureOpacityTimelinePrepare,
   isOpacityTimelineMutationResponse, isOpacityTimelineTask,
+  captureOpacityApplicationPrepare, isOpacityApplicationMutationResponse, isOpacityApplicationTask,
 } from '../../contracts/src/timeline-opacity-persistence.ts';
 import {captureOpacityRenderInput, captureOpacityPreflightInput, captureOpacityCapabilitiesInput, createOpacityRenderSnapshotPlan, captureOpacityRenderSnapshot, captureOpacityPreparedSourceProjection, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
-import {getOpacityCandidateAssembly, freezeOpacityCandidateInput} from './opacity-candidate-store.ts';
+import {getOpacityCandidateAssembly, freezeOpacityCandidateInput, isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 
 type Value = Record<string, unknown>;
@@ -55,6 +56,8 @@ export function createOpacityCandidateDomain(store: unknown) {
   if (!assembly || !object(store) || !(store.db instanceof DatabaseSync)) throw new AppError('OPACITY_CANDIDATE_STORE_REQUIRED', '透明度候选工作区未装配。', 409);
   const db = store.db;
   const boundAssembly = assembly;
+  const application = isOpacityCandidateApplicationStore(store);
+  const mutationResponse = application ? isOpacityApplicationMutationResponse : isOpacityTimelineMutationResponse;
   const checkpoint = (): void => {
     boundAssembly.checkpoint();
     if (getOpacityCandidateAssembly(store) !== boundAssembly || !boundAssembly.ownsLock()) throw new AppError('EDIT_TASK_OWNER_REQUIRED', '只有持有工作区锁的后端可以修改编辑任务。', 403);
@@ -208,7 +211,7 @@ export function createOpacityCandidateDomain(store: unknown) {
       const saved = receipt(operation);
       if (!saved || saved.requestHash !== digest({operation, input}) || saved.response !== text) return invalid();
       let response: unknown;try {response = JSON.parse(text);} catch {return invalid();}
-      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : isOpacityTimelineMutationResponse(operation, input, response))) return invalid();
+      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : mutationResponse(operation, input, response))) return invalid();
       if (operation === 'timeline.format.set') method(format, 'readTimelineFormatProvenance')(db, input, saved.requestHash);
       const loudness = operation === 'timeline.loudness.apply';
       const render = operation === 'timeline.render';
@@ -246,7 +249,7 @@ export function createOpacityCandidateDomain(store: unknown) {
     }
     function verify(operation: string, response: unknown, requestHash: unknown): void {
       checkpoint();
-      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : isOpacityTimelineMutationResponse(operation, input, response)) || requestHash !== digest({operation, input})) return invalid();
+      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : mutationResponse(operation, input, response)) || requestHash !== digest({operation, input})) return invalid();
       const current = read();if (!current) return unavailable();
       if (operation === 'timeline.render') {
         const rendered = renderSources(response);
@@ -262,9 +265,9 @@ export function createOpacityCandidateDomain(store: unknown) {
   }
   return Object.freeze({
     parse, boundary, admit, freezeRenderSnapshot, readPreflightSnapshot,
-    capturePrepare: (value: unknown) => {checkpoint();return captureOpacityTimelinePrepare(value);},
+    capturePrepare: (value: unknown) => {checkpoint();return application ? captureOpacityApplicationPrepare(value) : captureOpacityTimelinePrepare(value);},
     captureIntent: (operation: string, value: unknown) => {checkpoint();return captureOpacityTimelineIntent(operation, value);},
-    isTask: (value: unknown) => {checkpoint();return isOpacityTimelineTask(value);},
-    isMutationResponse: (operation: string, input: unknown, response: unknown) => {checkpoint();return operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : isOpacityTimelineMutationResponse(operation, input, response);},
+    isTask: (value: unknown) => {checkpoint();return application ? isOpacityApplicationTask(value) : isOpacityTimelineTask(value);},
+    isMutationResponse: (operation: string, input: unknown, response: unknown) => {checkpoint();return operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : mutationResponse(operation, input, response);},
   });
 }

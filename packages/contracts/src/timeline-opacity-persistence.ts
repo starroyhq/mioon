@@ -94,14 +94,24 @@ export function captureOpacityTimelineIntent(operation: string, value: unknown, 
   if (bytes > 8192) fail();
   return {input: result.value, text, bytes, nodes: result.nodes, depth: result.depth, prepareNodes: result.nodes + 4, prepareDepth: result.depth + 1};
 }
-export function captureOpacityTimelinePrepare(value: unknown) {
+const applicationOperations = Object.freeze(['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.undo', 'timeline.redo']);
+function capturePrepare(value: unknown, operations: readonly string[]) {
   const captured = capture(value);
   if (!object(captured.value) || Object.keys(captured.value).length !== 4 || !['projectId', 'operation', 'input', 'origin'].every(key => own(captured.value as object, key))) return fail();
   const args = captured.value;
-  if (typeof args.operation !== 'string' || !['timeline.clip.update', 'timeline.undo', 'timeline.redo'].includes(args.operation) || !['new', 'legacy_session'].includes(String(args.origin))) return fail();
+  if (typeof args.operation !== 'string' || !operations.includes(args.operation) || !['new', 'legacy_session'].includes(String(args.origin))) return fail();
   const intent = captureOpacityTimelineIntent(args.operation, args.input);
   if (intent.input.projectId !== args.projectId) fail();
   return {...args, input: intent.input};
+}
+export function captureOpacityTimelinePrepare(value: unknown) {
+  return capturePrepare(value, ['timeline.clip.update', 'timeline.undo', 'timeline.redo']);
+}
+/** Data grammar only. The business domain selects this leaf solely for its
+ * privately registered fresh42 application store; ordinary42/restored43 keep
+ * the original narrow prepare grammar above. */
+export function captureOpacityApplicationPrepare(value: unknown) {
+  return capturePrepare(value, applicationOperations);
 }
 
 function projection(record: Value): Value {
@@ -141,6 +151,33 @@ export function isOpacityTimelineMutationResponse(operation: string, input: unkn
     return fn('isTimelineMutationResponse')(operation, intentProjection(operation, submitted, target.gain), projectedRecord) === true;
   } catch {return false;}
 }
+/** Apply the frozen ACK grammar to a validated read projection. For add, the
+ * same clip must satisfy both the legacy intent and exact opacity presence;
+ * a different existing clip cannot supply either half of that proof. */
+export function isOpacityApplicationMutationResponse(operation: string, input: unknown, value: unknown): boolean {
+  try {
+    if (!applicationOperations.includes(operation)) return false;
+    if (['timeline.clip.update', 'timeline.undo', 'timeline.redo'].includes(operation)) return isOpacityTimelineMutationResponse(operation, input, value);
+    const record = captureOpacityTimelineRecord(value).record;
+    if (!object(record)) return false;
+    const submitted = captureOpacityTimelineIntent(operation, input).input, projectedRecord = projection(record);
+    if (operation !== 'timeline.clip.add') return fn('isTimelineMutationResponse')(operation, submitted, projectedRecord) === true;
+    if (!Array.isArray(record.clips)) return false;
+    const projectedInput = intentProjection(operation, submitted);
+    return record.clips.some((clip: unknown) => {
+      if (!object(clip) || own(clip, 'opacityEnvelope') !== own(submitted, 'opacityEnvelope') ||
+          own(submitted, 'opacityEnvelope') && !sameEnvelope(clip.opacityEnvelope, submitted.opacityEnvelope)) return false;
+      const projectedClip = {...clip};delete projectedClip.opacityEnvelope;
+      // The full record has already passed the fixed timeline grammar. A
+      // single-clip verification projection lets the fixed add ACK predicate
+      // select this exact candidate without recreating its scalar rules.
+      if (typeof clip.startFrame !== 'number' || typeof clip.durationFrames !== 'number') return false;
+      const selected: Value = {...projectedRecord, clips: [projectedClip], durationFrames: clip.startFrame + clip.durationFrames};
+      delete selected.subtitles;
+      return fn('isTimelineMutationResponse')(operation, projectedInput, selected) === true;
+    });
+  } catch {return false;}
+}
 export function isOpacityTimelineTask(value: unknown): boolean {
   try {
     // Capture the entire public task through descriptors before reading its
@@ -151,6 +188,17 @@ export function isOpacityTimelineTask(value: unknown): boolean {
     const intent = captureOpacityTimelineIntent(task.operation, task.input);
     if (Buffer.byteLength(JSON.stringify(task)) > 16384) return false;
     const projectedInput = task.operation === 'timeline.clip.update' ? intentProjection(task.operation, intent.input) : intent.input;
+    return fn('isEditTask')({...task, input: projectedInput}) === true;
+  } catch {return false;}
+}
+export function isOpacityApplicationTask(value: unknown): boolean {
+  try {
+    const captured = capture(value, 256, 10), task = captured.value;
+    if (!object(task) || typeof task.operation !== 'string' || !applicationOperations.includes(task.operation)) return false;
+    const intent = captureOpacityTimelineIntent(task.operation, task.input);
+    if (Buffer.byteLength(JSON.stringify(task)) > 16384) return false;
+    const projectedInput = task.operation === 'timeline.clip.add' || task.operation === 'timeline.clip.update'
+      ? intentProjection(task.operation, intent.input) : intent.input;
     return fn('isEditTask')({...task, input: projectedInput}) === true;
   } catch {return false;}
 }

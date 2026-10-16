@@ -11,15 +11,19 @@ import ExportRangeSummary from './ExportRangeSummary.tsx';
 import TimelineDeliveryHistory from './TimelineDeliveryHistory.tsx';
 import ExportSamplePeak from './ExportSamplePeak.tsx';
 import ExportLoudness from './ExportLoudness.tsx';
+import { opacityCandidateRenderPresentation } from './opacity-candidate-render-presentation.ts';
 
 /** Presentation only. App owns ordering, project identity, right-dock lifetime and
  * navigation fences. Rows retain their original immutable export snapshots. */
-export default function ExportHistoryList({ orderedExports, projectName, timelineRevision, heldExportIds = [], samplePeak, loudness }) {
+export default function ExportHistoryList({ orderedExports, projectName, projectId, timelineRevision, heldExportIds = [], samplePeak, loudness, opacityApplication = null, candidateConnected = false }) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   return <div className="export-list">
     {orderedExports.length ? orderedExports.map(item => {
+      const candidate = opacityApplication !== null;
+      const candidateOutput = candidate ? opacityCandidateRenderPresentation(opacityApplication, item, {projectId, connected: candidateConnected, heldExportIds}) : null;
+      if (candidate && !candidateOutput) return <div className="export-card" key={item.id} data-testid="candidate-delivery-invalid"><div className="export-icon"><Icon name="film" size={24} /></div><div className="export-detail"><strong>{t('export.history.title')}</strong><p className="notice warning">{t('export.history.invalidDelivery')}</p></div></div>;
       const delivery = exportHistoryDelivery(item), held = heldExportIds.includes(item.id), invalidRange = hasInvalidExportRangeHistory(item);
-      if (hasNamedTimelineDelivery(item)) return <TimelineDeliveryHistory key={item.id} item={item} samplePeak={samplePeak} loudness={loudness} frozenDelivery={delivery} timelineRevision={timelineRevision} statusLabel={exportHistoryStatusMessage(item.status, locale)} held={held} filmIcon={<Icon name="film" size={24} />} downloadIcon={<Icon name="download" size={15} />} />;
+      if (hasNamedTimelineDelivery(item)) return <TimelineDeliveryHistory key={item.id} item={item} samplePeak={samplePeak} loudness={loudness} frozenDelivery={delivery} timelineRevision={timelineRevision} statusLabel={exportHistoryStatusMessage(item.status, locale)} held={held} downloadEnabled={!candidate || Boolean(candidateOutput.downloadHref)} filmIcon={<Icon name="film" size={24} />} downloadIcon={<Icon name="download" size={15} />} />;
       return <div className="export-card" key={item.id}>
         <div className="export-icon"><Icon name="film" size={24} /></div>
         <div className="export-detail">
@@ -36,13 +40,13 @@ export default function ExportHistoryList({ orderedExports, projectName, timelin
           <ExportLoudness exportId={item.id} loudness={loudness} />
           {delivery && <small className="export-frozen-settings" data-testid="export-history-settings">{t('export.history.output', { dimensions: delivery.dimensions, fps: delivery.fps, rate: renderMessage(delivery.rateMessage), upscale: delivery.upscale ? t('export.history.upscale') : '' })}</small>}
         </div>
-        {invalidRange ? <Badge className="small-badge warn">{t('export.history.rangeUnavailable')}</Badge> : (item.url || item.assetId) && ['succeeded', 'completed', 'ready'].includes(item.status)
-          ? <a className="button primary small" href={item.url || `/media/${item.assetId}`}
+        {invalidRange ? <Badge className="small-badge warn">{t('export.history.rangeUnavailable')}</Badge> : (candidate ? candidateOutput.downloadHref : (item.url || item.assetId) && ['succeeded', 'completed', 'ready'].includes(item.status))
+          ? <a className="button primary small" href={candidate ? candidateOutput.downloadHref : item.url || `/media/${item.assetId}`}
               download={`${projectName || 'film'}.mp4`} data-testid="download-export">
               <Icon name="download" size={15} />{t('export.history.download')}</a>
           : held ? <Badge className="small-badge neutral">{t('export.history.retained')}</Badge> : item.status === 'failed'
             ? <Badge className="small-badge warn">{t('export.history.failed')}</Badge>
-            : <span className="spinner" />}
+            : candidate && item.status === 'succeeded' ? <Badge className="small-badge neutral">{exportHistoryStatusMessage(item.status, locale)}</Badge> : <span className="spinner" />}
       </div>; })
       : <div className="small-empty">
           <Icon name="download" size={29} />

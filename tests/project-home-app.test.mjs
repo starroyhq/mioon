@@ -35,7 +35,7 @@ function environment(options = {}) {
   const calls = [], registry = createSettingsNavigationRegistry();
   const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
     ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace,
-    editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
+    editorInitialSelection, revealNativeProjects, application: null, nativeWindow: options.nativeWindow ?? null,
     nativeProjectEntry: { open: async projectId => { calls.push(['nativeEntry.open', projectId]); return true; },
       show: async mode => { calls.push(['nativeEntry.show', mode]); return true; },
       readCloseSnapshot: () => ({ dirty: false, busy: false, unknown: false, identity: [] }) },

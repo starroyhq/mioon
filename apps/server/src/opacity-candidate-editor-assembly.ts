@@ -3,7 +3,7 @@
 import {createRequire} from 'node:module';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {getOpacityCandidateAssembly} from '../../../packages/business/src/opacity-candidate-store.ts';
-import {createOpacityCandidateServices} from '../../../packages/business/src/opacity-candidate-services.ts';
+import {createOpacityCandidateServices, createOpacityCandidateApplicationServices} from '../../../packages/business/src/opacity-candidate-services.ts';
 import {createOpacityCandidateLocalDrafts} from '../../../packages/business/src/opacity-candidate-local-drafts.ts';
 import {createLocalDraftHttp} from './local-drafts-http.ts';
 
@@ -16,6 +16,16 @@ function unavailable(): never {throw new AppError('RESTORE_OPERATION_UNAVAILABLE
 /** Fixed dependencies only: caller options cannot replace the store proof,
  * service, task coordinator, companion codec or historical validators. */
 export function createOpacityCandidateEditorAssembly(store: unknown) {
+  return createEditor(store, false);
+}
+
+/** The application factory independently requires the exact, newly-created42
+ * store marker. Neither an HTTP field nor a reopened candidate can select it. */
+export function createOpacityCandidateApplicationEditorAssembly(store: unknown, options: {signal?: AbortSignal} = {}) {
+  return createEditor(store, true, options.signal);
+}
+
+function createEditor(store: unknown, application: boolean, ownerSignal?: AbortSignal) {
   const candidate = getOpacityCandidateAssembly(store);
   if (!candidate) return unavailable();
   const assembly = candidate, lifetime = new AbortController();
@@ -24,7 +34,8 @@ export function createOpacityCandidateEditorAssembly(store: unknown) {
     if (lifetime.signal.aborted || getOpacityCandidateAssembly(store) !== assembly) unavailable();
   };
   checkpoint();
-  const services = createOpacityCandidateServices(store, {signal: lifetime.signal});
+  const signal = ownerSignal ? AbortSignal.any([lifetime.signal, ownerSignal]) : lifetime.signal;
+  const services = application ? createOpacityCandidateApplicationServices(store, {signal}) : createOpacityCandidateServices(store, {signal});
   // A concrete existing legacy entrypoint, with a small checked boundary.
   // No ambient declaration pretends the coordinator is TypeScript.
   const module: unknown = require('../../../packages/business/src/edit-tasks.mjs');
@@ -56,7 +67,9 @@ export function createOpacityCandidateEditorAssembly(store: unknown) {
     lifetime.abort();
     const method = coordinator.drain;
     const taskDrain = Promise.resolve().then(() => typeof method === 'function' ? Reflect.apply(method as Method, coordinator, []) : undefined);
-    draining = Promise.allSettled([taskDrain, services.drain()]).then(() => {});
+    draining = Promise.allSettled([taskDrain, services.drain()]).then(settled => {
+      for (const result of settled) if (result.status === 'rejected') throw result.reason;
+    });
     return draining;
   }
   return Object.freeze({services, tasks, localDraftHttp, drain});

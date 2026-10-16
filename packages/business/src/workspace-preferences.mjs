@@ -2,6 +2,7 @@ import {getWorkspaceRestoreContext} from './workspace-restore-schema.mjs';
 import {withRestoreInvocation,freezeRestoreInput} from './workspace-restore-invocation.mjs';
 import {refuseRestoredOperation,assertWorkspaceRestoreOrigin} from './workspace-restore-policy.mjs';
 import {AppError, schemas} from '@mioon/contracts';
+import {getOpacityCandidateAssembly,isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
 
 // This is a renderer-only whitelist, deliberately separate from operation
 // schemas and project/timeline records. Free text and request recovery IDs do
@@ -105,6 +106,13 @@ export function parseWorkspacePreferencesState(value) {
 
 export function createWorkspacePreferences(store) {
   const {db, tx} = store;
+  // Only the explicit fresh42 application handle can use this fixed local
+  // companion. Ordinary/reopened42 and restored43 gain no new permission.
+  const candidate=isOpacityCandidateApplicationStore(store)?getOpacityCandidateAssembly(store):null;
+  const candidateCheckpoint=()=>{
+    candidate?.checkpoint();
+    if(candidate&&(!isOpacityCandidateApplicationStore(store)||getOpacityCandidateAssembly(store)!==candidate))throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate workspace is unavailable.',409);
+  };
   const requireProject = projectId => {
     id(projectId, ['projectId'], false);
     if (!store.get('projects', projectId)) throw new AppError('NOT_FOUND', '找不到项目', 404, {projectId});
@@ -116,10 +124,12 @@ export function createWorkspacePreferences(store) {
   const result = (projectId, row) => ({projectId, revision: row?.revision ?? 0, state: row ? parseWorkspacePreferencesState(JSON.parse(row.state)) : null});
   return {
     get(projectId) {
+      candidateCheckpoint();
       requireProject(projectId);
       return result(projectId, current(projectId));
     },
     put(projectId, input, context = {}) {
+      candidateCheckpoint();
       id(projectId, ['projectId'], false);
       const payload = object(input, ['expectedRevision', 'state'], []);
       const expectedRevision = numeric(payload.expectedRevision, 0, Number.MAX_SAFE_INTEGER, ['expectedRevision'], true);
@@ -127,7 +137,7 @@ export function createWorkspacePreferences(store) {
       if (Buffer.byteLength(state) > MAX_WORKSPACE_PREFERENCES_BYTES) invalid(['state'], 'Preferences are too large');
       const identity=freezeRestoreInput({projectId,expectedRevision,state});
       const apply=()=>tx(() => {
-        refuseRestoredOperation(store,'workspace.preferences.put',identity);
+        if(candidate)candidateCheckpoint();else refuseRestoredOperation(store,'workspace.preferences.put',identity);
         requireProject(projectId);
         const previous = current(projectId), revision = previous?.revision ?? 0;
         // Only an exact retry of the most recent accepted write is replayable.
@@ -141,6 +151,7 @@ export function createWorkspacePreferences(store) {
         else db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, next.revision, state);
         return result(projectId, next);
       });
+      if(candidate){candidateCheckpoint();return apply();}
       if(!getWorkspaceRestoreContext(store))return apply();
       assertWorkspaceRestoreOrigin(store,context);
       return withRestoreInvocation(store,'workspace.preferences.put',identity,{signal:context.signal},apply);

@@ -2,9 +2,11 @@
 
 The M0–M3 and V2–V4.1 checklists below are historical records. The last verified
 published application integration is `ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`
-on GitHub main. This Mac's latest code/test checkpoint is
-`25609e98b8990eaa121124f35242f0bcf4a4b3ae`: a local-only LUT test-fixture repair,
-not yet pushed. Identify later documentation descendants with `git rev-parse HEAD`.
+on GitHub main. Local-only opacity work now follows
+`ec01753056c0f31706d29ed279ae1944c822ad94`: the latest slice connects a fresh,
+independent42 development workspace to the shared App. See the
+[application boundary and evidence](docs/OPACITY-CANDIDATE-APPLICATION.md).
+It is unpushed; identify the exact local commit with `git rev-parse HEAD`.
 
 Implemented slices include the independent Settings center, four-language
 presentation, 1–300-frame sample export preview, continuous saved-timeline audio,
@@ -25,12 +27,15 @@ Volume-envelope native Save/Undo/Redo and normal close passed on `dc7a057`.
 Inspector reopen, CJK IME and four-language native acceptance remain unfinished;
 this is not all-platform acceptance. Continuous-audio wall-clock/resource gates
 and LUT exact-file reselection/restart qualification retain their separate limits.
-Full Log/HDR, a general plugin broker/SDK, visual keyframes and transitions remain
+Clip opacity keyframes now have the isolated fresh42 application slice; GUI and
+real-media acceptance, existing42 reopening and42→43 backup remain open. Other
+visual keyframes, transitions, Full Log/HDR and a general plugin broker/SDK remain
 future feature work.
 
 The limited local Linux trial remains available. New logic uses TS; preserve the
-user's workbench, media, shared services, drafts and receipts. This documentation
-alignment runs no tests, build, GUI or media and performs no push. Platform/native,
+user's workbench, media, shared services, drafts and receipts. The earlier documentation
+alignment ran no tests or build; current opacity qualification is linked above.
+It runs no GUI/media and performs no push. Platform/native,
 installer/signing and real-provider gates remain separately scoped; later work
 has no implicit spending or publication authority.
 

@@ -1,4 +1,4 @@
-import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {getOpacityCandidateAssembly,isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
 import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
 import {opacityEnvelopeFieldsAfterEdit} from '../../contracts/src/timeline-opacity-envelope.ts';
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
@@ -258,7 +258,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   'timeline.clip.add':input=>mutate('timeline.clip.add',input,(timeline,boundary)=>{
    const source=boundary.inputAsset(input.assetId);
    timeline.clips.push({id:randomUUID(),trackId:input.trackId,assetId:input.assetId,name:input.name||source.name||'Clip',startFrame:input.startFrame,durationFrames:input.durationFrames,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(timeline),gain:input.gain??1,
-    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
+    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope',...(isOpacityCandidateApplicationStore(store)?['opacityEnvelope']:[])].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
   'timeline.clip.update':input=>updateClip(input),
   'timeline.clip.replaceSource':input=>{

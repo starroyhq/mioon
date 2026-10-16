@@ -7,6 +7,13 @@ has not been pushed. The push was verified by reading back the exact remote SHA;
 no workflow runs, check runs or commit statuses were visible at that query, so
 CI success is not claimed. This documentation update performs no fresh remote query.
 
+Local-only opacity development now follows `ec01753056c0f31706d29ed279ae1944c822ad94`:
+the [fresh42 application slice](docs/OPACITY-CANDIDATE-APPLICATION.md) connects
+project/import/edit/Inspector v3/tasks/preview/download in the shared App, with
+synthetic no-listen qualification and canonical builds. Default40/41 remains;
+GUI/media acceptance, existing42 reopening and42→43 backup are still pending.
+Use `git rev-parse HEAD` for the exact local commit; no push was performed.
+
 - **Implemented:** independent Settings center, four-language presentation,
   1–300-frame sample export preview, continuous saved-timeline audio, and the
   volume-envelope backend plus integrated row editor. Earlier prototype/dormant
@@ -29,11 +36,13 @@ CI success is not claimed. This documentation update performs no fresh remote qu
   [integration](docs/VOLUME-ENVELOPE-EDITOR-INTEGRATION.md) retains its earlier scope.
 - **Still separate:** 600-second wall-clock audio/resource qualification, exact-file
   LUT reselection/native restart, complete platform/installer/signing and real-provider
-  gates. Full Log/HDR, a general plugin broker/SDK and visual keyframes/transitions
-  remain future features. See the [current queue](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-16).
+  gates. Other visual keyframes/transitions, Full Log/HDR and a general plugin
+  broker/SDK remain future features; opacity has only the isolated scope above.
+  See the [current queue](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-16).
 
 The dated entries below retain their original evidence, test counts and Git facts.
-This alignment changes documentation only; no tests, GUI, media or build were run.
+The earlier index alignment changed documentation only; current local opacity
+test/build evidence is linked above. GUI/media acceptance remains separate.
 
 # Historical local single-Look increment — 2026-10-15
 

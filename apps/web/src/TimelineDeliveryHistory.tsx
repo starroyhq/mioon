@@ -20,12 +20,13 @@ export interface TimelineDeliveryHistoryProps {
   timelineRevision?: unknown;
   statusLabel: string;
   held?: boolean;
+  downloadEnabled?: boolean;
   filmIcon?: ReactNode;
   downloadIcon?: ReactNode;
 }
 
 /** Frozen timeline rows stay independent of today's project title/settings. */
-export default function TimelineDeliveryHistory({ item, samplePeak, loudness, frozenDelivery, timelineRevision, statusLabel, held = false, filmIcon, downloadIcon }: TimelineDeliveryHistoryProps) {
+export default function TimelineDeliveryHistory({ item, samplePeak, loudness, frozenDelivery, timelineRevision, statusLabel, held = false, downloadEnabled = true, filmIcon, downloadIcon }: TimelineDeliveryHistoryProps) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const delivery = namedTimelineDeliveryHistory(item, frozenDelivery);
   if (!delivery || hasInvalidExportRangeHistory(item)) return <div className="export-card" data-testid="named-delivery-invalid"><div className="export-icon">{filmIcon}</div><div className="export-detail"><strong>{t('export.history.title')}</strong><p className="notice warning">{t('export.history.invalidDelivery')}</p>{held && <span className="restored-held-label" data-testid="restored-export-held">{t('export.history.held')}</span>}</div></div>;
@@ -44,7 +45,7 @@ export default function TimelineDeliveryHistory({ item, samplePeak, loudness, fr
       <ExportRangeSummary input={snapshot} snapshot testId="export-history-range" />
       {output ? <small className="export-frozen-settings" data-testid="export-history-settings">{t(snapshot && typeof snapshot === 'object' && Object.hasOwn(snapshot, 'delivery') ? 'export.history.output' : 'export.history.legacyOutput', { dimensions: output.dimensions, fps: output.fps, rate: renderMessage(output.rateMessage) || t('export.history.legacyRate'), upscale: output.upscale ? t('export.history.upscale') : '' })}</small> : <small>{t('export.history.frozenUnavailable')}</small>}
     </div>
-    {delivery.downloadHref
+    {downloadEnabled && delivery.downloadHref
       ? <Button variant="ghost" className="button primary small" render={<a href={delivery.downloadHref} download data-testid="download-export" />}>{downloadIcon}{t('export.history.download')}</Button>
       : held ? <Badge className="small-badge neutral">{t('export.history.retained')}</Badge>
         : delivery.status === 'failed' ? <Badge className="small-badge warn">{t('export.history.failed')}</Badge> : <span className="spinner" />}
