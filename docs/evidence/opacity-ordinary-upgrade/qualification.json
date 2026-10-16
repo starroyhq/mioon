@@ -1,0 +1,210 @@
+{
+  "date": "2026-10-16 UTC",
+  "baseline": "4607947c2ff7a3e8f44b20f2a157224c3641d78b",
+  "outcome": "Explicit qualified ordinary40 source plus existing verified40 backup produces a new ordinary42 copy. No in-place or default upgrade.",
+  "aggregate": {
+    "startedAt": "2026-10-16T08:44:30.641Z",
+    "finishedAt": "2026-10-16T08:46:00.002Z",
+    "node": "v26.9.0",
+    "files": 11,
+    "exitCode": 0,
+    "signal": null,
+    "tests": 235,
+    "pass": 235,
+    "fail": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "selection": "aggregate-selection.json",
+    "log": "aggregate-tests.txt"
+  },
+  "standalone": {
+    "script": "qualification-process.mjs",
+    "record": "qualification-record.json",
+    "cli": "cli-process.json",
+    "sourceBackupAndTargetSeparate": true,
+    "threeIndependentProcessIds": [
+      61274,
+      63488,
+      65289
+    ],
+    "actualCliExitCode": 0,
+    "actual42ReopenAndClose": true,
+    "allRawRowsPreserved": true,
+    "sourceAndBackupUnchanged": true,
+    "lastProjectScopeReboundOnly": true,
+    "emptyDraftExcludedExplicitly": true,
+    "noMediaOrListener": true
+  },
+  "builds": {
+    "canonical": {
+      "command": "node scripts/tooling.mjs build",
+      "exitCode": 0,
+      "evidence": "build.txt",
+      "includes": "Canonical strict typecheck, default Web and development Desktop source bundles."
+    },
+    "standaloneTypecheck": {
+      "command": "node scripts/tooling.mjs typecheck",
+      "exitCode": 0,
+      "note": "Earlier source check0; final source also checked by canonical build."
+    },
+    "candidate": {
+      "command": "node node_modules/vite/bin/vite.js build --mode opacity-candidate",
+      "cwd": "apps/web",
+      "exitCode": 0,
+      "evidence": "candidate-build.txt"
+    },
+    "warnings": [
+      "Existing bundle-size warnings; no threshold changed."
+    ],
+    "node": "v26.9.0",
+    "notClaimed": [
+      "Installer build",
+      "Node24",
+      "Cross-platform",
+      "GUI"
+    ]
+  },
+  "frozen": {
+    "manifest": "tests/fixtures/opacity-envelope-frozen-baseline.json",
+    "manifestSha256": "7381ed3486563b84cf4f4912dfde81ae07b0369cde4e479ad2b1bcfd88633f0d",
+    "entries": 64,
+    "unchanged": 63,
+    "existingExceptions": [
+      {
+        "file": "packages/business/src/timeline-media.mjs",
+        "sha256": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee",
+        "baseline": "b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde",
+        "existingException": true,
+        "passed": true
+      }
+    ],
+    "failed": []
+  },
+  "review": {
+    "baseline": "4607947c2ff7a3e8f44b20f2a157224c3641d78b",
+    "reviewer": "/root/ordinary40_upgrade_review",
+    "standards": {
+      "findings": 0,
+      "scope": [
+        "New runtime TypeScript",
+        "Legacy JS only exports existing publication helpers",
+        "No frozen constructor, default entrypoint, JS allowlist or typecheck changes"
+      ]
+    },
+    "spec": {
+      "findings": 0,
+      "scope": [
+        "Cold ordinary40 source with existing verified40 archive",
+        "Source SQLite never opened; backup inspected only through disposable copies",
+        "Settled/ACK task and receipt validation; unsupported families rejected",
+        "Canonical imported assets and verified timeline export history",
+        "Raw storage class/rowid/cell/sequence/LUT/history/receipt/preferences preservation",
+        "Companion refusal and explicit empty policy; last-project scope rebinding",
+        "Atomic metadata, mandatory directory fsync, no-clobber and uncertain publication"
+      ]
+    },
+    "independentTests": {
+      "files": [
+        "tests/opacity-upgrade-database.test.mjs",
+        "tests/opacity-upgrade-companions.test.mjs"
+      ],
+      "tests": 62,
+      "pass": 62,
+      "fail": 0,
+      "skipped": 0,
+      "note": "Reviewer-reported run overlaps aggregate; no addition to its total."
+    },
+    "remaining": [
+      "Production default enablement",
+      "Real GUI and installer workflows",
+      "Unsupported legacy asset/export/task families"
+    ],
+    "blockers": []
+  },
+  "faultRepair": {
+    "evidence": "faults-stages.json",
+    "note": "First40:38pass2fail; revised49:48pass1fail for safe IO classification; final49pass, all overlap aggregate. No test weakening."
+  },
+  "qualificationPreparation": {
+    "firstAttempt": "Owned seed preparation failed before backup/upgrade because its disposable reader wrongly required a legacy0644 database to be0600. Source was not changed and no42 was produced. Reader was corrected to existing source databasePrivate:false policy; final three-process qualification passed."
+  },
+  "policy": {
+    "source": "Exact ordinary40; original and existing backup data unchanged",
+    "target": "New ordinary42; marker plus full eligibility/raw preservation proof",
+    "tasks": "Only settled acknowledged supported task evidence; unsupported families rejected",
+    "drafts": "Active/retained/unknown input refused; validated empty/tombstone companions excluded and source retained",
+    "preferences": "Database state/revision bytes preserved; validated last-project only changes scope",
+    "excluded": "Credentials, settings, browser state and application language are not read/copied"
+  },
+  "remaining": [
+    "Production default enablement or GUI upgrade button",
+    "Real GUI upgrade/reopen acceptance",
+    "Broader legacy generated assets, sequence exports and complex task families",
+    "Node24, installers and cross-platform qualification"
+  ],
+  "operations": {
+    "newApprovalDenials": [],
+    "pending": [],
+    "uncertainActualOperations": [],
+    "oldListenerEpermRetried": false,
+    "oldDisconnectedGuiRetried": false,
+    "pushPerformed": false
+  },
+  "workspacePreservation": {
+    "path": "designs/",
+    "origin": "Unowned user changes",
+    "contentsRead": false,
+    "modified": false,
+    "excludedFromCommit": true
+  },
+  "normalization": {
+    "scope": "Log copies only; trim line-end spaces/tabs, no source/assertion changes.",
+    "records": [
+      {
+        "file": "aggregate-tests.txt",
+        "originalSha256": "d8c703a689740560ec5272bab3b7549e51a6f732b243f4127dfb629384798b56",
+        "changed": false
+      },
+      {
+        "file": "build.txt",
+        "originalSha256": "ae2e4b76bb6b5598161c37f5fbc978ca3aa14577896c959f9a88fee2dcbb3c5f",
+        "changed": false
+      },
+      {
+        "file": "candidate-build.txt",
+        "originalSha256": "0cad18d68c685fcaff7fcab5d958abeec11858f9dc3be3652f94f14ec44899e6",
+        "changed": false
+      },
+      {
+        "file": "seed-output.txt",
+        "originalSha256": "709099442ede20f02274f10a4a854f4195ec78fbaf3f586ebcc29ad3560fce7e",
+        "changed": false
+      },
+      {
+        "file": "audit-output.txt",
+        "originalSha256": "6894d9c390dcd655b6c58c629355951557347198acf5038e8858212ab1c8dfb0",
+        "changed": false
+      }
+    ]
+  },
+  "evidenceSha256": {
+    "aggregate-selection.json": "05731500629d852571ba04582e14d6450d764903823cd5bd2f508134e99d5a9e",
+    "aggregate-summary.json": "de008125ae6ece467fcc7aded26f59729109811aca42e0a0258d5a8fe3fb265d",
+    "aggregate-tests.txt": "d8c703a689740560ec5272bab3b7549e51a6f732b243f4127dfb629384798b56",
+    "audit-output.txt": "6894d9c390dcd655b6c58c629355951557347198acf5038e8858212ab1c8dfb0",
+    "build-summary.json": "381beec36a4708641a862a0f970003e86d10fd917c022da930b55c02bc74cd7c",
+    "build.txt": "ae2e4b76bb6b5598161c37f5fbc978ca3aa14577896c959f9a88fee2dcbb3c5f",
+    "candidate-build.txt": "0cad18d68c685fcaff7fcab5d958abeec11858f9dc3be3652f94f14ec44899e6",
+    "cli-notice.txt": "e6f8ac3f3126738be3e866400085c5cb01a4d1fe845ab80d802cedc2f724cfd8",
+    "cli-process.json": "92f65db2a045e0ef82b35a39508e221e37d0445f4c538485fa1dd3904978f8f5",
+    "cli-result.json": "ce3834ed71c3f64720147fe27e6ab77a86f2ed48c9edd63934283588b7c88ee8",
+    "faults-final.txt": "37584a7b6b8ae84d9098a9cc639645a66be952ac3d303879651fbab38096c1d0",
+    "faults-stages.json": "dbc5beb2fc8b9044eddbc498a4a14c941f7e39f8bf510eb3ca17d7ba49bc3653",
+    "frozen-check.json": "fab13e819642ace28f52b2d0fca21b6a678f1d12c2e108581e799e14a0a9ae5f",
+    "independent-review.json": "de1a1417578247a0a0cb21845ca510386f0996924c2950012fd6cd6838e25c70",
+    "qualification-process.mjs": "13d3db916d93150fb68481f5a4eac5ca101a0bf92a12a521b88daff935d1628b",
+    "qualification-record.json": "02de6143189ac65cd3cc087d3df89da9d0d844074cdf6d6397be159cb2b24d9e",
+    "seed-output.txt": "709099442ede20f02274f10a4a854f4195ec78fbaf3f586ebcc29ad3560fce7e",
+    "supplementary-evidence.json": "74f2ac24be9fcefafcb80df27a70ed939354540954d4a5a24abd25ef9af38d6c"
+  }
+}

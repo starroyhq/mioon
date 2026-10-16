@@ -104,6 +104,10 @@ function publishCandidate(candidate,final,root,identity,check,onAttempt,onLinked
  syncDirectory(root,root);
  return finalIdentity;
 }
+// Fixed offline upgrade reuses this exact no-clobber publication boundary.
+// This export does not select a source schema or change legacy restore callers.
+export {publishCandidate as publishOfflineWorkspaceCandidate, checkDestinationAncestors as checkOfflineWorkspaceDestinationAncestors,
+ syncFile as syncOfflineWorkspaceFile, noSidecars as assertOfflineWorkspaceNoSidecars, exactDestination as checkOfflineWorkspaceDestinationTree};
 
 /** Restore format1/schema24 to a new independent private working branch.
  * Backup warnings are preserved, including missing media and incomplete stages.
