@@ -9,6 +9,8 @@ import { validateCatalogs, translate } from '../packages/i18n/src/index.ts';
 import { volumeEnvelopeMessages } from '../packages/i18n/src/catalogs/volume-envelope.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 import { rawVolumeEnvelopeChanged } from '../apps/web/src/clip-volume-envelope-state.ts';
+import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
+import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 const capability={profileId:VOLUME_ENVELOPE_PROFILE,editable:true};
 const normal={restored:false};
 const id=n=>`a1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -53,6 +55,8 @@ function inspector(locale='en', eligible=true, supported=true){
   if(name.endsWith('clip-draft-hook.ts'))return {useClipDraft:()=>({state,controller})};
   if(name.endsWith('clip-draft-state.ts'))return {clipDraftRaw:clip=>({...raw,volumeEnvelope:clip.volumeEnvelope}),clipDraftSource:()=>({}),clipDraftPatch:()=>({})};
   if(name.endsWith('clip-volume-envelope-state.ts'))return {rawVolumeEnvelopeChanged};
+  if(name.endsWith('clip-opacity-envelope-state.ts'))return opacityState;
+  if(name.endsWith('clip-opacity-candidate-assembly.ts'))return opacityAssembly;
   if(name.endsWith('clip-audio-role-state.ts'))return {clipAudioRoleChanged:()=>false};
   if(name.endsWith('clip-audio-state.js'))return {clipAudioIssue:()=>''};
   if(name.endsWith('timeline-format-state.js'))return {timelineRectIssue:()=>'',timelineRectMessage:()=>''};

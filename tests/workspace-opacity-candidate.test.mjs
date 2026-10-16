@@ -83,7 +83,7 @@ test('historical25–41 source, validators, dispatch and raw fixture hashes rema
 test('candidate modules remain absent from production exports, startup, operations and permissions', () => {
   for (const path of ['packages/contracts/package.json', 'packages/contracts/src/index.mjs', 'packages/business/src/db.mjs',
     'packages/business/src/workspace-schema-dispatch.ts', 'packages/business/src/workspace-restore-policy.mjs',
-    'packages/business/src/timeline-inputs.mjs', 'packages/business/src/timeline-media.mjs', 'apps/web/src/TimelineInspector.jsx']) {
+    'packages/business/src/timeline-inputs.mjs', 'packages/business/src/timeline-media.mjs']) {
     const source = readFileSync(new URL(path, root), 'utf8');
     assert.equal(/(?:timeline-opacity|workspace-opacity|local-drafts-opacity|opacityEnvelope)/u.test(source), false, path);
   }

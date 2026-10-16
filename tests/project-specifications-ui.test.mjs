@@ -13,6 +13,10 @@ import { createLocalDeliveryController } from '../apps/web/src/local-delivery-st
 import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.js';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
+import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
+import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
+import * as volumeState from '../apps/web/src/clip-volume-envelope-state.ts';
+import * as audioRoleState from '../apps/web/src/clip-audio-role-state.ts';
 
 const id = n => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
@@ -157,7 +161,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name, imports = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [typeof value === 'function' ? value() : value, () => {}] }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, key => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.js' ? format : key === './export-settings-state.js' ? exportSettings : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-opacity-candidate-assembly.ts' ? opacityAssembly : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : imports[key] || primitive);
   return module.exports;
 }
 

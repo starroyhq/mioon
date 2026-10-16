@@ -66,7 +66,7 @@ function preflight(root: string, storage: unknown): void {
     legacyCall(storage, 'validateManagedDirectory', [path.join(root, name), {root, allowMissing: true, private: privateMode}]);
   for (const name of ['workbench.sqlite', 'workbench.sqlite-wal', 'workbench.sqlite-shm', 'workbench.sqlite-journal'])
     legacyCall(storage, 'validateManagedFile', [path.join(root, name), {root, allowMissing: true}]);
-  for (const [name, maxBytes] of [['server.lock', 64], ['access-token', 4098], ['local-drafts-v1.json', 2 * 1024 * 1024]] as const)
+  for (const [name, maxBytes] of [['server.lock', 64], ['access-token', 4098], ['local-drafts-v1.json', 2 * 1024 * 1024], ['local-drafts-v3.json', 2 * 1024 * 1024]] as const)
     legacyCall(storage, 'validateManagedFile', [path.join(root, name), {root, allowMissing: true, private: name !== 'server.lock', maxBytes}]);
   for (const name of ['agent-settings', 'image-settings', 'comfy-settings']) {
     const directory = path.join(root, name);
