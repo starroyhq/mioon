@@ -11,7 +11,7 @@ import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {initializeWorkspaceSchema42} from './workspace-schema-v42.ts';
 import {classifyWorkspaceSchemaV42V43, validateWorkspaceRestoreSchemaV43} from './workspace-restore-schema-v43.ts';
-import {captureOpacityRenderInput} from '../../contracts/src/timeline-opacity-render-candidate.ts';
+import {captureOpacityRenderInput, captureOpacityPreflightInput, captureOpacityCapabilitiesInput} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 
 const require = createRequire(import.meta.url);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -101,6 +101,9 @@ export function freezeOpacityCandidateInput<T>(value: T): T {
 }
 export const OPACITY_CANDIDATE_RESTORE_READ_OPERATIONS = Object.freeze(['project.list', 'project.get', 'timeline.get', 'timeline.history.get', 'timeline.format.get']);
 export const OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS = Object.freeze(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render']);
+// Read-only source preparation has an expiring invocation, but never enters
+// the mutation/task allowlist or acquires request/history/worker authority.
+export const OPACITY_CANDIDATE_ADVISORY_OPERATIONS = Object.freeze(['timeline.export.preflight', 'timeline.export.capabilities']);
 export interface OpacityCandidateAssembly {
   checkpoint(): void;
   ownsLock(): boolean;
@@ -225,17 +228,19 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
       entry.validate?.(); return entry;
     };
     const assertInvocation = (operation: string, input: unknown): void => {
-      if (!context() && operation !== 'timeline.render') return;
+      if (!context() && operation !== 'timeline.render' && !OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation)) return;
       const entry = live(invocations.getStore());
       if (operation === 'timeline.get' && object(input) && input.projectId === entry.projectId && entry.operation === 'timeline.clip.update') return;
       if (entry.operation !== operation || entry.inputDigest !== digest(input)) unavailable();
     };
     const runInvocation = <T>(operation: string, input: unknown, options: InvocationOptions, validate: (() => void) | undefined, callback: (input: unknown) => T): T => {
-      if (!OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation)) unavailable();
+      if (!OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation) && !OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation)) unavailable();
       if (operation === 'timeline.render') {try {captureOpacityRenderInput(input);} catch {unavailable();}}
+      if (operation === 'timeline.export.preflight') {try {captureOpacityPreflightInput(input);} catch {unavailable();}}
+      if (operation === 'timeline.export.capabilities') {try {captureOpacityCapabilitiesInput(input);} catch {unavailable();}}
       const inherited = invocations.getStore();
       if (inherited && inherited.store !== store) unavailable();
-      if (!context() && operation !== 'timeline.render') return callback(input);
+      if (!context() && operation !== 'timeline.render' && !OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation)) return callback(input);
       if (inherited) {assertInvocation(operation, input); return callback(input);}
       const frozen = freezeOpacityCandidateInput(input);
       const entry: Invocation = Object.freeze({store, origin: restored?.workspaceOrigin ?? '', operation, inputDigest: digest(frozen), projectId: object(frozen) ? frozen.projectId : undefined, signal: options.signal, validate});
@@ -263,6 +268,7 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
       },
       refuseOperation: (operation: string, input?: unknown) => {
         const restore = context();
+        if (OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation)) {assertInvocation(operation, input); return;}
         if (OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation)) {if (restore || operation === 'timeline.render') {assertInvocation(operation, input); requestVacant(operation, input);} return;}
         if (OPACITY_CANDIDATE_RESTORE_READ_OPERATIONS.includes(operation)) return;
         unavailable();
@@ -280,7 +286,7 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
         if (entry.store !== store) unavailable();
         assertInvocation(operation, input); return true;
       },
-      effectFence: () => {const inherited = invocations.getStore();if (!context() && inherited?.operation !== 'timeline.render') return undefined; const entry = live(inherited); return () => {live(entry);};},
+      effectFence: () => {const inherited = invocations.getStore();if (!context() && inherited?.operation !== 'timeline.render' && !OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(inherited?.operation ?? '')) return undefined; const entry = live(inherited); return () => {live(entry);};},
       withTaskInvocation: <T>(row: unknown, options: InvocationOptions, callback: () => T): T => {
         if (object(row) && row.operation === 'timeline.render') unavailable();
         if (!context()) return callback();

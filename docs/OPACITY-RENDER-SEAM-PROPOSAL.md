@@ -53,6 +53,6 @@ ffmpeg -hide_banner -loglevel error -threads 1 -filter_threads 1
 
 - `node --test tests/*opacity*.test.mjs`：168/168顶层测试通过，含四语言 React/Inspector、草稿、实际42/43事务、source/claim/worker发布和冻结边界。实际 authority 的9项子进程用例另外由 wrapper 执行；codec传输被模拟，SQL、合成文件哈希／inode和共享 renderer 使用实际代码。
 - foundation严格类型检查及探针CLI独立严格检查通过；未扩大 legacy JS allowlist 或放宽类型设置。独立权限／发布审查和探针生命周期审查的问题均已修复并复核。
-- 默认生产40/41仍不启用候选42/43，不迁移用户项目。候选 `preflightSnapshotHash` 明确返回 `OPACITY_CANDIDATE_PREFLIGHT_UNAVAILABLE`，尚需单独接入候选 preflight。
+- 渲染片提交时，候选 `preflightSnapshotHash` 尚未接入。后续候选preflight片已复用同一raw freezer和source/LUT/inode守卫，并接通原capability及取消生命周期；见[当前编辑器与激活审查](OPACITY-CANDIDATE-EDITOR.md)。默认生产40/41仍未启用候选42/43，没有用户项目迁移。
 - 本机测试运行时为 Node26.9.0；没有可用 Node24，尚未补最低版本验证。未进行实际GUI手动验收、真实用户媒体或长时间FFmpeg测试；此次像素探针只证明固定48字节样本和本机FFmpeg的结果。
 - 额外旧恢复服务器测试有1项在监听 `127.0.0.1` 时被沙箱以 `EPERM` 阻止；相关媒体 fence 测试均通过。未提权重试此监听，没有不确定执行。

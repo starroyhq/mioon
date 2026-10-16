@@ -3078,6 +3078,90 @@ export const timelineDeliveryMessages = {
     "en": "Referenced assets are missing or do not belong to the current project.",
     "ja": "参照素材がないか、現在のプロジェクトに属していません。"
   },
+  "export.preflight.issue.TIMELINE_IMAGE_COMPOSITOR_BUDGET": {
+    "zh-Hans": "同一时段最多支持两个可见的 SDR 图片片段，请错开片段或隐藏多余图片轨道。",
+    "zh-Hant": "同一時段最多支援兩個可見的 SDR 圖片片段，請錯開片段或隱藏多餘圖片軌道。",
+    "en": "At most two SDR image clips can be visible at once. Stagger clips or hide extra image tracks.",
+    "ja": "同時に表示できる SDR 画像クリップは2個までです。配置をずらすか、余分な画像トラックを非表示にしてください。"
+  },
+  "export.preflight.issue.INVALID_TIMELINE_COLOUR": {
+    "zh-Hans": "请先为可见片段确认受支持的 SDR 素材色彩设置。",
+    "zh-Hant": "請先為可見片段確認受支援的 SDR 素材色彩設定。",
+    "en": "Confirm supported SDR source colour settings for visible clips first.",
+    "ja": "先に表示対象クリップの対応 SDR ソース色設定を確認してください。"
+  },
+  "export.preflight.issue.TIMELINE_COLOUR_SOURCE_UNSUPPORTED": {
+    "zh-Hans": "素材的色彩或像素格式不受当前 SDR 配置支持。",
+    "zh-Hant": "素材的色彩或像素格式不受目前 SDR 設定支援。",
+    "en": "The source colour or pixel format is unsupported by this SDR profile.",
+    "ja": "素材の色またはピクセル形式は、この SDR プロファイルに対応していません。"
+  },
+  "export.preflight.issue.TIMELINE_COLOUR_SOURCE_MISMATCH": {
+    "zh-Hans": "已保存的色彩设置与当前素材不符，请重新检查并确认素材。",
+    "zh-Hant": "已儲存的色彩設定與目前素材不符，請重新檢查並確認素材。",
+    "en": "Saved colour settings no longer match the source. Inspect and confirm it again.",
+    "ja": "保存済みの色設定が現在の素材と一致しません。素材を再検査して確認してください。"
+  },
+  "export.preflight.issue.TIMELINE_COLOUR_RESOURCE_CHANGED": {
+    "zh-Hans": "创意 LUT 的内容或校验值已变化，无法验证已保存的外观。",
+    "zh-Hant": "創意 LUT 的內容或校驗值已變更，無法驗證已儲存的外觀。",
+    "en": "Creative LUT contents or checksums changed; the saved look cannot be verified.",
+    "ja": "クリエイティブ LUT の内容またはチェックサムが変わり、保存済みのルックを検証できません。"
+  },
+  "export.preflight.issue.TIMELINE_COLOUR_LUT_BUDGET": {
+    "zh-Hans": "色彩资源或图片图层超过处理限额，请减少不同的外观、图片尺寸或图层。",
+    "zh-Hant": "色彩資源或圖片圖層超過處理上限，請減少不同的外觀、圖片尺寸或圖層。",
+    "en": "Colour resources or image layers exceed processing limits. Reduce distinct looks, image sizes or layers.",
+    "ja": "色リソースまたは画像レイヤーが処理上限を超えています。ルックの種類、画像サイズ、レイヤー数を減らしてください。"
+  },
+  "export.preflight.issue.TIMELINE_COLOUR_LOOK_UNAVAILABLE": {
+    "zh-Hans": "片段引用的创意 LUT 不可用，或不属于当前项目。",
+    "zh-Hant": "片段引用的創意 LUT 無法使用，或不屬於目前專案。",
+    "en": "The clip's creative LUT is unavailable or does not belong to this project.",
+    "ja": "クリップのクリエイティブ LUT が利用できないか、このプロジェクトに属していません。"
+  },
+  "export.preflight.issue.SOURCE_BOUNDS": {
+    "zh-Hans": "素材入点和片段时长超出素材范围，请调整入点或时长。",
+    "zh-Hant": "素材入點和片段時長超出素材範圍，請調整入點或時長。",
+    "en": "The source in-point and clip duration exceed source bounds. Adjust the in-point or duration.",
+    "ja": "素材のイン点とクリップの長さが素材範囲を超えています。イン点または長さを調整してください。"
+  },
+  "export.preflight.issue.FADE_AUDIO_UNSUPPORTED": {
+    "zh-Hans": "淡入淡出需要已确认含音频的音频或视频素材。",
+    "zh-Hant": "淡入淡出需要已確認含音訊的音訊或影片素材。",
+    "en": "Audio fades require an audio or video source with confirmed audio.",
+    "ja": "音声フェードには、音声を確認済みの音声素材または動画素材が必要です。"
+  },
+  "export.preflight.issue.AUDIO_ROLE_CLIP_UNSUPPORTED": {
+    "zh-Hans": "音频角色仅适用于音频或视频片段，不能用于静态图片。",
+    "zh-Hant": "音訊角色僅適用於音訊或影片片段，不能用於靜態圖片。",
+    "en": "Audio roles apply to audio or video clips, not still images.",
+    "ja": "音声ロールは音声または動画クリップにのみ設定できます。静止画像には設定できません。"
+  },
+  "export.preflight.issue.TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED": {
+    "zh-Hans": "音量关键帧需要受支持且含音频的素材，请检查素材或清除音量关键帧。",
+    "zh-Hant": "音量關鍵幀需要受支援且含音訊的素材，請檢查素材或清除音量關鍵幀。",
+    "en": "Volume keyframes require a supported source with audio. Check the source or clear its volume keyframes.",
+    "ja": "音量キーフレームには、音声を含む対応素材が必要です。素材を確認するか、音量キーフレームを解除してください。"
+  },
+  "export.preflight.issue.VOLUME_ENVELOPE_SOURCE_UNSUPPORTED": {
+    "zh-Hans": "实际素材未确认包含受支持的音频，无法应用音量关键帧。",
+    "zh-Hant": "實際素材未確認包含受支援的音訊，無法套用音量關鍵幀。",
+    "en": "Supported audio could not be confirmed in the actual source; volume keyframes cannot be applied.",
+    "ja": "実際の素材で対応する音声を確認できないため、音量キーフレームを適用できません。"
+  },
+  "export.preflight.issue.INVALID_CLIP_TYPE": {
+    "zh-Hans": "片段素材类型与轨道不符：视频轨道接收图片或视频，音频轨道接收音频。",
+    "zh-Hant": "片段素材類型與軌道不符：影片軌道接收圖片或影片，音訊軌道接收音訊。",
+    "en": "The source type does not match its track: video tracks accept images or video; audio tracks accept audio.",
+    "ja": "素材の種類がトラックと一致しません。動画トラックには画像または動画、音声トラックには音声を配置してください。"
+  },
+  "export.preflight.issue.INVALID_FADE": {
+    "zh-Hans": "音频淡入淡出帧数无效，或合计超过片段时长。",
+    "zh-Hant": "音訊淡入淡出幀數無效，或合計超過片段時長。",
+    "en": "Audio fade frame counts are invalid or their total exceeds the clip duration.",
+    "ja": "音声フェードのフレーム数が無効か、合計がクリップの長さを超えています。"
+  },
   "export.preflight.issue.PREFLIGHT_SOURCE_INVALID": {
     "zh-Hans": "源素材缺失，或无法在受管理的媒体目录中安全读取。",
     "zh-Hant": "來源素材遺失，或無法在受管理的媒體目錄中安全讀取。",

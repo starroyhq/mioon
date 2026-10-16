@@ -53,13 +53,13 @@ test('actual candidate services persist raw planned preview/export ACKs and repl
   }
 });
 
-test('candidate render preserves absent/null fields and refuses unimplemented preflight before writes or media',async t=>{
+test('candidate render preserves absent/null fields and refuses stale preflight before writes or media',async t=>{
   for(const fields of [{},{opacityEnvelope:null}]) {
     const f=fixture(t,fields),input=f.input(),result=await f.services.call('timeline.render',input);
     assert.equal(Object.hasOwn(result.snapshot.timeline.clips[0],'opacityEnvelope'),Object.hasOwn(fields,'opacityEnvelope'));
     assert.equal(Object.hasOwn(result.snapshot,'opacityPlan'),false);
     const before=contents(f.store),changes=f.store.db.prepare('SELECT total_changes() AS n').get().n;
-    await assert.rejects(f.services.call('timeline.render',{...f.input(),preflightSnapshotHash:'b'.repeat(64)}),{code:'OPACITY_CANDIDATE_PREFLIGHT_UNAVAILABLE'});
+    await assert.rejects(f.services.call('timeline.render',{...f.input(),preflightSnapshotHash:'b'.repeat(64)}),{code:'PREFLIGHT_STALE'});
     assert.equal(contents(f.store),before);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get().n,changes);
   }
 });

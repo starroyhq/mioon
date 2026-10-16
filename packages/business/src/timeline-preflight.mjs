@@ -12,6 +12,7 @@ import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.mjs';
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
+import {createOpacityCandidatePreflightRuntime,OPACITY_CANDIDATE_PREFLIGHT_MESSAGES} from './opacity-candidate-preflight.ts';
 
 const messages=Object.freeze({
  ...TIMELINE_COLOUR_PREFLIGHT_MESSAGES,
@@ -31,7 +32,7 @@ const messages=Object.freeze({
  PREFLIGHT_BUSY:'Another export check is running. Try this check again when it finishes.',
  PREFLIGHT_STALE:'The saved timeline or its source metadata changed. Run the check again.',
 });
-const issue=(code,severity='error')=>({code,severity,message:messages[code]});
+const issue=(code,severity='error')=>({code,severity,message:messages[code]??OPACITY_CANDIDATE_PREFLIGHT_MESSAGES[code]});
 const canonical=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);
 export const timelineSnapshotHash=snapshot=>createHash('sha256').update(canonical(snapshot)).digest('hex');
 function summary(snapshot,verified){
@@ -42,7 +43,8 @@ function summary(snapshot,verified){
   audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId).muted&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
 }
-function classify(error){
+function classify(error,opacity=false){
+ if(opacity&&Object.hasOwn(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES,error.code))return ['blocked',error.code];
  if(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,error.code))return ['blocked',error.code];
  if(error.code==='SUBTITLE_RESOURCE_UNAVAILABLE')return ['blocked','SUBTITLE_RESOURCE_UNAVAILABLE'];
  if(error.code==='INSPECTION_BUDGET_EXCEEDED')return ['incomplete','PREFLIGHT_SNAPSHOT_BUDGET'];
@@ -61,35 +63,41 @@ function classify(error){
  * bytes or full decode success. Owned children are joined before drain/close.
  */
 export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS}={}){
+ const opacity=createOpacityCandidatePreflightRuntime(store);
+ const readSnapshot=input=>opacity?opacity.readSnapshot(input):readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
  const active=new Set();let stopped=false,shutdownFailure;
  async function preflight(input,{signal:callSignal}={}){
-  refuseRestoredOperation(store,'timeline.export.preflight',input);
-  const beforeEffect=restoreEffectFence(store);
+  if(opacity)input=opacity.parse(input);
+  const beforeEffect=opacity?opacity.begin(input):(refuseRestoredOperation(store,'timeline.export.preflight',input),restoreEffectFence(store));
   const started=performance.now();
   const external=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
   const report={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision,snapshotHash:null,
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   let initial;
-  try{initial=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);}
-  catch(error){if(error.code==='NOT_FOUND')throw error;if(error.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,error.code)?error.code:error.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
+  try{initial=readSnapshot(input);}
+  catch(error){if(error.code==='NOT_FOUND'||opacity&&(safeWorkspaceRestoreError(error)||error.code==='RESTORE_STORE_UNVERIFIED'))throw error;if(error.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,error.code)||opacity&&Object.hasOwn(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES,error.code)?error.code:error.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
-  report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;report.snapshotHash=timelineSnapshotHash(initial.snapshot);
-  report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;
+  report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;
+  if(!opacity){report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;}
   const rangeIssue=timelineExportRangeBoundsIssue(input,initial.timeline.durationFrames);
   if(rangeIssue){report.snapshotHash=null;report.summary=null;}
   if(initial.timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
   if(rangeIssue){report.issues=[issue('EXPORT_RANGE_BOUNDS')];return report;}
   if(!initial.timeline.clips.length){report.issues=[issue('EMPTY_TIMELINE')];return report;}
+  if(opacity){report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;}
+  const validation=opacity?opacity.validationSnapshot(initial):initial.snapshot;
+  const validationTimeline=opacity?validation.timeline:initial.timeline;
   // Early structural check shares the renderer validator. Actual stream flags
   // and durations below replace these saved values and are validated again.
   try{
-   if(validateSubtitleSnapshotProfile(initial.snapshot))report.checks.subtitles={profileId:initial.snapshot.subtitleProfile.profileId,fontVerified:false,inkMeasured:false};
-   const savedAssets=new Map(initial.snapshot.assets.map(a=>[a.id,a]));
-   validateTimeline(initial.timeline,savedAssets,{structureOnly:true});
-   validateSavedTimeline(JSON.parse(JSON.stringify(initial.timeline)),{track:(timeline,id)=>timeline.tracks.find(t=>t.id===id),asset:(_projectId,id)=>savedAssets.get(id)});
+   if(validateSubtitleSnapshotProfile(validation))report.checks.subtitles={profileId:validation.subtitleProfile.profileId,fontVerified:false,inkMeasured:false};
+   const savedAssets=new Map(validation.assets.map(a=>[a.id,a]));
+   if(opacity)validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:(timeline,id)=>timeline.tracks.find(t=>t.id===id),asset:(_projectId,id)=>savedAssets.get(id)});
+   validateTimeline(validationTimeline,savedAssets,{structureOnly:true});
+   if(!opacity)validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:(timeline,id)=>timeline.tracks.find(t=>t.id===id),asset:(_projectId,id)=>savedAssets.get(id)});
   }
-  catch{report.issues=[issue('INVALID_TIMELINE_SNAPSHOT')];return report;}
+  catch(error){report.issues=[issue(opacity&&Object.hasOwn(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES,error.code)?error.code:'INVALID_TIMELINE_SNAPSHOT')];return report;}
   const remaining=limits.timeoutMs-(performance.now()-started);
   if(remaining<=0){report.status='incomplete';report.issues=[issue('PREFLIGHT_TIMEOUT','warning')];return report;}
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
@@ -99,8 +107,9 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},remaining);
   const preparation=(async()=>{
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;}
-   return prepareTimelineInputs(initial.snapshot,{root:store.root,projectId:input.projectId,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id);},
-   signal,budget,beforeEffect,readLut:createTimelineColourLutReader(store.db,input.projectId),probe:async(file,options)=>{beforeEffect?.();const result=await probe(file,{...options,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}});
+   const options={signal,budget,beforeEffect,probe:async(file,options)=>{beforeEffect?.();const result=await probe(file,{...options,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
+   return opacity?opacity.prepare(initial,input,options):prepareTimelineInputs(initial.snapshot,{root:store.root,projectId:input.projectId,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id);},
+    ...options,readLut:createTimelineColourLutReader(store.db,input.projectId)});
   })();
   // A caller can observe its deadline, but the exact underlying preparation
   // remains owned until it settles. No new check is admitted, nor successful
@@ -113,12 +122,12 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
   const work=(async()=>{
    try{
     const verified=await awaitProvider(()=>preparation,signal);
-    checkpoint(signal);beforeEffect?.();report.status='ready';report.summary=summary(initial.snapshot,verified);
+    checkpoint(signal);beforeEffect?.();opacity?.assertPrepared(initial,input,verified,beforeEffect);report.status='ready';report.summary=summary(initial.snapshot,verified);
    }catch(error){
     if(error.terminationUnconfirmed){shutdownFailure=error;throw error;}
-    if(safeWorkspaceRestoreError(error))throw error;
+    if(safeWorkspaceRestoreError(error)||opacity&&error.code==='RESTORE_STORE_UNVERIFIED')throw error;
     checkpoint(external);if(stopped)checkpoint(controller.signal);
-    const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(error);
+    const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(error,Boolean(opacity));
     report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];
     if(initial.snapshot.assets.some(a=>a.id===error.timelineAssetId))report.issues[0].assetId=error.timelineAssetId;
    }finally{
@@ -130,8 +139,8 @@ export function createTimelinePreflightServices(store,{signal:ownerSignal,probe=
    // Recheck a fresh coherent snapshot only after all asynchronous reads. A
    // changed row, owner, frozen metadata or revision can never publish ready.
    let current;
-   try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);}
-   catch{current=null;}
+   try{current=readSnapshot(input);}
+   catch(error){if(opacity&&(safeWorkspaceRestoreError(error)||error.code==='RESTORE_STORE_UNVERIFIED'))throw error;current=null;}
    if(!current?.snapshot||timelineSnapshotHash(current.snapshot)!==report.snapshotHash){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];}
    return report;
   })();

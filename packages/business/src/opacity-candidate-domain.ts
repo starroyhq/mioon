@@ -8,8 +8,9 @@ import {
   captureOpacityTimelineRecord, captureOpacityTimelineIntent, captureOpacityTimelinePrepare,
   isOpacityTimelineMutationResponse, isOpacityTimelineTask,
 } from '../../contracts/src/timeline-opacity-persistence.ts';
-import {captureOpacityRenderInput, createOpacityRenderSnapshotPlan, captureOpacityRenderSnapshot, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
-import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {captureOpacityRenderInput, captureOpacityPreflightInput, captureOpacityCapabilitiesInput, createOpacityRenderSnapshotPlan, captureOpacityRenderSnapshot, captureOpacityPreparedSourceProjection, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
+import {getOpacityCandidateAssembly, freezeOpacityCandidateInput} from './opacity-candidate-store.ts';
+import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 
 type Value = Record<string, unknown>;
 type Method = (...args: unknown[]) => unknown;
@@ -60,12 +61,10 @@ export function createOpacityCandidateDomain(store: unknown) {
   };
   const parse = (operation: string, input: unknown): Value => {
     checkpoint();
+    if (operation === 'timeline.export.preflight') return captureOpacityPreflightInput(input);
+    if (operation === 'timeline.export.capabilities') return captureOpacityCapabilitiesInput(input);
     if (operation !== 'timeline.render') return captureOpacityTimelineIntent(operation, input).input;
-    const result = captureOpacityRenderInput(input);
-    // A candidate preflight service has not been enabled. Never silently
-    // compare a legacy projection hash with the new raw opacity snapshot.
-    if (own(result, 'preflightSnapshotHash')) throw new AppError('OPACITY_CANDIDATE_PREFLIGHT_UNAVAILABLE', '透明度候选渲染尚不支持导出预检查摘要。', 409);
-    return result;
+    return captureOpacityRenderInput(input);
   };
   function freezeRenderSnapshot(value: unknown, assets: unknown, exportSettings: unknown, input: unknown): Value {
     checkpoint();
@@ -77,6 +76,27 @@ export function createOpacityCandidateDomain(store: unknown) {
     const purpose = input.purpose as 'preview' | 'export';
     const plan = createOpacityRenderSnapshotPlan(raw, purpose);
     return captureOpacityRenderSnapshot({...raw, ...(plan ? {opacityPlan: plan} : {})}, purpose).snapshot;
+  }
+  function readPreflightSnapshot(value: unknown) {
+    checkpoint();
+    const input = captureOpacityPreflightInput(value), outer = db.isTransaction;
+    if (!outer) db.exec('BEGIN DEFERRED');
+    try {
+      const reader = boundary(input), checked = reader.read({legacyMissingProject: true, sourceSemantics: false});
+      if (!checked) return Object.freeze({timeline: null, snapshot: null, legacyValidationSnapshot: null});
+      // These two normal blocked reports need no renderable snapshot. All
+      // nonempty in-range reads use exactly the actual render freezer below.
+      if (!checked.clips.length || timelineExportRangeBoundsIssue(input, checked.durationFrames))
+        return freezeOpacityCandidateInput({timeline: checked, snapshot: null, legacyValidationSnapshot: null});
+      // Render admission validates a detached editable value before freezing.
+      // Preserve its exact source/fade/audio refusal rather than letting the
+      // complete frozen-record validator collapse it to a generic error.
+      reader.validate(clone(checked));
+      const purpose = input.purpose === 'preview' ? 'preview' : 'export';
+      const frozen = freezeRenderSnapshot(checked, reader.sources(checked), input.exportSettings, {...input, purpose});
+      const {snapshot, sourceValidationSnapshot} = captureOpacityPreparedSourceProjection(frozen, purpose);
+      return freezeOpacityCandidateInput({timeline: checked, snapshot, legacyValidationSnapshot: sourceValidationSnapshot});
+    } finally {if (!outer && db.isTransaction) db.exec('COMMIT');}
   }
   function admit(value: unknown, related: {before?: unknown; after?: unknown; response?: unknown; related?: unknown} = {}): void {
     checkpoint();
@@ -241,7 +261,7 @@ export function createOpacityCandidateDomain(store: unknown) {
     return Object.freeze({read, asset, inputAsset, clipSource, version, sources, validate, validateReadonly, restored, replay, verify});
   }
   return Object.freeze({
-    parse, boundary, admit, freezeRenderSnapshot,
+    parse, boundary, admit, freezeRenderSnapshot, readPreflightSnapshot,
     capturePrepare: (value: unknown) => {checkpoint();return captureOpacityTimelinePrepare(value);},
     captureIntent: (operation: string, value: unknown) => {checkpoint();return captureOpacityTimelineIntent(operation, value);},
     isTask: (value: unknown) => {checkpoint();return isOpacityTimelineTask(value);},

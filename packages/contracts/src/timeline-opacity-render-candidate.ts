@@ -109,6 +109,33 @@ function renderInput(value: unknown, backendIds: boolean): Value {
  * accepted from the caller; the stored timeline supplies opacity parameters. */
 export function captureOpacityRenderInput(value: unknown): Value {return renderInput(value, false);}
 
+/** Candidate-only read grammar. The public historical export-only schema is
+ * unchanged; an explicit preview purpose receives the existing render rules. */
+export function captureOpacityPreflightInput(value: unknown): Value {
+  const input = detach(value);
+  if (!object(input) || !object(legacy) || !object(legacy.schemas)) invalid();
+  const allowed = ['projectId', 'expectedRevision', 'purpose', 'exportSettings', 'deliveryName', 'exportRange'];
+  if (Object.keys(input).some(key => !allowed.includes(key)) || own(input, 'purpose') && !['preview', 'export'].includes(String(input.purpose))) invalid();
+  const projection = {...input};delete projection.purpose;
+  const schema = legacy.schemas['timeline.export.preflight'];
+  if (!object(schema) || typeof schema.safeParse !== 'function') invalid();
+  const parsed: unknown = (schema.safeParse as Predicate)(projection);
+  if (!object(parsed) || parsed.success !== true) invalid();
+  renderInput({...input, purpose: input.purpose ?? 'export', requestId: 'opacity-preflight-validation'}, false);
+  return input;
+}
+/** Fixed existing capability grammar, detached before any schema access. No
+ * caller flag, validator, renderer or media executable can enter this read. */
+export function captureOpacityCapabilitiesInput(value: unknown): Value {
+  const input = detach(value);
+  if (!object(input) || !object(legacy) || !object(legacy.schemas)) invalid();
+  const schema = legacy.schemas['timeline.export.capabilities'];
+  if (!object(schema) || typeof schema.safeParse !== 'function') invalid();
+  const parsed: unknown = (schema.safeParse as Predicate)(input);
+  if (!object(parsed) || parsed.success !== true) invalid();
+  return input;
+}
+
 function planned(snapshot: Value): OpacityRenderCandidatePlan | undefined {
   if (!object(snapshot.timeline) || !Array.isArray(snapshot.timeline.clips) || !Array.isArray(snapshot.assets)) invalid();
   const clips: OpacityRenderCandidatePlanClip[] = [];

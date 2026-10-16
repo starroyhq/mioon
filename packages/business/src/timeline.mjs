@@ -201,7 +201,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   const frozen=domain?domain.freezeRenderSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input):freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
   if(input.preflightSnapshotHash!==undefined){
    let current;
-   try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input).snapshot;}
+   try{current=(domain?domain.readPreflightSnapshot(Object.fromEntries(['projectId','expectedRevision','purpose','exportSettings','deliveryName','exportRange'].filter(key=>Object.hasOwn(input,key)).map(key=>[key,input[key]]))):readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input)).snapshot;}
    catch{throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);}
    if(!current||hash(current)!==input.preflightSnapshotHash||hash(frozen)!==input.preflightSnapshotHash)
     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);

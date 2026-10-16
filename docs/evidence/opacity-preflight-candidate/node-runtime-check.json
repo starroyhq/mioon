@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-16",
+  "scope": "PATH entries and fixed known tool roots only; no recursive scan or installation",
+  "roots": [
+    "/opt/homebrew/Cellar/node",
+    "/opt/homebrew/Cellar/node@24",
+    "/usr/local/Cellar/node",
+    "/usr/local/Cellar/node@24",
+    "/Users/kouzen/.nvm/versions/node",
+    "/Users/kouzen/.local/share/fnm/node-versions",
+    "/Users/kouzen/.fnm/node-versions",
+    "/Users/kouzen/.local/share/mise/installs/node",
+    "/Users/kouzen/.local/share/rtx/installs/node",
+    "/Users/kouzen/.asdf/installs/nodejs",
+    "/Users/kouzen/.volta/tools/image/node",
+    "/Users/kouzen/.codex/runtimes",
+    "/Applications/Codex.app/Contents/Resources"
+  ],
+  "patterns": [
+    "*/bin/node",
+    "*/installation/bin/node",
+    "node*/bin/node",
+    "*/node/bin/node",
+    "node",
+    "bin/node"
+  ],
+  "executableVersionTimeoutMs": 3000,
+  "found": [
+    {
+      "path": "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+      "version": "v26.9.0"
+    }
+  ],
+  "usableNode24Found": false,
+  "claim": "No usable Node24 found in the checked locations; not a whole-disk inventory."
+}

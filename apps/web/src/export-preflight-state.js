@@ -7,6 +7,7 @@ import { deliveryNameContextFields, sameDeliveryNameContext, deliveryNameRequest
 const initialState = () => ({ ...exportRangeContextFields(null), ...deliveryNameContextFields(null), scope: null, projectId: null, timelineId: null, revision: null, connected: false, exportSettings: undefined, settingsKey: 'legacy', settingsVersion: 0, capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null, binding: null, uncheckedIntent: null, error: '', attempted: false });
 const hasRevision = value => Number.isSafeInteger(value) && value > 0;
 const knownIssueCodes = new Set(['EXPORT_RANGE_BOUNDS', 'TIMELINE_MISSING', 'EMPTY_TIMELINE', 'INVALID_TIMELINE_SNAPSHOT', 'TIMELINE_SOURCE_UNAVAILABLE', 'PREFLIGHT_SOURCE_INVALID', 'PREFLIGHT_SOURCE_CHANGED', 'PREFLIGHT_MEDIA_INVALID', 'PREFLIGHT_INCOMPLETE', 'PREFLIGHT_BUDGET', 'PREFLIGHT_SNAPSHOT_BUDGET', 'PREFLIGHT_TIMEOUT', 'PREFLIGHT_BUSY', 'PREFLIGHT_STALE']);
+for (const code of ['TIMELINE_IMAGE_COMPOSITOR_BUDGET', 'INVALID_TIMELINE_COLOUR', 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED', 'TIMELINE_COLOUR_SOURCE_MISMATCH', 'TIMELINE_COLOUR_RESOURCE_CHANGED', 'TIMELINE_COLOUR_LUT_BUDGET', 'TIMELINE_COLOUR_LOOK_UNAVAILABLE', 'SOURCE_BOUNDS', 'FADE_AUDIO_UNSUPPORTED', 'AUDIO_ROLE_CLIP_UNSUPPORTED', 'TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED', 'VOLUME_ENVELOPE_SOURCE_UNSUPPORTED', 'INVALID_CLIP_TYPE', 'INVALID_FADE']) knownIssueCodes.add(code);
 const protocolError = () => Object.assign(new Error('检查响应不完整或与当前快照不匹配，请重新检查。'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
 // Never surface raw transport errors, ffprobe output, or server file locations.
@@ -14,6 +15,7 @@ export function preflightErrorMessage(error, locale = 'zh-Hans') {
   if (error?.code === 'UNAUTHORIZED') return translate(locale, 'export.preflight.error.unauthorized');
   if (['CONFLICT', 'REVISION_CONFLICT', 'PREFLIGHT_STALE'].includes(error?.code)) return translate(locale, 'export.preflight.error.changed');
   if (error?.code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'export.preflight.error.protocol');
+  if (knownIssueCodes.has(error?.code)) return preflightIssueMessage({ code: error.code, severity: 'error' }, locale);
   return translate(locale, 'export.preflight.error.failed');
 }
 
