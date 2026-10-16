@@ -1,0 +1,226 @@
+TAP version 13
+# Subtest: separate initial TEXT ordinary24 enters40 and cold reopens without changing original typed rows
+ok 1 - separate initial TEXT ordinary24 enters40 and cold reopens without changing original typed rows
+  ---
+  duration_ms: 580.215333
+  type: 'test'
+  ...
+# Subtest: separate initial TEXT source captured by fixed25 cold reopens with its complete snapshot unchanged
+ok 2 - separate initial TEXT source captured by fixed25 cold reopens with its complete snapshot unchanged
+  ---
+  duration_ms: 145.730125
+  type: 'test'
+  ...
+# Subtest: original golden BLOB ordinary24 remains historically valid and current admission refuses without writes
+not ok 3 - original golden BLOB ordinary24 remains historically valid and current admission refuses without writes
+  ---
+  duration_ms: 62.099667
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:160:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    - '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  actual: '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  operator: 'strictEqual'
+  stack: |-
+    historicalBlobProof (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:97:50)
+    negativeBlob (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:141:3)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:160:148)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: original golden BLOB restored25 retains its fixed capture evidence and current admission refuses without writes
+not ok 4 - original golden BLOB restored25 retains its fixed capture evidence and current admission refuses without writes
+  ---
+  duration_ms: 73.964083
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:161:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    - '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  actual: '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  operator: 'strictEqual'
+  stack: |-
+    historicalBlobProof (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:97:50)
+    negativeBlob (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:141:3)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:161:156)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: separate initial TEXT ordinary24-mock enters40 and cold reopens without changing original typed rows
+ok 5 - separate initial TEXT ordinary24-mock enters40 and cold reopens without changing original typed rows
+  ---
+  duration_ms: 215.768625
+  type: 'test'
+  ...
+# Subtest: separate initial TEXT source captured by fixed25-mock cold reopens with its complete snapshot unchanged
+ok 6 - separate initial TEXT source captured by fixed25-mock cold reopens with its complete snapshot unchanged
+  ---
+  duration_ms: 188.311375
+  type: 'test'
+  ...
+# Subtest: original golden BLOB ordinary24-mock remains historically valid and current admission refuses without writes
+not ok 7 - original golden BLOB ordinary24-mock remains historically valid and current admission refuses without writes
+  ---
+  duration_ms: 67.361958
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:160:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    - '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  actual: '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  operator: 'strictEqual'
+  stack: |-
+    historicalBlobProof (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:97:50)
+    negativeBlob (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:141:3)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:160:148)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: original golden BLOB restored25-mock retains its fixed capture evidence and current admission refuses without writes
+not ok 8 - original golden BLOB restored25-mock retains its fixed capture evidence and current admission refuses without writes
+  ---
+  duration_ms: 69.719959
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:161:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    - '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  actual: '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  operator: 'strictEqual'
+  stack: |-
+    historicalBlobProof (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:97:50)
+    negativeBlob (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:141:3)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:161:156)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: separate initial TEXT known-marker-gap admits ordinary40 while preserving original rows and cold reopen
+ok 9 - separate initial TEXT known-marker-gap admits ordinary40 while preserving original rows and cold reopen
+  ---
+  duration_ms: 184.091125
+  type: 'test'
+  ...
+# Subtest: original golden BLOB known-marker-gap is refused by current admission without snapshot or file-byte changes
+not ok 10 - original golden BLOB known-marker-gap is refused by current admission without snapshot or file-byte changes
+  ---
+  duration_ms: 60.361375
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:165:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    - '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  actual: '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  operator: 'strictEqual'
+  stack: |-
+    historicalBlobProof (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:97:50)
+    negativeBlob (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:141:3)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:165:117)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: separate initial TEXT initial-markers-absent admits ordinary40 while preserving original rows and cold reopen
+ok 11 - separate initial TEXT initial-markers-absent admits ordinary40 while preserving original rows and cold reopen
+  ---
+  duration_ms: 185.089583
+  type: 'test'
+  ...
+# Subtest: original golden BLOB initial-markers-absent is refused by current admission without snapshot or file-byte changes
+not ok 12 - original golden BLOB initial-markers-absent is refused by current admission without snapshot or file-byte changes
+  ---
+  duration_ms: 66.880042
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:165:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    - '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0b6f727cd3bf2697d576f454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  actual: '0b6f727cd3bf2697d576c454ef851f04c4ad7a9f08d2cd092ee03c18ea79d7cd'
+  operator: 'strictEqual'
+  stack: |-
+    historicalBlobProof (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:97:50)
+    negativeBlob (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:141:3)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/current/tests/workspace-blob-admission-boundary.test.mjs:165:117)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 6
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2234.602084

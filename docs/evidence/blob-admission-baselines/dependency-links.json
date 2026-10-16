@@ -1,0 +1,25 @@
+{
+  "method": "Existing local third-party dependency symlinks only; @mioon workspace aliases point into each exact checkout. No package manager, network, install, main-source links or main tree changes.",
+  "checkouts": [
+    {
+      "checkout": "/private/tmp/mioon-blob-baselines-ni_dc4sm/pre-a7",
+      "lockSha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+      "packageSha256": "049b21513332b8c2da1a5ba3f241b3705631b8b06c44f8e0727de11e9de36b45"
+    },
+    {
+      "checkout": "/private/tmp/mioon-blob-baselines-ni_dc4sm/a7",
+      "lockSha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+      "packageSha256": "049b21513332b8c2da1a5ba3f241b3705631b8b06c44f8e0727de11e9de36b45"
+    },
+    {
+      "checkout": "/private/tmp/mioon-blob-baselines-ni_dc4sm/ff85",
+      "lockSha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+      "packageSha256": "049b21513332b8c2da1a5ba3f241b3705631b8b06c44f8e0727de11e9de36b45"
+    },
+    {
+      "checkout": "/private/tmp/mioon-blob-baselines-ni_dc4sm/current",
+      "lockSha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+      "packageSha256": "049b21513332b8c2da1a5ba3f241b3705631b8b06c44f8e0727de11e9de36b45"
+    }
+  ]
+}

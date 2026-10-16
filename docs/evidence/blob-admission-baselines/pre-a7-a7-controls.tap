@@ -1,0 +1,30 @@
+TAP version 13
+# Subtest: ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact
+not ok 1 - ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact
+  ---
+  duration_ms: 204.166792
+  type: 'test'
+  location: '/private/tmp/mioon-blob-baselines-ni_dc4sm/pre-a7/tests/workspace-restore-schema.test.mjs:98:1'
+  failureType: 'testCodeFailure'
+  error: 'Workspace volume-envelope evidence is invalid.'
+  code: 'WORKSPACE_VOLUME_ENVELOPE_INVALID'
+  stack: |-
+    invalid (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/pre-a7/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/pre-a7/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/pre-a7/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/pre-a7/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///private/tmp/mioon-blob-baselines-ni_dc4sm/pre-a7/tests/workspace-restore-schema.test.mjs:99:213)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 472.281708

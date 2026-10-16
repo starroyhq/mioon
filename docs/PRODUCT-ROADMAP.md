@@ -49,8 +49,9 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   and requires a new target.41 and default production admission remain unchanged.
   [Batch integration/release checks](OPACITY-RELEASE-CHECK.md) repaired four
   product regressions; the final121-file aggregate retains6 historical BLOB
-  expectation failures. Their exact-baseline status and current support scope
-  remain unproven. Node24 strict types passed, its native build was blocked by
+  expectation failures. The [isolated baseline follow-up](BLOB-ADMISSION-BASELINES.md) reproduced
+  them before a7 and on ff85/d52; historical BLOB startup compatibility still
+  requires a frozen-boundary decision. Node24 strict types passed, its native build was blocked by
   macOS Team IDs, and Node26 auxiliary builds do not qualify the product runtime.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings

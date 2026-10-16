@@ -62,7 +62,9 @@ composing input retains close protection. Upgrade requires an eligible closed40,
 its verified backup and a new target;41 and default production admission remain
 unchanged. [Batch integration/release review](docs/OPACITY-RELEASE-CHECK.md) is complete:
 four product regressions repaired, with6 historical BLOB expectations retained
-as failures in the121-file aggregate. Exact-baseline failure is not established.
+as failures in the121-file aggregate. The [isolated follow-up](docs/BLOB-ADMISSION-BASELINES.md) reproduced those six
+at four exact snapshots, including ff85 and the a7 predecessor; original historical
+BLOB startup compatibility is still unresolved.
 Node24 strict types passed; its native-addon build was blocked by macOS Team IDs.
 Node26 auxiliary builds are separate from formal Node24/product qualification.
 

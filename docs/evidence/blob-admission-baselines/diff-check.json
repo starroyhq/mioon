@@ -1,0 +1,12 @@
+{
+  "fullStagedCode": 2,
+  "rawReporterWhitespaceFiles": [
+    "docs/evidence/blob-admission-baselines/boundary-tests-attempt1.tap",
+    "docs/evidence/blob-admission-baselines/boundary-tests-attempt2.tap"
+  ],
+  "codeDocsJsonScriptCheckCode": 0,
+  "rawEvidenceUnmodified": true,
+  "frozenManifestEntries": 64,
+  "newFrozenExceptions": 0,
+  "runtimeAndOldTestsUnchanged": true
+}

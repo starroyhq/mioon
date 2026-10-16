@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact
+ok 1 - ordinary current-schema reopen keeps raw schema/rows/receipts and source profile classification intact
+  ---
+  duration_ms: 266.525792
+  type: 'test'
+  ...
+# Subtest: ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows
+ok 2 - ordinary current-schema reopen rejects legacy BLOB receipt without changing schema or retained rows
+  ---
+  duration_ms: 219.853584
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 778.223834

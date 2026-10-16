@@ -1,0 +1,9 @@
+{
+  "version": "6.0.3",
+  "source": "/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript",
+  "target": "/private/tmp/mioon-blob-baselines-ni_dc4sm/current/node_modules/typescript",
+  "method": "Copy existing exact-pinned local TypeScript package bytes into this isolated checkout only so unchanged repository-local compiler guard can pass; no package manager, network, dependency change, main tree mutation or guard bypass.",
+  "files": 140,
+  "allSourceAndCopySha256Equal": true,
+  "compilerEntrySha256": "2cffde0b8c6760dfb0b5b0382bbb7e00ba6a8b2d981b9205b256a700a481d983"
+}

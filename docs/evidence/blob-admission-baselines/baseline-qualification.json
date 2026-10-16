@@ -1,0 +1,48 @@
+{
+  "node": {
+    "path": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+    "version": "v24.21.0",
+    "variant": "CUA darwin-arm64; source checks only, build Team ID restriction unchanged"
+  },
+  "exactSnapshots": {
+    "pre-a7": "c2000a1118c57585cc94a42f53ff6febf86bbec9",
+    "a7": "a7fcf74199ed7ca54c5be408e6c67cd33b19b645",
+    "ff85": "ff85c9a8daaa35bff080d0979fe2faa3683cd3b5",
+    "current": "d52f50fc83b5cad99512853cb041e9eb4d977638"
+  },
+  "perSnapshotIntegrity": {
+    "pre-a7": {
+      "trackedDiffEmpty": true,
+      "nativeTestBlobMatchesCommit": true
+    },
+    "a7": {
+      "trackedDiffEmpty": true,
+      "nativeTestBlobMatchesCommit": true
+    },
+    "ff85": {
+      "trackedDiffEmpty": true,
+      "nativeTestBlobMatchesCommit": true
+    },
+    "current": {
+      "trackedDiffEmpty": true,
+      "nativeTestBlobMatchesCommit": true
+    }
+  },
+  "environmentControl": "Only child TMPDIR is a canonical task-owned temporary directory, avoiding unrelated Mac /var symlink refusal. No host setting changed.",
+  "dependencies": "Same existing local dependency versions, identical lock/package hashes; workspace aliases point into each snapshot, loader rejects main-source fallback. No network/package-manager install.",
+  "result": "Each exact native snapshot ran6 cases and failed6 at the same volume validation before old expected34 assertions; this is confirmed pre-existing at c2000a1/a7/ff85, not introduced by d52 opacity batch. Earliest introducing commit not determined.",
+  "sourceNativeTestDiff": "Older native files retain their original34 expected catalog; no transplant or edits. Failure occurs before these assertions.",
+  "contractClassification": "BLOB is valid frozen24/25 opaque retained evidence, not a modern TEXT JSON receipt. Historical reopen support especially restored25 is a compatibility gap; cannot declare solved by swapping positive data.",
+  "runtimeOrOldFixtureChanged": false,
+  "oldSixAssertionsRemovedOrSkipped": false,
+  "formalNode24Typecheck": {
+    "firstCode": 1,
+    "firstReason": "Unchanged repository-local compiler guard correctly rejected symlink to primary compiler",
+    "retryCode": 0,
+    "method": "Copy exact existing pinned TypeScript6.0.3 bytes into isolated node_modules;140 files SHA-identical, unchanged guard then passed",
+    "log": "current-node24-typecheck.txt"
+  },
+  "buildRetried": false,
+  "buildRestriction": "Preserved prior CUA Node24/Rollup Team ID block; no signing/security changes",
+  "noGuiMediaProviderOrActualUserWorkspace": true
+}

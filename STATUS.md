@@ -50,9 +50,9 @@ admission. [Batch integration and release checks](docs/OPACITY-RELEASE-CHECK.md)
 are complete: four product regressions fixed; the final121-file aggregate is
 3574 total /3568 passed /6 retained BLOB-expectation failures,0 skips/cancellations.
 Node24 strict types passed, while CUA Node24 builds were blocked by macOS/Rollup
-Team ID mapping; Node26 builds passed only as auxiliary source checks. The exact
-baseline was not run for those six cases; historical compatibility versus stale
-fixture remains unclassified. This pass found CUA Node24.21.0 darwin-arm64;
+Team ID mapping; Node26 builds passed only as auxiliary source checks. The [isolated follow-up](docs/BLOB-ADMISSION-BASELINES.md) reproduced all six
+at pre-a7/a7/ff85/d52 exact snapshots. Their historical BLOB startup compatibility
+remains unresolved; independent TEXT controls do not replace those failures. This pass found CUA Node24.21.0 darwin-arm64;
 it is not the old pinned Linux executable or product-runtime qualification.
 Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
