@@ -1,0 +1,9 @@
+Mode: built-in image generation/editing tool; transparent_background=true.
+Source: exec-958279ed-f9ec-41a3-94e2-8797d4036f32.png.
+
+Final selected prompt:
+Use case: background-extraction.
+Edit target: the attached Mioon logo image. Perform a PRECISE BACKGROUND REMOVAL ONLY.
+Remove every part of the pure black background and replace it with REAL ALPHA TRANSPARENCY, including BOTH the exterior around the logo and the large enclosed opening at its center, and any tiny visible black background gaps beside the lower-right curled ribbon.
+Keep the entire colored foreground logo EXACTLY as supplied: identical rounded-rectangular cat-head silhouette, ear shape, ear-root curves, frame proportions, thickness, inner opening boundary, right-hand curl/fold geometry, orange/coral/hot-pink/violet gradients, shading, placement, scale, and original square canvas dimensions. This is the chosen final design. Do NOT redesign, redraw, soften, reshape, shift, crop, add, or remove any foreground detail. Preserve the darker violet foreground fold near the tail; distinguish it from the black background.
+Clean antialiased transparent edges with no black fringe, halo, new shadow, color spill, or opaque matte. True transparent PNG output, not a checkerboard painted into the image. Exactly one image with the original full square canvas.

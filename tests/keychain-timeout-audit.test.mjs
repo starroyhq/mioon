@@ -69,7 +69,7 @@ test('historical 9e synchronous defect still reproduces its original seven synth
 
 test('historical Keychain fixture is outside production staging and package allowlists', async () => {
   for (const channel of ['development', 'production']) {
-    assert.deepEqual(builderConfig(channel).files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'licenses/**/*', '!node_modules/**/*']);
+    assert.deepEqual(builderConfig(channel).files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
   }
   const build = await readFile(path.join(root, 'apps/desktop/scripts/build.mjs'), 'utf8');
   assert.match(build, /for \(const name of \['main', 'backend'\]\)/);

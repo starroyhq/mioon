@@ -149,6 +149,7 @@ async function start() {
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       createWindow: () => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
+        icon: path.join(app.getAppPath(), 'icons/icon.png'),
         minWidth: 1050, minHeight: 680, backgroundColor: '#f6f4ef', show: false,
         autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(),
         webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
@@ -444,6 +445,7 @@ else {
   process.on('SIGTERM', () => app.quit());
   process.on('SIGINT', () => app.quit());
   app.whenReady().then(async () => {
+    if (process.platform === 'darwin') app.dock?.setIcon(path.join(app.getAppPath(), 'icons/icon.png'));
     languageHost = createAppLanguageHost({ systemLanguages,
       storage: { read: () => readAppLanguagePreference(paths), write: text => writeAppLanguagePreference(paths, text) },
       isTrusted: event => {

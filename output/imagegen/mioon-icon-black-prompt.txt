@@ -1,0 +1,8 @@
+Mode: built-in image generation/editing tool; transparent_background=false.
+Source: mioon-icon-transparent.png.
+Platform PNG size derivatives and macOS ICNS were exported with sips and iconutil.
+
+Use case: compositing. Asset type: final desktop app icon.
+Edit target: the attached transparent Mioon cat-eared film-frame logo.
+Composite this EXACT supplied transparent logo over a SOLID PURE BLACK #000000 background to create an opaque square app-icon master. Preserve the full chosen color logo without ANY redesign, redrawing, new detail, color change, geometry change, or change to its shape, ears, inner aperture, lower-right ribbon curl, gradients, or proportions. Remove no colored foreground detail. All formerly transparent areas, including the outer background and inner window, become pure black. The cat ribbon must keep its orange/coral/pink/violet colors; "black icon" means BLACK BACKGROUND, not a black silhouette.
+Square canvas 1024x1024. Subject centered horizontally and vertically, roughly 68% of canvas width with enough breathing room for a desktop app icon. No border, no outer rounded-square tile, no bevel, no shadow, no glow, no vignette, no new texture, no stars, no text, no label. Foreground colors are opaque and crisp, clean edges with no specks or fringe in the black areas. Exactly one app-icon image.

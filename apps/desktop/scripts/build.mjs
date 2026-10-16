@@ -29,6 +29,8 @@ await build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path
   bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
   sourcemap: false, legalComments: 'eof', logLevel: 'info' });
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
+await mkdir(path.join(output, 'icons'));
+await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
 const subtitleSource=path.join(root,'packages/business/resources/subtitles');
 const {verifySubtitleResources,SUBTITLE_RESOURCE_FILES}=createRequire(import.meta.url)('../subtitle-resources.cjs');
 await verifySubtitleResources(subtitleSource);

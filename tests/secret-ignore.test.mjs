@@ -60,14 +60,14 @@ test('git ignores exact runtime credential/discovery/settings fixtures at custom
 test('desktop packaging allowlist excludes synthetic custom userData without scanning real secrets or building', async t => {
   const root = await temporaryDirectory(t, 'wb-secret-package-');
   const buildConfig = createRequire(import.meta.url)('../apps/desktop/builder-config.cjs');
-  const packageFiles = ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'web/assets/app.js', 'licenses/NOTICE.md'];
+  const packageFiles = ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'web/assets/app.js', 'icons/icon.png', 'licenses/NOTICE.md'];
   const secretFiles = runtimeNames.flatMap(name => [name, `custom-user-data/${name}`, `custom-user-data/workspace/${name}`]);
   const excludedFiles = [...secretFiles, '.env', 'custom-user-data/workspace/workbench.sqlite', 'node_modules/synthetic/index.js'];
   for (const file of packageFiles) await writeFixture(root, file, `synthetic package source: ${file}\n`);
   for (const file of excludedFiles) await writeFixture(root, file, SYNTHETIC_SECRET);
   for (const channel of ['development', 'production']) {
     const config = buildConfig(channel);
-    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'licenses/**/*', '!node_modules/**/*']);
+    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
     const includes = config.files.filter(pattern => !pattern.startsWith('!'));
     const excludes = config.files.filter(pattern => pattern.startsWith('!')).map(pattern => pattern.slice(1));
     const selected = [...packageFiles, ...excludedFiles].filter(file => includes.some(pattern => path.matchesGlob(file, pattern)) && !excludes.some(pattern => path.matchesGlob(file, pattern)));

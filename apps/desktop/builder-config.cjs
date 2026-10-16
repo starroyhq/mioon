@@ -12,8 +12,9 @@ module.exports = function builderConfig(channel) {
     productName: identity.productName,
     executableName: identity.executableName,
     electronVersion,
-    directories: { app: 'build', output: `../../release/desktop/${channel}` },
-    files: ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'licenses/**/*', '!node_modules/**/*'],
+    directories: { app: 'build', buildResources: 'resources', output: `../../release/desktop/${channel}` },
+    icon: path.join(__dirname, 'resources/icon.png'),
+    files: ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*'],
     asar: true,
     // External FFmpeg cannot read ASAR members. Only this pinned resource bundle
     // is copied outside ASAR; existing archive scanner limits stay unchanged.
@@ -59,6 +60,7 @@ module.exports = function builderConfig(channel) {
     },
     // Configuration only: macOS build, signing, notarization and native QA remain unverified.
     mac: {
+      icon: path.join(__dirname, 'resources/icon.icns'),
       target: [{ target: 'dmg', arch: ['arm64', 'x64'] }],
       category: 'public.app-category.video',
       hardenedRuntime: true,
