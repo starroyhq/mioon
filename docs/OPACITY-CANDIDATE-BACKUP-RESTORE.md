@@ -25,7 +25,7 @@ node apps/cli/src/opacity-backup.ts restore-status --destination /absolute/resto
 
 `--locale zh-Hans|zh-Hant|en|ja`分别提供简中、无地区标签繁中、英文和日语，默认简中。stdout恰好一个JSON信封；create／restore成功时stderr还会明确显示草稿排除提示。输出含`draftPolicy:"excluded"`，并保留原锁清理警告与发布不确定绑定。`--help`记录完整用法和退出码。
 
-**v3未保存草稿不备份、不恢复，源草稿保留。** 根目录的`local-drafts-v3.json`不属于format1受管payload；不能把原workspaceScope／未完成输入带到新origin。恢复43的原草稿服务仍返回`RESTORED_WORKSPACE_UNSUPPORTED`。token、凭据、设置和连接文件继续排除。数据库内的原始用户文字仍完整保留，备份是私有明文。
+**v3未保存草稿不备份、不恢复，源草稿保留。** 根目录的`local-drafts-v3.json`不属于format1受管payload；不能把原workspaceScope／未完成输入带到新origin。恢复43的原草稿服务仍返回`RESTORED_WORKSPACE_UNSUPPORTED`；后续新协议只保存恢复后本origin的新片段草稿，详见下文，不读取或迁移源v3。token、凭据、设置和连接文件继续排除。数据库内的原始用户文字仍完整保留，备份是私有明文。
 
 ## 固定版本与任务边界
 
@@ -37,7 +37,7 @@ node apps/cli/src/opacity-backup.ts restore-status --destination /absolute/resto
 
 这个离线入口不启动后端、监听、worker、媒体或provider。本片完成时普通候选应用启动器仍拒绝43，交付范围仅离线保存／恢复／验证。后续已提供[恢复43独立应用入口](OPACITY-RESTORED-APPLICATION.md)：显式`--open-restored-workspace`完整验证已有43，沿原origin／held／epoch规则读取、编辑并发起新预览／导出。`--open-workspace`仍只认普通42；本页离线测试数量和无GUI／监听／媒体范围保留。
 
-恢复43应用明确展示v3排除及源草稿保留；当前未保存输入和视图仅在本窗口内存，普通dirty关闭也可能丢失。该应用不开放普通42的创建／导入能力、持久companion或递归备份，其GUI／真实媒体验收另记，不能由本页离线通过推定。
+恢复43应用明确展示v3排除及源草稿保留。后续[43新草稿持久化](OPACITY-RESTORED-DRAFTS.md)（`4607947`）仅在精确`localClipDrafts`能力下保存恢复后本origin的新片段输入，durable ACK后可冷重开显式恢复／丢弃；无此能力的旧43及恢复视图仍仅内存，未确认输入仍可能丢失。该应用不开放普通42的创建／导入能力或43递归备份，其GUI／真实媒体验收另记，不能由本页离线通过推定。[普通40→42显式离线副本升级](OPACITY-ORDINARY-UPGRADE.md)（`256cfd3`）是另一入口，不改变40→41的原恢复路径或默认启动。
 
 ## 失败与发布
 
@@ -55,4 +55,4 @@ node apps/cli/src/opacity-backup.ts restore-status --destination /absolute/resto
 
 此前旧两套回归在基线源码和初始候选上都有相同20项失败；SHM修复消除实际清理障碍后，仅剩一条旧夹具仍期待schema36，而冻结默认已为40。仅修正该断言为40，最终同组70/70通过；没有修改旧构造器或放宽源校验。[失败对照](evidence/opacity-backup43/baseline-regression.txt)与[最终结果](evidence/opacity-backup43/old-regression-final.txt)保留。
 
-本轮使用Node26.9.0，无GUI、监听、媒体／provider执行、用户项目访问或push。严格TS／source-language guard与canonical默认Web／development Desktop构建另有记录；没有全库、Node24、安装包或跨平台验收结论。之前Safari连接中断、首次CLI退出不确定及窗口状态仍按[原记录](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)保留，没有操作旧PID／窗口或重试已停止的文件选择器问题。
+本离线切片使用Node26.9.0，无GUI、监听、媒体／provider执行、用户项目访问或push。严格TS／source-language guard与canonical默认Web／development Desktop构建另有记录；没有全库、Node24、安装包或跨平台验收结论。[本轮发布前集成检查](OPACITY-RELEASE-CHECK.md)已单列最终通过与失败，另已发现CUA Node24.21.0 darwin-arm64；这不改写本片运行时事实，也不等同于旧固定Linux SHA或产品资格。之前Safari连接中断、首次CLI退出不确定及窗口状态仍按[原记录](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)保留，没有操作旧PID／窗口或重试已停止的文件选择器问题。

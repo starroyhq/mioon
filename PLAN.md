@@ -2,8 +2,9 @@
 
 The M0–M3 and V2–V4.1 checklists below are historical records. The last verified
 published application integration is `ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`
-on GitHub main. Local-only opacity work now follows
-`ec01753056c0f31706d29ed279ae1944c822ad94`: fresh42 and explicitly restored43
+on GitHub main. Local-only opacity work began after
+`ec01753056c0f31706d29ed279ae1944c822ad94` and includes completed follow-ups
+through `256cfd3`: fresh42 and explicitly restored43
 development workspaces now connect to the shared App through separate admission.
 See the [fresh42 boundary](docs/OPACITY-CANDIDATE-APPLICATION.md) and
 [restored43 application scope and evidence](docs/OPACITY-RESTORED-APPLICATION.md).
@@ -35,8 +36,8 @@ picker after CUA disconnection; the43 slice below has new actual GUI evidence. T
 is implemented with original guards and explicit v3 draft exclusion. Its
 [restored43 application entry](docs/OPACITY-RESTORED-APPLICATION.md) now opens
 existing projects and retains the original exact-origin editing/render policy;
-old pending tasks stay held. Current43 unsaved inputs and views are memory-only
-and may be lost on normal close; source v3 drafts remain preserved. This slice's
+old pending tasks stay held. That initial43 slice kept unsaved inputs and views
+in memory; source v3 drafts remain excluded and preserved. That slice's
 124/124 focused tests, separate12/12 preferences, canonical builds and actual
 Safari Save/Cancel/Undo/Redo plus10-frame preview/export/playback and normal
 close/reopen passed. HTTP download and RGB checks passed; full four-language/IME
@@ -51,6 +52,19 @@ repairs two reproduced input/cancellation races, with241/241 targeted and separa
 real OS IME, Japanese Inspector, final fixed-build GUI and native close/reopen
 remain open. No test service is alive; the lost service exit code/window closure
 remain uncertain, and original stale-lock admission released the owned lock.
+
+Completed local follow-ups are [new-origin43 clip drafts](docs/OPACITY-RESTORED-DRAFTS.md)
+in `4607947` and [explicit ordinary40→ordinary42 offline copy upgrade](docs/OPACITY-ORDINARY-UPGRADE.md)
+in `256cfd3`. Exact43 `localClipDrafts` capability permits cold recovery after
+durable acknowledgement; source42 v3 is never migrated. Older43 without that
+capability and restored view state keep memory fallback, and unconfirmed or
+composing input retains close protection. Upgrade requires an eligible closed40,
+its verified backup and a new target;41 and default production admission remain
+unchanged. [Batch integration/release review](docs/OPACITY-RELEASE-CHECK.md) is complete:
+four product regressions repaired, with6 historical BLOB expectations retained
+as failures in the121-file aggregate. Exact-baseline failure is not established.
+Node24 strict types passed; its native-addon build was blocked by macOS Team IDs.
+Node26 auxiliary builds are separate from formal Node24/product qualification.
 
 The limited local Linux trial remains available. New logic uses TS; preserve the
 user's workbench, media, shared services, drafts and receipts. The earlier documentation

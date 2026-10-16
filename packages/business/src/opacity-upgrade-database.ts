@@ -7,6 +7,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {classifyWorkspaceSchema42} from './workspace-schema-v42.ts';
 import {validateOpacityWorkspaceRows} from './workspace-opacity-validation.ts';
 import {isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
+import {isOpacityApplicationTask} from '../../contracts/src/timeline-opacity-persistence.ts';
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 
@@ -86,6 +87,10 @@ function checkTasks(db: DatabaseSync, tables: Set<string>): void {
       digest: row.digest, lane: row.lane, status: row.status, revision: row.revision, createdAt: row.createdAt,
       updatedAt: row.updatedAt, acknowledged: true, origin: row.origin, ...(row.errorCode === null ? {} : {errorCode: row.errorCode})};
     if (invoke('../../contracts/src/index.mjs', 'isEditTask', [task]) !== true || row.digest !== hash({operation: row.operation, input})) fail();
+    // A terminal ACK does not make an old operation readable by the fixed42
+    // application's task coordinator. Preserve such projects in40 instead of
+    // publishing a copy whose task history fails get/list after reopening.
+    if (!isOpacityApplicationTask(task)) fail('SOURCE_UNSUPPORTED');
     const family = row.lane === 'timeline:mutation' ? ['timeline-recovery.mjs', 'readTimelineReceipt', 'createTimelineRecoveryBoundary']
       : row.lane === 'reference:mutation' ? ['reference-recovery.mjs', 'readReferenceReceipt', 'createReferenceRecoveryBoundary']
       : row.lane === 'subject:mutation' ? ['subject-recovery.mjs', 'readSubjectReceipt', 'createSubjectRecoveryBoundary'] : fail();

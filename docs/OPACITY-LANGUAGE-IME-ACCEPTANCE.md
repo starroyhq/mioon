@@ -12,7 +12,7 @@
 
 数值准入不变：半角数值语法、最多32字符、1–7个严格递增且不重复的整数帧，以及0–1不透明度。组合中的中文／日文／全角文本可暂存；结束后不合法的内容仍拒绝，不自动转写数值。四语素材提示收窄为支持的导入素材可预览，捕获成片仅保留历史；不开放held或裸输出读取。日文补充半角数字及不重复的升序说明。
 
-默认40／41、冻结构造器与唯一既有`timeline-media.mjs`例外不变；没有新schema、迁移或执行权限。42继续v3持久草稿／显式恢复，43继续v3排除、源保留、当前输入和视图仅窗口内存，普通dirty关闭仍可能丢失。新origin／held／epoch、回执及未知结果策略未放宽。
+默认40／41、冻结构造器与唯一既有`timeline-media.mjs`例外不变；本片没有新schema、迁移或执行权限。本片结束时42继续v3持久草稿／显式恢复，43的源v3排除保留、当前输入和视图仅窗口内存，普通dirty关闭仍可能丢失。后续[43新草稿片](OPACITY-RESTORED-DRAFTS.md)（`4607947`）只在精确`localClipDrafts`能力下持久化本origin的新片段输入，durable ACK后可冷重开显式恢复／丢弃；源42 v3仍不迁移，无能力的旧43及恢复视图仍仅内存。新origin／held／epoch、回执及未知结果策略未放宽；这里的GUI结果不代替后续草稿能力验收。
 
 ## 非GUI验证
 
@@ -41,3 +41,5 @@ Web语言保存在浏览器origin下的`mioon.app-language.v1`，桌面保存在
 随后原exec会话也失去连接，`close`写入未获得确认，**不能声称该服务正常退出或退出码0**。精确自有PID已不存在，4319无监听；残留锁先记录，再通过原固定43 owner-lease的stale-lock策略准入及正常store.close释放，没有手删锁、发进程信号或重启监听服务。最终目录、held任务、保存曲线和锁状态另见[工作区审计](evidence/opacity-language-ime/final-workspace-audit.json)。
 
 本片证据统一见[汇总](evidence/opacity-language-ime/qualification.json)。剩余门包括最终修复构建的四语言GUI、真实中文／日文IME、原生窗口关闭重开、安装包和跨平台；GUI不可用时不把这些门改标通过。没有provider、长时媒体、依赖安装、凭据修改、用户项目操作或push。
+
+后续另有[普通40→42显式离线副本升级](OPACITY-ORDINARY-UPGRADE.md)（`256cfd3`）；不改默认入口或41来历。[本轮发布前集成检查](OPACITY-RELEASE-CHECK.md)已单列最终结果，限定工具库存另发现CUA Node24.21.0 darwin-arm64；它与旧固定Linux SHA不同，不追认本片Node26执行为Node24验收，也不填补真实GUI／IME缺口。

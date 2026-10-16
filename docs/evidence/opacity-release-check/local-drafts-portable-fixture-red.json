@@ -1,0 +1,26 @@
+{
+  "phase": "before-canonical-temp-fixture-fix",
+  "startedAt": "2026-10-16T09:06:09.092808+00:00",
+  "finishedAt": "2026-10-16T09:06:12.237145+00:00",
+  "node": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+  "version": "v24.21.0 (installed CUA darwin-arm64 variant)",
+  "command": [
+    "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "tests/local-drafts-business.test.mjs",
+    "tests/local-drafts-publication.test.mjs",
+    "tests/local-drafts-volume-envelope-format.test.mjs"
+  ],
+  "exitCode": 1,
+  "log": "docs/evidence/opacity-release-check/local-drafts-portable-fixture-red.tap",
+  "tapSummary": [
+    "# tests 94",
+    "# pass 3",
+    "# fail 91",
+    "# cancelled 0",
+    "# skipped 0",
+    "# duration_ms 2970.613666"
+  ]
+}

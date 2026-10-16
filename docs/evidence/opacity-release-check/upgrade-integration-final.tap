@@ -1,0 +1,15 @@
+✔ upgraded web last-project opens and saves in the actual development candidate application (2638.175292ms)
+✔ upgraded production last-project opens and saves in the actual development candidate application (1685.724542ms)
+✔ upgraded development last-project opens and saves in the actual development candidate application (1632.912333ms)
+✔ target development binding does not relax source companion channel validation (726.72675ms)
+✔ acknowledged not_applied timeline.clip.split is explicitly unsupported before any42 publication (956.792459ms)
+✔ acknowledged applied timeline.clip.split is explicitly unsupported before any42 publication (2274.929084ms)
+✔ acknowledged not_applied timeline.clip.replaceSource is explicitly unsupported before any42 publication (1840.434792ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14459.777333

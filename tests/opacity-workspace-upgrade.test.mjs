@@ -143,7 +143,7 @@ test('remembered project is explicitly rebound to the new path and database iden
   const next = JSON.parse(fs.readFileSync(path.join(f.destination, filename), 'utf8'));
   assert.deepEqual({...next, workspaceScope: old.workspaceScope}, old);
   assert.notEqual(next.workspaceScope, old.workspaceScope);
-  assert.equal(next.workspaceScope, calculateWorkspaceScope({channel: 'web', root: f.destination,
+  assert.equal(next.workspaceScope, calculateWorkspaceScope({channel: 'development', root: f.destination,
     directory: fs.statSync(f.destination), db: fs.statSync(path.join(f.destination, 'workbench.sqlite'))}));
   assert.equal(fs.statSync(path.join(f.destination, filename)).mode & 0o777, 0o600);
   readDatabase(path.join(f.destination, 'workbench.sqlite'), db => assert.deepEqual(originalRows(db, 'workspace_preferences', ['projectId', 'revision', 'state']), sourcePrefs));

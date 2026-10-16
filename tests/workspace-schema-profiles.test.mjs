@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import ts from 'typescript';
 import * as fixedInputs from '../packages/business/src/workspace-schema-v24-constants.ts';
-import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
+import {mkdtempSync, realpathSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.mjs';
@@ -26,8 +26,8 @@ const profile = name => ({
   tables: golden.profiles[name].tables,
 });
 
-// Current ordinary34 retains the reviewed26 task CHECK and adds markers28/30/32/34 plus
-// the separately pinned LUT catalog below. Keep the independent24 golden intact;
+// Current ordinary40 retains the reviewed26 task CHECK and adds markers28 through40 plus
+// the separately pinned LUT and annotation catalogs below. Keep the independent24 golden intact;
 // historical constructors and profiles still compare against its original bytes.
 function currentOrdinaryProfile(name = 'ordinary-24') {
   const expected = structuredClone(profile(name));
@@ -35,7 +35,7 @@ function currentOrdinaryProfile(name = 'ordinary-24') {
   const oldCheck = "'timeline.subtitle.remove'))";
   assert.equal(tasks.sql.split(oldCheck).length, 2);
   tasks.sql = tasks.sql.replace(oldCheck, "'timeline.subtitle.remove','timeline.loudness.apply'))");
-  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334']);
+  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334'], ['36', 'integer', '3336'], ['38', 'integer', '3338'], ['40', 'integer', '3430']);
   return expected;
 }
 
@@ -64,7 +64,7 @@ function snapshot(db) {
   };
 }
 
-// Reviewed schema28 addition, pinned independently rather than imported from
+// Reviewed schema28/36 additions, pinned independently rather than imported from
 // the implementation under test. Unknown objects and changed SQL still fail.
 function currentOrdinarySnapshot(db) {
   const actual = snapshot(db), lutTables = new Set(['project_lut_resources', 'lut_import_requests']);
@@ -75,6 +75,15 @@ function currentOrdinarySnapshot(db) {
   assert.deepEqual(actual.tables.lut_import_requests, {fields: ['requestId','projectId','inputHash','resourceId'], rows: []});
   actual.objects = actual.objects.filter(object => !lutTables.has(object.tbl_name));
   for (const table of lutTables) delete actual.tables[table];
+  // Independent reviewed36 pin already retained by workspace-schema-dispatch.test.mjs.
+  // Include reverse request guards on historical tables before stripping the additions.
+  const annotationObjects = actual.objects.filter(object => /annotation/.test(object.name));
+  assert.equal(annotationObjects.length, 20);
+  assert.equal(sha(JSON.stringify(annotationObjects)), '36eab4635ff3ef13ae1fd9fd11e0467ac6890cb5bb9175342ff02748d5bf5ede', 'exact reviewed annotation table/index/protection catalog');
+  assert.deepEqual(actual.tables.asset_annotations, {fields: ['assetId','projectId','revision','tags','note'], rows: []});
+  assert.deepEqual(actual.tables.asset_annotation_requests, {fields: ['requestId','operation','projectId','canonicalInput','response'], rows: []});
+  actual.objects = actual.objects.filter(object => !/annotation/.test(object.name));
+  for (const table of ['asset_annotations','asset_annotation_requests']) delete actual.tables[table];
   return actual;
 }
 
@@ -129,7 +138,7 @@ function inMemory(t, name) {
 }
 
 function onDisk(t, name) {
-  const root = mkdtempSync(path.join(tmpdir(), 'mioon-schema-profile-golden-'));
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-schema-profile-golden-'));
   t.after(() => rmSync(root, {recursive: true, force: true}));
   if (name) {
     const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
@@ -303,7 +312,7 @@ test('through24 constructor keeps every ordinary1–24 trusted SQL/default-row c
 });
 
 for (let version = 1; version <= 24; version++) {
-  test(`frozen ordinary${version} classifies without mutation and runtime opens with only the reviewed ordinary34 delta`, t => {
+  test(`frozen ordinary${version} classifies without mutation and runtime opens with only the reviewed ordinary40 delta`, t => {
     const name = `ordinary-${version}`;
     const root = onDisk(t, name);
     const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
@@ -320,7 +329,7 @@ for (let version = 1; version <= 24; version++) {
   });
 }
 
-test('fresh runtime construction has only the reviewed ordinary34 delta and no restoration authority', t => {
+test('fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority', t => {
   const store = openStore(onDisk(t));
   try {
     assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile());
@@ -338,13 +347,13 @@ test('real Mock ledger constructor keeps the frozen optional ordinary24 table/in
 
 for (const mock of [false, true]) for (const seeded of [false, true]) {
   const suffix = (mock ? '-mock' : '') + (seeded ? '-seeded' : '');
-  test(`frozen ordinary24${suffix} reopens with only the reviewed28/30/32/34 schema delta, preserving raw rows, receipts and sequence`, t => {
+  test(`frozen ordinary24${suffix} reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence`, t => {
     const name = `ordinary-24${suffix}`;
     const store = openStore(onDisk(t, name));
     try {
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
       assertPreserved(store.db, profile(name));
-      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 34, profile: 'ordinary'});
+      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 40, profile: 'ordinary'});
       if (seeded) constraints(store.db, {restored: false, mock});
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }

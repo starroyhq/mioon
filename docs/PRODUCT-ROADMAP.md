@@ -3,6 +3,7 @@
 Updated: 2026-10-16 UTC. Current index checked against application integration
 `ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`, last verified on GitHub main,
 and local-only test-fixture repair `25609e98b8990eaa121124f35242f0bcf4a4b3ae`.
+The local opacity index below includes completed follow-ups through `256cfd3`.
 Earlier accepted integration ancestry is preserved. This document distinguishes implemented
 slices, their actual acceptance boundaries and remaining approved scope. It does
 not promote a WIP checkpoint, certify the combined native application, or grant
@@ -26,8 +27,8 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   with raw evidence/held/epoch/origin retained and v3 drafts explicitly excluded.
   The subsequent [restored43 application entry](OPACITY-RESTORED-APPLICATION.md)
   now supports existing-project editing/Undo/Redo and new preview/export requests
-  under the original origin/held/epoch rules. Current43 unsaved input and views
-  are memory-only and can be lost on normal close; source v3 drafts remain.
+  under the original origin/held/epoch rules. That initial43 slice kept unsaved
+  input and views in memory; source42 v3 drafts remain excluded and preserved.
   Its124/124 focused tests and separate12/12 preference checks, canonical builds,
   actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
   close/reopen passed. Guarded HTTP download and RGB decode passed; full
@@ -38,6 +39,19 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   Its partial43 GUI covers three locales on the prior build; CUA disconnected
   after Japanese settings. Real IME and final fixed-build/native acceptance
   remain open; no push or release.
+  The subsequent [new-origin43 clip-draft slice](OPACITY-RESTORED-DRAFTS.md)
+  (`4607947`) permits explicit cold recovery after durable ACK only with exact
+  `localClipDrafts` capability; source42 v3 is not migrated. Older43 without
+  that capability and restored view state retain memory fallback; unconfirmed
+  input and composition still block safe close. The [explicit ordinary40→42
+  offline copy upgrade](OPACITY-ORDINARY-UPGRADE.md) (`256cfd3`) preserves an
+  eligible source and verified backup, refuses unresolved tasks/active drafts,
+  and requires a new target.41 and default production admission remain unchanged.
+  [Batch integration/release checks](OPACITY-RELEASE-CHECK.md) repaired four
+  product regressions; the final121-file aggregate retains6 historical BLOB
+  expectation failures. Their exact-baseline status and current support scope
+  remain unproven. Node24 strict types passed, its native build was blocked by
+  macOS Team IDs, and Node26 auxiliary builds do not qualify the product runtime.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI
@@ -130,8 +144,11 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
    acceptance is indexed above. Do not restart the earlier pure prototype.
    Opacity keyframes now have the isolated fresh42 and restored43 slices above,
    including fixed cold backup/restore and explicit separate application admission.
-   The43 memory-only draft/view policy and remaining acceptance are documented
-   in [its application scope](OPACITY-RESTORED-APPLICATION.md). Other visual
+   Exact-capability43 new clip drafts now support explicit cold recovery after
+   durable ACK, while source42 v3 stays excluded and older43/views keep memory
+   fallback; see [draft scope](OPACITY-RESTORED-DRAFTS.md). The explicit
+   [ordinary40→42 copy upgrade](OPACITY-ORDINARY-UPGRADE.md) and remaining
+   [release gates](OPACITY-RELEASE-CHECK.md) retain their separate boundaries. Other visual
    keyframes/transitions, audio crossfades, ducking, limiter/EQ/noise
    reduction and scoped proxy performance
    remain separate work; local media tags/notes are no longer pending. No automatic

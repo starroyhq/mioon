@@ -16,7 +16,7 @@ node apps/cli/src/opacity-upgrade.ts upgrade --source /absolute/closed40 --backu
 
 升级入口的`--backup`必须已经存在且完整，升级期间只读，不会创建或覆盖它。三个目录须使用规范绝对路径、两两独立且无嵌套；目标必须不存在，父目录安全且已经存在。源必须仍冷关闭，数据库及全部受管素材与所给备份精确匹配。任何既有源锁都拒绝，不删除或修复；不处理未checkpoint的WAL／journal。升级复制的是整个合资格工作区，包含所有项目，不做单项目裁剪。
 
-`--channel`必填，可为`web`、`development`、`production`，用于验证原伴随偏好的作用域；不能靠更改channel绕过现有scope。`--lang`支持简中`zh-Hans`、无地区标签繁中`zh-Hant`、英文`en`和日语`ja`，默认简中。`help`与`schema`不载入业务、不打开工作区。只有收到`publication:'confirmed'`成功结果后，才沿既有候选`--open-workspace /absolute/new42`入口重开；CLI不自动启动应用、worker或provider。
+`--channel`必填，可为`web`、`development`、`production`，只用于严格验证原伴随偏好的来源作用域；不能靠更改channel绕过现有scope。新42副本的`last-project`作用域固定绑定唯一候选启动器的`development`渠道，不把源渠道当成目标渠道。`--lang`支持简中`zh-Hans`、无地区标签繁中`zh-Hant`、英文`en`和日语`ja`，默认简中。`help`与`schema`不载入业务、不打开工作区。只有收到`publication:'confirmed'`成功结果后，才沿既有候选`--open-workspace /absolute/new42`入口重开；CLI不自动启动应用、worker或provider。
 
 ## 首批资格与保留策略
 
@@ -25,11 +25,11 @@ node apps/cli/src/opacity-upgrade.ts upgrade --source /absolute/closed40 --backu
 | 项目、时间线、历史／cursor、请求／回执、LUT原BLOB、数据库视图偏好与sequence | 整库复制；逐表、rowid、storage class及原始字节证明保留，唯一新增schema marker42 |
 | 素材 | 仅支持规范受管`user-import`；逐文件流式复制并独立校验hash／长度。旧generated素材明确拒绝，保留源40 |
 | 旧导出 | 只接收能通过候选时间线snapshot及原接受回执身份验证的终态记录；旧sequence导出明确拒绝，不静默隐藏或重跑 |
-| 编辑任务 | 仅`applied`／`not_applied`且已ACK；核验digest、原回执及结果，原行保留。prepared／dispatching／unknown／未ACK拒绝，不改状态或补确认 |
+| 编辑任务 | 仅候选应用可读取的七项操作：track add／update、clip add／update／remove、undo／redo，且须`applied`／`not_applied`并已ACK；核验digest、原回执及结果，原行保留。其他旧操作（如clip split／replaceSource）即使已终态ACK也明确`SOURCE_UNSUPPORTED`拒绝。prepared／dispatching／unknown／未ACK拒绝，不改状态或补确认 |
 | jobs／exports | 仅固定终态；不会恢复旧队列。image／frame／remote／review／Agent／mock复杂执行族只要有行，首片明确拒绝，而非删除历史或转换为held |
 | 片段v1文件（含内容版本2）、delivery及shot-text | 活动草稿或任何保留intent拒绝；严格有效的空槽／墓碑文件按`excluded-empty-only`明确排除，源文件保留，旧scope／CAS不带到新副本 |
 | 普通40中出现v3或恢复43草稿 | 明确不支持并拒绝，既不读入新草稿服务，也不猜测格式或重置文件 |
-| `last-project-v1.json` | 严格校验UTF-8、重复键、格式、来源scope/channel及项目存在性，仅重绑定新目录／DB身份的scope；projectId、revision、updatedAt保留 |
+| `last-project-v1.json` | 严格校验UTF-8、重复键、格式、来源scope/channel及项目存在性，重绑定新目录／DB身份及候选`development`渠道的scope；projectId、revision、updatedAt保留 |
 | token、provider设置、浏览器状态与应用语言 | 不读取或复制。这些不属于工作区数据库偏好；新应用仍沿原凭据／独立偏好流程 |
 
 库存必须完整，无缺失、未知或不一致素材；备份的宽松“保留警告”不是升级资格。若任何项目、任务或伴随文件不符合上述范围，整个升级停止，源和备份保留供原40处理。没有为了升级而确认、取消、删除或重放旧任务；没有新的held、origin或epoch转换权限。

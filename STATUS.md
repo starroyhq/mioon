@@ -7,7 +7,8 @@ has not been pushed. The push was verified by reading back the exact remote SHA;
 no workflow runs, check runs or commit statuses were visible at that query, so
 CI success is not claimed. This documentation update performs no fresh remote query.
 
-Local-only opacity development now follows `ec01753056c0f31706d29ed279ae1944c822ad94`:
+Local-only opacity development began after `ec01753056c0f31706d29ed279ae1944c822ad94`
+and now includes the completed follow-ups through `256cfd3` indexed below:
 the [fresh42 application slice](docs/OPACITY-CANDIDATE-APPLICATION.md) connects
 project/import/edit/Inspector v3/tasks/preview/download in the shared App, with
 synthetic no-listen qualification and canonical builds. Default40/41 remains;
@@ -21,8 +22,9 @@ excludes v3 drafts. The subsequent [restored43 application entry](docs/OPACITY-R
 now opens exact restored43 through `--open-restored-workspace`, with the original
 origin/held/epoch guards, existing-clip saves/Undo/Redo and new render requests.
 It does not migrate40/41 or grant ordinary42 creation/import capabilities.
-Current43 unsaved input and view state stay in window memory and can be lost on
-normal close; original v3 drafts remain in the42 source. This43 slice passed
+That initial43 slice kept unsaved input and view state in window memory;
+original v3 drafts remain excluded from backup and preserved in the42 source.
+That43 slice passed
 124/124 focused tests plus separate12/12 preference checks, canonical builds,
 actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
 close/reopen with saved curve retained. HTTP download bytes and RGB decode
@@ -35,6 +37,23 @@ after settings when CUA disconnected. Real OS IME and the final fixed-build GUI
 remain unverified. The own server PID is absent and its stale lock was released
 through existing admission; the lost exec session exit code and test-window
 closure remain unconfirmed.
+The later [restored43 draft slice](docs/OPACITY-RESTORED-DRAFTS.md), local commit
+`4607947`, persists new clip input only under the current origin's exact
+`localClipDrafts` capability. After durable acknowledgement it can be explicitly
+restored or discarded on cold reopen; source42 v3 drafts are not migrated.
+Older43 without that capability and restored view state retain memory fallback;
+unacknowledged or composing input is not safe to discard. The subsequent
+[ordinary40→ordinary42 offline upgrade](docs/OPACITY-ORDINARY-UPGRADE.md), local
+commit `256cfd3`, creates an explicit new copy from an eligible closed40 and its
+verified backup, preserving the source. It does not upgrade41 or change default
+admission. [Batch integration and release checks](docs/OPACITY-RELEASE-CHECK.md)
+are complete: four product regressions fixed; the final121-file aggregate is
+3574 total /3568 passed /6 retained BLOB-expectation failures,0 skips/cancellations.
+Node24 strict types passed, while CUA Node24 builds were blocked by macOS/Rollup
+Team ID mapping; Node26 builds passed only as auxiliary source checks. The exact
+baseline was not run for those six cases; historical compatibility versus stale
+fixture remains unclassified. This pass found CUA Node24.21.0 darwin-arm64;
+it is not the old pinned Linux executable or product-runtime qualification.
 Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 - **Implemented:** independent Settings center, four-language presentation,

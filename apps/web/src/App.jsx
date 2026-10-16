@@ -1821,7 +1821,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const visibleAssets = data.assets.filter(a => (assetFilter === 'all' || a.mimeType?.startsWith(`${assetFilter}/`)) && a.name.toLowerCase().includes(assetSearch.toLowerCase()));
   const guardRetainedInputInteraction = event => {
     if (!clipConnectionBlocked.current || !retainWorkbenchForClip) return;
-    if (event.target?.closest?.('[data-testid="clip-volume-envelope"], [data-retained-input-action]')) return;
+    if (event.target?.closest?.('[data-testid="clip-volume-envelope"], [data-testid="clip-opacity-envelope"], [data-retained-input-action]')) return;
     event.preventDefault(); event.stopPropagation();
   };
   if (auth === false && !retainWorkbenchForClip) return <Login onLogin={boot} />;

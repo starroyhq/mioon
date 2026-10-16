@@ -1,0 +1,544 @@
+TAP version 13
+# Subtest: verify projects an imported oversized text marker to NULL before materializing rows
+ok 1 - verify projects an imported oversized text marker to NULL before materializing rows
+  ---
+  duration_ms: 187.608208
+  type: 'test'
+  ...
+# Subtest: verify projects an imported oversized blob marker to NULL before materializing rows
+ok 2 - verify projects an imported oversized blob marker to NULL before materializing rows
+  ---
+  duration_ms: 172.023375
+  type: 'test'
+  ...
+# Subtest: bounded marker projection refuses unsafe integer values without JavaScript range conversion
+ok 3 - bounded marker projection refuses unsafe integer values without JavaScript range conversion
+  ---
+  duration_ms: 1.25725
+  type: 'test'
+  ...
+# Subtest: ordinary24 unknown journal survives startup migration and cold40 archive while fixed41 restore refuses it
+ok 4 - ordinary24 unknown journal survives startup migration and cold40 archive while fixed41 restore refuses it
+  ---
+  duration_ms: 544.457417
+  type: 'test'
+  ...
+# Subtest: shared inspection reads empty workspace without constructing data, filesystem work or model authority
+ok 5 - shared inspection reads empty workspace without constructing data, filesystem work or model authority
+  ---
+  duration_ms: 196.133
+  type: 'test'
+  ...
+# Subtest: summary preserves unknown tasks and excludes all stored text, identities, paths and provider IDs
+ok 6 - summary preserves unknown tasks and excludes all stored text, identities, paths and provider IDs
+  ---
+  duration_ms: 155.064125
+  type: 'test'
+  ...
+# Subtest: malformed or oversized JSON is unknown, never clean zero or parsed user content
+ok 7 - malformed or oversized JSON is unknown, never clean zero or parsed user content
+  ---
+  duration_ms: 171.62175
+  type: 'test'
+  ...
+# Subtest: row cap applies before materialization, keeps unknown count and leaves caller transaction intact
+ok 8 - row cap applies before materialization, keeps unknown count and leaves caller transaction intact
+  ---
+  duration_ms: 181.702333
+  type: 'test'
+  ...
+# Subtest: preference reads have no writes, require an existing project, and are absent from RPC schemas
+ok 9 - preference reads have no writes, require an existing project, and are absent from RPC schemas
+  ---
+  duration_ms: 184.839542
+  type: 'test'
+  ...
+# Subtest: the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+ok 10 - the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically
+  ---
+  duration_ms: 157.777208
+  type: 'test'
+  ...
+# Subtest: legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+ok 11 - legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions
+  ---
+  duration_ms: 249.67575
+  type: 'test'
+  ...
+# Subtest: legacy v1 magnet input still rejects every undocumented omission and unknown field
+ok 12 - legacy v1 magnet input still rejects every undocumented omission and unknown field
+  ---
+  duration_ms: 168.883208
+  type: 'test'
+  ...
+# Subtest: whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+ok 13 - whole-layout legacy migration preserves raw bytes and revisions on GET and exact replay
+  ---
+  duration_ms: 205.290417
+  type: 'test'
+  ...
+# Subtest: strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+ok 14 - strict layout input never repairs a supplied partial layout, even for otherwise legacy records
+  ---
+  duration_ms: 0.622375
+  type: 'test'
+  ...
+# Subtest: independent CAS revisions replay only the latest exact write and never overwrite stale state
+ok 15 - independent CAS revisions replay only the latest exact write and never overwrite stale state
+  ---
+  duration_ms: 207.000292
+  type: 'test'
+  ...
+# Subtest: selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+ok 16 - selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched
+  ---
+  duration_ms: 240.220333
+  type: 'test'
+  ...
+# Subtest: additive v5 migration preserves legacy records, immutable requests, history and bytes
+ok 17 - additive v5 migration preserves legacy records, immutable requests, history and bytes
+  ---
+  duration_ms: 315.469
+  type: 'test'
+  ...
+# Subtest: competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+ok 18 - competing database connections commit one CAS winner and deduplicate simultaneous exact retries
+  ---
+  duration_ms: 1043.024417
+  type: 'test'
+  ...
+# Subtest: independent schema goldens pin fixed baseline provenance, exact bytes and every supported profile
+ok 19 - independent schema goldens pin fixed baseline provenance, exact bytes and every supported profile
+  ---
+  duration_ms: 1.753042
+  type: 'test'
+  ...
+# Subtest: through24 schema-only dependency bodies stay byte-frozen independently of constructor output
+ok 20 - through24 schema-only dependency bodies stay byte-frozen independently of constructor output
+  ---
+  duration_ms: 28.112875
+  type: 'test'
+  ...
+# Subtest: fixed schema dependency imports and re-exports cannot reconnect to active runtime constants
+ok 21 - fixed schema dependency imports and re-exports cannot reconnect to active runtime constants
+  ---
+  duration_ms: 10.964709
+  type: 'test'
+  ...
+# Subtest: through24 interpolation values remain the independent fixed-baseline values
+ok 22 - through24 interpolation values remain the independent fixed-baseline values
+  ---
+  duration_ms: 0.244417
+  type: 'test'
+  ...
+# Subtest: through24 constructor keeps every ordinary1–24 trusted SQL/default-row checkpoint and the legacy alias
+ok 23 - through24 constructor keeps every ordinary1–24 trusted SQL/default-row checkpoint and the legacy alias
+  ---
+  duration_ms: 85.660792
+  type: 'test'
+  ...
+# Subtest: frozen ordinary1 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 24 - frozen ordinary1 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 277.512791
+  type: 'test'
+  ...
+# Subtest: frozen ordinary2 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 25 - frozen ordinary2 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 181.449416
+  type: 'test'
+  ...
+# Subtest: frozen ordinary3 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 26 - frozen ordinary3 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 195.730167
+  type: 'test'
+  ...
+# Subtest: frozen ordinary4 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 27 - frozen ordinary4 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 156.327042
+  type: 'test'
+  ...
+# Subtest: frozen ordinary5 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 28 - frozen ordinary5 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 152.325167
+  type: 'test'
+  ...
+# Subtest: frozen ordinary6 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 29 - frozen ordinary6 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 145.193167
+  type: 'test'
+  ...
+# Subtest: frozen ordinary7 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 30 - frozen ordinary7 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 144.594083
+  type: 'test'
+  ...
+# Subtest: frozen ordinary8 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 31 - frozen ordinary8 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 168.294458
+  type: 'test'
+  ...
+# Subtest: frozen ordinary9 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 32 - frozen ordinary9 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 157.242292
+  type: 'test'
+  ...
+# Subtest: frozen ordinary10 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 33 - frozen ordinary10 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 155.07325
+  type: 'test'
+  ...
+# Subtest: frozen ordinary11 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 34 - frozen ordinary11 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 154.671209
+  type: 'test'
+  ...
+# Subtest: frozen ordinary12 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 35 - frozen ordinary12 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 152.642292
+  type: 'test'
+  ...
+# Subtest: frozen ordinary13 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 36 - frozen ordinary13 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 147.82225
+  type: 'test'
+  ...
+# Subtest: frozen ordinary14 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 37 - frozen ordinary14 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 155.786917
+  type: 'test'
+  ...
+# Subtest: frozen ordinary15 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 38 - frozen ordinary15 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 152.831125
+  type: 'test'
+  ...
+# Subtest: frozen ordinary16 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 39 - frozen ordinary16 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 149.705208
+  type: 'test'
+  ...
+# Subtest: frozen ordinary17 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 40 - frozen ordinary17 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 148.342209
+  type: 'test'
+  ...
+# Subtest: frozen ordinary18 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 41 - frozen ordinary18 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 185.185125
+  type: 'test'
+  ...
+# Subtest: frozen ordinary19 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 42 - frozen ordinary19 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 141.473542
+  type: 'test'
+  ...
+# Subtest: frozen ordinary20 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 43 - frozen ordinary20 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 155.9355
+  type: 'test'
+  ...
+# Subtest: frozen ordinary21 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 44 - frozen ordinary21 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 174.219375
+  type: 'test'
+  ...
+# Subtest: frozen ordinary22 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 45 - frozen ordinary22 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 153.621084
+  type: 'test'
+  ...
+# Subtest: frozen ordinary23 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 46 - frozen ordinary23 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 197.446958
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+ok 47 - frozen ordinary24 classifies without mutation and runtime opens with only the reviewed ordinary40 delta
+  ---
+  duration_ms: 136.840708
+  type: 'test'
+  ...
+# Subtest: fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority
+ok 48 - fresh runtime construction has only the reviewed ordinary40 delta and no restoration authority
+  ---
+  duration_ms: 164.781542
+  type: 'test'
+  ...
+# Subtest: real Mock ledger constructor keeps the frozen optional ordinary24 table/index SQL and empty sequence absence
+ok 49 - real Mock ledger constructor keeps the frozen optional ordinary24 table/index SQL and empty sequence absence
+  ---
+  duration_ms: 47.917125
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24 reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+ok 50 - frozen ordinary24 reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 361.816167
+  type: 'test'
+  ...
+# Subtest: restore25 construction from independent ordinary24 matches frozen SQL and capture evidence
+ok 51 - restore25 construction from independent ordinary24 matches frozen SQL and capture evidence
+  ---
+  duration_ms: 65.893958
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25 opens and validates without ordinary bootstrap or evidence rewrites
+ok 52 - independent frozen restored25 opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 80.963041
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 53 - frozen ordinary24-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 34.573208
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:352:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: restore25 construction from independent ordinary24-seeded matches frozen SQL and capture evidence
+ok 54 - restore25 construction from independent ordinary24-seeded matches frozen SQL and capture evidence
+  ---
+  duration_ms: 63.499042
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 55 - independent frozen restored25-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 46.268959
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    validateRestore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:188:5)
+    Object.initialize (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:204:329)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:377:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+  ...
+# Subtest: frozen ordinary24-mock reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+ok 56 - frozen ordinary24-mock reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 119.951917
+  type: 'test'
+  ...
+# Subtest: restore25 construction from independent ordinary24-mock matches frozen SQL and capture evidence
+ok 57 - restore25 construction from independent ordinary24-mock matches frozen SQL and capture evidence
+  ---
+  duration_ms: 58.195167
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25-mock opens and validates without ordinary bootstrap or evidence rewrites
+ok 58 - independent frozen restored25-mock opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 70.293833
+  type: 'test'
+  ...
+# Subtest: frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+not ok 59 - frozen ordinary24-mock-seeded reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence
+  ---
+  duration_ms: 32.466333
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:350:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:352:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: restore25 construction from independent ordinary24-mock-seeded matches frozen SQL and capture evidence
+ok 60 - restore25 construction from independent ordinary24-mock-seeded matches frozen SQL and capture evidence
+  ---
+  duration_ms: 60.774
+  type: 'test'
+  ...
+# Subtest: independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+not ok 61 - independent frozen restored25-mock-seeded opens and validates without ordinary bootstrap or evidence rewrites
+  ---
+  duration_ms: 40.209958
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:375:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    validateRestore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:188:5)
+    Object.initialize (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:204:329)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:377:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+not ok 62 - ordinary runtime retains baseline repair eligibility for known-marker-gap; offline classification stays strict
+  ---
+  duration_ms: 43.2
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:402:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+not ok 63 - ordinary runtime retains baseline repair eligibility for initial-markers-absent; offline classification stays strict
+  ---
+  duration_ms: 41.29725
+  type: 'test'
+  location: '/Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:390:3'
+  failureType: 'testCodeFailure'
+  error: 'Volume envelopes require an exact supported workspace profile.'
+  code: 'RESTORE_SCHEMA_UNSUPPORTED'
+  stack: |-
+    invalid (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:21:62)
+    validateWorkspaceVolumeEnvelopeRows (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-volume-envelope-validation.ts:178:66)
+    Object.initialize (file:///Users/kouzen/Documents/data/mioon/packages/business/src/workspace-schema-dispatch.ts:205:5)
+    openStore (file:///Users/kouzen/Documents/data/mioon/packages/business/src/db.mjs:97:40)
+    TestContext.<anonymous> (file:///Users/kouzen/Documents/data/mioon/tests/workspace-schema-profiles.test.mjs:402:19)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+  ...
+# Subtest: ordinary runtime retains baseline repair eligibility for marker-table-absent; offline classification stays strict
+ok 64 - ordinary runtime retains baseline repair eligibility for marker-table-absent; offline classification stays strict
+  ---
+  duration_ms: 157.748916
+  type: 'test'
+  ...
+# Subtest: unsupported marker-only profile26 is refused before ordinary bootstrap can execute imported SQL
+ok 65 - unsupported marker-only profile26 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 42.850708
+  type: 'test'
+  ...
+# Subtest: unsupported marker-only profile27 is refused before ordinary bootstrap can execute imported SQL
+ok 66 - unsupported marker-only profile27 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 52.022333
+  type: 'test'
+  ...
+# Subtest: unsupported marker-only profile28 is refused before ordinary bootstrap can execute imported SQL
+ok 67 - unsupported marker-only profile28 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 43.180125
+  type: 'test'
+  ...
+# Subtest: unsupported marker-only profile29 is refused before ordinary bootstrap can execute imported SQL
+ok 68 - unsupported marker-only profile29 is refused before ordinary bootstrap can execute imported SQL
+  ---
+  duration_ms: 40.086833
+  type: 'test'
+  ...
+# Subtest: marker25 only cannot enter ordinary bootstrap or mutate frozen captured bytes
+ok 69 - marker25 only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 43.481042
+  type: 'test'
+  ...
+# Subtest: restore metadata only cannot enter ordinary bootstrap or mutate frozen captured bytes
+ok 70 - restore metadata only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 43.25425
+  type: 'test'
+  ...
+# Subtest: execution epoch only cannot enter ordinary bootstrap or mutate frozen captured bytes
+ok 71 - execution epoch only cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 56.444917
+  type: 'test'
+  ...
+# Subtest: restore guard missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+ok 72 - restore guard missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 59.123917
+  type: 'test'
+  ...
+# Subtest: restore marker missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+ok 73 - restore marker missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 57.743584
+  type: 'test'
+  ...
+# Subtest: restore Mock evidence missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+ok 74 - restore Mock evidence missing cannot enter ordinary bootstrap or mutate frozen captured bytes
+  ---
+  duration_ms: 56.418208
+  type: 'test'
+  ...
+1..74
+# tests 74
+# suites 0
+# pass 68
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11804.400875

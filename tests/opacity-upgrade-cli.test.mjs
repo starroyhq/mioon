@@ -57,8 +57,9 @@ test('all four help copies disclose read-only existing backup, preservation, qua
     const help = opacityUpgradeHelp(locale), text = JSON.stringify(help);
     assert.equal(help.locale, locale); assert.equal(help.sourceVersion, 40); assert.equal(help.targetVersion, 42); assert.equal(help.profile, 'ordinary'); assert.equal(help.offline, true);
     assert.equal(help.draftPolicy, 'excluded-empty-only'); assert.equal(help.taskPolicy, 'settled-only'); assert.equal(help.preferencePolicy, 'preserved');
-    for (const term of ['existing-verified40-backup', 'schema40', 'restored41', 'restored43', 'last-project', 'scope', 'token', 'origin', 'epoch', 'pending', 'held', 'sequence export', 'generated asset', 'SIGINT', 'SIGTERM', 'GUI']) assert.ok(text.toLowerCase().includes(term.toLowerCase()), `${locale}: ${term}`);
+    for (const term of ['existing-verified40-backup', 'schema40', 'restored41', 'restored43', 'last-project', 'scope', 'token', 'origin', 'epoch', 'pending', 'held', 'sequence export', 'generated asset', 'SIGINT', 'SIGTERM', 'GUI', 'timeline.track.add/update', 'timeline.clip.add/update/remove', 'timeline.undo/redo']) assert.ok(text.toLowerCase().includes(term.toLowerCase()), `${locale}: ${term}`);
     assert.ok(help.usage.every(line => line.startsWith('node apps/cli/src/opacity-upgrade.ts ')));
+    assert.ok(help.preservation.some(line => line.includes('last-project') && line.includes('development')), 'target preference scope matches the candidate launcher');
     assert.doesNotMatch(text, /zh-TW|zh-HK|zh-CN|SIGKILL|--force|--in-place/u);
     assert.notEqual(help.requirements[0], opacityUpgradeHelp(locale === 'en' ? 'ja' : 'en').requirements[0]);
   }
@@ -72,6 +73,8 @@ test('fixed error messages are localized and never disclose unknown errors, gett
     assert.ok(error.message.length > 10); assert.ok(!JSON.stringify(error).includes(secret));
     assert.notEqual(error.message, safeOpacityUpgradeError({code}, locale === 'en' ? 'ja' : 'en').message);
   }
+  const unsupportedHints = {'zh-Hans': '旧任务操作', 'zh-Hant': '舊任務操作', en: 'Historical task operations', ja: '過去のタスク操作'};
+  for (const [locale, hint] of Object.entries(unsupportedHints)) assert.ok(safeOpacityUpgradeError({code: 'WORKSPACE_UPGRADE_SOURCE_UNSUPPORTED'}, locale).message.includes(hint));
   for (const error of [new Error(secret), {code: secret, message: secret}, null, undefined, {get code() {throw new Error(secret);}}, new Proxy({}, {getOwnPropertyDescriptor() {throw new Error(secret);}})])
     assert.deepEqual(safeOpacityUpgradeError(error), safeOpacityUpgradeError({code: 'WORKSPACE_UPGRADE_IO'}));
   const revoked = Proxy.revocable({}, {}); revoked.revoke();

@@ -62,6 +62,23 @@ export function createOpacityCandidateDomain(store: unknown) {
     boundAssembly.checkpoint();
     if (getOpacityCandidateAssembly(store) !== boundAssembly || !boundAssembly.ownsLock()) throw new AppError('EDIT_TASK_OWNER_REQUIRED', '只有持有工作区锁的后端可以修改编辑任务。', 403);
   };
+  /** A captured application add is readable history, never a new43 intent.
+   * Bind its original request to the exact immutable task row and hold rather
+   * than broadening the restored prepare, mutation or dispatch grammar. */
+  function capturedClipAdd(input: unknown, taskId?: unknown): Value | null {
+    checkpoint();
+    if (!boundAssembly.getRestoreContext() || !object(input) || !uuid(input.projectId) || typeof input.requestId !== 'string') return null;
+    const rows = db.prepare(`SELECT t.id,t.projectId,t.operation,${bounded('t.input', 8192)} AS input,t.requestId,t.digest
+      FROM edit_tasks t JOIN workspace_restore_holds h ON h.kind='edit_tasks' AND h.id=t.id AND h.capturedRowid=t.rowid
+      AND h.projectId=t.projectId AND h.namespace=t.lane AND h.requestId=t.requestId AND h.operation=t.operation
+      WHERE t.projectId=? AND t.requestId=? AND t.operation='timeline.clip.add' AND t.lane='timeline:mutation'
+      AND t.executionEpoch='captured' LIMIT 2`).all(input.projectId, input.requestId);
+    if (rows.length !== 1) return null;
+    const row = rows[0]!;
+    if (taskId !== undefined && row.id !== taskId || typeof row.input !== 'string' || row.digest !== digest({operation: row.operation, input})) return null;
+    let original: unknown; try {original = JSON.parse(row.input);} catch {return null;}
+    return object(original) && canonical(original) === canonical(input) ? row : null;
+  }
   const parse = (operation: string, input: unknown): Value => {
     checkpoint();
     if (operation === 'timeline.export.preflight') return captureOpacityPreflightInput(input);
@@ -211,7 +228,13 @@ export function createOpacityCandidateDomain(store: unknown) {
       const saved = receipt(operation);
       if (!saved || saved.requestHash !== digest({operation, input}) || saved.response !== text) return invalid();
       let response: unknown;try {response = JSON.parse(text);} catch {return invalid();}
-      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : mutationResponse(operation, input, response))) return invalid();
+      // Existing42 application adds can contain opacity in both the intent
+      // and their retained ACK. Only their captured task and captured receipt
+      // select this read-only predicate; new43 validation stays unchanged.
+      const capturedAdd = operation === 'timeline.clip.add' && capturedClipAdd(input) &&
+        db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='timeline_requests' AND id=? AND namespace='timeline' AND requestId=?").get(String(input.requestId), String(input.requestId));
+      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) :
+        capturedAdd ? isOpacityApplicationMutationResponse(operation, input, response) : mutationResponse(operation, input, response))) return invalid();
       if (operation === 'timeline.format.set') method(format, 'readTimelineFormatProvenance')(db, input, saved.requestHash);
       const loudness = operation === 'timeline.loudness.apply';
       const render = operation === 'timeline.render';
@@ -267,7 +290,11 @@ export function createOpacityCandidateDomain(store: unknown) {
     parse, boundary, admit, freezeRenderSnapshot, readPreflightSnapshot,
     capturePrepare: (value: unknown) => {checkpoint();return application ? captureOpacityApplicationPrepare(value) : captureOpacityTimelinePrepare(value);},
     captureIntent: (operation: string, value: unknown) => {checkpoint();return captureOpacityTimelineIntent(operation, value);},
-    isTask: (value: unknown) => {checkpoint();return application ? isOpacityApplicationTask(value) : isOpacityTimelineTask(value);},
+    isTask: (value: unknown) => {checkpoint();
+      if (application) return isOpacityApplicationTask(value);
+      if (isOpacityTimelineTask(value)) return true;
+      return isOpacityApplicationTask(value) && object(value) && value.operation === 'timeline.clip.add' && capturedClipAdd(value.input, value.id) !== null;
+    },
     isMutationResponse: (operation: string, input: unknown, response: unknown) => {checkpoint();return operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : mutationResponse(operation, input, response);},
   });
 }

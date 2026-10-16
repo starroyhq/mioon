@@ -15,7 +15,7 @@
 
 ## 独立草稿文件
 
-`createOpacityCandidateLocalDrafts` 绑定真实 owned42 store，写入 `local-drafts-v3.json`。旧 `local-drafts-v1.json` 不读取、不覆盖、不升级；原 v1/v2 服务和音量编辑器继续使用原路径。43 仍不支持 companion 写入，显式 origin 下的时间线编辑沿原任务保护执行。
+`createOpacityCandidateLocalDrafts` 绑定真实 owned42 store，写入 `local-drafts-v3.json`。旧 `local-drafts-v1.json` 不读取、不覆盖、不升级；原 v1/v2 服务和音量编辑器继续使用原路径。本编辑器片完成时43不支持companion写入；后续[43新草稿持久化](OPACITY-RESTORED-DRAFTS.md)（`4607947`）只为精确`localClipDrafts`能力下的本origin新片段草稿开放独立文件，durable ACK后可冷重开显式恢复／丢弃。源42 v3仍从备份排除并保留，不迁移；无能力的旧43和恢复视图仍仅内存。显式origin下的时间线编辑沿原任务保护执行。
 
 v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个来源字段时是 **132 节点、7590 字节、深度 5**。候选 walker 明确限制 132；旧 v1/v2 的 128 节点上限不变。行 8192、HTTP 12288、磁盘 2 MiB、128 个槽位及 CAS、目录同步、不确定写入语义保留。133 节点或超限请求不写入。
 
@@ -29,7 +29,7 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 
 后续渲染片已经将同一TypeScript编译器接入现有共享renderer的候选preview/export路径；raw snapshot、精确素材Map、来源hash/inode、LUT与发布fence均保留。4个获批2×2×3 RGBA像素探针在Node26.9.0／FFmpeg9.0.2下通过，详见[渲染接缝证据](OPACITY-RENDER-SEAM-PROPOSAL.md)。上述是渲染片完成时的范围；后续已将全新42接入实际App，并更新候选渲染提示，见[全新42应用入口](OPACITY-CANDIDATE-APPLICATION.md)。真实短媒体的后续范围见页首报告；完整GUI仍未完成。
 
-本轮限定检查PATH、Homebrew Cellar node/node@24、nvm、fnm、mise/rtx、asdf、Volta、`~/.codex/runtimes`及已知Codex bundle工具目录，未发现可用Node24，只确认`/opt/homebrew/Cellar/node/26.9.0/bin/node`（v26.9.0）。没有全盘扫描或安装。这不是Node24或旧固定FFmpeg验收证据。
+该早期切片限定检查PATH、Homebrew Cellar node/node@24、nvm、fnm、mise/rtx、asdf、Volta、`~/.codex/runtimes`及当时已知Codex bundle工具目录，未发现可用Node24，只确认`/opt/homebrew/Cellar/node/26.9.0/bin/node`（v26.9.0）。这是当时的检查结果，没有全盘扫描或安装，不是Node24或旧固定FFmpeg验收证据。后续[本轮集成检查](OPACITY-RELEASE-CHECK.md)在当前ChatGPT bundle中找到CUA Node24.21.0 darwin-arm64；其来源与旧固定Linux SHA不同，具体执行结果另记。
 
 ## 当前候选 preflight
 
@@ -53,20 +53,20 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 4. **播放、下载与完成状态。** server的`deliveryGuards`固定旧`isTimelineRenderRecord`。需将精确候选record校验接入同一source／held／文件响应守卫，确保worker成功后，用户能取得正确的preview/export媒体。
 5. **备份恢复产品链。** 公共backup DTO、DB classifier、离线restore、CLI和诊断仍只支持40/41。42→43构造器存在，但create/verify/restore/restore-status尚未贯通；43应继续拒绝递归备份。此闭环完成前，不向用户提供43恢复入口。
 
-以上1–4已由后续[全新42应用片](OPACITY-CANDIDATE-APPLICATION.md)接通，并补[普通42已有目录重开](OPACITY-CANDIDATE-REOPEN.md)，均限内部明确入口。第5项已有[固定42冷备份→43离线产品入口](OPACITY-CANDIDATE-BACKUP-RESTORE.md)，随后[恢复43应用片](OPACITY-RESTORED-APPLICATION.md)接通独立启动、已有片段编辑／Undo／Redo及新render，保留原held／epoch／origin。43不写companion，当前未保存输入与视图仅在本窗口内存，正常关闭也可能丢失；源v3原文仍保留。preflight／capability无需重复实现，GUI／真实媒体范围单列。旧40/41升级继续按下节单独处理。
+以上1–4已由后续[全新42应用片](OPACITY-CANDIDATE-APPLICATION.md)接通，并补[普通42已有目录重开](OPACITY-CANDIDATE-REOPEN.md)，均限内部明确入口。第5项已有[固定42冷备份→43离线产品入口](OPACITY-CANDIDATE-BACKUP-RESTORE.md)，随后[恢复43应用片](OPACITY-RESTORED-APPLICATION.md)接通独立启动、已有片段编辑／Undo／Redo及新render，保留原held／epoch／origin。后续[43草稿片](OPACITY-RESTORED-DRAFTS.md)仅在精确能力下持久化本origin的新片段输入，durable ACK后可冷恢复；源42 v3仍排除且保留，无能力旧43及恢复视图保持内存模式，未确认输入仍可能丢失。preflight／capability无需重复实现，GUI／真实媒体范围单列。旧40/41升级继续按下节单独处理。
 
 ## 旧40/41升级条件与备份恢复策略
 
-- 后续已实现[普通40→普通42的显式离线副本升级](OPACITY-ORDINARY-UPGRADE.md)，限严格资格、已有校验40冷备份及新目标。默认入口和41路径不变；本节其余条件仍是该首片的限制。
+- 后续`256cfd3`已实现[普通40→普通42的显式离线副本升级](OPACITY-ORDINARY-UPGRADE.md)，限严格资格、已有校验40冷备份及新目标。默认入口和41路径不变；本节其余条件仍是该首片的限制。
 - **初始化器不迁移。** `initializeWorkspaceSchema42`仅支持空库构造或精确42重开，明确拒绝旧40；独立离线升级器须完整证明源资格、原行保留及最终发布，不能只插42标记冒充迁移。
-- **40升级需独立迁移器。** 最小首批资格可限定为：所有后端／桌面端干净关闭，没有未解决执行／确认结果，未保存草稿已明确保存或取消，完整40分类与冷备份verify通过。不符合条件就保留40，不删除未知任务或自动重放。
-- **只迁移新副本。** 保留原40目录和已验证的原始冷备份，在独立副本内事务升级。需要比较原始行、rowid、来源、历史、request/hash/receipt，明确未完成任务和companion策略，再独立重开42验证；不把投影、重算hash或清空历史当迁移。
+- **40使用独立升级器。** 已实现首批资格限定为：所有后端／桌面端干净关闭，没有未解决执行／确认结果，未保存草稿已明确保存或取消，完整40分类与冷备份verify通过。不符合条件就保留40，不删除未知任务或自动重放。
+- **只迁移新副本。** 保留原40目录和已验证的原始冷备份，在独立副本内事务升级。实际比较原始行、rowid、来源、历史、request/hash/receipt，明确拒绝不支持的任务和活动companion，再独立重开42验证；不把投影、重算hash或清空历史当迁移。
 - **41继续旧路径。** 43构造器只接受普通42，sourceSchema固定42。41不能改标记成为43；未来若支持，必须另审保留source40来历、held、epoch和原捕获证据的策略，不重写这些证据。
 - **回退是选择旧目录。** 关闭新副本，显式重新选择保留的旧40目录；不要删除42/43标记或把新数据截成旧字段。当前40备份通过标准恢复会产生受保护41，而不是重新授权历史任务执行的普通40。恢复发布结果不确认时只检查restore-status，不原地重试／覆盖／清理。
-- 现有冷备份不包含凭据、设置、浏览器数据和companion，故备份前需处理未保存草稿。只有42备份／恢复产品链补齐后，才能发布42→43用户恢复流程。
+- 现有冷备份不包含凭据、设置、浏览器数据和companion，故备份前需处理未保存草稿。42备份／恢复产品链已由上述独立入口补齐；43新草稿不改变源v3排除策略，也不开放递归备份。
 
 ## 仅验收缺口与监听边界
 
-代码接线完成后，仍需真实GUI四语言、IME、草稿恢复、Save/Cancel/关闭保护、播放／下载和性能验收。实际10帧渲染与HTTP读取／下载已经由页首后续报告验证，不能代替界面操作。还需Node24及产品实际固定FFmpeg运行时验证；本轮Node26和此前FFmpeg9.0.2的短像素证据不能替代它们。
+代码接线完成后，仍需最终构建的完整四语言GUI、真实IME、新草稿恢复、Save/Cancel/关闭保护、播放／下载和性能验收。实际10帧渲染与HTTP读取／下载已经由页首后续报告验证，部分语言GUI另有后续记录，均不能代替未完成的界面矩阵。早期Node26和FFmpeg9.0.2短像素证据不替代Node24或产品实际媒体工具链资格；[本轮集成检查](OPACITY-RELEASE-CHECK.md)的最终通过、失败和未验项已另记，CUA Node24与旧固定Linux二进制资格不混用。
 
 上述preflight片的候选服务、worker和observer验证均不依赖监听。当时将真实HTTP恢复命令 `TMPDIR=/private/tmp node --test --test-name-pattern='restored server' tests/workspace-restore-execution.test.mjs` 列为待授权范围，目标为`127.0.0.1`的测试动态端口；该片未执行此命令、未重试此前EPERM拒绝，也未使用其他监听路径。后续用户已明确授权本任务隔离localhost验收，42已运行的结果见页首报告，43后续结果见[独立应用片](OPACITY-RESTORED-APPLICATION.md)；这里保留旧片命令记录，不把它算成已执行或要求对同次授权重复请示。

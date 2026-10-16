@@ -1,0 +1,92 @@
+[
+  {
+    "file": "tests/local-drafts-app.test.mjs",
+    "errorHeader": "'application is not defined'",
+    "count": 1
+  },
+  {
+    "file": "tests/local-drafts-business.test.mjs",
+    "errorHeader": "'Private storage cannot traverse symbolic links. Select a canonical directory path.'",
+    "count": 18
+  },
+  {
+    "file": "tests/local-drafts-publication.test.mjs",
+    "errorHeader": "'Private storage cannot traverse symbolic links. Select a canonical directory path.'",
+    "count": 56
+  },
+  {
+    "file": "tests/local-drafts-volume-envelope-format.test.mjs",
+    "errorHeader": "'无法安全读取或保存本地草稿，已有文件未被重置。'",
+    "count": 17
+  },
+  {
+    "file": "tests/project-home-app.test.mjs",
+    "errorHeader": "|-",
+    "count": 7
+  },
+  {
+    "file": "tests/project-home-app.test.mjs",
+    "errorHeader": "'clipDraftRef is not defined'",
+    "count": 5
+  },
+  {
+    "file": "tests/project-home-app.test.mjs",
+    "errorHeader": "'Actual App render boundaries must exist'",
+    "count": 5
+  },
+  {
+    "file": "tests/project-specifications-ui.test.mjs",
+    "errorHeader": "'clipDraftRef is not defined'",
+    "count": 2
+  },
+  {
+    "file": "tests/project-specifications-ui.test.mjs",
+    "errorHeader": "|-",
+    "count": 10
+  },
+  {
+    "file": "tests/typecheck-contract.test.mjs",
+    "errorHeader": "|-",
+    "count": 2
+  },
+  {
+    "file": "tests/typecheck-tooling.test.mjs",
+    "errorHeader": "|-",
+    "count": 1
+  },
+  {
+    "file": "tests/workspace-backup-marker-bounds.test.mjs",
+    "errorHeader": "|-",
+    "count": 1
+  },
+  {
+    "file": "tests/workspace-backup-readiness.test.mjs",
+    "errorHeader": "'Private storage cannot traverse symbolic links. Select a canonical directory path.'",
+    "count": 4
+  },
+  {
+    "file": "tests/workspace-preferences.test.mjs",
+    "errorHeader": "'Private storage cannot traverse symbolic links. Select a canonical directory path.'",
+    "count": 9
+  },
+  {
+    "file": "tests/workspace-receipt-protections.test.mjs",
+    "errorHeader": "|-",
+    "count": 168
+  },
+  {
+    "file": "tests/workspace-receipt-protections.test.mjs",
+    "errorHeader": "'Volume envelopes require an exact supported workspace profile.'",
+    "count": 98
+  },
+  {
+    "file": "tests/workspace-schema-profiles.test.mjs",
+    "errorHeader": "'Private storage cannot traverse symbolic links. Select a canonical directory path.'",
+    "count": 36
+  },
+  {
+    "file": "tests/workspace-schema-profiles.test.mjs",
+    "errorHeader": "|-",
+    "count": 10
+  }
+]

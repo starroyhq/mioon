@@ -1,0 +1,25 @@
+✔ actual App Cancel sees a synchronous clip edit before React rerender and preserves every draft (10.4025ms)
+✔ actual App late confirmation rejects newer typing (1.083875ms)
+✔ actual App late confirmation rejects newer typing even when text changes back (0.500917ms)
+✔ actual App late confirmation cannot discard a replacement controller with identical text (0.615917ms)
+✔ actual App project change while confirmation is open preserves the original clip draft (0.337084ms)
+✔ actual App clean registered controller permits navigation without a prompt or draft reset (10.759ms)
+✔ actual App waits for the exact local-draft CAS delete before resetting other panels (3.270125ms)
+✔ actual App failed asynchronous discard retains local input and never resets other panels (2.68975ms)
+✔ actual App typing during CAS discard keeps navigation blocked and the newer input dirty (0.373167ms)
+✔ actual App project change while awaiting discard cannot reset the newer panel (0.405083ms)
+✔ actual App navigation epoch change while awaiting discard cannot reset the newer panel (1.8835ms)
+✔ actual App controller change while awaiting discard cannot reset the newer panel (0.958458ms)
+✔ actual App rechecks subtitle ownership after awaiting local clip discard (0.320167ms)
+✔ actual App registration cleanup releases only its still-registered controller (0.224333ms)
+✔ actual beforeunload reads synchronous clip state and follows registration ownership (2.253584ms)
+✔ actual App draft discard leaves the original pending timeline request and its blocking path untouched (0.733416ms)
+✔ actual Inspector save binding still routes the exact draft through the existing timeline mutation (0.513084ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 366.421542

@@ -236,7 +236,8 @@ function appFunction(name, end, env) {
   const start = app.indexOf(`  ${name}`), stop = app.indexOf(`  ${end}`, start);
   assert.ok(start >= 0 && stop > start, 'Actual App callback boundaries must remain present');
   assert.equal(app.indexOf(`  ${name}`, start + name.length + 2), -1, 'The extracted callback must have a unique owner');
-  return Function(...Object.keys({ msg: message, ...env }), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values({ msg: message, ...env }));
+  const scope = {msg: message, clipDraftRef: {current: null}, ...env};
+  return Function(...Object.keys(scope), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values(scope));
 }
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_720');

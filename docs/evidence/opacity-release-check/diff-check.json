@@ -1,0 +1,17 @@
+{
+  "fullStagedDiffCheckCode": 2,
+  "reason": "Unmodified raw test reporter output contains whitespace-only lines; raw failure evidence is preserved rather than edited.",
+  "files": [
+    "docs/evidence/opacity-release-check/aggregate-initial.tap",
+    "docs/evidence/opacity-release-check/app-fixtures-before.tap",
+    "docs/evidence/opacity-release-check/upgrade-integration-red.tap",
+    "docs/evidence/opacity-release-check/workspace-portable-fixture-canonical-stage.tap",
+    "docs/evidence/opacity-release-check/workspace-portable-fixture-red.tap",
+    "docs/evidence/opacity-release-check/workspace-receipt-protections-red.tap"
+  ],
+  "sourceHumanDocsJsonAndRunnerDiffCheckCode": 0,
+  "scope": [
+    "all staged files except raw docs/evidence/opacity-release-check/*.tap and *.txt"
+  ],
+  "runtimeOrAssertionWhitespaceDefects": false
+}

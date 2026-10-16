@@ -1,0 +1,21 @@
+{
+  "manifest": "tests/fixtures/opacity-envelope-frozen-baseline.json",
+  "manifestSha256": "7381ed3486563b84cf4f4912dfde81ae07b0369cde4e479ad2b1bcfd88633f0d",
+  "entries": 64,
+  "unchanged": 63,
+  "previouslyApprovedException": {
+    "packages/business/src/timeline-media.mjs": {
+      "original": "b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde",
+      "actual": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee"
+    }
+  },
+  "newExceptions": [],
+  "legacyAllowlistAndTypedExclusionsUnchanged": true,
+  "contractsPackageUnchanged": true,
+  "checkedPaths": [
+    "config/typecheck-legacy-sources.json",
+    "config/typecheck-legacy-typed-exclusions.json",
+    "packages/contracts/package.json"
+  ],
+  "status": "passed"
+}

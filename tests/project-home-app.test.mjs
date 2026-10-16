@@ -14,6 +14,8 @@ import { workspaceOriginScope, retainWorkspaceIdentity } from '../apps/web/src/w
 import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.js';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.js';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
+import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
+import {canEditTimelineAudioRole, isWorkspaceRestoreInspection} from '@mioon/contracts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The same assertions can run against an independently extracted baseline App.
@@ -35,7 +37,10 @@ function environment(options = {}) {
   const calls = [], registry = createSettingsNavigationRegistry();
   const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
     ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace,
-    editorInitialSelection, revealNativeProjects, application: null, nativeWindow: options.nativeWindow ?? null,
+    editorInitialSelection, revealNativeProjects, application: null, opacityRestored: false, nativeWindow: options.nativeWindow ?? null,
+    clipDraftRef: {current: null}, retainWorkbenchForClip: false, guardRetainedInputInteraction() {},
+    audioRoleProbe: {current: null}, audioRoleProbeEpoch: {current: 0}, observeClipAudioRoleCapability,
+    isWorkspaceInspection: isWorkspaceRestoreInspection, canEditTimelineAudioRole,
     nativeProjectEntry: { open: async projectId => { calls.push(['nativeEntry.open', projectId]); return true; },
       show: async mode => { calls.push(['nativeEntry.show', mode]); return true; },
       readCloseSnapshot: () => ({ dirty: false, busy: false, unknown: false, identity: [] }) },
@@ -90,7 +95,7 @@ function environment(options = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
-    'Toast', 'MobilePanel', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen']) {
+    'Toast', 'MobilePanel', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = value => { env[key] = typeof value === 'function' ? value(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }
@@ -367,7 +372,7 @@ test('late boot discovery cannot select over a newer project or publish after un
 let presentation;
 function boundaryRenderer() {
   if (presentation) return presentation;
-  const start = app.indexOf('  if (auth === false) return <Login');
+  const start = app.indexOf('  if (auth === false && !retainWorkbenchForClip) return <Login');
   const workbench = app.indexOf('  return <>{webSettingsCenter}<main className={`workbench ', start);
   const openingEnd = app.indexOf('>\n', workbench);
   assert.ok(start >= 0 && workbench > start && openingEnd > workbench, 'Actual App render boundaries must exist');
@@ -399,7 +404,7 @@ function boundaryRenderer() {
     const env = { LanguageControl: () => null, renderImportFeedback: (locale, value) => renderCoreMessage(locale, value), msg, ...createI18nTestContext(), localizedError: displayMessage => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, ...h, ...ui, restored: h.env.workspaceRef.current.restored, workspace: h.env.workspaceRef.current,
       lastProjectStatus: null, setHomeConnection() {}, geometry: { narrow: false, style: {} }, workspaceMode: 'canvas', mobilePanel: 'canvas',
       assetsCollapsed: false, inspectorCollapsed: false, timelineCollapsed: false,
-      Icon: () => null, Login: stub('Login'), RestoredUnavailable: stub('RestoredUnavailable'),
+      Icon: () => null, BrandMark: () => null, Login: stub('Login'), RestoredUnavailable: stub('RestoredUnavailable'),
       AgentSettings: stub('AgentSettings'), ImageSettings: stub('ImageSettings'), ComfyImageSettings: stub('ComfyImageSettings'),
       SettingsConnectionForms: stub('SettingsConnectionForms'),
       AgentDockPane: ({ children }) => ui.React.createElement('div', null, children),

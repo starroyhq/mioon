@@ -2,7 +2,7 @@
 
 日期：2026-10-16。基线：`ec01753056c0f31706d29ed279ae1944c822ad94`。
 
-本片将全新、独立42工作区接入同一个实际App。生产默认仍为40/41；没有迁移已有目录，没有新增普通payload、URL或环境profile开关。43冷备份／恢复产品链和40/41升级不在本初片；后续已补[固定42备份／43恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)与[恢复43独立应用入口](OPACITY-RESTORED-APPLICATION.md)，各自验收范围另记。
+本片将全新、独立42工作区接入同一个实际App。生产默认仍为40/41；没有迁移已有目录，没有新增普通payload、URL或环境profile开关。43冷备份／恢复产品链和40/41升级不在本初片；后续已补[固定42备份／43恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)、[恢复43独立应用入口](OPACITY-RESTORED-APPLICATION.md)、[43新草稿持久化](OPACITY-RESTORED-DRAFTS.md)（`4607947`）及[普通40→42显式离线副本升级](OPACITY-ORDINARY-UPGRADE.md)（`256cfd3`），各自验收范围另记。整体[发布前集成检查](OPACITY-RELEASE-CHECK.md)已记录最终通过、失败和未验项，不改写本初片范围。
 
 ## 已接通的路径
 
@@ -34,7 +34,7 @@ node apps/server/src/opacity-candidate-cli.ts --new-workspace /private/tmp/mioon
 
 创建时该目录必须不存在，不允许改成用户已有工作区；该专用目录现已存在，不能重复使用`--new-workspace`覆盖。监听目标为`127.0.0.1:4319`。访问令牌由专用目录的`access-token`提供，不需要配置provider。Safari已实际登录、创建并打开项目，打开导入选择器后GUI连接中断；同一临时项目随后通过真实HTTP导入、保存、草稿持久化、Undo／Redo及10帧预览／导出与下载校验。完整界面操作仍待补验。
 
-初片只创建新目录；后续已补[已有普通42目录安全重开](OPACITY-CANDIDATE-REOPEN.md)，使用互斥`--open-workspace`并复用完整profile／owner校验。通用生产启动器仍拒绝42；[42冷备份→43离线恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)已独立实现，随后通过互斥`--open-restored-workspace`接通[恢复43应用](OPACITY-RESTORED-APPLICATION.md)。43保持原origin／held／epoch及窄编辑权限，不取得普通42创建／导入能力；其当前草稿和视图仅在窗口内存，正常关闭也可能丢失。完整GUI及各片真实媒体范围分别记录。
+初片只创建新目录；后续已补[已有普通42目录安全重开](OPACITY-CANDIDATE-REOPEN.md)，使用互斥`--open-workspace`并复用完整profile／owner校验。通用生产启动器仍拒绝42；[42冷备份→43离线恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)已独立实现，随后通过互斥`--open-restored-workspace`接通[恢复43应用](OPACITY-RESTORED-APPLICATION.md)。43保持原origin／held／epoch及窄编辑权限，不取得普通42创建／导入能力。[后续草稿片](OPACITY-RESTORED-DRAFTS.md)仅在精确`localClipDrafts`能力下持久化本origin的新片段草稿，durable ACK后可在冷重开时显式恢复／丢弃；源42 v3仍排除且保留。无此能力的旧43及恢复视图仍仅内存，未确认输入不能视为已安全保存。完整GUI及各片真实媒体范围分别记录。
 
 ## 验证范围与剩余验收
 
@@ -42,4 +42,4 @@ node apps/server/src/opacity-candidate-cli.ts --new-workspace /private/tmp/mioon
 
 初片命令、通过数量、构建结果和独立审查见[验证证据](evidence/opacity-application/qualification.json)。该初片没有启动GUI、监听、媒体或provider；后续实际运行见[独立验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)。没有安装依赖、修改凭据、接触实际项目或push。
 
-真实GUI四语言、IME、Inspector草稿恢复、Save／Cancel、播放／下载仍未验；本轮短媒体和HTTP结果不替代这些界面验收。GUI工具连接丢失后首次CLI退出码不确定，后续HTTP服务4次正常关闭，最终无监听／锁。当前仅有Node26.9.0和本机FFmpeg9.0.2，未取得Node24、产品固定FFmpeg或长片性能验收。后续监听基于用户新授权正常审批启动，未绕过拒绝。
+完整四语言GUI、真实IME、最终构建的新草稿恢复／关闭保护及播放／下载界面矩阵仍未验；本轮短媒体和HTTP结果不替代这些界面验收，后续部分语言GUI范围见[语言专项](OPACITY-LANGUAGE-IME-ACCEPTANCE.md)。GUI工具连接丢失后首次CLI退出码不确定，后续HTTP服务4次正常关闭，最终无监听／锁。本初片及短媒体验收当时仅确认Node26.9.0和本机FFmpeg9.0.2，没有Node24、产品固定FFmpeg或长片性能验收结论。[本轮集成检查](OPACITY-RELEASE-CHECK.md)另发现已安装CUA Node24.21.0 darwin-arm64；这不替代旧固定Linux二进制或产品运行时资格。后续监听基于用户新授权正常审批启动，未绕过拒绝。

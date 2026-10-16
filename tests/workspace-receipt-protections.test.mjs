@@ -1,4 +1,8 @@
-import test from 'node:test';
+// Fixed26 historical receipt repair over independent golden24/26 and25/27
+// evidence. Raw malformed JSON/BLOB preservation fixtures are intentionally
+// outside today's volume40 admission. Two separately named tests below retain
+// actual current-dispatch coverage; no historical data is normalized for it.
+import nodeTest from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
@@ -11,12 +15,30 @@ import {createWorkspaceRestoreProfileV27} from '../packages/business/src/workspa
 import {classifyWorkspaceSchema,detectWorkspaceRestoreEvidence,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {open,fixture,snapshot,golden,facade} from './workspace-schema26-fixtures.mjs';
 
+const test=(name,run)=>nodeTest(`fixed26 historical receipt repair: ${name}`,run);
+
 const names=['immutable_timeline_responses','immutable_reference_responses','reject_reference_request_replacement','retain_reference_requests'];
 const tables=['timeline_requests','reference_requests'];
 const fixed=Object.values(golden.definitions).filter(object=>names.includes(object.name));
 const unsupported=error=>error.code==='RESTORE_SCHEMA_UNSUPPORTED';
 const markers=[...Array.from({length:24},(_,index)=>index+1),26];
 function dispatch(onLegacy=()=>{}){
+ const restored27=createWorkspaceRestoreProfileV27(initializeWorkspaceSchemaThrough24);
+ // This file's independent golden24/26 data deliberately includes raw BLOB,
+ // malformed JSON and large rowids. Exercise its fixed historical repair,
+ // rather than asking today's default40 feature admission to migrate it.
+ return {initialize(db){
+  const role=readCurrentWorkspaceRole(db);
+  if(role==='restored-25-evidence')return validateWorkspaceRestoreSchema(db);
+  if(role==='restored-27-evidence')return restored27.validateWorkspaceRestoreSchemaV27(db);
+  assert.ok(role==='ordinary-through-24'||role==='ordinary-26','this historical fixture has an exact24/26 or25/27 role');
+  const marker=db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='schema_version' COLLATE NOCASE").get();
+  const complete24=marker&&db.prepare('SELECT COUNT(*) AS count FROM main.schema_version').get()?.count===24;
+  if(role==='ordinary-through-24'&&!complete24){onLegacy(db);initializeWorkspaceSchemaThrough24(db);}
+  initializeWorkspaceSchema26(db);return null;
+ }};
+}
+function currentDispatch(onLegacy=()=>{}){
  return createWorkspaceSchemaDispatch({initializeThrough24(db){onLegacy(db);initializeWorkspaceSchemaThrough24(db);},
   classify:classifyWorkspaceSchema,detectRestoreEvidence:detectWorkspaceRestoreEvidence,install:installWorkspaceRestoreSchema,validate:validateWorkspaceRestoreSchema});
 }
@@ -48,6 +70,19 @@ test('fresh real through24 constructor still boots ordinary26 with all fixed rec
  assert.equal(dispatch(()=>legacyCalls++).initialize(db),null);assert.equal(legacyCalls,1);
  assert.equal(readCurrentWorkspaceRole(db),'ordinary-26');assertFixed(db);
  assert.ok(db.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='timeline_requests_project'").get());
+});
+
+nodeTest('current default dispatcher independently boots ordinary40 with the same receipt protections',t=>{
+ const db=open(':memory:');t.after(()=>db.close());let legacyCalls=0;
+ assert.equal(currentDispatch(()=>legacyCalls++).initialize(db),null);assert.equal(legacyCalls,1);
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-40');assertFixed(db);
+});
+
+nodeTest('current feature admission refuses the intentionally raw historical receipt fixture without changing it',t=>{
+ const db=fresh(t);seedRaw(db);drop(db);const before=snapshot(db),effects=[];let legacyCalls=0;
+ assert.throws(()=>currentDispatch(()=>legacyCalls++).initialize(facade(db,event=>effects.push(event))),unsupported);
+ assert.equal(legacyCalls,0);assert.deepEqual(snapshot(db),before);assert.equal(db.isTransaction,false);
+ assert.deepEqual(effects,[],'current volume admission refuses before historical receipt repair or migration writes');
 });
 
 for(const version of [24,26])for(const missing of [names,...names.map(name=>[name])])test(`ordinary${version} startup restores only missing trusted receipts: ${missing.join(',')}`,t=>{

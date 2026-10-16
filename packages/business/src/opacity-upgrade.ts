@@ -240,7 +240,10 @@ export async function upgradeOpacityWorkspace40To42(options:OpacityWorkspaceUpgr
       }
       inject('afterMedia');check();
       const candidateIdentity=requiredFile(candidate,destination,true,512*1024**2),lastProject=rebindOpacityUpgradeLastProject(captured,
-        {root:destination,channel:options.channel,directoryIdentity:targetIdentity,databaseIdentity:candidateIdentity});
+        // options.channel binds and validates the source companion above. The
+        // new copy has one explicit application launcher, whose trusted channel
+        // is development; retaining the source channel would make it unreadable.
+        {root:destination,channel:'development',directoryIdentity:targetIdentity,databaseIdentity:candidateIdentity});
       const write=(name:string,value:unknown,maxBytes:number):void=>{
         const file=path.join(destination,name);
         // Reuse the private writer's owned temporary inode cleanup if payload

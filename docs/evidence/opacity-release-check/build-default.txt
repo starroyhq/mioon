@@ -1,0 +1,31 @@
+/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/rollup@4.64.2/node_modules/rollup/dist/native.js:121
+		throw new Error(
+		      ^
+
+Error: Cannot find module @rollup/rollup-darwin-arm64. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at requireWithFriendlyError (/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/rollup@4.64.2/node_modules/rollup/dist/native.js:121:9)
+    at Object.<anonymous> (/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/rollup@4.64.2/node_modules/rollup/dist/native.js:130:22)
+    at Module._compile (node:internal/modules/cjs/loader:1929:14)
+    at Object..js (node:internal/modules/cjs/loader:2060:10)
+    at Module.load (node:internal/modules/cjs/loader:1651:32)
+    at Module._load (node:internal/modules/cjs/loader:1443:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:372:15)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:244:9)
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25) {
+  [cause]: Error: dlopen(/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/@rollup+rollup-darwin-arm64@4.64.2/node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node, 0x0001): tried: '/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/@rollup+rollup-darwin-arm64@4.64.2/node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node' (code signature in <58935E6E-C1A5-3E4A-B295-F88FC38263F5> '/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/@rollup+rollup-darwin-arm64@4.64.2/node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node' not valid for use in process: mapping process and mapped file (non-platform) have different Team IDs), '/System/Volumes/Preboot/Cryptexes/OS/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/@rollup+rollup-darwin-arm64@4.64.2/node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node' (no such file), '/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/@rollup+rollup-darwin-arm64@4.64.2/node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node' (code signature in <58935E6E-C1A5-3E4A-B295-F88FC38263F5> '/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/@rollup+rollup-darwin-arm64@4.64.2/node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node' not valid for use in process: mapping process and mapped file (non-platform) have different Team IDs)
+      at Object..node (node:internal/modules/cjs/loader:2087:18)
+      at Module.load (node:internal/modules/cjs/loader:1651:32)
+      at Module._load (node:internal/modules/cjs/loader:1443:12)
+      at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+      at Module.require (node:internal/modules/cjs/loader:1674:12)
+      at require (node:internal/modules/helpers:157:16)
+      at requireWithFriendlyError (/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/rollup@4.64.2/node_modules/rollup/dist/native.js:103:10)
+      at Object.<anonymous> (/Users/kouzen/Documents/data/mioon/node_modules/.pnpm/rollup@4.64.2/node_modules/rollup/dist/native.js:130:22)
+      at Module._compile (node:internal/modules/cjs/loader:1929:14)
+      at Object..js (node:internal/modules/cjs/loader:2060:10) {
+    code: 'ERR_DLOPEN_FAILED'
+  }
+}
+
+Node.js v24.21.0

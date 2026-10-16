@@ -1,0 +1,16 @@
+✔ candidate offline help has four locales, accurate fixed42→43 boundaries and explicit draft exclusion (3898.895792ms)
+✔ actual candidate CLI cold roundtrip preserves media/opacity/history and exposes both read-only status modes (4450.853208ms)
+✔ candidate CLI preserves original parser validation and identifies its own localized usage (4531.5695ms)
+✔ successful create and restore also disclose excluded drafts in Traditional Chinese and Japanese (3350.328917ms)
+✔ candidate CLI refuses corruption, occupied sources and existing targets without overwriting or leaking private paths (2389.221708ms)
+✔ candidate CLI preserves sanitized uncertain-publication binding for read-only status rather than retrying (2795.219167ms)
+✔ ordinary offline CLI keeps its original help and rejects fixed42 archives/workspaces (2235.509833ms)
+✔ candidate CLI import is inert and preserves scoped listener lifecycle (61.050209ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24062.651417

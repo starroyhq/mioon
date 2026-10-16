@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
 import {cp, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -88,6 +89,10 @@ test('native Node package barrel, compatibility module and real TS implementatio
 test('foundation configuration strictly checks the real contract and automatically admits new non-browser TS', async () => {
   const configuration = JSON.parse(await readFile(path.join(root, configName), 'utf8'));
   assert.deepEqual(configuration.files, [
+    '../../scripts/lib/test-compile-cache.ts',
+    '../helpers/agent-edit-wire-lifecycle.ts',
+    '../helpers/agent-edit-wire-lifecycle-cases.ts',
+    '../helpers/test-compile-cache-cases.ts',
     '../../packages/contracts/src/agent-protocol.ts',
     '../../packages/contracts/src/agent-protocol.mjs',
     './agent-protocol.consumer.mts',
@@ -95,10 +100,16 @@ test('foundation configuration strictly checks the real contract and automatical
     './export-sample-peak.consumer.mts',
     './float-checked-export.consumer.mts',
     './native-close.consumer.mts',
+    './media-streaming-runtime.consumer.mts',
     './timeline-audio-preview.consumer.mts',
+    './timeline-audio-preview-coordinator.consumer.mts',
     './export-loudness.consumer.mts',
     './timeline-mix-loudness.consumer.mts',
     './timeline-loudness-apply.consumer.mts',
+    './comfy-availability.consumer.mts',
+    './i18n.consumer.mts',
+    './timeline-clip-loudness.consumer.mts',
+    './opacity-envelope.consumer.mts',
   ]);
   assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
@@ -166,6 +177,28 @@ async function compileWithoutEmitting(directory, compiler) {
   return result;
 }
 
+async function compilerFixtureSources(compiler) {
+  // Copy every explicitly checked consumer and its real local import closure.
+  // New foundation files must not become missing-file errors in this isolated
+  // fixture, and public workspace imports must resolve to its copied packages.
+  // The compiler only reads these helpers; their runtime tests are never run.
+  const ts = createRequire(import.meta.url)(path.join(path.dirname(compiler), '../lib/typescript.js'));
+  const configFile = path.join(root, configName), loaded = ts.readConfigFile(configFile, ts.sys.readFile);
+  assert.equal(loaded.error, undefined);
+  const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, path.dirname(configFile));
+  assert.deepEqual(parsed.errors, []);
+  const inputs = loaded.config.files.map(name => path.resolve(path.dirname(configFile), name));
+  const program = ts.createProgram(inputs, parsed.options);
+  const names = new Set([configName, ...['contracts', 'client', 'i18n'].map(name => `packages/${name}/package.json`)]);
+  for (const source of program.getSourceFiles()) {
+    const relative = path.relative(await realpath(root), await realpath(source.fileName));
+    if (relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`) &&
+        !relative.split(path.sep).includes('node_modules')) names.add(relative);
+  }
+  for (const name of [sourceName, shimName, consumerName]) assert.ok(names.has(name));
+  return [...names].sort();
+}
+
 test('genuine compiler checks copied real source, fails an unsuppressed source mutation, and recovers without emit', async t => {
   const compiler = await localCompiler();
   // Keep this owned temporary copy beneath the repository so real @types/node
@@ -176,21 +209,7 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
   await mkdir(temporaryParent, {recursive: true, mode: 0o700});
   const directory = await mkdtemp(path.join(temporaryParent, 'typecheck-test-中-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  for (const name of [sourceName, shimName, consumerName,
-    'tests/typecheck/agent-timeline-gain.consumer.mts', 'tests/typecheck/export-sample-peak.consumer.mts',
-    'tests/typecheck/export-loudness.consumer.mts', 'packages/contracts/src/export-loudness.ts',
-    'tests/typecheck/timeline-mix-loudness.consumer.mts', 'packages/contracts/src/timeline-mix-loudness.ts',
-    'tests/typecheck/timeline-loudness-apply.consumer.mts', 'packages/contracts/src/timeline-loudness-apply.ts',
-    'tests/typecheck/float-checked-export.consumer.mts', 'packages/contracts/src/timeline-export-float.ts',
-    'tests/typecheck/native-close.consumer.mts', 'apps/desktop/src/native-close.ts',
-    'tests/typecheck/timeline-audio-preview.consumer.mts', 'packages/contracts/src/timeline-audio-preview.ts', 'packages/contracts/src/timeline-segments.ts',
-    'packages/contracts/src/native-audio-preview.ts', 'apps/desktop/src/native-audio-preview-protocol.ts',
-    'apps/desktop/src/native-audio-preview-host.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/native-audio-preview-preload.ts',
-    'apps/desktop/src/project-window-host.ts', 'apps/desktop/src/project-window-protocol.ts', 'apps/desktop/src/project-window-preload.ts',
-    'packages/contracts/src/agent-timeline-gain.ts', 'packages/contracts/src/export-sample-peak.ts',
-    'packages/contracts/src/timeline-delivery.ts', 'packages/contracts/src/timeline-export-range.ts',
-    'packages/contracts/src/local-delivery.ts',
-    configName, 'packages/contracts/package.json']) {
+  for (const name of await compilerFixtureSources(compiler)) {
     const destination = path.join(directory, name);
     await mkdir(path.dirname(destination), {recursive: true});
     await writeFile(destination, await readFile(path.join(root, name)));
@@ -201,7 +220,8 @@ test('genuine compiler checks copied real source, fails an unsuppressed source m
   // these real copied sources, never the ancestor working-tree workspace link.
   // Copy the installed Zod dependency unchanged so its genuine declarations are
   // checked too. Regular-file copies keep the noEmit snapshot fully observable.
-  await cp(path.join(directory, 'packages/contracts'), path.join(directory, 'node_modules/@mioon/contracts'), {recursive: true});
+  for (const name of ['contracts', 'client', 'i18n'])
+    await cp(path.join(directory, 'packages', name), path.join(directory, 'node_modules/@mioon', name), {recursive: true});
   await cp(await realpath(path.join(root, 'packages/contracts/node_modules/zod')),
     path.join(directory, 'node_modules/zod'), {recursive: true});
   const good = await compileWithoutEmitting(directory, compiler);

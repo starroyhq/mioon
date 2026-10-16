@@ -89,6 +89,8 @@ test('candidate offline help has four locales, accurate fixed42→43 boundaries 
       assert.ok(data.usage.every(value => value.startsWith('node apps/cli/src/opacity-backup.ts ')));
       assert.ok(text.includes(notice)); assert.ok(text.includes('restored-local-v10')); assert.ok(text.includes('held')); assert.ok(text.includes('epoch')); assert.ok(text.includes('origin'));
       assert.ok(text.includes('40/41')); assert.ok(text.includes('token') || text.includes('Tokens'));
+      assert.ok(data.safety.some(value => value.includes('--open-restored-workspace') && value.includes('43')), 'each locale documents the separate explicit restored43 application entry');
+      for (const stale of ['仍不接受43', 'still refuses43', '引き続き43を拒否']) assert.ok(!text.includes(stale));
       assert.ok(!text.includes('schema24')); assert.ok(!text.includes('schema25')); assert.equal(result.stderr, '');
     }
   }

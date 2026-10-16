@@ -3,6 +3,7 @@ import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
+import {realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Worker} from 'node:worker_threads';
@@ -22,7 +23,7 @@ const set = (value, path, replacement) => { at(value, path.slice(0, -1))[path.at
 const protectedTables = ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_requests', 'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events'];
 const capture = store => Object.fromEntries(protectedTables.map(table => [table, store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
 async function fixture(t,{open=openStore}={}) {
-  const root = await mkdtemp(path.join(tmpdir(), 'wb-preferences-'));
+  const root = await mkdtemp(path.join(realpathSync(tmpdir()), 'wb-preferences-'));
   let store = open(root), services = createServices(store, new Map()), preferences = createWorkspacePreferences(store);
   const project = await services.call('project.create', {name: 'Synthetic workspace preferences'});
   const f = {root, projectId: project.id, get store() { return store; }, get preferences() { return preferences; }, call: (op, input) => services.call(op, input),
