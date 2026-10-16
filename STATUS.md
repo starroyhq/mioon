@@ -12,7 +12,10 @@ the [fresh42 application slice](docs/OPACITY-CANDIDATE-APPLICATION.md) connects
 project/import/edit/Inspector v3/tasks/preview/download in the shared App, with
 synthetic no-listen qualification and canonical builds. Default40/41 remains;
 Explicit ordinary42 [reopening](docs/OPACITY-CANDIDATE-REOPEN.md) now preserves
-saved edits/drafts; GUI/media acceptance and42→43 backup are still pending.
+saved edits/drafts. [Partial Safari and real short-media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
+now verifies login/project creation, actual HTTP persistence/Undo/Redo and10-frame
+FFmpeg preview/export/download. CUA disconnected at the import picker, so later
+GUI operations remain unverified;42→43 backup is still design only.
 Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 - **Implemented:** independent Settings center, four-language presentation,
@@ -43,7 +46,7 @@ Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 The dated entries below retain their original evidence, test counts and Git facts.
 The earlier index alignment changed documentation only; current local opacity
-test/build evidence is linked above. GUI/media acceptance remains separate.
+test/build evidence is linked above. Complete GUI/platform acceptance remains separate.
 
 # Historical local single-Look increment — 2026-10-15
 

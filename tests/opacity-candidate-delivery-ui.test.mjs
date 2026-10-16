@@ -48,6 +48,10 @@ before(() => {
       wrongTimeline:main(f.exported,{timeline:{...f.exported.snapshot.timeline,id:${JSON.stringify(id(98))}}}),
       copiedToken:main(f.exported,{opacityApplication:{...token}}), decodedToken:main(f.exported,{opacityApplication:JSON.parse(JSON.stringify(token))}),
       default:main({...f.exported,url:'/media/legacy-default'},{opacityApplication:null}),
+      candidateEmpty:main(null,{kind:'source',timeline:{...f.exported.snapshot.timeline,clips:[]},onImport:noop}),
+      ordinaryEmpty:main(null,{kind:'source',opacityApplication:null,onCanvas:noop,onImport:noop}),
+      missingCanvas:main(null,{kind:'source',opacityApplication:null,onImport:noop}),
+      invalidCanvas:main(null,{kind:'source',opacityApplication:null,onCanvas:true,onImport:noop}),
       unnamedHistory:history(f.exported), namedHistory:history(f.named), heldUnnamed:history(f.exported,{heldExportIds:[f.exported.id]}),
       heldNamed:history(f.named,{heldExportIds:[f.named.id]}), disconnectedHistory:history(f.named,{candidateConnected:false}), invalidHistory:history(f.invalid), foreignHistory:history(f.exported,{projectId:${JSON.stringify(id(99))}}),
       previewHistory:history(f.preview), copiedHistory:history(f.named,{opacityApplication:{...token}}),
@@ -73,6 +77,13 @@ test('real shared Preview plays candidate preview and export through exact manag
     assert.doesNotMatch(html, /opacityPlan|opacityEnvelope|attacker/);
   }
   assert.match(rendered.html.default, /src="\/media\/legacy-default"/, 'unselected production presentation preserves its existing URL');
+});
+test('real empty Preview only offers canvas navigation when an actionable callback exists', () => {
+  assert.match(rendered.html.ordinaryEmpty, /返回画板/);
+  for (const name of ['candidateEmpty','missingCanvas','invalidCanvas']) {
+    assert.doesNotMatch(rendered.html[name], /返回画板/, name);
+    assert.match(rendered.html[name], /导入/, 'Import remains available in the empty state');
+  }
 });
 test('candidate Preview removes player for held, invalid, foreign and counterfeit application bindings', () => {
   for (const name of ['held','disconnected','invalid','fakeUrl','foreign','wrongTimeline','copiedToken','decodedToken'])

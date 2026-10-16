@@ -1,0 +1,296 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "ea6885d50e03026e6ec62c7709e690c369da9963",
+  "status": "passed-HTTP-media-partial-GUI",
+  "authorization": "Trusted user history explicitly allowed localhost4319, fresh temporary workspace and bounded generated media. No permission pending.",
+  "versions": {
+    "node": "v26.9.0",
+    "safari": "27.0.1",
+    "ffmpeg": "9.0.2",
+    "ffprobe": "9.0.2",
+    "ffmpegPath": "/opt/homebrew/bin/ffmpeg",
+    "ffprobePath": "/opt/homebrew/bin/ffprobe"
+  },
+  "workspace": "/private/tmp/mioon-opacity42-manual-20261016",
+  "projectId": "bfd45da5-6a2c-46cc-8655-db84156fafce",
+  "gui": {
+    "passed": [
+      "native Safari27.0.1 navigation",
+      "login",
+      "create/open project"
+    ],
+    "pickerOpened": true,
+    "selectedUserFile": false,
+    "locale": "zh-TW catalog; visible region-neutral Traditional Chinese",
+    "blockedAction": "Locate the task-generated PNG in native Safari file chooser, then continue opacity UI acceptance",
+    "target": "http://127.0.0.1:4319 in native Safari",
+    "reason": "CUA Transport closed; subsequent cua.getState also Transport closed; Chrome provider unavailable",
+    "denied": false,
+    "state": "blocked by unavailable tool connection",
+    "notVerified": [
+      "GUI image import",
+      "GUI opacity Save/Cancel",
+      "GUI Inspector reopen/draft restore",
+      "GUI Undo/Redo",
+      "GUI playback/download",
+      "four-language GUI/IME"
+    ],
+    "nativeWindowAndPickerClosure": "unconfirmed after CUA transport loss",
+    "screenshotsSaved": false
+  },
+  "http": {
+    "realListener": true,
+    "actualCLIComposition": true,
+    "actualSharedHandler": true,
+    "actualSQLiteAndWorker": true,
+    "codecMocked": false,
+    "attempt1": {
+      "status": "failed",
+      "reason": {
+        "name": "TypeError",
+        "code": null,
+        "message": "fetch failed"
+      },
+      "file": "http-media-qualification-attempt1.json",
+      "processExit": 1
+    },
+    "attempt2": {
+      "status": "passed-HTTP-media-partial-GUI",
+      "processExit": 0,
+      "file": "http-media-qualification.json"
+    },
+    "temporaryHarnessCorrection": "Connection: close avoids stale keep-alive after same-port reopen; product implementation unchanged",
+    "harnessRetainedAt": "/private/tmp/mioon-opacity42-gui-evidence-20261016/http-media-qualification.mjs",
+    "harnessSha256": "37e9155e976cf44a607266b4229f3a041eb9e3231ad7149a1954a7cb180d75cc",
+    "savedCurve": {
+      "profileId": "mioon-clip-linear-opacity-v1",
+      "points": [
+        {
+          "frame": 0,
+          "opacity": 0.25
+        },
+        {
+          "frame": 10,
+          "opacity": 1
+        }
+      ]
+    },
+    "savedRevision": 3,
+    "undoRedoRevision": 5,
+    "checks": [
+      "real PNG import and hash/probe",
+      "durable opacity task/ACK",
+      "raw incomplete v3 draft preserved across new instance",
+      "HTTP draft discard preserves saved curve; not GUI Cancel",
+      "durable Undo/Redo",
+      "actual preview/export preflight and worker render",
+      "guarded HTTP inline/read/download byte equality",
+      "actual ffprobe and 10-frame RGB decode"
+    ]
+  },
+  "outputs": [
+    {
+      "purpose": "preview",
+      "exportId": "e4ae3e56-0409-41c7-b26c-fe46adbe6b1c",
+      "assetId": "e2f6b6e1-5fbc-4364-b6a0-46f0d5da18bb",
+      "status": "succeeded",
+      "bytes": 5519,
+      "sha256": "4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d",
+      "width": 720,
+      "height": 1280,
+      "duration": 0.333333,
+      "frames": 10,
+      "firstPixel": [
+        23,
+        10,
+        23
+      ],
+      "lastPixel": [
+        86,
+        39,
+        86
+      ],
+      "guardedHTTP": true
+    },
+    {
+      "purpose": "export",
+      "exportId": "a13a0eb8-3199-47db-ab98-baf1a70d97c4",
+      "assetId": "3e24fadf-2bf9-4af9-bd0a-7627d584ae08",
+      "status": "succeeded",
+      "bytes": 5519,
+      "sha256": "4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d",
+      "width": 720,
+      "height": 1280,
+      "duration": 0.333333,
+      "frames": 10,
+      "firstPixel": [
+        23,
+        10,
+        23
+      ],
+      "lastPixel": [
+        86,
+        39,
+        86
+      ],
+      "guardedHTTP": true,
+      "downloadByteEquality": true
+    }
+  ],
+  "media": {
+    "fixture": "opacity-tiny.png",
+    "fixtureBytes": 165,
+    "fixtureWidth": 64,
+    "fixtureHeight": 64,
+    "fixtureSha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827",
+    "frameCount": 10,
+    "fps": 30,
+    "totalStarted": 17,
+    "totalExited": 17,
+    "ffmpeg": 6,
+    "ffprobe": 11,
+    "maxObservedDurationMs": 1191,
+    "observedDeadlineActions": 0,
+    "activeAtEnd": 0,
+    "events": "media-events.jsonl",
+    "generatedSample": "preview-export-sample.mp4",
+    "precheckedProductBounds": {
+      "stdoutBytes": 4194304,
+      "stderrBytes": 1048576,
+      "defaultTimeoutMs": 120000,
+      "inputThreads": 1,
+      "filterComplexThreads": 1,
+      "defaultX264Threads": 2,
+      "terminateOnlyOwnedDirectChildren": true,
+      "graceMs": 2000,
+      "reapMs": 1000
+    },
+    "temporaryHarnessBounds": {
+      "mediaObservationMs": 15000,
+      "overallMs": 90000,
+      "probeAndDecodeTimeoutMs": 5000,
+      "rgbMaxStdoutBytes": 30,
+      "rgbMaxStderrBytes": 65536
+    }
+  },
+  "exit": {
+    "initialGUIService": {
+      "execSession": 87915,
+      "pid": 46098,
+      "state": "uncertain original exit; exact PID later absent and localhost refused",
+      "reason": "exec-server transport disconnected; executor key changed during session recovery",
+      "manualKillSent": false,
+      "manualLockRemoval": false
+    },
+    "laterHTTPStarts": 4,
+    "normalHTTPCloses": 4,
+    "lockExistsAfterEachClose": false,
+    "activeMediaAfterEachClose": 0,
+    "finalCheck": "final-exit-check.json"
+  },
+  "fix": {
+    "problem": "Candidate empty Preview offered an inert canvas action",
+    "change": "Render canvas action only for a function callback; ordinary App callback retained",
+    "guiReverifiedAfterFix": false,
+    "mediaCodeChanged": false
+  },
+  "checks": {
+    "tests": {
+      "command": "node --test tests/opacity-candidate-app-entry.test.mjs tests/opacity-candidate-delivery-ui.test.mjs",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "exitCode": 0,
+      "file": "tests-summary.txt"
+    },
+    "canonicalBuild": {
+      "command": "node scripts/tooling.mjs build",
+      "exitCode": 0,
+      "strictFoundationAndBrowser": true,
+      "sourceLanguageGuard": true,
+      "defaultWeb": true,
+      "developmentDesktopStaging": true,
+      "file": "build-summary.txt"
+    },
+    "candidateBuild": {
+      "command": "cd apps/web && node node_modules/vite/bin/vite.js build --mode opacity-candidate",
+      "exitCode": 0,
+      "file": "candidate-build-summary.txt"
+    },
+    "frozen": "frozen-check.json",
+    "fullSuiteRerun": false,
+    "mediaRunBeforeButtonFix": true,
+    "sourceSha256": {
+      "apps/web/src/Preview.jsx": "c6506e779fd22da68c014a6c08a5bee52b76b86d652ba16791202c0a8b4d45e8",
+      "tests/opacity-candidate-app-entry.test.mjs": "f967246844dfd95090bec61a5b8c42435a8f8d88d3d0d2d27c73893d4c1704ec",
+      "tests/opacity-candidate-delivery-ui.test.mjs": "8b69771d9c836d6208c5f5d7b8d98a79604d7fbca9f11fd997600b57cf9caa2c"
+    }
+  },
+  "excluded": {
+    "userProjects": false,
+    "providerCalls": 0,
+    "dependenciesInstalled": 0,
+    "credentialsModified": false,
+    "systemSettingsModified": false,
+    "backupOrRestoreUserDataOperations": 0,
+    "schemaOrExecutionAuthorityExpanded": false,
+    "push": false
+  },
+  "next": {
+    "development": "Fixed candidate42 cold-backup to offline43 product entry; design only, parent decision required for restoration boundary",
+    "acceptance": "Complete remaining GUI after CUA is usable; Node24/product FFmpeg and platform/long-media gates remain separate"
+  },
+  "evidenceFiles": {
+    "build-summary.txt": {
+      "bytes": 110909,
+      "sha256": "4358d12245f79e788719788cd2c7d1fc13ed911adda364dcac3a6d2f7cfb1642"
+    },
+    "candidate-build-summary.txt": {
+      "bytes": 110756,
+      "sha256": "cafd4e44ec0158fda1d89407ce7b80885747c034277ea97e691e04158bf65e59"
+    },
+    "events.jsonl": {
+      "bytes": 3200,
+      "sha256": "84fccbaf82f23268afad38d245db4608c9f2b3142d67f71be327b2078139d14e"
+    },
+    "final-exit-check.json": {
+      "bytes": 222,
+      "sha256": "32afe69eee3e40a044436af864c6788be8a964b5034fc324a688423ddb536aa9"
+    },
+    "frozen-check.json": {
+      "bytes": 223,
+      "sha256": "fbcceb4577e325417246b77f489fc4cf6744f8d4ceb824957846cf592b586b63"
+    },
+    "http-media-qualification-attempt1.json": {
+      "bytes": 2952,
+      "sha256": "08e491af1020feb170abfccb2301ff5e57f4c747f4e8e2db47ad56d456b1f690"
+    },
+    "http-media-qualification.json": {
+      "bytes": 9999,
+      "sha256": "a68494dd1a6be969b59007b9e8e85d86160980e85b6f7c837d710f6ae4689e56"
+    },
+    "media-events.jsonl": {
+      "bytes": 3035,
+      "sha256": "cdd77bc979f96fa33bd75c7cb463d4a170f8259075e25080e0b9714c164e5819"
+    },
+    "opacity-tiny.png": {
+      "bytes": 165,
+      "sha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827"
+    },
+    "preview-export-sample.mp4": {
+      "bytes": 5519,
+      "sha256": "4b8aecf4c7489f69db9e0492c1d90839a408da0d6096e83dfdc50bdb3e623e6d"
+    },
+    "tests-summary.txt": {
+      "bytes": 1450,
+      "sha256": "426ebc6e2cb72ce074a66224b05afe816db84a7082b5b6c85fb6499bf5c351c7"
+    }
+  },
+  "review": {
+    "independentReadOnly": true,
+    "blockingFindings": 0,
+    "sourceAndEvidenceReviewed": true,
+    "notes": "Button callback preserved; GUI/HTTP/media boundaries and initial uncertain vs later normal exits separated; no pending authorization claim."
+  }
+}

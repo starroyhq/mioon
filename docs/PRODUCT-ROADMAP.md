@@ -8,7 +8,7 @@ slices, their actual acceptance boundaries and remaining approved scope. It does
 not promote a WIP checkpoint, certify the combined native application, or grant
 new execution, spending or publication authority. The earlier documentation-only
 review reran no product tests; current local opacity qualification is linked below.
-No native acceptance or stopped issue investigation was resumed.
+Later bounded Safari/short-media evidence is indexed below; stopped issue investigations remain stopped.
 
 ## Current UI iteration (2026-10-16)
 
@@ -17,8 +17,11 @@ No native acceptance or stopped issue investigation was resumed.
   creation/import, durable task ACKs, Inspector v3 drafts, raw opacity saves,
   preview/export preparation and guarded media delivery. Default40/41 and
   historical constructors remain unchanged. [Application scope and evidence](OPACITY-CANDIDATE-APPLICATION.md)
-  separate pure/synthetic qualification from pending GUI/media acceptance,
-  [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md), and the remaining
+  separate pure/synthetic qualification from [partial Safari and actual10-frame
+  media acceptance](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md): login/project creation
+  passed, while CUA disconnected at the import picker. Actual HTTP persistence,
+  Undo/Redo, FFmpeg preview/export and guarded downloads passed; later GUI items
+  remain unverified. It also records [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md), and the remaining
   42→43 backup and40/41 migration. No push or release.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings

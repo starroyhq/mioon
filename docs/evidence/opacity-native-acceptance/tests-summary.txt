@@ -1,0 +1,20 @@
+✔ ordinary compiled entry creates no opacity capability and retains the desktop/web entry (77.932167ms)
+✔ isolated compiled entry mounts the same App with its exact private application and no launcher owner (3.02125ms)
+✔ actual App pins its original entry capability and defaults reject copied metadata (2.567917ms)
+✔ candidate App binds the actual task lane, Inspector v3 client and render readers while unsupported editors remain unavailable (0.897ms)
+✔ candidate Inspector describes saved preview/export behavior in all supported languages (0.877041ms)
+✔ actual candidate Return to source keeps editing and uses the shared source-preview navigation guard (1.010625ms)
+✔ real shared Preview plays candidate preview and export through exact managed identity URLs (0.503084ms)
+✔ real empty Preview only offers canvas navigation when an actionable callback exists (0.098834ms)
+✔ candidate Preview removes player for held, invalid, foreign and counterfeit application bindings (0.166958ms)
+✔ candidate named and unnamed downloads keep frozen metadata and use receipt query identities (0.085042ms)
+✔ candidate history never gives held, malformed, foreign or preview-only rows a download (0.181958ms)
+✔ real sample player consumes fixed candidate ACK validator and keeps all existing attempt fences (0.141042ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1171.405875

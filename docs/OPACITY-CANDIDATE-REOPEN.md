@@ -12,13 +12,13 @@
 
 干净关闭后重开，实际共享HTTP handler保留同一项目、时间线、透明度、历史、偏好及v3未完成草稿。草稿workspaceScope保持、instanceId更新，旧实例PUT被拒绝；原pending交付意图仅被读回，不因无监听测试而执行。撤销／重做继续使用原任务与回执。
 
-未运行监听或GUI。未来获准后，可针对之前创建的专用测试目录执行：
+初片重开测试不运行监听或GUI。后续用户已明确授权；实际补充验收使用同一CLI函数重开此前创建的专用目录，等价CLI为：
 
 ```sh
 node apps/server/src/opacity-candidate-cli.ts --open-workspace /private/tmp/mioon-opacity42-manual-20261016 --port 4319
 ```
 
-这不是本次已执行命令；父任务仍在等待仅本机新临时项目的启动／GUI许可。未重试此前EPERM，也未启动媒体或provider。实际素材文件的probe／hash及渲染资格仍由原on-use准备流程验证，不能用元数据重开通过替代媒体可用性验收。
+后续[Safari部分结果与真实短媒体验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)验证了同一项目的HTTP草稿重开、Undo／Redo及10帧实际预览／导出，最终正常关闭；GUI在文件选择器阶段连接中断，后续界面项未验。此前初片无监听记录保留其历史范围；新授权启动未绕过拒绝，也未启动provider。实际素材文件的probe／hash及渲染资格仍由原on-use准备流程验证，不能用元数据重开通过替代媒体可用性验收。
 
 ## 42→43冷备份恢复的最小后续方案
 
@@ -32,4 +32,4 @@ node apps/server/src/opacity-candidate-cli.ts --open-workspace /private/tmp/mioo
 
 准确接缝：默认`workspace-backup-schema-versions.ts`和`workspace-schema-profiles.ts`已冻结且只接受旧范围；备份`refuseRestoredCapture`和离线恢复／status仍依赖旧profile检查。不能直接把42/43加入旧白名单。备份继续沿用原范围，v3未保存草稿、token、设置不随备份迁移。
 
-验证记录见[本片证据](evidence/opacity-reopen/qualification.json)。GUI、四语言／IME、真实媒体、Node24与产品固定FFmpeg验收仍未完成；原[应用切片范围](OPACITY-CANDIDATE-APPLICATION.md)继续有效。
+初片验证记录见[本片证据](evidence/opacity-reopen/qualification.json)。完整GUI、四语言／IME、Node24与产品固定FFmpeg仍未完成；短媒体的已验证范围见上述后续报告，原[应用切片范围](OPACITY-CANDIDATE-APPLICATION.md)继续有效。

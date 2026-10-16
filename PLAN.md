@@ -27,8 +27,10 @@ Volume-envelope native Save/Undo/Redo and normal close passed on `dc7a057`.
 Inspector reopen, CJK IME and four-language native acceptance remain unfinished;
 this is not all-platform acceptance. Continuous-audio wall-clock/resource gates
 and LUT exact-file reselection/restart qualification retain their separate limits.
-Clip opacity keyframes now have the isolated fresh42 application slice; GUI and
-real-media acceptance and42→43 backup remain open. Explicit ordinary42 reopening
+Clip opacity keyframes now have the isolated fresh42 application slice;
+[partial Safari and actual10-frame media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
+passed within its stated scope. GUI after the import picker remains blocked by
+CUA disconnection;42→43 backup remains design only. Explicit ordinary42 reopening
 now has [safe internal admission](docs/OPACITY-CANDIDATE-REOPEN.md). Other
 visual keyframes, transitions, Full Log/HDR and a general plugin broker/SDK remain
 future feature work.
@@ -36,7 +38,7 @@ future feature work.
 The limited local Linux trial remains available. New logic uses TS; preserve the
 user's workbench, media, shared services, drafts and receipts. The earlier documentation
 alignment ran no tests or build; current opacity qualification is linked above.
-It runs no GUI/media and performs no push. Platform/native,
+The later bounded GUI/HTTP/media run has its own evidence and performs no push. Platform/native,
 installer/signing and real-provider gates remain separately scoped; later work
 has no implicit spending or publication authority.
 

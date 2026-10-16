@@ -26,20 +26,20 @@ node node_modules/vite/bin/vite.js build --mode opacity-candidate
 
 候选产物位于`apps/web/dist-opacity-candidate/`，页面为`opacity-candidate.html`；构建插件生成固定`mioon-opacity-candidate-entry.json`。默认产物仍为`apps/web/dist/index.html`。标记只用于防止内部启动器误配前端，不赋予后端工作区权限。
 
-**以下监听／GUI步骤尚未执行，需要父任务判断此前监听限制。** 最小后续命令（在仓库根目录）：
+**后续已获用户明确授权并执行本机隔离验收；[Safari部分结果与真实短媒体验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)记录准确范围。** 本次首次启动命令（在仓库根目录）：
 
 ```sh
 node apps/server/src/opacity-candidate-cli.ts --new-workspace /private/tmp/mioon-opacity42-manual-20261016 --port 4319
 ```
 
-该目录必须不存在，不允许改成用户已有工作区。监听目标为`127.0.0.1:4319`。用浏览器打开`http://127.0.0.1:4319`，访问令牌由这个新目录的`access-token`提供，不需要配置provider。之后创建项目→导入专用测试素材→加入剪辑→选择片段→透明度关键帧→保存→合成预览→交付预检／导出→历史播放／下载。真实导入会运行媒体探测，渲染会运行FFmpeg；本片未执行这些手动步骤。
+创建时该目录必须不存在，不允许改成用户已有工作区；该专用目录现已存在，不能重复使用`--new-workspace`覆盖。监听目标为`127.0.0.1:4319`。访问令牌由专用目录的`access-token`提供，不需要配置provider。Safari已实际登录、创建并打开项目，打开导入选择器后GUI连接中断；同一临时项目随后通过真实HTTP导入、保存、草稿持久化、Undo／Redo及10帧预览／导出与下载校验。完整界面操作仍待补验。
 
-初片只创建新目录；后续已补[已有普通42目录安全重开](OPACITY-CANDIDATE-REOPEN.md)，使用互斥`--open-workspace`并复用完整profile／owner校验。通用生产启动器仍拒绝42；43应用恢复、42冷备份→43恢复及真实GUI／媒体仍未验收。
+初片只创建新目录；后续已补[已有普通42目录安全重开](OPACITY-CANDIDATE-REOPEN.md)，使用互斥`--open-workspace`并复用完整profile／owner校验。通用生产启动器仍拒绝42；43应用恢复、42冷备份→43恢复和完整GUI仍未验收。
 
 ## 验证范围与剩余验收
 
 测试使用真实SQLite、实际共享HTTP handler（内存请求，无listen）、实际客户端／任务协调器、Inspector／播放器组件及合成受管文件。素材服务测试只替换codec transport，禁止真实媒体子进程；文件GET／HEAD／Range使用合成字节。关闭失败继续向上传播，不在停止结果不确定时强行释放SQLite／lease。
 
-具体命令、通过数量、构建结果和独立审查见[验证证据](evidence/opacity-application/qualification.json)。没有启动GUI、监听、媒体或provider；没有安装依赖、修改凭据、接触实际项目或push。
+初片命令、通过数量、构建结果和独立审查见[验证证据](evidence/opacity-application/qualification.json)。该初片没有启动GUI、监听、媒体或provider；后续实际运行见[独立验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)。没有安装依赖、修改凭据、接触实际项目或push。
 
-真实GUI四语言、IME、草稿恢复、Save／Cancel／关闭、实际素材的预览／导出／播放／下载和性能尚未验收。当前仅有Node26.9.0，未取得Node24或产品固定FFmpeg验收；沿用此前短像素探针证据不能替代本次实际App验证。此前loopback监听EPERM没有重试或绕过。
+真实GUI四语言、IME、Inspector草稿恢复、Save／Cancel、播放／下载仍未验；本轮短媒体和HTTP结果不替代这些界面验收。GUI工具连接丢失后首次CLI退出码不确定，后续HTTP服务4次正常关闭，最终无监听／锁。当前仅有Node26.9.0和本机FFmpeg9.0.2，未取得Node24、产品固定FFmpeg或长片性能验收。后续监听基于用户新授权正常审批启动，未绕过拒绝。

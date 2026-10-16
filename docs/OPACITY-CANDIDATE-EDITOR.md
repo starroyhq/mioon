@@ -2,6 +2,8 @@
 
 日期：2026-10-16。编辑器片基线：`0ac49ab861a28c22a09e2324404d3762ea23d896`；后续渲染片：`a5e1f9e0ef012ff9fca5db2823e59d0bddeec9bd`。下列历史验证与当前激活状态分开记录。
 
+后续[部分Safari与真实短媒体验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)已完成HTTP保存／重开／历史和10帧实际预览导出；GUI在导入选择器阶段工具断连，后续界面项未验。下文“不运行监听／媒体”保留对应早期切片的验证归属。
+
 本片在内部候选装配中接入实际 Inspector、同一片段草稿控制器及独立 v3 companion。默认生产启动仍使用 40/41；不迁移用户项目、不通过 payload、URL、schema marker 或环境开关启用候选入口。
 
 ## 编辑闭环
@@ -25,7 +27,7 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 
 ## 渲染与运行时边界
 
-后续渲染片已经将同一TypeScript编译器接入现有共享renderer的候选preview/export路径；raw snapshot、精确素材Map、来源hash/inode、LUT与发布fence均保留。4个获批2×2×3 RGBA像素探针在Node26.9.0／FFmpeg9.0.2下通过，详见[渲染接缝证据](OPACITY-RENDER-SEAM-PROPOSAL.md)。上述是渲染片完成时的范围；后续已将全新42接入实际App，并更新候选渲染提示，见[全新42应用入口](OPACITY-CANDIDATE-APPLICATION.md)。真实GUI／媒体验收仍未完成。
+后续渲染片已经将同一TypeScript编译器接入现有共享renderer的候选preview/export路径；raw snapshot、精确素材Map、来源hash/inode、LUT与发布fence均保留。4个获批2×2×3 RGBA像素探针在Node26.9.0／FFmpeg9.0.2下通过，详见[渲染接缝证据](OPACITY-RENDER-SEAM-PROPOSAL.md)。上述是渲染片完成时的范围；后续已将全新42接入实际App，并更新候选渲染提示，见[全新42应用入口](OPACITY-CANDIDATE-APPLICATION.md)。真实短媒体的后续范围见页首报告；完整GUI仍未完成。
 
 本轮限定检查PATH、Homebrew Cellar node/node@24、nvm、fnm、mise/rtx、asdf、Volta、`~/.codex/runtimes`及已知Codex bundle工具目录，未发现可用Node24，只确认`/opt/homebrew/Cellar/node/26.9.0/bin/node`（v26.9.0）。没有全盘扫描或安装。这不是Node24或旧固定FFmpeg验收证据。
 
@@ -64,6 +66,6 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 
 ## 仅验收缺口与监听边界
 
-代码接线完成后，仍需真实GUI四语言、IME、草稿恢复、Save/Cancel/关闭保护，以及实际素材的预览→导出→播放／下载和性能验收。还需Node24及产品实际固定FFmpeg运行时验证；本轮Node26和此前FFmpeg9.0.2的短像素证据不能替代它们。
+代码接线完成后，仍需真实GUI四语言、IME、草稿恢复、Save/Cancel/关闭保护、播放／下载和性能验收。实际10帧渲染与HTTP读取／下载已经由页首后续报告验证，不能代替界面操作。还需Node24及产品实际固定FFmpeg运行时验证；本轮Node26和此前FFmpeg9.0.2的短像素证据不能替代它们。
 
 当前候选服务、worker和observer验证均不依赖监听。未来真实HTTP恢复入口验收若需要重跑，须另获准执行 `TMPDIR=/private/tmp node --test --test-name-pattern='restored server' tests/workspace-restore-execution.test.mjs`，目标为`127.0.0.1`的测试动态端口，用于验证实际server/client和恢复策略接线。本轮未执行该命令、未重试此前EPERM拒绝，也未使用其他监听路径。

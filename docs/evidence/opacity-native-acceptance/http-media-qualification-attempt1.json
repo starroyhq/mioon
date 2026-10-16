@@ -1,0 +1,122 @@
+{
+  "kind": "real localhost HTTP + actual media; GUI explicitly partial",
+  "baseCommit": "ea6885d50e03026e6ec62c7709e690c369da9963",
+  "runtime": "v26.9.0",
+  "workspace": "/private/tmp/mioon-opacity42-manual-20261016",
+  "projectId": "bfd45da5-6a2c-46cc-8655-db84156fafce",
+  "startedAt": "2026-10-16T06:26:59.076Z",
+  "steps": [
+    {
+      "type": "started-existing-owned-workspace",
+      "time": "2026-10-16T06:26:59.654Z",
+      "url": "http://127.0.0.1:4319"
+    },
+    {
+      "type": "actual-PNG-import",
+      "time": "2026-10-16T06:26:59.825Z",
+      "assetId": "ec59034c-312b-4b3c-9af3-e80e54750a63",
+      "bytes": 165,
+      "width": 64,
+      "height": 64,
+      "sha256": "260d48846b0b0901bf8da934571961ab8319154c7163a1e8dbe8a88958574827"
+    },
+    {
+      "type": "actual-opacity-task-ACK",
+      "time": "2026-10-16T06:27:00.755Z",
+      "revision": 3,
+      "durationFrames": 10,
+      "curve": {
+        "profileId": "mioon-clip-linear-opacity-v1",
+        "points": [
+          {
+            "frame": 0,
+            "opacity": 0.25
+          },
+          {
+            "frame": 10,
+            "opacity": 1
+          }
+        ]
+      }
+    },
+    {
+      "type": "normal-close",
+      "time": "2026-10-16T06:27:00.953Z",
+      "activeMedia": 0,
+      "lockExists": false
+    },
+    {
+      "type": "started-existing-owned-workspace",
+      "time": "2026-10-16T06:27:01.049Z",
+      "url": "http://127.0.0.1:4319"
+    },
+    {
+      "type": "qualification-failure",
+      "time": "2026-10-16T06:27:01.052Z",
+      "name": "TypeError",
+      "code": null,
+      "message": "fetch failed"
+    },
+    {
+      "type": "normal-close",
+      "time": "2026-10-16T06:27:01.054Z",
+      "activeMedia": 0,
+      "lockExists": false
+    }
+  ],
+  "media": [
+    {
+      "type": "started",
+      "pid": 86624,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:26:59.752Z"
+    },
+    {
+      "type": "exited",
+      "pid": 86624,
+      "kind": "ffprobe",
+      "time": "2026-10-16T06:26:59.810Z",
+      "durationMs": 58
+    }
+  ],
+  "outputs": [],
+  "normalCloses": [
+    {
+      "time": "2026-10-16T06:27:00.953Z",
+      "activeMedia": 0,
+      "lockExists": false
+    },
+    {
+      "time": "2026-10-16T06:27:01.054Z",
+      "activeMedia": 0,
+      "lockExists": false
+    }
+  ],
+  "gui": {
+    "passed": [
+      "native Safari27.0.1 navigation",
+      "login",
+      "create/open project"
+    ],
+    "blocked": [
+      "image picker onward: CUA transport closed; browser provider chrome unavailable"
+    ],
+    "notClaimed": [
+      "GUI image import",
+      "GUI opacity Save/Cancel",
+      "GUI Inspector reopen/draft restore",
+      "GUI Undo/Redo",
+      "GUI playback/download",
+      "four-language GUI/IME"
+    ]
+  },
+  "status": "failed",
+  "error": {
+    "name": "TypeError",
+    "code": null,
+    "message": "fetch failed"
+  },
+  "finishedAt": "2026-10-16T06:27:01.054Z",
+  "activeMediaAtEnd": 0,
+  "lockExistsAtEnd": false
+}

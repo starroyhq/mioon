@@ -79,6 +79,7 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
   assert.match(app, /application && !application\.validateProjectSnapshot\(next, projectId\)/);
   assert.match(app, /const editorView = application \? \{ \.\.\.restored, activeMode: 'editing' \}/);
   assert.match(app, /<Preview[^>]*opacityApplication=\{opacityApplication\}/);
+  assert.match(app, /onCanvas=\{application \? undefined : \(\) => changeMode\('canvas'\)\}/);
   assert.match(app, /<ExportHistoryList[^>]*opacityApplication=\{opacityApplication\} projectId=\{data\.project\?\.id\}/);
   assert.match(app, /onReplaceSource=\{application \? undefined : replaceTimelineClipSource\}/);
   assert.match(app, /<Timeline basicEditingOnly=\{Boolean\(application\)\}/);
