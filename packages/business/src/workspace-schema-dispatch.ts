@@ -1,3 +1,4 @@
+import {validateHistoricalRestoreCapture} from './workspace-restore-capture-integrity.ts';
 import {initializeWorkspaceSchema40} from './workspace-schema-v40.ts';
 import {createWorkspaceRestoreProfileV41} from './workspace-restore-schema-v41.ts';
 import {validateWorkspaceVolumeEnvelopeRows} from './workspace-volume-envelope-validation.ts';
@@ -188,14 +189,14 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
     validateWorkspaceColourRows(db, colourAdmission(role));
     if (role === 'restored-41-evidence') return restored41.validateWorkspaceRestoreSchemaV41(db);
-    if (role === 'restored-39-evidence') return restored39.validateWorkspaceRestoreSchemaV39(db);
-    if (role === 'restored-37-evidence') return restored37.validateWorkspaceRestoreSchemaV37(db);
-    if (role === 'restored-35-evidence') return restored35.validateWorkspaceRestoreSchemaV35(db);
-    if (role === 'restored-33-evidence') return restored33.validateWorkspaceRestoreSchemaV33(db);
-    if (role === 'restored-31-evidence') return restored31.validateWorkspaceRestoreSchemaV31(db);
-    if (role === 'restored-25-evidence') return legacy.validate(db);
-    if (role === 'restored-27-evidence') return restored27.validateWorkspaceRestoreSchemaV27(db);
-    if (role === 'restored-29-evidence') return restored29.validateWorkspaceRestoreSchemaV29(db);
+    if (role === 'restored-39-evidence') {const result=restored39.validateWorkspaceRestoreSchemaV39(db); validateHistoricalRestoreCapture(db,39); return result;}
+    if (role === 'restored-37-evidence') {const result=restored37.validateWorkspaceRestoreSchemaV37(db); validateHistoricalRestoreCapture(db,37); return result;}
+    if (role === 'restored-35-evidence') {const result=restored35.validateWorkspaceRestoreSchemaV35(db); validateHistoricalRestoreCapture(db,35); return result;}
+    if (role === 'restored-33-evidence') {const result=restored33.validateWorkspaceRestoreSchemaV33(db); validateHistoricalRestoreCapture(db,33); return result;}
+    if (role === 'restored-31-evidence') {const result=restored31.validateWorkspaceRestoreSchemaV31(db); validateHistoricalRestoreCapture(db,31); return result;}
+    if (role === 'restored-25-evidence') {const result=legacy.validate(db); validateHistoricalRestoreCapture(db,25); return result;}
+    if (role === 'restored-27-evidence') {const result=restored27.validateWorkspaceRestoreSchemaV27(db); validateHistoricalRestoreCapture(db,27); return result;}
+    if (role === 'restored-29-evidence') {const result=restored29.validateWorkspaceRestoreSchemaV29(db); validateHistoricalRestoreCapture(db,29); return result;}
     return unsupported();
   };
   const initialize = (db: DatabaseSync) => {

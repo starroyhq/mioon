@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.mjs';
+import {installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.mjs';
 import {open,fixture as ordinaryFixture,snapshot} from './workspace-schema26-fixtures.mjs';
 import {readCurrentWorkspaceRole,createWorkspaceSchemaDispatch} from '../packages/business/src/workspace-schema-dispatch.ts';
 const unsupported=error=>error.code==='RESTORE_SCHEMA_UNSUPPORTED';
@@ -42,8 +43,12 @@ test('bounded role query preserves harmless marker whitespace and comments',t=>{
  assert.equal(readCurrentWorkspaceRole(db),'ordinary-26');
 });
 test('restored25 dispatch only validates the original fixed profile and never bootstraps or upgrades it',t=>{
- const db=fixture(t,old.concat(25)),calls=[],expected=Object.freeze({profile:'restored-local-v1',workspaceOrigin:'fixed-old-owner'});
- const dispatch=createWorkspaceSchemaDispatch({initializeThrough24(){calls.push('bootstrap');throw Error('forbidden');},detectRestoreEvidence(){calls.push('detect25');return true;},classify(){calls.push('classify25');return {schemaVersion:25,profile:'restored-local-v1'};},install(){calls.push('install');throw Error('forbidden');},validate(value){assert.equal(value,db);calls.push('validate25');return expected;}});
+ // Current dispatch now validates held-row binding after the fixed validator.
+ // Use a genuine historical fixture, not marker-only fake validation success.
+ const db=new DatabaseSync(':memory:');t.after(()=>db.close());
+ db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');initializeWorkspaceSchemaThrough24(db);
+ const expected=Object.freeze(installWorkspaceRestoreSchema(db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-16T00:00:00.000Z'})),calls=[];
+ const dispatch=createWorkspaceSchemaDispatch({initializeThrough24(){calls.push('bootstrap');throw Error('forbidden');},detectRestoreEvidence(){calls.push('detect25');return true;},classify(){calls.push('classify25');return {schemaVersion:25,profile:'restored-local-v1'};},install(){calls.push('install');throw Error('forbidden');},validate(value){assert.equal(value,db);calls.push('validate25');assert.deepEqual(validateWorkspaceRestoreSchema(value),expected);return expected;}});
  assert.equal(dispatch.initialize(db),expected);assert.deepEqual(calls,['validate25']);
  assert.equal(dispatch.detect(db),true);assert.deepEqual(calls,['validate25','detect25']);
  assert.deepEqual(dispatch.classify(db),{schemaVersion:25,profile:'restored-local-v1'});

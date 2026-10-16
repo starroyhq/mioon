@@ -1,0 +1,541 @@
+{
+  "formatVersion": 1,
+  "sourceCommit": "dc7a057d582c0ef2a6c5316939f6b42be8735987",
+  "purpose": "Regression source-ownership guard only; not runtime tamper detection. Expected bytes were extracted from accepted git objects, never generated from candidate source during test execution. Existing historical golden fixtures are retained with their original independent provenance.",
+  "constructorFiles": [
+    "packages/business/src/workspace-restore-schema.mjs",
+    "packages/business/src/workspace-restore-schema-v27.ts",
+    "packages/business/src/workspace-restore-schema-v29.ts",
+    "packages/business/src/workspace-restore-schema-v31.ts",
+    "packages/business/src/workspace-restore-schema-v33.ts",
+    "packages/business/src/workspace-restore-schema-v35.ts",
+    "packages/business/src/workspace-restore-schema-v37.ts",
+    "packages/business/src/workspace-restore-schema-v39.ts"
+  ],
+  "constructorSources": {
+    "packages/business/src/workspace-restore-schema.mjs": {
+      "sha256": "35ec2bb60ea012e7a70c3c966a2a8749b15bf5c4433fd1c6499f32ff6a4446b1",
+      "bytes": 40812
+    },
+    "packages/business/src/workspace-restore-schema-v27.ts": {
+      "sha256": "49fee1a9b0f891e04f7dc789c5793cfbafba843c728bb8f10bc30529a0c6dc35",
+      "bytes": 43332
+    },
+    "packages/business/src/workspace-restore-schema-v29.ts": {
+      "sha256": "07823b4fdf6ffa570e3e1cf2caf3edcd20db37ee6649f134e56e6067ad595a31",
+      "bytes": 44027
+    },
+    "packages/business/src/workspace-restore-schema-v31.ts": {
+      "sha256": "0932065643b57395d310792236846357c5927bbc6e5ef596b07ce9caff551764",
+      "bytes": 44323
+    },
+    "packages/business/src/workspace-restore-schema-v33.ts": {
+      "sha256": "81feb41eeb6d2853bb3f8a905f4cc7dd57aaf7fec4317374bba4499ddef054da",
+      "bytes": 44488
+    },
+    "packages/business/src/workspace-restore-schema-v35.ts": {
+      "sha256": "a8d7f889d593b8d3dd97e424e599c60697de52f7cc2c73fb15611e88797ecaee",
+      "bytes": 44792
+    },
+    "packages/business/src/workspace-restore-schema-v37.ts": {
+      "sha256": "4f331ff1d5962dc11a9cc3d2bb34b07eaa656f5862195e7244451a0758ccf2dc",
+      "bytes": 45404
+    },
+    "packages/business/src/workspace-restore-schema-v39.ts": {
+      "sha256": "2dc569e1224b0083abe4ea75fd248d51588080b71b34bf71c7c0a2da71de6fc8",
+      "bytes": 45723
+    }
+  },
+  "fixedDependencyClosure": {
+    "packages/business/src/agent/edit-proposal-schema.mjs": {
+      "sha256": "662ed2c50f6d69c6d675c0d0db3f4edf10ffef93f56931c3fde36b323d6fc632",
+      "bytes": 4658
+    },
+    "packages/business/src/asset-annotation-validation.ts": {
+      "sha256": "959ab28d15e204805192e7a040ca519040a8064078ffdebecc721c1a7f25f6eb",
+      "bytes": 4079
+    },
+    "packages/business/src/comfy-image-schema.mjs": {
+      "sha256": "31e354a1223ecfbfa67d7e8cdc171c99f49a4b032d57ac17366aa4061ca2300c",
+      "bytes": 12491
+    },
+    "packages/business/src/cube-lut.ts": {
+      "sha256": "592e020e5aff42253e0550c7f7d577d120e8a65f588b8d9bba7a64bec1f7c650",
+      "bytes": 10437
+    },
+    "packages/business/src/edit-task-schema.mjs": {
+      "sha256": "6a7753f04ede401445f3e68f35aa804cc546938e5b485b2152f48e8d6d69ca91",
+      "bytes": 8720
+    },
+    "packages/business/src/frame-schema.mjs": {
+      "sha256": "7a06c47828b84eba549d7089f70f287ea1918485dd41512efd07bb7cecc21cc7",
+      "bytes": 15393
+    },
+    "packages/business/src/image-schema.mjs": {
+      "sha256": "452722a5e9a38200e8ac9e717b224984dab2841a6186c4f700487ff6e24bf40b",
+      "bytes": 11256
+    },
+    "packages/business/src/images/review-schema.mjs": {
+      "sha256": "71d7b325ec4441c758638f214ce35f27296493aef1073c3b0be62f669ebdd240",
+      "bytes": 30500
+    },
+    "packages/business/src/lut-resource-validation.ts": {
+      "sha256": "6439a0fb8f438dd7f31ccc98d83022f9ee11f050e1c3cc9c254e5e5e7f9f5949",
+      "bytes": 6422
+    },
+    "packages/business/src/subject-schema.mjs": {
+      "sha256": "2ba181530ac2ed4cb861e7578280f6d653b2fbe81b25a6b2484e088833a62e7d",
+      "bytes": 7617
+    },
+    "packages/business/src/timeline-format-schema.mjs": {
+      "sha256": "25ac5e155a99d8df4c4c53dd1acb184df51b29f6b034b5becc4ceef2ccf44609",
+      "bytes": 1983
+    },
+    "packages/business/src/timeline-subtitle-schema.mjs": {
+      "sha256": "cdcfa2c9e97dd26bb478e91852ae48e76f5847b179c4d84e7e6f81d5ce01e9fe",
+      "bytes": 3222
+    },
+    "packages/business/src/workspace-audio-role-validation.ts": {
+      "sha256": "9413756f80ffb93e44520c118be78a362b5ba5de629ddf52e4109286260802de",
+      "bytes": 7402
+    },
+    "packages/business/src/workspace-colour-validation.ts": {
+      "sha256": "6f2b476fbb614e06f7bd34d09659f620d368f30c4ce19f13522373f15e98a810",
+      "bytes": 11574
+    },
+    "packages/business/src/workspace-envelope-runtime.ts": {
+      "sha256": "4b29e71e2f9614e2d3cd439afb3f6ba07cfcbc84fdf6d5ddca2345b9c1b3aff5",
+      "bytes": 1711
+    },
+    "packages/business/src/workspace-fixed-schema.mjs": {
+      "sha256": "d66be4bb57fdf62fa9fd3bb06da7d0fa502419f6794dc446a0beeca69296315b",
+      "bytes": 28167
+    },
+    "packages/business/src/workspace-frozen-evidence-v40.ts": {
+      "sha256": "6b5699171000020bb14e49fc31a894d4ea8d422d39677cf192185f70a5bab51b",
+      "bytes": 4682
+    },
+    "packages/business/src/workspace-receipt-protections.ts": {
+      "sha256": "583bf38fccc75bcfaa8a135e9cd799e5583ccacf0b026f7d9b5583582571ed2d",
+      "bytes": 32087
+    },
+    "packages/business/src/workspace-restore-schema-v41.ts": {
+      "sha256": "50eab2f5ec49847cda2b008b397e71fb18e662e294d002d25639b6c433a9173a",
+      "bytes": 46304
+    },
+    "packages/business/src/workspace-schema-profile.ts": {
+      "sha256": "4ec56f5870c8bc8a036a04a9e5a73d671b3e82046957d0ba78dab6f5f1887f03",
+      "bytes": 3243
+    },
+    "packages/business/src/workspace-schema-v24-constants.ts": {
+      "sha256": "57f8590428ecfcffbac3637ec6167983fbd78e2ade7abc27edfc6027dcce224b",
+      "bytes": 1081
+    },
+    "packages/business/src/workspace-schema-v26.ts": {
+      "sha256": "3731061a64f2ce71ca5deddda9d8972e73e5e6d3a2743d5923f60bd4af9a41cd",
+      "bytes": 15681
+    },
+    "packages/business/src/workspace-schema-v28.ts": {
+      "sha256": "c8696ae2ee13ccae8a17ad66417081b9f5e479e79dcf9fdd0b108f4aa01248ed",
+      "bytes": 19986
+    },
+    "packages/business/src/workspace-schema-v30.ts": {
+      "sha256": "54cea43b7c6c9ab2cadd316c463794036c40c0bf98b8693b03719bc80c3e1901",
+      "bytes": 20031
+    },
+    "packages/business/src/workspace-schema-v32.ts": {
+      "sha256": "155743d3ccdc29489efd612ff27e68b5dd94bdeff0ec8d4b765a41e914ef70a9",
+      "bytes": 20073
+    },
+    "packages/business/src/workspace-schema-v34.ts": {
+      "sha256": "2da821c424cf3c0e75587b0c091dd9851b46374e0f32a3a643feb8cd19b670ff",
+      "bytes": 20145
+    },
+    "packages/business/src/workspace-schema-v36.ts": {
+      "sha256": "bd3b84c58cbc5c5c60f7cd0e6a250d6c63874cbed4349f753e7a9cf26e120e71",
+      "bytes": 26217
+    },
+    "packages/business/src/workspace-schema-v38.ts": {
+      "sha256": "766276a823898296ff03478e15566a45170c6f4bede272e26022903b77dd2920",
+      "bytes": 26005
+    },
+    "packages/business/src/workspace-schema-v40.ts": {
+      "sha256": "ce792a5f1f9ebd8c5a7615dea78241f31b8ef1373851271527b26c6801160b31",
+      "bytes": 26511
+    },
+    "packages/business/src/workspace-volume-envelope-validation.ts": {
+      "sha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09",
+      "bytes": 16134
+    },
+    "packages/contracts/src/agent-timeline-gain.ts": {
+      "sha256": "63135fe3a789e619c5214b86c231ac96c1b8c7f2bdb6050e38d938a65880c6a1",
+      "bytes": 18645
+    },
+    "packages/contracts/src/asset-annotations.ts": {
+      "sha256": "da111890fceffa694631c447a0483b6e0722ff112b2e91ae590ed8a95e304610",
+      "bytes": 2717
+    },
+    "packages/contracts/src/export-loudness.ts": {
+      "sha256": "017bcd5eb742ef74d944479fb8404221afbdf82a2106fcf28b4ce74dfddc35cc",
+      "bytes": 13924
+    },
+    "packages/contracts/src/export-sample-peak.ts": {
+      "sha256": "1df45afb281dddcd27f1453ac58b8031ea5c1b7f0164c9b2b6e48c20bc995969",
+      "bytes": 11923
+    },
+    "packages/contracts/src/lut-resources.ts": {
+      "sha256": "5658797cd03a25f8c047b1700fc53f1df91ecab58da8698630e715c673e3a21b",
+      "bytes": 7006
+    },
+    "packages/contracts/src/timeline-audio-role.ts": {
+      "sha256": "7926b2e3760fdc2ac567517f06e8292e887ca1b6dd8f314415a5bcd21f885713",
+      "bytes": 2811
+    },
+    "packages/contracts/src/timeline-clip-loudness.ts": {
+      "sha256": "e8704d14b082db096a2f435a58f2f0578c5bf6cec737c258d102fa443f8e472e",
+      "bytes": 5869
+    },
+    "packages/contracts/src/timeline-colour.ts": {
+      "sha256": "934ed38a4f26df582bf82a163f2330107f14df22bff11b8e9cf93d0ac646465a",
+      "bytes": 28825
+    },
+    "packages/contracts/src/timeline-delivery.ts": {
+      "sha256": "d7e30a8d94cee01cf2a68b8024cd940de4e6e0660f456e3d4b9a8961a11cc591",
+      "bytes": 7103
+    },
+    "packages/contracts/src/timeline-export-range.ts": {
+      "sha256": "fc28389bd4a56f58f70dcc2edc1c3c0862ddf248304f609c37dfbc16ee7aa251",
+      "bytes": 6463
+    },
+    "packages/contracts/src/timeline-loudness-apply.ts": {
+      "sha256": "9b660431575bb80e9a51dfdc551efdd5cc4d8da7d3c14dc1a4ca31571c405948",
+      "bytes": 11177
+    },
+    "packages/contracts/src/timeline-mix-loudness.ts": {
+      "sha256": "c1635ce8ea23333fe7a4f4ea31ea79ec5e7eefb40b5a189c6f8294b10c111eb2",
+      "bytes": 9107
+    },
+    "packages/contracts/src/timeline-volume-envelope-processing.ts": {
+      "sha256": "03c9944a40d4b657825ce5c1b53062e9287dcc25056ef85250f9ac4ad4178813",
+      "bytes": 3785
+    },
+    "packages/contracts/src/timeline-volume-envelope-record.ts": {
+      "sha256": "7f8717bc4f48d76a57a4fd638e89bbebc91305b01d18fc5bf517fc328f810160",
+      "bytes": 5106
+    },
+    "packages/contracts/src/timeline-volume-envelope.ts": {
+      "sha256": "2d5afda7324fd999fff4b1113824b2ccc5f953ef40258ced8e1364fad2b3d79a",
+      "bytes": 7043
+    }
+  },
+  "relativeImportEdges": {
+    "packages/business/src/agent/edit-proposal-schema.mjs": [],
+    "packages/business/src/asset-annotation-validation.ts": [
+      "packages/contracts/src/asset-annotations.ts"
+    ],
+    "packages/business/src/comfy-image-schema.mjs": [],
+    "packages/business/src/cube-lut.ts": [],
+    "packages/business/src/edit-task-schema.mjs": [
+      "packages/business/src/timeline-subtitle-schema.mjs"
+    ],
+    "packages/business/src/frame-schema.mjs": [
+      "packages/business/src/workspace-schema-v24-constants.ts"
+    ],
+    "packages/business/src/image-schema.mjs": [
+      "packages/business/src/workspace-schema-v24-constants.ts"
+    ],
+    "packages/business/src/images/review-schema.mjs": [],
+    "packages/business/src/lut-resource-validation.ts": [
+      "packages/business/src/cube-lut.ts",
+      "packages/contracts/src/lut-resources.ts"
+    ],
+    "packages/business/src/subject-schema.mjs": [],
+    "packages/business/src/timeline-format-schema.mjs": [],
+    "packages/business/src/timeline-subtitle-schema.mjs": [],
+    "packages/business/src/workspace-audio-role-validation.ts": [
+      "packages/business/src/workspace-frozen-evidence-v40.ts",
+      "packages/contracts/src/timeline-audio-role.ts"
+    ],
+    "packages/business/src/workspace-colour-validation.ts": [
+      "packages/business/src/workspace-frozen-evidence-v40.ts",
+      "packages/contracts/src/timeline-colour.ts"
+    ],
+    "packages/business/src/workspace-envelope-runtime.ts": [
+      "packages/business/src/workspace-restore-schema-v41.ts"
+    ],
+    "packages/business/src/workspace-fixed-schema.mjs": [
+      "packages/business/src/agent/edit-proposal-schema.mjs",
+      "packages/business/src/comfy-image-schema.mjs",
+      "packages/business/src/edit-task-schema.mjs",
+      "packages/business/src/frame-schema.mjs",
+      "packages/business/src/image-schema.mjs",
+      "packages/business/src/images/review-schema.mjs",
+      "packages/business/src/subject-schema.mjs",
+      "packages/business/src/timeline-format-schema.mjs",
+      "packages/business/src/workspace-schema-v24-constants.ts"
+    ],
+    "packages/business/src/workspace-frozen-evidence-v40.ts": [
+      "packages/business/src/workspace-envelope-runtime.ts",
+      "packages/contracts/src/timeline-delivery.ts",
+      "packages/contracts/src/timeline-volume-envelope-processing.ts",
+      "packages/contracts/src/timeline-volume-envelope-record.ts"
+    ],
+    "packages/business/src/workspace-receipt-protections.ts": [],
+    "packages/business/src/workspace-restore-schema-v27.ts": [
+      "packages/business/src/workspace-schema-v26.ts"
+    ],
+    "packages/business/src/workspace-restore-schema-v29.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-schema-v26.ts",
+      "packages/business/src/workspace-schema-v28.ts"
+    ],
+    "packages/business/src/workspace-restore-schema-v31.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-schema-v26.ts",
+      "packages/business/src/workspace-schema-v28.ts",
+      "packages/business/src/workspace-schema-v30.ts"
+    ],
+    "packages/business/src/workspace-restore-schema-v33.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-schema-v26.ts",
+      "packages/business/src/workspace-schema-v28.ts",
+      "packages/business/src/workspace-schema-v30.ts",
+      "packages/business/src/workspace-schema-v32.ts"
+    ],
+    "packages/business/src/workspace-restore-schema-v35.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-schema-v26.ts",
+      "packages/business/src/workspace-schema-v28.ts",
+      "packages/business/src/workspace-schema-v30.ts",
+      "packages/business/src/workspace-schema-v32.ts",
+      "packages/business/src/workspace-schema-v34.ts"
+    ],
+    "packages/business/src/workspace-restore-schema-v37.ts": [
+      "packages/business/src/asset-annotation-validation.ts",
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-schema-v26.ts",
+      "packages/business/src/workspace-schema-v28.ts",
+      "packages/business/src/workspace-schema-v30.ts",
+      "packages/business/src/workspace-schema-v32.ts",
+      "packages/business/src/workspace-schema-v34.ts",
+      "packages/business/src/workspace-schema-v36.ts"
+    ],
+    "packages/business/src/workspace-restore-schema-v39.ts": [
+      "packages/business/src/asset-annotation-validation.ts",
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-audio-role-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-schema-v26.ts",
+      "packages/business/src/workspace-schema-v28.ts",
+      "packages/business/src/workspace-schema-v30.ts",
+      "packages/business/src/workspace-schema-v32.ts",
+      "packages/business/src/workspace-schema-v34.ts",
+      "packages/business/src/workspace-schema-v36.ts",
+      "packages/business/src/workspace-schema-v38.ts"
+    ],
+    "packages/business/src/workspace-restore-schema-v41.ts": [
+      "packages/business/src/asset-annotation-validation.ts",
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-audio-role-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-schema-v26.ts",
+      "packages/business/src/workspace-schema-v28.ts",
+      "packages/business/src/workspace-schema-v30.ts",
+      "packages/business/src/workspace-schema-v32.ts",
+      "packages/business/src/workspace-schema-v34.ts",
+      "packages/business/src/workspace-schema-v36.ts",
+      "packages/business/src/workspace-schema-v38.ts",
+      "packages/business/src/workspace-schema-v40.ts",
+      "packages/business/src/workspace-volume-envelope-validation.ts"
+    ],
+    "packages/business/src/workspace-restore-schema.mjs": [
+      "packages/business/src/db.mjs",
+      "packages/business/src/workspace-fixed-schema.mjs",
+      "packages/business/src/workspace-schema-profile.ts"
+    ],
+    "packages/business/src/workspace-schema-profile.ts": [],
+    "packages/business/src/workspace-schema-v24-constants.ts": [],
+    "packages/business/src/workspace-schema-v26.ts": [
+      "packages/business/src/workspace-receipt-protections.ts"
+    ],
+    "packages/business/src/workspace-schema-v28.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-receipt-protections.ts"
+    ],
+    "packages/business/src/workspace-schema-v30.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-receipt-protections.ts"
+    ],
+    "packages/business/src/workspace-schema-v32.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-receipt-protections.ts"
+    ],
+    "packages/business/src/workspace-schema-v34.ts": [
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-receipt-protections.ts"
+    ],
+    "packages/business/src/workspace-schema-v36.ts": [
+      "packages/business/src/asset-annotation-validation.ts",
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-receipt-protections.ts"
+    ],
+    "packages/business/src/workspace-schema-v38.ts": [
+      "packages/business/src/asset-annotation-validation.ts",
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-audio-role-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-receipt-protections.ts"
+    ],
+    "packages/business/src/workspace-schema-v40.ts": [
+      "packages/business/src/asset-annotation-validation.ts",
+      "packages/business/src/lut-resource-validation.ts",
+      "packages/business/src/workspace-audio-role-validation.ts",
+      "packages/business/src/workspace-colour-validation.ts",
+      "packages/business/src/workspace-envelope-runtime.ts",
+      "packages/business/src/workspace-receipt-protections.ts",
+      "packages/business/src/workspace-volume-envelope-validation.ts"
+    ],
+    "packages/business/src/workspace-volume-envelope-validation.ts": [
+      "packages/business/src/workspace-envelope-runtime.ts",
+      "packages/contracts/src/timeline-clip-loudness.ts",
+      "packages/contracts/src/timeline-loudness-apply.ts",
+      "packages/contracts/src/timeline-mix-loudness.ts",
+      "packages/contracts/src/timeline-volume-envelope-processing.ts",
+      "packages/contracts/src/timeline-volume-envelope.ts"
+    ],
+    "packages/contracts/src/agent-timeline-gain.ts": [],
+    "packages/contracts/src/asset-annotations.ts": [],
+    "packages/contracts/src/export-loudness.ts": [
+      "packages/contracts/src/export-sample-peak.ts"
+    ],
+    "packages/contracts/src/export-sample-peak.ts": [
+      "packages/contracts/src/timeline-delivery.ts",
+      "packages/contracts/src/timeline-export-range.ts"
+    ],
+    "packages/contracts/src/lut-resources.ts": [],
+    "packages/contracts/src/timeline-audio-role.ts": [],
+    "packages/contracts/src/timeline-clip-loudness.ts": [
+      "packages/contracts/src/export-loudness.ts",
+      "packages/contracts/src/timeline-volume-envelope.ts"
+    ],
+    "packages/contracts/src/timeline-colour.ts": [
+      "packages/contracts/src/lut-resources.ts"
+    ],
+    "packages/contracts/src/timeline-delivery.ts": [
+      "packages/contracts/src/timeline-export-range.ts"
+    ],
+    "packages/contracts/src/timeline-export-range.ts": [],
+    "packages/contracts/src/timeline-loudness-apply.ts": [
+      "packages/contracts/src/agent-timeline-gain.ts",
+      "packages/contracts/src/export-loudness.ts",
+      "packages/contracts/src/timeline-mix-loudness.ts"
+    ],
+    "packages/contracts/src/timeline-mix-loudness.ts": [
+      "packages/contracts/src/timeline-volume-envelope.ts"
+    ],
+    "packages/contracts/src/timeline-volume-envelope-processing.ts": [
+      "packages/contracts/src/timeline-volume-envelope.ts"
+    ],
+    "packages/contracts/src/timeline-volume-envelope-record.ts": [
+      "packages/contracts/src/timeline-volume-envelope.ts"
+    ],
+    "packages/contracts/src/timeline-volume-envelope.ts": []
+  },
+  "excludedRelativeImports": {
+    "packages/business/src/db.mjs": "Runtime verified-store context import/reexport only; not constructor SQL or an initializer. Current dispatcher is intentionally changed."
+  },
+  "goldenFixtures": {
+    "tests/fixtures/images-legacy-schema15.sql": {
+      "sha256": "fd967218beb46b89d5f53acee0ec9341769b9cd63d8088afb368787d537e2729",
+      "bytes": 31993
+    },
+    "tests/fixtures/images-legacy-schema17.sql": {
+      "sha256": "ad3c3de87233198d77bb144abd73f983fb839cb60ac720febdebfc7b3be207ab",
+      "bytes": 47839
+    },
+    "tests/fixtures/images-legacy-schema18.sql": {
+      "sha256": "6e7c33f2becf62c4717dda3ef1d9351259a51a42c8612124ed92129e600f186e",
+      "bytes": 49810
+    },
+    "tests/fixtures/workspace-restore-legacy/1536878-db.mjs": {
+      "sha256": "e45cc161b9ad13af8002694390974fbb89fea4346ce4688959ed979a7a603dac",
+      "bytes": 34573
+    },
+    "tests/fixtures/workspace-restore-legacy/1536878-server.mjs": {
+      "sha256": "49670022b97051ee680b2f0b209d1a708352dcbe75a52809424bfa5d691f15b4",
+      "bytes": 17772
+    },
+    "tests/fixtures/workspace-restore-legacy/3446aed-contracts.mjs": {
+      "sha256": "bfde85657924b854e0ee1ac8f52d2bccff82d810080ab7bc11312d9114ae4b42",
+      "bytes": 11352
+    },
+    "tests/fixtures/workspace-restore-legacy/3446aed-db.mjs": {
+      "sha256": "64eac0f6e18a413e357928176ed0de26ad476ce026969090ce2fa039ac8ac4c4",
+      "bytes": 4578
+    },
+    "tests/fixtures/workspace-restore-legacy/3446aed-server.mjs": {
+      "sha256": "28809b1bb137b0d7cd5e1544671687bed4c6e3a15788ea7f148546c4139012ec",
+      "bytes": 8994
+    },
+    "tests/fixtures/workspace-restore-legacy/3446aed-services.mjs": {
+      "sha256": "a38b306659166e216a4badaf4eb3309bd43170aff9ba885740ad3369c7ed5ed2",
+      "bytes": 16047
+    },
+    "tests/fixtures/workspace-restore-legacy/3446aed-timeline.mjs": {
+      "sha256": "27173519696a8c75f5d00aa29566a0ea265e8b5d2e985108a1c13ffbecfa88a5",
+      "bytes": 9406
+    },
+    "tests/fixtures/workspace-restore-legacy/beb7fcf-db.mjs": {
+      "sha256": "f8bbc0b749b81b336c13b031377e062416b591cb9862b0e3df54e97752691e0f",
+      "bytes": 33075
+    },
+    "tests/fixtures/workspace-restore-legacy/beb7fcf-desktop-backend.mjs": {
+      "sha256": "f0f93cc3a3dc55710abeff17405bf019ec365a1769d043a4af2e3f2dd461f9d3",
+      "bytes": 3541
+    },
+    "tests/fixtures/workspace-restore-legacy/beb7fcf-migrate-data.mjs": {
+      "sha256": "290c8cf30da3ab0bda5fff079822743acefbc564256aa4602461124593f76d90",
+      "bytes": 5175
+    },
+    "tests/fixtures/workspace-restore-legacy/beb7fcf-server.mjs": {
+      "sha256": "49670022b97051ee680b2f0b209d1a708352dcbe75a52809424bfa5d691f15b4",
+      "bytes": 17772
+    },
+    "tests/fixtures/workspace-restore-legacy/provenance.json": {
+      "sha256": "bc09599ce9c5fad3bd03b71919e63c917f405ffe9a702aa4fbd7b039aa84afbd",
+      "bytes": 2785
+    },
+    "tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-backup.mjs": {
+      "sha256": "35599f4a0058d40be1a2a8b874794c931a741bb25db770cf88a1d58612170291",
+      "bytes": 6809
+    },
+    "tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-restore-offline.mjs": {
+      "sha256": "30027b552e182ac81f295eee0639a2a900aa7f2048fd27d23a22ff438ac830f5",
+      "bytes": 1455
+    },
+    "tests/fixtures/workspace-restore-v27/legacy-contracts/workspace-restore.mjs": {
+      "sha256": "b623c122317bf337f42e43e0569319602e0c065697c144b9371216e9e71fff7b",
+      "bytes": 3718
+    },
+    "tests/fixtures/workspace-restore-v27/manifest.json": {
+      "sha256": "d0bbc6af16fbcf25291265f06db80c7e529432adafd3423237ca6f06f1b7a729",
+      "bytes": 530
+    },
+    "tests/fixtures/workspace-schema-profiles/golden.json": {
+      "sha256": "6e3f8f14199f5a64d2412c647f5db79b2da63bd4702f0a7f88df548a8b06502b",
+      "bytes": 670870
+    },
+    "tests/fixtures/workspace-schema-profiles/manifest.json": {
+      "sha256": "6c911653232e380764b0f7e476c0523d58271eeb673ef8db39ba0e3091065d7c",
+      "bytes": 10301
+    }
+  }
+}
