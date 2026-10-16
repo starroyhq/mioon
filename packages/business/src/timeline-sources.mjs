@@ -111,7 +111,7 @@ export async function probeTimelineSource(file,{signal,timeout,beforeSpawn,befor
 
 // These are preparation budgets, never export limits. The render worker omits
 // budget entirely and re-verifies source ownership, bytes and metadata itself.
-export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect,readLut}={}){
+export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect,readLut,retainOpacitySourceIdentity=false}={}){
  checkMediaEffect(beforeEffect,signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
  if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot)||!isTimelineExportSnapshot(snapshot)||!isTimelineColourSnapshot(snapshot))throw invalid();
@@ -160,17 +160,17 @@ export async function prepareTimelineInputs(snapshot,{root,projectId,readAsset,s
    else validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:media.probe,assetSha256:hashed.sha256,streamIndex:media.videoStreamIndex});
   }
   assets.set(a.id,{...frozen,sizeBytes:hashed.sizeBytes,sha256:hashed.sha256,width:media.width,height:media.height,duration:media.duration,
-   hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info,...(imageColour?{colourImageEvidence:imageColour.evidence}:{})}:{})});
+   hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(retainOpacitySourceIdentity?{opacitySourceIdentity:hashed.info}:{}),...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info,...(imageColour?{colourImageEvidence:imageColour.evidence}:{})}:{})});
   onChecked?.(a.id);
   }catch(error){if(error&&typeof error==='object'){error.timelineAssetId=a.id;if(error.code==='MANAGED_SOURCE_CHANGED')error.message='Export input bytes differ from frozen version hash';}throw error;}
  }
  checkMediaEffect(beforeEffect,signal);validateTimeline(snapshot.timeline,assets);
- if(snapshot.colourPlan){
+ if(snapshot.colourPlan||retainOpacitySourceIdentity){
   for(const verified of assets.values()){
    checkMediaEffect(beforeEffect,signal);const current=readAsset(verified.id);
-   if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||current.relativePath!==verified.relativePath||!sameManagedFile(verified.colourSourceIdentity,validateManagedSource(root,current).info))throw fault('MANAGED_SOURCE_CHANGED','A colour-managed source changed during preparation.');
+   if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||current.relativePath!==verified.relativePath||!sameManagedFile(retainOpacitySourceIdentity?verified.opacitySourceIdentity:verified.colourSourceIdentity,validateManagedSource(root,current).info))throw fault('MANAGED_SOURCE_CHANGED',retainOpacitySourceIdentity?'A verified source changed during preparation.':'A colour-managed source changed during preparation.');
   }
-  verifyTimelineColourLuts(snapshot.colourPlan,readLut,true);
+  if(snapshot.colourPlan)verifyTimelineColourLuts(snapshot.colourPlan,readLut,true);
  }
  return assets;
 }

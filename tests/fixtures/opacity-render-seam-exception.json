@@ -1,0 +1,15 @@
+{
+  "baseline": "812d18a9d493f01f94235bd4f424b4e17e742ad8",
+  "baselineManifestSha256": "7381ed3486563b84cf4f4912dfde81ae07b0369cde4e479ad2b1bcfd88633f0d",
+  "authorization": "2026-10-16 parent approval: one renderer file, fixed internal opacity binding getter and two layer stages; default 40/41 remain disabled for opacity.",
+  "path": "packages/business/src/timeline-media.mjs",
+  "beforeSha256": "b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde",
+  "afterSha256": "db497b44160a3d5c3b398fb5be795a0aecfdd8df23e54d00c1dcbdc6ccb0e9ee",
+  "unchangedBaselineFiles": 63,
+  "regression": "tests/timeline-opacity-legacy-render-regression.test.mjs",
+  "scope": [
+    "A fixed internal getter checks the exact raw snapshot and prepared Map, supplies a read-only legacy projection, and preserves the attempt-owned effect fence, LUT reader and cancellation signal.",
+    "Append only a compiler-owned opacity stage after each visual layer's final setpts and before its output label.",
+    "Preserve legacy filter strings, media argv, overlay, audio, subtitle, output and restore capture dependencies."
+  ]
+}

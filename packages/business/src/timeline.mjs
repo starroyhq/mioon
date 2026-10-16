@@ -198,7 +198,7 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
   if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
   const rangeIssue=timelineExportRangeBoundsIssue(input,timeline.durationFrames);
   if(rangeIssue)throw new AppError(rangeIssue.code,rangeIssue.message,rangeIssue.status);
-  const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
+  const frozen=domain?domain.freezeRenderSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input):freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
   if(input.preflightSnapshotHash!==undefined){
    let current;
    try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input).snapshot;}
@@ -218,7 +218,8 @@ export function createTimelineServices(store,{required,check,hash,now,exportAdmi
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:frozen.timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
    write();put('exports',result);
    const response=saveResponse('timeline.render',input,requestHash,result,boundary);
-   bindRestoredExport(store,'timeline.render',input,result,requestHash);
+   if(opacity)opacity.bindExport('timeline.render',input,result,requestHash);
+   else bindRestoredExport(store,'timeline.render',input,result,requestHash);
    return response;
   });
  }

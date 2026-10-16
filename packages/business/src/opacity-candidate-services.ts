@@ -1,5 +1,6 @@
 /** Internal candidate service assembly. The ordinary application never creates
- * a candidate store. No provider/media service is constructed on this path. */
+ * a candidate store. The only media admission assembled here is the existing
+ * fixed bounded export capability check; no provider service is constructed. */
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -28,6 +29,13 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   const assembly = candidate;
   assembly.checkpoint();
   const domain = createOpacityCandidateDomain(store);
+  const lifetime = new AbortController();
+  const signal = options.signal ? AbortSignal.any([lifetime.signal, options.signal]) : lifetime.signal;
+  const admissionModule: unknown = require('./timeline-export-admission.mjs');
+  if (!object(admissionModule) || typeof admissionModule.createTimelineExportAdmissionServices !== 'function') return unavailable();
+  const exportAdmission: unknown = admissionModule.createTimelineExportAdmissionServices(store, {signal, hash});
+  if (!object(exportAdmission) || typeof exportAdmission.render !== 'function' || typeof exportAdmission.drain !== 'function') return unavailable();
+  const drainAdmission = exportAdmission.drain;
   // Concrete legacy entrypoint, not a caller-selected module/validator. Keep
   // this narrow checked boundary rather than pretending legacy JS is typed.
   const module: unknown = require('./timeline.mjs');
@@ -43,13 +51,12 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
     check(value: unknown, expectedRevision: unknown): void {
       if (!object(value) || value.revision !== expectedRevision) throw new AppError('REVISION_CONFLICT', '内容已有新版本，请重新读取后再修改', 409);
     },
-    hash, now: () => new Date().toISOString(), exportAdmission: {render: unavailable},
+    hash, now: () => new Date().toISOString(), exportAdmission,
   });
   if (!object(made) || !object(made.handlers)) return unavailable();
-  const handlers = made.handlers, lifetime = new AbortController();
-  const signal = options.signal ? AbortSignal.any([lifetime.signal, options.signal]) : lifetime.signal;
+  const handlers = made.handlers;
   const reads = new Set(['timeline.get', 'timeline.history.get']);
-  const mutations = new Set(['timeline.clip.update', 'timeline.undo', 'timeline.redo']);
+  const mutations = new Set(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render']);
   async function call(operation: string, input: unknown, context: Value = {}): Promise<unknown> {
     assembly.checkpoint();
     if (lifetime.signal.aborted || options.signal?.aborted || !reads.has(operation) && !mutations.has(operation)) return unavailable();
@@ -57,7 +64,7 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
     if (typeof handler !== 'function') return unavailable();
     const invoke = (frozen: unknown): unknown => {
       assembly.refuseOperation(operation, frozen);
-      const result: unknown = handler(frozen);
+      const result: unknown = handler(frozen, {signal});
       assembly.checkpoint();
       return result;
     };
@@ -69,7 +76,7 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   }
   const services = Object.freeze({call, handlers: Object.freeze(Object.fromEntries([...reads, ...mutations].map(operation =>
     [operation, (input: unknown, context?: Value) => call(operation, input, context)]))),
-    async drain(): Promise<void> {lifetime.abort();},
+    async drain(): Promise<void> {lifetime.abort();await drainAdmission();},
   });
   serviceStores.set(services, store);
   return services;

@@ -8,6 +8,7 @@ import {
   captureOpacityTimelineRecord, captureOpacityTimelineIntent, captureOpacityTimelinePrepare,
   isOpacityTimelineMutationResponse, isOpacityTimelineTask,
 } from '../../contracts/src/timeline-opacity-persistence.ts';
+import {captureOpacityRenderInput, createOpacityRenderSnapshotPlan, captureOpacityRenderSnapshot, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
 
 type Value = Record<string, unknown>;
@@ -57,7 +58,26 @@ export function createOpacityCandidateDomain(store: unknown) {
     boundAssembly.checkpoint();
     if (getOpacityCandidateAssembly(store) !== boundAssembly || !boundAssembly.ownsLock()) throw new AppError('EDIT_TASK_OWNER_REQUIRED', '只有持有工作区锁的后端可以修改编辑任务。', 403);
   };
-  const parse = (operation: string, input: unknown): Value => {checkpoint();return captureOpacityTimelineIntent(operation, input).input;};
+  const parse = (operation: string, input: unknown): Value => {
+    checkpoint();
+    if (operation !== 'timeline.render') return captureOpacityTimelineIntent(operation, input).input;
+    const result = captureOpacityRenderInput(input);
+    // A candidate preflight service has not been enabled. Never silently
+    // compare a legacy projection hash with the new raw opacity snapshot.
+    if (own(result, 'preflightSnapshotHash')) throw new AppError('OPACITY_CANDIDATE_PREFLIGHT_UNAVAILABLE', '透明度候选渲染尚不支持导出预检查摘要。', 409);
+    return result;
+  };
+  function freezeRenderSnapshot(value: unknown, assets: unknown, exportSettings: unknown, input: unknown): Value {
+    checkpoint();
+    if (!object(input) || !['preview', 'export'].includes(String(input.purpose))) return invalid();
+    const checked = timeline(value, input.projectId);
+    const projection = method(inputs, 'freezeTimelineSnapshot')(projected(checked), assets, exportSettings, input);
+    if (!object(projection)) return invalid();
+    const raw = {...projection, timeline: clone(checked)};
+    const purpose = input.purpose as 'preview' | 'export';
+    const plan = createOpacityRenderSnapshotPlan(raw, purpose);
+    return captureOpacityRenderSnapshot({...raw, ...(plan ? {opacityPlan: plan} : {})}, purpose).snapshot;
+  }
   function admit(value: unknown, related: {before?: unknown; after?: unknown; response?: unknown; related?: unknown} = {}): void {
     checkpoint();
     for (const [record, candidate] of Object.entries({timeline: value, before: related.before, after: related.after, response: related.response ?? value})) {
@@ -156,44 +176,75 @@ export function createOpacityCandidateDomain(store: unknown) {
     }
     function receipt(operation: string): {requestHash: string; response: string} | null {
       checkpoint();if (typeof input.requestId !== 'string') return invalid();
-      const maxBytes = operation === 'timeline.loudness.apply' ? 327680 : 262144;
+      const maxBytes = operation === 'timeline.render' ? 4 * 1024 * 1024 : operation === 'timeline.loudness.apply' ? 327680 : 262144;
       const row = db.prepare(`SELECT ${bounded('requestHash', 64)} AS requestHash,${bounded('response', maxBytes)} AS response FROM timeline_requests WHERE requestId=?`).get(input.requestId);
       if (!row) return null;
       if (typeof row.requestHash !== 'string' || !/^[a-f0-9]{64}$/.test(row.requestHash) || typeof row.response !== 'string') return invalid();
       return {requestHash: row.requestHash, response: row.response};
     }
     function replay(operation: string, text: unknown): unknown {
-      checkpoint();const maxBytes = operation === 'timeline.loudness.apply' ? 327680 : 262144;
+      checkpoint();const maxBytes = operation === 'timeline.render' ? 4 * 1024 * 1024 : operation === 'timeline.loudness.apply' ? 327680 : 262144;
       if (typeof text !== 'string' || Buffer.byteLength(text) > maxBytes) return invalid();
       const saved = receipt(operation);
       if (!saved || saved.requestHash !== digest({operation, input}) || saved.response !== text) return invalid();
       let response: unknown;try {response = JSON.parse(text);} catch {return invalid();}
-      if (!isOpacityTimelineMutationResponse(operation, input, response)) return invalid();
+      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : isOpacityTimelineMutationResponse(operation, input, response))) return invalid();
       if (operation === 'timeline.format.set') method(format, 'readTimelineFormatProvenance')(db, input, saved.requestHash);
       const loudness = operation === 'timeline.loudness.apply';
-      const current = read({sourceSemantics: !loudness});
-      const historical = loudness && object(response) ? timeline(response.timeline, projectId) : validateReadonly(response);
+      const render = operation === 'timeline.render';
+      const current = read({sourceSemantics: !loudness && !render});
+      const historical = render ? renderSources(response, true) : loudness && object(response) ? timeline(response.timeline, projectId) : validateReadonly(response);
       if (loudness) sources(historical);
       if (!current) return unavailable();
       if (current.id !== historical.id || current.revision < historical.revision) return invalid();
+      if (render) {renderRecord(response);return response;}
       return loudness ? response : historical;
+    }
+    function renderRecord(response: unknown): Value {
+      checkpoint();
+      if (!object(response) || typeof response.id !== 'string') return invalid();
+      const row = db.prepare(`SELECT ${identity('id')},${identity('projectId')},${bounded('data', 4 * 1024 * 1024)} AS data FROM exports WHERE id=? AND projectId=?`).get(response.id, projectId);
+      let current: unknown;try {current = typeof row?.data === 'string' ? JSON.parse(row.data) : undefined;} catch {return unavailable();}
+      if (!row || !object(current) || row.id !== response.id || row.projectId !== projectId || !isOpacityRenderRecord(current, input)) return unavailable();
+      for (const field of ['id', 'projectId', 'requestId', 'mode', 'purpose', 'timelineRevision']) if (current[field] !== response[field]) return invalid();
+      if (JSON.stringify(current.snapshot) !== JSON.stringify(response.snapshot)) return invalid();
+      if (current.assetId !== null) asset(current.assetId);
+      return current;
+    }
+    function renderSources(response: unknown, historical = false): Timeline {
+      if (!object(response) || !object(response.snapshot) || !Array.isArray(response.snapshot.assets)) return invalid();
+      const checked = timeline(response.snapshot.timeline, projectId);
+      if (historical) sources(checked);else validateReadonly(checked);
+      for (const frozen of response.snapshot.assets) {
+        if (!object(frozen)) return invalid();
+        const source = asset(frozen.id);
+        if (!object(source) || source.sha256 !== frozen.sha256 || source.mimeType !== frozen.mimeType ||
+          own(frozen, 'relativePath') && source.relativePath !== frozen.relativePath || !historical &&
+          (['duration', 'width', 'height'].some(field => own(frozen, field) && source[field] !== frozen[field]) || typeof frozen.hasAudio === 'boolean' && source.hasAudio !== frozen.hasAudio)) return unavailable();
+      }
+      return checked;
     }
     function verify(operation: string, response: unknown, requestHash: unknown): void {
       checkpoint();
-      if (!isOpacityTimelineMutationResponse(operation, input, response) || requestHash !== digest({operation, input})) return invalid();
+      if (!(operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : isOpacityTimelineMutationResponse(operation, input, response)) || requestHash !== digest({operation, input})) return invalid();
       const current = read();if (!current) return unavailable();
-      validateReadonly(response);
-      if (JSON.stringify(current) !== JSON.stringify(response)) return invalid();
+      if (operation === 'timeline.render') {
+        const rendered = renderSources(response);
+        if (current.id !== rendered.id || JSON.stringify(renderRecord(response)) !== JSON.stringify(response)) return invalid();
+      } else {
+        validateReadonly(response);
+        if (JSON.stringify(current) !== JSON.stringify(response)) return invalid();
+      }
       const saved = receipt(operation);
       if (!saved || saved.requestHash !== requestHash || saved.response !== JSON.stringify(response)) return invalid();
     }
     return Object.freeze({read, asset, inputAsset, clipSource, version, sources, validate, validateReadonly, restored, replay, verify});
   }
   return Object.freeze({
-    parse, boundary, admit,
+    parse, boundary, admit, freezeRenderSnapshot,
     capturePrepare: (value: unknown) => {checkpoint();return captureOpacityTimelinePrepare(value);},
     captureIntent: (operation: string, value: unknown) => {checkpoint();return captureOpacityTimelineIntent(operation, value);},
     isTask: (value: unknown) => {checkpoint();return isOpacityTimelineTask(value);},
-    isMutationResponse: (operation: string, input: unknown, response: unknown) => {checkpoint();return isOpacityTimelineMutationResponse(operation, input, response);},
+    isMutationResponse: (operation: string, input: unknown, response: unknown) => {checkpoint();return operation === 'timeline.render' ? isOpacityRenderRecord(response, input) : isOpacityTimelineMutationResponse(operation, input, response);},
   });
 }

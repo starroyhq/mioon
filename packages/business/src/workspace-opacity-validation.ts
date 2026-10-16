@@ -4,6 +4,8 @@
 import type {DatabaseSync, SQLInputValue, SQLOutputValue} from 'node:sqlite';
 import {captureOpacityTimelineRecord, captureOpacityTimelineIntent} from '../../contracts/src/timeline-opacity-persistence.ts';
 import {OPACITY_ENVELOPE_PROFILE} from '../../contracts/src/timeline-opacity-envelope.ts';
+import {OPACITY_RENDER_CANDIDATE_PROFILE, captureOpacityPreparedSourceProjection, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
+import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 import {validateWorkspaceColourRows} from './workspace-colour-validation.ts';
 import {validateWorkspaceAudioRoleRows} from './workspace-audio-role-validation.ts';
 import {validateWorkspaceVolumeEnvelopeRows} from './workspace-volume-envelope-validation.ts';
@@ -31,7 +33,7 @@ function containsOpacity(value: unknown): boolean {
     if (entry.value === null || typeof entry.value !== 'object') continue;
     if (object(entry.value)) {
       if ([...forbiddenKeys].some(key => own(entry.value as object, key))) invalid();
-      if (own(entry.value, 'opacityEnvelope') || entry.value.profileId === OPACITY_ENVELOPE_PROFILE) found = true;
+      if (own(entry.value, 'opacityEnvelope') || own(entry.value, 'opacityPlan') || entry.value.profileId === OPACITY_ENVELOPE_PROFILE || entry.value.profileId === OPACITY_RENDER_CANDIDATE_PROFILE) found = true;
     }
     const children = Object.values(entry.value);
     if (nodes + pending.length + children.length > 200000) invalid();
@@ -91,6 +93,15 @@ export function validateOpacityWorkspaceRows(db: DatabaseSync, {schemaVersion}: 
     if (result.id !== row.id) invalid();
     timelines.set(projectId, result); return result;
   }
+  function renderRecord(value: Value): Value {
+    owner(value.projectId);
+    const input = {projectId: value.projectId, requestId: value.requestId, expectedRevision: value.timelineRevision,
+      purpose: value.purpose, ...timelineRenderDeliveryFields(value.snapshot)};
+    if (!isOpacityRenderRecord(value, input) || !object(value.snapshot)) invalid();
+    captureRecord(value.snapshot.timeline, value.projectId);
+    const captured = captureOpacityPreparedSourceProjection(value.snapshot, value.purpose === 'preview' ? 'preview' : 'export');
+    return {...value, snapshot: captured.sourceValidationSnapshot};
+  }
   let cells = 0, bytes = 0;
   for (const [table, fields] of families) {
     if (!names.has(table)) continue;
@@ -139,11 +150,17 @@ export function validateOpacityWorkspaceRows(db: DatabaseSync, {schemaVersion}: 
           if (op === 'timeline.clip.update' && !Object.keys(projectedFields).length) projectedFields.gain = 0;
           projection = op === 'timeline.clip.add' ? projectedFields : {...captured, patch: projectedFields};
         } else if (table === 'timeline_requests') {
-          // No opacity rendering or loudness application is exposed by this
-          // dormant persistence slice. Only complete timeline ACKs are allowed.
-          if (own(parsed, 'snapshot') || own(parsed, 'timeline') || own(parsed, 'assets')) invalid();
-          const captured = captureRecord(parsed, parsed.projectId);
-          projection = projectRecord(captured);
+          if (own(parsed, 'snapshot')) {
+            if (parsed.requestId !== row.identity || parsed.status !== 'queued' || parsed.assetId !== null || parsed.url !== null) invalid();
+            projection = renderRecord(parsed);
+          } else {
+            if (own(parsed, 'timeline') || own(parsed, 'assets')) invalid();
+            const captured = captureRecord(parsed, parsed.projectId);
+            projection = projectRecord(captured);
+          }
+        } else if (table === 'exports') {
+          if (parsed.id !== row.identity || parsed.projectId !== row.owner) invalid();
+          projection = renderRecord(parsed);
         } else {
           // Old Agent and render entrypoints may not borrow a new effect merely
           // because a timeline projection can be parsed by an old validator.

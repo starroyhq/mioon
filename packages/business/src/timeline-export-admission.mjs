@@ -1,5 +1,6 @@
-import {restoreEffectFence} from './workspace-restore-invocation.mjs';
-import {refuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.mjs';
+import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {restoreEffectFence as legacyRestoreEffectFence} from './workspace-restore-invocation.mjs';
+import {refuseRestoredOperation as legacyRefuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.mjs';
 import {AppError,timelineExportCapabilityResultSchema,resolveTimelineExportDelivery,timelineExportCapabilitySchemas} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary} from './timeline-recovery.mjs';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.mjs';
@@ -27,10 +28,21 @@ export function timelineExportCapabilityError(code){return new AppError(code,mes
 // Own every underlying check, including a non-cooperative injected helper. No
 // asynchronous media work ever runs while an admission SQLite transaction is open.
 export function createTimelineExportAdmissionServices(store,{signal:ownerSignal,inspect=inspectTimelineExportCapability,hash}={}){
- const active=new Set();let stopped=false,shutdownFailure;
- async function inspectOwned(delivery,{signal:callSignal}={}){
-  refuseRestoredOperation(store,'timeline.export.capabilities');
-  const beforeEffect=restoreEffectFence(store);
+ const opacity=getOpacityCandidateAssembly(store);
+ const refuseRestoredOperation=opacity?(_store,operation,input)=>opacity.refuseOperation(operation,input):legacyRefuseRestoredOperation;
+ const restoreEffectFence=opacity?()=>opacity.effectFence():legacyRestoreEffectFence;
+ const active=new Set(),candidateRenderFences=new WeakSet();let stopped=false,shutdownFailure;
+ function assertCandidateRenderFence(fence){
+  opacity.checkpoint();
+  if(typeof fence!=='function'||!candidateRenderFences.has(fence))throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate operation is unavailable.',409);
+  fence();
+ }
+ async function inspectOwned(delivery,{signal:callSignal}={},candidateRenderFence){
+  // Candidate callers can reach this fixed bounded check only from the
+  // already authorized render invocation; no candidate capabilities RPC exists.
+  if(opacity)assertCandidateRenderFence(candidateRenderFence);
+  else refuseRestoredOperation(store,'timeline.export.capabilities');
+  const beforeEffect=opacity?()=>assertCandidateRenderFence(candidateRenderFence):restoreEffectFence(store);
   const external=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
   if(store.db.isTransaction)throw new AppError('EXPORT_CAPABILITY_CONFIGURATION',messages.EXPORT_CAPABILITY_CONFIGURATION,409);
@@ -77,14 +89,18 @@ export function createTimelineExportAdmissionServices(store,{signal:ownerSignal,
   // prepare replays immutable historical ACKs before current revision, any
   // local compute, or capability availability can affect their result.
   const before=prepare();if(before.replayed)return before.response;
-  const result=await inspectOwned(before.snapshot.delivery,options);
-  checkpoint(options?.signal);checkpoint(ownerSignal);
-  // accept runs a second exact transaction: receipt replay/dedupe, project and
-  // source ownership, CAS, unchanged snapshot, then possible pre-write rejection.
-  return accept({timelineId:before.snapshot.timeline.id,snapshotHash:hash(before.snapshot),failure:result.status==='available'?null:timelineExportCapabilityError(result.code)});
+  const candidateRenderFence=opacity?restoreEffectFence(store):undefined;
+  if(opacity){if(typeof candidateRenderFence!=='function')throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate operation is unavailable.',409);candidateRenderFences.add(candidateRenderFence);}
+  try{
+   const result=await inspectOwned(before.snapshot.delivery,options,candidateRenderFence);
+   checkpoint(options?.signal);checkpoint(ownerSignal);
+   // accept runs a second exact transaction: receipt replay/dedupe, project and
+   // source ownership, CAS, unchanged snapshot, then possible pre-write rejection.
+   return accept({timelineId:before.snapshot.timeline.id,snapshotHash:hash(before.snapshot),failure:result.status==='available'?null:timelineExportCapabilityError(result.code)});
+  }finally{if(opacity)candidateRenderFences.delete(candidateRenderFence);}
  }
  const stop=()=>{stopped=true;for(const entry of active)entry.controller.abort();};
  ownerSignal?.addEventListener('abort',stop,{once:true});if(ownerSignal?.aborted)stop();
  async function drain(){stop();await boundedShutdown(Promise.allSettled([...active].map(entry=>entry.task)),'EXPORT_CAPABILITY_STOP_TIMEOUT');ownerSignal?.removeEventListener('abort',stop);if(shutdownFailure)throw shutdownFailure;}
- return {handlers:{'timeline.export.capabilities':capabilities},render,inspect:inspectOwned,drain};
+ return {handlers:{'timeline.export.capabilities':capabilities},render,inspect:opacity?(delivery,options)=>inspectOwned(delivery,options):inspectOwned,drain};
 }

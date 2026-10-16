@@ -1,5 +1,5 @@
-/** Dormant pure compiler: no production consumer, media invocation or admission
- * authority. Input must already be bounded ordinary data; portable capture does
+/** Pure compiler for the isolated candidate renderer; no media invocation or
+ * admission authority. Input must already be bounded ordinary data; portable capture does
  * not establish safety against transparent proxies or installed filter support.
  */
 import type {OpacityEnvelopeClip, OpacityEnvelopePoint} from '../../contracts/src/timeline-opacity-envelope.ts';
@@ -8,8 +8,7 @@ import {createOpacityEnvelopeEvaluator, opacityEnvelopeFieldsAfterEdit} from '..
 export const TIMELINE_OPACITY_FILTER_BYTE_CAP_CANDIDATE = 8192;
 export const TIMELINE_OPACITY_EXPRESSION_BYTE_CAP_CANDIDATE = 1536;
 
-/** Required candidate integration order, not evidence that a renderer currently
- * consumes this stage. Optional colour/LUT steps keep these relative positions.
+/** Required candidate integration order. Optional colour/LUT steps keep these relative positions.
  * Managed images reach this stage as already premultiplied encoded RGB(A).
  */
 export const TIMELINE_OPACITY_STAGE_ORDER_CANDIDATE = Object.freeze([
@@ -57,12 +56,12 @@ function expression(points: readonly OpacityEnvelopePoint[], offsetFrames: numbe
  * offset, beginFrame - clip.startFrame, even for a selected export range. Range
  * trimming follows compositing, so it never resets this clock or adds reseeks.
  *
- * The eventual renderer must insert this after colour/LUT, contain resize/pad,
+ * The candidate renderer inserts this after colour/LUT, contain resize/pad,
  * 30fps/tpad/trim and PTS normalization, immediately before overlay. Straight
  * RGBA changes A only; managed premultiplied layers change RGB and A together.
  * Conversion through planar RGB(A) requests geq's RGB options without a YUV
- * conversion. Integer sample rounding and actual FFmpeg support remain unproven
- * until the separately authorized bounded pixel test is run.
+ * conversion. Installed FFmpeg support and rounding are qualified separately
+ * by the explicitly invoked bounded synthetic pixel probe.
  *
  * Only validated numeric curve data enters the closed expression grammar. There
  * are no caller expressions, labels, paths, stage names or filter fragments.

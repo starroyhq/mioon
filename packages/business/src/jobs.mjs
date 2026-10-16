@@ -1,3 +1,7 @@
+import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {isOpacityCandidateServicesForStore} from './opacity-candidate-services.ts';
+import {matchesOpacityCandidateExport,claimOpacityCandidateExport,recoverOpacityCandidateExport,isOpacityCandidateExportClaim,revokeOpacityCandidateExportClaim,prepareOpacityCandidateRenderInputs} from './opacity-candidate-render-authority.ts';
+import {bindTimelineOpacityRenderAttempt} from './timeline-opacity-render-binding.ts';
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline-colour-lut.ts';
 import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
@@ -21,7 +25,9 @@ import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './gen
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.mjs';
 
 export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
- const restored=getWorkspaceRestoreContext(store);
+ const opacity=getOpacityCandidateAssembly(store);
+ if(opacity&&!isOpacityCandidateServicesForStore(store,services))throw Object.assign(Error('The candidate worker requires its exact owned services.'),{code:'OPACITY_CANDIDATE_STORE_REQUIRED'});
+ const restored=opacity?opacity.getRestoreContext():getWorkspaceRestoreContext(store);
  const {list,get,put,tx,root}=store;
  let stopped=Boolean(ownerSignal?.aborted),cycle=null,stopping,shutdownFailure;
  const operations=new Set(),floatClaims=createFloatTimelineAttemptRegistry();
@@ -48,15 +54,15 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(!record||typeof record!=='object'||Array.isArray(record)||!exportUuid(row.id)||!exportUuid(row.projectId)||!exportUuid(record.id)||!exportUuid(record.projectId))return invalidExport();
   if(record.id!==row.id||record.projectId!==row.projectId)return invalidExport();
   if(record.mode==='timeline'&&record.snapshot?.timeline?.projectId!==row.projectId)return invalidExport();
-  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch{return invalidExport();}
+  try{if(opacity){if(!matchesOpacityCandidateExport(store,record))return invalidExport();}else assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch{return invalidExport();}
   return record;
  }
- const workerExports=()=>store.db.prepare(`SELECT ${exportColumns} FROM exports${restored?" WHERE id IN (SELECT exportId FROM workspace_restore_export_origins WHERE workspaceOrigin=?) AND CASE WHEN json_valid(data) THEN json_extract(data,'$.status') END IN ('queued','running') ORDER BY id":''}`).all(...(restored?[restored.workspaceOrigin]:[])).map(decodeExport).filter(value=>value&&(!restored||matchesRestoredExport(store,value)));
+ const workerExports=()=>store.db.prepare(`SELECT ${exportColumns} FROM exports${restored?" WHERE id IN (SELECT exportId FROM workspace_restore_export_origins WHERE workspaceOrigin=?) AND CASE WHEN json_valid(data) THEN json_extract(data,'$.status') END IN ('queued','running') ORDER BY id":''}`).all(...(restored?[restored.workspaceOrigin]:[])).map(decodeExport).filter(value=>value&&(!restored||(opacity?matchesOpacityCandidateExport(store,value):matchesRestoredExport(store,value))));
  const workerExport=id=>decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id));
  // Custom delivery adds an awaited capability step. Preserve the complete
  // immutable acceptance identity across every existing async/publication fence;
  // a replaced snapshot must never be restored by publishing an older copy.
- const customExport=e=>requiresPreparedTimelineExportIdentity(e)||Boolean(e?.snapshot&&Object.hasOwn(e.snapshot,'colourPlan'));
+ const customExport=e=>Boolean(opacity)||requiresPreparedTimelineExportIdentity(e)||Boolean(e?.snapshot&&Object.hasOwn(e.snapshot,'colourPlan'));
  const exportIdentity=e=>JSON.stringify(Object.fromEntries(['id','projectId','requestId','mode','purpose','timelineRevision','snapshot','createdAt'].map(key=>[key,e[key]])));
  // A removed delivery field must not disguise an accepted custom export as
  // a historical legacy job before the worker's first observation. The bounded
@@ -70,6 +76,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
  }
  function customReceiptMatches(e){
   try{
+   if(opacity)return matchesOpacityCandidateExport(store,e);
    const input={projectId:e.projectId,requestId:e.requestId,expectedRevision:e.timelineRevision,purpose:e.purpose,...timelineRenderDeliveryFields(e.snapshot)};
    if(typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200)return false;
    const receipt=readTimelineReceipt(store.db,input,'timeline.render');
@@ -80,9 +87,10 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
  }
  const currentOwnedExport=(e,{cleanupOnly=false}={})=>{
   const latest=workerExport(e.id);
-  if(restored&&(!matchesRestoredExport(store,e)||!matchesRestoredExport(store,latest)||restoreExportIdentity(e)!==restoreExportIdentity(latest)))return null;
+  if(opacity){if(!matchesOpacityCandidateExport(store,e)||!matchesOpacityCandidateExport(store,latest)||exportIdentity(e)!==exportIdentity(latest)||!cleanupOnly&&e.status==='running'&&!isOpacityCandidateExportClaim(store,e))return null;}
+  else if(restored&&(!matchesRestoredExport(store,e)||!matchesRestoredExport(store,latest)||restoreExportIdentity(e)!==restoreExportIdentity(latest)))return null;
   if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return null;
-  if((hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
+  if((opacity||hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
   if(!cleanupOnly&&!sameFloatTimelineAttempt(e,latest))return null;
   return latest;
  };
@@ -97,7 +105,8 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   const apply=()=>{
    const latest=table==='exports'?workerExport(id):get(table,id);
    if(!latest||['succeeded','cancelled'].includes(latest.status)||table==='exports'&&(latest.mode!==mode||latest.projectId!==projectId))return;
-   if(restored&&(table!=='exports'||!matchesRestoredExport(store,latest)))return;
+   if(opacity&&(table!=='exports'||!matchesOpacityCandidateExport(store,latest)))return;
+   else if(restored&&!opacity&&(table!=='exports'||!matchesRestoredExport(store,latest)))return;
    if(table==='exports'&&isFloatTimelineExport(latest)&&(!attempt||!sameFloatTimelineAttempt(attempt,latest)))return;
    const error=mediaPauseError(table,latest.status);
    if(latest.error?.code===error.code&&latest.error?.message===error.message)return;
@@ -107,8 +116,9 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(table==='exports')tx(apply);else apply();
  };
  const safeError=(e,code='PROVIDER_ERROR')=>({code:e.code||code,message:e.uncertain?'供应商可能已受理。正在对账，不会自动重新提交。':String(e.message||'任务操作失败').replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true});
- for(const j of restored?[]:list('jobs'))if(j.status==='submitting')services.saveGenerationGuarded(j,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
+ for(const j of restored||opacity?[]:list('jobs'))if(j.status==='submitting')services.saveGenerationGuarded(j,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
  for(const e of workerExports())if(e.status==='running')tx(()=>{
+  if(opacity){recoverOpacityCandidateExport(store,e,now());return;}
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...(isFloatTimelineExport(current)?requeueFloatTimelineExport(current):current),status:'queued',updatedAt:now()});
  });
 
@@ -248,7 +258,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   checkpoint(signal);
   let e=original;
   if(!exportUuid(e.id)||!exportUuid(e.projectId)){invalidExport();return;}
-  e=tx(()=>{const current=currentOwnedExport(original);if(current?.status!=='queued')return null;const claimed=isFloatTimelineExport(current)?claimFloatTimelineExport(current,now()):{...current,status:'running',updatedAt:now()};put('exports',claimed);return isFloatTimelineExport(current)?claimed:current;});
+  e=tx(()=>{const current=currentOwnedExport(original);if(current?.status!=='queued')return null;if(opacity)return claimOpacityCandidateExport(store,current,now());const claimed=isFloatTimelineExport(current)?claimFloatTimelineExport(current,now()):{...current,status:'running',updatedAt:now()};put('exports',claimed);return isFloatTimelineExport(current)?claimed:current;});
   if(!e)return;
   floatClaims.remember(signal,e);
   const floatExport=isFloatTimelineExport(e);
@@ -256,20 +266,21 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   const relativePath=`media/export-${e.id}-${randomUUID()}.mp4`,file=path.join(root,relativePath),part=file+'.part.mp4';
   const colourExport=Boolean(e?.snapshot&&Object.hasOwn(e.snapshot,'colourPlan'));
   const readLut=colourExport?createTimelineColourLutReader(store.db,e.projectId):undefined;
-  const fencedAttempt=restored||floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
-  let preparedAssets,linkedOutput=false,publicationAccepted=false,outputIdentity,outputHandle,claimLive=true,validateSources,floatMeasurement,terminationUnconfirmed=false;
+  const fencedAttempt=opacity||restored||floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
+  let preparedAssets,opacityBinding,linkedOutput=false,publicationAccepted=false,outputIdentity,outputHandle,claimLive=true,validateSources,floatMeasurement,terminationUnconfirmed=false;
   const beforeEffect=fencedAttempt?()=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}}:undefined;
-  const checkCustomSources=()=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});};
+  const checkCustomSources=()=>{if(opacity)opacityBinding?.assert();else if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});};
   try {
    beforeEffect?.();
    if(fencedAttempt){outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect();}
    if(e.mode==='timeline') {
-    if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
-    const assets=await prepareTimelineInputs(e.snapshot,{root,projectId:e.projectId,signal,
+    if(!opacity&&!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+    const assets=opacity?await prepareOpacityCandidateRenderInputs(store,e,{signal,beforeEffect}):await prepareTimelineInputs(e.snapshot,{root,projectId:e.projectId,signal,
      beforeEffect,readLut,readAsset:id=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id);},validateLinks:timeline=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
     if(customExport(e)||restored)preparedAssets=assets;
-    if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});
+    if(opacity){opacityBinding=bindTimelineOpacityRenderAttempt(store,e,assets,{signal});validateSources=()=>opacityBinding.assert();}
+    else if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot,preparedAssets,{root});
     const rendered=await renderTimeline(e.snapshot,assets,part,{signal,beforeEffect,readLut,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
     if(floatExport)floatMeasurement=ownedFloatTimelineMeasurement(rendered);
    } else {
@@ -324,15 +335,16 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    tx(fail);
   } finally {
    claimLive=false;
+   opacityBinding?.close();
    const cleanup=async()=>{
    if(!fencedAttempt)await unlink(part).catch(()=>{});
-   else if(outputIdentity){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&currentOwnedExport(e,{cleanupOnly:floatExport}))await unlink(part).catch(()=>{});}catch{}}
+   else if(outputIdentity){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&currentOwnedExport(e,{cleanupOnly:Boolean(opacity)||floatExport}))await unlink(part).catch(()=>{});}catch{}}
    // An uncertain commit, hostile replacement, foreign export, changed inode,
    // or failed cleanup never licenses removing an unknown/published output.
    // Keep the original failure; this cleanup makes no byte-race guarantee.
    if((customExport(e)||restored)&&linkedOutput&&!publicationAccepted&&outputIdentity){
     try{
-     const unpublished=()=>{const latest=currentOwnedExport(e,{cleanupOnly:floatExport});return latest&&['queued','running','failed'].includes(latest.status)&&latest.assetId===null&&latest.url===null;};
+     const unpublished=()=>{const latest=currentOwnedExport(e,{cleanupOnly:Boolean(opacity)||floatExport});return latest&&['queued','running','failed'].includes(latest.status)&&latest.assetId===null&&latest.url===null;};
      if(unpublished()){
       const current=await lstat(file).catch(()=>null);
       if(current?.isFile()&&current.nlink===1&&current.dev===outputIdentity.dev&&current.ino===outputIdentity.ino&&unpublished())await unlink(file).catch(()=>{});
@@ -341,8 +353,9 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
    }
    if(outputHandle)await outputHandle.close().catch(()=>{});
    };
-   if((floatExport||colourExport)&&terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
+   if((opacity||floatExport||colourExport)&&terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();
+   if(opacity)revokeOpacityCandidateExportClaim(store,e);
   }
  }
 
@@ -364,7 +377,7 @@ export function startWorker(store,services,providers,{signal:ownerSignal}={}) {
   if(cycle)return cycle;
   cycle=(async()=>{
    try {
-    for(const j of restored?[]:list('jobs'))if(!stopped&&['queued','running','downloading','submission_unknown'].includes(j.status))await operate(processJob,j);
+    for(const j of restored||opacity?[]:list('jobs'))if(!stopped&&['queued','running','downloading','submission_unknown'].includes(j.status))await operate(processJob,j);
     if(stopped)return;
     for(const e of workerExports())if(!stopped&&e.status==='queued')await operate(processExport,e);
    } catch(error) {console.error('Worker cycle failed:',error.code||error.name);}

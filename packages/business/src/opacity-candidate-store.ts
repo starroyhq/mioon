@@ -11,6 +11,7 @@ import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {initializeWorkspaceSchema42} from './workspace-schema-v42.ts';
 import {classifyWorkspaceSchemaV42V43, validateWorkspaceRestoreSchemaV43} from './workspace-restore-schema-v43.ts';
+import {captureOpacityRenderInput} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 
 const require = createRequire(import.meta.url);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -99,7 +100,7 @@ export function freezeOpacityCandidateInput<T>(value: T): T {
   freeze(copy); return copy;
 }
 export const OPACITY_CANDIDATE_RESTORE_READ_OPERATIONS = Object.freeze(['project.list', 'project.get', 'timeline.get', 'timeline.history.get', 'timeline.format.get']);
-export const OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS = Object.freeze(['timeline.clip.update', 'timeline.undo', 'timeline.redo']);
+export const OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS = Object.freeze(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render']);
 export interface OpacityCandidateAssembly {
   checkpoint(): void;
   ownsLock(): boolean;
@@ -113,6 +114,7 @@ export interface OpacityCandidateAssembly {
   hasInvocation(operation: string, input: unknown): boolean;
   effectFence(): (() => void) | undefined;
   withTaskInvocation<T>(row: unknown, options: InvocationOptions, callback: () => T): T;
+  bindExport(operation: string, input: unknown, value: unknown, requestHash: string): void;
   readonly readOperations: readonly string[];
   readonly localOperations: readonly string[];
 }
@@ -219,23 +221,24 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
     };
     const live = (entry: Invocation | undefined): Invocation => {
       check();
-      if (!entry || !lifetimes.get(entry)?.live || entry.store !== store || entry.signal?.aborted || entry.origin !== restored?.workspaceOrigin) unavailable();
+      if (!entry || !lifetimes.get(entry)?.live || entry.store !== store || entry.signal?.aborted || entry.origin !== (restored?.workspaceOrigin ?? '')) unavailable();
       entry.validate?.(); return entry;
     };
     const assertInvocation = (operation: string, input: unknown): void => {
-      if (!context()) return;
+      if (!context() && operation !== 'timeline.render') return;
       const entry = live(invocations.getStore());
       if (operation === 'timeline.get' && object(input) && input.projectId === entry.projectId && entry.operation === 'timeline.clip.update') return;
       if (entry.operation !== operation || entry.inputDigest !== digest(input)) unavailable();
     };
     const runInvocation = <T>(operation: string, input: unknown, options: InvocationOptions, validate: (() => void) | undefined, callback: (input: unknown) => T): T => {
       if (!OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation)) unavailable();
+      if (operation === 'timeline.render') {try {captureOpacityRenderInput(input);} catch {unavailable();}}
       const inherited = invocations.getStore();
       if (inherited && inherited.store !== store) unavailable();
-      if (!context()) return callback(input);
+      if (!context() && operation !== 'timeline.render') return callback(input);
       if (inherited) {assertInvocation(operation, input); return callback(input);}
       const frozen = freezeOpacityCandidateInput(input);
-      const entry: Invocation = Object.freeze({store, origin: restored!.workspaceOrigin, operation, inputDigest: digest(frozen), projectId: object(frozen) ? frozen.projectId : undefined, signal: options.signal, validate});
+      const entry: Invocation = Object.freeze({store, origin: restored?.workspaceOrigin ?? '', operation, inputDigest: digest(frozen), projectId: object(frozen) ? frozen.projectId : undefined, signal: options.signal, validate});
       const state = {live: true}; lifetimes.set(entry, state);
       const revoke = (): void => {state.live = false;};
       options.signal?.addEventListener('abort', revoke, {once: true});
@@ -260,7 +263,7 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
       },
       refuseOperation: (operation: string, input?: unknown) => {
         const restore = context();
-        if (OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation)) {if (restore) {assertInvocation(operation, input); requestVacant(operation, input);} return;}
+        if (OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation)) {if (restore || operation === 'timeline.render') {assertInvocation(operation, input); requestVacant(operation, input);} return;}
         if (OPACITY_CANDIDATE_RESTORE_READ_OPERATIONS.includes(operation)) return;
         unavailable();
       },
@@ -277,8 +280,9 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
         if (entry.store !== store) unavailable();
         assertInvocation(operation, input); return true;
       },
-      effectFence: () => {if (!context()) return undefined; const entry = live(invocations.getStore()); return () => {live(entry);};},
+      effectFence: () => {const inherited = invocations.getStore();if (!context() && inherited?.operation !== 'timeline.render') return undefined; const entry = live(inherited); return () => {live(entry);};},
       withTaskInvocation: <T>(row: unknown, options: InvocationOptions, callback: () => T): T => {
+        if (object(row) && row.operation === 'timeline.render') unavailable();
         if (!context()) return callback();
         if (!object(row) || !uuid(row.id) || !uuid(row.projectId) || typeof row.operation !== 'string' || typeof row.input !== 'string' ||
             typeof row.digest !== 'string' || typeof row.claim !== 'string' || !row.claim || typeof row.claimInstance !== 'string' || row.executionEpoch !== restored!.workspaceOrigin || held('edit_tasks', row.id)) unavailable();
@@ -292,6 +296,22 @@ export function openOpacityCandidateStore(directory: string): OpacityCandidateSt
         let input: unknown; try {input = freezeOpacityCandidateInput(JSON.parse(identity.input) as unknown);} catch {unavailable();}
         if (digest({operation: identity.operation, input}) !== identity.digest) unavailable();
         return runInvocation(identity.operation, input, options, validate, callback);
+      },
+      bindExport: (operation: string, input: unknown, value: unknown, requestHash: string): void => {
+        check(); assertInvocation(operation, input);
+        if (operation !== 'timeline.render' || !object(input) || !object(value) || !fixedDb.isTransaction ||
+            !uuid(value.id) || !uuid(value.projectId) || value.projectId !== input.projectId || value.requestId !== input.requestId ||
+            value.mode !== 'timeline' || value.status !== 'queued' || value.assetId !== null || value.url !== null ||
+            requestHash !== digest({operation, input}) || Buffer.byteLength(JSON.stringify(value)) > 4 * 1024 * 1024) unavailable();
+        requestVacant(operation, input);
+        const row = nativePrepare(fixedDb, 'SELECT id,projectId,data FROM exports WHERE id=? AND projectId=?').get(value.id, value.projectId);
+        const receipt = nativePrepare(fixedDb, 'SELECT requestHash,response FROM timeline_requests WHERE requestId=?').get(String(input.requestId));
+        if (!row || row.data !== JSON.stringify(value) || !receipt || receipt.requestHash !== requestHash || receipt.response !== row.data) unavailable();
+        if (restored) {
+          const identityHash = digest(Object.fromEntries(['id', 'projectId', 'requestId', 'mode', 'purpose', 'timelineRevision', 'orderedVersionIds', 'snapshot', 'createdAt'].filter(key => Object.hasOwn(value, key)).map(key => [key, value[key]])));
+          nativePrepare(fixedDb, 'INSERT INTO workspace_restore_export_origins(exportId,projectId,workspaceOrigin,requestScope,requestId,requestHash,identityHash) VALUES(?,?,?,?,?,?,?)')
+            .run(value.id, value.projectId, restored.workspaceOrigin, 'timeline.render', String(input.requestId), requestHash, identityHash);
+        }
       },
       readOperations: OPACITY_CANDIDATE_RESTORE_READ_OPERATIONS,
       localOperations: OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS,
