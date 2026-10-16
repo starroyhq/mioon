@@ -1,19 +1,20 @@
 # Mioon extensions architecture and catalog plan
 
-Implementation checkpoint (2026-10-10): the [fixed first-party ComfyUI image connector](COMFY-CONNECTOR.md) has passed focused/build/Linux native synthetic acceptance and its independent full gate (2993 total, 2991 passed, 0 failed, 2 skipped). Its internal `check/submit/observe` interface is actually used by the image lifecycle. This does not complete the manifest broker, third-party execution isolation, second-category SDK proof or extension store described below.
+Implementation checkpoints: the [fixed first-party ComfyUI image connector](COMFY-CONNECTOR.md) passed its 2026-10-10 focused/build/Linux native synthetic acceptance and independent full gate (2993 total, 2991 passed, 0 failed, 2 skipped). The [2026-10-15 optional module admission](COMFY-OPTIONAL-MODULE.md) additionally implements fixed startup availability and preserves exact receipts/results when the connector is not constructed. These are historical bounded gates, not a fresh release qualification. Neither implements independent package installation/removal, a manifest broker, third-party isolation, a shared SDK or a store.
 
-Date: 2026-10-10 UTC. Status: **planned; approved for implementation at an
-appropriate milestone; not implemented**.
-Inspected repository HEAD: `bd76c724de757e68b2683ca7928316a5c4f92174`.
-Concurrent image-activation work is outside this document's implementation and
-verification scope. This increment adds documentation only, not an SDK, extension
-loader, store, installation, external execution or paid-provider authorization.
+Boundary audit: 2026-10-16 UTC, repository HEAD
+`820fd274a46031aae4e0dfcd7158985094794afe`. Status: **current boundaries checked;
+minimal next-slice design complete; extension runtime work below remains planned**.
+This update changes documentation only. It adds no SDK, loader, installation,
+execution service, permission or provider authorization. Implementation of the
+next slice does not begin in this increment.
 
 ## Decision and existing foundations
 
 Keep a stable creation/editing core and add bounded extension points around it.
-Start with an extensions manager and an official catalog. A third-party registry
-and paid marketplace are later products with separate security and operating gates.
+Start with the single optional offline exporter proof below. Defer an extensions
+manager and official catalog until concrete package/lifecycle needs justify them.
+A third-party registry and paid marketplace are later products with separate gates.
 Extensions do not block the already available limited Linux trial or the ongoing
 image, Agent and editing increments in [PRODUCT-ROADMAP.md](PRODUCT-ROADMAP.md).
 The 2026-10-10 approval explicitly leaves timing to the existing delivery plan:
@@ -25,6 +26,95 @@ Existing shared business services, managed assets, immutable versions, job/rende
 snapshots, replay/conflict handling and the right dock are reusable foundations.
 They are not an extension SDK. Do not generalize all existing providers or rewrite
 the application before two concrete extension categories prove the boundary.
+
+## Current boundary and the one next slice
+
+The core project/timeline model, Save, Undo/Redo, ownership, source interpretation,
+default MP4 delivery and task admission remain built in. Optional feature packaging
+must not turn these into prerequisites that the user has to install.
+
+| Current capability | Actual boundary and source evidence |
+| --- | --- |
+| Comfy T2I protocol adapter | Reviewed first-party `check/submit/observe`, not an installable plugin. [Server composition](../apps/server/src/index.mjs#L35) still statically imports the factory; [module admission](../apps/server/src/comfy-module.ts#L7) skips its construction. `not-provided` is a trusted composition descriptor, not proof a package is physically absent. Deleting the imported implementation can still fail module resolution before admission. |
+| Other providers and delivery UI | [Provider registry](../packages/business/src/provider-registry.mjs#L2) statically imports built-in adapters. [App](../apps/web/src/App.jsx#L80) statically wires delivery components; [DeliveryWorkspace](../apps/web/src/DeliveryWorkspace.tsx#L13) is a presentation boundary, not an extension host. |
+| Render/export execution | [Timeline admission](../packages/business/src/timeline.mjs#L211) and [job publication](../packages/business/src/jobs.mjs#L324) implement the existing frozen media export, including fixed MP4 publication. [Local delivery](../packages/business/src/local-delivery.ts#L167) only dispatches the original `timeline.render`; the [durable edit operation set](../packages/contracts/src/edit-tasks.mjs#L9) excludes it. There is no general JSON-export task or generic output handle to reuse unchanged. |
+| Distribution | [Desktop build](../apps/desktop/scripts/build.mjs#L20) bundles the shared backend and copies the Web build. A runtime flag does not remove code/resources from either dependency graph. Independent optional-package builds, manifest compatibility admission, a broker and executable-extension isolation are unimplemented. |
+
+**Recommend only: offline cut-list/source-manifest, JSON first.** This is the
+existing second proof category, now chosen as the first independently absent
+format-package proof. It is not implemented. Defer CSV, editable NLE interchange,
+media copying, codecs, batch delivery, dynamic code, a marketplace and a general
+SDK. The file describes cuts/source identity and explicitly reports unsupported
+constructs; it is not a complete project or a lossless NLE round trip.
+
+Use a reviewed first-party **declarative format package**: a bounded manifest plus
+closed mapping of allowlisted DTO field keys, with no arbitrary property path or
+prototype traversal, JavaScript entry, expression, template include, HTML,
+import URL or executable dependency. The host validates the data and performs a
+fixed bounded JSON serialization. A same-process TypeScript interface alone would
+not prevent executable plugin code from using Node's ambient authority. Executable
+packages therefore remain behind the separate isolation gate below. This choice
+keeps the small serializer/admission logic in the host; it does not pretend all
+export implementation has moved out of the core.
+
+| Aspect | Current built-in path | Minimum proposed boundary; not measured or implemented |
+| --- | --- | --- |
+| Dependencies/package | Comfy/provider/delivery imports enter shared backend/Web builds; external Comfy/Python/models are not bundled by the connector. | Fixed build-time optional format-package list; no serializer library, media runtime or model dependency. The default core entry must not import the package. Prove the package and its resources are absent from the no-extension build graph/artifact. No KB or installed-size saving is established. |
+| Startup | `skip` avoids Comfy factory construction, but imported modules, settings and core services remain. | No exporter scan, execution or media read on project open. Validate only a supplied fixed declarative package at composition; no arbitrary path discovery. Measure actual build contents/startup before claiming a saving in bytes or time. |
+| Permissions | Comfy has [bounded loopback routes](../packages/business/src/comfy/network.mjs#L6), but executes reviewed code in the backend process. | Only the selected, host-projected metadata and one host-owned bounded JSON result. No media bytes, paths, DB/reader, generic RPC, network, credentials or subprocess capability. Unknown capability declarations fail closed. |
+| Failure isolation | Admission/protocol errors are handled; a static-import failure or fatal same-process error is not isolated by `skip`. | Invalid/incompatible data is rejected before dispatch; bounded mapping/output errors produce a failed action with no downloadable success. This is a data-only boundary, not proof of process isolation or a sandbox for arbitrary code. |
+
+Necessary engineering decisions and implementation tasks, in order:
+
+1. **Freeze one small format/admission contract.** Name one extension ID and format
+   version, exact package digest and compatible host-contract range. Default to a
+   session-only explicit export: no saved MP4 history, project schema change or
+   cross-restart replay claim. Specify request identity, same-session duplicate
+   behavior, output lifetime and count/byte/time bounds before coding. The same
+   key/digest reuses a retained in-flight run/result; changed content conflicts.
+   Expired or restarted sessions report unavailable, not proof the action never
+   happened. No automatic redispatch. A durable history/restart requirement instead
+   needs a separate persistence decision.
+2. **Project an owned immutable input.** Bind a single consistent read of the saved
+   project/timeline revision to the run and package/format digest. Allow only source
+   IDs/hashes, declared metadata, track/cut/source-frame fields and an explicit
+   unsupported/loss list. The [render snapshot](../packages/business/src/timeline-inputs.mjs#L50)
+   contains private `relativePath` and must never be passed through. The bounded
+   [inspection DTO](../packages/business/src/inspection.mjs#L286) omits effects and
+   other constructs; it is not a complete substitute. Detect unsupported constructs
+   from the owned saved model, report them for explicit review, and reject unhandled
+   profiles rather than claiming preservation. Do not initialize a timeline as a
+   side effect of inspection or widen restored-profile authority.
+3. **Add one fixed host-controlled action.** Reuse existing authentication,
+   ownership/revision checks, explicit invocation, bounded operation lifetime and
+   task/status presentation. Define its fixed admission/response/download contract
+   first: the current task machinery does not already provide this operation.
+   Only the host may issue the run-bound, expiring JSON output handle. The format
+   package cannot name an operation, destination or filesystem path. Do not squeeze
+   JSON into `timeline.render`, MP4 rows or the frozen edit-task operation set; do
+   not add a generic extension-execute service. If the existing non-frozen admission
+   seam cannot support this small action, stop at that decision rather than rewrite
+   the execution pipeline.
+4. **Prove optional composition and honest UI.** Build absent and present fixtures
+   from the fixed first-party package list, with no runtime install/hot swap. Missing,
+   disabled, incompatible, invalid and ready states must be distinct; never silently
+   substitute another version. Use host-rendered four-language status and the
+   existing delivery area. Core open/edit/Save/Undo/MP4 delivery must work without
+   the format package. Test exact version/digest pinning, unknown permissions,
+   cross-project/revision changes, private-path leakage, unsupported constructs,
+   limit/failure cases and no new publication/download after cancellation/expiry;
+   a previously downloaded copy cannot be withdrawn. Compare actual
+   dependency graphs/artifacts; test absence in source, not just a disabled flag.
+
+Documentation validation: 18 local link targets and 13 source-line anchors checked,
+whitespace checks passed, and independent source/diff review found no blocker.
+This audit ran no product suite, build, GUI, real media, provider or installer, and
+started no execution service. These documentation checks do not clear the retained
+[six historical ordinary24/restored25 failures](evidence/blob-admission-baselines/qualification.json),
+[Node24 native-addon Team ID build limitation](evidence/opacity-release-check/build-default.txt),
+or final GUI/real IME/HDR-display/installer/platform qualification gaps. Existing
+candidate and prior-platform evidence retain their own baselines; this plan neither
+enables candidates by default nor restarts stopped investigations.
 
 The core continues to own:
 
@@ -197,7 +287,11 @@ model or ComfyUI fields. This distinct import/export category tests whether the 
 permissions, lifecycle and right-dock schema are general without claiming NLE import
 compatibility or creating a second editing engine.
 
-## Delivery order and acceptance gates
+## Longer-term delivery order and acceptance gates
+
+The broad sequence below is retained as longer-term ecosystem planning. Its
+manager/catalog-first order is superseded for the next increment by the single
+offline declarative-export proof above; it is not a prerequisite for that proof.
 
 All stages below are planned and need separate implementation tasks and acceptance
 evidence. Ordinary coding within the approved roadmap does not require fresh user
