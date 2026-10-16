@@ -16,23 +16,34 @@ export interface OpacityCandidateTaskClient {
   acknowledge(input: Value, options?: Value): Promise<unknown>;
 }
 export interface OpacityCandidateApplicationRuntime extends OpacityBrowserLegacyContracts {
-  rpc(operation: string, input: Value, options: RpcOptions & {fetcher: typeof fetch}): Promise<unknown>;
+  rpc(operation: string, input: Value, options: RpcOptions & {fetcher: typeof fetch; opacityBinding?: object}): Promise<unknown>;
   createEditTaskClient(options: {fetcher: typeof fetch; opacityBinding: object}): OpacityCandidateTaskClient;
 }
 function fault(): never {throw Object.assign(new Error('Invalid candidate application acknowledgement.'), {code: 'BACKEND_PROTOCOL_ERROR'});}
 function application(runtime: OpacityCandidateApplicationRuntime, fetcher: typeof fetch) {
   const contracts = createOpacityCandidateBrowserContracts(runtime);
   const sharedRpc = runtime.rpc;
-  const taskClient = runtime.createEditTaskClient({fetcher, opacityBinding: createOpacityCandidateClientBinding(contracts)});
+  const opacityBinding = createOpacityCandidateClientBinding(contracts);
+  const taskClient = runtime.createEditTaskClient({fetcher, opacityBinding});
+  let inspectedWorkspace: Value | null = null;
   return Object.freeze({taskClient, inspectorBinding: createOpacityCandidateInspectorBinding(fetcher),
     ...contracts,
+    validateProjectSnapshot(value: unknown, projectId?: unknown): boolean {
+      return contracts.validateProjectSnapshot(value, projectId, inspectedWorkspace);
+    },
     async rpc(operation: string, input: Record<string, unknown> = {}, options: RpcOptions = {}): Promise<unknown> {
       const schema = contracts.schemas[operation];
       if (schema && !schema.safeParse(input).success) return fault();
-      const result: unknown = await sharedRpc(operation, input, {...options, fetcher});
+      const result: unknown = await sharedRpc(operation, input, {...options, fetcher, opacityBinding});
+      if (operation === 'workspace.restore.inspect') {
+        if (!contracts.isWorkspaceInspection(result) || !result || typeof result !== 'object') return fault();
+        const observed = result as Value;
+        if (inspectedWorkspace && (observed.restored !== inspectedWorkspace.restored || observed.workspaceOrigin !== inspectedWorkspace.workspaceOrigin)) return fault();
+        inspectedWorkspace ??= Object.freeze(structuredClone(observed));
+      }
       if (['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.undo', 'timeline.redo', 'timeline.render'].includes(operation) &&
         !contracts.isTimelineMutationResponse(operation, input, result)) return fault();
-      if (operation === 'project.get' && !contracts.validateProjectSnapshot(result)) return fault();
+      if (operation === 'project.get' && !contracts.validateProjectSnapshot(result, input.projectId, inspectedWorkspace)) return fault();
       if (operation === 'timeline.get' && !contracts.isTimelineRecord(result, {projectId: input.projectId})) return fault();
       return result;
     },

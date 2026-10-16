@@ -35,7 +35,9 @@ node apps/cli/src/opacity-backup.ts restore-status --destination /absolute/resto
 
 旧pending仍held，不能重新排队或执行。43仍只允许原有精确origin下的`timeline.clip.update`、`timeline.undo`、`timeline.redo`、`timeline.render`；读取与只读preflight／capabilities保持原范围。新origin不会获得项目创建、素材导入、track／clip add、provider或普通42应用能力。43递归备份继续拒绝，保留原始备份。
 
-这个入口不启动后端、监听、worker、媒体或provider。**当前普通候选应用启动器仍拒绝43**；本片交付离线保存／恢复／验证，不宣称43 GUI工作区已开放。
+这个离线入口不启动后端、监听、worker、媒体或provider。本片完成时普通候选应用启动器仍拒绝43，交付范围仅离线保存／恢复／验证。后续已提供[恢复43独立应用入口](OPACITY-RESTORED-APPLICATION.md)：显式`--open-restored-workspace`完整验证已有43，沿原origin／held／epoch规则读取、编辑并发起新预览／导出。`--open-workspace`仍只认普通42；本页离线测试数量和无GUI／监听／媒体范围保留。
+
+恢复43应用明确展示v3排除及源草稿保留；当前未保存输入和视图仅在本窗口内存，普通dirty关闭也可能丢失。该应用不开放普通42的创建／导入能力、持久companion或递归备份，其GUI／真实媒体验收另记，不能由本页离线通过推定。
 
 ## 失败与发布
 

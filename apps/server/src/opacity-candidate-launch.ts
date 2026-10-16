@@ -2,12 +2,13 @@
  * factory, and no serialized field can select a workspace profile. */
 import path from 'node:path';
 import {readFileSync, lstatSync} from 'node:fs';
-import {openNewOpacityCandidateApplicationStore, reopenOpacityCandidateApplicationStore, getOpacityCandidateAssembly} from '../../../packages/business/src/opacity-candidate-store.ts';
+import {openNewOpacityCandidateApplicationStore, reopenOpacityCandidateApplicationStore, reopenRestoredOpacityCandidateApplicationStore,
+  isOpacityCandidateApplicationStore, isRestoredOpacityCandidateApplicationStore, getOpacityCandidateAssembly} from '../../../packages/business/src/opacity-candidate-store.ts';
 import type {OpacityCandidateStore} from '../../../packages/business/src/opacity-candidate-store.ts';
 
-interface Entry {readonly root: string; readonly store: OpacityCandidateStore; used: boolean}
+interface Entry {readonly root: string; readonly store: OpacityCandidateStore; readonly profile: 'ordinary42' | 'restored43'; used: boolean}
 const launches = new WeakMap<object, Entry>();
-function invalid(): never {throw Object.assign(new Error('An exact unused ordinary42 development launch is required.'), {code: 'OPACITY_CANDIDATE_LAUNCH_REQUIRED'});}
+function invalid(): never {throw Object.assign(new Error('An exact unused ordinary42 or restored43 development launch is required.'), {code: 'OPACITY_CANDIDATE_LAUNCH_REQUIRED'});}
 
 /** A candidate listener must serve the separately compiled candidate build.
  * A normal production HTML entry never becomes a profile switch. */
@@ -30,18 +31,25 @@ export function assertOpacityCandidateBuild(directory: string): void {
 export function createFreshOpacityCandidateLaunch(directory: string): object {
   if (typeof directory !== 'string' || !path.isAbsolute(directory)) return invalid();
   const root = path.resolve(directory), store = openNewOpacityCandidateApplicationStore(root);
-  return registerLaunch(root, store);
+  return registerLaunch(root, store, 'ordinary42');
 }
 
 /** Explicit existing42 path. It never creates, migrates or accepts restored43. */
 export function createExistingOpacityCandidateLaunch(directory: string): object {
   if (typeof directory !== 'string' || !path.isAbsolute(directory)) return invalid();
   const root = path.resolve(directory), store = reopenOpacityCandidateApplicationStore(root);
-  return registerLaunch(root, store);
+  return registerLaunch(root, store, 'ordinary42');
 }
-function registerLaunch(root: string, store: OpacityCandidateStore): object {
+/** Fixed restored43 admission is distinct from ordinary42 reopen. A marker,
+ * copied handle or HTTP field never selects this launch profile. */
+export function createRestoredOpacityCandidateLaunch(directory: string): object {
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) return invalid();
+  const root = path.resolve(directory), store = reopenRestoredOpacityCandidateApplicationStore(root);
+  return registerLaunch(root, store, 'restored43');
+}
+function registerLaunch(root: string, store: OpacityCandidateStore, profile: Entry['profile']): object {
   const proof = Object.freeze({});
-  launches.set(proof, {root, store, used: false});
+  launches.set(proof, {root, store, profile, used: false});
   return proof;
 }
 
@@ -51,7 +59,9 @@ export function consumeOpacityCandidateLaunch(value: unknown) {
   const entry = launches.get(value);
   if (!entry || entry.used) return invalid();
   const assembly = getOpacityCandidateAssembly(entry.store);
-  if (!assembly || assembly.getRestoreContext()) return invalid();
+  if (!assembly || (entry.profile === 'ordinary42'
+    ? !isOpacityCandidateApplicationStore(entry.store) || assembly.getRestoreContext() !== null
+    : !isRestoredOpacityCandidateApplicationStore(entry.store) || assembly.getRestoreContext()?.schemaVersion !== 43)) return invalid();
   assembly.checkpoint();entry.used = true;
   return Object.freeze({root: entry.root, store: entry.store, assembly});
 }

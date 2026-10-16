@@ -1,4 +1,5 @@
 import { opacityEnvelopeMessages } from './catalogs/opacity-envelope.ts';
+import { opacityRestoredApplicationMessages } from './catalogs/opacity-restored-application.ts';
 import { volumeEnvelopeMessages } from './catalogs/volume-envelope.ts';
 import { audioRoleMessages } from './catalogs/audio-role.ts';
 import { clipLoudnessMessages } from './catalogs/clip-loudness.ts';
@@ -17,8 +18,8 @@ export * from './types.ts';
 export * from './locale.ts';
 import { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
 export { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
-assertNoDuplicateMessageKeys(opacityEnvelopeMessages, volumeEnvelopeMessages, audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
-export const catalogs = Object.freeze({ ...opacityEnvelopeMessages, ...volumeEnvelopeMessages, ...audioRoleMessages, ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
+assertNoDuplicateMessageKeys(opacityRestoredApplicationMessages, opacityEnvelopeMessages, volumeEnvelopeMessages, audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages);
+export const catalogs = Object.freeze({ ...opacityRestoredApplicationMessages, ...opacityEnvelopeMessages, ...volumeEnvelopeMessages, ...audioRoleMessages, ...clipLoudnessMessages, ...comparisonMessages, ...annotationMessages, ...commandMessages, ...operationMessages, ...foundationMessages, ...nativeMessages, ...shellMessages, ...creationMessages, ...timelineMessages });
 export type MessageKey = keyof typeof catalogs;
 type TemplateText<T> = T extends string ? T : T extends { one: infer O extends string; other: infer R extends string } ? O | R : never;
 type Placeholders<T extends string> = T extends `${string}{${infer P}}${infer Rest}` ? P | Placeholders<Rest> : never;

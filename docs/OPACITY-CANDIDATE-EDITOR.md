@@ -53,7 +53,7 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 4. **播放、下载与完成状态。** server的`deliveryGuards`固定旧`isTimelineRenderRecord`。需将精确候选record校验接入同一source／held／文件响应守卫，确保worker成功后，用户能取得正确的preview/export媒体。
 5. **备份恢复产品链。** 公共backup DTO、DB classifier、离线restore、CLI和诊断仍只支持40/41。42→43构造器存在，但create/verify/restore/restore-status尚未贯通；43应继续拒绝递归备份。此闭环完成前，不向用户提供43恢复入口。
 
-以上1–4已由后续[全新42应用片](OPACITY-CANDIDATE-APPLICATION.md)接通，并补[普通42已有目录重开](OPACITY-CANDIDATE-REOPEN.md)，均限内部明确入口。第5项已有[固定42冷备份→43离线产品入口](OPACITY-CANDIDATE-BACKUP-RESTORE.md)，43应用启动仍未开放。preflight／capability无需重复实现。旧40/41升级继续按下节单独处理。
+以上1–4已由后续[全新42应用片](OPACITY-CANDIDATE-APPLICATION.md)接通，并补[普通42已有目录重开](OPACITY-CANDIDATE-REOPEN.md)，均限内部明确入口。第5项已有[固定42冷备份→43离线产品入口](OPACITY-CANDIDATE-BACKUP-RESTORE.md)，随后[恢复43应用片](OPACITY-RESTORED-APPLICATION.md)接通独立启动、已有片段编辑／Undo／Redo及新render，保留原held／epoch／origin。43不写companion，当前未保存输入与视图仅在本窗口内存，正常关闭也可能丢失；源v3原文仍保留。preflight／capability无需重复实现，GUI／真实媒体范围单列。旧40/41升级继续按下节单独处理。
 
 ## 旧40/41升级条件与备份恢复策略
 
@@ -68,4 +68,4 @@ v3 完整 PUT 含 JPEG/LUT、audioRole、16 点音量、7 点透明度及三个�
 
 代码接线完成后，仍需真实GUI四语言、IME、草稿恢复、Save/Cancel/关闭保护、播放／下载和性能验收。实际10帧渲染与HTTP读取／下载已经由页首后续报告验证，不能代替界面操作。还需Node24及产品实际固定FFmpeg运行时验证；本轮Node26和此前FFmpeg9.0.2的短像素证据不能替代它们。
 
-当前候选服务、worker和observer验证均不依赖监听。未来真实HTTP恢复入口验收若需要重跑，须另获准执行 `TMPDIR=/private/tmp node --test --test-name-pattern='restored server' tests/workspace-restore-execution.test.mjs`，目标为`127.0.0.1`的测试动态端口，用于验证实际server/client和恢复策略接线。本轮未执行该命令、未重试此前EPERM拒绝，也未使用其他监听路径。
+上述preflight片的候选服务、worker和observer验证均不依赖监听。当时将真实HTTP恢复命令 `TMPDIR=/private/tmp node --test --test-name-pattern='restored server' tests/workspace-restore-execution.test.mjs` 列为待授权范围，目标为`127.0.0.1`的测试动态端口；该片未执行此命令、未重试此前EPERM拒绝，也未使用其他监听路径。后续用户已明确授权本任务隔离localhost验收，42已运行的结果见页首报告，43后续结果见[独立应用片](OPACITY-RESTORED-APPLICATION.md)；这里保留旧片命令记录，不把它算成已执行或要求对同次授权重复请示。

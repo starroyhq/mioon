@@ -14,10 +14,19 @@ synthetic no-listen qualification and canonical builds. Default40/41 remains;
 Explicit ordinary42 [reopening](docs/OPACITY-CANDIDATE-REOPEN.md) now preserves
 saved edits/drafts. [Partial Safari and real short-media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
 now verifies login/project creation, actual HTTP persistence/Undo/Redo and10-frame
-FFmpeg preview/export/download. CUA disconnected at the import picker, so later
+FFmpeg preview/export/download. In that earlier42 run CUA disconnected at the import picker, so its later
 GUI operations remain unverified. The [fixed42 cold-backup→offline43 entry](docs/OPACITY-CANDIDATE-BACKUP-RESTORE.md)
 now preserves raw evidence, held/epoch/origin and managed asset bytes, explicitly
-excludes v3 drafts, and keeps the43 application launcher closed.
+excludes v3 drafts. The subsequent [restored43 application entry](docs/OPACITY-RESTORED-APPLICATION.md)
+now opens exact restored43 through `--open-restored-workspace`, with the original
+origin/held/epoch guards, existing-clip saves/Undo/Redo and new render requests.
+It does not migrate40/41 or grant ordinary42 creation/import capabilities.
+Current43 unsaved input and view state stay in window memory and can be lost on
+normal close; original v3 drafts remain in the42 source. This43 slice passed
+124/124 focused tests plus separate12/12 preference checks, canonical builds,
+actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
+close/reopen with saved curve retained. HTTP download bytes and RGB decode
+passed; full four-language/IME and package/platform gates remain separate.
 Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 - **Implemented:** independent Settings center, four-language presentation,

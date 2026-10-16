@@ -21,10 +21,18 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   media acceptance](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md): login/project creation
   passed, while CUA disconnected at the import picker. Actual HTTP persistence,
   Undo/Redo, FFmpeg preview/export and guarded downloads passed; later GUI items
-  remain unverified. It also records [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md)
+  in that earlier42 run remain unverified. It also records [explicit ordinary42 reopening](OPACITY-CANDIDATE-REOPEN.md)
   and the implemented [fixed42 cold-backup→offline43 entry](OPACITY-CANDIDATE-BACKUP-RESTORE.md),
   with raw evidence/held/epoch/origin retained and v3 drafts explicitly excluded.
-  43 application admission and40/41 migration remain separate. No push or release.
+  The subsequent [restored43 application entry](OPACITY-RESTORED-APPLICATION.md)
+  now supports existing-project editing/Undo/Redo and new preview/export requests
+  under the original origin/held/epoch rules. Current43 unsaved input and views
+  are memory-only and can be lost on normal close; source v3 drafts remain.
+  Its124/124 focused tests and separate12/12 preference checks, canonical builds,
+  actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
+  close/reopen passed. Guarded HTTP download and RGB decode passed; full
+  four-language/IME and packaging/platform gates remain. Ordinary42 creation/import
+  permissions and40/41 migration are not granted to43. No push or release.
 
 - **Settings center: implemented in `92add7e`, integrated through `ff85c9a`.** One explicit Settings
   entry now groups General, Models & services, and Extensions in all four GUI
@@ -115,7 +123,10 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
    they do not complete per-clip/dialogue loudness matching. The volume-envelope
    backend and row editor are implemented and integrated; their remaining native
    acceptance is indexed above. Do not restart the earlier pure prototype.
-   Opacity keyframes now have the isolated fresh42 slice above. Other visual
+   Opacity keyframes now have the isolated fresh42 and restored43 slices above,
+   including fixed cold backup/restore and explicit separate application admission.
+   The43 memory-only draft/view policy and remaining acceptance are documented
+   in [its application scope](OPACITY-RESTORED-APPLICATION.md). Other visual
    keyframes/transitions, audio crossfades, ducking, limiter/EQ/noise
    reduction and scoped proxy performance
    remain separate work; local media tags/notes are no longer pending. No automatic

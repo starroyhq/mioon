@@ -5,7 +5,8 @@ import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {isPromise} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {getOpacityCandidateAssembly, isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
+import {getOpacityCandidateAssembly, isOpacityCandidateApplicationStore, isRestoredOpacityCandidateApplicationStore,
+  OPACITY_CANDIDATE_RESTORED_APPLICATION_READ_OPERATIONS} from './opacity-candidate-store.ts';
 import type {OpacityCandidateStore} from './opacity-candidate-store.ts';
 import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
 import {createOpacityCandidateApplicationHandlers, OPACITY_CANDIDATE_APPLICATION_BASIC_OPERATIONS, parseOpacityCandidateApplicationInput} from './opacity-candidate-application.ts';
@@ -32,6 +33,10 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   if (!candidate || !object(store) || typeof store.get !== 'function') return unavailable();
   const assembly = candidate;
   const application = isOpacityCandidateApplicationStore(store);
+  const restoredApplication = isRestoredOpacityCandidateApplicationStore(store);
+  const applicationReads = application ? OPACITY_CANDIDATE_APPLICATION_BASIC_OPERATIONS
+    : restoredApplication ? OPACITY_CANDIDATE_RESTORED_APPLICATION_READ_OPERATIONS : [];
+  const applicationInterface = application || restoredApplication;
   assembly.checkpoint();
   const domain = createOpacityCandidateDomain(store);
   const lifetime = new AbortController();
@@ -65,30 +70,38 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   });
   if (!object(made) || !object(made.handlers)) return unavailable();
   const handlers = {...made.handlers, ...preflight.handlers, ...exportAdmission.handlers};
-  if (application) {
+  if (applicationInterface) {
     if (typeof made.ensure !== 'function' || typeof made.history !== 'function') return unavailable();
     const ensure = made.ensure, history = made.history;
     const typedStore = store as unknown as OpacityCandidateStore;
-    const ensureTimeline = (projectId: string): unknown => {ensure(projectId); return domain.boundary({projectId}).read({legacyMissingProject: true});};
+    const ensureTimeline = (projectId: string): unknown => {
+      // A restored project may have no timeline. Reads never create one.
+      if (application) ensure(projectId);
+      return domain.boundary({projectId}).read({legacyMissingProject: true});
+    };
     Object.assign(handlers, createOpacityCandidateApplicationHandlers(typedStore, {signal,
       ensureTimeline, history: (projectId: string) => history(projectId)}));
     handlers['timeline.get'] = (input: Value) => typedStore.tx(() => typeof input.projectId === 'string' ? ensureTimeline(input.projectId) : unavailable());
   }
-  const reads = new Set(['timeline.get', 'timeline.history.get', ...(application ? OPACITY_CANDIDATE_APPLICATION_BASIC_OPERATIONS : [])]);
+  const reads = new Set(['timeline.get', 'timeline.history.get', ...applicationReads]);
   const mutations = new Set(['timeline.clip.update', 'timeline.undo', 'timeline.redo', 'timeline.render', ...(application ? ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.remove'] : [])]);
   const preparations = new Set(['timeline.export.preflight', 'timeline.export.capabilities']);
   const pending = new Set<Promise<unknown>>();
   async function invokeCall(operation: string, input: unknown, context: Value = {}): Promise<unknown> {
     assembly.checkpoint();
     if (lifetime.signal.aborted || options.signal?.aborted || !reads.has(operation) && !mutations.has(operation) && !preparations.has(operation)) return unavailable();
-    if ((application || preparations.has(operation)) && context.signal !== undefined && !(context.signal instanceof AbortSignal)) return unavailable();
-    const callSignal = (application || preparations.has(operation)) && context.signal instanceof AbortSignal ? AbortSignal.any([signal, context.signal]) : signal;
-    const parsed = application && OPACITY_CANDIDATE_APPLICATION_BASIC_OPERATIONS.includes(operation)
+    if ((applicationInterface || preparations.has(operation)) && context.signal !== undefined && !(context.signal instanceof AbortSignal)) return unavailable();
+    const callSignal = (applicationInterface || preparations.has(operation)) && context.signal instanceof AbortSignal ? AbortSignal.any([signal, context.signal]) : signal;
+    if (applicationInterface) {
+      if (!object(lifecycle) || typeof lifecycle.checkpoint !== 'function') return unavailable();
+      lifecycle.checkpoint(callSignal);
+    }
+    const parsed = applicationReads.includes(operation)
       ? parseOpacityCandidateApplicationInput(operation, input) : domain.parse(operation, input), handler = handlers[operation];
     if (typeof handler !== 'function') return unavailable();
     const invoke = (frozen: unknown): unknown => {
       assembly.refuseOperation(operation, frozen);
-      if (application) {
+      if (applicationInterface) {
         if (!object(lifecycle) || typeof lifecycle.checkpoint !== 'function') return unavailable();
         lifecycle.checkpoint(callSignal);
       }
@@ -121,9 +134,9 @@ export function createOpacityCandidateServices(store: unknown, options: {signal?
   serviceStores.set(services, store);
   return services;
 }
-/** Called only by the explicit developer assembly for its newly created42
- * handle. Merely opening/reopening42 does not acquire this operation set. */
+/** Only explicit ordinary42 or independent restored43 application admission
+ * receives this composition. The restored mutation/task catalogue stays narrow. */
 export function createOpacityCandidateApplicationServices(store: unknown, options: {signal?: AbortSignal} = {}) {
-  if (!isOpacityCandidateApplicationStore(store)) return unavailable();
+  if (!isOpacityCandidateApplicationStore(store) && !isRestoredOpacityCandidateApplicationStore(store)) return unavailable();
   return createOpacityCandidateServices(store, options);
 }

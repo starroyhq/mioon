@@ -1,4 +1,4 @@
-interface Validation {readonly isTaskEnvelope: (value: unknown) => boolean; readonly isTaskList: (value: unknown) => boolean}
+interface Validation {readonly isTaskEnvelope: (value: unknown) => boolean; readonly isTaskList: (value: unknown) => boolean; readonly isWorkspaceInspection?: (value: unknown) => boolean}
 const bindings = new WeakMap<object, Validation>();
 export type OpacityCandidateClientBinding = Readonly<{kind: 'internal-opacity-client'}>;
 export function createOpacityCandidateClientBinding(validation: Validation): OpacityCandidateClientBinding {

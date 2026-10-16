@@ -12,13 +12,14 @@ import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {initializeWorkspaceSchema42, classifyWorkspaceSchema42} from './workspace-schema-v42.ts';
 import {classifyWorkspaceSchemaV42V43, validateWorkspaceRestoreSchemaV43} from './workspace-restore-schema-v43.ts';
+import type {WorkspaceRestoreInfoV43} from './workspace-restore-schema-v43.ts';
 import {captureOpacityRenderInput, captureOpacityPreflightInput, captureOpacityCapabilitiesInput} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 
 const require = createRequire(import.meta.url);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
 const uuid = (value: unknown): value is string => typeof value === 'string' && value.length === 36 && UUID.test(value);
-type RestoreInfo = Readonly<{schemaVersion: 43; sourceSchema: 42; profile: 'restored-local-v10'; workspaceOrigin: string}>;
+type RestoreInfo = WorkspaceRestoreInfoV43;
 type Table = 'projects' | 'assets' | 'shots' | 'nodes' | 'edges' | 'jobs' | 'versions' | 'exports' | 'timelines';
 interface Lease {isOwned(): boolean; release(): unknown}
 export interface OpacityCandidateStore {
@@ -125,6 +126,7 @@ export interface OpacityCandidateAssembly {
 interface Registration {readonly assembly: OpacityCandidateAssembly; readonly check: () => void}
 const assemblies = new WeakMap<object, Registration>();
 const applicationStores = new WeakSet<object>();
+const restoredApplicationStores = new WeakSet<object>();
 /** Explicit internal application assembly only. Restored43 and copied handles
  * cannot acquire the ordinary42 application operation set. No wire field grants it. */
 function registerOpacityCandidateApplicationStore(store: unknown): void {
@@ -145,15 +147,33 @@ export function openNewOpacityCandidateApplicationStore(directory: string): Opac
 /** Explicit reopen only: the directory and managed database must exist, and
  * exact ordinary42 admission runs under the same lease before any RW open. */
 export function reopenOpacityCandidateApplicationStore(directory: string): OpacityCandidateStore {
-  const store = openCandidateStore(directory, true);
+  const store = openCandidateStore(directory, 'ordinary-application');
   try {registerOpacityCandidateApplicationStore(store); return store;}
   catch (error) {store.close(); throw error;}
+}
+/** Fixed restored43 admission only. This private application marker grants
+ * reads over the captured project; its mutation/task policy stays narrow. */
+export function reopenRestoredOpacityCandidateApplicationStore(directory: string): OpacityCandidateStore {
+  const store = openCandidateStore(directory, 'restored-application');
+  try {
+    const assembly = getOpacityCandidateAssembly(store);
+    if (!assembly?.getRestoreContext()) return unavailable();
+    assembly.checkpoint(); restoredApplicationStores.add(store); return store;
+  } catch (error) {store.close(); throw error;}
 }
 export function isOpacityCandidateApplicationStore(store: unknown): boolean {
   if (!store || typeof store !== 'object' || !applicationStores.has(store)) return false;
   const assembly = getOpacityCandidateAssembly(store);
   return Boolean(assembly && !assembly.getRestoreContext());
 }
+export function isRestoredOpacityCandidateApplicationStore(store: unknown): boolean {
+  if (!store || typeof store !== 'object' || !restoredApplicationStores.has(store)) return false;
+  const assembly = getOpacityCandidateAssembly(store);
+  return Boolean(assembly?.getRestoreContext());
+}
+export const OPACITY_CANDIDATE_RESTORED_APPLICATION_READ_OPERATIONS = Object.freeze([
+  'project.list', 'project.get', 'asset.list', 'asset.get', 'export.list', 'export.get', 'provider.list', 'workspace.restore.inspect',
+]);
 export const OPACITY_CANDIDATE_APPLICATION_OPERATIONS = Object.freeze([
   'project.create', 'project.list', 'project.get', 'asset.import', 'asset.list', 'asset.get', 'export.list', 'export.get', 'provider.list', 'workspace.restore.inspect',
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.remove',
@@ -170,9 +190,14 @@ export function getOpacityCandidateAssembly(store: unknown): OpacityCandidateAss
 /** No options or supplied implementations can choose a profile or suppress the
  * exclusive lease. Existing ordinary40/restored41 are deliberately refused. */
 export function openOpacityCandidateStore(directory: string): OpacityCandidateStore {
-  return openCandidateStore(directory, false);
+  return openCandidateStore(directory, 'generic');
 }
-function openCandidateStore(directory: string, existingApplication: boolean): OpacityCandidateStore {
+function openCandidateStore(directory: string, mode: 'generic' | 'ordinary-application' | 'restored-application'): OpacityCandidateStore {
+  const existingApplication = mode !== 'generic';
+  const admitExisting = (database: DatabaseSync): void => {
+    if (mode === 'ordinary-application') classifyWorkspaceSchema42(database);
+    else if (mode === 'restored-application') validateWorkspaceRestoreSchemaV43(database);
+  };
   const root = path.resolve(directory), storage = storageRuntime();
   preflight(root, storage);
   const databaseFile = path.join(root, 'workbench.sqlite');
@@ -196,13 +221,13 @@ function openCandidateStore(directory: string, existingApplication: boolean): Op
     if (existingApplication) {
       retained = databaseIdentity();
       const inspection = new DatabaseSync(databaseFile, {readOnly: true});
-      try {classifyWorkspaceSchema42(inspection);} finally {inspection.close();}
+      try {admitExisting(inspection);} finally {inspection.close();}
       assertExistingIdentity();
     }
     db = new DatabaseSync(databaseFile);
     db.exec('PRAGMA trusted_schema=OFF;');
     if (db.prepare('PRAGMA trusted_schema').get()?.trusted_schema !== 0) unverified();
-    if (existingApplication) {assertExistingIdentity(); classifyWorkspaceSchema42(db); assertExistingIdentity();}
+    if (existingApplication) {assertExistingIdentity(); admitExisting(db); assertExistingIdentity();}
     db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL;');
     const markersExist = db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='schema_version'").get();
     const restoredMarker = markersExist && db.prepare('SELECT 1 FROM main.schema_version WHERE version=43').get();
@@ -328,6 +353,7 @@ function openCandidateStore(directory: string, existingApplication: boolean): Op
       refuseOperation: (operation: string, input?: unknown) => {
         const restore = context();
         if (!restore && applicationStores.has(store) && OPACITY_CANDIDATE_APPLICATION_OPERATIONS.includes(operation)) return;
+        if (restore && restoredApplicationStores.has(store) && OPACITY_CANDIDATE_RESTORED_APPLICATION_READ_OPERATIONS.includes(operation)) return;
         if (OPACITY_CANDIDATE_ADVISORY_OPERATIONS.includes(operation)) {assertInvocation(operation, input); return;}
         if (OPACITY_CANDIDATE_RESTORE_LOCAL_OPERATIONS.includes(operation)) {if (restore || operation === 'timeline.render') {assertInvocation(operation, input); requestVacant(operation, input);} return;}
         if (OPACITY_CANDIDATE_RESTORE_READ_OPERATIONS.includes(operation)) return;

@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-16",
+  "method": "actual native Safari via cua_repl accessibility actions and returned AX observations",
+  "browser": "Safari27.0.1",
+  "url": "http://127.0.0.1:4319/?project=7773d16c-b298-46d7-ac81-d27076160ce8",
+  "projectId": "7773d16c-b298-46d7-ac81-d27076160ce8",
+  "newTabCreated": true,
+  "locale": "system-selected region-neutral Traditional Chinese",
+  "source": "actual closed42 archive restored to43; seed.json",
+  "passed": [
+    {
+      "action": "login and open existing43 project",
+      "observed": "project title, 10frames at30fps, revision2; restored notice with3 held historical records and memory-only draft/view disclosure"
+    },
+    {
+      "action": "select existing clip",
+      "observed": "opacity points frame0=.25, frame10=1; original source shown, v3 unavailable notice"
+    },
+    {
+      "action": "change frame0 opacity to .4 and Save",
+      "observed": "revision3, synchronized, Save disabled"
+    },
+    {
+      "action": "change frame0 opacity to .7 and Cancel",
+      "observed": "point restored to .4, revision3 unchanged, synchronized"
+    },
+    {
+      "action": "Undo saved edit",
+      "observed": "revision4, frame0=.25, Redo enabled"
+    },
+    {
+      "action": "Redo saved edit",
+      "observed": "revision5, frame0=.4, Redo disabled"
+    },
+    {
+      "action": "render new preview",
+      "observed": "completed revision5,720x1280,30fps"
+    },
+    {
+      "action": "play preview",
+      "observed": "guarded media player opened; playhead advanced to6"
+    },
+    {
+      "action": "check current export settings",
+      "observed": "codec and source checks passed, revision5,10frames/.33seconds,3tracks/1clip/1source"
+    },
+    {
+      "action": "explicitly confirm export",
+      "observed": "one export started; history changed from running to completed at revision5, guarded download link visible"
+    },
+    {
+      "action": "play exported file",
+      "observed": "guarded export media player opened; timeline playhead reached10"
+    }
+  ],
+  "notVerified": [
+    "full four-language GUI flows",
+    "IME composition",
+    "native desktop packaging",
+    "GUI download into browser default Downloads"
+  ],
+  "downloadQualification": "HTTP bytes/Range/HEAD/download checked separately; no GUI default Downloads write",
+  "notTouched": [
+    "user projects",
+    "old task PID",
+    "old stopped file chooser",
+    "existing user browser tabs"
+  ],
+  "screenshotsSaved": false,
+  "screenshotReason": "native window also contains unrelated user tab titles; acceptance recorded from task AX results only",
+  "reopen": {
+    "result": "passed",
+    "serviceNormalCloseExit": 0,
+    "sameWorkspaceReopened": true,
+    "actualNewInstanceVerified": "reopen-after.json",
+    "observed": "GUI refresh reopened same project at revision5; selecting same clip showed frame0=.4, frame10=1 and synchronized Save disabled; prior preview/export remained",
+    "viewReset": "selected clip and playhead reset on refresh as disclosed"
+  },
+  "recordedAt": "2026-10-16T07:20:33.568919+00:00",
+  "newTabClosed": true,
+  "finishedAt": "2026-10-16T07:23:11.392452+00:00"
+}

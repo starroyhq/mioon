@@ -1,12 +1,13 @@
-/** Fresh42 application handlers reuse the owned graph and managed importer.
- * No provider, listener, migration or restored43 operation is created here. */
+/** Fixed application handlers reuse the owned graph. Restored43 receives only
+ * captured reads; ordinary42 alone receives creation and managed import. */
 import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {getOpacityCandidateAssembly, isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
+import {getOpacityCandidateAssembly, isOpacityCandidateApplicationStore, isRestoredOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
 import type {OpacityCandidateStore} from './opacity-candidate-store.ts';
 import {matchesOpacityCandidateExport} from './opacity-candidate-render-authority.ts';
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
+import {createOpacityRestoredApplicationInspection} from '../../contracts/src/opacity-restored-application.ts';
 
 type Value = Record<string, unknown>;
 type Handler = (input: Value, context?: {signal?: AbortSignal}) => unknown;
@@ -36,8 +37,12 @@ export function createOpacityCandidateApplicationHandlers(store: OpacityCandidat
   history(projectId: string): unknown;
 }) {
   const assembly = getOpacityCandidateAssembly(store);
-  if (!assembly || !isOpacityCandidateApplicationStore(store)) return unavailable();
-  const checkpoint = (): void => {assembly.checkpoint(); if (!isOpacityCandidateApplicationStore(store)) unavailable();};
+  const restoredApplication = isRestoredOpacityCandidateApplicationStore(store);
+  if (!assembly || !isOpacityCandidateApplicationStore(store) && !restoredApplication) return unavailable();
+  const checkpoint = (): void => {
+    assembly.checkpoint();
+    if (restoredApplication ? !isRestoredOpacityCandidateApplicationStore(store) : !isOpacityCandidateApplicationStore(store)) unavailable();
+  };
   const now = (): string => new Date().toISOString();
   const required = (table: 'projects' | 'assets' | 'exports', id: unknown): Value => {
     checkpoint(); if (!uuid(id)) throw new AppError('NOT_FOUND', '找不到记录', 404);
@@ -58,6 +63,9 @@ export function createOpacityCandidateApplicationHandlers(store: OpacityCandidat
   };
   const checkedExport = (id: unknown): Value => {
     const value = required('exports', id);
+    // The constructor validated and sealed these exact captured rows. They
+    // remain visible as history, never accepted as a new render/media grant.
+    if (restoredApplication && store.db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='exports' AND id=? AND projectId=?").get(String(value.id), String(value.projectId))) return value;
     if (!matchesOpacityCandidateExport(store, value)) return unavailable();
     return value;
   };
@@ -73,6 +81,8 @@ export function createOpacityCandidateApplicationHandlers(store: OpacityCandidat
       if (typeof projectId !== 'string') return unavailable();
       const timeline = options.ensureTimeline(projectId);
       return {project, timeline, timelineHistory: options.history(projectId), assets: assets(projectId), exports: exports(projectId),
+        ...(restoredApplication ? {restore: {workspaceOrigin: assembly.getRestoreContext()!.workspaceOrigin,
+          heldExportIds: store.db.prepare("SELECT id FROM workspace_restore_holds WHERE kind='exports' AND projectId=? ORDER BY id").all(projectId).map(row => row.id)}} : {}),
         ...Object.fromEntries((['shots', 'nodes', 'edges', 'jobs', 'versions'] as const).map(table => [table, store.list(table, projectId)]))};
     }),
     'asset.list': input => typeof input.projectId === 'string' ? assets(input.projectId) : unavailable(),
@@ -83,7 +93,12 @@ export function createOpacityCandidateApplicationHandlers(store: OpacityCandidat
     'export.list': input => typeof input.projectId === 'string' ? exports(input.projectId) : unavailable(),
     'export.get': input => checkedExport(input.exportId),
     'provider.list': () => [],
-    'workspace.restore.inspect': () => ({restored: false}),
+    'workspace.restore.inspect': () => {
+      checkpoint();
+      const restored = assembly.getRestoreContext();
+      return restoredApplication && restored ? createOpacityRestoredApplicationInspection(restored) : {restored: false};
+    },
   };
+  if (restoredApplication) {delete handlers['project.create']; delete handlers['asset.import'];}
   return Object.freeze(handlers);
 }

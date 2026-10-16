@@ -1,0 +1,94 @@
+{
+  "stage": "before",
+  "at": "2026-10-16T07:21:38.290Z",
+  "workspaceOrigin": "c8c2e7c9-ba6e-49d5-a17c-1c209000712b",
+  "instanceId": "d0d49f93-b674-4ff1-96fd-6050ef139a5f",
+  "heldTaskId": "046d6a64-292d-4e4f-a002-98e004e857f9",
+  "heldStatus": "prepared",
+  "heldAcknowledged": false,
+  "heldEpoch": "captured",
+  "timeline": {
+    "id": "c5f3b7c2-2183-4f14-9024-102727349e47",
+    "projectId": "7773d16c-b298-46d7-ac81-d27076160ce8",
+    "revision": 5,
+    "fps": 30,
+    "width": 720,
+    "height": 1280,
+    "tracks": [
+      {
+        "id": "e2ae9822-cbb1-4992-a3e5-20d0c6ac1572",
+        "name": "Video 1",
+        "kind": "video",
+        "orderIndex": 0,
+        "hidden": false,
+        "muted": false
+      },
+      {
+        "id": "7bb1b7b2-741b-49ff-98a2-f2e34a7176d2",
+        "name": "Video 2",
+        "kind": "video",
+        "orderIndex": 1,
+        "hidden": false,
+        "muted": false
+      },
+      {
+        "id": "a819e39e-21aa-4b8b-87fb-6c4885dbd0be",
+        "name": "Audio 1",
+        "kind": "audio",
+        "orderIndex": 2,
+        "hidden": false,
+        "muted": false
+      }
+    ],
+    "clips": [
+      {
+        "id": "be41252d-d2f6-464b-9dd1-48d453808b13",
+        "trackId": "e2ae9822-cbb1-4992-a3e5-20d0c6ac1572",
+        "assetId": "a5f4cd71-66a3-4771-9929-b7ed19614175",
+        "name": "opacity43-tiny.png",
+        "startFrame": 0,
+        "durationFrames": 10,
+        "sourceInFrame": 0,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 720,
+          "height": 1280
+        },
+        "gain": 1,
+        "opacityEnvelope": {
+          "profileId": "mioon-clip-linear-opacity-v1",
+          "points": [
+            {
+              "frame": 0,
+              "opacity": 0.4
+            },
+            {
+              "frame": 10,
+              "opacity": 1
+            }
+          ]
+        }
+      }
+    ],
+    "durationFrames": 10,
+    "createdAt": "2026-10-16T07:10:10.055Z",
+    "updatedAt": "2026-10-16T07:17:33.082Z"
+  },
+  "exports": [
+    {
+      "id": "24542b1d-f839-41d0-ba15-687b33ac2b24",
+      "purpose": "preview",
+      "status": "succeeded"
+    },
+    {
+      "id": "d11545c3-0af2-4ddb-b59c-c7a5a61389ad",
+      "purpose": "export",
+      "status": "succeeded"
+    }
+  ],
+  "draft": {
+    "supported": false,
+    "reason": "RESTORED_WORKSPACE_UNSUPPORTED"
+  }
+}

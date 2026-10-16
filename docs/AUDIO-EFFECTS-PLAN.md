@@ -7,7 +7,7 @@
 已接入现有时间线与编辑任务事务，默认 40/41 未启用或迁移。
 [候选 Inspector／四语言／v3 草稿](OPACITY-CANDIDATE-EDITOR.md)、共享renderer、
 preflight及[全新独立42应用入口](OPACITY-CANDIDATE-APPLICATION.md)已接线。
-默认40/41仍不启用；已有42已补[安全重开](OPACITY-CANDIDATE-REOPEN.md)。后续[部分Safari及真实10帧媒体验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)已验证HTTP保存／恢复／历史与实际预览导出；GUI在导入选择器后因工具断连未验。[固定42冷备份→43离线恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)已实现并保留原held／epoch／origin，v3草稿明确排除，43应用启动仍未开放，
+默认40/41仍不启用；已有42已补[安全重开](OPACITY-CANDIDATE-REOPEN.md)。后续[部分Safari及真实10帧媒体验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)已验证HTTP保存／恢复／历史与实际预览导出；GUI在导入选择器后因工具断连未验。[固定42冷备份→43离线恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)及[恢复43独立应用入口](OPACITY-RESTORED-APPLICATION.md)已实现并保留原held／epoch／origin，v3草稿明确排除且源原文保留。43只开放已有片段编辑／Undo／Redo及新render；当前未保存输入和视图仅在窗口内存，正常关闭可丢失；本片124/124定向及另组12/12偏好检查通过，Safari实际Save／Cancel／Undo／Redo、10帧预览／导出／播放及正常关闭重开、HTTP下载和RGB解码已验，完整四语言GUI／IME与打包跨平台另验，
 不能算正式发布或完整画面动画套件。
 
 2026-10-14 进展：独立首页及[多项目窗口](MULTIPLE-PROJECT-WINDOWS.md)已交付，

@@ -2,6 +2,7 @@
  * profile or media authority; only the isolated application entry selects them. */
 import {validateOpacityEnvelope} from '../../../packages/contracts/src/timeline-opacity-envelope.ts';
 import {opacityCandidateTimelineProjection} from './clip-opacity-candidate-assembly.ts';
+import {isOpacityRestoredApplicationInspection} from '../../../packages/contracts/src/opacity-restored-application.ts';
 
 type Value = Record<string, unknown>;
 export interface OpacityBrowserSchema {
@@ -134,11 +135,24 @@ for (const operation of ['timeline.clip.update', 'timeline.clip.add'] as const) 
 const opacityCandidateBrowserSchemas = Object.freeze(candidateSchemas);
 /** Project data is kept raw. Only timeline and timeline export values use
  * the checked projection; every original old field remains legacy-validated. */
-function validateOpacityCandidateProjectSnapshot(value: unknown): boolean {
+function isWorkspaceInspection(value: unknown): boolean {
+  // The ordinary42 application discloses only this fixed object. Historical
+  // profiles and optional audio/volume grants remain with the legacy entry.
+  return object(value) && Object.keys(value).length === 1 && value.restored === false || isOpacityRestoredApplicationInspection(value);
+}
+function validateOpacityCandidateProjectSnapshot(value: unknown, projectId?: unknown, workspace?: unknown): boolean {
   try {
-    if (!object(value) || !object(value.project) || typeof value.project.id !== 'string') return false;
+    if (!object(value) || !object(value.project) || typeof value.project.id !== 'string' || projectId !== undefined && value.project.id !== projectId) return false;
+    const owner = value.project.id;
     if (value.timeline !== null && value.timeline !== undefined && !isOpacityCandidateBrowserTimeline(value.timeline, {projectId: value.project.id})) return false;
-    if (!Array.isArray(value.exports)) return false;
+    if (!Array.isArray(value.exports) || value.exports.some(item => !object(item) || typeof item.id !== 'string' || item.projectId !== owner) ||
+        new Set(value.exports.map(item => (item as Value).id)).size !== value.exports.length) return false;
+    if (isOpacityRestoredApplicationInspection(workspace)) {
+      if (!object(workspace) || !object(value.restore) || Object.keys(value.restore).sort().join(',') !== 'heldExportIds,workspaceOrigin' ||
+          value.restore.workspaceOrigin !== workspace.workspaceOrigin || !Array.isArray(value.restore.heldExportIds) || value.restore.heldExportIds.length > 20000 ||
+          new Set(value.restore.heldExportIds).size !== value.restore.heldExportIds.length ||
+          value.restore.heldExportIds.some((id: unknown) => typeof id !== 'string' || !(value.exports as unknown[]).some(item => object(item) && item.id === id && item.projectId === owner))) return false;
+    } else if (own(value, 'restore')) return false;
     return value.exports.every((item: unknown) => {
       if (!object(item) || item.mode !== 'timeline') return true;
       if (!object(item.snapshot) || !object(item.snapshot.timeline)) return false;
@@ -152,5 +166,6 @@ function validateOpacityCandidateProjectSnapshot(value: unknown): boolean {
 return Object.freeze({schemas: opacityCandidateBrowserSchemas, isTimelineRecord: isOpacityCandidateBrowserTimeline,
   isTimelineMutationResponse: isOpacityCandidateBrowserMutation, isTimelineRenderRecord: isOpacityCandidateBrowserRender,
   isTaskEnvelope: isOpacityCandidateBrowserTaskEnvelope, isTaskList: isOpacityCandidateBrowserTaskList,
+  isWorkspaceInspection, isRestoredWorkspace: isOpacityRestoredApplicationInspection,
   validateProjectSnapshot: validateOpacityCandidateProjectSnapshot});
 }

@@ -108,9 +108,11 @@ export function createWorkspacePreferences(store) {
   const {db, tx} = store;
   // Only the explicit fresh42 application handle can use this fixed local
   // companion. Ordinary/reopened42 and restored43 gain no new permission.
-  const candidate=isOpacityCandidateApplicationStore(store)?getOpacityCandidateAssembly(store):null;
+  const candidateAssembly=getOpacityCandidateAssembly(store);
+  const candidate=isOpacityCandidateApplicationStore(store)?candidateAssembly:null;
   const candidateCheckpoint=()=>{
-    candidate?.checkpoint();
+    candidateAssembly?.checkpoint();
+    if(candidateAssembly&&getOpacityCandidateAssembly(store)!==candidateAssembly)throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate workspace is unavailable.',409);
     if(candidate&&(!isOpacityCandidateApplicationStore(store)||getOpacityCandidateAssembly(store)!==candidate))throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate workspace is unavailable.',409);
   };
   const requireProject = projectId => {
@@ -130,6 +132,10 @@ export function createWorkspacePreferences(store) {
     },
     put(projectId, input, context = {}) {
       candidateCheckpoint();
+      // Candidate43 has no workspace.preferences.put execution capability.
+      // Its DB is not registered in the historical restore WeakMap, so never
+      // let that absence fall through to the ordinary unguarded write path.
+      if(candidateAssembly?.getRestoreContext())throw new AppError('RESTORE_OPERATION_UNAVAILABLE','View preferences are read-only in this restored candidate application.',409);
       id(projectId, ['projectId'], false);
       const payload = object(input, ['expectedRevision', 'state'], []);
       const expectedRevision = numeric(payload.expectedRevision, 0, Number.MAX_SAFE_INTEGER, ['expectedRevision'], true);

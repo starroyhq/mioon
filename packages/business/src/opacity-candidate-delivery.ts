@@ -1,9 +1,9 @@
-/** Fixed ordinary42 application delivery adapter. Wire data and copied adapters
+/** Fixed ordinary42/restored43 application delivery adapter. Wire data and copied adapters
  * cannot select the candidate playback/download rules. */
 import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
-import {getOpacityCandidateAssembly, isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
+import {getOpacityCandidateAssembly, isOpacityCandidateApplicationStore, isRestoredOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
 import {matchesOpacityCandidateExport} from './opacity-candidate-render-authority.ts';
 import type {TimelineDeliveryReadGuards} from './timeline-delivery-read.ts';
 
@@ -12,16 +12,17 @@ const sources: unknown = require('./timeline-sources.mjs');
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 interface Binding {assertRecord(value: unknown): boolean; assertDatabase(value: DatabaseSync): void; checkpoint(): void}
 const bindings = new WeakMap<object, Binding>();
+const applicationStore = (store: unknown): boolean => isOpacityCandidateApplicationStore(store) || isRestoredOpacityCandidateApplicationStore(store);
 function unavailable(): never {throw Object.assign(new Error('Candidate delivery is unavailable.'), {code: 'FILE_UNAVAILABLE', status: 404});}
 const extensions: Readonly<Record<string, string>> = Object.freeze({'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp',
   'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a'});
 
-/** Fresh application sources are exclusively canonical managed imports. An
+/** Candidate application sources are exclusively canonical managed imports. An
  * output never becomes an unguarded source by changing its provenance label. */
 export function readOpacityCandidateApplicationSource(store: unknown, assetId: string): Readonly<Record<string, unknown>> | null {
   try {
     const assembly = getOpacityCandidateAssembly(store);
-    if (!assembly || !isOpacityCandidateApplicationStore(store) || !object(store) || !(store.db instanceof DatabaseSync) ||
+    if (!assembly || !applicationStore(store) || !object(store) || !(store.db instanceof DatabaseSync) ||
         !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(assetId) ||
         !object(sources) || typeof sources.readOwnedTimelineAsset !== 'function') return null;
     assembly.checkpoint(); const db = store.db;
@@ -45,11 +46,11 @@ export function assertOpacityCandidateApplicationSource(store: unknown, expected
 
 export function createOpacityCandidateTimelineDeliveryGuards(store: unknown): TimelineDeliveryReadGuards {
   const assembly = getOpacityCandidateAssembly(store);
-  if (!assembly || !isOpacityCandidateApplicationStore(store) || !object(store) || !(store.db instanceof DatabaseSync) ||
+  if (!assembly || !applicationStore(store) || !object(store) || !(store.db instanceof DatabaseSync) ||
       !object(sources) || typeof sources.readOwnedTimelineAsset !== 'function') return unavailable();
   const db = store.db, readAsset = sources.readOwnedTimelineAsset;
   const checkpoint = (): void => {
-    if (!isOpacityCandidateApplicationStore(store) || getOpacityCandidateAssembly(store) !== assembly || store.db !== db) unavailable();
+    if (!applicationStore(store) || getOpacityCandidateAssembly(store) !== assembly || store.db !== db) unavailable();
     assembly.checkpoint();
   };
   const guards: TimelineDeliveryReadGuards = Object.freeze({

@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-16T07:23:11.392917+00:00",
+  "firstOwnedService": {
+    "session": 8861,
+    "pid": 53309,
+    "close": "service.close via stdin",
+    "exitCode": 0
+  },
+  "reopenedOwnedService": {
+    "session": 17029,
+    "pid": 78182,
+    "close": "service.close via stdin",
+    "exitCode": 0
+  },
+  "serverLocks": {
+    "source42": false,
+    "restored43": false
+  },
+  "port4319": "lsof exit1 with zero listener rows after each normal close",
+  "thisTaskNewTab": "closed after saved-state reopen verification",
+  "oldTaskPIDWindowChooser": "not operated; historical uncertainty remains recorded separately"
+}

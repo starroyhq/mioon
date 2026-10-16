@@ -1,0 +1,50 @@
+{
+  "startedAt": "2026-10-16T07:15:50.779890+00:00",
+  "finishedAt": "2026-10-16T07:18:36.183980+00:00",
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=2",
+    "--test-reporter=tap",
+    "tests/opacity-candidate-application-server.test.mjs",
+    "tests/opacity-candidate-application-services.test.mjs",
+    "tests/opacity-candidate-application-task-integration.test.mjs",
+    "tests/opacity-candidate-application-tasks.test.mjs",
+    "tests/opacity-candidate-backup-boundaries.test.mjs",
+    "tests/opacity-candidate-backup-cli.test.mjs",
+    "tests/opacity-candidate-backup-contracts.test.mjs",
+    "tests/opacity-candidate-backup-roundtrip.test.mjs",
+    "tests/opacity-candidate-delivery-read.test.mjs",
+    "tests/opacity-candidate-delivery-ui.test.mjs",
+    "tests/opacity-candidate-render-admission.test.mjs",
+    "tests/opacity-candidate-render-authority.test.mjs",
+    "tests/opacity-candidate-reopen.test.mjs",
+    "tests/opacity-restored-application-admission.test.mjs",
+    "tests/opacity-restored-application-contracts.test.mjs",
+    "tests/opacity-restored-application-delivery.test.mjs",
+    "tests/opacity-restored-application-server.test.mjs",
+    "tests/opacity-restored-application-ui.test.mjs"
+  ],
+  "exitCode": 0,
+  "durationSeconds": 165.399,
+  "nodeVersion": "v26.9.0",
+  "uniqueFiles": 18,
+  "counts": {
+    "tests": 124,
+    "suites": 0,
+    "pass": 124,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "log": "aggregate-tests.tap",
+  "logSha256": "cf39f3bfadb48937e365ac6f2ea516417b9dbb3a7b3c64f819687298a613e7d6",
+  "nestedQualification": "opacity-candidate-render-authority.test.mjs is one aggregate test wrapping 9 pure fixture tests; these 9 are not added to aggregate totals.",
+  "boundaries": "No actual GUI, listening socket, real ffmpeg/ffprobe or provider. Tests use owned temporary workspaces and synthetic media; offline CLI subprocesses and Vite/SSR Node subprocesses are test tools.",
+  "testFilesUnchangedDuringRun": true,
+  "fileGroups": {
+    "newRestoredApplication": 5,
+    "adjacentExistingCandidate": 13
+  }
+}

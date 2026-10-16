@@ -3,9 +3,10 @@
 The M0–M3 and V2–V4.1 checklists below are historical records. The last verified
 published application integration is `ff85c9a8daaa35bff080d0979fe2faa3683cd3b5`
 on GitHub main. Local-only opacity work now follows
-`ec01753056c0f31706d29ed279ae1944c822ad94`: the latest slice connects a fresh,
-independent42 development workspace to the shared App. See the
-[application boundary and evidence](docs/OPACITY-CANDIDATE-APPLICATION.md).
+`ec01753056c0f31706d29ed279ae1944c822ad94`: fresh42 and explicitly restored43
+development workspaces now connect to the shared App through separate admission.
+See the [fresh42 boundary](docs/OPACITY-CANDIDATE-APPLICATION.md) and
+[restored43 application scope and evidence](docs/OPACITY-RESTORED-APPLICATION.md).
 It is unpushed; identify the exact local commit with `git rev-parse HEAD`.
 
 Implemented slices include the independent Settings center, four-language
@@ -29,10 +30,17 @@ this is not all-platform acceptance. Continuous-audio wall-clock/resource gates
 and LUT exact-file reselection/restart qualification retain their separate limits.
 Clip opacity keyframes now have the isolated fresh42 application slice;
 [partial Safari and actual10-frame media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
-passed within its stated scope. GUI after the import picker remains blocked by
-CUA disconnection. The [fixed42 cold-backup→offline43 entry](docs/OPACITY-CANDIDATE-BACKUP-RESTORE.md)
-is implemented with original guards and explicit v3 draft exclusion;43 application
-admission remains separate. Explicit ordinary42 reopening
+passed within its stated scope. That earlier42 GUI run stopped at the import
+picker after CUA disconnection; the43 slice below has new actual GUI evidence. The [fixed42 cold-backup→offline43 entry](docs/OPACITY-CANDIDATE-BACKUP-RESTORE.md)
+is implemented with original guards and explicit v3 draft exclusion. Its
+[restored43 application entry](docs/OPACITY-RESTORED-APPLICATION.md) now opens
+existing projects and retains the original exact-origin editing/render policy;
+old pending tasks stay held. Current43 unsaved inputs and views are memory-only
+and may be lost on normal close; source v3 drafts remain preserved. This slice's
+124/124 focused tests, separate12/12 preferences, canonical builds and actual
+Safari Save/Cancel/Undo/Redo plus10-frame preview/export/playback and normal
+close/reopen passed. HTTP download and RGB checks passed; full four-language/IME
+and packaging/platform acceptance remain separate. Explicit ordinary42 reopening
 now has [safe internal admission](docs/OPACITY-CANDIDATE-REOPEN.md). Other
 visual keyframes, transitions, Full Log/HDR and a general plugin broker/SDK remain
 future feature work.

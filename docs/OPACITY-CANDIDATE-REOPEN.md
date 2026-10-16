@@ -2,7 +2,7 @@
 
 日期：2026-10-16。基线：`b6e2543cf117be0f32bdfabc462b5ca4abac6657`。
 
-内部CLI现有两个互斥入口：`--new-workspace`只创建新目录，`--open-workspace`只打开已存在且完整验证的普通42目录。生产默认40/41不变；没有迁移、自动profile选择或43应用授权。
+本初片提供两个互斥入口：`--new-workspace`只创建新目录，`--open-workspace`只打开已存在且完整验证的普通42目录。生产默认40/41不变；这两个入口没有迁移、自动profile选择或43应用授权。后续新增第三个互斥`--open-restored-workspace`，只沿[恢复43独立应用边界](OPACITY-RESTORED-APPLICATION.md)打开已有受保护43，不改变本页普通42重开的范围。
 
 ## 重开边界
 
@@ -28,7 +28,7 @@ node apps/server/src/opacity-candidate-cli.ts --open-workspace /private/tmp/mioo
 2. 复用现有`workspace-backup.mjs`的owner lock、冷库检查、受管路径、库存、逐文件hash及COMPLETE发布；在`workspace-backup-inventory.mjs`增加候选固定reader接缝，仅接受普通42，拒绝43递归备份。
 3. 复用`workspace-restore.mjs`的离线复制及原子发布，只在候选入口调用`installWorkspaceRestoreSchemaV43`并复验43。源目录、原始行和回执不投影、不重算或改标记。
 4. 给restore-status增加固定43校验和DTO，沿用全量备份或精确provenance观察，以及`not_reconfirmed`语义；未确认发布结果不盲目重试。
-5. 仅临时库验证冷备份→verify→新43目录、原文／媒体hash、captured任务held、epoch、锁／sidecar／损坏／身份错配、中途故障和丢ACK。43应用执行入口仍需另行决定。
+5. 仅临时库验证冷备份→verify→新43目录、原文／媒体hash、captured任务held、epoch、锁／sidecar／损坏／身份错配、中途故障和丢ACK。当时43应用执行入口尚未开放；后续[独立43应用片](OPACITY-RESTORED-APPLICATION.md)已接通原窄编辑／新render能力，未放宽旧任务与来源证据。
 
 准确接缝：默认`workspace-backup-schema-versions.ts`和`workspace-schema-profiles.ts`已冻结且只接受旧范围；备份`refuseRestoredCapture`和离线恢复／status仍依赖旧profile检查。不能直接把42/43加入旧白名单。备份继续沿用原范围，v3未保存草稿、token、设置不随备份迁移。
 
