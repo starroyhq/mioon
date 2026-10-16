@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { transformSync } from 'esbuild';
+import * as volumeState from '../apps/web/src/clip-volume-envelope-state.ts';
+import * as volumeContract from '../packages/contracts/src/timeline-volume-envelope.ts';
+import { i18nTestModule } from './helpers/i18n.ts';
 import { createClipDraftController, clipDraftRaw, clipDraftPatch } from '../apps/web/src/clip-draft-state.ts';
 import { createClipDraftClient, admitClipDraftRequest } from '../apps/web/src/clip-draft-client.ts';
 import { VOLUME_ENVELOPE_PROFILE as profileId } from '../packages/contracts/src/timeline-volume-envelope.ts';
@@ -17,6 +22,35 @@ function harness(t,{saved={},candidate=null,editable=true,restored=false,putHook
  const result=patch=>({id:key.timelineId,projectId:key.projectId,revision:8,clips:[{id:key.clipId,...source,...base,...saved,...patch}]});
  return {c,ctx,calls,client,result};
 }
+function presetControls(controller) {
+ const hooks=[];let cursor=0,tree;
+ const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useId:()=> 'controller-preset',useRef:initial=>hooks[cursor++]??={current:initial},useState(initial){const index=cursor++;hooks[index]??={value:initial};return [hooks[index].value,next=>{hooks[index].value=next;}];}};react.default=react;
+ const module={exports:{}};
+ Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipVolumeEnvelopeControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>name==='react'?react:name.includes('I18nProvider')?i18nTestModule('en'):name.endsWith('clip-volume-envelope-state.ts')?volumeState:name.endsWith('timeline-volume-envelope.ts')?volumeContract:assert.fail(name),module,module.exports);
+ const nodes=value=>!value||typeof value!=='object'?[]:Array.isArray(value)?value.flatMap(nodes):[value,...nodes(value.props?.children)];
+ const h={render(){cursor=0;const captured=controller.capture(),raw=controller.getState().raw;tree=module.exports.default({value:raw.volumeEnvelope,proposedDuration:Number(raw.durationFrames),onEdit:value=>controller.editVolumeEnvelope(value,captured),onCompositionChange:()=>assert.fail('preset click is not composition')});},node(id){return nodes(tree).find(node=>node.props?.['data-testid']===id);}};h.render();return h;
+}
+for(const kind of ['in','out'])test(`real ${kind} preset edits only the draft until ordinary Save, preserving gain and legacy fades`,async t=>{
+ const saved={volumeEnvelope:curve,gain:.5,fadeInFrames:8,fadeOutFrames:12},f=harness(t,{saved});await f.c.load();const controls=presetControls(f.c);
+ controls.node('envelope-preset-frames').props.onChange({currentTarget:{value:'60'}});controls.render();assert.equal(f.c.hasUnsaved(),false);assert.equal(f.calls.length,0);
+ controls.node(`envelope-preset-${kind}`).props.onClick();const expected=volumeState.createVolumeEnvelopeFadePreset(kind,120,60);
+ assert.deepEqual(f.c.getState().raw.volumeEnvelope,expected);assert.equal(f.c.hasUnsaved(),true);assert.equal(f.calls.length,0);
+ for(const field of ['gain','fadeInFrames','fadeOutFrames'])assert.equal(f.c.getState().raw[field],saved[field]);
+ await f.c.flush();assert.equal(f.calls.filter(([method])=>method==='put').length,1);assert.deepEqual(f.calls[0][1].raw.volumeEnvelope,expected);
+ let submissions=0;
+ const out=await f.c.save(async(clipId,patch,revision,options)=>{submissions++;assert.equal(clipId,key.clipId);assert.equal(revision,7);assert.equal(options.canExecute(),true);assert.deepEqual(patch.volumeEnvelope,volumeState.validateRawVolumeEnvelope({volumeEnvelope:expected},120).fields.volumeEnvelope);for(const field of ['gain','fadeInFrames','fadeOutFrames'])assert.equal(patch[field],saved[field]);return f.result(patch);});
+ assert.ok(out);assert.equal(submissions,1);assert.equal(f.c.hasUnsaved(),false);assert.equal(f.calls.filter(([method])=>method==='remove').length,1);
+ assert.deepEqual(f.c.getState().raw.volumeEnvelope,expected);
+});
+test('preset draft recovery is explicit and Cancel restores the original curve without business Save',async t=>{
+ const saved={volumeEnvelope:curve,gain:.75,fadeInFrames:5,fadeOutFrames:10},first=harness(t,{saved});await first.c.load();const controls=presetControls(first.c);
+ controls.node('envelope-preset-out').props.onClick();await first.c.flush();const record={baseRevision:7,source,raw:structuredClone(first.calls[0][1].raw),updatedAt:'2026-10-15T00:00:00.000Z'};
+ const recovered=harness(t,{saved,candidate:record});await recovered.c.load();assert.deepEqual(recovered.c.getState().raw.volumeEnvelope,curve);assert.equal(recovered.c.hasUnsaved(),false);
+ assert.equal(recovered.c.restore(),true);assert.deepEqual(recovered.c.getState().raw.volumeEnvelope,record.raw.volumeEnvelope);assert.equal(recovered.c.hasUnsaved(),true);
+ assert.equal(await recovered.c.discard(recovered.c.capture()),true);assert.deepEqual(recovered.c.getState().raw.volumeEnvelope,curve);assert.equal(recovered.c.hasUnsaved(),false);
+ for(const field of ['gain','fadeInFrames','fadeOutFrames'])assert.equal(recovered.c.getState().raw[field],saved[field]);
+ assert.equal(recovered.calls.filter(([method])=>method==='remove').length,1);assert.equal(recovered.calls.filter(([method])=>method==='put').length,0);
+});
 test('raw projection, proposed shrink, explicit replacement and clear preserve envelope presence',()=>{
  assert.equal(Object.hasOwn(clipDraftRaw(base),'volumeEnvelope'),false);
  assert.equal(clipDraftRaw({...base,volumeEnvelope:null}).volumeEnvelope,null);

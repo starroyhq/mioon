@@ -61,6 +61,75 @@ function harness(locale='en', initial=raw([['0','1']]).volumeEnvelope) {
  const h={props,edits,events,render(patch={}){Object.assign(props,patch);cursor=0;tree=module.exports.default(props);return tree;},input(field='frame',row=0){return nodes(tree).find(n=>n.props?.['data-testid']===`envelope-${row}-${field}`);},buttons(){return nodes(tree).filter(n=>n.type==='button');},all(){return nodes(tree);}};h.render();return h;
 }
 const event=(value,extras={})=>({currentTarget:{value},...extras});
+const byTestId=(h,id)=>h.all().find(node=>node.props?.['data-testid']===id);
+const preset=(h,kind)=>byTestId(h,`envelope-preset-${kind}`);
+test('fade preset helper is bounded, exact and returns independent raw replacement curves',()=>{
+ for(const kind of ['in','out'])for(const duration of [1,15,30,60,18000])for(const length of [...new Set([1,Math.min(15,duration),duration])]){
+  const actual=state.createVolumeEnvelopeFadePreset(kind,duration,length);
+  const expected=kind==='in'?[['0','0'],[String(length),'1']]:[[String(duration-length),'1'],[String(duration),'0']];
+  assert.deepEqual(actual,raw(expected).volumeEnvelope);
+  assert.equal(state.validateRawVolumeEnvelope({volumeEnvelope:actual},duration).valid,true);
+  const other=state.createVolumeEnvelopeFadePreset(kind,duration,length);
+  assert.notEqual(actual,other);assert.notEqual(actual.points,other.points);assert.notEqual(actual.points[0],other.points[0]);
+  actual.points[0].multiplier='0.75';assert.deepEqual(other,raw(expected).volumeEnvelope);
+ }
+ for(const kind of ['', 'fade-in', undefined, null, 1])assert.equal(state.createVolumeEnvelopeFadePreset(kind,60,30),undefined);
+ for(const duration of [0,-0,-1,18001,1.5,NaN,Infinity,-Infinity,'60',null,undefined])assert.equal(state.createVolumeEnvelopeFadePreset('in',duration,1),undefined);
+ for(const length of [0,-0,-1,61,1.5,NaN,Infinity,-Infinity,'30',null,undefined])assert.equal(state.createVolumeEnvelopeFadePreset('out',60,length),undefined);
+});
+test('preset curves retain linear endpoint limits and half-open playback samples',()=>{
+ const durationFrames=120, samples=durationFrames*1600;
+ const evaluator=kind=>{
+  const validated=state.validateRawVolumeEnvelope({volumeEnvelope:state.createVolumeEnvelopeFadePreset(kind,durationFrames,30)},durationFrames);
+  assert.equal(validated.valid,true);return contract.createVolumeEnvelopeEvaluator({durationFrames,...validated.fields});
+ };
+ const fadeIn=evaluator('in'),fadeOut=evaluator('out');
+ assert.equal(fadeIn.atSample(0),0);assert.equal(fadeIn.atSample(15*1600),.5);assert.equal(fadeIn.atSample(30*1600),1);
+ assert.equal(fadeIn.limitAtSample(samples),1);assert.equal(fadeIn.atSample(samples-1),1);assert.equal(fadeIn.atSample(samples),0);
+ assert.equal(fadeOut.atSample(0),1);assert.equal(fadeOut.atSample(90*1600),1);assert.equal(fadeOut.atSample(105*1600),.5);
+ assert.ok(Math.abs(fadeOut.atSample(samples-1)-1/48000)<1e-14);assert.equal(fadeOut.limitAtSample(samples),0);assert.equal(fadeOut.atSample(samples),0);
+});
+test('all four locales expose explicit replacement presets, fixed frame choices and Save disclosure',()=>{
+ const locales=['zh-Hans','zh-Hant','en','ja'];
+ for(const suffix of ['title','hint','duration','frames','in','out','unavailable'])assert.deepEqual(Object.keys(volumeEnvelopeMessages[`volume.envelope.preset.${suffix}`]).sort(),[...locales].sort());
+ for(const locale of locales){
+  const h=harness(locale);h.render({proposedDuration:120});const select=byTestId(h,'envelope-preset-frames');
+  assert.equal(select.type,'select');assert.equal(select.props.value,30);assert.equal(select.props.disabled,false);
+  assert.deepEqual(nodes(select.props.children).filter(node=>node.type==='option').map(node=>[node.props.value,node.props.children[0]]),[15,30,60].map(frames=>[frames,translate(locale,'volume.envelope.preset.frames',{frames})]));
+  assert.ok(h.all().some(node=>node.type==='label'&&node.props.htmlFor===select.props.id&&node.props.children[0]===translate(locale,'volume.envelope.preset.duration')));
+  assert.ok(h.all().some(node=>node.type==='p'&&node.props.children[0]===translate(locale,'volume.envelope.preset.hint')));
+  for(const kind of ['in','out']){const button=preset(h,kind);assert.equal(button.props.type,'button');assert.equal(button.props.disabled,false);assert.equal(button.props.children[0],translate(locale,`volume.envelope.preset.${kind}`));}
+ }
+});
+test('real preset buttons replace every point only on click and leave point editing available',()=>{
+ const initial=raw([['0','0.25'],['40','0.75'],['120','0.5']]).volumeEnvelope,h=harness('en',initial);h.render({proposedDuration:120});
+ byTestId(h,'envelope-preset-frames').props.onChange(event('60'));assert.equal(h.edits.length,0);h.render();
+ preset(h,'in').props.onClick();assert.deepEqual(h.edits.at(-1),raw([['0','0'],['60','1']]).volumeEnvelope);assert.deepEqual(initial,raw([['0','0.25'],['40','0.75'],['120','0.5']]).volumeEnvelope);
+ h.render();preset(h,'out').props.onClick();assert.deepEqual(h.edits.at(-1),raw([['60','1'],['120','0']]).volumeEnvelope);
+ h.render();h.input('multiplier',1).props.onChange(event('0.25'));assert.deepEqual(h.edits.at(-1),raw([['60','1'],['120','0.25']]).volumeEnvelope);
+});
+test('too-long and invalid-duration presets refuse clicks without clamping or clearing the draft',()=>{
+ for(const duration of [0,NaN,Infinity,1.5,18001,14]){
+  const h=harness();h.render({proposedDuration:duration});for(const kind of ['in','out']){assert.equal(preset(h,kind).props.disabled,true);preset(h,kind).props.onClick();}
+  assert.equal(h.edits.length,0);assert.ok(h.all().some(node=>node.props.role==='status'&&node.props.children[0]===translate('en','volume.envelope.preset.unavailable')));
+ }
+ const h=harness();h.render({proposedDuration:20});assert.deepEqual(nodes(byTestId(h,'envelope-preset-frames').props.children).filter(node=>node.type==='option').map(node=>node.props.disabled),[false,true,true]);
+ preset(h,'in').props.onClick();assert.equal(h.edits.length,0);
+ byTestId(h,'envelope-preset-frames').props.onChange(event('15'));h.render();assert.equal(preset(h,'in').props.disabled,false);preset(h,'in').props.onClick();assert.deepEqual(h.edits.at(-1),raw([['0','0'],['15','1']]).volumeEnvelope);
+});
+test('preset event guards synchronously reject disabled, IME-pending and retained old-render actions',()=>{
+ const h=harness();h.render({proposedDuration:120});let oldIn=preset(h,'in'),oldOut=preset(h,'out'),oldSelect=byTestId(h,'envelope-preset-frames');
+ h.render({disabled:true});oldIn.props.onClick();oldOut.props.onClick();oldSelect.props.onChange(event('60'));
+ for(const kind of ['in','out'])preset(h,kind).props.onClick();byTestId(h,'envelope-preset-frames').props.onChange(event('60'));assert.equal(h.edits.length,0);
+ h.render({disabled:false});const input=h.input(),beforeComposition=preset(h,'in'),select=byTestId(h,'envelope-preset-frames');
+ input.props.onCompositionStart(event('0'));beforeComposition.props.onClick();select.props.onChange(event('60'));assert.equal(h.edits.length,0);
+ h.render();assert.equal(preset(h,'in').props.disabled,true);assert.equal(byTestId(h,'envelope-preset-frames').props.disabled,true);
+ h.input().props.onCompositionEnd(event('0'));h.render();assert.equal(byTestId(h,'envelope-preset-frames').props.value,30);
+ oldIn=preset(h,'in');oldOut=preset(h,'out');oldSelect=byTestId(h,'envelope-preset-frames');h.render({proposedDuration:90});
+ oldIn.props.onClick();oldOut.props.onClick();oldSelect.props.onChange(event('60'));h.render();assert.equal(h.edits.length,0);assert.equal(byTestId(h,'envelope-preset-frames').props.value,30);
+ for(const value of ['0','45','NaN','Infinity','abc']){byTestId(h,'envelope-preset-frames').props.onChange(event(value));h.render();assert.equal(byTestId(h,'envelope-preset-frames').props.value,30);}
+ preset(h,'out').props.onClick();assert.deepEqual(h.edits.at(-1),raw([['60','1'],['90','0']]).volumeEnvelope);
+});
 test('four locales render text inputs, accessible labels, bounded rows and non-submit buttons',()=>{
  assert.deepEqual(validateCatalogs(volumeEnvelopeMessages),[]);
  for(const locale of ['zh-Hans','zh-Hant','en','ja']){

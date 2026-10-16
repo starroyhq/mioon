@@ -12,6 +12,15 @@ export type VolumePointField = keyof RawVolumePoint;
  * owner/navigation changes. Transient text is NOT admitted or persisted input.
  * Bind callbacks to owner/serial; never clear this protection merely on unmount. */
 export type VolumeEnvelopeComposition = { session: symbol; pending: true; dirty: true; row: number; field: VolumePointField; text: string } | { session: symbol; pending: false; dirty: false };
+/** Form-only replacement. It grants no editing capability and never changes
+ * scalar gain or legacy fades. The existing draft owner still owns Save. */
+export function createVolumeEnvelopeFadePreset(kind: 'in' | 'out', durationFrames: number, fadeFrames: number): RawVolumeEnvelope | undefined {
+  if ((kind !== 'in' && kind !== 'out') || !Number.isSafeInteger(durationFrames) || durationFrames < 1 || durationFrames > VOLUME_ENVELOPE_LIMITS.frames ||
+    !Number.isSafeInteger(fadeFrames) || fadeFrames < 1 || fadeFrames > durationFrames) return undefined;
+  return { profileId: VOLUME_ENVELOPE_PROFILE, points: kind === 'in'
+    ? [{ frame: '0', multiplier: '0' }, { frame: String(fadeFrames), multiplier: '1' }]
+    : [{ frame: String(durationFrames - fadeFrames), multiplier: '1' }, { frame: String(durationFrames), multiplier: '0' }] };
+}
 const own = (v: object, key: string) => Object.prototype.hasOwnProperty.call(v, key);
 const record = (v: unknown, keys: string[]): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) &&
   Object.keys(v).length === keys.length && keys.every(k => own(v, k));

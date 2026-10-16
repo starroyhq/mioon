@@ -7,9 +7,11 @@ import path from 'node:path';
 import {openStore,installCurrentWorkspaceRestoreSchema,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.mjs';
 import {createServices,hash} from '../packages/business/src/services.mjs';
 import {createEditTasks} from '../packages/business/src/edit-tasks.mjs';
-import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
+import {VOLUME_ENVELOPE_PROFILE,VOLUME_ENVELOPE_LIMITS,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {hasRequestNotAppliedProof} from '../packages/contracts/src/index.mjs';
 import {validateWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
+import {clipDraftRaw,clipDraftPatch} from '../apps/web/src/clip-draft-state.ts';
+import {createVolumeEnvelopeFadePreset} from '../apps/web/src/clip-volume-envelope-state.ts';
 import {snapshot} from './workspace-schema26-fixtures.mjs';
 
 // Genuine owned startup only: no restore-policy mock, facade, manual ordinary
@@ -40,6 +42,35 @@ async function fixture(t){
  return f;
 }
 const addInput=(f,asset=f.asset(),fields={})=>f.input({assetId:asset.id,trackId:f.timeline.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope(),...fields});
+
+for(const kind of ['in','out'])for(const fadeFrames of [15,60])test(`owned ordinary40 ${kind} preset ${fadeFrames}/60 replaces the curve through durable Save, history and reopen`,async t=>{
+ const f=await fixture(t),durationFrames=60,gain=.75,fadeInFrames=5,fadeOutFrames=7;
+ await f.call('timeline.clip.add',addInput(f,f.asset(),{gain,fadeInFrames,fadeOutFrames}));
+ const original=structuredClone(f.timeline.clips[0]),clipId=original.id;
+ const preset=createVolumeEnvelopeFadePreset(kind,durationFrames,fadeFrames);
+ const expected={profileId:VOLUME_ENVELOPE_PROFILE,points:kind==='in'?[{frame:0,multiplier:0},{frame:fadeFrames,multiplier:1}]:[{frame:durationFrames-fadeFrames,multiplier:1},{frame:durationFrames,multiplier:0}]};
+ assert.ok(preset);assert.deepEqual(preset,{profileId:expected.profileId,points:expected.points.map(point=>({frame:String(point.frame),multiplier:String(point.multiplier)}))});
+ const raw={...clipDraftRaw(original),volumeEnvelope:preset},rawBefore=structuredClone(raw),patch=clipDraftPatch(raw);
+ assert.ok(patch);assert.deepEqual(patch.volumeEnvelope,expected);assert.deepEqual(raw,rawBefore,'numeric Save projection does not mutate the form');
+ assert.equal(patch.gain,gain);assert.equal(patch.fadeInFrames,fadeInFrames);assert.equal(patch.fadeOutFrames,fadeOutFrames);
+ const input=f.input({clipId,patch}),saved=f.prepare('timeline.clip.update',input),done=await f.execute(saved);
+ assert.equal(done.task.status,'applied');assert.deepEqual(saved.task.input.patch.volumeEnvelope,expected);f.ack(done);
+ const assertSaved=clip=>{
+  assert.deepEqual(clip,{...original,volumeEnvelope:expected},'the preset replaces the old three-point curve and preserves every other clip field');
+  const evaluate=createVolumeEnvelopeEvaluator(clip),end=durationFrames*VOLUME_ENVELOPE_LIMITS.samplesPerFrame;
+  assert.equal(evaluate.atSample(end),0,'the clip end is outside half-open playback membership');
+  assert.equal(evaluate.limitAtSample(end),kind==='in'?1:0,'the closed endpoint describes the retained curve');
+  if(kind==='out')assert.ok(Math.abs(evaluate.atSample(end-1)-1/(fadeFrames*VOLUME_ENVELOPE_LIMITS.samplesPerFrame))<1e-14,'the final playable sample remains above zero');
+  else assert.ok(Math.abs(evaluate.atSample(end-1)-(fadeFrames===durationFrames?1-1/end:1))<1e-14);
+ };
+ assertSaved(done.result.clips[0]);await f.reopen();assertSaved(f.timeline.clips[0]);
+ assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:40,profile:'ordinary'});
+ const retained=f.tasks.get({projectId:f.project.id,taskId:saved.task.id});assert.equal(retained.task.acknowledged,true);assert.deepEqual((await f.execute(retained)).result,done.result);
+ await f.call('timeline.undo');assert.deepEqual(f.timeline.clips[0],original);
+ await f.reopen();assert.deepEqual(f.timeline.clips[0],original);await f.call('timeline.redo');assertSaved(f.timeline.clips[0]);
+ await f.reopen();assertSaved(f.timeline.clips[0]);
+ assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(input.requestId).n,1,'durable replay does not create a second Save receipt');
+});
 
 test('owned ordinary40 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts',async t=>{
  const f=await fixture(t),input=addInput(f),operation='timeline.clip.add',before=f.state();

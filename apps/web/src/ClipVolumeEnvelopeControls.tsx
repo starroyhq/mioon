@@ -1,7 +1,7 @@
 import React, { useId, useRef, useState } from 'react';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { VOLUME_ENVELOPE_PROFILE } from '../../../packages/contracts/src/timeline-volume-envelope.ts';
-import { acceptsVolumeEnvelopeText, RAW_VOLUME_ENVELOPE_LIMITS, validateRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
+import { acceptsVolumeEnvelopeText, createVolumeEnvelopeFadePreset, RAW_VOLUME_ENVELOPE_LIMITS, validateRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
 import type { RawVolumeEnvelope, VolumeEnvelopeComposition, VolumePointField } from './clip-volume-envelope-state.ts';
 
 export interface ClipVolumeEnvelopeControlsProps {
@@ -23,11 +23,16 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
   const renderEpoch = useRef(0), rendered = ++renderEpoch.current;
   const [transient, setTransient] = useState<Pending | null>(null);
   const [rejected, setRejected] = useState<{ row: number; field: VolumePointField } | null>(null);
+  // A preset choice is only a form tool; selecting a length is not an edit.
+  const [presetFrames, setPresetFrames] = useState(30);
   const points = value?.points ?? [];
   // Each rendered handler retains its originating session. Start can set this
   // local holder synchronously before React has rendered the pending state.
   const handlerSession = { value: transient?.session ?? null as symbol | null };
   const invalid = !validateRawVolumeEnvelope(value === undefined ? {} : { volumeEnvelope: value }, proposedDuration).valid;
+  // The formatter rejects non-finite parameters. This is only a display
+  // fallback; validation and preset admission still use the original duration.
+  const displayedDuration = Number.isFinite(proposedDuration) ? proposedDuration : 0;
   const publish = (next: Pending) => {
     pending.current = next; setTransient(next);
     onCompositionChange({ session: next.session, pending: true, dirty: true, row: next.row, field: next.field, text: next.text });
@@ -45,10 +50,34 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
     if (disabled || pending.current) return;
     setRejected(null); onEdit(next);
   };
+  const presetAvailable = createVolumeEnvelopeFadePreset('in', proposedDuration, presetFrames) !== undefined;
+  const applyPreset = (kind: 'in' | 'out') => {
+    if (rendered !== renderEpoch.current) return;
+    const next = createVolumeEnvelopeFadePreset(kind, proposedDuration, presetFrames);
+    if (next) structure(next);
+  };
   return <fieldset disabled={disabled} aria-describedby={`${id}-effect ${id}-bounds`}>
     <legend>{t('volume.envelope.title')}</legend>
     <p id={`${id}-effect`} className="input-hint">{t('volume.envelope.effect')}</p>
-    <p id={`${id}-bounds`} className="input-hint" role={invalid ? 'alert' : undefined}>{t('volume.envelope.bounds', { duration: proposedDuration })}</p>
+    <p id={`${id}-bounds`} className="input-hint" role={invalid ? 'alert' : undefined}>{t('volume.envelope.bounds', { duration: displayedDuration })}</p>
+    <fieldset disabled={disabled || !!transient} aria-describedby={`${id}-preset-hint${!presetAvailable ? ` ${id}-preset-unavailable` : ''}`}>
+      <legend>{t('volume.envelope.preset.title')}</legend>
+      <p id={`${id}-preset-hint`} className="input-hint">{t('volume.envelope.preset.hint')}</p>
+      <label htmlFor={`${id}-preset-frames`}>{t('volume.envelope.preset.duration')}</label>
+      <select id={`${id}-preset-frames`} data-testid="envelope-preset-frames" value={presetFrames} disabled={disabled || !!transient}
+        onChange={event => {
+          if (disabled || pending.current || rendered !== renderEpoch.current) return;
+          const frames = Number(event.currentTarget.value);
+          if ([15, 30, 60].includes(frames)) setPresetFrames(frames);
+        }}>
+        {[15, 30, 60].map(frames => <option key={frames} value={frames} disabled={!createVolumeEnvelopeFadePreset('in', proposedDuration, frames)}>{t('volume.envelope.preset.frames', { frames })}</option>)}
+      </select>
+      {!presetAvailable && <p id={`${id}-preset-unavailable`} className="input-hint" role="status">{t('volume.envelope.preset.unavailable')}</p>}
+      <div className="field-row">
+        <button type="button" data-testid="envelope-preset-in" disabled={disabled || !!transient || !presetAvailable} onClick={() => applyPreset('in')}>{t('volume.envelope.preset.in')}</button>
+        <button type="button" data-testid="envelope-preset-out" disabled={disabled || !!transient || !presetAvailable} onClick={() => applyPreset('out')}>{t('volume.envelope.preset.out')}</button>
+      </div>
+    </fieldset>
     {points.map((point, row) => <div key={row} className="volume-envelope-row">
       {(['frame', 'multiplier'] as const).map(field => {
         const composing = transient?.row === row && transient.field === field;

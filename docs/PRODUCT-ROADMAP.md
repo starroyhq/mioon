@@ -112,6 +112,18 @@ Later bounded Safari/short-media evidence is indexed below; stopped issue invest
   resolved the blocker, and canonical TS plus a production source build passed
   on `ff85c9a`. Native Save/Undo/Redo and normal close passed on `dc7a057`;
   Inspector reopen, CJK IME and four-language native acceptance remain unfinished.
+  The [fade-preset follow-up](AUDIO-EFFECTS-PLAN.md) is locally implemented:
+  a 15/30/60-frame selector (30fps, default 30) and explicit Replace with fade-in /
+  fade-out buttons replace all draft points before ordinary Save; manual editing,
+  Cancel, local drafts and Undo/Redo retain their existing ownership. Oversized
+  presets are refused. This slice covers ordinary 40/restored 41 only, preserves
+  audio/capability/IME guards and existing gain/fade multiplication, and adds no
+  DSP, schema or 42/43 capability. Node24 focused tests passed 51/51 plus 40/40
+  related regressions; canonical strict types and the auxiliary Node26 default
+  Web/development Desktop source build passed. Independent review found no
+  blocker. [Evidence and limits](evidence/volume-fade-presets/qualification.json)
+  retain previous release-check failures and formal Node24 build/GUI/native gaps;
+  this is not a completed release qualification.
 
 ## Current delivery and remaining work (2026-10-16)
 

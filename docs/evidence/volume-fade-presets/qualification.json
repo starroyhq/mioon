@@ -1,0 +1,197 @@
+{
+  "date": "2026-10-16",
+  "sourceParent": "78d42b788dac2b99829002b5bbe5f3d967860512",
+  "feature": "Explicit volume-keyframe fade-in/fade-out draft replacements, 15/30/60 frames at existing 30fps",
+  "scope": {
+    "profiles": [
+      "ordinary40",
+      "restored41"
+    ],
+    "unchanged": [
+      "contracts",
+      "database schema/profile defaults",
+      "DSP",
+      "historical constructors/validators/dispatch",
+      "gain and legacy fade fields",
+      "editing and execution authority",
+      "legacy JS allowlist",
+      "strict compiler configuration"
+    ],
+    "presets": "in [(0,0),(L,1)]; out [(D-L,1),(D,0)]; invalid or overlong inputs refuse without clamping; explicit Save required"
+  },
+  "checks": [
+    {
+      "name": "Focused controls, draft and owned ordinary40 durable history",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "tests/clip-volume-envelope-foundation.test.mjs",
+        "tests/clip-volume-envelope-integration.test.mjs",
+        "tests/timeline-volume-envelope-owned-startup.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 51,
+      "pass": 51,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "newTests": 13,
+      "log": "focused.tap",
+      "sha256": "b88e09ef56a19394671e18552e34db9f6cd1fb10e93707bc1a61204e46c81635"
+    },
+    {
+      "name": "Related capability, legacy fades, catalogs and pure curve regressions",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "--experimental-test-module-mocks",
+        "--test",
+        "--test-concurrency=1",
+        "tests/clip-volume-envelope-capability-ui.test.mjs",
+        "tests/timeline-fades-ui.test.mjs",
+        "tests/i18n-catalog-integrity.test.mjs",
+        "tests/timeline-volume-envelope-pure.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 40,
+      "pass": 40,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "log": "related-regressions.tap",
+      "sha256": "c7d1fdda182a7623f46416841375b8a9a2295da4b1a1432fd314a10a0b5bee14"
+    },
+    {
+      "name": "Canonical strict foundation/browser typecheck and source-language guard",
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        "scripts/tooling.mjs",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "log": "node24-typecheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "Auxiliary Node26 default Web plus development Desktop source build",
+      "command": [
+        "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+        "scripts/tooling.mjs",
+        "build"
+      ],
+      "exitCode": 0,
+      "formalNode24Qualification": false,
+      "packagedProductQualification": false,
+      "log": "node26-auxiliary-build.log",
+      "sha256": "5691cd9aeaccc6654b9ff1b590da228a9626c158187af03890f7562196a44df9"
+    }
+  ],
+  "totalDistinctTests": 91,
+  "sourceSha256": {
+    "apps/web/src/ClipVolumeEnvelopeControls.tsx": "2ae9669f4af75c8548c851ef5a01ea8422e4cf1edf0169ce3995b45a25f83cd7",
+    "apps/web/src/clip-volume-envelope-state.ts": "b8a74ae737770b7b9cc12b695cb2d205d3060b9cc1d2dc7bd8566d39f797847e",
+    "packages/i18n/src/catalogs/volume-envelope.ts": "7f10225db1962c2bce3432fa7871c9cd93cefebf660ec6c504e0b14ab8af4cbe",
+    "tests/clip-volume-envelope-foundation.test.mjs": "90c714ad4cab4a0843cc064f30e3e1a403877231de3979b15234904a7562ed7e",
+    "tests/clip-volume-envelope-integration.test.mjs": "46d4addd7d987d8d87ca577f32edde5030910999251e7aa7dabce127a3cc2c4a",
+    "tests/timeline-volume-envelope-owned-startup.test.mjs": "b78f891bfa224bc7e7a71da43e00cc989a5641fdb988c2871ceaaf4b224edfc1",
+    "tests/clip-volume-envelope-capability-ui.test.mjs": "6b7487bdce855813caf54d16428f3c9568d968518359fb46e921a3fbf8e9af89",
+    "tests/timeline-fades-ui.test.mjs": "a4ae213a4f8917029283f29f458e893ed4a4ae3737d38706ff40daaa84acd9c4",
+    "tests/i18n-catalog-integrity.test.mjs": "f22610410e6637a41d0b2cf778d25ca153c21784dfb6defcde80394f8b68fba8",
+    "tests/timeline-volume-envelope-pure.test.mjs": "9c270df65e14209e77206bdfe7f0d6a545ba3917fe8f4f9c73267bb49f05fe77"
+  },
+  "artifacts": {
+    "webHtml": {
+      "path": "apps/web/dist/index.html",
+      "sha256": "c224d637806e49667deb28363ddc69e974258db559c01410f842aa7db4673b4a"
+    },
+    "webJavascript": {
+      "path": "apps/web/dist/assets/index-DrR6KFA_.js",
+      "sha256": "5cb022cb534205a84b4f113144964920041198cefa8dd622c5ffa268a84e6482"
+    },
+    "desktopWebJavascript": {
+      "path": "apps/desktop/build/web/assets/index-DrR6KFA_.js",
+      "sha256": "5cb022cb534205a84b4f113144964920041198cefa8dd622c5ffa268a84e6482"
+    },
+    "sameBuiltWeb": true,
+    "desktopChannel": "development"
+  },
+  "frozenIntegrity": "frozen-integrity.json",
+  "independentReview": {
+    "agent": "release_frontend_audit",
+    "method": "Read-only runtime, tests, locale and frozen-integrity review after final fixes",
+    "blockingFindings": 0
+  },
+  "initialAttempt": {
+    "log": "focused-initial.tap",
+    "capture": "Reconstructed verbatim stdout chunks from initial tool results; not an original disk redirect",
+    "tests": 36,
+    "pass": 34,
+    "fail": 2,
+    "causes": [
+      "New test fixture raw/numeric mismatch; corrected to actual Inspector raw input",
+      "Non-finite proposedDuration caused the existing bounds-message formatter to throw; display-only finite fallback added, original duration remains rejected by validation and preset admission"
+    ],
+    "notAddedToFinalTotals": true
+  },
+  "retainedGaps": [
+    {
+      "name": "Historical ordinary24/restored25 BLOB startup compatibility",
+      "status": "Independent pre-existing six failures retained, not fixed or retested in this slice",
+      "evidence": "../blob-admission-baselines/qualification.json"
+    },
+    {
+      "name": "Formal Node24 source build",
+      "status": "Existing macOS Rollup native-addon Team ID blocker retained; not retried, no signing or system changes",
+      "evidence": "../opacity-release-check/build-default.txt"
+    },
+    {
+      "name": "GUI, actual OS IME, listening, codec and platform/package acceptance",
+      "status": "Not run in this slice; no stopped GUI/listener path retried"
+    }
+  ],
+  "boundaries": {
+    "providers": false,
+    "realUserProjects": false,
+    "mediaProcessing": false,
+    "listener": false,
+    "systemOrCredentialsChanges": false,
+    "newDependencies": false,
+    "push": false,
+    "designs": "Untouched; only git status metadata observed"
+  },
+  "outcome": "Locally implemented and verified within the recorded scope; not whole-repository or production release qualification",
+  "diffCheck": {
+    "codeDocsAndFinalEvidence": {
+      "command": [
+        "git",
+        "diff",
+        "--cached",
+        "--check",
+        "--",
+        ".",
+        ":(exclude)docs/evidence/volume-fade-presets/focused-initial.tap"
+      ],
+      "exitCode": 0
+    },
+    "allStagedIncludingInitialStdout": {
+      "command": [
+        "git",
+        "diff",
+        "--cached",
+        "--check"
+      ],
+      "exitCode": 2,
+      "onlyFindings": [
+        {
+          "file": "docs/evidence/volume-fade-presets/focused-initial.tap",
+          "lines": [
+            149,
+            167
+          ],
+          "reason": "Preserved reporter stdout has whitespace-only indented lines; retained without normalization. No source or final evidence whitespace findings."
+        }
+      ]
+    }
+  }
+}

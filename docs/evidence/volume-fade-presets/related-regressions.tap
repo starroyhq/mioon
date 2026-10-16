@@ -1,0 +1,48 @@
+✔ envelope capability requires exact profile and verified workspace identity, never generic update access (17.984125ms)
+✔ optional capability is bounded, failure-isolated and connection-epoch fenced (31.411708ms)
+✔ Inspector wires controller-owned envelope token across renders and blocks save/remove during composition (267.124292ms)
+✔ unsupported or silent assets retain visible recovered envelope and localized blocked message (277.611916ms)
+✔ App navigation refuses composition before confirmation and rechecks after async confirmation (10.270416ms)
+✔ App optional envelope probe is connection-scoped rather than project boot-scoped (8.516084ms)
+✔ retained old Inspector callbacks cannot retarget newer same-owner composition session (30.078208ms)
+✔ retained Inspector adapter keeps exact composing owner across auth loss, missing/replaced selected clip and settlement (14.119875ms)
+✔ late App boot inspect response cannot adopt workspace or project after composition begins (18.360625ms)
+✔ retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner (5.258375ms)
+✔ every composed UI and native catalog has exact four-locale and placeholder parity (102.0925ms)
+✔ UI literal ledger rejects unexplained, newly introduced and stale exceptions (1.725ms)
+✔ current source has no unreviewed or stale static UI literal exceptions (1650.110959ms)
+✔ static semantic keys used by UI translation calls exist in the composed catalog (638.173125ms)
+✔ visible template guard distinguishes app copy from dynamic semantic keys (0.522791ms)
+✔ fade draft preserves omission, explicit zero and immutable copies (1.621917ms)
+✔ fade validation checks both integers, per-side bounds, their sum and confirmed audio (4.345458ms)
+✔ actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics (178.910625ms)
+✔ silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls (195.418ms)
+✔ unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero (60.24475ms)
+✔ unrelated save preserves explicit zero and fade values while discard restores omission (70.538834ms)
+✔ trim never silently clamps either fade and invalid totals cannot submit (24.8385ms)
+✔ invalid local fade drafts stay visible and block even direct form submission (265.703333ms)
+✔ edits made during save survive its acknowledgment without silently rebasing the newer draft (163.341ms)
+✔ failed or unacknowledged save preserves fade edits and does not retry (62.482291ms)
+✔ every newer timeline revision preserves the exact dirty fade input and requires explicit reload (122.663875ms)
+✔ keyed project unmount fences late fade acknowledgments and retained form submit (56.332458ms)
+✔ source playback copy stays explicit about dry audio and the shared render path (0.327416ms)
+✔ real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline (71.539833ms)
+✔ actual inspector role selection uses shared dirty form and one existing Save revision (36.571375ms)
+✔ missing role capability blocks captured selector callbacks but unrelated inspector edits save (20.495875ms)
+✔ role eligibility includes silent video, zero gain and muted timeline without enabling fades (27.058583ms)
+✔ image inspector excludes audio role; restored supported editor can save without sidecar support (32.024292ms)
+✔ captured enabled role selector cannot write after capability loss or owner unmount (35.47225ms)
+✔ strict bounded values, ordering and non-normalization (1.208875ms)
+✔ legacy absent, explicit null, constants and closed endpoint versus half-open samples (0.571375ms)
+✔ immutable evaluator and edit fields preserve presence without aliasing (0.796792ms)
+✔ all interior frame cuts preserve exact anchors and numerical curve including held regions (50.723125ms)
+✔ fade times automation is quadratic, not a combined endpoint ramp (0.372708ms)
+✔ serialized budget proof: 16 numeric points fit per-edit, but raw draft and aggregate need explicit admission (0.557792ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7402.213625

@@ -1,6 +1,13 @@
 import type { MessageCatalog } from '../types.ts';
 export const volumeEnvelopeMessages = {
   "volume.envelope.title": {"zh-Hans": "音量关键帧", "zh-Hant": "音量關鍵幀", "en": "Volume keyframes", "ja": "音量キーフレーム"},
+  "volume.envelope.preset.title": {"zh-Hans": "线性淡入／淡出预设", "zh-Hant": "線性淡入／淡出預設", "en": "Linear fade presets", "ja": "リニアフェードのプリセット"},
+  "volume.envelope.preset.hint": {"zh-Hans": "替换当前草稿的全部音量关键帧，可继续逐点编辑；点击保存后应用。现有音量和淡入淡出保持不变，仍与新曲线相乘。", "zh-Hant": "替換目前草稿的全部音量關鍵幀，可繼續逐點編輯；按下儲存後套用。現有音量和淡入淡出維持不變，仍與新曲線相乘。", "en": "Replaces every volume keyframe in this draft. You can edit the points before saving to apply. Existing gain and fades remain and multiply the new curve.", "ja": "この下書きの音量キーフレームをすべて置き換えます。各点は引き続き編集でき、保存すると適用されます。既存のゲインとフェードは維持され、新しいカーブに乗算されます。"},
+  "volume.envelope.preset.duration": {"zh-Hans": "淡入／淡出时长（30fps）", "zh-Hant": "淡入／淡出時長（30fps）", "en": "Fade duration (30 fps)", "ja": "フェードの長さ（30fps）"},
+  "volume.envelope.preset.frames": {"zh-Hans": "{frames} 帧", "zh-Hant": "{frames} 幀", "en": "{frames} frames", "ja": "{frames} フレーム"},
+  "volume.envelope.preset.in": {"zh-Hans": "替换为淡入", "zh-Hant": "替換為淡入", "en": "Replace with fade-in", "ja": "フェードインに置換"},
+  "volume.envelope.preset.out": {"zh-Hans": "替换为淡出", "zh-Hant": "替換為淡出", "en": "Replace with fade-out", "ja": "フェードアウトに置換"},
+  "volume.envelope.preset.unavailable": {"zh-Hans": "片段时长无效或短于所选预设。请选择更短的预设；不足 15 帧时请逐点编辑。不会自动缩短。", "zh-Hant": "片段時長無效或短於所選預設。請選擇較短的預設；不足 15 幀時請逐點編輯。不會自動縮短。", "en": "The clip duration is invalid or shorter than this preset. Choose a shorter preset; edit points manually for clips under 15 frames. No automatic shortening.", "ja": "クリップの長さが無効か、選択したプリセットより短い状態です。短いプリセットを選び、15 フレーム未満の場合は各点を編集してください。自動で短縮しません。"},
   "volume.envelope.frame": {"zh-Hans": "片段内帧", "zh-Hant": "片段內幀", "en": "Local frame", "ja": "クリップ内フレーム"},
   "volume.envelope.multiplier": {"zh-Hans": "音量倍率", "zh-Hant": "音量倍率", "en": "Multiplier", "ja": "音量倍率"},
   "volume.envelope.add": {"zh-Hans": "添加关键帧", "zh-Hant": "新增關鍵幀", "en": "Add keyframe", "ja": "キーフレームを追加"},
