@@ -10,7 +10,7 @@ import {timelineHistoryState} from '../apps/web/src/timeline-history.ts';
 import {timelineHistoryActionForKey} from '../apps/web/src/timeline-keyboard.ts';
 import {message as msg, renderMessage} from '../packages/i18n/src/index.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 // No application, HTTP server, browser, worker, media process or provider is started.
 // The first group executes unchanged ordinary-JS App functions, extracted exactly

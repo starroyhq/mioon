@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
-import {png,pngChunk,imageColour} from './helpers/timeline-image-fixtures.mjs';
+import {png,pngChunk,imageColour} from './helpers/timeline-image-fixtures.ts';
 async function fixture(t){const root=await mkdtemp(path.join(tmpdir(),'mioon-image-business-'));let store=openStore(root),services=createServices(store,new Map());t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});const call=(op,input)=>services.call(op,input),projectId=(await call('project.create',{name:'PNG mixed colour'})).id;return{root,projectId,call,get store(){return store;},async reopen(){await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());},params:(timeline,extra={})=>({projectId,requestId:randomUUID(),expectedRevision:timeline.revision,...extra}),import:bytes=>call('asset.import',{projectId,name:'source.png',mimeType:'image/png',dataBase64:bytes.toString('base64')})};}
 test('actual PNG import/inspect/save/replay and reopen preserve explicit mixed profile',async t=>{
  const f=await fixture(t),asset=await f.import(png({tagged:false})),inspection=await f.call('timeline.colour.image.inspect',{projectId:f.projectId,assetId:asset.id});assert.equal(inspection.status,'needs_interpretation');

@@ -7,7 +7,7 @@ import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createOpacityCandidateApplication, readOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const source = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');

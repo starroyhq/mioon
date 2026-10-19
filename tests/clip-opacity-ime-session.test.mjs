@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
-import {opacityInspectorImeFixture as fixture, deferred, turn} from './helpers/opacity-inspector-ime-fixture.mjs';
+import {opacityInspectorImeFixture as fixture, deferred, turn} from './helpers/opacity-inspector-ime-fixture.ts';
 
 for (const restored of [false, true]) test(`synthetic IME Enter commits text without implicitly saving ${restored ? '43 memory input' : '42 v3 draft'} in all locales`, async t => {
   for (const locale of LOCALES) {

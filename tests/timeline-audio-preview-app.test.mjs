@@ -2,12 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { stripSourceTypes } from './helpers/eval-source.mjs';
+import { stripSourceTypes } from './helpers/eval-source.ts';
 import { transformSync } from 'esbuild';
 import { buildAudioPreviewPlan } from '../packages/contracts/src/timeline-audio-preview.ts';
 import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
 import { createTimelineAudioPreviewController, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview } from '../apps/web/src/use-timeline-audio-preview.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
+import { lenientFunction } from './helpers/eval-source.ts';
+const Function = lenientFunction;
 
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const preview = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
@@ -26,7 +28,7 @@ assert.ok(ownerStart >= 0 && ownerEnd > ownerStart);
 const block = app.slice(ownerStart, ownerEnd) + app.slice(start, hookEnd) + app.slice(positionStart, end);
 assert.match(block, /const audioPreview = useTimelineAudioPreview/);
 assert.match(block, /const effectivePlayhead = timelineAudioPreviewPosition/);
-assert.match(block, /const seekTimelineSound = frame => seekTimelineAudioPreview/);
+assert.match(block, /const seekTimelineSound = \(frame: number\) => seekTimelineAudioPreview/);
 assert.doesNotMatch(block, /useTimelineLoudnessApply|readTimelineLoudnessRecoveryScope/);
 
 function harness() {

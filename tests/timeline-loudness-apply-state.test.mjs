@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTimelineLoudnessApplyController, timelineLoudnessCanReview } from '../apps/web/src/timeline-loudness-apply-state.ts';
 import { timelineMixLoudnessViewState } from '../apps/web/src/timeline-mix-loudness-state.ts';
-import { fixture, deferred, draft, id, report, input } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { fixture, deferred, draft, id, report, input } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 const digest = 'timeline-loudness-candidate-v1:' + 'a'.repeat(64);
 const prepared = intent => ({id:id(70),digest:'d'.repeat(64),operation:intent.operation,projectId:intent.input.projectId,requestId:intent.input.requestId,input:intent.input});
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };

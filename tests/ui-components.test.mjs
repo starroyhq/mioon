@@ -10,7 +10,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ui = resolve(root, 'packages/ui');

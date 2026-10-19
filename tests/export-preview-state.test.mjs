@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isTimelineRenderRecord } from '@mioon/contracts';
 import { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from '../apps/web/src/export-preview-state.ts';
-import { row, id, projectId } from './helpers/export-sample-peak-ui-fixture.mjs';
+import { row, id, projectId } from './helpers/export-sample-peak-ui-fixture.ts';
 
 function fixture() {
   const record = row(10, { exportRange: { startFrame: 0, endFrame: 30 } });

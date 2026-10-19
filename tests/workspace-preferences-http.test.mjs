@@ -171,7 +171,14 @@ test('official MCP discovery and calls cannot reach renderer workspace preferenc
   assert.deepEqual(tools.filter(tool => /workspace/.test(tool.name)).map(tool => tool.name), ['workspace_backup_inspect', 'workspace_restore_inspect'], 'only the two explicit DB-only workspace inspections are public');
   const restoreInspection = tools.find(tool => tool.name === 'workspace_restore_inspect');
   assert.equal(restoreInspection.annotations.readOnlyHint, true);
-  assert.deepEqual(restoreInspection.inputSchema.properties, {}); assert.equal(restoreInspection.inputSchema.additionalProperties, false);
+  // Discovery exposes only the two explicit opt-in evidence flags from the
+  // read-only restore contract; both are literal true and cannot request a
+  // renderer preference read, path, origin or execution authority.
+  assert.deepEqual(restoreInspection.inputSchema.properties, {
+    includeAudioRoleCapability: {type: 'boolean', const: true},
+    includeVolumeEnvelopeCapability: {type: 'boolean', const: true},
+  });
+  assert.equal(restoreInspection.inputSchema.additionalProperties, false);
   const backupInspection = tools.find(tool => tool.name === 'workspace_backup_inspect');
   assert.equal(backupInspection.annotations.readOnlyHint, true);
   assert.deepEqual(backupInspection.inputSchema.properties, {}); assert.equal(backupInspection.inputSchema.additionalProperties, false);

@@ -13,7 +13,7 @@ import * as preflightState from '../apps/web/src/export-preflight-state.ts';
 import { prepareSubmission, prepareRequestReplay, readPending, reconcilePending } from '../apps/web/src/submissions.ts';
 import { isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);

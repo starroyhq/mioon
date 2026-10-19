@@ -11,7 +11,7 @@ import {inspectStaticSrgbPng} from '../packages/business/src/timeline-image-admi
 import {createTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
-import {png,sha,imageColour,evidenceOnly,timelineFixture,stamp} from './helpers/timeline-image-fixtures.mjs';
+import {png,sha,imageColour,evidenceOnly,timelineFixture,stamp} from './helpers/timeline-image-fixtures.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-image-media-'));t.after(()=>rm(root,{recursive:true,force:true}));

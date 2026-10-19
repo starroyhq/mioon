@@ -62,7 +62,7 @@ test('corrupt stored shapes and oversized bounded fields fail closed without raw
 
 for(const sameKey of [false,true])test(`two-process annotation ${sameKey?'exact replay':'CAS'} race commits one immutable receipt`,{timeout:30000},async t=>{
  const {fork}=await import('node:child_process'),{once}=await import('node:events');const f=await fixture(t),asset=f.asset(),input=f.input(asset);
- const children=[0,1].map(()=>fork(new URL('./helpers/asset-annotation-race-child.mjs',import.meta.url),[f.root],{execArgv:[],stdio:['ignore','ignore','pipe','ipc']}));
+ const children=[0,1].map(()=>fork(new URL('./helpers/asset-annotation-race-child.ts',import.meta.url),[f.root],{execArgv:[],stdio:['ignore','ignore','pipe','ipc']}));
  t.after(()=>{for(const child of children)if(child.exitCode===null)child.kill('SIGTERM');});
  await Promise.all(children.map(async child=>{const [ready]=await once(child,'message');assert.equal(ready.ready,true);}));
  const results=children.map(child=>once(child,'message').then(([value])=>value)),exits=children.map(child=>once(child,'exit'));

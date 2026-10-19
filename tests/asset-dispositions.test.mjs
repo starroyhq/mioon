@@ -1,5 +1,5 @@
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.mjs';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';

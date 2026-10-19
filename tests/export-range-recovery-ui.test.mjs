@@ -1,7 +1,7 @@
 import { translate } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { component, nodes, textOf } from './fixtures/export-range-ui-harness.mjs';
+import { component, nodes, textOf } from './fixtures/export-range-ui-harness.ts';
 
 const id = n => `da000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const prior = { intentId: id(1), timelineId: id(2), baseRevision: 4, input: { projectId: id(3), requestId: 'old-accepted-request', purpose: 'export', expectedRevision: 4, deliveryName: 'OLD TITLE', exportRange: { startFrame: 0, endFrame: 30 } }, outcome: { status: 'accepted' } };

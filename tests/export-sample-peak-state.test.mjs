@@ -4,7 +4,7 @@ import { isTimelineRenderRecord } from '@mioon/contracts';
 import { EXPORT_SAMPLE_PEAK_ALGORITHM, exportSamplePeakReason } from '@mioon/contracts/export-sample-peak';
 import { createExportSamplePeakController, exportSamplePeakTargets, exportSamplePeakErrorMessage, exportSamplePeakViewState } from '../apps/web/src/export-sample-peak-state.ts';
 
-import { id, projectId, row, asset, context, report, unready, fixture } from './helpers/export-sample-peak-ui-fixture.mjs';
+import { id, projectId, row, asset, context, report, unready, fixture } from './helpers/export-sample-peak-ui-fixture.ts';
 
 test('actual complete record guard admits named/unnamed/ranged historical outputs only', () => {
   const c = context(); assert.equal(exportSamplePeakTargets(c, isTimelineRenderRecord).length, 2);

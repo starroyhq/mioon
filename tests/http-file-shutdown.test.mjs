@@ -7,7 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {FILE_RESPONSE_LIMITS} from '../apps/server/src/file-response.ts';
 
-const fixture = fileURLToPath(new URL('./helpers/http-file-shutdown-process.mjs', import.meta.url));
+const fixture = fileURLToPath(new URL('./helpers/http-file-shutdown-process.ts', import.meta.url));
 async function isolated(t, mode) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-q4-fs-stall-'));
   const child = spawn(process.execPath, [fixture, mode, root], {stdio: ['ignore', 'pipe', 'pipe'], env: {

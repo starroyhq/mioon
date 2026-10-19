@@ -21,8 +21,8 @@ import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore
 import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
-import {opacityUpgradeFixture as seedFixture, upgradeFixtureStamp} from './helpers/opacity-upgrade-fixture.mjs';
-import {tree, logicalTables, originalRows, hash} from './helpers/opacity-backup-fixture.mjs';
+import {opacityUpgradeFixture as seedFixture, upgradeFixtureStamp} from './helpers/opacity-upgrade-fixture.ts';
+import {tree, logicalTables, originalRows, hash} from './helpers/opacity-backup-fixture.ts';
 
 // These tests own all SQLite files and opaque media bytes. No executable,
 // provider, decoder, listener, actual project, browser or CLI is permitted.

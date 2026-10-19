@@ -17,7 +17,7 @@ import {discoverSchema} from '../packages/client/src/index.ts';
 import {parse, operationEffect, isWaveformResponse, WAVEFORM_ALGORITHM, WAVEFORM_MAX_POINTS} from '../packages/contracts/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.mjs';
+import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const target = {projectId: IDS.project, assetId: IDS.asset};
@@ -127,7 +127,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {installWireGuard} from ${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs')).href)};
+import {installWireGuard} from ${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/inspection-wire-fixture.ts')).href)};
 const originalSpawn = childProcess.spawn;
 const serverMode = process.argv[2] === 'waveform-server';
 const {deny} = installWireGuard({origin:process.env.MIOON_WAVEFORM_WIRE_ORIGIN || '',auditPath:process.env.MIOON_WAVEFORM_WIRE_AUDIT});

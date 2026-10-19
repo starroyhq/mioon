@@ -7,7 +7,7 @@ import { transformSync } from 'esbuild';
 import * as subtitles from '../apps/web/src/subtitle-state.ts';
 import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `95000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), cueId = id(3), secondId = id(4);

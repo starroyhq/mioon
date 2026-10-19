@@ -9,7 +9,7 @@ import { createPollCache } from '../packages/business/src/providers/live-common.
 import { openStore } from '../packages/business/src/db.ts';
 import { createServices } from '../packages/business/src/services.ts';
 import { startWorker } from '../packages/business/src/jobs.ts';
-import { createRunwayUnknownFixture, syntheticPng } from './helpers/runway-unknown-fixture.mjs';
+import { createRunwayUnknownFixture, syntheticPng } from './helpers/runway-unknown-fixture.ts';
 
 const ID = '12345678-1234-4123-8123-123456789abc';
 const SECRET = 'PRIVATE-Q1-KEY-AND-BODY';

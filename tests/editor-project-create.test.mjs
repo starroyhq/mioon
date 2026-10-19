@@ -10,7 +10,7 @@ import { createLauncherClient, LauncherCreateError } from '../apps/web/src/launc
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { ApiError } from '../apps/web/src/api.ts';
 
-import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app = readFileSync(process.env.MIOON_EDITOR_CREATE_APP_SOURCE || new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const id = n => `76000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

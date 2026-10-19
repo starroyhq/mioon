@@ -2,7 +2,7 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { evaluateSource } from './helpers/eval-source.mjs';
+import { evaluateSource } from './helpers/eval-source.ts';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,8 +27,8 @@ function section(source, start, end) {
   return source.slice(a, b);
 }
 const compile = (source, name, env) => evaluateSource(`${source}\nreturn ${name};`, Object.keys(env), Object.values(env), {loader: 'tsx'});
-const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '<details className="topbar-status"');
-const homeBoundary = section(app, '  if (!workbenchReady) return <ProjectHome ', '  return <main className={`workbench');
+const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '</Tabs>') + '</Tabs>';
+const homeBoundary = section(app, '  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome ', '  return <>{webSettingsCenter}<main className={`workbench');
 const refreshSource = section(app, '  const refresh = useCallback(', '  async function revealImageAsset(');
 const readySource = section(app, '  function projectSessionReady()', '  const workbenchReady =');
 const settingsSource = section(app, '  async function prepareSettingsDeparture()', '  async function changeHomePage(');
@@ -38,7 +38,7 @@ const guardSource = section(app, '  async function guardNavigation(', '  async f
 const updateSource = section(app, '  const updateView = useCallback(', '  const field = ');
 const selectSource = section(app, '  async function selectProject(', '  async function reloadPreferences(');
 const createSource = section(app, '  async function createProject(', '  async function addShot(');
-const bootSource = section(app, '  async function boot() {', '  useEffect(() => {\n    bootGuard.current.activate();');
+const bootSource = section(app, '  async function boot(): Promise<void> {', '  useEffect(() => {\n    bootGuard.current!.activate();');
 
 // Execute actual App JSX with the real shared Tabs/Button components. SSR checks
 // emitted accessibility attributes; it does not claim browser focus/layout QA.
@@ -54,19 +54,21 @@ const fixture = `
   import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
   import { Button } from '@mioon/ui/components/button';
   import ProjectHome from './src/ProjectHome.tsx';
+  import { workspaceOriginScope } from './src/workspace-origin.ts';
   import LastProjectStatus from './src/LastProjectStatus.tsx';
   import { useButton } from ${JSON.stringify(join(baseRoot, 'internals/use-button/useButton.js'))};
   import { createChangeEventDetails } from ${JSON.stringify(join(baseRoot, 'internals/createBaseUIEventDetails.js'))};
   import { REASONS } from ${JSON.stringify(join(baseRoot, 'internals/reasons.js'))};
   const Icon = () => null;
-  export function Modes({data, loading, workspaceMode, changeMode}) { return ${modesMarkup}; }
+  export function Modes({data, loading, workspaceMode, changeMode, application = null}) { return ${modesMarkup}; }
   // Only the global settings slot is inert in this projects-page fixture. The
   // actual App early return, ProjectHome, shared controls and status are executed.
   const ProjectHomeConnections = () => null, AgentDockPane = () => null, SettingsNavigationSlot = () => null;
   const AgentSettings = () => null, ImageSettings = () => null, ComfyImageSettings = () => null;
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
+  const OpacityRestoredNotice = () => null;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject,
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, application = null, preferenceScope = { current: null }, workspace = { restored: false }, opacityRestored = false,
     lastProjectStatus, lastProjectRef, restored, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage }) {
     ${homeBoundary}
     return <main data-testid="workbench"><Modes {...{ data, loading, workspaceMode, changeMode }} /></main>;
@@ -96,7 +98,7 @@ const ui = module.exports;
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const event = key => ({ key, nativeEvent: { key }, prevented: false, preventDefault() { this.prevented = true; } });
 const modeProps = f => ({ ...f.env, data: f.env.dataRef.current, loading: f.env.loading, workspaceMode: f.env.viewRef.current.activeMode,
-  workbenchReady: f.env.projectSessionReady() && !f.env.loading, changeMode: f.change, createProject: f.create, restored: f.env.workspaceRef.current.restored });
+  workbenchReady: f.env.projectSessionReady() && !f.env.loading, changeMode: f.change, createProject: f.create, restored: f.env.workspaceRef.current.restored, retainWorkbenchForClip: false, webSettingsCenter: null, application: null, preferenceScope: f.env.preferenceScope, workspace: f.env.workspaceRef.current, opacityRestored: false });
 function assertHome(html) {
   assert.match(html, /data-testid="project-home"/);
   assert.doesNotMatch(html, /data-testid="workbench"|workspace-canvas|workspace-editing|workspace-mode-help|empty-create-project|react-flow|timeline-panel|inspector-region/);
@@ -108,9 +110,10 @@ function assertDisabled(html, expected) {
 
 function harness({ projectId = null, mode = 'canvas', loading = false, ready = Boolean(projectId), restored = false } = {}) {
   const calls = [], view = defaultWorkspaceState(); view.activeMode = mode;
-  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 },
+  const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), application: null, clipLoudnessEpoch: { current: 0 }, preferencesRef: { current: { update() {} } }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 },
     viewRef: { current: view }, viewReady: { current: ready }, dataRef: { current: projectId ? { ...emptyData, project: { id: projectId } } : emptyData },
     workspaceRef: { current: { restored, ...(restored ? { workspaceOrigin: B } : {}) } }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
+    audioRoleProbe: { current: null }, audioRoleProbeEpoch: { current: 0 }, observeClipAudioRoleCapability: () => () => {}, isWorkspaceInspection: () => true, canEditTimelineAudioRole: () => true, setAudioRoleCapability: (...args) => calls.push(['setAudioRoleCapability', ...args]),
     dirtyRef: { current: false }, subtitlesRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null }, subjectsRef: { current: null }, agentDraft: { current: false }, imageDraft: { current: false },
     useCallback: fn => fn, workspaceOriginScope, validateProjectWorkspace, reconcileWorkspaceState, reconcilePending() {}, pinNewWorkspaceIntent: (value, workspace) => ({ ...value, workspaceOrigin: workspace.workspaceOrigin }),
     confirm: async () => true, readableError: e => e.message, pendingForProject: () => [], URL, URLSearchParams,

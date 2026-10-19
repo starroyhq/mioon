@@ -4,7 +4,7 @@ import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { stripSourceTypes } from './helpers/eval-source.mjs';
+import { stripSourceTypes } from './helpers/eval-source.ts';
 import { prepareMutation, isMutationOperation, assertMutationOwner, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
 import { prepareSubmission, readPending, clearPending, pendingForProject } from '../apps/web/src/submissions.ts';
 import { ApiError } from '../apps/web/src/api.ts';

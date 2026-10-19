@@ -14,7 +14,7 @@ const cwd = fileURLToPath(new URL('../', import.meta.url));
 // real credentials, UI, or media work. Trace is outside the SQLite transaction
 // so rollback cannot hide an inspection read that already happened.
 const CHILD = String.raw`
-import {createTestAuthorizations,authorizeTestScope} from './tests/helpers/agent-authorizations.mjs';
+import {createTestAuthorizations,authorizeTestScope} from './tests/helpers/agent-authorizations.ts';
 import {appendFileSync, writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';

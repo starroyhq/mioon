@@ -17,7 +17,7 @@ import {createExportSamplePeakDecoder} from '../packages/business/src/export-sam
 // creation is separate from analysis; each assertion checks the final AAC bytes.
 const runtime = {run, runStreaming, checkMediaEffect, withProbePermit};
 const decode = createExportSamplePeakDecoder(runtime);
-const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.mjs', import.meta.url));
+const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.ts', import.meta.url));
 const options = (overrides = {}) => ({beforeEffect() {}, remainingMs: () => 120000, ...overrides});
 const encode = args => run('ffmpeg', ['-hide_banner', '-v', 'error', '-nostdin', '-n', '-threads', '1', '-filter_threads', '1', ...args],
   {timeout: 120000, maxStdoutBytes: 0, maxStderrBytes: 64 * 1024});
@@ -37,7 +37,7 @@ function floatWave(seconds, sample, rate = 48000, channels = 2) {
 async function finalFile(root, name, seconds, sample, {rate = 48000, channels = 2, audioFirst = false} = {}) {
   const wav = path.join(root, `${name}.wav`), file = path.join(root, `${name}.mp4`);
   await writeFile(wav, floatWave(seconds, sample, rate, channels));
-  await encode(['-f', 'lavfi', '-i', `color=c=black:s=16x16:r=30:d=${seconds}`, '-i', wav,
+  await encode(['-f', 'lavfi', '-i', `color=c=black:s=16x16:r=30:d=${seconds}`, '-f', 'wav', '-i', wav,
     '-map', audioFirst ? '1:a:0' : '0:v:0', '-map', audioFirst ? '0:v:0' : '1:a:0',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-b:a', '192k', '-threads', '1', file]);
   return file;

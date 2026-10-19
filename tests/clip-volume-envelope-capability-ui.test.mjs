@@ -15,7 +15,7 @@ import * as imeSubmitGuard from '../apps/web/src/opacity-ime-submit-guard.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const capability={profileId:VOLUME_ENVELOPE_PROFILE,editable:true};
 const normal={restored:false};

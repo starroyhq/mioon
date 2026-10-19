@@ -25,8 +25,8 @@ import {rpc} from '../apps/web/src/api.ts';
 import {createLanguageStore} from '../apps/web/src/i18n/language-store.ts';
 import {LANGUAGE_STORAGE_KEY, parseLanguagePreference} from '../packages/i18n/src/preference.ts';
 import {LOCALES, translate, renderMessage} from '../packages/i18n/src/index.ts';
-import {restoredApplicationFixture, request, restoredApplicationToken} from './helpers/opacity-restored-application-fixture.mjs';
-import {hash} from './helpers/opacity-backup-fixture.mjs';
+import {restoredApplicationFixture, request, restoredApplicationToken} from './helpers/opacity-restored-application-fixture.ts';
+import {hash} from './helpers/opacity-backup-fixture.ts';
 
 // Shared HTTP, actual candidate clients/controller, real42 stores and cold43
 // restoration. The only browser facility represented in memory is localStorage;

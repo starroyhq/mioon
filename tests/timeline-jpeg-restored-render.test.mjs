@@ -14,8 +14,8 @@ import {matchesRestoredExport} from '../packages/business/src/workspace-restore-
 import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
-import {greyJfif,jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.mjs';
-import {png, sha, imageColour, stamp} from './helpers/timeline-image-fixtures.mjs';
+import {greyJfif,jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
+import {png, sha, imageColour, stamp} from './helpers/timeline-image-fixtures.ts';
 
 const retainedTables = ['projects', 'assets', 'timelines', 'timeline_history',
   'timeline_history_cursors', 'timeline_requests', 'exports', 'project_lut_resources', 'lut_import_requests'];

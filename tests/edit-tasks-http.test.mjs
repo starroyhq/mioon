@@ -9,7 +9,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {isEditTaskEnvelope, isEditTaskListEnvelope, DURABLE_EDIT_OPERATIONS} from '@mioon/contracts';
 import {EDIT_TASK_HTTP_LIMITS} from '../apps/server/src/edit-tasks-http.ts';
-import {taskFixture, taskPath, listPath, database, snapshot, REPO, TASK_TOKEN} from './helpers/edit-tasks-http-fixture.mjs';
+import {taskFixture, taskPath, listPath, database, snapshot, REPO, TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 
 const trackInput = (f, changes = {}) => ({projectId: f.project.id, expectedRevision: f.timeline.revision,
   requestId: randomUUID(), kind: 'audio', name: 'Durable synthetic track', ...changes});

@@ -6,7 +6,7 @@ import { LOCALES, validateCatalogs, translate, message, renderMessage } from '..
 import { referenceSourceDetails, referenceTargetOptions, referenceAttachIssueDescriptor, canvasEdge } from '../apps/web/src/reference-connections.ts';
 import { importFeedback, renderImportFeedback } from '../apps/web/src/import-feedback.ts';
 
-import { lenientFunction, stripSourceTypes } from './helpers/eval-source.mjs';
+import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 test('shell catalog has all four locales, exact placeholders, and no missing-key fallback', () => {
   assert.deepEqual(validateCatalogs(shellMessages), []);

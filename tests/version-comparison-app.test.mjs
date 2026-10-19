@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedRequest, isAllowedDownload, isAllowedNavigation } from '../apps/desktop/src/security.ts';
 import { captureComparison } from '../apps/web/src/version-comparison-state.ts';
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 test('exact comparison route inherits native same-origin media permission, not download/navigation/audio grants', () => {

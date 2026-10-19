@@ -10,7 +10,7 @@ import {
   pillowJfifFixture, pillowRestartJfifFixture, makeJfifFixture as jpeg, jpegSegment as segment, jfifApp0 as app0,
   jpegQuantization as dqt, jpegHuffman as dht, jpegFrame as frame, jpegScan as scan,
   jpegRestartInterval as dri, entropyBytes, jpegFixtureOffsets as offsets,
-} from './helpers/timeline-jpeg-fixtures.mjs';
+} from './helpers/timeline-jpeg-fixtures.ts';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function rejected(bytes, code = 'corrupt_jpeg', options) {

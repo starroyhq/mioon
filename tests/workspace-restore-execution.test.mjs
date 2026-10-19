@@ -38,7 +38,7 @@ import {createTimelinePreflightServices} from '../packages/business/src/timeline
 import {createTimelineExportAdmissionServices} from '../packages/business/src/timeline-export-admission.ts';
 import {startServer} from '../apps/server/src/index.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
-import {request,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.mjs';
+import {request,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 import {EventEmitter} from 'node:events';
 
 const isCode=code=>error=>error?.code===code;

@@ -14,7 +14,7 @@ import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigat
 import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id=n=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const scope='a'.repeat(64),otherScope='b'.repeat(64),stamp='2026-10-12T00:00:00.000Z';

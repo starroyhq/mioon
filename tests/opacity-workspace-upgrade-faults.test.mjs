@@ -9,8 +9,8 @@ import {upgradeOpacityWorkspace40To42 as upgrade} from '../packages/business/src
 import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
-import {opacityUpgradeFixture as seedFixture, upgradeFixtureStamp} from './helpers/opacity-upgrade-fixture.mjs';
-import {tree, hash} from './helpers/opacity-backup-fixture.mjs';
+import {opacityUpgradeFixture as seedFixture, upgradeFixtureStamp} from './helpers/opacity-upgrade-fixture.ts';
+import {tree, hash} from './helpers/opacity-backup-fixture.ts';
 
 // Each fault runs against a new synthetic40 project and its actual verified40
 // archive. No listener, subprocess, codec, provider or network can participate.

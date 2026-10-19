@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import { createExportRangeController, exportRangeContextFields, rangeFields } from '../apps/web/src/export-range-state.ts';
 import { createExportPreflightController } from '../apps/web/src/export-preflight-state.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
-import { component, nodes, textOf } from './fixtures/export-range-ui-harness.mjs';
+import { component, nodes, textOf } from './fixtures/export-range-ui-harness.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `db000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64), stamp = '2026-10-13T00:00:00.000Z';

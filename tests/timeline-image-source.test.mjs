@@ -8,7 +8,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readManagedTimelineImage,createTimelineImageSourceServices,validateTimelineImageSourceInterpretation} from '../packages/business/src/timeline-image-source.ts';
 import {validateManagedSource} from '../packages/business/src/managed-media.ts';
 import {probe} from '../packages/business/src/media.ts';
-import {png,pngChunk,sha,imageColour} from './helpers/timeline-image-fixtures.mjs';
+import {png,pngChunk,sha,imageColour} from './helpers/timeline-image-fixtures.ts';
 async function fixture(t,bytes=png()){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-image-source-'));await mkdir(path.join(root,'media'),{mode:0o700});const file=path.join(root,'media','fixture.png');await writeFile(file,bytes,{mode:0o600});const db=new DatabaseSync(':memory:');
  const asset={id:randomUUID(),projectId:randomUUID(),sha256:sha(bytes),sizeBytes:bytes.length,mimeType:'image/png',relativePath:'media/fixture.png'};let owned=true;

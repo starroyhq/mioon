@@ -16,7 +16,7 @@ import {isRestoredRecordHeld} from '../packages/business/src/workspace-restore-s
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement} from '../packages/business/src/timeline-float-outcome.ts';
 import {createTimelineFloatAudioAccumulator} from '../packages/business/src/timeline-float-audio-check.ts';
-import {tree, logical, hash} from './helpers/workspace-restore-offline-fixture.mjs';
+import {tree, logical, hash} from './helpers/workspace-restore-offline-fixture.ts';
 
 const settings = {profileId: 'mp4_h264_float_checked_v2', resolution: 'short_360', rateControl: {mode: 'crf', quality: 'standard'}};
 const domain = ['projects', 'assets', 'timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests', 'exports'];

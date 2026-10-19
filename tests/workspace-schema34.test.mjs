@@ -27,7 +27,7 @@ import {projectTimelineColourPlan} from '../packages/contracts/src/timeline-colo
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
 import {open,snapshot,fixture,facade} from './workspace-schema26-fixtures.mjs';
-import {png} from './helpers/timeline-image-fixtures.mjs';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const stamp='2026-10-15T00:00:00.000Z';

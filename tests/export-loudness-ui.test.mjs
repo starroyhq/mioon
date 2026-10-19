@@ -3,14 +3,14 @@ import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { stripSourceTypes } from './helpers/eval-source.mjs';
+import { stripSourceTypes } from './helpers/eval-source.ts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineRenderRecord } from '@mioon/contracts';
 import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import * as loudnessState from '../apps/web/src/export-loudness-state.ts';
-import { context, fixture, report, unready, row, asset, projectId } from './helpers/export-loudness-ui-fixture.mjs';
+import { context, fixture, report, unready, row, asset, projectId } from './helpers/export-loudness-ui-fixture.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 let rendered;
@@ -126,7 +126,7 @@ test('actual cancel callback is bound to its row/attempt and cannot cancel newer
 test('actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation', async () => {
   const app = source('App.tsx'), start = app.indexOf('  function exportSamplePeakContext()'), contextEnd = app.indexOf('  const exportSamplePeak =',start);
   const hookStart = app.indexOf('  const exportLoudness ='), hookEnd = app.indexOf('  function openTimelineExport()',hookStart);
-  const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{application \? undefined : exportLoudness\}/);
+  const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{application \? undefined : exportLoudness(?: as never)?\}/);
   const live = context(), calls = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };
   const workspaceRef = { current: { restored: false } }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
   let controller;

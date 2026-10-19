@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app = () => readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 test('App wires one explicit historical-file observer with live project/workspace/navigation fences', () => {
@@ -21,7 +21,7 @@ import { transformSync } from 'esbuild';
 import { isTimelineRenderRecord } from '@mioon/contracts';
 import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { createExportSamplePeakController, EXPORT_SAMPLE_PEAK_LABEL } from '../apps/web/src/export-sample-peak-state.ts';
-import { context, fixture, row, asset, report, unready, projectId, id } from './helpers/export-sample-peak-ui-fixture.mjs';
+import { context, fixture, row, asset, report, unready, projectId, id } from './helpers/export-sample-peak-ui-fixture.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 let rendered, fileActions, actualFileActions;

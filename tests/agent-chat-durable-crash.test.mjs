@@ -1,4 +1,4 @@
-import {authorizeHttpSnapshot} from './helpers/agent-authorizations.mjs';
+import {authorizeHttpSnapshot} from './helpers/agent-authorizations.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -14,7 +14,7 @@ import {deriveAgentEndpoint} from '@mioon/contracts';
 import {responsesFixture, frameResponsesEvent} from './agent-responses-fixture.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const CHILD = fileURLToPath(new URL('./helpers/agent-chat-crash-process.mjs', import.meta.url));
+const CHILD = fileURLToPath(new URL('./helpers/agent-chat-crash-process.ts', import.meta.url));
 const TOKEN = 'synthetic-durable-chat-subprocess-token';
 const PREFIX = '已提交的回复 / committed partial';
 const LATE = 'LATE_BYTES_MUST_NEVER_BE_COMMITTED';

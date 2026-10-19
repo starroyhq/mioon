@@ -11,9 +11,9 @@ import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.t
 import {inspectStaticSrgbJfif} from '../packages/business/src/timeline-jpeg-admission.ts';
 import {inspectStaticSrgbPng} from '../packages/business/src/timeline-image-admission.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
-import {png, imageColour, evidenceOnly, timelineFixture, sha} from './helpers/timeline-image-fixtures.mjs';
-import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.mjs';
-import {probeJfifFixture, PROBE_JFIF_SHA256} from './helpers/timeline-jpeg-probe-fixture.mjs';
+import {png, imageColour, evidenceOnly, timelineFixture, sha} from './helpers/timeline-image-fixtures.ts';
+import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
+import {probeJfifFixture, PROBE_JFIF_SHA256} from './helpers/timeline-jpeg-probe-fixture.ts';
 
 const genericFormats = 'mov,matroska,mp3,wav,png_pipe,jpeg_pipe,webp_pipe';
 const option = (args, key) => args.includes(key) ? args[args.indexOf(key) + 1] : undefined;

@@ -151,7 +151,12 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
 }
 
 function preEnvelopeHistoricalRole(role:CurrentWorkspaceRole): boolean {
-  return role==='ordinary-26'||role==='ordinary-28'||role==='ordinary-30'||role==='ordinary-32'||role==='ordinary-34'||role==='ordinary-36'||role==='ordinary-38';
+  // Fixed capture profiles before schema40 preserved opaque historical receipts
+  // byte-for-byte in their restore archive tables; those cells can never carry
+  // readable envelope evidence. ordinary-through-24/restored-25 stay strict for
+  // current admission as the BLOB admission boundary pins.
+  return role==='ordinary-26'||role==='ordinary-28'||role==='ordinary-30'||role==='ordinary-32'||role==='ordinary-34'||role==='ordinary-36'||role==='ordinary-38'
+    ||role==='restored-27-evidence'||role==='restored-29-evidence'||role==='restored-31-evidence'||role==='restored-33-evidence'||role==='restored-35-evidence'||role==='restored-37-evidence'||role==='restored-39-evidence';
 }
 function volumeEnvelopeAdmission(role:CurrentWorkspaceRole) {
   return {allowVolumeEnvelopes:role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence',
@@ -219,7 +224,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   };
   const validateRestore = (db: DatabaseSync) => {
     const role = readCurrentWorkspaceRole(db);
-    validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'});
+    validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
     validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
     validateWorkspaceColourRows(db, colourAdmission(role));
     if (role === 'restored-49-evidence') return restored49.validateWorkspaceRestoreSchemaV49(db);

@@ -11,7 +11,7 @@ import {openStore} from '@mioon/business';
 import {startServer} from '@mioon/server';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {createFileResponses, FILE_RESPONSE_LIMITS} from '../apps/server/src/file-response.ts';
-import {authorizeHttpSnapshot} from './helpers/agent-authorizations.mjs';
+import {authorizeHttpSnapshot} from './helpers/agent-authorizations.ts';
 
 const token = 'synthetic-q4-file-response-token';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

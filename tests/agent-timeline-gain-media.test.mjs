@@ -6,9 +6,9 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {canonical} from '../packages/business/src/services.ts';
-import {database, savedProposal, tableSnapshot, REPO, EDIT_WIRE_TOKEN} from './helpers/agent-edit-wire-fixture.mjs';
-import {savedTimeline, timelineRows} from './helpers/agent-timeline-wire-fixture.mjs';
-import {gainWireFixture, clipBytesExceptGain, GAIN_FUNCTION} from './helpers/agent-timeline-gain-wire-fixture.mjs';
+import {database, savedProposal, tableSnapshot, REPO, EDIT_WIRE_TOKEN} from './helpers/agent-edit-wire-fixture.ts';
+import {savedTimeline, timelineRows} from './helpers/agent-timeline-wire-fixture.ts';
+import {gainWireFixture, clipBytesExceptGain, GAIN_FUNCTION} from './helpers/agent-timeline-gain-wire-fixture.ts';
 
 // A bounded real-media acceptance, complementary to the protocol/crash matrix.
 // Every gain is proposed by the existing owned loopback SSE fixture, explicitly

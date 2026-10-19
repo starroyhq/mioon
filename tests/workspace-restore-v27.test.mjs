@@ -27,12 +27,16 @@ import {workspaceRestorationPairSchema,workspaceBackupSourceSchemaVersion} from 
 const oldFixtureRoot=new URL('./fixtures/workspace-restore-v27/',import.meta.url);
 const oldManifest=JSON.parse(fs.readFileSync(new URL('manifest.json',oldFixtureRoot),'utf8'));
 const zodURL=pathToFileURL(createRequire(new URL('../packages/contracts/package.json',import.meta.url)).resolve('zod')).href;
-function oldSource(name,backupURL){
+function oldSource(currentName,backupURL){
+ // The fixture keeps the pre-migration `.mjs` copies; current callers use the
+ // renamed `.ts` names, so resolve back to the frozen legacy file.
+ const name=oldManifest.files[currentName]?currentName:currentName.replace(/\.ts$/,'.mjs');
+ assert.ok(oldManifest.files[name],`${currentName}: documented legacy fixture mapping`);
  const source=fs.readFileSync(new URL(`legacy-contracts/${name}`,oldFixtureRoot),'utf8');
  assert.equal(createHash('sha256').update(source).digest('hex'),oldManifest.files[name]);
- const expected=name==='workspace-restore-offline.mjs'?['zod','./workspace-backup.ts']:['zod'];
+ const expected=name==='workspace-restore-offline.mjs'?['zod','./workspace-backup.mjs']:['zod'];
  const imports=[...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(match=>match[1]);assert.deepEqual(imports,expected);
- return 'data:text/javascript;base64,'+Buffer.from(source.replace("from 'zod'",`from '${zodURL}'`).replace("from './workspace-backup.ts'",`from '${backupURL}'`)).toString('base64');
+ return 'data:text/javascript;base64,'+Buffer.from(source.replace("from 'zod'",`from '${zodURL}'`).replace("from './workspace-backup.mjs'",`from '${backupURL}'`)).toString('base64');
 }
 const oldBackupURL=oldSource('workspace-backup.ts');
 const {workspaceBackupManifestSchema:oldManifestSchema,workspaceBackupResultSchema:oldResultSchema}=await import(oldBackupURL);
@@ -114,8 +118,7 @@ for(const mock of [false,true])test(`source26→restored27 holds every durable a
  assert.deepEqual(profile.validateWorkspaceRestoreSchemaV27(db),result);
  assert.throws(()=>classifyHistorical(db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});assert.throws(()=>installHistorical(db,metadata()),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  const requestId=randomUUID();
- const local=(operation,origin)=>db.prepare("INSERT INTO edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes,executionEpoch) VALUES(?,?,?,?,?,?,'timeline:mutation','new','prepared',1,0,'now','now',16384,?)")
-  .run(randomUUID(),tasks[0].projectId,operation,raw({projectId:tasks[0].projectId,requestId}),requestId,'f'.repeat(64),origin);
+ const local=(operation,origin)=>{const statement=db.prepare("INSERT INTO edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes,executionEpoch) VALUES(?,?,?,?,?,?,'timeline:mutation','new','prepared',1,0,'now','now',16384,?)");statement.setReadBigInts(true);return statement.run(randomUUID(),tasks[0].projectId,operation,raw({projectId:tasks[0].projectId,requestId}),requestId,'f'.repeat(64),origin);};
  assert.throws(()=>local('timeline.loudness.apply',info.workspaceOrigin),/RESTORE_OPERATION_UNAVAILABLE/);
  assert.throws(()=>local('timeline.undo','captured'),/RESTORED_RECORD_HELD/);
  assert.throws(()=>local('timeline.undo',randomUUID()),/RESTORE_ORIGIN_REQUIRED/);
@@ -169,16 +172,15 @@ for(const sourceVersion of [24,26])test(`offline create→verify→restore→sta
  const reopened=openStore(destination);try{assert.equal(getWorkspaceRestoreContext(reopened).schemaVersion,result.databaseSchemaVersion);}finally{reopened.close();}
 });
 
-test('schema32 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
+test('current ordinary48 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
  const base=temporary(t),store=openStore(path.join(base,'ordinary'));t.after(()=>store.close());
  const before=snapshot(store.db),inspection=inspectWorkspaceBackup(store);
- assert.equal(inspection.databaseSchemaVersion,32);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
- for(const version of [1,23,24,26,28,30,32])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
- for(const version of [0,25,27,29,31,33,34,26.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
- for(const profileId of ['restored-local-v1','restored-local-v2','restored-local-v3'])for(const sourceSchema of [24,26,28])for(const databaseSchemaVersion of [25,27,29]){
-  assert.equal(workspaceRestorationPairSchema.safeParse({profile:profileId,sourceSchema,databaseSchemaVersion}).success,
-   profileId==='restored-local-v1'?sourceSchema===24&&databaseSchemaVersion===25:profileId==='restored-local-v2'?sourceSchema===26&&databaseSchemaVersion===27:sourceSchema===28&&databaseSchemaVersion===29);
- }
+ assert.equal(inspection.databaseSchemaVersion,48);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
+ for(const version of [1,23,24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
+ for(const version of [0,25,27,29,31,33,35,37,39,41,45,49,26.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
+ const pairs=[['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49]];
+ for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,true);
+ for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema:sourceSchema+1,databaseSchemaVersion}).success,false);
 });
 
 // The legacy expected source is committed once, not synthesized by the new

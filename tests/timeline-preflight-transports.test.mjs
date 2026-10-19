@@ -18,7 +18,7 @@ import {parse, schemas, operationEffect, exportPreflightSchemas, exportPreflight
   isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from '../packages/contracts/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.mjs';
+import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const operation = 'timeline.export.preflight';
@@ -159,7 +159,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {installWireGuard} from ${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs')).href)};
+import {installWireGuard} from ${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/inspection-wire-fixture.ts')).href)};
 const originalSpawn = childProcess.spawn;
 const {deny} = installWireGuard({origin:process.env.MIOON_PREFLIGHT_WIRE_ORIGIN || '',auditPath:process.env.MIOON_PREFLIGHT_WIRE_AUDIT});
 if(process.argv[2] === 'preflight-server'){

@@ -15,7 +15,7 @@ import {createOpacityCandidateApplicationServices} from '../packages/business/sr
 import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceBackup} from '../packages/business/src/opacity-candidate-backup.ts';
 import {createOpacityCandidateTimelineDeliveryGuards, readOpacityCandidateApplicationSource} from '../packages/business/src/opacity-candidate-delivery.ts';
 import {readTimelineExportPreviewMedia, readTimelineDeliveryDownload} from '../packages/business/src/timeline-delivery-read.ts';
-import {opacityBackupFixture, hash, opacityBackupStamp} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture, hash, opacityBackupStamp} from './helpers/opacity-backup-fixture.ts';
 
 // The copy is checked against actual cold42 ->43 permissions with opaque bytes,
 // never a decoder, provider or listening backend.

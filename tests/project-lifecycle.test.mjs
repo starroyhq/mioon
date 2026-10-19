@@ -17,7 +17,7 @@ import {IMAGE_MODELS,IMAGE_FIXED_OPTIONS,deriveAgentEndpoint} from '@mioon/contr
 import {setTimeout as pause} from 'node:timers/promises';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
-import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.mjs';
+import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile,validateManagedDirectory};
 const stamp='2026-10-19T00:00:00.000Z';

@@ -12,14 +12,14 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {discoverSchema} from '../packages/client/src/index.ts';
-import {optionalRequestIdOperations} from './helpers/catalog-input-branches.mjs';
+import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {IDS, TOKEN, snapshot} from './helpers/mutation-wire-fixture.mjs';
-import {PRIVATE, RANGE_IDS} from './helpers/source-range-wire-fixture.mjs';
+import {IDS, TOKEN, snapshot} from './helpers/mutation-wire-fixture.ts';
+import {PRIVATE, RANGE_IDS} from './helpers/source-range-wire-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const helper = path.join(repo, 'tests/helpers/source-range-wire-fixture.mjs');
+const helper = path.join(repo, 'tests/helpers/source-range-wire-fixture.ts');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const target = {projectId: IDS.project, assetId: IDS.asset};
 const operations = ['asset.range.get', 'asset.range.set'];

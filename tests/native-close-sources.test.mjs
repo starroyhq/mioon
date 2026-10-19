@@ -17,7 +17,7 @@ import * as image from '../apps/web/src/image-generation.ts';
 import * as toolState from '../apps/web/src/agent-tool-state.ts';
 import * as timing from '../apps/web/src/agent-timeline-context.ts';
 import * as contracts from '@mioon/contracts';
-import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.mjs';
+import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.ts';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), requestId = id(4), runId = id(5), groupId = id(6), taskId = id(7), reviewId = id(8), shotId = id(9), proposalId = id(10);

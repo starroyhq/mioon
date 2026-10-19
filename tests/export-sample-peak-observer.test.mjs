@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
-import {samplePeakOperation as operation,samplePeakInput as input} from './helpers/export-sample-peak-fixture.mjs';
+import {samplePeakOperation as operation,samplePeakInput as input} from './helpers/export-sample-peak-fixture.ts';
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 for(const trigger of ['aborted','close'])test(`sample peak ${trigger} cancels only its explicit observer and detaches listeners`,async()=>{
   const req=new EventEmitter(),res=new EventEmitter(),entered=deferred(),stopped=deferred();let signal,calls=0;

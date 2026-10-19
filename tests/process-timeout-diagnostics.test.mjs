@@ -5,8 +5,8 @@ import {EventEmitter, once} from 'node:events';
 import {PassThrough} from 'node:stream';
 
 const wire = readFileSync(new URL('./asset-disposition-transports.test.mjs', import.meta.url), 'utf8');
-const guard = readFileSync(new URL('./helpers/inspection-wire-fixture.mjs', import.meta.url), 'utf8');
-const fixture = readFileSync(new URL('./helpers/asset-disposition-wire-fixture.mjs', import.meta.url), 'utf8');
+const guard = readFileSync(new URL('./helpers/inspection-wire-fixture.ts', import.meta.url), 'utf8');
+const fixture = readFileSync(new URL('./helpers/asset-disposition-wire-fixture.ts', import.meta.url), 'utf8');
 function section(source, start, end) {
   const from = source.indexOf(start), to = source.indexOf(end, from + start.length);
   assert.ok(from >= 0 && to > from, `actual fixture boundary: ${start}`);
@@ -123,7 +123,7 @@ test('fixture phases are opt-in, constant-only, capped16 and use no process life
 });
 
 const recovery = readFileSync(new URL('./edit-task-process-recovery.test.mjs', import.meta.url), 'utf8');
-const workerSource = readFileSync(new URL('./helpers/edit-task-process-worker.mjs', import.meta.url), 'utf8');
+const workerSource = readFileSync(new URL('./helpers/edit-task-process-worker.ts', import.meta.url), 'utf8');
 test('actual worker readiness deadline stays10s with its original failure and timer cleanup', async () => {
   const code = section(recovery, 'function deadline(', 'function startWorker('), timers = [], cleared = [];
   const deadline = create(['setTimeout', 'clearTimeout'], code, 'deadline', [

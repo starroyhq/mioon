@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { isTimelineRenderRecord } from '@mioon/contracts';
 import { EXPORT_LOUDNESS_PROFILE } from '@mioon/contracts/export-loudness';
 import { createExportLoudnessController, exportLoudnessTargets, exportLoudnessViewState, parseExportLoudnessTarget, exportLoudnessErrorMessage } from '../apps/web/src/export-loudness-state.ts';
-import { context, fixture, report, unready, row, asset, id, projectId } from './helpers/export-loudness-ui-fixture.mjs';
+import { context, fixture, report, unready, row, asset, id, projectId } from './helpers/export-loudness-ui-fixture.ts';
 
 const blank = { integratedLufs: '', truePeakCeilingDbtp: '' }, custom = { integratedLufs: '-14', truePeakCeilingDbtp: '-1' };
 test('optional target is absent by default, exact bounded explicit values only', () => {

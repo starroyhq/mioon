@@ -10,7 +10,7 @@ import {discoverSchema,createClient,schemas} from '@mioon/client';
 import {parse,isExportLoudnessResponse,effectAnnotations,operationEffect,EXPORT_LOUDNESS_PROFILE} from '@mioon/contracts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
-import {loudnessOperation as operation,loudnessInput as input,loudnessToken as token,readyLoudness,incompleteLoudness,loudnessTarget as target} from './fixtures/export-loudness-fixtures.mjs';
+import {loudnessOperation as operation,loudnessInput as input,loudnessToken as token,readyLoudness,incompleteLoudness,loudnessTarget as target} from './fixtures/export-loudness-fixtures.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const env=url=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});

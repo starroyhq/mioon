@@ -18,7 +18,7 @@ import { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION } from 
 import { IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY } from '../packages/contracts/src/image-reviews.ts';
 import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, createImageGenerationSession, imageCanGenerate, imageDraftDirty, imageInputIssue, imageTaskLabel } from '../apps/web/src/image-generation.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), taskId = id(3), requestId = id(4), versionId = id(5), assetId = id(6);

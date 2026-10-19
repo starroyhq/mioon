@@ -11,8 +11,8 @@ import {JFIF_INPUT_ARGS,JFIF_RGB24_FILTER,validateJfifDecode} from '../packages/
 import {timelineImageDisplayTable} from '../packages/business/src/timeline-image-filter.ts';
 import {prepareTimelineImageLayers} from '../packages/business/src/timeline-image-staging.ts';
 import {inspectStaticSrgbJfif} from '../packages/business/src/timeline-jpeg-admission.ts';
-import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.mjs';
-import {jpegEvidenceOnly} from './helpers/timeline-jpeg-workflow-fixtures.mjs';
+import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
+import {jpegEvidenceOnly} from './helpers/timeline-jpeg-workflow-fixtures.ts';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const expected=code=>{const s=code/255;return (s<=.04045?s/12.92:((s+.055)/1.055)**2.4)**(1/2.4);};
 async function fixture(t,sampling){const root=await mkdtemp(path.join(tmpdir(),'mioon-jfif-decode-'));t.after(()=>rm(root,{recursive:true,force:true}));const file=path.join(root,'source.jpg'),bytes=pillowJfifFixture(sampling);await writeFile(file,bytes);return{root,file,bytes};}

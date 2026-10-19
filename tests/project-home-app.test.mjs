@@ -17,7 +17,7 @@ import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, a
 import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
 import {canEditTimelineAudioRole, isWorkspaceRestoreInspection} from '@mioon/contracts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The same assertions can run against an independently extracted baseline App.

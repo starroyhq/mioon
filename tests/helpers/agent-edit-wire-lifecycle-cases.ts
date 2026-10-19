@@ -86,7 +86,7 @@ test('close awaits late acquisition disposal and retains its exact failure', asy
 for (const disconnectAt of ['start-send', 'server-starting']) test(`backend startup owns a parent IPC disconnect at ${disconnectAt} until every acquired resource closes`, {timeout: 15000}, async t => {
   const lifetime = new OwnedFixtureLifetime(t);
   const root = await lifetime.acquire(async () => mkdtemp(path.join(await realpath(tmpdir()), 'mioon-owned-disconnect-regression-')), value => rm(value, {recursive: true, force: true}));
-  const entry = fileURLToPath(new URL('./agent-edit-wire-process.mjs', import.meta.url));
+  const entry = fileURLToPath(new URL('./agent-edit-wire-process.ts', import.meta.url));
   const child = spawn(process.execPath, [entry], {stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', NODE_ENV: 'test', ...inheritedTestCompileCache()}});
   let stderr = '';

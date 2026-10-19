@@ -37,7 +37,7 @@ test('named download uses actual response metadata and trusted Downloads only, w
   const before = await readdir(directory);
   const f = fixture({directory: {downloadsDirectory: directory}});
   assert.equal(f.prevented, 0); assert.equal(f.writes, 0);
-  assert.deepEqual(f.options, {title: '保存视频', defaultPath: path.join(directory, timelineDeliveryBasename('海边最终版', exportId)),
+  assert.deepEqual(f.options, {title: '保存视频', buttonLabel: '保存视频', defaultPath: path.join(directory, timelineDeliveryBasename('海边最终版', exportId)),
     filters: [{name: 'MP4 视频', extensions: ['mp4']}], properties: ['showOverwriteConfirmation']});
   f.item.emit('done', {}, 'cancelled');
   assert.deepEqual(await readdir(directory), before, 'cancel remains Chromium-owned with no helper write');

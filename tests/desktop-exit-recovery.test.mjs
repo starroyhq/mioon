@@ -11,10 +11,10 @@ import {fileURLToPath} from 'node:url';
 import {BackendSupervisor} from '../apps/desktop/src/supervisor.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {shotTextForStore} from './fixtures/local-shot-text-process-worker.mjs';
+import {shotTextForStore} from './fixtures/local-shot-text-process-worker.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const workerPath = fileURLToPath(new URL('./helpers/edit-task-process-worker.mjs', import.meta.url));
+const workerPath = fileURLToPath(new URL('./helpers/edit-task-process-worker.ts', import.meta.url));
 const sourceBytes = Buffer.from('Synthetic source bytes retained across desktop backend failure');
 const domainTables = ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines',
   'timeline_requests', 'reference_requests', 'timeline_history', 'timeline_history_cursors', 'idempotency', 'job_events',

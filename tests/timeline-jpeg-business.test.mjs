@@ -7,8 +7,8 @@ import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
-import {pillowJfifFixture,jpegSegment} from './helpers/timeline-jpeg-fixtures.mjs';
-import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.mjs';
+import {pillowJfifFixture,jpegSegment} from './helpers/timeline-jpeg-fixtures.ts';
+import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
 async function fixture(t){const root=await mkdtemp(path.join(tmpdir(),'mioon-jpeg-business-'));let store=openStore(root),services=createServices(store,new Map());t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});const call=(op,input)=>services.call(op,input),projectId=(await call('project.create',{name:'JFIF JPEG mixed colour'})).id;return{root,projectId,call,get store(){return store;},async reopen(){await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());},params:(timeline,extra={})=>({projectId,requestId:randomUUID(),expectedRevision:timeline.revision,...extra}),import:bytes=>call('asset.import',{projectId,name:'source.jpg',mimeType:'image/jpeg',dataBase64:bytes.toString('base64')})};}
 test('actual JFIF JPEG import/inspect/save/replay and reopen preserve explicit mixed profile',async t=>{
  const f=await fixture(t),asset=await f.import(pillowJfifFixture('444')),inspection=await f.call('timeline.colour.jpeg.inspect',{projectId:f.projectId,assetId:asset.id});assert.equal(inspection.status,'needs_interpretation');

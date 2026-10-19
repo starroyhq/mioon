@@ -11,7 +11,7 @@ import * as mutations from '../apps/web/src/mutation-submissions.ts';
 import {ApiError} from '../apps/web/src/api.ts';
 import {prepareSubmission,readPending,writePending,reconcilePending} from '../apps/web/src/submissions.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);

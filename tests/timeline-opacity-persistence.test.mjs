@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {captureOpacityTimelineIntent,captureOpacityTimelinePrepare,captureOpacityTimelineRecord,isOpacityTimelineMutationResponse,isOpacityTimelineTask} from '../packages/contracts/src/timeline-opacity-persistence.ts';
 import {schemas,isTimelineRecord,isTimelineMutationResponse,isEditTask} from '../packages/contracts/src/index.ts';
-import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.mjs';
+import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
 import {OPACITY_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-opacity-envelope.ts';
 
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;

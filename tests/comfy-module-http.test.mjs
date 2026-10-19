@@ -16,8 +16,8 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
 import {operationDefinition, EXIT_CODES} from '../packages/client/src/index.ts';
 import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION, comfyImageSettingsResultSchema} from '../packages/contracts/src/comfy-images.ts';
-import {startComfyFixture, COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.mjs';
-import {availability, imageRows, until} from './helpers/comfy-module-fixture.mjs';
+import {startComfyFixture, COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.ts';
+import {availability, imageRows, until} from './helpers/comfy-module-fixture.ts';
 
 const token = 'synthetic-optional-comfy-http-access-token';
 const modes = {load: 'available', skip: 'not_loaded', 'not-provided': 'not_provided'};

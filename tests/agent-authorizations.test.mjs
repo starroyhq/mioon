@@ -10,7 +10,7 @@ import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts'
 import {AGENT_AUTHORIZATION_FILENAME} from '../packages/business/src/agent/authorizations.ts';
 import {AGENT_AUTHORIZATION_SCOPES,agentAuthorizationSchemas} from '../packages/contracts/src/agent-authorization.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
-import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.mjs';
+import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 
 async function fixture(t){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-authorizations-'));let store=openStore(root);

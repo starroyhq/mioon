@@ -16,7 +16,7 @@ import {clipDraftOpacityRestoredDiskSchema, clipDraftOpacityRestoredWriteSchema,
 import {clipDraftOpacityCandidateDiskV3Schema} from '../packages/contracts/src/local-drafts-opacity-candidate.ts';
 import {LOCAL_DRAFT_LIMITS} from '../packages/contracts/src/local-drafts.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {opacityBackupFixture, hash} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture, hash} from './helpers/opacity-backup-fixture.ts';
 
 // Actual task-owned cold42 -> archive -> independent43. All assets are opaque
 // bytes; neither the codec, listener nor provider boundary is entered.

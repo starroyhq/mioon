@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {opacityInspectorImeFixture as fixture} from './helpers/opacity-inspector-ime-fixture.mjs';
+import {opacityInspectorImeFixture as fixture} from './helpers/opacity-inspector-ime-fixture.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const start = source.indexOf('  const guardRetainedInputInteraction = (event: React.SyntheticEvent) => {');

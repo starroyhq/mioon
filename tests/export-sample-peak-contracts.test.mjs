@@ -5,7 +5,7 @@ import {discoverSchema} from '@mioon/client';
 import {EXPORT_SAMPLE_PEAK_ALGORITHM,EXPORT_SAMPLE_PEAK_LIMITS,exportSamplePeakSchemas,exportSamplePeakInputSchema,
   exportSamplePeakResponseSchema,isExportSamplePeakResponse,exportSamplePeakReason} from '@mioon/contracts/export-sample-peak';
 import {isExportSamplePeakFrameCountCompatible} from '@mioon/contracts/export-sample-peak';
-import {samplePeakOperation as operation,samplePeakInput as input,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.mjs';
+import {samplePeakOperation as operation,samplePeakInput as input,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 
 const changed = change => {const report=readySamplePeak();change(report);return report;};

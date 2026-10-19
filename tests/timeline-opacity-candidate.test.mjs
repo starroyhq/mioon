@@ -4,7 +4,7 @@ import {schemas, isTimelineRecord} from '../packages/contracts/src/index.ts';
 import {isEditTask} from '../packages/contracts/src/edit-tasks.ts';
 import {createTimelineOpacityCandidateContracts, OPACITY_CANDIDATE_LIMITS} from '../packages/contracts/src/timeline-opacity-candidate.ts';
 import {OPACITY_ENVELOPE_PROFILE, OPACITY_ENVELOPE_LIMITS} from '../packages/contracts/src/timeline-opacity-envelope.ts';
-import {captureVolumeEnvelopeCandidateIntent as previousCapture} from './helpers/timeline-volume-envelope-candidate-intent.mjs';
+import {captureVolumeEnvelopeCandidateIntent as previousCapture} from './helpers/timeline-volume-envelope-candidate-intent.ts';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const add = 'timeline.clip.add', update = 'timeline.clip.update', stamp = '2026-10-16T00:00:00.000Z';

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readTimelineClipLoudnessRpc } from '../apps/web/src/timeline-clip-loudness-rpc.ts';
 import { rpc } from '../apps/web/src/api.ts';
-import { input, report, deferred, id } from './helpers/timeline-clip-loudness-ui-fixture.mjs';
+import { input, report, deferred, id } from './helpers/timeline-clip-loudness-ui-fixture.ts';
 const wire = value => new TextEncoder().encode(JSON.stringify(value));
 const response = body => new Response(wire(body), { headers: { 'Content-Type': 'application/json' } });
 const tick = () => new Promise(resolve => setImmediate(resolve));

@@ -6,7 +6,7 @@ import http from 'node:http';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {randomUUID} from 'node:crypto';
-import {opacityBackupFixture} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture} from './helpers/opacity-backup-fixture.ts';
 import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceBackup} from '../packages/business/src/opacity-candidate-backup.ts';
 import {openOpacityCandidateStore, reopenRestoredOpacityCandidateApplicationStore, reopenOpacityCandidateApplicationStore,
   getOpacityCandidateAssembly} from '../packages/business/src/opacity-candidate-store.ts';

@@ -107,7 +107,11 @@ test('legacy media0755 and SQLite0644 survive restart with exact project values 
   const service = await startServer({dataDir: f.root, port: 0});
   try { assert.equal(service.token, token); assert.equal((await fetch(service.url + '/health')).status, 200); }
   finally { await service.close(); }
-  store = openStore(f.root); try { assert.deepEqual(store.get('projects', project.id), project); assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => row.version), [...Array.from({length: 24}, (_, index) => index + 1), 26]); } finally { store.close(); }
+  store = openStore(f.root); try { assert.deepEqual(store.get('projects', project.id), project);
+    // A restart upgrades the legacy profile through every ordinary marker to
+    // the current ordinary-48 role; the exact lineage is asserted, not a superset.
+    assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => row.version), [...Array.from({length: 24}, (_, index) => index + 1), 26, 28, 30, 32, 34, 36, 38, 40, 44, 48]);
+  } finally { store.close(); }
   assert.equal(fs.statSync(path.join(f.root, 'media')).mode & 0o777, 0o755);
   assert.equal(fs.statSync(path.join(f.root, 'workbench.sqlite')).mode & 0o777, 0o644);
 });

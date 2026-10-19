@@ -6,9 +6,9 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainReviewTarget} from '@mioon/contracts';
 import {canonical} from '../packages/business/src/services.ts';
-import {editRoute, chatRoute, database, savedProposal, tableSnapshot, until, REPO, EDIT_WIRE_TOKEN, DOMAIN_TABLES} from './helpers/agent-edit-wire-fixture.mjs';
-import {timelineRows, savedTimeline} from './helpers/agent-timeline-wire-fixture.mjs';
-import {gainWireFixture, clipBytesExceptGain, GAIN_FUNCTION, GAIN_VALUE, GAIN_MESSAGE} from './helpers/agent-timeline-gain-wire-fixture.mjs';
+import {editRoute, chatRoute, database, savedProposal, tableSnapshot, until, REPO, EDIT_WIRE_TOKEN, DOMAIN_TABLES} from './helpers/agent-edit-wire-fixture.ts';
+import {timelineRows, savedTimeline} from './helpers/agent-timeline-wire-fixture.ts';
+import {gainWireFixture, clipBytesExceptGain, GAIN_FUNCTION, GAIN_VALUE, GAIN_MESSAGE} from './helpers/agent-timeline-gain-wire-fixture.ts';
 
 const unchangedTables = DOMAIN_TABLES.filter(table => !['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests'].includes(table));
 const items = capture => capture.protocol === 'responses' ? capture.body.input : capture.body.messages;

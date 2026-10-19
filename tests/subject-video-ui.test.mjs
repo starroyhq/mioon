@@ -16,7 +16,7 @@ import * as api from '../apps/web/src/api.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import { referenceForShot } from '../apps/web/src/reference-connections.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const taskIntentModule = { exports: {} };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);

@@ -20,7 +20,7 @@ import {classifyCurrentWorkspaceSchema, validateCurrentWorkspaceRestoreSchema} f
 import {workspaceBackupManifestSchema} from '../packages/contracts/src/workspace-backup.ts';
 import {workspaceRestoreOfflineResultSchema} from '../packages/contracts/src/workspace-restore-offline.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {opacityBackupFixture, tree, originalRows, hash} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture, tree, originalRows, hash} from './helpers/opacity-backup-fixture.ts';
 
 let childAttempts = 0;
 for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'])

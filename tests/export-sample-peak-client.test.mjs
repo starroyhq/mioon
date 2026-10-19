@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createClient} from '@mioon/client';
-import {samplePeakOperation as operation,samplePeakInput as input,samplePeakToken as token,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.mjs';
+import {samplePeakOperation as operation,samplePeakInput as input,samplePeakToken as token,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.ts';
 const env={MIOON_TOKEN:token};
 const success=data=>({ok:true,status:200,json:async()=>({ok:true,data})});
 

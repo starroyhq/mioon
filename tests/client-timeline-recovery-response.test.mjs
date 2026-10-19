@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {TIMELINE_MUTATION_OPERATIONS, isTimelineRecord, isTimelineReplacementResponse, TIMELINE_RESPONSE_BYTES, TIMELINE_REPLACEMENT_RESPONSE_BYTES, isTimelineMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {createClient} from '@mioon/client';
 import {TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES} from '@mioon/contracts/timeline-loudness-apply';
-import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.mjs';
+import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
 
 const env = {MIOON_TOKEN: 'synthetic-timeline-recovery-token'};
 const clone = value => structuredClone(value);

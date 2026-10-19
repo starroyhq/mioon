@@ -8,7 +8,7 @@ import { transformSync } from 'esbuild';
 import * as i18n from './helpers/i18n.ts';
 import * as stateModule from '../apps/web/src/timeline-clip-loudness-state.ts';
 import * as contract from '@mioon/contracts/timeline-clip-loudness';
-import { fixture, context, report, silentClipLoudness, id } from './helpers/timeline-clip-loudness-ui-fixture.mjs';
+import { fixture, context, report, silentClipLoudness, id } from './helpers/timeline-clip-loudness-ui-fixture.ts';
 import { savedClipLoudnessFields } from '../apps/web/src/timeline-clip-loudness-context.ts';
 import { clipLoudnessMessages } from '../packages/i18n/src/catalogs/clip-loudness.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -103,9 +103,9 @@ test('four locale component labels/statuses and placeholders are present, zh-Han
 });
 test('actual host binds selected saved clip and shared RPC; comparison/source overlays and draft conflicts fence analysis', () => {
   const app = source('App.tsx'), inspector = source('TimelineInspector.tsx'), api = source('api.ts');
-  assert.match(app, /savedClipLoudnessFields\(saved, dataRef.current.assets, editing.selectedClipId\)/);
+  assert.match(app, /savedClipLoudnessFields\(saved, dataRef.current!.assets, editing.selectedClipId\)/);
   assert.match(app, /clipLoudnessEpoch.current\+\+/); assert.match(app, /!previewAssetRef.current && !comparisonIdRef.current && !webSettingsOpen/);
-  assert.match(app, /loudnessContext=\{clipLoudnessContext\}/); assert.match(app, /loudnessInvocation=\{\(\) => pinNewWorkspaceIntent\(\{\}, workspaceRef.current\)\}/);
+  assert.match(app, /loudnessContext=\{clipLoudnessContext(?: as never)?\}/); assert.match(app, /loudnessInvocation=\{\(\) => pinNewWorkspaceIntent\(\{\}, workspaceRef.current\)\}/);
   assert.match(inspector, /<ClipAudioControls[^>]*\/>\{loudnessContext && <ClipLoudnessObservation/);
   assert.match(inspector, /clipLoudnessDraftContext\(scopedContext\(\), draftController.getState\(\), visible\)/);
   assert.match(inspector, /rpc\('timeline.clip.loudness', input, options\)/);

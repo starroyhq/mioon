@@ -18,10 +18,10 @@ import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
 import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.ts';
 import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
-import {syntheticPng} from './helpers/runway-unknown-fixture.mjs';
+import {syntheticPng} from './helpers/runway-unknown-fixture.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const workerPath = fileURLToPath(new URL('./fixtures/local-drafts-process.mjs', import.meta.url));
+const workerPath = fileURLToPath(new URL('./fixtures/local-drafts-process.ts', import.meta.url));
 const token = 'synthetic-local-drafts-http-process-token';
 const clipRoute = key => '/api/local-drafts/clip?' + new URLSearchParams(key);
 const listRoute = projectId => '/api/local-drafts?projectId=' + projectId;

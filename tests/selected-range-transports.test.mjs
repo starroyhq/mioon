@@ -11,7 +11,7 @@ import {discoverSchema, effectAnnotations} from '@mioon/client';
 import {isExportPreflightResponse, isTimelineMutationResponse, publicValue} from '@mioon/contracts';
 import {hash} from '../packages/business/src/services.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded} from './fixtures/selected-range-http-fixture.mjs';
+import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded} from './fixtures/selected-range-http-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const env = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',

@@ -10,13 +10,15 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {toolingEnvironment, verifySourceLanguages} from '../scripts/lib/local-tooling.ts';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const env=toolingEnvironment(process.env);
-function command(args){
- const result=spawnSync(process.execPath,args,{cwd:root,env,encoding:'utf8',timeout:30000,maxBuffer:2*1024*1024,windowsHide:true});
+function command(args,timeout=30000){
+ const result=spawnSync(process.execPath,args,{cwd:root,env,encoding:'utf8',timeout,maxBuffer:2*1024*1024,windowsHide:true});
  assert.equal(result.error,undefined,result.error?.message);assert.equal(result.signal,null,result.stderr);assert.equal(result.status,0,result.stderr);return result.stdout;
 }
-test('repository source policy and genuine compiler check all current included runtime sources', {timeout:60000}, async()=>{
+test('repository source policy and genuine compiler check all current included runtime sources', {timeout:150000}, async()=>{
  await verifySourceLanguages(root);
- command(['scripts/tooling.ts','typecheck']);
+ // Three fixed projects (foundation, browser, tests) compile serially through the
+ // exact local compiler; the child budget must cover all three real compiles.
+ command(['scripts/tooling.ts','typecheck'],120000);
 });
 test('real CLI resolves the pnpm workspace TS implementation and retains version and schema output', async()=>{
  const resolved=fileURLToPath(import.meta.resolve('@mioon/contracts'));

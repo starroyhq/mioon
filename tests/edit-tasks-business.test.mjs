@@ -208,7 +208,7 @@ test('an independent process cannot acquire ownership or steal an active persist
  try{
   // execFileSync returns only after child exit; timeout is scoped to this owned
   // child handle. No numeric PID is used as authority for any cleanup action.
-  const stdout=execFileSync(process.execPath,[new URL('./helpers/edit-tasks-owner-process.mjs',import.meta.url).pathname,
+  const stdout=execFileSync(process.execPath,[new URL('./helpers/edit-tasks-owner-process.ts',import.meta.url).pathname,
    f.root,JSON.stringify({...f.request(saved.task),instanceId:saved.instanceId})],{encoding:'utf8',timeout:10000,maxBuffer:65536});
   const result=JSON.parse(stdout);
   assert.deepEqual(result,{ownerDenied:true,before:'dispatching',after:'dispatching',unchanged:true,

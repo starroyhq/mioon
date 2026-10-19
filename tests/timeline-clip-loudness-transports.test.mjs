@@ -10,7 +10,7 @@ import {discoverSchema,createClient,schemas} from '@mioon/client';
 import {parse,isTimelineClipLoudnessResponse,effectAnnotations,operationEffect,EXPORT_LOUDNESS_PROFILE,TIMELINE_CLIP_LOUDNESS_PROFILE} from '@mioon/contracts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
-import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.mjs';
+import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const env=url=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});

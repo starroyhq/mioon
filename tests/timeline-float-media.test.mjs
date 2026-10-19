@@ -114,8 +114,17 @@ test('actual selected v2 preserves global subtitle timing and exact float envelo
  assert.equal(wholePcm.raw.length,12*1600*8);assert.equal(selectedPcm.raw.length,9*1600*8);
  assert.deepEqual(selectedPcm.raw,wholePcm.raw.subarray(2*1600*8,11*1600*8),'Already-rendered selected float PCM exactly matches the global whole interval, including fades at every segment edge');
  const wholeDecoded=await decodedBytes(wholeFile),rangeDecoded=await decodedBytes(rangeFile),audioWindows=[];
+ // Same-alignment AAC reference: the selected float PCM is already proven exact
+ // against the whole timeline above, so encode that exact PCM through the same
+ // final AAC settings and compare envelope windows like-for-like. Comparing the
+ // whole stream directly would mix in the range stream's unavoidable AAC onset
+ // (the range encoder starts at global frame 2, mid-fade).
+ const referenceRaw=path.join(root,`float-reference-${randomUUID()}.f32le`),referenceFile=path.join(root,`float-reference-${randomUUID()}.mp4`);
+ await writeFile(referenceRaw,selectedPcm.raw);
+ await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-threads','1','-f','f32le','-ar','48000','-ac','2','-i',referenceRaw,'-af','asetpts=N/SR/TB','-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',(9/30).toFixed(9),'-movflags','+faststart',referenceFile],{timeout:30000,maxStdoutBytes:0,maxStderrBytes:64*1024});
+ const referenceDecoded=await decodedBytes(referenceFile);
  for(const [fromSeconds,toSeconds] of [[.012,.025],[.05,.065],[.12,.13],[.145,.16],[.24,.255],[.275,.29]]){
-  const from=Math.round(fromSeconds*48000),to=Math.round(toSeconds*48000),reference=rmsWindow(wholeDecoded,from+3200,to+3200),actual=rmsWindow(rangeDecoded,from,to);
+  const from=Math.round(fromSeconds*48000),to=Math.round(toSeconds*48000),reference=rmsWindow(referenceDecoded,from,to),actual=rmsWindow(rangeDecoded,from,to);
   assert.ok(Math.abs(actual-reference)<.012,`AAC envelope window ${fromSeconds} follows global time: ${actual} versus ${reference}`);audioWindows.push({fromSeconds,toSeconds,wholeRms:reference,selectedRms:actual});
  }
  assert.ok(audioWindows[0].selectedRms>audioWindows.at(-1).selectedRms*1.4,'Selection does not restart the saved fade-in or delay fade-out');

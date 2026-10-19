@@ -24,7 +24,7 @@ import {
 } from '../packages/business/src/db.ts';
 import {validateWorkspaceColourRows} from '../packages/business/src/workspace-colour-validation.ts';
 import {snapshot as databaseSnapshot} from './workspace-schema26-fixtures.mjs';
-import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.mjs';
+import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
 
 const code = 'TIMELINE_IMAGE_COMPOSITOR_BUDGET';
 const budgetError = {code, message: TIMELINE_COLOUR_PREFLIGHT_MESSAGES[code]};

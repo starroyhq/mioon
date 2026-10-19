@@ -101,7 +101,7 @@ async function nearCapacityCheck(): Promise<{ admitted: AllocationCaseReport; re
       Object.defineProperty(nativeBody, 'getReader', { configurable: true, value(readerOptions?: ReadableStreamGetReaderOptions) {
         assert(readerOptions?.mode === 'byob', 'Actual client did not request a bounded native BYOB reader'); byobReaders++;
         const reader = nativeGetReader({ mode: 'byob' }), nativeRead = reader.read.bind(reader);
-        Object.defineProperty(reader, 'read', { configurable: true, value(view: Uint8Array, readOptions?: { min?: number }) {
+        Object.defineProperty(reader, 'read', { configurable: true, value(view: Uint8Array<ArrayBuffer>, readOptions?: { min?: number }) {
           const requestedBytes = view.byteLength;
           assert(view instanceof Uint8Array && requestedBytes > 0 && requestedBytes <= AUDIO_PREVIEW_MAX_CHUNK_BYTES && view.buffer.byteLength <= AUDIO_PREVIEW_MAX_CHUNK_BYTES, 'Actual client supplied an unbounded BYOB view');
           byobReadCalls++; maximumRequestedViewBytes = Math.max(maximumRequestedViewBytes, requestedBytes);

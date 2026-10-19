@@ -11,7 +11,7 @@ import { run, runStreaming, MEDIA_RUNTIME_LIMITS } from '../packages/business/sr
 import { onMediaProcess, terminateMediaProcesses, hasUnconfirmedMediaProcesses } from '../packages/business/src/media-processes.ts';
 import { createWaveformAccumulator, decodeWaveform, WAVEFORM_DECODE_LIMITS } from '../packages/business/src/waveform-decoder.ts';
 
-const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.mjs', import.meta.url));
+const fixture = fileURLToPath(new URL('./helpers/media-child-fixture.ts', import.meta.url));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const quantize = value => Math.round(Math.min(1, value) * 65535);
 const safeCode = code => error => error.code === code && !error.message.includes('synthetic-private') && !Object.hasOwn(error, 'cause');

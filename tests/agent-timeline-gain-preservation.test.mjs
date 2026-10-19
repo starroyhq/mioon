@@ -16,7 +16,7 @@ import {isUnavailableRestoredRoute} from '../packages/business/src/workspace-res
 import {EDIT_TOOL_DEFINITIONS,EDIT_TOOL_CATALOG_HASH,editToolPolicy,parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {TIMELINE_EDIT_TOOL_DEFINITIONS,TIMELINE_EDIT_TOOL_CATALOG_HASH,timelineEditToolPolicy,parseTimelineEditToolArguments} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {READ_TOOL_DEFINITIONS,READ_TOOL_CATALOG_HASH,readToolPolicy,parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
-import {agentTimelineGainFixture} from './helpers/agent-timeline-gain-fixture.mjs';
+import {agentTimelineGainFixture} from './helpers/agent-timeline-gain-fixture.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const baseline=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-baseline-c3a0a57.json',import.meta.url),'utf8'));

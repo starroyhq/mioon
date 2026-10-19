@@ -5,9 +5,9 @@ import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
 import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.ts';
-import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.mjs';
+import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 class Storage {
   values = new Map();

@@ -10,7 +10,7 @@ import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const projectId = '11111111-1111-4111-8111-111111111111';
 const otherProject = '22222222-2222-4222-8222-222222222222';

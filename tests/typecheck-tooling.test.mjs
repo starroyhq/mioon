@@ -11,7 +11,7 @@ import {parseArguments, installedTypeScript, typecheckCommands, verifySourceLang
 const root = fileURLToPath(new URL('../', import.meta.url));
 const version = '6.0.3';
 const metadata = {name: 'typescript', version, bin: {tsc: './bin/tsc', tsserver: './bin/tsserver'}};
-const projects = ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json'];
+const projects = ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json'];
 const directoryLink = (target, link) => symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir');
 
 async function fixture(t, compiler = "process.stdout.write(JSON.stringify(process.argv.slice(2)) + '\\n');\n") {
@@ -176,14 +176,25 @@ test('runtime TSX outside the browser and unchecked alternate TypeScript extensi
 test('fixed compiler projects cover all runtime TypeScript without legacy browser exclusions', async () => {
   const foundation = JSON.parse(await readFile(path.join(root, projects[0]), 'utf8'));
   const browser = JSON.parse(await readFile(path.join(root, projects[1]), 'utf8'));
+  const testsProject = JSON.parse(await readFile(path.join(root, projects[2]), 'utf8'));
   assert.deepEqual(foundation.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
   assert.deepEqual(foundation.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx', 'export-loudness.consumer.tsx', 'timeline-mix-loudness.consumer.tsx', 'timeline-clip-loudness.consumer.tsx', 'timeline-loudness-apply.consumer.tsx']);
   assert.deepEqual(browser.exclude, []);
-  for (const config of [foundation, browser]) {
+  assert.deepEqual(testsProject.include, ['./**/*.ts', './**/*.tsx']);
+  // Frozen historical evidence fixtures stay excluded; `.mjs`-sourced helper and
+  // fixture modules are removed from this list as their owning test waves add
+  // strict types.
+  assert.ok(testsProject.exclude.includes('./typecheck/**'));
+  assert.ok(testsProject.exclude.includes('./fixtures/workspace-restore-legacy/**'));
+  assert.ok(testsProject.exclude.includes('./fixtures/workspace-restore-v27/legacy-contracts/**'));
+  for (const config of [foundation, browser, testsProject]) {
     assert.equal(config.compilerOptions.strict, true); assert.equal(config.compilerOptions.noEmit, true);
     assert.equal(config.compilerOptions.erasableSyntaxOnly, true); assert.equal(config.compilerOptions.skipLibCheck, false);
   }
+  assert.deepEqual(testsProject.compilerOptions.lib, ['ES2022', 'ES2024.Promise', 'DOM', 'DOM.Iterable']);
+  assert.equal(testsProject.compilerOptions.jsx, 'react-jsx');
+  assert.deepEqual(testsProject.compilerOptions.types, ['node', 'react', 'react-dom']);
 });
 
 test('source symlink directories cannot hide new JavaScript from the language guard', async t => {

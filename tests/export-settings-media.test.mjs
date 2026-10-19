@@ -32,6 +32,10 @@ function wave(){
 async function binary(args,maxStdoutBytes){const chunks=[];const output=await runStreaming('ffmpeg',['-v','error','-threads','1',...args],{timeout:30000,maxStdoutBytes,maxStderrBytes:64*1024,onStdout:chunk=>{chunks.push(Buffer.from(chunk));}});return Buffer.concat(chunks,output.stdoutBytes);}
 const pcm=file=>binary(['-i',file,'-vn','-ac','2','-ar','48000','-c:a','pcm_s16le','-f','s16le','pipe:1'],1024*1024);
 async function frames(file,width,height){return binary(['-i',file,'-vf',"select='eq(n,24)+eq(n,25)+eq(n,29)+eq(n,30)+eq(n,34)+eq(n,35)',format=gray",'-fps_mode','passthrough','-frames:v','6','-an','-threads','1','-f','rawvideo','pipe:1'],width*height*6);}
+// Downscale the native render through the delivered scale filter so caption
+// bounds are compared with an actual post-scale reference; thresholded glyph
+// pixels do not scale perfectly linearly at small output sizes.
+async function scaledFrames(file,width,height,flags){return binary(['-i',file,'-vf',"select='eq(n,24)+eq(n,25)+eq(n,29)+eq(n,30)+eq(n,34)+eq(n,35)',scale="+width+":"+height+":flags="+flags+',format=gray','-fps_mode','passthrough','-frames:v','6','-an','-threads','1','-f','rawvideo','pipe:1'],width*height*6);}
 function whiteBounds(bytes,width,height){
  let count=0,minX=width,minY=height,maxX=-1,maxY=-1;
  for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(bytes[y*width+x]>170){count++;minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
@@ -73,6 +77,7 @@ test('all three timeline aspects deliver native/360/1080 with post-caption scale
  let audioReference;
  for(const preset of TIMELINE_OUTPUT_PRESETS){
   const saved=timeline(preset,audio,image),snapshot={timeline:saved,subtitleProfile:profile},frozen=structuredClone(snapshot),legacy=path.join(root,`${preset.id}-legacy.mp4`);
+  let nativeFile=null;
   const events=[],off=onMediaProcess(event=>events.push(event));
   try{await renderTimeline(snapshot,assets,legacy);}finally{off();}
   assert.equal(events.filter(event=>event.type==='started'&&event.kind==='ffmpeg').length,6,'legacy has one subtitle measurement, four original segments, one final concat, and no capability probe');
@@ -82,6 +87,7 @@ test('all three timeline aspects deliver native/360/1080 with post-caption scale
   for(const [resolution,rateControl] of [['native',{mode:'crf',quality:'standard'}],['short_360',{mode:'crf',quality:'compact'}],['short_1080',{mode:'bitrate',targetKbps:4000}]]){
    const delivery=resolveTimelineExportDelivery(saved,selected(resolution,rateControl)),file=path.join(root,`${preset.id}-${resolution}.mp4`),explicit={...snapshot,delivery};
    await renderTimeline(explicit,assets,file);const {width,height}=delivery.effective;
+   if(resolution==='native')nativeFile=file;
    await verifyOutput(file,width,height);
    assert.deepEqual(await pcm(file),legacyPcm,'delivery settings cannot change source trim, timeline clock, fades, gain, silence, stereo PCM or AAC');
    if(resolution==='native')assert.equal(hash(await readFile(file)),hash(legacyBytes),'explicit native/standard settings retain byte-identical default rendering');
@@ -94,7 +100,11 @@ test('all three timeline aspects deliver native/360/1080 with post-caption scale
     assert.ok(buffer[Math.floor(height/8)*width+Math.floor(width/8)]<8,'outside composition remains black');
    }
    if(resolution==='native')nativeBounds=bounds[1];
-   else{const scale=width/preset.width;for(const key of ['minX','minY','maxX','maxY'])assert.ok(Math.abs(bounds[1][key]-nativeBounds[key]*scale)<=3,`${preset.id} ${resolution}: caption geometry must scale after composition (${key})`);}
+   else{
+    const reference=await scaledFrames(nativeFile,width,height,delivery.effective.scaling);
+    const referenceBox=whiteBounds(reference.subarray(width*height,2*width*height),width,height);
+    for(const key of ['minX','minY','maxX','maxY'])assert.ok(Math.abs(bounds[1][key]-referenceBox[key])<=3,`${preset.id} ${resolution}: caption geometry must scale after composition (${key})`);
+   }
    assert.deepEqual(snapshot,frozen);assert.deepEqual(explicit.delivery,delivery);
   }
  }

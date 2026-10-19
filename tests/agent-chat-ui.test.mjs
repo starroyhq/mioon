@@ -1,4 +1,4 @@
-import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
+import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.ts';
 import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { createI18nTestContext, message } from './helpers/i18n.ts';
@@ -9,7 +9,7 @@ import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { stripSourceTypes } from './helpers/eval-source.mjs';
+import { stripSourceTypes } from './helpers/eval-source.ts';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';

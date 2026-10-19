@@ -1,7 +1,7 @@
 import * as creationI18n from '../apps/web/src/creation-i18n.ts';
 import { i18nTestModule, message } from './helpers/i18n.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
-import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
+import { actualAppCloseWarning } from './fixtures/native-close-app-warning.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,7 +20,7 @@ import * as audioRoleState from '../apps/web/src/clip-audio-role-state.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import * as viewGeometry from '../apps/web/src/timeline-view-geometry.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);

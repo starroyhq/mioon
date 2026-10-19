@@ -20,7 +20,7 @@ import { rpc as realRpc } from '../apps/web/src/api.ts';
 import * as feedback from '../apps/web/src/import-feedback.ts';
 import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../apps/web/src/api.ts', import.meta.url), 'utf8');

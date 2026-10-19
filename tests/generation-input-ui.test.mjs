@@ -10,7 +10,7 @@ import { transformSync } from 'esbuild';
 import { GENERATION_INPUT_PROFILES, INPUT_PROFILE_VERSION, evaluateCapabilityLifecycle, getGenerationIssue } from '@mioon/contracts';
 import { generationInputIssue, generationIssueMessage, generationProfileSelection, generationSelection } from '../apps/web/src/generation-settings.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = (id = 'mock', date = '2026-10-10', region) => {

@@ -12,7 +12,7 @@ import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
-import { stripSourceTypes } from './helpers/eval-source.mjs';
+import { stripSourceTypes } from './helpers/eval-source.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const componentPath = path.join(root, 'apps/web/src/TopbarSaveStatus.tsx');
@@ -140,7 +140,9 @@ function section(start, end) {
   assert.equal(app.indexOf(start, first + start.length), -1, `Ambiguous App seam: ${start}`);
   return app.slice(first, last);
 }
-const statusSource = section('    onStatus: (projectId, status) =>', '\n  });').trim().slice('onStatus: '.length);
+const statusLine = app.split('\n').find(line => line.startsWith('    onStatus: '));
+assert.ok(statusLine, 'Missing onStatus seam');
+const statusSource = statusLine.trim().slice('onStatus: '.length);
 const contextSource = section('  const context = (): CapturedContext =>', '  taskWorkspaceState.current =');
 const settingsDepartureSource = section('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
 const sessionReadySource = section('  function projectSessionReady()', '  const workbenchReady =');
@@ -224,9 +226,9 @@ test('App owns one busy projection, annotation-aware dirty status, late-bound Re
   assert.match(app, /import TopbarSaveStatus from '\.\/TopbarSaveStatus\.tsx';/);
   assert.equal(callsite.match(/Object\.values\(busy\)\.some\(Boolean\)/g)?.length, 1);
   assert.match(callsite, /dirty=\{inspectorDirty \|\| formatDirty \|\| Boolean\(annotations\.state\?\.dirtyCount\)\}/);
-  assert.match(callsite, /onRetry=\{\(\) => preferencesRef\.current\.flush\(\{ projectId: currentProject\.current \}\)\}/);
+  assert.match(callsite, /onRetry=\{\(\) => preferencesRef\.current!\.flush\(\{ projectId: currentProject\.current \} as unknown as \{keepalive\?: boolean\}\)\}/);
   assert.match(callsite, /onReload=\{reloadPreferences\}/);
-  assert.equal(statusSource, '(projectId, status) => { if (currentProject.current === projectId) setPreferenceStatus(status); }');
+  assert.equal(statusSource, '((projectId: string, status: PreferenceStatus) => { if (currentProject.current === projectId) setPreferenceStatus(status); }) as unknown as () => void');
   assert.match(app, /const busy = busyByProject\[currentProject\.current \|\| 'none'\] \|\| emptyBusy;/);
   assert.match(contextSource, /captured\.projectId === currentProject\.current && captured\.epoch === navigationEpoch\.current && workspaceOriginScope\(captured\.workspace\) === workspaceOriginScope\(workspaceRef\.current\)/);
   assert.deepEqual(stripSourceTypes(reloadSource, {loader: 'ts'}).split('\n').map(line => line.trim()).filter(Boolean), [
@@ -304,7 +306,7 @@ function harness(t) {
   env.setRealConfirm = value => { state.paidReview = value; calls.push(['setRealConfirm', value]); };
   env.setShotDirty = value => { state.inspectorDirty = value; calls.push(['setShotDirty', value]); };
   env.setMobilePanel = value => { state.mobilePanel = value; calls.push(['setMobilePanel', value]); };
-  const onStatus = compile('', statusSource, { currentProject, setPreferenceStatus: env.setPreferenceStatus });
+  const onStatus = compile('', stripSourceTypes(statusSource, {loader: 'tsx'}).trim().replace(/;$/,''), { currentProject, setPreferenceStatus: env.setPreferenceStatus });
   const controller = createWorkspacePreferences({ fetchImpl: server.fetch, storage: new Storage(), requestTimeoutMs: 0,
     delayMs: 60_000, maxWaitMs: 60_000, retryDelays: [], getWorkspace: () => env.workspaceRef.current, onStatus });
   env.preferencesRef.current = controller;

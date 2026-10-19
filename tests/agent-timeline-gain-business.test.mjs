@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import {AppError, isAgentTimelineGainProposal, TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {canonical} from '../packages/business/src/services.ts';
-import {agentTimelineGainFixture} from './helpers/agent-timeline-gain-fixture.mjs';
+import {agentTimelineGainFixture} from './helpers/agent-timeline-gain-fixture.ts';
 const code = expected => error => error.code === expected;
 const fields = (f, extra = {}) => ({projectId: f.project.id, expectedRevision: f.current().revision, requestId: randomUUID(), ...extra});
 const domain = f => JSON.stringify(['projects','assets','shots','jobs','versions','timelines','timeline_history','timeline_history_cursors','timeline_requests'].map(table => f.store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));

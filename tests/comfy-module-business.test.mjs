@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {createModuleFixture, configuration, imageRows, until, sha256} from './helpers/comfy-module-fixture.mjs';
+import {createModuleFixture, configuration, imageRows, until, sha256} from './helpers/comfy-module-fixture.ts';
 
 const missingModule = error => error.code === 'COMFY_MODULE_UNAVAILABLE' && error.status === 503;
 const changes = f => f.store.db.prepare('SELECT total_changes() AS n').get().n;

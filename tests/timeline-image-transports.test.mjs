@@ -21,12 +21,12 @@ import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-sc
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
 import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
-import {png, sha, stamp} from './helpers/timeline-image-fixtures.mjs';
+import {png, sha, stamp} from './helpers/timeline-image-fixtures.ts';
 
 const operation = 'timeline.colour.image.inspect';
 const videoOperation = 'timeline.colour.source.inspect';
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const wireGuard = path.join(repo, 'tests/helpers/inspection-wire-fixture.mjs');
+const wireGuard = path.join(repo, 'tests/helpers/inspection-wire-fixture.ts');
 const token = 'synthetic-timeline-image-transport-token';
 const input = {projectId: '11111111-1111-4111-8111-111111111111', assetId: '22222222-2222-4222-8222-222222222222'};
 const bytes = png({width: 3, height: 2});

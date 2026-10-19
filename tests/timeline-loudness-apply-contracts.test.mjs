@@ -5,7 +5,7 @@ import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.t
 import {TIMELINE_LOUDNESS_CANDIDATE_VERSION, timelineLoudnessApplyInputSchema, isTimelineLoudnessApplyInput,
   canonicalTimelineLoudnessCandidate, timelineLoudnessCandidateDigest, isTimelineLoudnessApplicableReport,
   createTimelineLoudnessApplyContracts,hasTimelineLoudnessApplyNotAppliedProof} from '../packages/contracts/src/timeline-loudness-apply.ts';
-import {readyMixLoudness, mixLoudnessInput, silentMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.mjs';
+import {readyMixLoudness, mixLoudnessInput, silentMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.ts';
 const {isTimelineLoudnessApplyResponse}=createTimelineLoudnessApplyContracts({isTimelineRecord});
 const report=()=>readyMixLoudness({...mixLoudnessInput,target:{integratedLufs:-24,truePeakCeilingDbtp:-1}});
 const inputFor=value=>({...mixLoudnessInput,target:value.target,requestId:'reviewed-fixed-gain-request',snapshotSha256:value.identity.snapshotSha256,

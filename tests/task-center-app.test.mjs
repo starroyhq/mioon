@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureTaskWorkspaceIntent, navigateTaskShot} from '../apps/web/src/task-workspace-intent.ts';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function section(start, end) { const a=app.indexOf(start),b=app.indexOf(end,a);assert.ok(a>=0&&b>a);return app.slice(a,b); }

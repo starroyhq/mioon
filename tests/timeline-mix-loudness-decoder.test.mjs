@@ -41,14 +41,15 @@ test('historical 0343ed3 audio extraction preserves frozen b9e7d1e renderer byte
   // renderer: accepted SDR LUT, PNG and JPEG features subsequently changed it.
   const fixture=JSON.parse(await readFile(new URL('./fixtures/timeline-mix-loudness/renderer-extraction-0343ed3.json',import.meta.url),'utf8'));
   assert.equal(fixture.sourceCommit,'0343ed390a85c319210b5f179180cf9c8c3985c2');
-  assert.equal(fixture.sourcePath,'packages/business/src/timeline-media.ts');
+  // Frozen historical extraction evidence: at 0343ed3 the renderer was still .mjs.
+  assert.equal(fixture.sourcePath,'packages/business/src/timeline-media.mjs');
   assert.equal(fixture.beforeExtractionCommit,'b9e7d1e57a687010407ae284cb55c0d4eed23abb');
   assert.equal(fixture.sourceSha256,'4b5f850dfc388d972ab42decfff5f76b5951315b16ab73902a7dcaec411fae37');
   assert.equal(createHash('sha256').update(fixture.source).digest('hex'),fixture.sourceSha256);
   assert.equal(fixture.beforeExtractionSha256,'c1586a7dc67f2e0c44ff5a4cc97262e71181f258a0fc66646fc5bac83e25fa95');
   let source=fixture.source;
   for(const [replacement,original] of [
-    ["import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';","import {timelineAudioFadeFilters} from './timeline-audio.ts';"],
+    ["import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';","import {timelineAudioFadeFilters} from './timeline-audio.mjs';"],
     ['timelineAudioSilenceFilter(samples)','`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[silence]`'],
     ['timelineClipAudioFilter(clip,begin,samples,input,asset.audioStreamIndex)','`[${input}:${asset.audioStreamIndex??\'a:0\'}]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},${timelineAudioFadeFilters(clip,begin)}asetpts=N/SR/TB[${label}]`'],
     ['timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim)','`${sounds.map(s=>`[${s}]`).join(\'\')}amix=inputs=${sounds.length}:duration=first:dropout_transition=0:normalize=0,atrim=end_sample=${samples},${selected.audioOutputTrim}asetpts=N/SR/TB[outa]`'],
@@ -61,8 +62,8 @@ test('current renderer retains exact shared audio helper wiring and unchanged tr
   for(const wiring of [
     "import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';",
     "`,timelineAudioSilenceFilter(samples)];\n   let visual='base';const sounds=['silence'];",
-    "filters.push(timelineClipAudioFilter(clip,begin,samples,input,asset.audioStreamIndex));sounds.push(label);",
-    "filters.push(timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim));",
+    "filters.push(timelineClipAudioFilter(clip as never,begin,samples,input,asset.audioStreamIndex as never));sounds.push(label);",
+    "filters.push(timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim as never));",
   ])assert.equal(source.split(wiring).length,2,`exact single production wiring: ${wiring}`);
   const helper=await readFile(new URL('../packages/business/src/timeline-audio-filter-graph.ts',import.meta.url));
   // Retain the original accepted source proof. The current helper adds only a
@@ -71,7 +72,9 @@ test('current renderer retains exact shared audio helper wiring and unchanged tr
   assert.equal(historical.sourceCommit,'b8821e70b7eaafd84305fe6d0d4d8b40aaedf657');
   assert.equal(createHash('sha256').update(historical.source).digest('hex'),'7701c38b8b2001da046d4801bb981607cbedf24635e489acdfc776cf477c5779');
   assert.equal(historical.sourceSha256,'7701c38b8b2001da046d4801bb981607cbedf24635e489acdfc776cf477c5779');
-  assert.equal(createHash('sha256').update(helper).digest('hex'),'c9a288be8773aed61390c37f0fa52b50f8c19a8160c0fbc1d409807ba66c1ee6');
+  // Live typed source pin: PR1 added types/one non-null branch, so this pin moved
+  // from c9a288be. The frozen historical body is separately proven below.
+  assert.equal(createHash('sha256').update(helper).digest('hex'),'f59732a338f5ca9e83c48bae023135edf1c1115ca107fda293e9174c298a6586');
 });
 
 test('typed fade extraction preserves the old helper body byte-for-byte and its public import path',async()=>{

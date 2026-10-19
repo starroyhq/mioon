@@ -24,6 +24,19 @@ import {open,snapshot,insert} from './workspace-schema26-fixtures.mjs';
 // Genuine activation evidence lives in timeline-volume-envelope-owned-startup.test.mjs.
 // No other permission check is mocked, and only full validated ordinary40
 // synthetic fixtures receive the exemption. Restored/forged profiles refuse.
+// Per-file runs must opt into Node's experimental module harness. Without it
+// mock.module throws before any mutation assertion is evaluated, which would
+// report a harness failure as a product failure. Re-exec exactly this file with
+// the supported flag so the canonical and per-file entry points agree.
+if (!process.execArgv.includes('--experimental-test-module-mocks')) {
+  const {spawnSync}=await import('node:child_process');
+  const {fileURLToPath}=await import('node:url');
+  const result=spawnSync(process.execPath,['--experimental-test-module-mocks','--test',fileURLToPath(import.meta.url)],
+    {encoding:'utf8',timeout:180000,maxBuffer:16*1024*1024,env:Object.fromEntries(Object.entries(process.env).filter(([key])=>key!=='NODE_TEST_CONTEXT'))});
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.exit(result.status??1);
+}
 const fixtures=new WeakSet();
 mock.module('../packages/business/src/workspace-restore-policy.ts',{namedExports:{...realRestorePolicy,
  refuseRestoredOperation(store,operation,input){
@@ -37,14 +50,16 @@ const envelope=()=>({profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multipli
 function fixture(t,{version=40,missing=false,realPolicy=false,owned=false}={}){
  const root=owned?mkdtempSync(new URL('../.tmp-envelope-mutation-',import.meta.url).pathname):null,ownedStore=owned?openStore(root):null;
  const db=ownedStore?.db??open(':memory:');t.after(()=>{if(ownedStore){ownedStore.close();rmSync(root,{recursive:true,force:true});}else db.close();});
- if(!owned)for(const initialize of [initializeWorkspaceSchemaThrough24,initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38])initialize(db);
- if(version===40)initializeWorkspaceSchema40(db);
+ if(!owned){for(const initialize of [initializeWorkspaceSchemaThrough24,initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38])initialize(db);
+ if(version===40)initializeWorkspaceSchema40(db);}
  const projectId=randomUUID();insert(db,'projects',{id:projectId,data:JSON.stringify({id:projectId,name:'Synthetic',revision:1})});
  const store=ownedStore??{db,root:'/not-a-live-workspace',put(table,value){
   db.prepare(`INSERT INTO ${table}(id,projectId,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(value.id,value.projectId,JSON.stringify(value));return value;
  },tx(fn){db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}};
  const required=(table,id)=>{const row=db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id);if(!row)throw new AppError('NOT_FOUND','missing',404);return JSON.parse(row.data);};
- if(version===40&&!realPolicy)fixtures.add(store);
+ // Only synthetic in-memory stores need the bounded policy exemption; an owned
+ // store is opened through the real dispatch/current schema and keeps the real policy.
+ if(version===40&&!realPolicy&&!owned)fixtures.add(store);
  const services=(realPolicy?realTimelineServices:createTimelineServices)(store,{required,hash,now:()=>stamp,check(value,expected){if(value.revision!==expected)throw new AppError('REVISION_CONFLICT','revision',409);}});
  const asset=(fields={})=>store.put('assets',{id:randomUUID(),projectId,name:'Synthetic',mimeType:'video/mp4',duration:20,width:720,height:1280,sha256:'a'.repeat(64),relativePath:'media/synthetic.mp4',hasAudio:true,hasVideo:true,...fields});
  let timeline=missing?null:services.ensure(projectId);
@@ -121,7 +136,7 @@ test('live dispatch recognizes synthetic40 profile without the historical policy
  assert.equal(f.services.ensure(f.projectId).projectId,f.projectId);
 });
 test('scalar loudness transaction preserves envelope and immutable replay after Undo/removal',async t=>{
- const {readyMixLoudness,mixLoudnessInput}=await import('./fixtures/timeline-mix-loudness-fixtures.mjs');
+ const {readyMixLoudness,mixLoudnessInput}=await import('./fixtures/timeline-mix-loudness-fixtures.ts');
  const f=fixture(t),source=f.asset(),volumeEnvelope={profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:1},{frame:30,multiplier:.2}]};
  f.call('timeline.clip.add',{assetId:source.id,trackId:f.timeline.tracks[0].id,startFrame:0,durationFrames:30,volumeEnvelope});
  const before=f.timeline,clip=before.clips[0],input={...mixLoudnessInput,projectId:f.projectId,expectedRevision:before.revision,requestId:randomUUID(),target:{integratedLufs:-24,truePeakCeilingDbtp:-1},snapshotSha256:'b'.repeat(64),candidateDigest:'timeline-loudness-candidate-v1:'+ 'c'.repeat(64)};

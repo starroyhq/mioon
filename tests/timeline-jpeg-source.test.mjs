@@ -10,9 +10,9 @@ import {validateManagedSource} from '../packages/business/src/managed-media.ts';
 import {runStreaming} from '../packages/business/src/media-runtime.ts';
 import {waitForMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {probe} from '../packages/business/src/media.ts';
-import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.mjs';
-import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.mjs';
-import {sha} from './helpers/timeline-image-fixtures.mjs';
+import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
+import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
+import {sha} from './helpers/timeline-image-fixtures.ts';
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return{promise,resolve};};
 async function fixture(t,override={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-jfif-source-'));await mkdir(path.join(root,'media'),{mode:0o700});const bytes=pillowJfifFixture(),file=path.join(root,'media/source.jpg');await writeFile(file,bytes,{mode:0o600});const db=new DatabaseSync(':memory:');

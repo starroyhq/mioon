@@ -4,7 +4,7 @@ import {createClient} from '@mioon/client';
 import {schemas,operationEffect,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,isTimelineMutationResponse,hasRequestNotAppliedProof} from '@mioon/contracts';
 import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_WIRE_BYTES} from '../packages/client/src/timeline-loudness-apply.ts';
 import {readLoudnessApplyRpc} from '../apps/web/src/timeline-loudness-apply-rpc.ts';
-import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.mjs';
+import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
 const op='timeline.loudness.apply',env={MIOON_TOKEN:'synthetic-loudness-apply-test-token'};
 const success=data=>Response.json({ok:true,data});
 test('shared discovery declares a durable local mutation without supplier or file effects',async()=>{

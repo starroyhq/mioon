@@ -5,7 +5,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {opacityBackupFixture, tree} from './helpers/opacity-backup-fixture.mjs';
+import {opacityBackupFixture, tree} from './helpers/opacity-backup-fixture.ts';
 import {opacityWorkspaceBackupResultSchema, opacityWorkspaceRestoreResultSchema, opacityWorkspaceRestoreStatusSchema} from '../packages/contracts/src/opacity-candidate-backup.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));

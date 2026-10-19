@@ -10,7 +10,7 @@ import { rpc } from '../apps/web/src/api.ts';
 import * as rangeState from '../apps/web/src/export-range-state.ts';
 import * as rangeContracts from '@mioon/contracts/timeline-export-range';
 
-import { lenientFunction } from './helpers/eval-source.mjs';
+import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = n => `70000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2), hash = 'a'.repeat(64);

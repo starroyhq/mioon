@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
-import {timelineAudioFadeFilters as before} from './fixtures/timeline-audio-preview/legacy-timeline-audio-1398.mjs';
+import {timelineAudioFadeFilters as before} from './fixtures/timeline-audio-preview/legacy-timeline-audio-1398.ts';
 import {timelineAudioFadeFilters as current} from '../packages/business/src/timeline-audio.ts';
 
 test('1398 frozen fade implementation retains exact bytes and all valid legacy filter strings',async()=>{
-  const bytes=await readFile(new URL('./fixtures/timeline-audio-preview/legacy-timeline-audio-1398.mjs',import.meta.url));
+  const bytes=await readFile(new URL('./fixtures/timeline-audio-preview/legacy-timeline-audio-1398.ts',import.meta.url));
   assert.equal(createHash('sha256').update(bytes).digest('hex'),'aa58364a5ce28f56a74d204b822e9b73b8b121b937b5e485ce8492ca088166ac');
   let cases=0;
   for(const startFrame of [0,1,17,17400])for(const durationFrames of [1,30,600]){

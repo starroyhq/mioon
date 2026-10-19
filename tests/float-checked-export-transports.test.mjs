@@ -14,7 +14,7 @@ import {hash} from '../packages/business/src/services.ts';
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement} from '../packages/business/src/timeline-float-outcome.ts';
 import {createTimelineFloatAudioAccumulator} from '../packages/business/src/timeline-float-audio-check.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded, authority, action} from './fixtures/selected-range-http-fixture.mjs';
+import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded, authority, action} from './fixtures/selected-range-http-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const env = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',

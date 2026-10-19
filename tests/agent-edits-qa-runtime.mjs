@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {appendFileSync, writeFileSync} from 'node:fs';
 import {startServer} from '../apps/server/src/index.ts';
 import {EDIT_QA_REPO, EDIT_QA_TOKEN, prepareEditQaFixture, seedEditQaSettings, clearEditQaEnvironment,
-  startEditQaModel, startEditQaMailbox, jsonFile} from './helpers/agent-edits-qa-support.mjs';
+  startEditQaModel, startEditQaMailbox, jsonFile} from './helpers/agent-edits-qa-support.ts';
 
 export async function startEditsQaRuntime({protocol = 'responses'} = {}) {
   clearEditQaEnvironment(process.env);

@@ -14,7 +14,7 @@ import {createClient, operationDefinition} from '../packages/client/src/index.ts
 import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 import {COMFY_NODE_CLASSES} from '../packages/business/src/comfy/profile.ts';
 import {hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
-import {startComfyFixture,COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.mjs';
+import {startComfyFixture,COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-comfy-local-transport-token',model=COMFY_FIXTURE_MODEL;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));

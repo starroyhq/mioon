@@ -12,7 +12,7 @@ import {isTimelineFormatReadResponse,operationEffects} from '@mioon/contracts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {taskFixture,database,snapshot,taskPath,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.mjs';
+import {taskFixture,database,snapshot,taskPath,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 
 const env=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN});
 async function cli(url,args){

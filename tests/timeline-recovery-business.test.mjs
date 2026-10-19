@@ -12,7 +12,7 @@ import {createServices,hash} from '../packages/business/src/services.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {createTimelineLoudnessApplyServices} from '../packages/business/src/timeline-loudness-apply.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.mjs';
+import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.ts';
 
 const at='2026-10-10T00:00:00.000Z',clone=value=>JSON.parse(JSON.stringify(value));
 const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_history','timeline_history_cursors','timeline_requests','timeline_format_requests'];

@@ -6,8 +6,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startServer} from '@mioon/server';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {syntheticPng} from './helpers/runway-unknown-fixture.mjs';
-import {deferred} from './helpers/worker-shutdown-fixture.mjs';
+import {syntheticPng} from './helpers/runway-unknown-fixture.ts';
+import {deferred} from './helpers/worker-shutdown-fixture.ts';
 
 const token='synthetic-q3-server-shutdown-token';
 async function rpc(server,operation,input={}) {

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const id = n => `da000000-0000-4000-8000-${String(n).padStart(12, '0')}`, projectId = id(1), shotId = id(2);
 const stamp = '2026-10-12T00:00:00.000Z', baseText = { title: 'Original', prompt: 'Original prompt' };
@@ -36,7 +37,7 @@ test('passive inline disclosure includes plaintext scope, backup exclusion and e
 });
 
 test('candidate preserves escaped raw title and explicit empty prompt without duplicate editable form', () => {
-  assert.match(rendered.candidate, /&lt;script&gt;raw title/); assert.match(rendered.candidate, /（空提示词）/); assert.match(rendered.candidate, /rev 2/); assert.match(rendered.candidate, /恢复文字，替换当前标题和提示词/); assert.match(rendered.candidate, /保留当前文字，替换已保存草稿/); assert.doesNotMatch(rendered.candidate, /<script>|<textarea|<input/);
+  assert.match(rendered.candidate, /&lt;script&gt;raw title/); assert.match(rendered.candidate, /（空提示词）/); assert.match(rendered.candidate, /修订版 2/); assert.match(rendered.candidate, /恢复文字，替换当前标题和提示词/); assert.match(rendered.candidate, /保留当前文字，替换已保存草稿/); assert.doesNotMatch(rendered.candidate, /<script>|<textarea|<input/);
 });
 
 test('unknown write, local refusal and ambiguous delete expose distinct choices', () => {
@@ -63,5 +64,6 @@ test('new logic is typed and isolated from broad RPC, renderer storage, modal an
     const source = readFileSync(path.join(root,'apps/web/src',file),'utf8'); assert.doesNotMatch(source, /from ['"]@mioon\/contracts['"]|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck|localStorage|sessionStorage|workbench-confirm|rpc\(/);
   }
   const inspector = readFileSync(path.join(root,'apps/web/src/Inspector.tsx'),'utf8'); assert.equal((inspector.match(/id="shot-title"/g) || []).length, 2); assert.equal((inspector.match(/id="shot-prompt"/g) || []).length, 2);
-  assert.match(inspector, /完整“保存修改”不会跳过文字修改/); assert.match(inspector, /mergeFreshShotTextAck/); assert.match(inspector, /onShotTextController\(shotText.controller, \(\) => \(\{ mounted: mounted.current,/);
+  assert.match(inspector, /inspector\.textSaveOrder/);
+  assert.match(renderMessage('zh-Hans', messageKey('inspector.textSaveOrder')), /完整“保存修改”不会跳过文字修改/); assert.match(inspector, /mergeFreshShotTextAck/); assert.match(inspector, /onShotTextController\(shotText.controller, \(\) => \(\{ mounted: mounted.current,/);
 });

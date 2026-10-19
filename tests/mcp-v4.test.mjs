@@ -11,7 +11,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '@mioon/server';
 import {schemas, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, COMFY_IMAGE_OPTIONS} from '@mioon/contracts';
 import {operationDefinition} from '@mioon/client';
-import {assertOperationInputBranches} from './helpers/catalog-input-branches.mjs';
+import {assertOperationInputBranches} from './helpers/catalog-input-branches.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'synthetic-v4-mcp-token-never-live';

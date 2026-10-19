@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createClient,errorEnvelope} from '@mioon/client';
 import {EXPORT_LOUDNESS_LIMITS,isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
-import {loudnessOperation as operation,loudnessInput as input,loudnessToken as token,readyLoudness,incompleteLoudness,loudnessTarget as target} from './fixtures/export-loudness-fixtures.mjs';
+import {loudnessOperation as operation,loudnessInput as input,loudnessToken as token,readyLoudness,incompleteLoudness,loudnessTarget as target} from './fixtures/export-loudness-fixtures.ts';
 const env={MIOON_TOKEN:token};
 const success=data=>({ok:true,status:200,json:async()=>({ok:true,data})});
 

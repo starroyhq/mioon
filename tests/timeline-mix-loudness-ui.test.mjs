@@ -1,4 +1,6 @@
 import * as i18n from './helpers/i18n.ts';
+import { lenientFunction } from './helpers/eval-source.ts';
+const Function = lenientFunction;
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,7 +11,7 @@ import { transformSync } from 'esbuild';
 import * as stateModule from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { timelineAudioPreviewSourceIdentity } from '../apps/web/src/use-timeline-audio-preview.ts';
 import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
-import { fixture, context, input, report, draft, id, projectId, timelineId, sourceId } from './helpers/timeline-mix-loudness-ui-fixture.mjs';
+import { fixture, context, input, report, draft, id, projectId, timelineId, sourceId } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value && typeof value === 'object' ? [value, ...flatten(value.props?.children)] : [];
@@ -111,7 +113,7 @@ test('actual App wiring reads saved snapshot, pinned workspace and live draft co
     clips: [{ id: id(4), trackId: id(7), assetId: sourceId, startFrame: 0, sourceInFrame: 0, durationFrames: 60, gain: .5 }] };
   const dataRef = { current: { project: { id: projectId }, timeline: saved, assets: [{ id: sourceId, projectId, sha256: 'a'.repeat(64), sizeBytes: 128, mimeType: 'audio/wav', hasAudio: true }] } };
   let dirty = false, controller; const calls = [];
-  const env = { workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, dataRef,
+  const env = { application: null, showDelivery: false, workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, dataRef,
     workspaceRef: { current: { restored: false } }, currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 }, panelIntent: { current: 0 }, viewRef: { current: { activeMode: 'editing' } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false, rightDockTab: 'delivery', showExports: false, panelVisible: () => true,
     clipDirty: false, subtitleDirty: false, formatDirty: false, timelineBusy: false, isBusy: () => false,

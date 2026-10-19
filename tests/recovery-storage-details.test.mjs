@@ -81,8 +81,13 @@ test('disclosures have no custom actions, state, network, storage, or unsafe typ
     assert.doesNotMatch(html, /<(?:button|input|textarea|select|form|a|dialog)\b|\son[a-z]+=/i);
   }
   assert.deepEqual(rendered.repeated, Object.values(rendered.domains));
-  assert.deepEqual([...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1]), ['react']);
-  assert.doesNotMatch(source, /\buse[A-Z]\w*\b|\bon[A-Z]\w*\s*=|\bfetch\b|\b(?:localStorage|sessionStorage|setTimeout|setInterval)\b|dangerouslySetInnerHTML/);
+  // The disclosure is presentational: its only module imports are React and the
+  // read-only i18n context, and its only hook is the i18n reader. No state,
+  // effect, reducer, ref, custom action handler, transport or storage is allowed.
+  assert.deepEqual([...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1]), ['./i18n/I18nProvider.tsx', 'react']);
+  assert.deepEqual([...new Set([...source.matchAll(/\b(use[A-Z]\w*)\b/g)].map(match => match[1]))], ['useI18n']);
+  assert.equal([...source.matchAll(/\buse[A-Z]\w*\s*\(/g)].length, 1, 'only one i18n hook call is allowed');
+  assert.doesNotMatch(source, /\bon[A-Z]\w*\s*=|\bfetch\b|\b(?:localStorage|sessionStorage|setTimeout|setInterval)\b|dangerouslySetInnerHTML/);
   assert.doesNotMatch(source, /:\s*any\b|\bas\s+any\b|@ts-ignore|@ts-nocheck/);
 });
 

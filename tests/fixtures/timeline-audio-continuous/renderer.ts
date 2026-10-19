@@ -8,7 +8,7 @@ interface Case {name:string;input:ContinuousAudioPlanInput;durationFrames:number
 interface Fixture {config():Promise<Case>;report(value:unknown):Promise<void>;capture(value:unknown):Promise<void>}
 const fixture=(globalThis as unknown as {__continuousFixture:Fixture}).__continuousFixture;
 const bridge=(globalThis as unknown as {__mioonNativeAudioPreview:NativeAudioPreviewBridge}).__mioonNativeAudioPreview;
-const assert=(value:unknown,label:string):asserts value=>{if(!value)throw Error(label);};
+const assert: (value: unknown, label: string) => asserts value = (value, label) => {if (!value) throw Error(label);};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 const percentile=(values:number[],p:number):number=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.ceil(p*sorted.length)-1)]!;};
 const client=createContinuousAudioPreviewClient({readPlan:async(input,{signal})=>{

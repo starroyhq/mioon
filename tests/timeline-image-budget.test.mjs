@@ -27,7 +27,7 @@ import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
-import {png, imageColour, sha, stamp} from './helpers/timeline-image-fixtures.mjs';
+import {png, imageColour, sha, stamp} from './helpers/timeline-image-fixtures.ts';
 import {snapshot, facade, open} from './workspace-schema26-fixtures.mjs';
 
 const limit = 262144;

@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
-import { stripSourceTypes } from './helpers/eval-source.mjs';
+import { stripSourceTypes } from './helpers/eval-source.ts';
 
 // Execute the actual App bridge body with a held real-result boundary. Browser
 // acceptance separately holds the real HTTP acknowledgement after SQLite commit.

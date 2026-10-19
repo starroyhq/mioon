@@ -14,7 +14,7 @@ import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.t
 import {rpc} from '../apps/web/src/api.ts';
 import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
 import {createOpacityRenderSnapshotPlan} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
-import {row as outputRow} from './helpers/export-sample-peak-ui-fixture.mjs';
+import {row as outputRow} from './helpers/export-sample-peak-ui-fixture.ts';
 
 // Execute Preview and its real capture control with controlled media properties.
 // This tests component/event wiring, not browser decoder or native FFmpeg output.

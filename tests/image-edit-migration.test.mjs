@@ -13,6 +13,60 @@ import {canonicalImageInput as canonical} from '../packages/contracts/src/images
 import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
 const fixtureSql=readFileSync(new URL('./fixtures/image-edit-legacy-schema22.sql',import.meta.url),'utf8');
+// Reviewed current ordinary48 delta beyond the independent ordinary24 golden:
+// project-lifecycle tables/guards, lifecycle-aware retention triggers, ripple
+// edit-task operation and markers44/48. Frozen independently of this test.
+const currentSchemaDelta=JSON.parse(readFileSync(new URL('./fixtures/workspace-schema-profiles/current-ordinary-48-delta.json',import.meta.url),'utf8'));
+const currentStartupAdditions=Object.freeze([
+ "advance_asset_annotation_revision",
+ "asset_annotation_requests",
+ "asset_annotations",
+ "asset_annotations_project",
+ "bound_lut_import_requests",
+ "bound_project_lut_resources",
+ "immutable_agent_edit_target_v24",
+ "immutable_asset_annotation_identity",
+ "immutable_asset_annotation_requests",
+ "immutable_lut_import_requests",
+ "immutable_project_deletion_receipts",
+ "immutable_project_lut_resources",
+ "immutable_project_mutation_requests",
+ "lut_import_requests",
+ "project_deletion_cleanup",
+ "project_deletion_receipts",
+ "project_deletion_scope",
+ "project_lut_resources",
+ "project_lut_resources_project",
+ "project_mutation_requests",
+ "reject_annotation_cross_asset_disposition_requests",
+ "reject_annotation_cross_asset_range_requests",
+ "reject_annotation_cross_mutation_requests",
+ "reject_annotation_cross_subject_requests",
+ "reject_asset_annotation_replacement",
+ "reject_asset_annotation_request_replacement",
+ "reject_asset_disposition_requests_cross_annotation",
+ "reject_asset_range_requests_cross_annotation",
+ "reject_lut_import_request_replacement",
+ "reject_mutation_requests_cross_annotation",
+ "reject_project_lut_resource_replacement",
+ "reject_subject_requests_cross_annotation",
+ "retain_asset_annotation_requests",
+ "retain_asset_annotations",
+ "retain_lut_import_requests",
+ "retain_project_deletion_receipts",
+ "retain_project_lut_resources",
+ "retain_project_mutation_requests",
+ "sqlite_autoindex_asset_annotation_requests_1",
+ "sqlite_autoindex_asset_annotations_1",
+ "sqlite_autoindex_lut_import_requests_1",
+ "sqlite_autoindex_lut_import_requests_2",
+ "sqlite_autoindex_project_deletion_cleanup_1",
+ "sqlite_autoindex_project_deletion_receipts_1",
+ "sqlite_autoindex_project_deletion_scope_1",
+ "sqlite_autoindex_project_lut_resources_1",
+ "sqlite_autoindex_project_lut_resources_2",
+ "sqlite_autoindex_project_mutation_requests_1"
+]);
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const options={size:'1024x1024',quality:'low',outputFormat:'png',background:'opaque',n:1},at='2026-10-11T00:00:00.000Z';
 const model='gpt-image-2.5-flare-2026-09-08',destination='https://api.openai.com/v1/images/generations';
@@ -27,17 +81,19 @@ function normalizeStartupTaskObject(row){
 }
 function sameOld(db,before,{startupMigrations=false}={}){
  const after=snapshot(db),next=new Map(after.objects.map(value=>[value.name,value]));
- assert.equal(after.objects.length,before.objects.length+(startupMigrations?1:0));
+ assert.equal(after.objects.length,before.objects.length+(startupMigrations?currentStartupAdditions.length:0));
  if(startupMigrations){
   const added=after.objects.filter(value=>!before.objects.some(old=>old.type===value.type&&old.name===value.name));
-  assert.equal(added.length,1);assertAgentEditTargetTrigger(added);
+  assert.deepEqual(added.map(value=>value.name).sort(), [...currentStartupAdditions].sort(), 'only reviewed current-schema startup additions appear');
+  const agentTarget=added.filter(value=>value.name==='immutable_agent_edit_target_v24');assert.equal(agentTarget.length,1);assertAgentEditTargetTrigger(agentTarget);
  }
  for(const old of before.objects){
   const current=next.get(old.name);
-  const normalized=old.name==='image_reviews'?normalizeImageReviewObject(current):startupMigrations&&old.type==='table'&&old.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):startupMigrations&&old.type==='table'&&old.name==='edit_tasks'?normalizeStartupTaskObject(current):current;
-  assert.deepEqual(normalized,old,old.name);
+  const normalized=old.name==='image_reviews'?normalizeImageReviewObject(current):startupMigrations&&old.type==='table'&&old.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
+  const reviewed=startupMigrations&&currentSchemaDelta.objectSql[old.name]!==undefined?Object.assign(Object.create(Object.getPrototypeOf(old)),old,{sql:currentSchemaDelta.objectSql[old.name]}):old;
+  assert.deepEqual(normalized,reviewed,old.name);
  }
- assert.deepEqual(after.foreignKeys,before.foreignKeys);
+ for(const [name,foreignKeys] of Object.entries(before.foreignKeys))assert.deepEqual(after.foreignKeys[name],foreignKeys,`${name}: retained foreign keys`);
  for(const [name,rows] of Object.entries(before.rows)){
   const actual=name==='schema_version'?after.rows[name].filter(row=>row.version<=22n):startupMigrations&&name==='agent_edit_proposals'?legacyAgentEditProposalRows(after.rows[name]):after.rows[name];
   assert.deepEqual(actual,rows,name);
@@ -136,7 +192,7 @@ test('schema23 admits only a bound official edit descriptor and rejects cross-br
 });
 
 test('fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes',()=>{
- for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26]);assert.equal(store.db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
+ for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48]);assert.equal(store.db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
 });
 
 test('startup marker failure preserves frozen database and enables a later successful retry',()=>{
