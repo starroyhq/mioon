@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
@@ -9,12 +10,17 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const { builderConfig } = require('../apps/desktop/builder-config.ts');
 const { NOTICE_FILES, PLIST_MAX_BYTES } = require('../apps/desktop/runtime-notices.ts');
-const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-const plist = version => `<?xml version="1.0" encoding="UTF-8"?>
+const hash = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
+const plist = (version: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>${version}</string></dict></plist>`;
 
-async function fixture(t, { config = builderConfig('production'), platform = 'darwin', arch = 1 } = {}) {
+interface NoticeConfigLike {electronVersion: string; executableName: string; afterExtract(context: NoticeContext): Promise<void>; afterPack(context: NoticeContext): Promise<void>; [key: string]: unknown}
+interface NoticeContext {appOutDir: string; electronPlatformName?: string; arch?: number;
+  packager: {config: NoticeConfigLike; appInfo: {productFilename: string}; info: {framework: {version: string; distMacOsAppName: string}}}}
+interface NoticeFixture {root: string; config: NoticeConfigLike; context: NoticeContext; originals: Map<string, Buffer>; info: string;
+  extracted: string; packaged: string; resources: string; destination: string}
+async function fixture(t: TestContext, { config = builderConfig('production'), platform = 'darwin', arch = 1 }: {config?: NoticeConfigLike; platform?: string | undefined; arch?: number | undefined} = {}): Promise<NoticeFixture> {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-runtime-notices-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const extracted = path.join(root, 'Electron.app');
@@ -28,7 +34,7 @@ async function fixture(t, { config = builderConfig('production'), platform = 'da
     originals.set(file.output, bytes);
     await writeFile(path.join(root, file.source), bytes);
   }
-  const context = { appOutDir: root, electronPlatformName: platform, arch,
+  const context: NoticeContext = { appOutDir: root, electronPlatformName: platform, arch,
     packager: { config, appInfo: { productFilename: config.executableName },
       info: { framework: { version: config.electronVersion, distMacOsAppName: 'Electron.app' } } } };
   const packaged = path.join(root, `${context.packager.appInfo.productFilename}.app`);
@@ -36,7 +42,7 @@ async function fixture(t, { config = builderConfig('production'), platform = 'da
     destination: path.join(resources, 'licenses') };
 }
 
-async function packageRename(item) {
+async function packageRename(item: NoticeFixture) {
   // Only model builder's cleanup/rename. This does not build or launch an app.
   for (const file of NOTICE_FILES) await rm(path.join(item.root, file.source));
   await rename(item.extracted, item.packaged);
@@ -44,7 +50,7 @@ async function packageRename(item) {
   return path.join(item.packaged, 'Contents/Resources/licenses');
 }
 
-async function assertMissing(file) {
+async function assertMissing(file: string) {
   await assert.rejects(lstat(file), { code: 'ENOENT' });
 }
 
@@ -64,7 +70,7 @@ test('both channels preserve each Mac target notice byte-for-byte through cleanu
         const destination = await packageRename(item);
         await config.afterPack(item.context);
         for (const file of NOTICE_FILES) {
-          assert.equal(hash(await readFile(path.join(destination, file.output))), hash(item.originals.get(file.output)));
+          assert.equal(hash(await readFile(path.join(destination, file.output))), hash(item.originals.get(file.output)!));
         }
       }
     }
@@ -190,7 +196,7 @@ test('post-package inspector requires provenance from the same target extraction
   await packageRename(first);
   const secondDestination = await packageRename(second);
   // Both targets are well formed, but cross-target source substitution must fail.
-  for (const file of NOTICE_FILES) await writeFile(path.join(secondDestination, file.output), first.originals.get(file.output));
+  for (const file of NOTICE_FILES) await writeFile(path.join(secondDestination, file.output), first.originals.get(file.output)!);
   await config.afterPack(first.context);
   await assert.rejects(config.afterPack(second.context), /differs from extracted target/);
 });
@@ -214,7 +220,7 @@ test('non-Mac runtime notices remain a no-op; external fonts verify with unchang
     assert.equal(config.electronFuses.onlyLoadAppFromAsar, true);
     assert.equal(config.electronFuses.runAsNode, false);
     for (const excluded of ['node_modules/electron/LICENSE', 'workspace/workbench.sqlite', '.env', 'mcp-token']) {
-      assert.equal(config.files.filter(pattern => !pattern.startsWith('!')).some(pattern => path.matchesGlob(excluded, pattern)), false);
+      assert.equal(config.files.filter((pattern: string) => !pattern.startsWith('!')).some((pattern: string) => path.matchesGlob(excluded, pattern)), false);
     }
   }
 });

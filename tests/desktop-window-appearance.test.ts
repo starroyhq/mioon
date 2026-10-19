@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {mkdtempSync,writeFileSync,readFileSync,renameSync,rmSync,readdirSync,symlinkSync,statSync} from 'node:fs';
@@ -9,26 +10,29 @@ import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {readPrivateFile,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 
-function fixture(t,{realWatch=false}={}) {
+interface AppearanceWindow {destroyed: boolean; owned: boolean; colors: string[]; isDestroyed(): boolean; setBackgroundColor(value: string): void}
+type AppearanceOptions = Parameters<typeof createDesktopWindowAppearance>[0];
+function fixture(t: TestContext, {realWatch=false}: {realWatch?: boolean} = {}) {
   const root=mkdtempSync(path.join(tmpdir(),'mioon-native-appearance-')),db=path.join(root,'workbench.sqlite'),file=path.join(root,'ui-preferences-v1.json');
   writeFileSync(db,'synthetic identity only',{mode:0o600});
   const storage={readPrivateFile,validatePrivateDirectory,validateManagedFile},controller=new AbortController();
-  const nativeTheme=Object.assign(new EventEmitter(),{shouldUseDarkColors:true});
+  const nativeTheme=Object.assign(new EventEmitter(),{shouldUseDarkColors:true}) as EventEmitter & {shouldUseDarkColors: boolean; themeSource: string};
   Object.defineProperty(nativeTheme,'themeSource',{get:()=> 'system',set:()=>assert.fail('Renderer OS queries must not be overridden')});
-  const window=()=>({destroyed:false,owned:true,colors:[],isDestroyed(){return this.destroyed;},setBackgroundColor(value){this.colors.push(value);}});
-  const windows=[window(),window(),window()];windows[1].destroyed=true;windows[2].owned=false;
-  let current=true,notification,closed=0;
-  const watcher=Object.assign(new EventEmitter(),{close(){closed++;}});
+  const window=(): AppearanceWindow => ({destroyed:false,owned:true,colors:[],isDestroyed(){return this.destroyed;},setBackgroundColor(value: string){this.colors.push(value);}});
+  const windows: AppearanceWindow[]=[window(),window(),window()];windows[1].destroyed=true;windows[2].owned=false;
+  let current=true, closed=0;
+  let notification: ((name: unknown) => void) | undefined;
+  const watcher=Object.assign(new EventEmitter(),{close(){closed++;}}) as EventEmitter & {close(): void};
   const scope=()=>calculateWorkspaceScope({root,channel:'development',directory:statSync(root),db:statSync(db)});
-  const record=theme=>({version:1,workspaceScope:scope(),revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme},recentOpened:{}});
-  const save=theme=>writeFileSync(file,JSON.stringify(record(theme)),{mode:0o600});
+  const record=(theme: string) => ({version:1,workspaceScope:scope(),revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme},recentOpened:{}});
+  const save=(theme: string)=>writeFileSync(file,JSON.stringify(record(theme)),{mode:0o600});
   const options={root,channel:'development',storage,nativeTheme,signal:controller.signal,isCurrent:()=>current,
-    getWindows:()=>windows,ownsWindow:window=>window.owned,
-    ...(!realWatch?{watchDirectory:(directory,listener)=>{assert.equal(directory,root);notification=listener;return watcher;}}:{})};
+    getWindows:()=>windows,ownsWindow:(window: AppearanceWindow)=>window.owned,
+    ...(!realWatch?{watchDirectory:(directory: string,listener: (name: unknown) => void)=>{assert.equal(directory,root);notification=listener;return watcher;}}:{})} as unknown as AppearanceOptions;
   const appearance=createDesktopWindowAppearance(options);
   t.after(()=>{appearance.dispose();rmSync(root,{recursive:true,force:true});});
   return {root,db,file,scope,record,save,nativeTheme,appearance,windows,watcher,controller,options,
-    notify:name=>notification(name),notification:()=>notification,closed:()=>closed,current:value=>{current=value;}};
+    notify:(name: unknown)=>notification!(name),notification:()=>notification!,closed:()=>closed,current:(value: boolean)=>{current=value;}};
 }
 
 test('fixed saved sidecar controls only native fill and never writes files or forces OS appearance',t=>{
@@ -71,7 +75,7 @@ test('unrelated directory events do not apply and late watcher or OS callbacks c
     const f=fixture(t),lateWatch=f.notification(),lateTheme=f.nativeTheme.listeners('updated')[0];f.save('light');
     const before=f.windows[0].colors.length;f.notify('other-preferences.json');assert.equal(f.windows[0].colors.length,before);
     if(invalidation==='context')f.current(false);else if(invalidation==='dispose')f.appearance.dispose();else f.controller.abort();
-    lateWatch('ui-preferences-v1.json');lateTheme();assert.equal(f.windows[0].colors.length,before);
+    lateWatch('ui-preferences-v1.json');lateTheme!();assert.equal(f.windows[0].colors.length,before);
     if(invalidation!=='context'){assert.equal(f.nativeTheme.listenerCount('updated'),0);assert.equal(f.closed(),1);}
     f.appearance.dispose();assert.equal(f.closed(),1);
   }
@@ -89,8 +93,8 @@ test('actual directory watch survives repeated atomic sidecar replacement withou
   // before the first atomic replacement; otherwise macOS FSEvents can miss the
   // initial rename and this test observes only the pre-watch background.
   await new Promise(resolve=>setTimeout(resolve,100));
-  const until=async color=>{const deadline=Date.now()+3000;while(f.windows[0].colors.at(-1)!==color&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(f.windows[0].colors.at(-1),color);};
-  for(const theme of ['light','dark','light']){
+  const until=async (color: string)=>{const deadline=Date.now()+3000;while(f.windows[0].colors.at(-1)!==color&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(f.windows[0].colors.at(-1),color);};
+  for(const theme of ['light','dark','light'] as const){
     const staging=path.join(f.root,'.appearance.pending');writeFileSync(staging,JSON.stringify(f.record(theme)),{mode:0o600});renameSync(staging,f.file);await until(WINDOW_BACKGROUNDS[theme]);
   }
   assert.deepEqual(readdirSync(f.root).sort(),['ui-preferences-v1.json','workbench.sqlite']);

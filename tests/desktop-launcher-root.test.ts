@@ -8,49 +8,61 @@ import { buildSync, transformSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const source = name => readFileSync(join(root, 'apps/web/src', name), 'utf8');
-const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
-const find = (tree, id) => { const node = nodes(tree).find(node => node.props?.['data-testid'] === id); assert.ok(node, id); return node; };
-function homeHarness(patch = {}) {
-  const actual = createRequire(join(root, 'apps/web/package.json'))('react');
-  const slots = [], reports = []; let cursor = 0;
-  const react = { ...actual, useId: () => `id-${cursor++}`,
-    useState(value) { const index = cursor++; if (!(index in slots)) slots[index] = value; return [slots[index], next => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }]; },
-    useRef(value) { return slots[cursor++] ||= { current: value }; },
-    useEffect() { cursor++; },
+const source = (name: string): string => readFileSync(join(root, 'apps/web/src', name), 'utf8');
+interface FakeProps {'data-testid'?: string; children?: unknown; disabled?: boolean; value?: string; type?: unknown;
+  onClick?: () => void; onChange?: (event: {target: {value: string}}) => void;
+  onSubmit?: (event: {preventDefault(): void}) => Promise<boolean> | boolean; [key: string]: unknown}
+interface FakeNode {props: FakeProps; type?: unknown}
+interface CreateReport {dirty: boolean; busy: boolean; version: number}
+type ReactLike = Record<string, unknown>;
+const nodes = (value: unknown): FakeNode[] => Array.isArray(value) ? value.flatMap(nodes)
+  : value && typeof value === 'object' ? [{props: (((value as {props?: unknown}).props ?? {}) as FakeProps)},
+    ...nodes(((value as {props?: FakeProps}).props)?.children)] : [];
+const find = (tree: unknown, id: string): FakeNode => { const node = nodes(tree).find(node => node.props?.['data-testid'] === id); assert.ok(node, id); return node; };
+function homeHarness(patch: Record<string, unknown> = {}) {
+  const actual: ReactLike = createRequire(join(root, 'apps/web/package.json'))('react');
+  const slots: unknown[] = [], reports: CreateReport[] = []; let cursor = 0;
+  const react = { ...actual, useId: (): string => `id-${cursor++}`,
+    useState(value: unknown): [unknown, (next: unknown) => void] {
+      const index = cursor++; if (!(index in slots)) slots[index] = value;
+      return [slots[index], (next: unknown) => { slots[index] = typeof next === 'function' ? (next as (prev: unknown) => unknown)(slots[index]) : next; }]; },
+    useRef(value: unknown): {current: unknown} { const index = cursor++; if (!(index in slots)) slots[index] = { current: value }; return slots[index] as {current: unknown}; },
+    useEffect(): void { cursor++; },
   };
-  const module = { exports: {} };
-  Function('require', 'module', 'exports', transformSync(source('ProjectHome.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
+  const module: {exports: {default?: unknown}} = { exports: {} };
+  Function('require', 'module', 'exports', transformSync(source('ProjectHome.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)((name: string) => {
     if (name === 'react') return react;
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './LanguageControl.tsx') return { default: () => null };
     return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label', 'Dialog', 'WorkbenchDialogContent'].map(key => [key, key.toLowerCase()]));
   }, module, module.exports);
-  const props = { projects: [], phase: 'home', busy: false, listBusy: false, page: 'projects', onPage() {}, onOpen() {}, onRetry() {}, onRefresh() {}, onCreate: async () => true, settings: null, onCreateStateChange: state => reports.push(state), ...patch };
-  return { reports, render(next = {}) { Object.assign(props, next); cursor = 0; return module.exports.default(props); } };
+  const props: Record<string, unknown> = { projects: [], phase: 'home', busy: false, listBusy: false, page: 'projects', onPage() {}, onOpen() {}, onRetry() {}, onRefresh() {}, onCreate: async () => true, settings: null,
+    onCreateStateChange: (state: CreateReport) => reports.push(state), ...patch };
+  return { reports, render(next: Record<string, unknown> = {}): FakeNode { Object.assign(props, next); cursor = 0;
+    return (module.exports.default as (value: Record<string, unknown>) => FakeNode)(props); } };
 }
 test('native launcher create restriction is explained before form and also guards stale handlers', async () => {
   const h = homeHarness(); const original = find(h.render(), 'project-home-create-toggle');
   const disabled = h.render({ createDisabledReason: '请先关闭当前编辑窗口。' });
   assert.equal(find(disabled, 'project-home-create-toggle').props.disabled, true); assert.ok(find(disabled, 'project-home-create-disabled'));
-  original.props.onClick(); assert.equal(nodes(h.render()).some(node => node.props?.['data-testid'] === 'project-home-create-form'), false);
+  original.props.onClick!(); assert.equal(nodes(h.render()).some(node => node.props?.['data-testid'] === 'project-home-create-form'), false);
 });
 test('local draft P0 metadata reports synchronously without name or description payloads', async () => {
-  let finish; const pending = new Promise(resolve => { finish = resolve; });
+  let finish!: (value: boolean) => void; const pending = new Promise<boolean>(resolve => { finish = resolve; });
   const h = homeHarness({ onCreate: () => pending });
-  find(h.render(), 'project-home-create-toggle').props.onClick();
-  find(h.render(), 'project-home-name').props.onChange({ target: { value: 'private story title' } });
-  assert.equal(h.reports.at(-1).dirty, true); const first = h.reports.at(-1).version;
-  find(h.render(), 'project-home-name').props.onChange({ target: { value: 'second title' } });
-  assert.ok(h.reports.at(-1).version > first); assert.deepEqual(Object.keys(h.reports.at(-1)).sort(), ['busy', 'dirty', 'version']);
-  const work = find(h.render(), 'project-home-create-form').props.onSubmit({ preventDefault() {} });
-  assert.equal(h.reports.at(-1).busy, true); finish(false); await work;
-  assert.equal(h.reports.at(-1).busy, false); assert.equal(h.reports.at(-1).dirty, true);
+  find(h.render(), 'project-home-create-toggle').props.onClick!();
+  find(h.render(), 'project-home-name').props.onChange!({ target: { value: 'private story title' } });
+  assert.equal(h.reports.at(-1)!.dirty, true); const first = h.reports.at(-1)!.version;
+  find(h.render(), 'project-home-name').props.onChange!({ target: { value: 'second title' } });
+  assert.ok(h.reports.at(-1)!.version > first); assert.deepEqual(Object.keys(h.reports.at(-1)!).sort(), ['busy', 'dirty', 'version']);
+  const work = find(h.render(), 'project-home-create-form').props.onSubmit!({ preventDefault() {} });
+  assert.equal(h.reports.at(-1)!.busy, true); finish(false); await work;
+  assert.equal(h.reports.at(-1)!.busy, false); assert.equal(h.reports.at(-1)!.dirty, true);
   assert.doesNotMatch(JSON.stringify(h.reports), /private story title|second title/);
 });
 test('host busy presentation alone does not republish local create metadata', () => {
-  const h = homeHarness(); h.render(); const initial = h.reports.at(-1);
+  const h = homeHarness(); h.render(); const initial = h.reports.at(-1)!;
   h.render({ busy: true, createDisabledReason: '应用正在退出，暂不能新建项目。' });
   h.render({ busy: false, createDisabledReason: '' });
   assert.equal(h.reports.length, 1); assert.equal(h.reports.at(-1), initial);
@@ -73,10 +85,10 @@ test('root mounts all three verified native roles without project-role URL autho
 test('entry form stale handlers cannot mutate while sealed before React rerenders disabled props', () => {
   let allowed = true;
   const h = homeHarness({ canMutateEntry: () => allowed });
-  find(h.render(), 'project-home-create-toggle').props.onClick();
+  find(h.render(), 'project-home-create-toggle').props.onClick!();
   const input = find(h.render(), 'project-home-name'); const toggle = find(h.render(), 'project-home-create-toggle');
   const before = h.reports.length; allowed = false;
-  input.props.onChange({ target: { value: 'late secret title' } }); toggle.props.onClick();
+  input.props.onChange!({ target: { value: 'late secret title' } }); toggle.props.onClick!();
   assert.equal(h.reports.length, before); assert.equal(find(h.render(), 'project-home-name').props.value, '');
 });
 test('native settings slot delegates before existing key clearing; Web fallback remains present', () => {
@@ -91,12 +103,13 @@ test('native settings slot delegates before existing key clearing; Web fallback 
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-state.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
-const uuid = n => `68000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const context = patch => ({ version: 2, role: 'settings', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
+import type {ProjectWindowContext} from '../apps/web/src/desktop-window-client.ts';
+const uuid = (n: number) => `68000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const context = (patch: Record<string, unknown> = {}): ProjectWindowContext => ({ version: 2, role: 'settings', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
   editorProjectId: null, editorPhase: 'none', editorCount: 2, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: 'agent', settingsVersion: 1,
-  selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
-const tick = () => new Promise(setImmediate);
-function settingsFixture(confirm = async () => true) {
+  selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch }) as ProjectWindowContext;
+const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
+function settingsFixture(confirm: () => Promise<boolean> = async () => true) {
   const registry = createSettingsNavigationRegistry();
   const registration = registry.register('agent');
   registration.update({ dirty: false, busy: false, blocked: false, version: 1 });
@@ -104,7 +117,7 @@ function settingsFixture(confirm = async () => true) {
   return { registry, registration, navigation };
 }
 test('settings slot consent is exact and changed input remains with its owner', async () => {
-  const answer = Promise.withResolvers(); const f = settingsFixture(() => answer.promise);
+  const answer = Promise.withResolvers<boolean>(); const f = settingsFixture(() => answer.promise);
   f.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
   const pending = f.navigation.select('custom');
   f.registration.update({ dirty: true, busy: false, blocked: false, version: 3 });
@@ -129,7 +142,7 @@ test('accepted slot selection retains registry owners and their nonsecret drafts
 });
 test('new host or local same-slot intent invalidates older pending consent synchronously', async () => {
   for (const kind of ['host', 'local']) {
-    const answer = Promise.withResolvers(); const f = settingsFixture(() => answer.promise);
+    const answer = Promise.withResolvers<boolean>(); const f = settingsFixture(() => answer.promise);
     f.registration.update({ dirty: true, busy: false, blocked: false, version: 2 });
     const pending = f.navigation.select('custom');
     if (kind === 'host') f.navigation.receive(context({ settingsVersion: 2, settingsSlot: 'agent' }));
@@ -161,16 +174,19 @@ test('foreign settings context and stale settings version cannot select an owned
   await tick(); assert.equal(f.navigation.selected, 'agent');
 });
 test('a superseded initial context rejection cannot unmount an established native role', async () => {
-  const actual = createRequire(join(root, 'apps/web/package.json'))('react');
-  const slots = [], effects = []; let cursor = 0, receive;
-  const pending = Promise.withResolvers();
-  const bridge = { subscribe: callback => { receive = callback; return () => {}; }, context: () => pending.promise };
+  const actual: ReactLike = createRequire(join(root, 'apps/web/package.json'))('react');
+  const slots: unknown[] = [], effects: Array<() => void> = []; let cursor = 0;
+  let receive: ((...args: unknown[]) => void) | undefined;
+  const pending = Promise.withResolvers<unknown>();
+  const bridge = { subscribe: (callback: (...args: unknown[]) => void) => { receive = callback; return () => {}; }, context: () => pending.promise };
   const react = { ...actual,
-    useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], next => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }]; },
-    useEffect(fn) { const index = cursor++; if (!(index in slots)) { slots[index] = true; effects.push(fn); } },
+    useState(initial: unknown): [unknown, (next: unknown) => void] {
+      const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? (initial as () => unknown)() : initial;
+      return [slots[index], (next: unknown) => { slots[index] = typeof next === 'function' ? (next as (prev: unknown) => unknown)(slots[index]) : next; }]; },
+    useEffect(fn: () => void): void { const index = cursor++; if (!(index in slots)) { slots[index] = true; effects.push(fn); } },
   };
-  const module = { exports: {} };
-  Function('require', 'module', 'exports', 'window', transformSync(source('DesktopRoot.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(name => {
+  const module: {exports: {default?: unknown}} = { exports: {} };
+  Function('require', 'module', 'exports', 'window', transformSync(source('DesktopRoot.tsx'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)((name: string) => {
     if (name === 'react') return react;
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
@@ -181,8 +197,8 @@ test('a superseded initial context rejection cannot unmount an established nativ
     if (name === './desktop-window-client.ts') return { readDesktopWindowBridge: () => bridge };
     assert.fail(name);
   }, module, module.exports, {});
-  const render = () => { cursor = 0; return module.exports.default({ rpc() {}, contractChecks: {}, renderWeb: () => actual.createElement('web'), renderEditor: () => actual.createElement('editor'), renderSettings: () => null }); };
-  render(); effects.splice(0).forEach(effect => effect()); receive({ contextId: 'current-owner', role: 'editor' });
+  const render = (): FakeNode => { cursor = 0; return (module.exports.default as (props: Record<string, unknown>) => FakeNode)({ rpc() {}, contractChecks: {}, renderWeb: () => (actual.createElement as (...args: unknown[]) => unknown)('web'), renderEditor: () => (actual.createElement as (...args: unknown[]) => unknown)('editor'), renderSettings: () => null }); };
+  render(); effects.splice(0).forEach(effect => effect()); receive!({ contextId: 'current-owner', role: 'editor' });
   assert.equal(render().type, 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal(render().type, 'editor');
 });
 

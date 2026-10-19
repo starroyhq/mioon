@@ -6,13 +6,17 @@ import {installWindowPolicy} from '../apps/desktop/src/security.ts';
 const origin = 'http://127.0.0.1:41923';
 const own = `${origin}/?project=11111111-1111-4111-8111-111111111111`;
 const other = `${origin}/?project=22222222-2222-4222-8222-222222222222`;
+type PolicyWindow = Parameters<typeof installWindowPolicy>[0];
+type Owner = Parameters<typeof installWindowPolicy>[2];
+type FakeContents = EventEmitter & {setWindowOpenHandler: (handler: (value: {url: string}) => unknown) => void};
+interface FakeEvent {url?: string; isMainFrame?: boolean}
 function fixture(url = own) {
-  const contents = new EventEmitter(); contents.setWindowOpenHandler = () => {};
+  const contents = new EventEmitter() as FakeContents; contents.setWindowOpenHandler = () => {};
   const state = {current: true};
-  installWindowPolicy({webContents: contents}, origin, {url, isCurrent: () => state.current});
+  installWindowPolicy({webContents: contents} as unknown as PolicyWindow, origin, {url, isCurrent: () => state.current} as unknown as Owner);
   return {contents, state};
 }
-function blocked(contents, name, event, legacyUrl) {
+function blocked(contents: FakeContents, name: string, event: FakeEvent, legacyUrl?: string): boolean {
   let prevented = false;
   contents.emit(name, {...event, preventDefault() {prevented = true;}}, legacyUrl);
   return prevented;

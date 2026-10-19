@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { APP_LANGUAGE_EVENT } from '../packages/i18n/src/preference.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
+import type {LanguageSnapshot} from '../packages/i18n/src/preference.ts';
 
 // Execute the actual main-process language-host wiring, with only native window
 // and storage boundaries faked. This does not claim native destruction timing.
@@ -14,13 +15,16 @@ const end = main.indexOf('\n    installMenu();', start);
 assert.ok(start >= 0 && end > start, 'The main-process language host must remain testable.');
 const wiring = main.slice(start, end);
 
+interface Delivery {name: string; channel: string; snapshot: unknown}
+interface FakeLanguageHost {dispatch(event: unknown, request: {action: string; preference?: string}): {preference: string; persistence: string; revision: number}; snapshot(): {revision: number}}
+type LanguageWindow = {name: string; webContents: {mainFrame: {url: string}; send(channel: string, snapshot: unknown): void}};
 for (const failure of ['send', 'webContents']) test(`language broadcasts isolate a destroyed window's ${failure} failure`, async () => {
-  const deliveries = [], listeners = new Set();
-  let persisted = null, writes = 0, menuUpdates = 0, failedAttempts = 0, untrustedDeliveries = 0;
-  const makeWindow = name => ({ name, webContents: { mainFrame: { url: `http://127.0.0.1:49152/?window=${name}` },
+  const deliveries: Delivery[] = [], listeners = new Set<(snapshot: LanguageSnapshot) => void>();
+  let persisted: string | null = null, writes = 0, menuUpdates = 0, failedAttempts = 0, untrustedDeliveries = 0;
+  const makeWindow = (name: string): LanguageWindow => ({ name, webContents: { mainFrame: { url: `http://127.0.0.1:49152/?window=${name}` },
     send(channel, snapshot) {
       deliveries.push({ name, channel, snapshot });
-      if (name === 'initiator') for (const listener of listeners) listener(snapshot);
+      if (name === 'initiator') for (const listener of listeners) listener(snapshot as LanguageSnapshot);
     } } });
   const destroyed = makeWindow('destroyed'), untrusted = makeWindow('untrusted');
   const observer = makeWindow('observer'), initiator = makeWindow('initiator');
@@ -30,30 +34,30 @@ for (const failure of ['send', 'webContents']) test(`language broadcasts isolate
   untrusted.webContents.send = () => { untrustedDeliveries++; };
   const owner = { frame: initiator.webContents.mainFrame, url: initiator.webContents.mainFrame.url, isCurrent: () => true };
   const context = vm.createContext({ createAppLanguageHost, systemLanguages: () => ['en'], paths: {},
-    readAppLanguagePreference: () => persisted,
-    writeAppLanguagePreference: (_paths, text) => { writes++; persisted = text; },
-    windowContext: {}, ownsWindow: window => window === initiator,
+    readAppLanguagePreference: (): string | null => persisted,
+    writeAppLanguagePreference: (_paths: unknown, text: string): void => { writes++; persisted = text; },
+    windowContext: {}, ownsWindow: (window: unknown): boolean => window === initiator,
     windowHost: {
-      windowForContents: contents => contents === initiator.webContents ? initiator : null,
-      ownerForContents: contents => contents === initiator.webContents ? owner : null,
-      windows: () => [destroyed, untrusted, observer, initiator],
+      windowForContents: (contents: unknown): LanguageWindow | null => contents === initiator.webContents ? initiator : null,
+      ownerForContents: (contents: unknown): typeof owner | null => contents === initiator.webContents ? owner : null,
+      windows: (): LanguageWindow[] => [destroyed, untrusted, observer, initiator],
       // A native window can disappear immediately after this trusted check.
-      isTrustedDocument: window => window !== untrusted,
+      isTrustedDocument: (window: unknown): boolean => window !== untrusted,
     },
-    installMenu: () => { menuUpdates++; },
+    installMenu: (): void => { menuUpdates++; },
   });
-  const host = vm.runInContext(`let languageHost; ${wiring}\nlanguageHost;`, context);
+  const host = vm.runInContext(`let languageHost; ${wiring}\nlanguageHost;`, context) as FakeLanguageHost;
   const event = { sender: initiator.webContents, senderFrame: owner.frame };
   const store = createLanguageStore({ systemLanguages: ['en'], bridge: {
-    read: async () => host.dispatch(event, { action: 'read' }),
-    set: async preference => host.dispatch(event, { action: 'set', preference }),
-    subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },
+    read: async () => host.dispatch(event, { action: 'read' }) as unknown as LanguageSnapshot,
+    set: async preference => host.dispatch(event, { action: 'set', preference }) as unknown as LanguageSnapshot,
+    subscribe: (listener: (snapshot: LanguageSnapshot) => void): (() => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   } });
   await store.initialize();
   const saved = host.dispatch(event, { action: 'set', preference: 'ja' });
   assert.equal(saved.preference, 'ja'); assert.equal(saved.persistence, 'saved'); assert.equal(saved.revision, 1);
   assert.equal(failedAttempts, 1); assert.equal(writes, 1); assert.equal(menuUpdates, 1); assert.equal(untrustedDeliveries, 0);
-  assert.deepEqual(JSON.parse(persisted), { version: 1, preference: 'ja' });
+  assert.deepEqual(JSON.parse(persisted!), { version: 1, preference: 'ja' });
   assert.deepEqual(deliveries.map(({ name }) => name), ['observer', 'initiator']);
   for (const delivery of deliveries) { assert.equal(delivery.channel, APP_LANGUAGE_EVENT); assert.equal(delivery.snapshot, saved); }
   assert.equal(store.getSnapshot().locale, 'ja'); assert.equal(store.getSnapshot().persistence, 'saved');
@@ -61,6 +65,6 @@ for (const failure of ['send', 'webContents']) test(`language broadcasts isolate
   await store.setPreference('zh-Hant');
   assert.equal(store.getSnapshot().locale, 'zh-Hant'); assert.equal(store.getSnapshot().persistence, 'saved');
   assert.equal(store.getSnapshot().saving, false); assert.equal(writes, 2); assert.equal(failedAttempts, 2); assert.equal(untrustedDeliveries, 0);
-  assert.equal(host.snapshot().revision, 2); assert.equal(JSON.parse(persisted).preference, 'zh-Hant');
+  assert.equal(host.snapshot().revision, 2); assert.equal(JSON.parse(persisted!).preference, 'zh-Hant');
   store.dispose(); assert.equal(listeners.size, 0);
 });
