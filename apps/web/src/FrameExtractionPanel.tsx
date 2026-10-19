@@ -4,16 +4,19 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
 import { Button } from '@mioon/ui/components/button';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
-import { FRAME_PROFILE, frameCaptureBusy, frameCanCancel, frameCanRecover, frameTaskMessage } from './frame-extraction.ts';
+import { FRAME_PROFILE, frameCaptureBusy, frameCanCancel, frameCanRecover, frameTaskMessage, createFrameExtractionController } from './frame-extraction.ts';
+import type { FrameAsset, FrameExtractionState, FrameTask } from './frame-extraction.ts';
+type FrameController = ReturnType<typeof createFrameExtractionController>;
+type FrameLiveToken = {controller: FrameController; visible: boolean; projectId: string | null; sourceScope: string | null};
 import './frame-extraction.css';
 
-const active = task => ['queued', 'running', 'persisting'].includes(task.state);
-export default function FrameExtractionPanel({ controller, visible = true }) {
+const active = (task: FrameTask): boolean => ['queued', 'running', 'persisting'].includes(task.state);
+export default function FrameExtractionPanel({ controller, visible = true }: {controller: FrameController; visible?: boolean}) {
   const { t, renderMessage, formatNumber } = useI18n();
   const ancestorVisible = useWorkspaceVisibility();
   visible = visible && ancestorVisible;
-  const [snapshot, setSnapshot] = useState(() => controller.getSnapshot());
-  const live = useRef(null);
+  const [snapshot, setSnapshot] = useState<FrameExtractionState>(() => controller.getSnapshot());
+  const live = useRef<FrameLiveToken | null>(null);
   useLayoutEffect(() => {
     const token = { controller, visible, projectId: controller.getSnapshot().projectId, sourceScope: controller.getSnapshot().sourceScope };
     live.current = token;
@@ -29,25 +32,25 @@ export default function FrameExtractionPanel({ controller, visible = true }) {
     return () => clearTimeout(timer);
   }, [controller, visible, state.visible, state.tasks]);
   const capturedProject = state.projectId, capturedScope = state.sourceScope;
-  const run = action => {
+  const run = (action: () => unknown): unknown => {
     const current = controller.getSnapshot(), binding = live.current;
     if (!binding || !binding.visible || binding.controller !== controller || binding.projectId !== capturedProject || binding.sourceScope !== capturedScope || !current.visible || current.projectId !== capturedProject || current.sourceScope !== capturedScope) return;
     return action();
   };
   const busy = !visible || frameCaptureBusy(state);
   const source = state.sourceAsset;
-  const resultAsset = task => state.assets.find(asset => asset.projectId === task.projectId && asset.id === task.result?.assetId && asset.sha256 === task.result?.sha256 && asset.mimeType === 'image/png' && asset.provenance === 'extracted-frame');
+  const resultAsset = (task: FrameTask): FrameAsset | undefined => state.assets.find(asset => asset.projectId === task.projectId && asset.id === task.result?.assetId && asset.sha256 === task.result?.sha256 && asset.mimeType === 'image/png' && asset.provenance === 'extracted-frame');
   return <section className="frame-extraction-panel" aria-label={t('timeline.frame.title')} data-testid="frame-extraction-panel">
     <div className="frame-extraction-heading"><h3>{t('timeline.frame.title')}</h3><Badge className="small-badge neutral">{t('timeline.frame.local')}</Badge></div>
     <p className="input-hint">{t('timeline.frame.timebase')}</p>
     <p className="frame-extraction-profile" data-testid="frame-extraction-profile">{t('timeline.frame.profile', { edge: FRAME_PROFILE.maxEdge })}</p>
-    {source && <p className="input-hint">{t('timeline.frame.source', { name: source.name || source.id })}</p>}
+    {source && <p className="input-hint">{t('timeline.frame.source', { name: (source.name || source.id) as string })}</p>}
     <p className="input-hint">{t('timeline.frame.frozen')}</p>
     {!state.historyLoaded && <p className="notice" role="status">{t('timeline.frame.readFirst')}</p>}
     {state.pending && <div className="notice warning" data-testid="frame-extraction-unknown" role="status"><strong>{t('timeline.frame.unknown')}</strong><p>{t('timeline.frame.pendingPoint', { name: state.pending.sourceName || t('timeline.frame.originalTask'), frame: state.pending.sourceFrame })}</p><p>{t('timeline.frame.operation', { operation: state.pending.operation })}</p><span className="frame-extraction-id">{state.pending.input.requestId}</span><p>{t('timeline.frame.windowEvidence')}</p><div className="frame-extraction-actions"><Button type="button" variant="outline" size="sm" data-testid="frame-request-reconcile" disabled={!visible || state.phase === 'submitting'} onClick={() => run(() => controller.reconcileUnknown())}>{t('timeline.frame.reconcile')}</Button><Button type="button" variant="ghost" size="sm" data-testid="frame-request-retry" disabled={!visible || state.phase === 'submitting'} onClick={() => run(() => controller.retryUnknown())}>{t('timeline.frame.retry')}</Button></div></div>}
     {state.message && <p className="notice" role="status" data-testid="frame-extraction-message">{renderMessage(state.messageDescriptor || message('timeline.frame.safeFailure'))}</p>}
     {state.error && <p className="notice warning" role="alert">{renderMessage(state.errorMessage || message('timeline.frame.safeFailure'))}</p>}
-    {state.acknowledged && state.currentTaskPending && <p className="notice">{t('timeline.frame.acceptedPending')}<Button type="button" variant="ghost" size="sm" disabled={!visible} onClick={() => run(() => controller.readTask(state.currentTaskPending))}>{t('timeline.frame.readTask')}</Button></p>}
+    {state.acknowledged && state.currentTaskPending && <p className="notice">{t('timeline.frame.acceptedPending')}<Button type="button" variant="ghost" size="sm" disabled={!visible} onClick={() => run(() => controller.readTask(state.currentTaskPending as string))}>{t('timeline.frame.readTask')}</Button></p>}
     <div className="frame-extraction-heading"><h4>{t('timeline.frame.tasks')}</h4><Button type="button" variant="ghost" size="sm" data-testid="frame-task-refresh" disabled={!visible || state.phase === 'submitting'} onClick={() => run(() => controller.refreshTasks())}>{t('timeline.frame.refresh')}</Button></div><p className="input-hint" role="status" data-testid="frame-task-page">{state.loading ? t('timeline.frame.loading') : t('timeline.frame.page', { page: state.pageTrail.length + 1 })}</p>
     {!state.tasks.length && state.historyLoaded && !state.loading && <p className="input-hint">{t('timeline.frame.empty')}</p>}
     {state.tasks.map(task => {

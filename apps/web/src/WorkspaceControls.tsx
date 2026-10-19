@@ -6,11 +6,14 @@ import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 
 type SelectTriggerProps = React.ComponentProps<typeof SelectTrigger>;
 export interface WorkbenchSelectOption { value: string; label: string; disabled: boolean }
-export interface WorkbenchSelectProps extends Omit<SelectTriggerProps, 'children' | 'className'> {
+export interface WorkbenchSelectProps extends Omit<SelectTriggerProps, 'children' | 'className' | 'onChange' | 'value'> {
   children?: ReactNode;
   value?: unknown;
   onChange?: (event: { target: { value: string } }) => void;
   className?: string;
+  required?: boolean;
+  name?: string;
+  disabled?: boolean;
 }
 export interface WorkbenchTooltipProps { children: ReactElement; content?: ReactNode }
 interface VisiblePopupState {

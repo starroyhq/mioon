@@ -12,6 +12,7 @@ const read = name => readFileSync(path.join(root, name), 'utf8');
 const documentPath = 'docs/AGENT-QUICKSTART-AUDIT.md';
 const document = read(documentPath);
 const cli = read('apps/cli/src/index.ts');
+const cliArguments = read('apps/cli/src/arguments.ts');
 const client = read('packages/client/src/index.ts');
 const contracts = read('packages/contracts/src/index.ts');
 const images = read('packages/contracts/src/images.ts');
@@ -19,8 +20,8 @@ const reviews = read('packages/contracts/src/image-reviews.ts');
 const inspection = read('packages/contracts/src/inspection.ts');
 const preflight = read('packages/contracts/src/export-preflight.ts');
 const quotedWords = source => [...source.matchAll(/'([^']+)'/gu)].map(match => match[1]);
-const valueOptions = new Set(quotedWords(cli.match(/const valueOptions = new Set\(\[([^\]]+)\]\)/u)[1]));
-const switches = new Set(quotedWords(cli.match(/const switches = new Set\(\[([^\]]+)\]\)/u)[1]));
+const valueOptions = new Set(quotedWords(cliArguments.match(/const valueOptions = new Set\(\[([^\]]+)\]\)/u)[1]));
+const switches = new Set(quotedWords(cliArguments.match(/const switches = new Set\(\[([^\]]+)\]\)/u)[1]));
 const watchOperations = quotedWords(cli.match(/const watch = \[([^\]]+)\]\.includes/u)[1]);
 const downloadOperations = quotedWords(cli.match(/download = \[([^\]]+)\]\.includes/u)[1]);
 const blocks = [...document.matchAll(/<!-- quickstart ([\w-]+) ([\w-]+) -->\n```sh\n([\s\S]*?)\n```/gu)];
@@ -147,7 +148,7 @@ for (const name of ['imageSchemas', 'imageReviewSchemas', 'inspectionSchemas', '
 test('every CLI draft uses real public operations, flags and the documented input layer', () => {
   assert.ok(examples.length >= 25);
   assert.equal(new Set(blocks.map(match => match[1])).size, blocks.length);
-  assert.equal(examples.length, [...document.matchAll(/^node apps\/cli\/src\/index\.mjs /gmu)].length);
+  assert.equal(examples.length, [...document.matchAll(/^node apps\/cli\/src\/index\.ts /gmu)].length);
   for (const item of examples) {
     const {operation, options, words} = item;
     if (item.effect === 'offline') {

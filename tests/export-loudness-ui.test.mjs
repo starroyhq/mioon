@@ -3,6 +3,7 @@ import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { stripSourceTypes } from './helpers/eval-source.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
@@ -45,7 +46,7 @@ before(async () => {
   const script = `import {build} from 'esbuild';
     globalThis.fetch = () => {throw Error('History presentation must never request data');};
     const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'jsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
-    const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
+    const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html), () => process.exit(0));`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
 test('classic TSX shared controls render compact measure-only default, optional collapsed targets and honest limits', () => {
@@ -125,18 +126,18 @@ test('actual cancel callback is bound to its row/attempt and cannot cancel newer
 test('actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation', async () => {
   const app = source('App.tsx'), start = app.indexOf('  function exportSamplePeakContext()'), contextEnd = app.indexOf('  const exportSamplePeak =',start);
   const hookStart = app.indexOf('  const exportLoudness ='), hookEnd = app.indexOf('  function openTimelineExport()',hookStart);
-  const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{exportLoudness\}/);
+  const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{application \? undefined : exportLoudness\}/);
   const live = context(), calls = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };
   const workspaceRef = { current: { restored: false } }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
   let controller;
   const env = { workspaceOriginScope,pinNewWorkspaceIntent,workspaceRef,currentProject,projectEpoch,navigationEpoch,panelIntent,viewRef,dataRef,
-    projectSessionReady: () => true,workbenchReady: true, online: true,auth: true,loading: false,rightDockTab: 'delivery',showExports: true,panelVisible: () => true,isTimelineRenderRecord,
+    projectSessionReady: () => true,workbenchReady: true, online: true,auth: true,loading: false,rightDockTab: 'delivery',showDelivery: true,showExports: true,panelVisible: () => true,isTimelineRenderRecord,
     setAuth() { assert.fail('unexpected auth change'); }, async rpc(operation,input,options) { calls.push({operation,input,options}); return report(controller.getState().targets.find(t => t.exportId === input.exportId),input.target); },
     useExportLoudness(options) { controller = loudnessState.createExportLoudnessController(options); controller.setContext(options.context); return { state: controller.getState(),controller }; } };
-  const actual = Function(...Object.keys(env),`${block};return {exportLoudness,exportSamplePeakContext};`)(...Object.values(env)); assert.equal(calls.length,0);
+  const actual = Function(...Object.keys(env),`${stripSourceTypes(block,{loader:'tsx'})};return {exportLoudness,exportSamplePeakContext};`)(...Object.values(env)); assert.equal(calls.length,0);
   const target = controller.getState().targets[1]; await controller.measure(target,controller.getState().scope,controller.getState().draftVersion);
   assert.equal(calls[0].operation,'timeline.export.loudness'); assert.equal(calls[0].input.expectedArtifactSha256,target.artifact.sha256); assert.deepEqual(Object.keys(calls[0].options),['signal']);
   projectEpoch.current++; controller.setContext(actual.exportSamplePeakContext()); assert.equal(controller.getState().report,null);
   const closed = { ...env, projectSessionReady: () => false, workbenchReady: false };
-  const unopened = Function(...Object.keys(closed),`${app.slice(start,contextEnd)};return exportSamplePeakContext();`)(...Object.values(closed)); assert.equal(unopened.projectId,null); assert.equal(unopened.connected,false); assert.equal(unopened.visible,false);
+  const unopened = Function(...Object.keys(closed),`${stripSourceTypes(app.slice(start,contextEnd),{loader:'tsx'})};return exportSamplePeakContext();`)(...Object.values(closed)); assert.equal(unopened.projectId,null); assert.equal(unopened.connected,false); assert.equal(unopened.visible,false);
 });

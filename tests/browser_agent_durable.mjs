@@ -1,7 +1,7 @@
 /** Supported own-cloud browser acceptance of durable chat. All inference uses
  * the same isolated synthetic HTTP service as the protocol acceptance. */
 import assert from 'node:assert/strict';
-import {responsesBrowserHarness} from './browser_agent_responses.ts';
+import {responsesBrowserHarness} from './browser_agent_responses.mjs';
 import {finishChatBrowser} from './browser_agent_chat.mjs';
 
 export const durableBrowserHarness = tab => responsesBrowserHarness(tab, {iteration: 'durable'});

@@ -4,13 +4,16 @@ import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.tsx';
 import { assetUrl } from './api.ts';
 import { generationReferencePreview } from './generation-settings.ts';
+import type { GenerationAsset, GenerationShot } from './generation-settings.ts';
+
+type Translate = ReturnType<typeof useI18n>['t'];
 import './video-frame-controls.css';
 
-const roleLabel = (role, t) => role === 'first_frame' ? t('timeline.references.first') : role === 'last_frame' ? t('timeline.references.last') : t('timeline.references.role', { role });
+const roleLabel = (role: string, t: Translate): string => role === 'first_frame' ? t('timeline.references.first') : role === 'last_frame' ? t('timeline.references.last') : t('timeline.references.role', { role });
 
 // Display the complete manifest, including unresolved historical identities.
 // A job's frozen manifest is never expanded from the current shot selection.
-export function VideoFrameSummary({ shot, assets = [], frozen = false, compact = false }) {
+export function VideoFrameSummary({ shot, assets = [], frozen = false, compact = false }: {shot?: GenerationShot; assets?: readonly GenerationAsset[]; frozen?: boolean; compact?: boolean}) {
   const { t } = useI18n();
   const references = generationReferencePreview(shot || {}, assets, { frozen });
   if (!references.length) return <p className="input-hint" data-testid="video-frame-summary-empty">{t('timeline.references.none')}</p>;
@@ -24,7 +27,11 @@ export function VideoFrameSummary({ shot, assets = [], frozen = false, compact =
   </div>;
 }
 
-export default function VideoFrameControls({ draft, assets, disabled, onChoose, onClear }) {
+export interface VideoFrameDraft {lastFrameAssetId?: string | null; [key: string]: unknown}
+type FrameAssetWithId = GenerationAsset & {id: string; name: string};
+export default function VideoFrameControls({ draft, assets, disabled, onChoose, onClear }: {
+  draft: VideoFrameDraft; assets: readonly FrameAssetWithId[]; disabled?: boolean; onChoose: (assetId: string) => void; onClear: () => void;
+}) {
   const { t } = useI18n();
   const selected = assets.find(asset => asset.id === draft.lastFrameAssetId);
   return <section className="video-last-frame" aria-label={t('timeline.references.last')} data-testid="video-last-frame-controls">

@@ -7,8 +7,8 @@ import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
 import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
-import {startChatQaMock} from './agent-chat-qa-mock.ts';
-import {startToolsQaMock, TOOLS_QA_HOSTILE_MARKER} from './agent-tools-qa-mock.ts';
+import {startChatQaMock} from './agent-chat-qa-mock.mjs';
+import {startToolsQaMock, TOOLS_QA_HOSTILE_MARKER} from './agent-tools-qa-mock.mjs';
 import {readToolsQaAudit} from './agent-tools-qa-audit.mjs';
 
 const toolsQa = process.argv.includes('--tools');

@@ -222,6 +222,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
    original=tx(()=>{sourceFence(original as FrameTaskView,verified.info);return change(original as FrameTaskView,{state:'persisting',stagedReceipt:canonical(receipt),errorCode:null});});fault('after_result_receipt',{taskId:original.row.id});
    await finalize(original,verified.info);
   }catch(cause){
+   console.error('FRAME_EXEC_FAIL',cause);
    if(original)try{
     const checked=current(original,{allowStopped:true});if(!['queued','running','persisting'].includes(checked.row.state))return;
     let receipt=checked.receipt;try{receipt??=storage.readReceipt(stageTask(checked));}catch{/* malformed retained receipt is a local result error */}
@@ -231,7 +232,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
      else if(stopped||signal.aborted||property(cause,'terminationUnconfirmed')||(typeof causeCode==='string'&&['MEDIA_CANCELLED','FRAME_INTERRUPTED','FRAME_SERVICE_STOPPED'].includes(causeCode)))change(checked,{state:'interrupted',errorCode:'FRAME_INTERRUPTED'},{allowStopped:true});
      else change(checked,{state:'failed',errorCode:typeof causeCode==='string'&&Object.hasOwn(messages,causeCode)?causeCode:causeCode==='MANAGED_SOURCE_CHANGED'?'FRAME_SOURCE_CHANGED':'FRAME_STORAGE_FAILED'},{allowStopped:true});
     });
-   }catch{diagnose();}
+   }catch(cause2){console.error('FRAME_EXEC_RECORD_FAIL',cause2);diagnose();}
   }finally{
    // A decoder error is not evidence of child close. This exact registered
    // attempt owns the resource slot until every owned handle emits close.

@@ -23,7 +23,7 @@ import AgentSettings from './AgentSettings.tsx';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
 import { providerDisplayName, jobStatusDescriptor, statusDescriptor } from './creation-i18n.ts';
-import { message as msg, renderMessage as renderCoreMessage } from '../../../packages/i18n/src/index.ts';
+import { message as msg, renderMessage as renderCoreMessage, type DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import LanguageControl from './LanguageControl.tsx';
 import WebSettingsCenter from './WebSettingsCenter.tsx';
 import { hasOpenWorkbenchModal } from './workbench-modal-state.ts';
@@ -57,6 +57,33 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchSelect } from './WorkspaceControls.tsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {SubjectReference} from '@mioon/contracts';
+import type {NativeAudioPreviewBridge} from '@mioon/contracts/native-audio-preview';
+import type {ClipInspectorSnapshot, ClipInspectorRetention} from './clip-inspector-retention.ts';
+import type {ReplacementReview} from './clip-source-replacement.ts';
+import type {ExportRangeDraft, ExportRangeContext} from './export-range-state.ts';
+import type {DeliveryNameContext, DeliveryNameState} from './export-delivery-state.ts';
+import {createTimelineDeliveryNameController} from './export-delivery-state.ts';
+import type {LocalDeliveryContext, LocalDeliveryController, LocalDeliveryState} from './local-delivery-state.ts';
+import type {SubtitleContext, SubtitleIntent, SubtitleState} from './subtitle-state.ts';
+import {createSubtitleController} from './subtitle-state.ts';
+import type {TimelineFormatContext, TimelineFormatIntent, TimelineFormatState} from './timeline-format-state.ts';
+import {createTimelineFormatController} from './timeline-format-state.ts';
+import type {TimelineClipLoudnessContext} from './timeline-clip-loudness-state.ts';
+import type {TimelineMixLoudnessContext} from './timeline-mix-loudness-state.ts';
+import type {TimelineAudioPreviewContext} from './use-timeline-audio-preview.ts';
+import type {ComparisonBinding, ComparisonContext} from './version-comparison-state.ts';
+import type {TaskWorkspaceContext} from './task-workspace-intent.ts';
+import type {GenerationAsset, GenerationProvider, GenerationShot} from './generation-settings.ts';
+import type {LastProjectController} from './last-project-state.ts';
+import type {SettingsNavigationRegistry} from './settings-navigation-state.ts';
+import type {HomeConnectionSlot} from './ProjectHomeConnections.tsx';
+import type {SettingsPage} from './settings-window-state.ts';
+import type {NativeCloseRegistry} from './native-close-state.ts';
+import type {ProjectOpenAttempt} from './project-open-state.ts';
+import type {ImageEditIntent} from './image-edit-intent.ts';
+import type {EditorWindowBinding} from './editor-native-window.ts';
+import type {TimelineLoudnessApplyController} from './timeline-loudness-apply-state.ts';
 import { schemas as productionSchemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
 import { readOpacityCandidateApplication } from './opacity-candidate-application.ts';
 import OpacityRestoredNotice from './OpacityRestoredNotice.tsx';
@@ -158,16 +185,10 @@ export type AuthState = true | false | 'error' | null;
 export type CapabilityStatus = string;
 export type ToastTone = 'success' | 'warning' | 'error';
 export interface AppProject {id: string; name: string; description?: string; revision: number; createdAt?: string; updatedAt?: string; [key: string]: unknown}
-export interface AppAsset {
-  id: string; projectId?: string; name: string; mimeType: string; sizeBytes: number;
-  width?: number | null; height?: number | null; duration?: number; sha256?: string; url?: string;
-  relativePath?: string; role?: string; [key: string]: unknown;
-}
-export interface AppShot {
-  id: string; projectId: string; title: string; prompt?: string; referenceAssetIds?: string[];
-  lastFrameAssetId?: string | null; aspectRatio?: string; duration?: number; parameters?: Record<string, unknown>;
-  position?: {x: number; y: number}; orderIndex: number; revision: number; selectedVersionId?: string | null;
-  subjectReference?: Record<string, unknown> | null; createdAt?: string; updatedAt?: string;
+export interface AppAsset extends GenerationAsset {id: string; name: string; mimeType: string; sizeBytes: number}
+export interface AppShot extends GenerationShot {
+  id: string; projectId: string; title: string; orderIndex: number; revision: number;
+  subjectReference?: SubjectReference | null;
   [key: string]: unknown;
 }
 export interface AppNode {
@@ -237,8 +258,8 @@ export interface ViewState {
   [key: string]: unknown;
 }
 export interface WorkspaceState {restored?: boolean; workspaceOrigin?: string | null; workspaceScope?: string | null; channel?: string; root?: string; [key: string]: unknown}
-export interface ProviderRecord {id: string; name?: string; models?: unknown; mock?: boolean; [key: string]: unknown}
-export interface ToastState {message: string; type: ToastTone; time: number}
+export type ProviderRecord = GenerationProvider;
+export interface ToastState {message: AppMessage; type: ToastTone; time: number}
 export interface ProjectOpening {phase: 'home' | 'opening' | 'ready' | 'error'; projectId: string | null; error: string}
 export interface ProjectListStatus {busy: boolean; error: string}
 export interface PreferenceStatus {phase: string; pending: boolean; error?: unknown}
@@ -250,9 +271,7 @@ export interface GenerationOptionState {
   providerId?: string; model?: string; scenario?: string; inputMode?: string;
   subjectReference?: AppSubjectReference | null; [key: string]: unknown;
 }
-export interface AppSubjectReference {
-  subjectVersionId: string; subjectVersion: {subjectId?: string; assetId?: string; [key: string]: unknown}; [key: string]: unknown;
-}
+export type AppSubjectReference = SubjectReference;
 export interface GenerationReviewArgs {
   shot: AppShot; providerId: string; model?: string; scenario?: string; inputMode?: string;
   retryJobId?: string; subjectReference?: AppSubjectReference | null; expectedRetrySnapshot?: Record<string, unknown>;
@@ -262,44 +281,33 @@ export interface GenerationReviewArgs {
 export interface ReviewOutcome {dispatched: boolean; rejected: boolean}
 export interface RunOptions {
   replay?: boolean; returnAfterNavigation?: boolean; validateResponse?: (value: unknown) => void;
-  onFailure?: (error: unknown, outcome: ReviewOutcome) => void; errorMessage?: (error: unknown) => string;
+  onFailure?: (error: unknown, outcome: ReviewOutcome) => void; errorMessage?: (error: unknown) => AppMessage;
   expectedSubjectReference?: unknown; subjectRetry?: boolean; expectedRetrySnapshot?: unknown; pendingEntry?: PendingEntry;
   canExecute?: (preparedTask: unknown) => boolean; canRevealTasks?: () => boolean; [key: string]: unknown;
 }
-export interface ClipDraftController {
-  hasPendingComposition(): boolean; hasUnsaved(): boolean; getState(): {candidate?: unknown; [key: string]: unknown};
-  capture(): unknown; discard(capture: unknown, canDiscard?: () => boolean): Promise<boolean> | boolean;
-  isCurrent(capture: unknown): boolean; supportsRestoredPersistence(origin?: string): boolean;
-  hasUnpersisted(): boolean; flushForClose(): Promise<unknown> | unknown;
-}
-export interface ShotTextController {
-  capture(): unknown; hasUnsaved(): boolean; isCurrent(capture: unknown): boolean; blocksLegacy(shotId?: string): boolean;
-  abandonCurrentInput(capture: unknown): boolean; hasUnpersisted(): boolean; flush(): unknown;
-}
-export interface ClipInspectorSnapshot {
-  key: string; scope: string; projectId: string; clip: AppTimelineClip; timeline: AppTimeline;
-  asset?: AppAsset; restored: boolean; workspaceOrigin?: string | null; [key: string]: unknown;
-}
-export interface ClipInspectorRetention {snapshot: ClipInspectorSnapshot | null; retained: boolean}
+
+export type SubtitlesRuntime = {state: SubtitleState | null; controller: ReturnType<typeof createSubtitleController>};
+export type TimelineFormatRuntime = {state: TimelineFormatState | null; controller: ReturnType<typeof createTimelineFormatController>};
+export type DeliveryNameRuntime = {state: DeliveryNameState | null; controller: ReturnType<typeof createTimelineDeliveryNameController>};
+export type LocalDeliveryRuntime = {state: LocalDeliveryState; controller: LocalDeliveryController};
+export type TimelineLoudnessApplyRuntime = {state: unknown; controller: TimelineLoudnessApplyController};
+export type ClipDraftController = ReturnType<typeof import('./clip-draft-state.ts').createClipDraftController>;
+export type ShotTextController = ReturnType<typeof import('./local-shot-text-state.ts').createLocalShotTextController>;
 export interface CapturedContext {projectId: string | null; epoch: number; workspace: WorkspaceState | null}
-export interface TaskRevealContext {
-  active: boolean; projectId: string; projectEpoch: number; navigationEpoch: number;
-  panelIntent: number; workspaceScope: string | null; [key: string]: unknown;
-}
-export interface TaskViewContext extends TaskRevealContext {[key: string]: unknown}
+export type AppMessage = DisplayMessage | string;
+export type TaskRevealContext = TaskWorkspaceContext;
+export type TaskViewContext = TaskWorkspaceContext;
 export interface AssetDropSnapshot {projectId?: string | null; durationFrames?: number; expectedRevision?: number; [key: string]: unknown}
-export interface ComparisonBinding {shotId: string; versionId: string; [key: string]: unknown}
-export interface SourceRangeSnapshot {scope: string; projectId?: string | null; assetId: string; [key: string]: unknown}
-export interface TimelineMutationOptions extends RunOptions {}
-export interface DraftRangeInput {startText: string; endText: string; scope?: string; version?: number; [key: string]: unknown}
+export type {ComparisonBinding};
+export type SourceRangeSnapshot = import('./source-range-state.ts').SourceRangeSnapshot;
+export type TimelineMutationOptions = RunOptions;
+export type DraftRangeInput = ExportRangeDraft & {scope?: string; version?: number};
 export interface StringPatch {[key: string]: unknown}
-export interface TimelineFormatIntent {scope: string; projectId: string | null; input: Record<string, unknown>; [key: string]: unknown}
-export interface SubtitleIntent {scope: string; projectId: string | null; operation: string; input: Record<string, unknown>; selection?: unknown; timelineId?: string | null; [key: string]: unknown}
-export interface ClipReplacementReview {
-  projectId: string; expectedRevision: number; input: Record<string, unknown>; [key: string]: unknown;
-}
+export type {TimelineFormatIntent};
+export type {SubtitleIntent};
+export type ClipReplacementReview = ReplacementReview;
 export interface MediaPause {(): void}
-export interface NativeWindowLike {context: {initialProjectId: string}; [key: string]: unknown}
+export type NativeWindowLike = EditorWindowBinding;
 export interface NativeProjectEntryLike {
   open(projectId: string): Promise<boolean> | boolean; show(mode: string): Promise<unknown> | unknown;
   readCloseSnapshot(): unknown; [key: string]: unknown;
@@ -312,8 +320,8 @@ export interface AppProps {
 export interface ModalProps {title: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; onClose: () => void; wide?: boolean}
 export interface CreateProjectProps {onClose: () => void; onCreate: (name: string, description: string, timelinePresetId?: string) => unknown; busy?: boolean}
 export interface SettingsConnectionFormsProps {
-  selected: string; page: string; visible: boolean; registry: unknown;
-  onSelect: (slot: string) => void; onPage: (page: string) => void; general: React.ReactNode;
+  selected: HomeConnectionSlot; page: SettingsPage; visible: boolean; registry: SettingsNavigationRegistry;
+  onSelect: (slot: HomeConnectionSlot) => void; onPage: (page: SettingsPage) => void; general: React.ReactNode;
   connectionsAvailable?: boolean; beforeClose?: () => unknown; onClose?: () => void;
 }
 declare global {
@@ -329,10 +337,13 @@ const emptyData: AppData = { project: null, assets: [], shots: [], nodes: [], ed
 const emptyBusy: Readonly<Record<string, boolean>> = Object.freeze({});
 // Canvas fits leave room for the docks, heading and storyboard that float over the full-bleed pane.
 const canvasFitPadding = (fallback: number) => measuredFitPadding(document.querySelector('[data-testid="canvas-drop-zone"]'), fallback);
-function localizedError(displayMessage: unknown): Error & {displayMessage: unknown} { return Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }); }
-function readableError(error: unknown): string {
+function localizedError(displayMessage: AppMessage | null | undefined): Error & {displayMessage: AppMessage} {
+  const message: AppMessage = displayMessage ?? '';
+  return Object.assign(new Error(renderCoreMessage('zh-Hans', message)), { displayMessage: message });
+}
+function readableError(error: unknown): AppMessage {
   const failure = error as {displayMessage?: unknown; code?: unknown} | null | undefined;
-  if (failure?.displayMessage) return failure.displayMessage as string;
+  if (failure?.displayMessage) return failure.displayMessage as AppMessage;
   if (failure?.code === 'CONFLICT' || failure?.code === 'REVISION_CONFLICT') return msg('shell.error.conflict');
   if (['CLIP_OVERLAP', 'TIMELINE_OVERLAP', 'OVERLAP'].includes(failure?.code as string)) return msg('shell.error.overlap');
   if (failure?.code === 'UNAUTHORIZED') return msg('shell.error.unauthorized');
@@ -380,7 +391,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const confirm = useConfirmation();
   const nativeSettingsScope = useEditorSettingsScope(nativeWindow);
   const [nativeProjectLocation] = useState(() => nativeWindow ? createNativeProjectLocation(window, nativeWindow.context.initialProjectId) : null);
-  const [nativeAudioAdmission] = useState(() => nativeWindow ? createNativeAudioPreviewAdmission(window.__mioonNativeAudioPreview ?? null) : null);
+  const [nativeAudioAdmission] = useState(() => nativeWindow ? createNativeAudioPreviewAdmission((window.__mioonNativeAudioPreview ?? null) as NativeAudioPreviewBridge | null) : null);
   const [auth, setAuth] = useState<AuthState>(null);
   useEffect(() => { if (auth === true) void window.__mioonUiPreferences?.reload?.(); }, [auth]);
   const [data, setData] = useState(emptyData);
@@ -395,7 +406,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const generationUnavailableReason = restored ? RESTORE_DISABLED_MESSAGE : '';
   const dataRef = useRef(data); dataRef.current = data;
   const [projects, setProjects] = useState<AppProject[]>([]);
-  const [providers, setProviders] = useState<ProviderRecord[]>([]);
+  const [providers, setProviders] = useState<GenerationProvider[]>([]);
   const [generationOptions, setGenerationOptions] = useState<Record<string, GenerationOptionState>>({});
   const generationOptionsRef = useRef<Record<string, GenerationOptionState>>(generationOptions); generationOptionsRef.current = generationOptions;
   const updateGenerationOptions = useCallback((shotId: string | null, options: GenerationOptionState) => { if (shotId) { const next = { ...generationOptionsRef.current, [shotId]: options }; generationOptionsRef.current = next; setGenerationOptions(next); } }, []);
@@ -434,12 +445,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const [propertiesPage, setPropertiesPageState] = useState('inspector');
   const setPropertiesPage = (value: string) => { if (!clipDraftRef.current?.hasPendingComposition()) setPropertiesPageState(value); };
   const [subtitleDirty, setSubtitleDirty] = useState(false);
-  const subtitlesRef = useRef<ReturnType<typeof useSubtitles> | null>(null);
+  const subtitlesRef = useRef<SubtitlesRuntime | null>(null);
   const [formatDirty, setFormatDirty] = useState(false);
-  const timelineFormatRef = useRef<ReturnType<typeof useTimelineFormat> | null>(null);
-  const timelineLoudnessApplyRef = useRef<ReturnType<typeof useTimelineLoudnessApply> | null>(null);
-  const deliveryNameRef = useRef<ReturnType<typeof useTimelineDeliveryName> | null>(null);
-  const localDeliveryRef = useRef<ReturnType<typeof useLocalDelivery> | null>(null);
+  const timelineFormatRef = useRef<TimelineFormatRuntime | null>(null);
+  const timelineLoudnessApplyRef = useRef<TimelineLoudnessApplyRuntime | null>(null);
+  const deliveryNameRef = useRef<DeliveryNameRuntime | null>(null);
+  const localDeliveryRef = useRef<LocalDeliveryRuntime | null>(null);
   const clipDraftRef = useRef<ClipDraftController | null>(null);
   const [clipCompositionPending, setClipCompositionPending] = useState(false);
   const clipInspectorRetention = useRef<ClipInspectorRetention>({ snapshot: null, retained: false });
@@ -542,7 +553,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const busy = busyByProject[currentProject.current || 'none'] || emptyBusy;
   const activePending = pending.filter(entry => !workspaceIntentDisposition(entry, workspace).held);
   const activeTasks = taskState.items.filter(task => !taskState.heldIds?.includes(task.id));
-  const referencePending = hasPendingReference(activePending) || activeTasks.some(task => task.lane === 'reference:mutation');
+  const referencePending = hasPendingReference(activePending as never[]) || activeTasks.some(task => task.lane === 'reference:mutation');
   const referenceBusy = Boolean(busy['reference:mutation'] || referencePending || taskState.phase !== 'ready');
   const updateView = useCallback((section: string, patch: unknown, { passive = false }: {passive?: boolean} = {}) => {
     if (!viewReady.current || dataRef.current.project?.id !== currentProject.current) return;
@@ -572,7 +583,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   function projectSessionReady() { return canPublishProjectOpen(openedProject.current, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: workspaceOriginScope(workspaceRef.current) || '', preferencesReady: viewReady.current, dataProjectId: dataRef.current.project?.id || null, loading: false }); }
   const workbenchReady = auth === true && projectSessionReady() && !loading;
   useEditorWindowStatus(nativeWindow, currentProject.current, projectOpening.phase, workbenchReady);
-  const panelSurface = useRef(null), panelIntent = useRef(0), taskWorkspaceState = useRef(null), taskShotAttempt = useRef(0);
+  const panelSurface = useRef<HTMLElement | null>(null), panelIntent = useRef(0), taskWorkspaceState = useRef<{visible: boolean; connected: boolean} | null>(null), taskShotAttempt = useRef(0);
   const [panelChange, setPanelChange] = useState(0);
   const panelScope = `${currentProject.current}:${projectEpoch.current}:${workspaceMode}:${panelChange}`;
   const geometry = usePanelGeometry(panelSurface, modeLayout, workspaceMode, panelScope, auth === true && workbenchReady, `${currentProject.current}:${projectEpoch.current}:${workspaceMode}`);
@@ -630,7 +641,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (value) busyRef.current.add(`${scope}:${key}`); else busyRef.current.delete(`${scope}:${key}`);
     setBusyByProject(all => ({ ...all, [scope]: { ...all[scope], [key]: value } }));
   }
-  async function guardNavigation(message: unknown = msg('shell.confirm.switchWorkspace'), additionalDirty = false, canDiscard: () => boolean = () => true): Promise<boolean> {
+  async function guardNavigation(message: AppMessage = msg('shell.confirm.switchWorkspace'), additionalDirty = false, canDiscard: () => boolean = () => true): Promise<boolean> {
     if (clipDraftRef.current?.hasPendingComposition()) return false;
     if (nativeWindow && !editorWindowCanNavigate()) return false;
     if (nativeWindow) { const originalCanDiscard = canDiscard; canDiscard = () => originalCanDiscard() && editorWindowCanNavigate(); }
@@ -645,7 +656,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (dirtyRef.current || subtitleUnsaved || clipUnsaved || shotUnsaved) { subtitleController?.discardDraft(); subjectsRef.current?.controller.discardDrafts(subjectsRef.current.state?.scope); dirtyRef.current = false; setShotDirty(false); setClipDirty(false); setSourceDirty(false); setSubjectDirty(false); setSubtitleDirty(false); setInspectorEpoch(value => value + 1); }
     return true;
   }
-  async function guardProjectNavigation(message: unknown, additionalDirty = false, canLeaveSettings: () => boolean = () => true): Promise<boolean> {
+  async function guardProjectNavigation(message: AppMessage, additionalDirty = false, canLeaveSettings: () => boolean = () => true): Promise<boolean> {
     if (clipDraftRef.current?.hasPendingComposition()) return false;
     if (nativeWindow && !editorWindowCanNavigate()) return false;
     const retainedCurrent = () => !nativeWindow || editorWindowCanNavigate();
@@ -710,7 +721,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const requestCounter = useRef(0);
   const dragging = useRef(false);
   const flow = useReactFlow();
-  const notify = useCallback((message: string, type: ToastTone = 'success') => setToast({ message, type, time: Date.now() }), []);
+  const notify = useCallback((message: AppMessage, type: ToastTone = 'success') => setToast({ message, type, time: Date.now() }), []);
   useEffect(() => { if (toast && toast.type !== 'error') { const t = setTimeout(() => setToast(null), 5000); return () => clearTimeout(t); } }, [toast]);
   const refresh = useCallback(async (projectId: string | null = currentProject.current, quiet = true, { opening = false }: {opening?: boolean} = {}) => {
     if (!projectId || currentProject.current !== projectId || !opening && !projectSessionReady()) return null;
@@ -1514,7 +1525,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
           () => document.querySelector('[data-testid="timeline-scroll"]'), callback => requestAnimationFrame(callback));
       } });
   }
-  function timelineFormatContext(): Record<string, unknown> & {scope: string; projectId: string | null; connected: boolean; pending: boolean} {
+  function timelineFormatContext(): TimelineFormatContext {
     const projectId = currentProject.current, snapshot = dataRef.current;
     return { scope: `${projectId}:${projectEpoch.current}`, projectId: projectSessionReady() && snapshot.project?.id === projectId ? projectId : null,
       projectRevision: snapshot.project?.revision, timelineId: snapshot.timeline?.id || null, timelineRevision: snapshot.timeline?.revision || 0,
@@ -1543,7 +1554,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   function openTimelineFormat(): void {
     setShowProjects(false); setPropertiesPage('format'); setRightDockTab('properties'); setPanelOpen('inspector', true);
   }
-  function subtitleContext(): Record<string, unknown> & {scope: string; projectId: string | null; timeline: AppTimeline | null; connected: boolean; pending: boolean; visible: boolean} {
+  function subtitleContext(): SubtitleContext {
     const projectId = currentProject.current, snapshot = dataRef.current;
     return { scope: `${projectId}:${projectEpoch.current}`, projectId: projectSessionReady() && snapshot.project?.id === projectId ? projectId : null, timeline: snapshot.timeline,
       connected: workbenchReady && online && auth === true && !loading, pending: !projectId || isBusy('timeline:mutation') || tasksRef.current.blocked(projectId, 'timeline:mutation') || pendingForProject(projectId, { workspace: workspaceRef.current, activeOnly: true }).some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render'),
@@ -1604,7 +1615,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   }
   const exportSettings = useExportSettings({ ...exportSettingsContext(), getContext: exportSettingsContext });
   exportSettingsRef.current = exportSettings.controller;
-  function exportRangeContext(): Record<string, unknown> & {scope: string; enabled: boolean} {
+  function exportRangeContext(): ExportRangeContext {
     const base = exportSettingsContext(), local = localDeliveryRef.current?.controller.getState();
     return { ...base, enabled: base.enabled && showDelivery && !showExports && !(local?.scope === base.scope && (local.busy || local.pending)),
       projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
@@ -1613,10 +1624,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   }
   const exportRange = useExportRange({ ...exportRangeContext(), getContext: exportRangeContext });
   exportRangeRef.current = exportRange.controller;
-  function deliveryNameContext(): Record<string, unknown> & {projectId: string | null} { return { ...exportSettingsContext(), projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null }; }
+  function deliveryNameContext(): DeliveryNameContext { return { ...exportSettingsContext(), projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null }; }
   const deliveryName = useTimelineDeliveryName({ ...deliveryNameContext(), getContext: deliveryNameContext });
   deliveryNameRef.current = deliveryName;
-  function localDeliveryContext(): Record<string, unknown> & {scope: string} {
+  function localDeliveryContext(): LocalDeliveryContext {
     const scope = `${currentProject.current}:${projectEpoch.current}`;
     return { scope, projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current.timeline?.id || null, timelineRevision: dataRef.current.timeline?.revision || null,
@@ -1666,7 +1677,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const sampleExportPreflight = useExportPreflight({ ...sampleExportView, getContext: sampleExportContext, getInvocation: () => pinNewWorkspaceIntent({}, workspaceRef.current), visible: workbenchReady && showDelivery && !showExports,
     read: (input, options) => rpc('timeline.export.preflight', input, options),
     readCapabilities: (input, options) => rpc('timeline.export.capabilities', input, options), onUnauthorized: () => setAuth(false) });
-  function clipLoudnessContext(): Record<string, unknown> {
+  function clipLoudnessContext(): TimelineClipLoudnessContext {
     const saved = dataRef.current.timeline, workspaceScope = workspaceOriginScope(workspaceRef.current), editing = viewRef.current.editing;
     return { ...savedClipLoudnessFields(saved, dataRef.current.assets, editing.selectedClipId),
       scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
@@ -1679,7 +1690,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
       hasUnsavedDrafts: inspectorDirty || formatDirty || Boolean(clipDraftRef.current?.hasUnsaved() || clipDraftRef.current?.getState().candidate || subtitlesRef.current?.controller.hasUnsaved() || timelineFormatRef.current?.controller.hasUnsaved()),
       pending: timelineBusy || isBusy('timeline:mutation') };
   }
-  function timelineMixLoudnessContext(): Record<string, unknown> {
+  function timelineMixLoudnessContext(): TimelineMixLoudnessContext {
     const workspaceScope = workspaceOriginScope(workspaceRef.current), saved = dataRef.current.timeline;
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       projectId: projectSessionReady() && dataRef.current.project?.id === currentProject.current ? currentProject.current : null,
@@ -1706,7 +1717,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     if (id) { audioPreview.controller.revoke(); nativePreviewPause.current?.(); exportPreviewPause.current?.(); }
     updateComparisonId(id);
   }
-  function comparisonContext(): Record<string, unknown> {
+  function comparisonContext(): ComparisonContext {
     const state = dataRef.current, workspaceScope = workspaceOriginScope(workspaceRef.current);
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       projectId: currentProject.current, workspaceOrigin: workspaceScope,
@@ -1733,7 +1744,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   }
   const registerExportPreviewPause = useCallback(pause => { exportPreviewPause.current = pause; return () => { if (exportPreviewPause.current === pause) exportPreviewPause.current = null; }; }, []);
   const registerNativePreviewPause = useCallback(pause => { nativePreviewPause.current = pause; return () => { if (nativePreviewPause.current === pause) nativePreviewPause.current = null; }; }, []);
-  function soundAuditionContext(): Record<string, unknown> {
+  function soundAuditionContext(): TimelineAudioPreviewContext {
     const workspaceScope = workspaceOriginScope(workspaceRef.current), saved = dataRef.current.timeline, editing = viewRef.current.editing;
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       executionScope: `${navigationEpoch.current}:${viewRef.current.activeMode}:${editing.previewKind}:${editing.selectedClipId}:${editing.quickAssetId}`,

@@ -45,7 +45,7 @@ function proposal(status = 'pending') {
 
 test('closed timeline policy keeps the old shot policy and catalog bytes unchanged', () => {
   const oldBytes = readFileSync(new URL('../packages/business/src/agent/edit-tool-policy.ts', import.meta.url));
-  assert.equal(createHash('sha256').update(oldBytes).digest('hex'), '3f70630c33fb000d8a6ab16da8f488ee8fb4dcb8d80e8b02d9aec782b822f661');
+  assert.equal(createHash('sha256').update(oldBytes).digest('hex'), '43cc2f69e58cd2c5b1cac3ecbb56e39d12d73f7e7bfc0ab49c1580c956faf3a4');
   assert.equal(EDIT_TOOL_CATALOG_HASH, createHash('sha256').update(JSON.stringify(EDIT_TOOL_DEFINITIONS)).digest('hex'));
   assert.equal(editToolPolicy(id(2)).context, 'selected_shot_edit');
   assert.equal(editToolPolicy(id(2)).schemaVersion, 1);

@@ -2,12 +2,14 @@ import { actualAppCloseWarning } from './fixtures/native-close-app-warning.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {stripSourceTypes} from './helpers/eval-source.mjs';
+import {message as messageKey, renderMessage} from './helpers/i18n.ts';
 
 const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function appFunction(start,end,env){
   const from=app.indexOf(start),to=app.indexOf(end,from+start.length);
   assert.ok(from>=0&&to>from,`actual App boundary ${start}`);
-  return Function(...Object.keys(env),`return (${app.slice(from,to).trim()});`)(...Object.values(env));
+  return Function(...Object.keys(env),`return (${stripSourceTypes(app.slice(from,to).trim(),{loader:'tsx'})});`)(...Object.values(env));
 }
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 function navigation(){
@@ -16,7 +18,7 @@ function navigation(){
   const controller={capture:()=>serial,isCurrent:value=>value===serial,hasUnsaved:()=>dirty,abandonCurrentInput:value=>{if(value!==serial)return false;abandoned++;return true;}};
   const shotTextRef={current:controller};
   const guard=appFunction('async function guardNavigation(', 'async function guardProjectNavigation(',{
-    nativeWindow:null,context:()=>({projectId:'p'}),isCurrent:()=>current,shotTextRef,subtitlesRef:{current:null},clipDraftRef:{current:null},subjectsRef:{current:null},dirtyRef:{current:false},confirm:()=>held.promise,
+    msg:messageKey,nativeWindow:null,context:()=>({projectId:'p'}),isCurrent:()=>current,shotTextRef,subtitlesRef:{current:null},clipDraftRef:{current:null},subjectsRef:{current:null},dirtyRef:{current:false},confirm:()=>held.promise,
     setShotDirty:()=>resets++,setClipDirty:()=>{},setSourceDirty:()=>{},setSubjectDirty:()=>{},setSubtitleDirty:()=>{},setInspectorEpoch:()=>{},
   });
   return{guard,held,shotTextRef,controller,newEdit:()=>serial++,leave:()=>current=false,clean:()=>dirty=false,counts:()=>({abandoned,resets})};
@@ -49,7 +51,7 @@ test('actual App live context preserves nontext pending fences and does not clea
 test('actual App shot fence blocks reference/generation work before touching legacy receipts',()=>{
   let checked=0,blocked=true;const notices=[];
   const guard=appFunction('function referenceWorkBlocked()', 'async function attachReference(',{
-    shotTextRef:{current:{blocksLegacy:()=>blocked}},notify:(...args)=>notices.push(args),tasksRef:{current:{blocked:()=>{checked++;return false;}}},currentProject:{current:'p'},workspaceRef:{current:null},pendingForProject:()=>[],isMutationOperation:()=>false,isBusy:()=>false,hasPendingReference:()=>false,openTasks:()=>{},
+    msg:messageKey,shotTextRef:{current:{blocksLegacy:()=>blocked}},notify:(...args)=>notices.push(args.map(value => typeof value === 'string' ? value : renderMessage('zh-Hans', value))),tasksRef:{current:{blocked:()=>{checked++;return false;}}},currentProject:{current:'p'},workspaceRef:{current:null},pendingForProject:()=>[],isMutationOperation:()=>false,isBusy:()=>false,hasPendingReference:()=>false,openTasks:()=>{},
   });
   assert.equal(guard(),true);assert.equal(checked,0);assert.match(notices[0][0],/文字/);blocked=false;assert.equal(guard(),false);assert.equal(checked,1);
 });
@@ -94,8 +96,8 @@ test('actual Inspector stale baseline callback cannot mutate any local form iden
 function generationAdmission({restored=false,controller=true,target='shot-a',loading=false,pending=false}={}){
   const notices=[],sideEffects=[];
   const guard=appFunction('function checkGeneration(', 'const submitGeneration =',{
-    generationUnavailableReason:'',workspaceRef:{current:{restored}},shotTextRef:{current:controller?{blocksLegacy:id=>loading||pending||Boolean(id&&id!==target)}:null},notify:message=>notices.push(message),referenceWorkBlocked:()=>false,
-    generationInputIssue:()=>{sideEffects.push('input');return null;},providerAvailabilityIssue:()=>null,dataRef:{current:{assets:[],shots:[],jobs:[]}},referenceForShot:()=>null,openTasks:()=>{},
+    msg:messageKey,generationUnavailableReason:'',workspaceRef:{current:{restored}},shotTextRef:{current:controller?{blocksLegacy:id=>loading||pending||Boolean(id&&id!==target)}:null},notify:message=>notices.push(typeof message === 'string' ? message : renderMessage('zh-Hans', message)),referenceWorkBlocked:()=>false,
+    generationInputIssue:()=>{sideEffects.push('input');return null;},providerAvailabilityIssue:()=>null,generationInputIssueDescriptor:()=>{sideEffects.push('input');return null;},providerAvailabilityDescriptor:()=>null,dataRef:{current:{assets:[],shots:[],jobs:[]}},referenceForShot:()=>null,openTasks:()=>{},
   });
   return{guard:(id='shot-b',frozen=false)=>guard({id}, {mock:true},'mock','text',frozen),notices,sideEffects};
 }

@@ -65,7 +65,7 @@ export function inspectUILiterals(): UILiteralRecord[] {
         const textual = node as TextualNode;
         const text = textual.text.trim();
         const attribute = literal && ts.isJsxAttribute(textual.parent) && visibleAttributes.has(textual.parent.name.getText(source));
-        const expression = literal && ts.isJsxExpression(textual.parent) && textual.parent.expression === textual;
+        const expression = literal && ts.isJsxExpression(textual.parent) && textual.parent.expression === node;
         const category = cjk.test(text) ? 'cjk-source' : words.test(text) && (jsxText || attribute || expression || visibleTemplateFragment(node, source)) ? 'visible-jsx' : null;
         if (category) records.push({ file, line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
           category, hash: digest(`${ts.SyntaxKind[node.kind]}\0${text}`), text });

@@ -3,12 +3,23 @@ import React from 'react';
 import {AudioLines} from '@mioon/ui/components/workbench-icons';
 import { Button } from '@mioon/ui/components/button';
 import { WAVEFORM_LIMITS, waveformCoverageWidth, waveformPath, waveformStatusMessage } from './waveform-state.ts';
+import type { WaveformEntry, WaveformWindow } from './waveform-state.ts';
+export interface WaveformControlsState {
+  entries: ReadonlyMap<string, WaveformEntry>;
+  windows: readonly WaveformWindow[];
+  enabled: boolean;
+  readOnly: boolean;
+  autoLimitReached: boolean;
+  retryable: boolean;
+  setEnabled(value: boolean): void;
+  retry(): void;
+}
 
-export function TimelineWaveformControls({ state, disabled }) {
+export function TimelineWaveformControls({ state, disabled }: {state: WaveformControlsState; disabled?: boolean}) {
   const { t, renderMessage } = useI18n();
   const disclosure = t('audio.waveform.disclosure'), background = t('audio.waveform.background');
-  const entries = [...state.entries.values()];
-  const visibleKeys = new Set(state.windows.slice(0, WAVEFORM_LIMITS.entries).map(item => item.key));
+  const entries: WaveformEntry[] = [...state.entries.values()];
+  const visibleKeys = new Set(state.windows.slice(0, WAVEFORM_LIMITS.entries).map((item: WaveformWindow) => item.key));
   const visibleEntries = entries.filter(entry => visibleKeys.has(entry.key));
   const clipped = visibleEntries.some(entry => entry.status === 'ready' && entry.clipped);
   const loading = !state.readOnly && visibleEntries.some(entry => ['loading', 'queued', 'running'].includes(entry.status));
@@ -23,13 +34,13 @@ export function TimelineWaveformControls({ state, disabled }) {
   </div>;
 }
 
-export default function TimelineWaveform({ window: range, entry }) {
+export default function TimelineWaveform({ window: range, entry }: {window?: WaveformWindow | null; entry?: WaveformEntry | null}) {
   const { renderMessage } = useI18n();
   if (!range) return null;
   const status = renderMessage(waveformStatusMessage(entry));
   // Crop to actual decoded time without rescaling the requested bin spacing.
   const width = entry?.status === 'ready' ? waveformCoverageWidth(range, entry.decodedSampleFrames) : range.width;
   return <span className={`timeline-waveform ${entry?.status === 'ready' ? 'is-ready' : 'is-pending'}`} style={{ left: range.left, width }} data-testid={`timeline-waveform-${range.clipId}`} data-waveform-status={entry?.status || 'missing'} aria-hidden="true" title={status}>
-    {entry?.status === 'ready' ? <svg style={{ width: range.width }} viewBox={`0 0 ${Math.max(1, entry.peaks.length)} 20`} preserveAspectRatio="none" focusable="false"><path d={waveformPath(entry.peaks)} /></svg> : <span className="timeline-waveform-placeholder">{status}</span>}
+    {entry?.status === 'ready' ? <svg style={{ width: range.width }} viewBox={`0 0 ${Math.max(1, entry.peaks?.length ?? 1)} 20`} preserveAspectRatio="none" focusable="false"><path d={waveformPath(entry.peaks)} /></svg> : <span className="timeline-waveform-placeholder">{status}</span>}
   </span>;
 }

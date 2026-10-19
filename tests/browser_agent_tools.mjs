@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { responsesBrowserHarness, runRightDockDrafts } from './browser_agent_responses.ts';
+import { responsesBrowserHarness, runRightDockDrafts } from './browser_agent_responses.mjs';
 import { finishChatBrowser } from './browser_agent_chat.mjs';
 
 const countRequests = audit => audit.mock.requests.length;

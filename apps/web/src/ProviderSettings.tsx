@@ -1,6 +1,7 @@
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { providerDisplayName } from './creation-i18n.ts';
 import React from 'react';
+import type { ReactElement } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
 import { Button } from '@mioon/ui/components/button';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
@@ -9,22 +10,37 @@ import { WorkbenchSelect } from './WorkspaceControls.tsx';
 import Icon from './icons.tsx';
 import GenerationInputSummary from './GenerationInputSummary.tsx';
 import { inputModeDescriptor, providerModels, providerStatus, providerStatusDescriptor } from './generation-settings.ts';
+import type { GenerationProvider } from './generation-settings.ts';
 
-const uniqueConfiguration = values => [...new Set((values || []).filter(value => typeof value === 'string' && value.trim()).map(value => value.trim().split(' ')[0]).filter(value => /^[A-Z][A-Z0-9_]{0,95}$/.test(value)))];
+export interface ProviderSettingsChange { providerId?: string; model?: string; inputMode?: string }
+export interface ProviderSettingsProps {
+  providers: readonly GenerationProvider[];
+  provider?: GenerationProvider | null;
+  model: string;
+  capabilities?: Record<string, unknown> | null;
+  onChange: (change: ProviderSettingsChange) => unknown;
+  compact?: boolean;
+}
 
-export default function ProviderSettings({ providers, provider, model, capabilities, onChange, compact = false }) {
+const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const stringList = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+const providerPrefixes: Record<string, string> = { runway: 'RUNWAY', ark: 'ARK', veo: 'VEO', minimax: 'MINIMAX', vidu: 'VIDU' };
+const uniqueConfiguration = (values: unknown): string[] => [...new Set((Array.isArray(values) ? values : []).filter(value => typeof value === 'string' && value.trim()).map(value => (value as string).trim().split(' ')[0]).filter(value => /^[A-Z][A-Z0-9_]{0,95}$/.test(value)))];
+
+export default function ProviderSettings({ providers, provider, model, capabilities, onChange, compact = false }: ProviderSettingsProps): ReactElement {
   const { t, renderMessage } = useI18n();
-  const prefix = ({ __proto__: null, runway: 'RUNWAY', ark: 'ARK', veo: 'VEO', minimax: 'MINIMAX', vidu: 'VIDU' })[provider?.id];
+  const prefix = typeof provider?.id === 'string' && Object.hasOwn(providerPrefixes, provider.id) ? providerPrefixes[provider.id] : undefined;
   const status = providerStatus(provider);
   const models = providerModels(provider);
-  const missing = uniqueConfiguration(provider?.configuration?.missing);
+  const configuration = record(provider?.configuration) ? provider.configuration : null;
+  const missing = uniqueConfiguration(configuration?.missing);
 
   const details = <>
     {capabilities && <div className="model-capabilities" data-testid="model-capabilities">
-      <span>{capabilities.inputModes?.map(mode => renderMessage(inputModeDescriptor(mode))).join(' / ')}</span>
-      <span>{t('generation.provider.seconds', { values: capabilities.durations?.join(' / ') || '' })}</span>
-      <span>{capabilities.aspectRatios?.join(' / ')}</span>
-      {capabilities.resolutions?.length > 0 && <span>{capabilities.resolutions.join(' / ')}</span>}
+      <span>{stringList(capabilities.inputModes).map(mode => renderMessage(inputModeDescriptor(mode))).join(' / ')}</span>
+      <span>{t('generation.provider.seconds', { values: stringList(capabilities.durations).join(' / ') })}</span>
+      <span>{stringList(capabilities.aspectRatios).join(' / ')}</span>
+      {stringList(capabilities.resolutions).length > 0 && <span>{stringList(capabilities.resolutions).join(' / ')}</span>}
     </div>}
     <GenerationInputSummary provider={provider} model={model} />
     <div className={`provider-setup ${status !== 'available' ? 'unavailable' : ''}`} data-testid="provider-status" data-status={status}>
@@ -37,7 +53,7 @@ export default function ProviderSettings({ providers, provider, model, capabilit
           <CollapsibleTrigger render={<Button variant="ghost" size="sm" />} className="provider-details-toggle" data-testid="provider-details-toggle"><span>{t('generation.provider.viewInstructions')}</span><Icon name="down" size={13} /></CollapsibleTrigger>
           <CollapsibleContent className="provider-details-content" data-testid="provider-details-content">
             <p>{t('generation.provider.verifyBeforeEnabling')}</p>
-            {prefix ? <ul className="provider-requirements" data-testid="provider-requirements"><li>{t('generation.provider.enableInstruction')}</li><li>{t('generation.provider.assetsInstruction', { prefix })}</li>{['minimax', 'vidu'].includes(provider.id) && <li>{t('generation.provider.regionInstruction', { prefix })}</li>}{provider.id === 'vidu' && <li>{t('generation.provider.hostsInstruction')}</li>}<li>{t('generation.provider.approvalInstruction')}</li></ul> : <p>{t('generation.provider.unknownInstructions')}</p>}
+            {prefix ? <ul className="provider-requirements" data-testid="provider-requirements"><li>{t('generation.provider.enableInstruction')}</li><li>{t('generation.provider.assetsInstruction', { prefix })}</li>{['minimax', 'vidu'].includes(provider?.id ?? '') && <li>{t('generation.provider.regionInstruction', { prefix })}</li>}{provider?.id === 'vidu' && <li>{t('generation.provider.hostsInstruction')}</li>}<li>{t('generation.provider.approvalInstruction')}</li></ul> : <p>{t('generation.provider.unknownInstructions')}</p>}
           </CollapsibleContent>
         </Collapsible>
       </>}
