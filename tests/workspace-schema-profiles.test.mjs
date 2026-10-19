@@ -397,12 +397,26 @@ for (const mock of [false, true]) for (const seeded of [false, true]) {
   const suffix = (mock ? '-mock' : '') + (seeded ? '-seeded' : '');
   test(`frozen ordinary24${suffix} reopens with only the reviewed28 through40 schema delta, preserving raw rows, receipts and sequence`, t => {
     const name = `ordinary-24${suffix}`;
-    const store = openStore(onDisk(t, name));
+    const root = onDisk(t, name);
+    // Seeded goldens intentionally retain opaque historical BLOB receipts; their
+    // offline classification stays exact while current admission fails closed
+    // exactly as workspace-blob-admission-boundary pins.
+    if (seeded) {
+      const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
+      try {
+        assert.deepEqual(snapshot(db), profile(name));
+        assert.deepEqual(classifyWorkspaceSchema(db), {schemaVersion: 24, profile: 'ordinary'});
+        constraints(db, {restored: false, mock});
+        assert.deepEqual(snapshot(db), profile(name));
+      } finally { db.close(); }
+      assert.throws(() => openStore(root), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
+      return;
+    }
+    const store = openStore(root);
     try {
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
       assertPreserved(store.db, profile(name));
       assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 48, profile: 'ordinary'});
-      if (seeded) constraints(store.db, {restored: false, mock});
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }
   });
