@@ -12,6 +12,7 @@ import {constants, copyFileSync, readdirSync, lstatSync, readFileSync} from 'nod
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
+import type {Stats} from 'node:fs';
 import {resolveTimelineExportDelivery} from '../../../packages/contracts/src/index.ts';
 import {timelineCompositionSegments} from '../../../packages/contracts/src/timeline-segments.ts';
 import {renderTimeline} from '../../../packages/business/src/timeline-media.ts';
@@ -21,18 +22,21 @@ import {onMediaProcess} from '../../../packages/business/src/media-processes.ts'
 import {createTimelineAudioPreviewDecoder} from '../../../packages/business/src/timeline-audio-preview-decoder.ts';
 import {planTimelineExportRange} from '../../../packages/business/src/timeline-export-range-plan.ts';
 
-const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+interface Voice {clipId: string; trackId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; fadeInFrames: number; fadeOutFrames: number}
+interface RenderAsset {id: string; projectId: string; mimeType: string; path: string; sha256: string; sizeBytes: number; width: number; height: number; duration?: number; hasVideo: boolean; hasAudio: boolean; audioStreamIndex?: number; videoStreamIndex?: number}
+interface ChannelStat {channel: number; maximumAbsoluteError: number; squaredError: number; samplesBeyondCanonicalTolerance: number; firstNonzeroActual: number|null; lastNonzeroActual: number|null; firstNonzeroExpected: number|null; lastNonzeroExpected: number|null; rootMeanSquareError?: number}
+const hash = (bytes: Buffer|Uint8Array|string): string => createHash('sha256').update(bytes).digest('hex');
 const SAMPLE_BYTES = 8, SAMPLES_PER_FRAME = 1600, MAX_FRAMES = 90, PCM_CAP = MAX_FRAMES * SAMPLES_PER_FRAME * SAMPLE_BYTES;
 const CANONICAL_TOLERANCE = 0.000002;
 const settings = {profileId: 'mp4_h264_float_checked_v2', resolution: 'short_360', rateControl: {mode: 'crf', quality: 'standard'}};
-const same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
-async function boundedRead(file, limit) {
+const same = (a: Stats, b: Stats): boolean => a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+async function boundedRead(file: string, limit: number): Promise<Buffer> {
   const info = await stat(file); assert.ok(info.isFile() && info.size > 0 && info.size <= limit, 'Fixture file size must be bounded');
   const bytes = await readFile(file); assert.equal(bytes.length, info.size); return bytes;
 }
-function timelineFromVoices(voices, asset, durationFrames, extraMutedEdges = []) {
+function timelineFromVoices(voices: readonly Voice[], asset: RenderAsset, durationFrames: number, extraMutedEdges: readonly (readonly [number, number])[] = []): Record<string, unknown> {
   const video = {id: randomUUID(), kind: 'video', orderIndex: 0, hidden: false, muted: false};
-  const tracks = [video], clips = [], rect = {x: 0, y: 0, width: 720, height: 720};
+  const tracks: Record<string, unknown>[] = [video], clips: Record<string, unknown>[] = [], rect = {x: 0, y: 0, width: 720, height: 720};
   for (const voice of voices) {
     tracks.push({id: voice.trackId, kind: asset.hasVideo ? 'video' : 'audio', orderIndex: tracks.length, hidden: asset.hasVideo, muted: false});
     clips.push({id: voice.clipId, trackId: voice.trackId, assetId: asset.id, name: 'Synthetic original voice',
@@ -52,16 +56,18 @@ function timelineFromVoices(voices, asset, durationFrames, extraMutedEdges = [])
 // The preserved numeric/red evidence predates segmented source descriptors.
 // Read only its bounded synthetic layout, then let the real renderer validate
 // the constructed saved timeline. Never rewrite or relabel the old manifests.
-function numericFixturePlan(plan) {
-  assert.equal(plan.schemaVersion, 1); assert.equal(plan.profileId, 'saved-timeline-audio-f32le-48k-stereo-v1');
-  assert.ok(Array.isArray(plan.voices) && plan.voices.length <= 100 && Array.isArray(plan.sources) && plan.sources.length <= 100);
-  assert.ok(Number.isInteger(plan.range.startFrame) && Number.isInteger(plan.range.endFrame) && plan.range.startFrame >= 0 && plan.range.endFrame <= MAX_FRAMES);
-  return plan;
+interface NumericPlan {schemaVersion: number; profileId: string; voices: Voice[]; sources: {assetId: string; sourceHash: string; sourceBytes: number; [key: string]: unknown}[]; range: {startFrame: number; endFrame: number}; projectId: string; [key: string]: unknown}
+function numericFixturePlan(plan: unknown): NumericPlan {
+  const value = plan as NumericPlan;
+  assert.equal(value.schemaVersion, 1); assert.equal(value.profileId, 'saved-timeline-audio-f32le-48k-stereo-v1');
+  assert.ok(Array.isArray(value.voices) && value.voices.length <= 100 && Array.isArray(value.sources) && value.sources.length <= 100);
+  assert.ok(Number.isInteger(value.range.startFrame) && Number.isInteger(value.range.endFrame) && value.range.startFrame >= 0 && value.range.endFrame <= MAX_FRAMES);
+  return value;
 }
-function sourceRequest(timeline, voice, startFrame = voice.startFrame, endFrame = voice.startFrame + voice.durationFrames) {
+function sourceRequest(timeline: Record<string, unknown>, voice: Voice, startFrame = voice.startFrame, endFrame = voice.startFrame + voice.durationFrames) {
   assert.ok(startFrame >= voice.startFrame && endFrame <= voice.startFrame + voice.durationFrames && endFrame > startFrame);
-  const segments = [];
-  for (const segment of timelineCompositionSegments(timeline)) {
+  const segments: {sourceInFrame: number; frameCount: number; trimStartFrame: number; outputFrames: number}[] = [];
+  for (const segment of timelineCompositionSegments(timeline as never)) {
     if (segment.beginFrame < voice.startFrame || segment.endFrame > voice.startFrame + voice.durationFrames) continue;
     const begin = Math.max(startFrame, segment.beginFrame), end = Math.min(endFrame, segment.endFrame);
     if (begin >= end) continue;
@@ -70,13 +76,13 @@ function sourceRequest(timeline, voice, startFrame = voice.startFrame, endFrame 
   }
   return {sourceInFrame: voice.sourceInFrame + startFrame - voice.startFrame, frameCount: endFrame - startFrame, segments};
 }
-function saved(timeline, range) {
+function saved(timeline: Record<string, unknown>, range?: {startFrame: number; endFrame: number}) {
   return {timeline, delivery: resolveTimelineExportDelivery(timeline, settings), ...(range ? {exportRange: range} : {})};
 }
-function measure(actual, expected, from = 0, to = actual.length / SAMPLE_BYTES) {
+function measure(actual: Buffer, expected: Buffer, from = 0, to = actual.length / SAMPLE_BYTES) {
   assert.equal(actual.length, expected.length); assert.equal(actual.length % SAMPLE_BYTES, 0);
   assert.ok(Number.isInteger(from) && Number.isInteger(to) && from >= 0 && to > from && to <= actual.length / SAMPLE_BYTES);
-  const channels = [0, 1].map(channel => ({channel, maximumAbsoluteError: 0, squaredError: 0, samplesBeyondCanonicalTolerance: 0,
+  const channels: ChannelStat[] = [0, 1].map((channel: number) => ({channel, maximumAbsoluteError: 0, squaredError: 0, samplesBeyondCanonicalTolerance: 0,
     firstNonzeroActual: null, lastNonzeroActual: null, firstNonzeroExpected: null, lastNonzeroExpected: null}));
   for (let frame = from; frame < to; frame++) for (const channel of channels) {
     const offset = frame * SAMPLE_BYTES + channel.channel * 4, a = actual.readFloatLE(offset), b = expected.readFloatLE(offset);
@@ -88,16 +94,16 @@ function measure(actual, expected, from = 0, to = actual.length / SAMPLE_BYTES) 
   }
   return {fromSample: from, endSample: to, sampleFrames: to - from, channels: channels.map(({squaredError, ...channel}) => ({...channel, rootMeanSquareError: Math.sqrt(squaredError / (to - from))}))};
 }
-function canonicalResult(name, actual, expected) {
+function canonicalResult(name: string, actual: Buffer, expected: Buffer) {
   const comparison = measure(actual, expected);
   return {name, status: comparison.channels.every(channel => channel.maximumAbsoluteError <= CANONICAL_TOLERANCE) ? 'passed' : 'failed',
     absoluteTolerance: CANONICAL_TOLERANCE, actualPcmSha256: hash(actual), oraclePcmSha256: hash(expected), ...comparison};
 }
-async function decodeInto(file, target, offset, expectedBytes) {
+async function decodeInto(file: string, target: Buffer, offset: number, expectedBytes: number): Promise<void> {
   let count = 0;
   const output = await runStreaming('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-threads', '1', '-i', file,
     '-map', '0:a:0', '-vn', '-sn', '-dn', '-c:a', 'pcm_f32le', '-ar', '48000', '-ac', '2', '-f', 'f32le', 'pipe:1'],
-  {timeout: 30000, maxStdoutBytes: expectedBytes, maxStderrBytes: 64 * 1024, onStdout(chunk) {
+  {timeout: 30000, maxStdoutBytes: expectedBytes, maxStderrBytes: 64 * 1024, onStdout(chunk: Buffer) {
     assert.ok(chunk.length <= expectedBytes - count && offset + count + chunk.length <= target.length);
     chunk.copy(target, offset + count); count += chunk.length;
   }});
@@ -106,18 +112,20 @@ async function decodeInto(file, target, offset, expectedBytes) {
 /** No process or runtime injection: the observation API reports exited only
  * on direct-child close. This fixture executes one renderer at a time, and its
  * fresh private root contains only that attempt's owned render staging. */
-async function renderAndCapture(outputRoot, label, snapshot, assets) {
+interface RenderResult {audioCheck: {sampleFrames: number; overRangeSampleCount: number; peakLinear: number}; probe: {streams: {codec_type: string; codec_name: string; sample_rate: unknown; channels: number}[]}; width: number; height: number; duration: number}
+interface CapturedSegment {file: string; containerBytes: number; containerSha256: string; observedAfterChildClose: number; [key: string]: unknown}
+async function renderAndCapture(outputRoot: string, label: string, snapshot: Record<string, unknown>, assets: Map<string, RenderAsset>) {
   const directory = await mkdtemp(path.join(outputRoot, `${label}-`)), destination = path.join(directory, 'export.mp4');
-  const expected = planTimelineExportRange(snapshot), captured = new Map(); let captureFailure, copiedBytes = 0, closes = 0;
-  const off = onMediaProcess(event => {
+  const expected = planTimelineExportRange(snapshot as never), captured = new Map<string, CapturedSegment>(); let captureFailure: unknown, copiedBytes = 0, closes = 0;
+  const off = onMediaProcess((event: {type: string; kind?: string}) => {
     if (event.type !== 'exited' || event.kind !== 'ffmpeg') return;
     closes++;
     try {
-      const workNames = readdirSync(directory).filter(name => name.startsWith('.timeline-render-'));
+      const workNames = readdirSync(directory).filter((name: string) => name.startsWith('.timeline-render-'));
       assert.ok(workNames.length <= 1);
       for (const name of workNames) {
         const work = path.join(directory, name), info = lstatSync(work); assert.ok(info.isDirectory() && !info.isSymbolicLink());
-        for (const leaf of readdirSync(work).filter(name => /^segment-\d{3}\.mov$/u.test(name)).sort()) {
+        for (const leaf of readdirSync(work).filter((name: string) => /^segment-\d{3}\.mov$/u.test(name)).sort()) {
           if (captured.has(leaf)) continue;
           const file = path.join(work, leaf), before = lstatSync(file);
           if (before.size === 0) continue;
@@ -131,29 +139,30 @@ async function renderAndCapture(outputRoot, label, snapshot, assets) {
       }
     } catch (error) {captureFailure ??= error;}
   });
-  const serialized = JSON.stringify(snapshot); let result;
-  try {result = await renderTimeline(snapshot, assets, destination);} finally {off();}
+  const serialized = JSON.stringify(snapshot); let result: RenderResult;
+  try {result = await renderTimeline(snapshot as never, assets as never, destination) as unknown as RenderResult;} finally {off();}
   if (captureFailure) throw captureFailure;
   assert.equal(JSON.stringify(snapshot), serialized); assert.equal(captured.size, expected.segments.length);
-  assert.ok(!(await readdir(directory)).some(name => name.startsWith('.timeline-render-')), 'Renderer cleaned its own staging');
+  assert.ok(!(await readdir(directory)).some((name: string) => name.startsWith('.timeline-render-')), 'Renderer cleaned its own staging');
   assert.equal(result.audioCheck.sampleFrames, expected.outputFrames * SAMPLES_PER_FRAME); assert.equal(result.audioCheck.overRangeSampleCount, 0);
   const byteLength = expected.outputFrames * SAMPLES_PER_FRAME * SAMPLE_BYTES; assert.ok(byteLength <= PCM_CAP);
-  const pcm = Buffer.allocUnsafe(byteLength), segments = []; let offset = 0;
-  for (const [index, segment] of [...captured].sort(([a], [b]) => a.localeCompare(b)).map((entry, index) => [index, entry[1]])) {
+  const pcm = Buffer.allocUnsafe(byteLength), segments: Record<string, unknown>[] = []; let offset = 0;
+  for (const [index, segment] of [...captured].sort(([a], [b]) => a.localeCompare(b)).map((entry, index) => [index, entry[1]] as [number, CapturedSegment])) {
     const planned = expected.segments[index], bytes = planned.outputFrames * SAMPLES_PER_FRAME * SAMPLE_BYTES;
     await decodeInto(segment.file, pcm, offset, bytes);
     segments.push({...segment, file: path.relative(outputRoot, segment.file), ...planned, sampleFrames: bytes / SAMPLE_BYTES,
       pcmSha256: hash(pcm.subarray(offset, offset + bytes))}); offset += bytes;
   }
   assert.equal(offset, pcm.length);
-  const aac = result.probe.streams.find(stream => stream.codec_type === 'audio');
+  const aac = result.probe.streams.find((stream: {codec_type: string}) => stream.codec_type === 'audio');
+  assert.ok(aac);
   assert.equal(aac.codec_name, 'aac'); assert.equal(Number(aac.sample_rate), 48000); assert.equal(aac.channels, 2);
   // AAC packet padding can extend raw decode. Observe the actual full output
   // within a fixed small reserve, rather than trimming it into an equality claim.
   let aacDecodedBytes = 0; const aacDigest = createHash('sha256'); let aacPeak = 0, pending = Buffer.alloc(0);
   await runStreaming('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-threads', '1', '-i', destination,
     '-map', '0:a:0', '-vn', '-c:a', 'pcm_f32le', '-f', 'f32le', 'pipe:1'], {timeout: 30000,
-    maxStdoutBytes: byteLength + 4096 * SAMPLE_BYTES, maxStderrBytes: 64 * 1024, onStdout(chunk) {
+    maxStdoutBytes: byteLength + 4096 * SAMPLE_BYTES, maxStderrBytes: 64 * 1024, onStdout(chunk: Buffer) {
       aacDecodedBytes += chunk.length; aacDigest.update(chunk);
       const data = pending.length ? Buffer.concat([pending, chunk]) : chunk, complete = data.length - data.length % 4;
       for (let at = 0; at < complete; at += 4) {const sample = data.readFloatLE(at); assert.ok(Number.isFinite(sample)); aacPeak = Math.max(aacPeak, Math.abs(sample));}
@@ -173,32 +182,39 @@ async function renderAndCapture(outputRoot, label, snapshot, assets) {
       note: 'Final AAC verified by actual probe/full decode; pre-encode PCM comparisons do not claim encoded sample identity.'}}};
 }
 
-export async function runRenderOracle(inputDirectory, outputDirectory) {
+interface NumericManifest {schemaVersion: number; input: {sampleRate: number; channels: number; sha256: string}; cases: {name: string; plan: unknown; absoluteTolerance: number; oracle: string; oracleSha256: string; cursorSample: number}[]}
+interface RenderOracleReport extends Record<string, unknown> {
+  schemaVersion: number; status: string; startedAt: string; canonicalTolerance: number; scope: string; cases: Record<string, unknown>[];
+  finishedAt?: string; error?: {name?: string; code?: string|null; message?: string};
+}
+export async function runRenderOracle(inputDirectory: string, outputDirectory: string): Promise<RenderOracleReport> {
   const inputRoot = path.resolve(inputDirectory), outputRoot = path.resolve(outputDirectory);
   assert.notEqual(inputRoot, outputRoot); await mkdir(outputRoot, {mode: 0o700});
-  const report = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), canonicalTolerance: CANONICAL_TOLERANCE,
+  const report: RenderOracleReport = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), canonicalTolerance: CANONICAL_TOLERANCE,
     scope: 'Actual renderTimeline float-v2 pre-AAC segments against independently generated FFmpeg oracles; separate measured 44.1k AAC reseek qualification. No listening claim.', cases: []};
   try {
-    const manifest = JSON.parse((await boundedRead(path.join(inputRoot, 'fixtures.json'), 256 * 1024)).toString('utf8'));
+    const manifest = JSON.parse((await boundedRead(path.join(inputRoot, 'fixtures.json'), 256 * 1024)).toString('utf8')) as NumericManifest;
     assert.equal(manifest.schemaVersion, 1); assert.equal(manifest.input.sampleRate, 48000); assert.equal(manifest.input.channels, 2);
     const original = path.join(inputRoot, 'canonical.wav'), originalBytes = await boundedRead(original, 2 * 1024 * 1024);
     assert.equal(hash(originalBytes), manifest.input.sha256); const originalHash = hash(originalBytes);
-    const originalPlan = numericFixturePlan(manifest.cases.find(item => item.name === 'canonical-onset-end-overlap-fades').plan);
+    const originalCase = manifest.cases.find((item: {name: string}) => item.name === 'canonical-onset-end-overlap-fades');
+    assert.ok(originalCase);
+    const originalPlan = numericFixturePlan(originalCase.plan);
     const baseAsset = {id: originalPlan.sources[0].assetId, projectId: originalPlan.projectId, mimeType: 'audio/wav', path: original, sha256: originalHash,
       sizeBytes: originalBytes.length, width: 0, height: 0, duration: 3, hasVideo: false, hasAudio: true, audioStreamIndex: 0};
     for (const name of ['canonical-onset-end-overlap-fades', 'window-cut-through-original-fades']) {
-      const fixture = manifest.cases.find(item => item.name === name); assert.ok(fixture); const plan = numericFixturePlan(fixture.plan);
+      const fixture = manifest.cases.find((item: {name: string}) => item.name === name); assert.ok(fixture); const plan = numericFixturePlan(fixture.plan);
       assert.equal(fixture.absoluteTolerance, CANONICAL_TOLERANCE);
       for (const source of plan.sources) {assert.equal(source.sourceHash, originalHash); assert.equal(source.sourceBytes, originalBytes.length);}
       const timeline = timelineFromVoices(plan.voices, baseAsset, 90), range = name.startsWith('window-') ? {startFrame: plan.range.startFrame, endFrame: plan.range.endFrame} : undefined;
-      const rendered = await renderAndCapture(outputRoot, name, saved(timeline, range), new Map([[baseAsset.id, baseAsset]]));
+      const rendered = await renderAndCapture(outputRoot, name, saved(timeline, range), new Map<string, RenderAsset>([[baseAsset.id, baseAsset]]));
       assert.match(fixture.oracle, /^[a-z0-9-]+\.f32$/u); const oracle = await boundedRead(path.join(inputRoot, fixture.oracle), PCM_CAP);
       assert.equal(hash(oracle), fixture.oracleSha256);
-      const comparison = canonicalResult(name, rendered.pcm, oracle); report.cases.push({...comparison, render: rendered.report});
+      const comparison: Record<string, unknown> = canonicalResult(name, rendered.pcm, oracle); report.cases.push({...comparison, render: rendered.report});
       if (name === 'canonical-onset-end-overlap-fades') {
-        const seek = manifest.cases.find(item => item.name === 'sample-precise-seek-inside-original-fade'); assert.ok(seek);
+        const seek = manifest.cases.find((item: {name: string}) => item.name === 'sample-precise-seek-inside-original-fade'); assert.ok(seek);
         assert.match(seek.oracle, /^[a-z0-9-]+\.f32$/u); const seekOracle = await boundedRead(path.join(inputRoot, seek.oracle), PCM_CAP); assert.equal(hash(seekOracle), seek.oracleSha256);
-        report.cases.push(canonicalResult('actual-renderer-sample-precise-seek-oracle', rendered.pcm.subarray(seek.cursorSample * SAMPLE_BYTES), seekOracle));
+        report.cases.push(canonicalResult('actual-renderer-sample-precise-seek-oracle', rendered.pcm.subarray(seek.cursorSample * SAMPLE_BYTES), seekOracle) as unknown as Record<string, unknown>);
       }
     }
     // A separate bounded AAC source preserves the same synthetic signal and
@@ -208,9 +224,9 @@ export async function runRenderOracle(inputDirectory, outputDirectory) {
       '-map', '0:a:0', '-ar', '44100', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', aacFile], {timeout: 30000, maxStdoutBytes: 0, maxStderrBytes: 64 * 1024});
     const aacBytes = await boundedRead(aacFile, 1024 * 1024), aacHash = hash(aacBytes);
     const aacAsset = {...baseAsset, id: randomUUID(), mimeType: 'audio/mp4', path: aacFile, sha256: aacHash, sizeBytes: aacBytes.length};
-    const voice = {clipId: randomUUID(), trackId: randomUUID(), startFrame: 0, durationFrames: 60, sourceInFrame: 7, gain: 1, fadeInFrames: 0, fadeOutFrames: 0};
+    const voice: Voice = {clipId: randomUUID(), trackId: randomUUID(), startFrame: 0, durationFrames: 60, sourceInFrame: 7, gain: 1, fadeInFrames: 0, fadeOutFrames: 0};
     const timeline = timelineFromVoices([voice], aacAsset, 60, [[17, 12]]);
-    const rendered = await renderAndCapture(outputRoot, 'aac-reseek', saved(timeline), new Map([[aacAsset.id, aacAsset]]));
+    const rendered = await renderAndCapture(outputRoot, 'aac-reseek', saved(timeline), new Map<string, RenderAsset>([[aacAsset.id, aacAsset]]));
     const decoder = createTimelineAudioPreviewDecoder({run, runStreaming, withProbePermit, checkMediaEffect}), started = performance.now();
     const request = sourceRequest(timeline, voice);
     const prepared = await decoder(aacFile, request, {beforeEffect() {}, remainingMs: () => Math.max(0, 120000 - (performance.now() - started))});
@@ -219,7 +235,7 @@ export async function runRenderOracle(inputDirectory, outputDirectory) {
     const seamWindows = boundaries.map(sample => ({boundarySample: sample, ...measure(prepared.pcm, rendered.pcm, sample - radius, sample + radius)}));
     const interiorWindows = [[radius, boundaries[0] - radius], [boundaries[0] + radius, boundaries[1] - radius], [boundaries[1] + radius, prepared.sampleFrames - radius]]
       .map(([from, to]) => measure(prepared.pcm, rendered.pcm, from, to));
-    report.aacReseek = {status: prepared.pcm.equals(rendered.pcm) ? 'passed' : 'failed', request, sourceSha256: aacHash, sourceBytes: aacBytes.length, sourceSampleRate: prepared.source.sampleRate,
+    report['aacReseek'] = {status: prepared.pcm.equals(rendered.pcm) ? 'passed' : 'failed', request, sourceSha256: aacHash, sourceBytes: aacBytes.length, sourceSampleRate: prepared.source.sampleRate,
       sourceInFrame: 7, durationFrames: 60, previewPcmSha256: hash(prepared.pcm), rendererPcmSha256: hash(rendered.pcm),
       exactIdentity: prepared.pcm.equals(rendered.pcm), canonicalTolerancePassed: full.channels.every(channel => channel.maximumAbsoluteError <= CANONICAL_TOLERANCE),
       full, seamWindowRadiusSamples: radius, seamWindows, interiorWindows, render: rendered.report,
@@ -227,13 +243,13 @@ export async function runRenderOracle(inputDirectory, outputDirectory) {
     // An admitted window begins inside the original first segment and ends
     // inside the last. Actual selected export preserves those original seeks.
     const selectedRequest = sourceRequest(timeline, voice, 12, 42);
-    const selected = await renderAndCapture(outputRoot, 'aac-selected-window', saved(timeline, {startFrame: 12, endFrame: 42}), new Map([[aacAsset.id, aacAsset]]));
+    const selected = await renderAndCapture(outputRoot, 'aac-selected-window', saved(timeline, {startFrame: 12, endFrame: 42}), new Map<string, RenderAsset>([[aacAsset.id, aacAsset]]));
     const selectedStarted = performance.now();
     const selectedPrepared = await decoder(aacFile, selectedRequest, {beforeEffect() {}, remainingMs: () => Math.max(0, 120000 - (performance.now() - selectedStarted))});
-    report.aacSelectedWindow = {request: selectedRequest, ...canonicalResult('AAC-original-segments-selected-window', selectedPrepared.pcm, selected.pcm),
+    report['aacSelectedWindow'] = {request: selectedRequest, ...canonicalResult('AAC-original-segments-selected-window', selectedPrepared.pcm, selected.pcm),
       exactIdentity: selectedPrepared.pcm.equals(selected.pcm), exactWholeWindowIdentity: selectedPrepared.pcm.equals(rendered.pcm.subarray(12 * 1600 * 8, 42 * 1600 * 8)), render: selected.report};
     const seekSample = 8 * 1600 + 317;
-    report.aacSeekSuffix = {...canonicalResult('AAC-sample-precise-seek-suffix', prepared.pcm.subarray(seekSample * 8), rendered.pcm.subarray(seekSample * 8)),
+    report['aacSeekSuffix'] = {...canonicalResult('AAC-sample-precise-seek-suffix', prepared.pcm.subarray(seekSample * 8), rendered.pcm.subarray(seekSample * 8)),
       exactIdentity: prepared.pcm.subarray(seekSample * 8).equals(rendered.pcm.subarray(seekSample * 8)), seekSample};
     // Short embedded audio is still a genuine selected stream. Muted global
     // edges force later original seeks beyond audio EOF; the fixed silence-first
@@ -246,27 +262,28 @@ export async function runRenderOracle(inputDirectory, outputDirectory) {
     const shortBytes = await boundedRead(shortFile, 1024 * 1024), shortHash = hash(shortBytes);
     const shortAsset = {...baseAsset, id: randomUUID(), mimeType: 'video/mp4', path: shortFile, sha256: shortHash, sizeBytes: shortBytes.length,
       duration: 2, hasVideo: true, width: 16, height: 16, videoStreamIndex: 0, audioStreamIndex: 1};
-    const shortVoice = {...voice, clipId: randomUUID(), trackId: randomUUID(), sourceInFrame: 0};
-    const shortTimeline = timelineFromVoices([shortVoice], shortAsset, 60, [[17, 12]]), shortAssets = new Map([[shortAsset.id, shortAsset]]);
+    const shortVoice: Voice = {...voice, clipId: randomUUID(), trackId: randomUUID(), sourceInFrame: 0};
+    const shortTimeline = timelineFromVoices([shortVoice], shortAsset, 60, [[17, 12]]), shortAssets = new Map<string, RenderAsset>([[shortAsset.id, shortAsset]]);
     const shortRendered = await renderAndCapture(outputRoot, 'short-embedded-whole', saved(shortTimeline), shortAssets);
     const shortStarted = performance.now(), shortRequest = sourceRequest(shortTimeline, shortVoice);
     const shortPrepared = await decoder(shortFile, shortRequest, {beforeEffect() {}, remainingMs: () => Math.max(0, 120000 - (performance.now() - shortStarted))});
-    assert.equal(shortPrepared.source.streamIndex, 1); assert.ok(shortPrepared.source.audioDurationSeconds < shortPrepared.source.durationSeconds);
-    report.shortEmbeddedAudio = {request: shortRequest, ...canonicalResult('short-embedded-global-segments', shortPrepared.pcm, shortRendered.pcm),
+    assert.equal(shortPrepared.source.streamIndex, 1); assert.ok(Number(shortPrepared.source.audioDurationSeconds) < Number(shortPrepared.source.durationSeconds));
+    report['shortEmbeddedAudio'] = {request: shortRequest, ...canonicalResult('short-embedded-global-segments', shortPrepared.pcm, shortRendered.pcm),
       exactIdentity: shortPrepared.pcm.equals(shortRendered.pcm), sourceSha256: shortHash, sourceProbe: shortPrepared.source, render: shortRendered.report};
     const silentRendered = await renderAndCapture(outputRoot, 'short-embedded-silent-window', saved(shortTimeline, {startFrame: 32, endFrame: 48}), shortAssets);
     const silentStarted = performance.now(), silentRequest = sourceRequest(shortTimeline, shortVoice, 32, 48);
     const silentPrepared = await decoder(shortFile, silentRequest, {beforeEffect() {}, remainingMs: () => Math.max(0, 120000 - (performance.now() - silentStarted))});
-    report.shortEmbeddedSilentWindow = {request: silentRequest, ...canonicalResult('short-embedded-after-EOF-selected-window', silentPrepared.pcm, silentRendered.pcm),
+    report['shortEmbeddedSilentWindow'] = {request: silentRequest, ...canonicalResult('short-embedded-after-EOF-selected-window', silentPrepared.pcm, silentRendered.pcm),
       exactIdentity: silentPrepared.pcm.equals(silentRendered.pcm), allSilent: silentPrepared.pcm.every(byte => byte === 0), render: silentRendered.report};
     assert.equal(hash(await boundedRead(shortFile, 1024 * 1024)), shortHash);
     assert.equal(hash(await boundedRead(aacFile, 1024 * 1024)), aacHash);
     assert.equal(hash(await boundedRead(original, 2 * 1024 * 1024)), originalHash);
-    report.sourceSha256 = originalHash; report.sourcesUnchanged = true;
-    report.status = report.cases.every(item => item.status === 'passed') && report.aacReseek.exactIdentity && report.aacSelectedWindow.exactIdentity &&
-      report.aacSelectedWindow.exactWholeWindowIdentity && report.aacSeekSuffix.exactIdentity && report.shortEmbeddedAudio.exactIdentity &&
-      report.shortEmbeddedSilentWindow.exactIdentity && report.shortEmbeddedSilentWindow.allSilent ? 'passed' : 'failed';
-  } catch (error) {report.status = 'failed'; report.error = {name: error.name, code: error.code ?? null, message: error.message};}
+    report['sourceSha256'] = originalHash; report['sourcesUnchanged'] = true;
+    const flag = (key: string): boolean => Boolean(report[key] && (report[key] as {exactIdentity?: unknown}).exactIdentity);
+    report.status = report.cases.every((item: Record<string, unknown>) => item.status === 'passed') && flag('aacReseek') && flag('aacSelectedWindow') &&
+      Boolean((report['aacSelectedWindow'] as {exactWholeWindowIdentity?: unknown}).exactWholeWindowIdentity) && flag('aacSeekSuffix') && flag('shortEmbeddedAudio') &&
+      flag('shortEmbeddedSilentWindow') && Boolean((report['shortEmbeddedSilentWindow'] as {allSilent?: unknown}).allSilent) ? 'passed' : 'failed';
+  } catch (error) {report.status = 'failed'; const failure = error as {name?: string; code?: string|null; message?: string}; report.error = {name: failure.name, code: failure.code ?? null, message: failure.message};}
   report.finishedAt = new Date().toISOString();
   await writeFile(path.join(outputRoot, 'report.json'), JSON.stringify(report, null, 2) + '\n', {flag: 'wx', mode: 0o600});
   return report;

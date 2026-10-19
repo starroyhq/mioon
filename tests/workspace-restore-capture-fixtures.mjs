@@ -38,11 +38,11 @@ export const pairs=[24,26,28,30,32,34,36,38].map((source,index)=>{
   install:raw?.[`installWorkspaceRestoreSchemaV${restored}`]??installWorkspaceRestoreSchema,
   validate:raw?.[`validateWorkspaceRestoreSchemaV${restored}`]??validateWorkspaceRestoreSchema,
   families:[...baseFamilies.slice(0,10),...(index>=6?['asset_annotations','asset_annotation_requests']:[]),...baseFamilies.slice(10,26),...(index>=2?['project_lut_resources','lut_import_requests']:[]),...baseFamilies.slice(26)],
-  sourceFile:`workspace-restore-schema${index?`-v${restored}.ts`:'.mjs'}`};
+  sourceFile:`workspace-restore-schema${index?`-v${restored}.ts`:'.ts'}`};
 });
 export function frozenInventory(pair){
  const source=readFileSync(new URL(`../packages/business/src/${pair.sourceFile}`,import.meta.url),'utf8');
- const block=source.slice(source.indexOf('const families='),source.indexOf('const familyMap='));
+ const block=source.slice(source.indexOf('const families'),source.indexOf('const familyMap'));
  return [...block.matchAll(/\['([a-z_]+)',/g)].map(match=>match[1]);
 }
 export function fresh(t,pair,{populated=false,mock=false,file=':memory:'}={}){

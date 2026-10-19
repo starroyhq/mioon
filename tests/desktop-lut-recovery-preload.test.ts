@@ -1,0 +1,147 @@
+import test from 'node:test';
+import type {TestContext} from 'node:test';
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import { createDesktopLutRecoveryBridge } from '../apps/desktop/src/lut-recovery-preload.ts';
+
+import { createDesktopOrBrowserLutRecovery, createBrowserClipLutRecovery, createClipLutRecovery } from '../apps/web/src/clip-lut-recovery.ts';
+import { CLIP_LUT_RECOVERY_CHANNEL, ClipLutRecoveryError } from '../packages/contracts/src/clip-lut-recovery.ts';
+type DesktopLutRecoveryBridge = ReturnType<typeof createDesktopLutRecoveryBridge>;
+const record = (change: Record<string, unknown> = {}) => ({ version: 1, workspaceScope: 'a'.repeat(64), projectId: '11111111-1111-4111-8111-111111111111', requestId: '22222222-2222-4222-8222-222222222222', name: 'look.cube', sizeBytes: 30, sha256: 'b'.repeat(64), ...change });
+const identity = () => ({ workspaceScope: record().workspaceScope, projectId: record().projectId });
+const denied = { ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' };
+const codeIs = (code: string) => (error: unknown) => error instanceof ClipLutRecoveryError && error.code === code;
+type RecoveryResult = {ok: boolean; value?: unknown; code?: string};
+type BridgeLike = Record<'read' | 'reserve' | 'verify' | 'complete', (arg: unknown) => Promise<RecoveryResult>>;
+const bridgeWith = (invoke: (channel: string, request: Record<string, unknown>) => Promise<RecoveryResult>): DesktopLutRecoveryBridge =>
+  createDesktopLutRecoveryBridge({invoke} as unknown as Parameters<typeof createDesktopLutRecoveryBridge>[0]);
+const loose = (bridge: DesktopLutRecoveryBridge): BridgeLike => bridge as unknown as BridgeLike;
+type RecoveryEnvironment = Parameters<typeof createDesktopOrBrowserLutRecovery>[0];
+type LooseRecovery = Record<'read' | 'reserve' | 'verify' | 'complete', (arg: unknown) => Promise<unknown>>;
+const looseRecovery = (recovery: unknown): LooseRecovery => recovery as LooseRecovery;
+function forbidStorage(t: TestContext) {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  let touched = 0;
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { touched++; throw new Error('localStorage must not be used'); } });
+  t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete (globalThis as {localStorage?: unknown}).localStorage; });
+  return () => assert.equal(touched, 0);
+}
+
+test('preload exposes four frozen fixed-channel metadata operations, never arbitrary transport', async () => {
+  const calls: Array<[string, Record<string, unknown>]> = [], bridge = bridgeWith(async (channel: string, request: Record<string, unknown>) => { calls.push([channel, request]); return { ok: true, value: request.action === 'read' ? record() : null }; });
+  assert.deepEqual(Object.keys(bridge).sort(), ['complete', 'read', 'reserve', 'verify']); assert.equal(Object.isFrozen(bridge), true);
+  const read = await bridge.read(identity()); assert.deepEqual(read, { ok: true, value: record() });
+  assert.equal(Object.isFrozen(read), true); assert.equal(Object.isFrozen(read.value), true);
+  for (const action of ['reserve', 'verify', 'complete'] as const) assert.deepEqual(await loose(bridge)[action](record()), { ok: true, value: null });
+  assert.deepEqual(calls.map(([channel]) => channel), Array(4).fill(CLIP_LUT_RECOVERY_CHANNEL));
+  assert.deepEqual(calls.map(([, request]) => request.action), ['read', 'reserve', 'verify', 'complete']);
+  assert.deepEqual(calls[0][1], { action: 'read', identity: identity() });
+  assert.equal(CLIP_LUT_RECOVERY_CHANNEL, 'mioon:lut-recovery:v1');
+});
+
+test('invalid metadata and accessors never reach IPC and responses never leak diagnostics', async () => {
+  let calls = 0, getters = 0;
+  const bridge = bridgeWith(async () => { calls++; return { ok: true, value: null }; });
+  const accessor = Object.defineProperty(record(), 'name', { enumerable: true, get() { getters++; return 'look.cube'; } });
+  for (const value of [accessor, { ...record(), path: '/private/store' }, { ...record(), cubeText: 'secret cube' }, record({ name: '/tmp/look.cube' }), record({ name: 'x'.repeat(3000) + '.cube' })]) {
+    for (const action of ['reserve', 'verify', 'complete'] as const) assert.equal((await loose(bridge)[action](value)).ok, false);
+  }
+  assert.deepEqual(await bridge.read({ ...identity(), operation: 'fs.read' } as unknown as Parameters<typeof bridge.read>[0]), denied);
+  assert.equal(calls, 0); assert.equal(getters, 0);
+  for (const response of [{ ok: true, value: null, path: '/private/store' }, { ok: false, code: 'ENOENT' },
+    { ok: false, code: 'LUT_RECOVERY_CONFLICT', message: '/private/store' }, { ok: true, value: record({ workspaceScope: 'c'.repeat(64) }) }]) {
+    assert.deepEqual(await bridgeWith(async () => response).read(identity()), denied);
+  }
+  assert.deepEqual(await bridgeWith(async () => { throw new Error('EACCES /private/store'); }).read(identity()), denied);
+});
+
+test('preload preserves all recognized application failure codes across serialized envelopes', async () => {
+  for (const code of ['LUT_RECOVERY_UNAVAILABLE', 'LUT_RECOVERY_CONFLICT', 'LUT_RECOVERY_CORRUPT']) {
+    const bridge = bridgeWith(async () => JSON.parse(JSON.stringify({ ok: false, code })));
+    for (const action of ['read', 'reserve', 'verify', 'complete'] as const) {
+      const result = await loose(bridge)[action](action === 'read' ? identity() : record());
+      assert.deepEqual(result, { ok: false, code }); assert.equal(Object.isFrozen(result), true);
+    }
+  }
+});
+
+test('desktop missing or broken preload fails closed without touching localStorage', async t => {
+  const check = forbidStorage(t);
+  const environments = [{ __mioonDesktop: true }, { __mioonProjectWindow: {} }, { navigator: { userAgent: 'Mozilla/5.0 Electron/41.0.0' } },
+    { __mioonLutRecovery: null }, { __mioonLutRecovery: {} }, { __mioonLutRecovery: { read() { return { ok: true, value: null }; } } },
+    { __mioonLutRecovery: bridgeWith(async () => { throw new Error('/private/store'); }) }];
+  for (const environment of environments as RecoveryEnvironment[]) {
+    const recovery = createDesktopOrBrowserLutRecovery(environment);
+    for (const action of ['read', 'reserve', 'verify', 'complete'] as const) await assert.rejects(looseRecovery(recovery)[action](action === 'read' ? identity() : record()), codeIs('LUT_RECOVERY_UNAVAILABLE'));
+  }
+  check();
+});
+
+test('desktop validates tampered bridge output and preserves application error identity without web fallback', async t => {
+  const check = forbidStorage(t);
+  for (const response of [{ ok: true, value: record({ workspaceScope: 'c'.repeat(64) }) }, { ok: true, value: null, path: '/private/store' },
+    { ok: false, code: 'ENOENT' }, { ok: true, value: { ...record(), cubeText: 'secret' } }]) {
+    const bridge = Object.fromEntries(['read', 'reserve', 'verify', 'complete'].map(action => [action, async () => response])) as unknown as DesktopLutRecoveryBridge;
+    await assert.rejects(createDesktopOrBrowserLutRecovery({ __mioonLutRecovery: bridge }).read(identity()));
+  }
+  for (const code of ['LUT_RECOVERY_UNAVAILABLE', 'LUT_RECOVERY_CONFLICT', 'LUT_RECOVERY_CORRUPT']) {
+    const recovery = createDesktopOrBrowserLutRecovery({ __mioonLutRecovery: bridgeWith(async () => ({ ok: false, code })) });
+    await assert.rejects(looseRecovery(recovery).reserve(record()), codeIs(code));
+  }
+  const bridge = bridgeWith(async () => ({ ok: true, value: null }));
+  const environment: RecoveryEnvironment = { __mioonLutRecovery: bridge }, recovery = createDesktopOrBrowserLutRecovery(environment);
+  assert.equal(await recovery.read(identity()), null);
+  (environment as {__mioonLutRecovery?: DesktopLutRecoveryBridge}).__mioonLutRecovery = undefined;
+  await assert.rejects(recovery.read(identity()), codeIs('LUT_RECOVERY_UNAVAILABLE'));
+  check();
+});
+
+test('desktop success uses only bridge metadata and does not require Web Locks or localStorage', async t => {
+  const check = forbidStorage(t), calls: Array<Record<string, unknown>> = [];
+  const recovery = createDesktopOrBrowserLutRecovery({ __mioonLutRecovery: bridgeWith(async (_channel, request) => {
+    calls.push(request); return { ok: true, value: request.action === 'read' ? record() : null };
+  }) });
+  assert.deepEqual(await recovery.read(identity()), record());
+  for (const action of ['reserve', 'verify', 'complete'] as const) assert.equal(await looseRecovery(recovery)[action](record()), undefined);
+  assert.deepEqual(calls.map(call => call.action), ['read', 'reserve', 'verify', 'complete']); check();
+});
+
+test('ordinary web selection retains browser storage, locking and compare-and-swap behavior', async t => {
+  const descriptors = Object.fromEntries(['localStorage', 'navigator'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const data = new Map<string, unknown>(), locks: Array<[string, string]> = [];
+  const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: unknown) => data.set(key, value), removeItem: (key: string) => data.delete(key) } as Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: { request: async (key: string, options: unknown, action: () => Promise<unknown>) => { locks.push([key, String((options as {mode?: string}).mode)]); return action(); } } } });
+  t.after(() => { for (const [key, descriptor] of Object.entries(descriptors)) { if (descriptor) Object.defineProperty(globalThis as unknown as Record<string, unknown>, key, descriptor); else delete (globalThis as unknown as Record<string, unknown>)[key]; } });
+  const recovery = createDesktopOrBrowserLutRecovery({ navigator: { userAgent: 'Mozilla/5.0 Chrome/135.0' } });
+  await looseRecovery(recovery).reserve(record()); assert.deepEqual(await recovery.read(identity()), record()); await looseRecovery(recovery).verify(record());
+  await assert.rejects(looseRecovery(recovery).reserve(record({ name: 'other.cube' })), codeIs('LUT_RECOVERY_CONFLICT'));
+  await looseRecovery(recovery).complete(record()); assert.equal(await recovery.read(identity()), null);
+  assert.ok(locks.length >= 6); assert.ok(locks.every(([key, mode]) => key.includes(record().workspaceScope) && mode === 'exclusive'));
+  for (const factory of [createBrowserClipLutRecovery, createClipLutRecovery]) {
+    const explicit = factory({ storage: () => storage, lock: async (_name, action) => action() });
+    await looseRecovery(explicit).reserve(record()); assert.deepEqual(await explicit.read(identity()), record()); await looseRecovery(explicit).complete(record());
+  }
+});
+
+test('real sandbox preload bundles metadata bridge with no filesystem or arbitrary transport exposure', async () => {
+  const result = await build({ entryPoints: ['apps/desktop/src/preload.ts'], bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'], write: false, metafile: true });
+  assert.deepEqual(Object.values(result.metafile.outputs).flatMap(output => output.imports.map(item => item.path)), ['electron']);
+  const source = result.outputFiles[0].text;
+  assert.match(source, /exposeInMainWorld\("__mioonLutRecovery"/);
+  assert.match(source, /mioon:lut-recovery:v1/);
+  assert.doesNotMatch(source, /lut-import-pending-v1\.json|node:fs|\.sendSync\(|process\.env/);
+});
+
+test('desktop bridge timeout fails closed and late completion never accesses browser storage', async t => {
+  const check = forbidStorage(t);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pending = Promise.withResolvers();
+  const bridge = Object.fromEntries(['read', 'reserve', 'verify', 'complete'].map(action => [action, () => pending.promise]));
+  const recovery = createDesktopOrBrowserLutRecovery({ __mioonLutRecovery: bridge } as unknown as RecoveryEnvironment);
+  const assertion = assert.rejects(recovery.read(identity()), codeIs('LUT_RECOVERY_UNAVAILABLE'));
+  t.mock.timers.tick(5000);
+  await assertion;
+  pending.resolve({ ok: true, value: record() });
+  await Promise.resolve(); check();
+});

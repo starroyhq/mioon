@@ -24,10 +24,20 @@ type TimelineArg = Parameters<typeof renderTimeline>[0];
 type AssetsArg = Parameters<typeof renderTimeline>[1];
 type RenderOptions = Parameters<typeof renderTimeline>[3];
 type DeliveryInput = Parameters<typeof resolveTimelineExportDelivery>[0];
+type TimelineShape = {id: string; projectId: string; revision: number; fps: number; width: number; height: number; durationFrames: number; tracks: Array<{id: string; kind: string}>; clips: Array<Record<string, unknown>>; subtitles?: Record<string, unknown>};
+type AssetShape = {id: string; relativePath: string; sha256: string};
+type ProjectShape = {id: string};
+interface LocalServices {call<T = Record<string, unknown>>(operation: string, input?: unknown): Promise<T>; drain(): Promise<unknown>}
+interface LooseStore {
+  get(table: string, id: string): Record<string, unknown>; put(table: string, value: unknown): void; list(table: string): Array<Record<string, unknown>>;
+  db: {prepare(sql: string): {run(...values: unknown[]): unknown; get(...values: unknown[]): Record<string, unknown>; all(): Array<Record<string, unknown>>};
+    exec(sql: string): void; isTransaction: boolean};
+  close(): void; tx(body: () => unknown): unknown;
+}
 type MediaAsset = {id: string; mimeType: string; path: string; relativePath?: string; sha256?: string; width: number; height: number; duration: number; hasVideo: boolean; hasAudio: boolean; audioStreamIndex?: number; videoStreamIndex?: number};
 const selected=(resolution: string,rateControl: RateControl = {mode:'crf',quality:'standard'}): {profileId: string; resolution: string; rateControl: RateControl} => ({profileId:'mp4_h264_v1',resolution,rateControl});
-type MediaEvent = Record<string, unknown>;
 type ProcessEvent = Parameters<Parameters<typeof onMediaProcess>[0]>[0];
+type MediaEvent = ProcessEvent;
 const hash=(bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex');
 async function sandbox(t: {after(fn: () => unknown): void}): Promise<string> {const root=await mkdtemp(path.join(tmpdir(),'mioon-export-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
 function wave(): Buffer {
@@ -75,7 +85,7 @@ async function assetsAt(root: string): Promise<{audio: MediaAsset; image: MediaA
  await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=red:s=64x64:r=30','-frames:v','1','-threads','1',imageFile],{timeout:30000,maxStdoutBytes:0,maxStderrBytes:64*1024});
  const audio={id:randomUUID(),mimeType:'audio/wav',path:audioFile,width:0,height:0,duration:3,hasVideo:false,hasAudio:true,audioStreamIndex:0};
  const image={id:randomUUID(),mimeType:'image/png',path:imageFile,width:64,height:64,duration:0,hasVideo:true,hasAudio:false,videoStreamIndex:0};
- return {audio,image,assets:new Map([[audio.id,audio],[image.id,image]])};
+ return {audio,image,assets:new Map([[audio.id,audio],[image.id,image]] as Array<[string, MediaAsset]>)};
 }
 async function verifyOutput(file: string,width: number,height: number,frames=60): Promise<void> {
  const output=await probe(file) as {probe:{streams: Json[]}; duration: number}; const streams=output.probe.streams;
@@ -100,7 +110,7 @@ test('all three timeline aspects deliver native/360/1080 with post-caption scale
   const legacyBytes=await readFile(legacy),legacyPcm=await pcm(legacy);
   if(audioReference)assert.deepEqual(legacyPcm,audioReference);else audioReference=legacyPcm;
   let nativeBounds: {count:number;minX:number;minY:number;maxX:number;maxY:number} | undefined;
-  for(const [resolution,rateControl] of [['native',{mode:'crf',quality:'standard'}],['short_360',{mode:'crf',quality:'compact'}],['short_1080',{mode:'bitrate',targetKbps:4000}]]){
+  for(const [resolution,rateControl] of ([['native',{mode:'crf',quality:'standard'}],['short_360',{mode:'crf',quality:'compact'}],['short_1080',{mode:'bitrate',targetKbps:4000}]] as Array<[string, RateControl]>)){
    const delivery=deliveryFor(saved,selected(resolution,rateControl)),file=path.join(root,`${preset.id}-${resolution}.mp4`),explicit={...snapshot,delivery};
    await render(explicit,assets,file);const {width,height}=delivery.effective;
    if(resolution==='native')nativeFile=file;
@@ -138,24 +148,24 @@ test('all three timeline aspects deliver native/360/1080 with post-caption scale
 test('remaining fixed quality/bitrate selections encode and malformed frozen delivery fails before media I/O', {timeout:90000},async t=>{
  const root=await sandbox(t),{audio,image,assets}=await assetsAt(root),saved=timeline(TIMELINE_OUTPUT_PRESETS[2],audio,image);
  delete saved.subtitles;const snapshot={timeline:saved};
- for(const [index,rateControl] of [{mode:'crf',quality:'high'},{mode:'bitrate',targetKbps:2000},{mode:'bitrate',targetKbps:8000}].entries()){
-  const delivery=deliveryFor(saved,selected('short_360',rateControl)),file=path.join(root,`rate-${index}.mp4`);
+ for(const [index,rateControl] of ([{mode:'crf',quality:'high'},{mode:'bitrate',targetKbps:2000},{mode:'bitrate',targetKbps:8000}] as RateControl[]).entries()){
+  const delivery=deliveryFor(saved,selected('short_360',rateControl as RateControl)),file=path.join(root,`rate-${index}.mp4`);
   await render(withDelivery(snapshot,delivery),assets,file);await verifyOutput(file,360,360);
  }
  // A target bitrate controls encoder intent; short synthetic clips are not
  // expected to attain an exact average bitrate and no such claim is asserted.
- const good=deliveryFor(saved,selected('native')),events=[],off=onMediaProcess((event: ProcessEvent)=>events.push(event));
+ const good=deliveryFor(saved,selected('native')),events: ProcessEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>events.push(event));
  try{
   for(const delivery of [null,undefined,{...good,effective:{...good.effective,width:good.effective.width+2}},{...good,effective:{...good.effective,rateControl:{mode:'crf',crf:0}}},{...good,effective:{...good.effective,extra:'-filter_complex'}}])
-   await assert.rejects(renderTimeline({...snapshot,delivery},assets,path.join(root,'invalid.mp4')),{code:'INVALID_TIMELINE_SNAPSHOT'});
+   await assert.rejects(render(withDelivery(snapshot,delivery),assets,path.join(root,'invalid.mp4')),{code:'INVALID_TIMELINE_SNAPSHOT'});
   assert.deepEqual(events,[]);assert.equal((await readdir(root)).includes('invalid.mp4'),false);
  }finally{off();}
 });
 
 test('cancellation during a selected-profile worker capability leaves no render scratch or destination',async t=>{
  const root=await sandbox(t),{audio,image,assets}=await assetsAt(root),saved=timeline(TIMELINE_OUTPUT_PRESETS[0],audio,image),delivery=deliveryFor(saved,selected('short_1080'));
- const controller=new AbortController(),events=[],off=onMediaProcess((event: ProcessEvent)=>{events.push(event);if(event.type==='started')controller.abort();});
- try{await assert.rejects(renderTimeline({timeline:saved,subtitleProfile:profile,delivery},assets,path.join(root,'cancelled.mp4'),{signal:controller.signal}),{code:'MEDIA_CANCELLED'});}finally{off();}
+ const controller=new AbortController(),events: ProcessEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>{events.push(event);if(event.type==='started')controller.abort();});
+ try{await assert.rejects(render(withDelivery({timeline:saved,subtitleProfile:profile},delivery),assets,path.join(root,'cancelled.mp4'),{signal:controller.signal}),{code:'MEDIA_CANCELLED'});}finally{off();}
  assert.equal(events.filter(event=>event.type==='started').length,1);assert.equal(events.filter(event=>event.type==='exited').length,1);
  assert.equal((await readdir(root)).some(name=>name.startsWith('.timeline-render-')||name==='cancelled.mp4'),false);
 });
@@ -164,7 +174,7 @@ test('fresh worker capability is followed by the owner fence before any subtitle
  const root=await sandbox(t),{audio,image,assets}=await assetsAt(root),saved=timeline(TIMELINE_OUTPUT_PRESETS[0],audio,image),delivery=deliveryFor(saved,selected('short_360'));
  const events: MediaEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>events.push(event));let fenced=false;
  try{
-  await assert.rejects(renderTimeline({timeline:saved,subtitleProfile:profile,delivery},assets,path.join(root,'stale.mp4'),{beforeEncode(){
+  await assert.rejects(render(withDelivery({timeline:saved,subtitleProfile:profile},delivery),assets,path.join(root,'stale.mp4'),{beforeEncode(){
    fenced=true;assert.equal(events.filter(event=>event.type==='started').length,2);assert.equal(events.filter(event=>event.type==='exited').length,2);
    throw Object.assign(Error('Saved export changed while capability was checked.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
   }}),{code:'INVALID_TIMELINE_SNAPSHOT'});
@@ -174,26 +184,26 @@ test('fresh worker capability is followed by the owner fence before any subtitle
 });
 
 test('worker capability await cannot encode or overwrite a hostile replacement of the accepted delivery record',{timeout:30000},async t=>{
- const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace),services=createServices(store,new Map());let worker;
+ const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
  try{
-  const project=await services.call('project.create',{name:'Synthetic worker capability race'});
-  let timeline=await services.call('timeline.get',{projectId:project.id});
-  const asset=await services.call('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
-  timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find(track=>track.kind==='audio').id,assetId:asset.id,startFrame:0,durationFrames:30});
+  const project=await services.call<ProjectShape>('project.create',{name:'Synthetic worker capability race'});
+  let timeline=await services.call<TimelineShape>('timeline.get',{projectId:project.id});
+  const asset=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
+  timeline=await services.call<TimelineShape>('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find((track: {kind: string; id: string}) => track.kind==='audio')!.id,assetId:asset.id,startFrame:0,durationFrames:30});
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:selected('native')};
-  const accepted=await services.call('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
+  const accepted=await services.call<ProjectShape>('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
   // The production trigger prevents this write. Dropping only this trigger is
   // a hostile-corruption simulation to test the independent asynchronous fence.
   store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot');
-  let ffmpegStarts=0,replacement,observerFailure;const events: MediaEvent[]=[];
+  let ffmpegStarts=0; let replacement: {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown} | undefined; let observerFailure: unknown; const events: ProcessEvent[]=[];
   const off=onMediaProcess((event: ProcessEvent)=>{
    events.push(event);
    if(event.type==='started'&&event.kind==='ffmpeg'&&++ffmpegStarts===2){
-    try{replacement=store.get('exports',accepted.id);replacement.snapshot.delivery=deliveryFor(replacement.snapshot.timeline,selected('short_360'));store.put('exports',replacement);}
+    try{replacement=store.get('exports',accepted.id) as unknown as {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown};replacement.snapshot.delivery=deliveryFor(replacement.snapshot.timeline as unknown,selected('short_360'));store.put('exports',replacement as unknown as Parameters<typeof store.put>[1]);}
     catch(error){observerFailure=error;}
    }
   });
-  try{worker=startWorker(store,services,new Map());await worker.tick();}finally{off();}
+  try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
   assert.equal(observerFailure,undefined);assert.ok(replacement,'record was replaced during the real selected-profile encode proof');
   assert.equal(ffmpegStarts,2,'worker stopped after listing + synthetic proof, before rendering');
   assert.deepEqual(store.get('exports',accepted.id),replacement,'failed owner fence cannot overwrite the newer persisted record');
@@ -204,40 +214,40 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
 });
 
 async function sourceOwnershipRace(t: {mock: {method(target: object, name: string, fn: (...args: unknown[]) => unknown): void}; after(fn: () => unknown): void}, {mutation, phase='capability'}: {mutation: string; phase?: string}): Promise<void> {
- const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace),services=createServices(store,new Map());let worker;
+ const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
  const state=()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='exports' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
  try{
-  const project=await services.call('project.create',{name:'Synthetic frozen-source race'}),other=await services.call('project.create',{name:'Private foreign fixture'});
-  const imported=await services.call('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
-  const asset={...store.get('assets',imported.id),provenance:'generated'};store.put('assets',asset);
-  const shot=await services.call('shot.create',{projectId:project.id,title:'Synthetic retained lineage'}),foreignShot=await services.call('shot.create',{projectId:other.id,title:'Untouched foreign shot'});
+  const project=await services.call<ProjectShape>('project.create',{name:'Synthetic frozen-source race'}),other=await services.call<ProjectShape>('project.create',{name:'Private foreign fixture'});
+  const imported=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
+  const asset: AssetShape & Record<string, unknown> = {...store.get('assets',imported.id),provenance:'generated'} as unknown as AssetShape & Record<string, unknown>;store.put('assets',asset);
+  const shot=await services.call<ProjectShape>('shot.create',{projectId:project.id,title:'Synthetic retained lineage'}),foreignShot=await services.call<ProjectShape>('shot.create',{projectId:other.id,title:'Untouched foreign shot'});
   const jobId=randomUUID(),versionId=randomUUID(),sourceSnapshot={projectId:project.id,shotId:shot.id,referenceAssetIds:[],referenceAssets:[]};
   store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,versionId,assetId:asset.id,status:'succeeded',providerId:'mock',requestId:randomUUID(),snapshot:sourceSnapshot});
   store.put('versions',{id:versionId,projectId:project.id,shotId:shot.id,jobId,assetId:asset.id,sha256:asset.sha256,number:1,snapshot:sourceSnapshot});
   store.put('shots',{...shot,selectedVersionId:versionId});
-  let timeline=await services.call('timeline.get',{projectId:project.id});
-  timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find(track=>track.kind==='audio').id,assetId:asset.id,startFrame:0,durationFrames:3});
+  let timeline=await services.call<TimelineShape>('timeline.get',{projectId:project.id});
+  timeline=await services.call<TimelineShape>('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find((track: {kind: string; id: string}) => track.kind==='audio')!.id,assetId:asset.id,startFrame:0,durationFrames:3});
   // Retained historical lineage is validated independently of the asset's
   // provenance label, including every version/job/shot reverse relation.
-  Object.assign(timeline.clips[0],{versionId,jobId,shotId:shot.id});store.put('timelines',timeline);
+  Object.assign(timeline.clips[0],{versionId,jobId,shotId:shot.id});store.put('timelines', timeline as unknown as Parameters<typeof store.put>[1]);
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:selected('short_360')};
-  const accepted=await services.call('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
+  const accepted=await services.call<ProjectShape>('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
   const acceptedSnapshot=store.get('exports',accepted.id).snapshot;
   const sourceFile=path.join(workspace,asset.relativePath),sourceHash=hash(await readFile(sourceFile)),files=(await readdir(path.join(workspace,'media'))).sort();
   // The normal version trigger rejects this corruption; remove only that
   // fixture-local protection when testing the independent retained-graph fence.
   if(mutation==='version-sql-owner')store.db.exec('DROP TRIGGER immutable_versions');
-  let moved=false,afterMutation,observerFailure,ffmpegStarts=0,probeExits=0,publicationArmed=false,linkedBeforeTx=false,replacementFile,preservedFile,readUncertain=false,readFailureObserved=false;const events: MediaEvent[]=[];
+  let moved=false; let afterMutation: unknown; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
   const replacementBytes=Buffer.from('Different fixture-owned inode must be preserved.');
   const prepare=store.db.prepare;
-  if(phase==='publication-read-unknown')t.mock.method(store.db,'prepare',function(sql,...args){
+  if(phase==='publication-read-unknown')t.mock.method(store.db,'prepare',(function(this: unknown, sql: string, ...args: unknown[]){
    if(readUncertain&&!store.db.isTransaction&&sql.includes('FROM exports WHERE id=?')){
     readUncertain=false;readFailureObserved=true;throw Error('Synthetic private cleanup-read failure.');
    }
-   return prepare.call(this,sql,...args);
-  });
-  const patch=(table,id,values)=>store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify({...store.get(table,id),...values}),id);
-  const move=()=>{
+   return (prepare.call as (thisArg: unknown, sql: string, ...values: unknown[]) => unknown)(this, sql, ...args) as never;
+  }) as (...args: unknown[]) => unknown);
+  const patch=(table: string, id: string, values: Record<string, unknown>)=>store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify({...store.get(table,id),...values}),id);
+  const move=(): void => {
    if(moved)return;moved=true;
    try{
     if(mutation==='asset-sql-owner')store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(other.id,asset.id);
@@ -278,11 +288,11 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
     if(publicationPhase)publicationArmed=true;
    }
   });
-  try{worker=startWorker(store,services,new Map());await worker.tick();}finally{off();}
+  try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
   assert.equal(observerFailure,undefined);assert.equal(moved,true,`${mutation} raced at ${phase}`);
   if(publicationPhase)assert.equal(linkedBeforeTx,true,'ownership changed after this task linked its output and immediately before the real publication transaction');
   assert.deepEqual(state(),afterMutation,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
-  const rejected=store.get('exports',accepted.id);assert.equal(rejected.status,'failed');assert.equal(rejected.error.code,'TIMELINE_SOURCE_UNAVAILABLE');
+  const rejected=store.get('exports',accepted.id);assert.equal(rejected.status,'failed');assert.equal((rejected.error as {code?: string}).code,'TIMELINE_SOURCE_UNAVAILABLE');
   assert.equal(rejected.assetId,null);assert.equal(rejected.url,null);assert.deepEqual(rejected.snapshot,acceptedSnapshot);
   assert.equal(JSON.stringify(rejected.error).includes(other.id),false);assert.equal(JSON.stringify(rejected.error).includes(foreignShot.id),false);assert.equal(JSON.stringify(rejected.error).includes(workspace),false);
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
@@ -310,27 +320,27 @@ test('worker publication guards remove only known unpublished output and preserv
 });
 
 test('postcommit publication exception preserves the successful custom export and its exact owned output',{timeout:20000},async t=>{
- const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace),services=createServices(store,new Map());let worker;
+ const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
  try{
-  const project=await services.call('project.create',{name:'Synthetic committed publication'});
-  const asset=await services.call('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
-  let timeline=await services.call('timeline.get',{projectId:project.id});
-  timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find(track=>track.kind==='audio').id,assetId:asset.id,startFrame:0,durationFrames:3});
+  const project=await services.call<ProjectShape>('project.create',{name:'Synthetic committed publication'});
+  const asset=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
+  let timeline=await services.call<TimelineShape>('timeline.get',{projectId:project.id});
+  timeline=await services.call<TimelineShape>('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find((track: {kind: string; id: string}) => track.kind==='audio')!.id,assetId:asset.id,startFrame:0,durationFrames:3});
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:selected('short_360')};
-  const accepted=await services.call('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
-  const originalTx=store.tx;let probeExits=0,armed=false,injected=false,committed,committedAsset;
+  const accepted=await services.call<ProjectShape>('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
+  const originalTx=store.tx;let probeExits=0,armed=false,injected=false; let committed: Record<string, unknown> | undefined; let committedAsset: Record<string, unknown> | undefined;
   store.tx=body=>{
    if(!armed)return originalTx(body);
-   armed=false;const result=originalTx(body);committed=store.get('exports',accepted.id);committedAsset=store.get('assets',committed.assetId);injected=true;
+   armed=false;const result=originalTx(body);committed=store.get('exports',accepted.id);committedAsset=store.get('assets',String(committed.assetId));injected=true;
    throw Object.assign(Error('Synthetic acknowledgement failure after successful commit.'),{code:'SYNTHETIC_POSTCOMMIT_FAILURE'});
   };
-  const events=[],off=onMediaProcess((event: ProcessEvent)=>{events.push(event);if(event.type==='exited'&&event.kind==='ffprobe'&&++probeExits===3)armed=true;});
-  try{worker=startWorker(store,services,new Map());await worker.tick();}finally{off();}
-  assert.equal(injected,true);assert.equal(committed.status,'succeeded');assert.equal(committed.error,null);
+  const events: ProcessEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>{events.push(event);if(event.type==='exited'&&event.kind==='ffprobe'&&++probeExits===3)armed=true;});
+  try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
+  assert.equal(injected,true);assert.equal(committed!.status,'succeeded');assert.equal(committed!.error,null);
   assert.deepEqual(store.get('exports',accepted.id),committed,'postcommit exception cannot downgrade an already published success');
-  assert.deepEqual(store.get('assets',committed.assetId),committedAsset);assert.equal(store.list('assets').length,2);
+  assert.deepEqual(store.get('assets',String(committed!.assetId)),committedAsset);assert.equal(store.list('assets').length,2);
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
-  const file=path.join(workspace,committedAsset.relativePath);assert.equal(hash(await readFile(file)),committedAsset.sha256);await verifyOutput(file,360,640,3);
+  const file=path.join(workspace,String(committedAsset!.relativePath));assert.equal(hash(await readFile(file)),committedAsset!.sha256);await verifyOutput(file,360,640,3);
   assert.equal((await readdir(path.join(workspace,'media'))).some(name=>name.startsWith('.timeline-render-')||name.endsWith('.part.mp4')),false);
   assert.equal(events.filter(event=>event.type==='started').length,events.filter(event=>event.type==='exited').length);
  }finally{await worker?.stop();await services.drain();store.close();}
