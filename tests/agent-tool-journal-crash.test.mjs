@@ -14,6 +14,7 @@ const cwd = fileURLToPath(new URL('../', import.meta.url));
 // real credentials, UI, or media work. Trace is outside the SQLite transaction
 // so rollback cannot hide an inspection read that already happened.
 const CHILD = String.raw`
+import {createTestAuthorizations,authorizeTestScope} from './tests/helpers/agent-authorizations.mjs';
 import {appendFileSync, writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
@@ -50,7 +51,9 @@ const gateway = async function* ({readTools}) {
       tool_calls: [{id, type: 'function', function: {name, arguments: argumentsJson}}]} :
       [{id: toolCall.itemId, type: 'function_call', call_id: id, name, arguments: argumentsJson, status: 'completed'}]};
 };
-const runtime = createChatRuntime({store, agentSettings: suppliedSettings, inspection, gateway, selfPort: () => 4318, mode: 'simulated'});
+const authorizations=createTestAuthorizations(store,settings);
+await authorizeTestScope(authorizations,'project_inspection');
+const runtime = createChatRuntime({store,authorizations, agentSettings: suppliedSettings, inspection, gateway, selfPort: () => 4318, mode: 'simulated'});
 const originalTx = store.tx;
 store.tx = operation => {
   const value = originalTx(operation);

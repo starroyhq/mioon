@@ -1,3 +1,5 @@
+import {creationTestDependency} from './helpers/creation-i18n.ts';
+import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.mjs';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
 import test from 'node:test';
@@ -16,7 +18,7 @@ const selected = { projectId, timelineId, clipId, trackId, expectedRevision: 4, 
 const publicTarget = Object.fromEntries(Object.entries(selected).filter(([key]) => !['startFrame', 'endFrame', 'durationFrames', 'timelineDurationFrames', 'occupiedIntervals'].includes(key)));
 const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://example.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions' };
 const settings = { revision: 0, configuration, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, presets: [{ id: 'openai', label: 'OpenAI', platforms: [{ id: 'global', label: 'Global', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], ...configuration }] }], scope: 'settings_only', verification: 'not_tested' };
-const snapshot = (patch = {}) => ({ instanceId, threadId, projectId, revision: 0, scope: 'chat_and_reviewed_timeline_edits', persistence: 'local_database', mode: 'simulated', timelineEdit: { available: true, ...policy.AGENT_TIMELINE_LIMITS, catalogHash: 'a'.repeat(64) }, edit: { available: true, ...policy.AGENT_EDIT_LIMITS, catalogHash: 'b'.repeat(64) }, inspection: { available: true, ...policy.AGENT_INSPECTION_LIMITS, catalogHash: 'c'.repeat(64) }, settings, runs: [], historyCursor: null, ...patch });
+const snapshot = (patch = {}) => ({ instanceId, threadId, projectId, revision: 0, authorization:{revision:0,scopes:[]}, scope: 'chat_and_reviewed_timeline_edits', persistence: 'local_database', mode: 'simulated', timelineEdit: { available: true, ...policy.AGENT_TIMELINE_LIMITS, catalogHash: 'a'.repeat(64) }, edit: { available: true, ...policy.AGENT_EDIT_LIMITS, catalogHash: 'b'.repeat(64) }, inspection: { available: true, ...policy.AGENT_INSPECTION_LIMITS, catalogHash: 'c'.repeat(64) }, settings, runs: [], historyCursor: null, ...patch });
 const run = (patch = {}) => ({ id: runId, requestId, threadId, projectId, status: 'completed', userText: 'Move the selected clip to 6 seconds', assistantText: 'Already applied! <img src=x>', configuration, createdAt: at, updatedAt: at, lastEventId: 3, contextMode: policy.AGENT_TIMELINE_CONTEXT, editTarget: selected, provenance: { category: 'project_selected_timeline_timing', projectId, sourceRunIds: [] }, activity: [{ id: id(20), kind: 'model', ordinal: 1, status: 'completed' }], ...patch });
 const proposal = (patch = {}) => ({ id: proposalId, projectId, runId, digest: 'd'.repeat(64), status: 'pending', runStatus: 'completed', operation: 'timeline.clip.update', target: publicTarget, patch: { startFrame: 180 }, diff: { before: { startFrame: 90, endFrame: 150, durationFrames: 60, timelineDurationFrames: 150 }, after: { startFrame: 180, endFrame: 240, durationFrames: 60, timelineDurationFrames: 240 } }, provenance: { runId, toolCallId: 'move-call-1', toolName: 'mioon_propose_timeline_clip_move' }, createdAt: at, updatedAt: at, ...patch });
 const approval = { requestId: id(10), approvedAt: at };
@@ -40,7 +42,7 @@ function fixture(options = {}) {
 function chatFixture(options = {}) {
   const calls = []; let value = snapshot();
   const receipts = { get: () => null, set() {} };
-  const client = { read: async () => value, start: async (_, input) => { calls.push(input); return options.start ? options.start(input) : { instanceId, threadId, projectId, revision: 1, run: run({ userText: input.message }) }; }, lookup: async () => { throw error('AGENT_CHAT_NOT_FOUND'); }, stream: async () => {} };
+  const client = { ...createAgentAuthorizationUiMock(async () => value), start: async (_, input) => { calls.push(input); return options.start ? options.start(input) : { instanceId, threadId, projectId, revision: 1, run: run({ userText: input.message }) }; }, lookup: async () => { throw error('AGENT_CHAT_NOT_FOUND'); }, stream: async () => {} };
   return { calls, client, receipts, setSnapshot: next => { value = next; }, session: chat.createAgentChatSession({ projectId, client, receipts, requestId: () => requestId }) };
 }
 
@@ -56,6 +58,7 @@ function harness(file, options = {}) {
     useLayoutEffect(fn, deps) { const index = cursor++, old = slots[index]; if (old && sameDeps(old.deps, deps)) return; slots[index] = { fn, deps, cleanup: old?.cleanup }; effects.push(index); },
   }; react.default = react;
   const resolve = name => {
+    const i18nDependency=creationTestDependency(name);if(i18nDependency)return i18nDependency;
     if (name === './agent-timeline-context.js') return timing;
     if (name === './agent-timeline-gain-context.ts') return gainContext;
     if (name === './AgentTimelineGain.tsx') { const gain = { exports: {} }; Function('module', 'exports', 'require', transformSync(readFileSync(new URL('../apps/web/src/AgentTimelineGain.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code)(gain, gain.exports, resolve); return gain.exports; }
@@ -71,6 +74,7 @@ function harness(file, options = {}) {
     if (name === './agent-edits.js') return { ...edits, createAgentEditsSession: input => edits.createAgentEditsSession({ ...input, client: options.client }) };
     if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => chat.createAgentChatSession({ ...input, client: options.chatClient, receipts: options.receipts, requestId: () => requestId }) };
     if (name === './agent-tool-state.js') return policy;
+    if (name === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
     if (name === './AgentEditProposal.jsx') return { __esModule: true, default: 'AgentEditProposal' };
     if (name === './AgentRunActivity.jsx') return load('AgentRunActivity');
     if (name === './workspace-visibility.jsx') return { useWorkspaceVisibility: () => visible };
@@ -85,7 +89,7 @@ function harness(file, options = {}) {
     render(patch = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return tree; },
     find: id => nodes(tree).find(node => node.props['data-testid'] === id),
     all: id => nodes(tree).filter(node => node.props['data-testid'] === id),
-    change(id, value) { h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); },
+    change(id, value) { if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
     click(id) { h.find(id).props.onClick(); h.render(); },
     submit() { nodes(tree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); },
     hide(value = true) { visible = !value; h.render(); },
@@ -115,21 +119,21 @@ test('timeline capability, provenance, tool and proposal discriminators fail clo
   for (const patch of [{ patch: { startFrame: 180, trackId } }, { target: { ...publicTarget, clipId: id(88) }, outcome: applied().outcome, status: 'applied', approval }, { diff: { ...proposal().diff, after: { ...proposal().diff.after, durationFrames: 61 } } }, { status: 'applied' }]) assert.throws(() => edits.safeAgentEditProposal(proposal(patch), projectId));
 });
 
-test('timeline send consent binds full display, every fence and exact destination without widening the outbound schema', async () => {
-  const f = chatFixture(); await f.session.load(); f.session.edit(run().userText); f.session.setTimelineTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_CONTEXT); assert.equal(f.session.approve(true), true);
+test('timeline authorization survives saved target revisions without widening the outbound per-send schema', async () => {
+  const f = chatFixture(); await f.session.load(); f.session.edit(run().userText); f.session.setTimelineTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_CONTEXT); assert.equal(await f.session.approve(true), true);
   const key = f.session.getState().consent;
   for (const target of [{ ...selected, expectedRevision: 5 }, { ...selected, clipName: 'New name' }, { ...selected, occupiedIntervals: [] }]) {
-    f.session.setTimelineTarget(target); assert.equal(f.session.getState().consent, null); assert.equal(await f.session.send(), false); f.session.approve(true); assert.notEqual(f.session.getState().consent, key);
+    f.session.setTimelineTarget(target); assert.equal(f.session.getState().consent, key); assert.equal(chat.agentChatCanSend(f.session.getState()), true);
   }
-  f.session.setTimelineTarget(selected, '存在未保存片段草稿'); assert.equal(f.session.approve(true), false); assert.equal(await f.session.send(), false);
-  f.session.setTimelineTarget(selected); f.session.approve(true); assert.equal(await f.session.send(), true);
+  f.session.setTimelineTarget(selected, '存在未保存片段草稿'); assert.equal(await f.session.approve(true), false); assert.equal(await f.session.send(), false);
+  f.session.setTimelineTarget(selected); await f.session.approve(true); assert.equal(await f.session.send(), true);
   assert.deepEqual(f.calls[0].consent, { destination: chat.deriveAgentEndpoint(configuration), protocol: configuration.protocol, model: configuration.model, context: policy.AGENT_TIMELINE_CONTEXT, projectId, ...policy.AGENT_TIMELINE_LIMITS, catalogHash: 'a'.repeat(64), timelineId, clipId, expectedRevision: 4 });
   assert.doesNotMatch(JSON.stringify(f.calls[0]), /assetId|sourceInFrame|occupiedIntervals|shotId/); f.session.dispose();
 });
 
 test('accepted run must match complete displayed timing even when identifiers and revision match', async () => {
   const f = chatFixture({ start: input => ({ instanceId, threadId, projectId, revision: 1, run: run({ userText: input.message, editTarget: { ...selected, occupiedIntervals: [] } }) }) });
-  await f.session.load(); f.session.setTimelineTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_CONTEXT); f.session.edit('Move it'); f.session.approve(true);
+  await f.session.load(); f.session.setTimelineTarget(selected); f.session.setContextMode(policy.AGENT_TIMELINE_CONTEXT); f.session.edit('Move it'); await f.session.approve(true);
   assert.equal(await f.session.send(), false); assert.equal(f.calls.length, 1); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().draft, 'Move it'); f.session.dispose();
 });
 
@@ -184,9 +188,9 @@ test('actual timeline composer requires separate consent, bounds intervals, clea
   const f = chatFixture(), h = harness('AgentPanel', { chatClient: f.client, receipts: f.receipts }); h.render(); await flush(); h.render();
   h.change('agent-chat-mode-timeline', true); h.change('agent-chat-prompt', 'Move this saved clip'); assert.ok(h.find('agent-timeline-selected-target')); assert.equal(h.find('agent-chat-consent').props.checked, false);
   assert.match(JSON.stringify(h.find('agent-timeline-occupied-intervals')), /0|30/); assert.equal(h.find('agent-timeline-selected-disclosure').props.open, true);
-  h.change('agent-chat-consent', true); const staleConsent = h.find('agent-chat-consent').props.onChange, oldSubmit = nodes(h.render()).find(node => node.type === 'form').props.onSubmit;
+  h.change('agent-chat-consent', true); await flush(); h.render(); const staleConsent = h.find('agent-chat-consent').props.onChange, oldSubmit = nodes(h.render()).find(node => node.type === 'form').props.onSubmit;
   h.render({ timelineEditBlockedReason: '时间线有未保存草稿' }); h.render(); staleConsent({ target: { checked: true } }); oldSubmit({ preventDefault() {} }); await flush(); h.render();
-  assert.equal(f.calls.length, 0); assert.equal(h.find('agent-chat-consent').props.checked, false); assert.equal(h.find('agent-chat-consent').props.disabled, true); assert.equal(h.find('agent-chat-prompt').props.value, 'Move this saved clip');
+  assert.equal(f.calls.length, 0); assert.equal(h.find('agent-chat-consent').props.checked, true); assert.equal(h.find('agent-chat-consent').props.disabled, true); assert.equal(h.find('agent-chat-prompt').props.value, 'Move this saved clip');
   h.render({ timelineEditBlockedReason: '' }); h.render(); h.change('agent-chat-mode-typed', true); assert.match(JSON.stringify(h.find('agent-chat-context')), /不含项目/); h.unmount();
 });
 

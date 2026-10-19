@@ -160,21 +160,26 @@ function retainedSnapshots(snapshot, assets) {
 
 function fakeRuntime(snapshot, root) {
   const calls = [], frames = snapshot.exportRange ? snapshot.exportRange.endFrame - snapshot.exportRange.startFrame : snapshot.timeline.durationFrames;
+  const scriptOptions = [], rawArgv = [], aliases = {'-/filter_complex': '-filter_complex_script', '-/filter:v': '-filter_script:v'};
   const remember = (kind, command, args, options = {}) => {
     options.beforeEffect?.();
+    rawArgv.push([...args]);
+    for (const pair of [['-filter_complex_script', '-/filter_complex'], ['-filter_script:v', '-/filter:v']])
+      assert.ok(args.filter(arg => pair.includes(arg)).length <= 1, 'file-option aliases cannot be duplicated or mixed');
     const files = {};
-    for (const option of ['-filter_complex_script', '-filter_script:v']) {
-      const at = args.indexOf(option); if (at >= 0) files[option] = fs.readFileSync(args[at + 1], 'utf8');
+    for (const option of ['-filter_complex_script', '-filter_script:v', ...Object.keys(aliases)]) {
+      const at = args.indexOf(option);
+      if (at >= 0) { files[aliases[option] ?? option] = fs.readFileSync(args[at + 1], 'utf8'); scriptOptions.push(option); }
     }
     if (args.includes('concat')) files.concat = fs.readFileSync(args[args.indexOf('-i') + 1], 'utf8');
-    calls.push({kind, command, argv: [...args], files,
+    calls.push({kind, command, argv: args.map(arg => aliases[arg] ?? arg), files,
       timeout: options.timeout, maxStdoutBytes: options.maxStdoutBytes, maxStderrBytes: options.maxStderrBytes});
   };
-  return {calls,
+  return {calls, scriptOptions, rawArgv,
     async run(command, args, options) { remember('run', command, args, options); return ''; },
     async runStreaming(command, args, options) {
       remember('runStreaming', command, args, options);
-      assert.ok(args.includes('-filter_script:v'), 'only subtitle ink measurement may stream');
+      assert.ok(args.includes('-/filter:v'), 'only subtitle ink measurement may stream, using the current file-argument syntax');
       const count = Number(args[args.indexOf('-frames:v') + 1]), bytes = Buffer.alloc(4096 * 256 * count);
       for (let n = 0; n < count; n++) { bytes[n * 4096 * 256 + 100 * 4096 + 100] = 255; bytes[n * 4096 * 256 + 140 * 4096 + 200] = 255; }
       options.onStdout(bytes); return {stdoutBytes: bytes.length};
@@ -198,10 +203,10 @@ function fakeRuntime(snapshot, root) {
   };
 }
 
-test('old40/41 graphs and argv match pinned pre-seam renderer exactly for video, image, audio, subtitles and selected ranges', async t => {
+test('old40/41 graphs and argv match pinned pre-seam renderer except equivalent file-option aliases', async t => {
   const root = await fsp.realpath(await fsp.mkdtemp(path.join(tmpdir(), 'mioon-opacity-legacy-')));
-  // Equal test-owned staging names make argv comparison literal: no replacement
-  // or normalization can conceal an unexpected path, argument or filter change.
+  // Only the two reviewed equivalent file-option names are canonicalized. Every
+  // path, remaining argument, filter byte and concat byte stays literal.
   const fixedDirectory = prefix => { const target = prefix + 'legacy-regression'; fs.mkdirSync(target, {mode: 0o700}); return target; };
   t.mock.method(fs, 'mkdtempSync', fixedDirectory);
   t.mock.method(fsp, 'mkdtemp', async prefix => fixedDirectory(prefix));
@@ -222,7 +227,8 @@ test('old40/41 graphs and argv match pinned pre-seam renderer exactly for video,
         const expected = activeRuntime.calls;
         activeRuntime = fakeRuntime(snapshot, root);
         await currentRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}});
-        assert.deepEqual(activeRuntime.calls, expected, `schema${version} managed=${managed} selected=${Boolean(range)}: exact argv, filters, script and concat bytes`);
+        assert.deepEqual(activeRuntime.scriptOptions, managed ? ['-/filter:v', '-/filter_complex', '-/filter_complex', '-/filter_complex'] : [], 'current renderer always uses the supported file-option names');
+        assert.deepEqual(activeRuntime.calls, expected, `schema${version} managed=${managed} selected=${Boolean(range)}: equivalent file options; all remaining argv, filter, script and concat bytes exact; raw current argv=${JSON.stringify(activeRuntime.rawArgv)}`);
         assert.equal(JSON.stringify(snapshot), frozenRaw, 'neither renderer mutates retained raw snapshot');
         const graphs = expected.flatMap(call => [call.files?.['-filter_complex_script'], call.argv?.[call.argv.indexOf('-filter_complex') + 1]]).filter(value => typeof value === 'string' && value.includes('[outv]'));
         assert.equal(graphs.length, 3, 'clip edges produce three genuinely compared visual segments');
@@ -242,5 +248,5 @@ test('old40/41 graphs and argv match pinned pre-seam renderer exactly for video,
   }
   assert.equal(childAttempts, 0);
   assert.equal(compared, 8);
-  t.diagnostic('8 exact before/after comparisons; real in-memory40/41 receipt capture; all media mocked; zero child attempts; no encoded-file identity claim');
+  t.diagnostic('8 before/after comparisons with two explicit file-option aliases; all other argv and bytes exact; real in-memory40/41 receipt capture; all media mocked; zero child attempts; no encoded-file identity claim');
 });

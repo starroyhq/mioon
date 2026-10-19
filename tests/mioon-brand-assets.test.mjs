@@ -27,7 +27,9 @@ test('brand PNG dimensions and alpha intent match their fixed local consumers', 
   assert.match(component, /new URL\('\.\/assets\/mioon-mark\.png', import\.meta\.url\)/);
   assert.match(component, /alt="" width=\{1254\} height=\{1254\} draggable=\{false\}/);
   const app = await text('apps/web/src/App.jsx');
-  assert.equal((app.match(/<span className="brand-mark"><BrandMark \/>/g) || []).length, 3);
+  assert.equal((app.match(/<span className="brand-mark"><BrandMark \/>/g) || []).length, 1, 'loading keeps the local PNG mark');
+  assert.match(app, /className="boot-page"[\s\S]*?<span className="brand-mark"><BrandMark \/>/);
+  assert.match(app, /<WorkbenchTopbar brand=\{<a[^>]+className="brand"[\s\S]*?<span className="brand-name">Mioon<\/span>/);
   assert.doesNotMatch(app, /<span className="brand-mark"><Icon/);
   assert.match(await text('apps/web/index.html'), /<link rel="icon" type="image\/png" href="\/favicon\.png" \/>/);
 });
@@ -68,9 +70,10 @@ test('actual shared window factory adds the local icon while retaining the secur
     const session = {}, appRoot = '/synthetic/mioon-stage';
     const makeWindow = Function('BrowserWindow', 'identity', 'path', 'app', 'process', 'windowChromeOptions', 'secureWebPreferences', 'context', `return (${factory});`)(
       class { constructor(config) { this.config = config; } }, { productName: 'Mioon' }, path,
-      { getAppPath: () => appRoot }, { platform }, () => ({}), secureWebPreferences, { session });
+      { getAppPath: () => appRoot }, { platform }, () => ({}), secureWebPreferences, { session, appearance:{backgroundColor:()=>'#f6f6f6'} });
     const { config } = makeWindow();
     assert.equal(config.icon, path.join(appRoot, 'icons/icon.png'));
+    assert.equal(config.backgroundColor, '#f6f6f6');
     assert.equal(config.webPreferences.preload, path.join(appRoot, 'preload.cjs'));
     assert.equal(config.webPreferences.session, session); assert.equal(config.webPreferences.sandbox, true);
     assert.equal(config.webPreferences.contextIsolation, true); assert.equal(config.webPreferences.nodeIntegration, false);

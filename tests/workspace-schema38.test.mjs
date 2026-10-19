@@ -21,6 +21,7 @@ import {validateWorkspaceAudioRoleRows} from '../packages/business/src/workspace
 import {readCurrentWorkspaceRole,assertTimelineAudioRoleWorkspace} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.mjs';
 import {open,snapshot} from './workspace-schema26-fixtures.mjs';
+import {copyFrozenUpgradeFixtureDatabase} from './helpers/opacity-upgrade-fixture.mjs';
 const old=db=>{initializeWorkspaceSchemaThrough24(db);for(const init of [initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36])init(db);};
 const metadata=()=>({restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});
 
@@ -123,9 +124,9 @@ test('restored37 refuses role-bearing edit-task preparation without reserving an
 test('actual backup38 restores role timelines, history and set/clear receipts exactly into editable39',async t=>{
  const root=mkdtempSync(path.join(tmpdir(),'role-backup38-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
  const source=path.join(root,'source'),backup=path.join(root,'backup'),destination=path.join(root,'restored');
- let store=openStore(source);
- // Preserve this historical source38→39 regression on a fresh synthetic fixture.
- store.db.exec('DELETE FROM schema_version WHERE version=40');validateWorkspaceSchema38(store.db,{verifyBytes:false});
+ // Produce genuine role-edit receipts in the current owned runtime, then
+ // project them into a separately constructed fixed38 source for old restore.
+ let store=openStore(path.join(root,'seed-runtime'));
  let services=createServices(store,new Map());
  const project=await services.call('project.create',{name:'role capture'}),projectId=project.id;
  // Metadata only: editorial role edits never probe or require a media file.
@@ -138,9 +139,11 @@ test('actual backup38 restores role timelines, history and set/clear receipts ex
  const clear=request(timeline,{clipId,patch:{audioRole:null}});
  const clearResponse=timeline=await services.call('timeline.clip.update',clear);
  assert.equal(Object.hasOwn(timeline.clips[0],'audioRole'),true);assert.equal(timeline.clips[0].audioRole,null);
- const before=snapshot(store.db),history=store.db.prepare('SELECT rowid AS capturedRowid,* FROM timeline_history ORDER BY rowid').all();
  for(const [input,response]of [[set,setResponse],[clear,clearResponse]])assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,JSON.stringify(response));
  await services.drain();store.close();
+ copyFrozenUpgradeFixtureDatabase(source,store,{version:38});
+ const frozen=open(path.join(source,'workbench.sqlite'));let before,history;
+ try{validateWorkspaceSchema38(frozen);assert.deepEqual(classifyCurrentWorkspaceSchema(frozen),{schemaVersion:38,profile:'ordinary'});before=snapshot(frozen);history=frozen.prepare('SELECT rowid AS capturedRowid,* FROM timeline_history ORDER BY rowid').all();}finally{frozen.close();}
  const captured=await createWorkspaceBackup({source,destination:backup});assert.equal(captured.databaseSchemaVersion,38);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),captured);
  const restored=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(restored.sourceSchema,38);assert.equal(restored.databaseSchemaVersion,39);assert.equal(restored.profile,'restored-local-v8');
  store=openStore(destination);services=createServices(store,new Map());

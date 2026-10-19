@@ -21,7 +21,8 @@ export interface OpacityRenderCandidatePlan {
 type Value = Record<string, unknown>;
 type Path = readonly string[];
 type Predicate = (...args: unknown[]) => unknown;
-const require = createRequire(import.meta.url), legacy: unknown = require('./index.mjs');
+const require = createRequire(import.meta.url);
+const legacy: unknown = require('./index.mjs');
 const own = (value: object, key: string): boolean => Object.hasOwn(value, key);
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const wellFormed = (value: string): boolean => /^(?:[^\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])*$/u.test(value);

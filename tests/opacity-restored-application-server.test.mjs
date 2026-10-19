@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {once} from 'node:events';
 import http from 'node:http';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
@@ -195,6 +196,9 @@ test('already disconnected HTTP advisory calls are cancelled before effects and 
     const sent = await request(f.app, '/api/rpc', {method: 'POST', aborted: true, input: {operation,
       input: operation.endsWith('preflight') ? {projectId: f.projectId, expectedRevision: 3} : {}, ...originOf(f)}});
     refused(sent, 'OPERATION_CANCELLED');
+    // The shared HTTP response lease owns its listeners through actual finish,
+    // which can follow handleRequest's return for this test-owned Writable.
+    if (!sent.res.writableFinished) await once(sent.res, 'finish');
     assert.equal(sent.req.listenerCount('aborted'), 0); assert.equal(sent.res.listenerCount('close'), 0);
   }
   assert.deepEqual(snapshot(f), before);

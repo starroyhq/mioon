@@ -4,6 +4,15 @@ import {readFileSync, existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
+import {transformSync} from 'esbuild';
+import {i18nTestModule} from './helpers/i18n.ts';
+import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
+import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
+import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
+import {WAVEFORM_LIMITS} from '../apps/web/src/waveform-state.js';
+import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.js';
+import {timelineDropPreview} from '../apps/web/src/timeline-snapping.js';
+import {staleSourceSentence} from '../apps/web/src/timeline-source-freshness.ts';
 import {randomUUID} from 'node:crypto';
 import * as legacy from '@mioon/contracts';
 import {createOpacityCandidateWorkspaceBackup, restoreOpacityCandidateWorkspaceBackup} from '../packages/business/src/opacity-candidate-backup.ts';
@@ -207,13 +216,84 @@ test('real shared components show43 draft disclosure in four languages and remov
     assert.match(html.assets, /data-testid="import-button"[^>]*disabled/);
     assert.match(html.assets, /data-testid="asset-card-[^"]+" draggable="false"/);
     assert.match(html.assets, /data-testid="asset-to-timeline-[^"]+"[^>]*disabled/);
-    for (const name of ['add-video-track', 'add-audio-track']) assert.match(html.timeline, new RegExp(`data-testid="${name}"[^>]*disabled`));
+    // Track/render actions now live in the real closed menu. Their actual
+    // item disabled state and retained callbacks are exercised below.
+    assert.doesNotMatch(html.timeline, /data-testid="add-(?:video|audio)-track"/);
     assert.match(html.timeline, /data-testid="timeline-clip-[^"]+"[^>]*draggable="true"/);
-    assert.match(html.timeline, /data-testid="timeline-render-preview"/);assert.match(html.timeline, /data-testid="timeline-undo"/);
+    assert.doesNotMatch(html.timeline, /data-testid="timeline-render-preview"/);assert.match(html.timeline, /data-testid="timeline-undo"/);
     assert.ok(html.timeline.includes(translate(locale, 'opacity.restored.snapHint')));assert.ok(!html.timeline.includes(translate(locale, 'timeline.view.snapHint')));
     assert.match(html.inspector, /data-testid="clip-opacity-envelope"/);assert.match(html.inspector, /data-testid="save-clip"/);
     assert.ok(html.inspector.includes(translate(locale, 'opacity.restored.currentDraft')));assert.ok(!html.inspector.includes(translate(locale, 'recovery.clip.shortDisclosure')));
     assert.doesNotMatch(html.inspector, /data-testid="remove-clip"|restore-clip-draft|discard-stored-clip-draft/);
     assert.ok(!html.preview.includes(translate(locale, 'timeline.preview.import')));
   }
+});
+
+
+// Execute the actual Timeline admission callbacks and the actual toolbar menu
+// composition. UI primitives are inert nodes here; no SSR check is treated as
+// an opened browser menu, and no mutation result is supplied by a test double.
+function timelineActionsHarness(timeline, asset) {
+  const hooks = [], cleanup = [], writes = [], modules = new Map();let cursor = 0;
+  const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
+  const react = {
+    createElement: (type, props, ...children) => ({type, props: {...props, children}}),
+    useRef: initial => hooks[cursor++] ||= {current: initial},
+    useState(initial) {const at = cursor++;hooks[at] ??= {value: typeof initial === 'function' ? initial() : initial};return [hooks[at].value, value => {hooks[at].value = typeof value === 'function' ? value(hooks[at].value) : value;}];},
+    useLayoutEffect(callback) {cleanup.push(callback());}, useEffect() {},
+  };react.default = react;
+  function load(file) {
+    if (modules.has(file)) return modules.get(file);
+    const module = {exports:{}};
+    Function('require','module','exports',transformSync(readFileSync(new URL(`../apps/web/src/${file}`,import.meta.url),'utf8'),{loader:file.endsWith('.tsx')?'tsx':'jsx',format:'cjs'}).code)(name => {
+      if (name === 'react') return react;
+      if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
+      if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})};
+      if (name === './timeline-view-geometry.ts') return geometry;
+      if (name === './timeline-removal.ts') return {displayTimelineFrame};
+      if (name === './timeline-keyboard.js') return {rulerFrameForKey};
+      if (name === './timeline-snapping.js') return {timelineDropPreview};
+      if (name === './timeline-source-freshness.ts') return {staleSourceSentence};
+      if (name === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');
+      if (name === './ClipRemovalControls.tsx') return {ClipActionsMenu:'ClipActionsMenu',TimelineRemovalShortcuts:'TimelineRemovalShortcuts',useClipRemoval:()=>({request(){},dialog:null})};
+      if (name === './use-timeline-waveforms.js') return {useTimelineWaveforms:()=>({enabled:false,windows:[],entries:new Map(),setEnabled(){},retry(){}})};
+      if (name === './TimelineWaveform.jsx') return {default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls',__esModule:true};
+      if (name === './waveform-state.js') return {WAVEFORM_LIMITS};
+      if (name === './api.js') return {assetUrl:()=>''};
+      if (name === './Nodes.jsx') return {Media:'Media'};
+      if (name.startsWith('@mioon/ui/')) return new Proxy({}, {get:(_,key)=>String(key)});
+      if (name.endsWith('.css')) return {};
+      if (name.endsWith('.jsx')) return {default:name,__esModule:true};
+      throw Error(`Unexpected Timeline action dependency ${name}`);
+    },module,module.exports);
+    modules.set(file,module.exports);return module.exports;
+  }
+  const Timeline = load('Timeline.jsx').default, Toolbar = load('TimelineToolbar.tsx').default;
+  return {writes, render(structureReadOnly, overrides={}) {
+    cursor=0;
+    const tree=Timeline({timeline,assets:[asset],playhead:0,visible:true,presentationVisible:true,collapsed:false,basicEditingOnly:true,structureReadOnly,sessionViewOnly:true,waveformReadOnly:true,
+      onTrackAdd:kind=>writes.push(['add',kind]),onTrackUpdate:(id,patch)=>writes.push(['update',id,patch]),onSeek(){},onCollapse(){},onRender(){},...overrides});
+    const toolbar=Toolbar(nodes(tree).find(node=>node.type===Toolbar).props);
+    return {all:[...nodes(tree),...nodes(toolbar)],find:id=>nodes(toolbar).find(node=>node.props?.['data-testid']===id)};
+  },dispose(){for(const fn of cleanup)fn?.();}};
+}
+
+test('actual restored Timeline menu disables structure writes and rejects current and retained mutation callbacks', async t => {
+  const f=await fixture(t),h=timelineActionsHarness(f.timeline,f.store.get('assets',f.assetId));t.after(()=>h.dispose());
+  const ordinary=h.render(false);
+  for(const name of ['add-video-track','add-audio-track']) {
+    const item=ordinary.find(name);assert.equal(item.type,'DropdownMenuItem');assert.equal(Boolean(item.props.disabled),false);item.props.onClick();
+  }
+  assert.deepEqual(h.writes,[['add','video'],['add','audio']],'The same actual callback path admits ordinary writes');h.writes.length=0;
+  const restored=h.render(true);
+  for(const view of [ordinary,restored]) for(const name of ['add-video-track','add-audio-track']) {
+    const item=view.find(name);if(view===restored)assert.equal(item.props.disabled,true);
+    item.props.onClick();
+  }
+  const controls=restored.all.filter(node=>node.type==='Button'&&node.props?.['aria-pressed']!==undefined&&node.props?.onClick&&!node.props?.['data-testid']);
+  assert.ok(controls.length>=2,'Restored video/audio track controls remain inspectable');
+  for(const control of controls){assert.equal(control.props.disabled,true);control.props.onClick();}
+  assert.deepEqual(h.writes,[],'Neither a disabled current menu nor an old ordinary portal may write restored structure');
+  const current=h.render(false),retained=current.find('add-video-track').props.onClick;h.dispose();retained();
+  assert.deepEqual(h.writes,[],'Unmounted portal callbacks cannot resume writing');
 });

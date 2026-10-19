@@ -1,5 +1,6 @@
 import {readWorkspaceBackupSchemaVersion} from './workspace-backup-schema-versions.ts';
 import {OPACITY_CANDIDATE_BACKUP_PROFILE} from './opacity-candidate-backup-profile.ts';
+import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
 // All SQL here targets a private disposable copy, never the source workspace or
 // completed payload. Unknown tables/rows are retained byte-for-byte in SQLite.
 import path from 'node:path';
@@ -26,7 +27,7 @@ export function createIssueCollector(){
   result:()=>({complete:totalIssues===0,totalIssues,issues:[...issues],truncated:totalIssues>issues.length})};
 }
 export function inspectDatabase(db,fixedProfile){
- if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
+ if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
  db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
  const checked=db.prepare('PRAGMA quick_check(1)').get();
  if(!checked||Object.values(checked)[0]!=='ok')fail('DATABASE_INVALID');

@@ -11,6 +11,16 @@ import {getWorkspaceRestoreContext} from '@mioon/business/workspace-restore-sche
 import {isUnavailableRestoredRoute,workspaceRestoreError} from '@mioon/business/workspace-restore-policy';
 import http from 'node:http';
 import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
+import {createAgentAuthorizations} from '../../../packages/business/src/agent/authorizations.ts';
+import {createUiPreferences} from '../../../packages/business/src/ui-preferences.ts';
+import {createProjectDeletionGate} from './project-deletion-gate.ts';
+import {readWorkspaceInfo} from './workspace-info.ts';
+import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagnostics.ts';
+import {mediaExecutable} from '../../../packages/business/src/media-environment.mjs';
+import {run as runMedia} from '@mioon/business/media-runtime';
+import {createExportFileRecovery} from './export-file-recovery.ts';
+import packageMetadata from '../../../package.json' with {type:'json'};
+import {deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protocol.ts';
 import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createLocalDrafts} from '@mioon/business/local-drafts';
@@ -48,9 +58,9 @@ import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 import {validateWorkspaceStorage,ownsStoreLock} from '@mioon/business/db';
-import {readPrivateFile, writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import {readPrivateFile, writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 import {assertMediaTerminated, boundedShutdown, checkpoint} from '@mioon/business/operation-lifecycle';
-import {terminateMediaProcesses} from '@mioon/business/media-processes';
+import {terminateMediaProcesses,onMediaProcess} from '@mioon/business/media-processes';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const validToken = value => {
@@ -139,7 +149,9 @@ async function composeServer({
   } catch (error) {candidate?.store.close();throw error;}
   const store = candidate ? candidate.store : openStore(root);
   const shutdown = new AbortController();
-  let worker, server, agentSettings, imageSettings, customImageSettings, comfySettings, chatRuntime, chatHttp, services, editTasks, candidateEditor;
+  const deletionGate=createProjectDeletionGate({subscribeMedia:onMediaProcess,signal:shutdown.signal,
+    busy:()=>{throw new AppError('PROJECT_DELETE_BUSY','工作区仍有媒体、请求或文件传输在执行，请结束后再删除项目。',409);}});
+  let worker, server, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, comfySettings, chatRuntime, chatHttp, services, editTasks, candidateEditor;
   const ownsLock = () => candidate ? candidate.assembly.ownsLock() : ownsStoreLock(store);
   const isRestored = () => Boolean(candidate ? candidate.assembly.getRestoreContext() : getWorkspaceRestoreContext(store));
   let candidateDomain, files, versionComparisonMedia;
@@ -161,6 +173,15 @@ async function composeServer({
     const providers = restored || candidate ? new Map() : createProviderRegistry({db: store.db, root});
     let imageHttp=async()=>false,comfyHttp=async()=>false;
     if(!restored && !candidate){
+    agentSettings = suppliedAgentSettings || await createAgentSettings({
+      persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
+    });
+    agentAuthorizations = createAgentAuthorizations({root,channel:localDraftChannel,signal:shutdown.signal,
+      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+      guards:{ownsLock,isRestored},readCurrentTarget:async()=>{
+        const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:server?.address()?.port}));
+        return {destination:deriveAgentEndpoint(settings.configuration),model:settings.configuration.model,settingsRevision:settings.revision};
+      }});
     imageSettings = await createImageSettings({persistence:createImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
     customImageSettings = await createCustomImageSettings({persistence:createCustomImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
@@ -170,7 +191,7 @@ async function composeServer({
     const comfyReservedPorts = () => new Set([port, server?.address()?.port].filter(value => Number.isInteger(value) && value > 0));
     comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    services = createServices(store, providers, {signal: shutdown.signal,imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    services = createServices(store, providers, {signal: shutdown.signal,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:services.imageApproval,reject:services.imageRejection,signal:shutdown.signal});
     comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,availability:comfyModuleAvailability,signal:shutdown.signal});
     }else if(candidate){
@@ -183,6 +204,9 @@ async function composeServer({
     await editTasks.reconcileStartup();
     const editTasksHttp = createEditTasksHttp({tasks: editTasks, signal: shutdown.signal});
     const workspacePreferences = createWorkspacePreferences(store);
+    uiPreferences = createUiPreferences({root,channel:localDraftChannel,signal:shutdown.signal,
+      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+      guards:{ownsLock,isReadOnly:()=>Boolean(restored||candidate),hasProject:projectId=>readLastProjectTarget(store.db,projectId)!==null}});
     const localDrafts = candidate ? null : createLocalDrafts({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isRestored,
@@ -209,7 +233,11 @@ async function composeServer({
         },
         render:async input=>{const response=await services.call('timeline.render',input);return candidate ? publicValue(response) : response;}}});
     const localDeliveryHttp = createLocalDeliveryHttp({delivery:localDelivery,signal:shutdown.signal});
-    let localShotTextHttp=async()=>false,audioPreviewHttp=async()=>false,continuousAudioHttp=async()=>false;
+    const exportFileRecovery=createExportFileRecovery({root,db:store.db,signal:shutdown.signal,hold:deletionGate.hold,
+      guards:{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)},
+      assertAvailable:()=>{if(restored||candidate)throw workspaceRestoreError();if(!ownsStoreLock(store))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件不可用。',409);},
+      validateFile:(file,allowMissing)=>validateManagedFile(file,{root,allowMissing}),validateDirectory:directory=>validateManagedDirectory(directory,{root})});
+    let localShotText,localShotTextHttp=async()=>false,audioPreviewHttp=async()=>false,continuousAudioHttp=async()=>false;
     if(!candidate){
     const neverMutate=()=>{throw new Error('Read-only shot receipt boundary');};
     const shotReplay=createLocalMutationServices(store,{canonical,readOnly:true,check:neverMutate,now:neverMutate,references:{guardManualUpdate:neverMutate}});
@@ -218,7 +246,7 @@ async function composeServer({
       validateAsset:(projectId,asset)=>validateImageConsumption(store.db,asset,projectId),
       isRevisionConflict:error=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
       updateShotInProject:(projectId,input)=>services.updateShotInProject(projectId,input)});
-    const localShotText=createLocalShotText({root,channel:localDraftChannel,signal:shutdown.signal,
+    localShotText=createLocalShotText({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
         isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
@@ -230,11 +258,17 @@ async function composeServer({
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
     if(!restored && !candidate){
-    agentSettings = suppliedAgentSettings || await createAgentSettings({
-      persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
+    services.setProjectDeletionCompanions({
+      assertDeletable:projectId=>{
+        deletionGate.assertIdle(projectId);
+        localDrafts.assertProjectDeletable(projectId);localDelivery.assertProjectDeletable(projectId);localShotText.assertProjectDeletable(projectId);
+      },
+      removeProject:projectId=>{
+        localDrafts.removeProject(projectId);localDelivery.removeProject(projectId);localShotText.removeProject(projectId);uiPreferences.removeProject(projectId);
+      },
     });
     const editService = createAgentEditService({store, services, ...(agentEditFault ? {fault: agentEditFault} : {})});
-    chatRuntime = createChatRuntime({store, agentSettings, editService, inspection: services.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
+    chatRuntime = createChatRuntime({store, agentSettings, authorizations:agentAuthorizations, editService, inspection: services.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => server.address()?.port});
     chatHttp = createChatHttp({runtime: chatRuntime});
     }
     const origins = new Set(), hosts = new Set();
@@ -262,6 +296,7 @@ async function composeServer({
         }
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
+          deletionGate.track(res);
         }
         if(restored&&isUnavailableRestoredRoute(url.pathname,req.method))throw workspaceRestoreError();
         if(candidate && /^\/api\/(?:agent|images|comfy|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
@@ -291,10 +326,34 @@ async function composeServer({
         if (await localDraftHttp(req, res, url)) return;
         if (await lastProjectHttp(req, res, url)) return;
         if (await localDeliveryHttp(req, res, url)) return;
+        if (await exportFileRecovery.handle(req,res,url)) return;
         if (await localShotTextHttp(req, res, url)) return;
         if (await continuousAudioHttp(req, res, url)) return;
         if (await audioPreviewHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
+        if (url.pathname === '/api/workspace-info' && req.method === 'GET') {
+          return json(res,200,{ok:true,data:await readWorkspaceInfo({root,channel:localDraftChannel,version:packageMetadata.version,tools:{ffmpeg:mediaExecutable('ffmpeg'),ffprobe:mediaExecutable('ffprobe')},signal:shutdown.signal,
+            pendingProjectCleanup:restored||candidate?0:store.db.prepare('SELECT count(*) AS n FROM project_deletion_cleanup').get().n})});
+        }
+        if (url.pathname === '/api/media-tools/check' && req.method === 'POST') {
+          if(restored||candidate)throw workspaceRestoreError();
+          const input=await body(req,64);
+          if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length)throw new AppError('VALIDATION_ERROR','工具检测不接受路径或命令参数。',400);
+          return json(res,200,{ok:true,data:await inspectMediaTools({ffmpeg:mediaExecutable('ffmpeg'),ffprobe:mediaExecutable('ffprobe')},{execute:runMedia,signal:shutdown.signal})});
+        }
+        if (url.pathname === '/api/ui-preferences') {
+          if (req.method === 'GET') return json(res,200,{ok:true,data:uiPreferences.get()});
+          if (req.method === 'PUT') return json(res,200,{ok:true,data:uiPreferences.put(await body(req,8192))});
+          res.setHeader('Allow','GET, PUT');
+          return json(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 PUT'}});
+        }
+        if (url.pathname === '/api/ui-preferences/opened' && req.method === 'POST') {
+          const input=await body(req,1024);
+          if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==1||!Object.hasOwn(input,'projectId'))
+            throw new AppError('VALIDATION_ERROR','项目打开记录参数无效',400);
+          uiPreferences.markOpened(input.projectId);
+          return json(res,200,{ok:true,data:uiPreferences.get()});
+        }
         const preferencesRoute = /^\/api\/workspace-preferences\/([^/]+)$/.exec(url.pathname);
         if (preferencesRoute) {
           let projectId;
@@ -313,6 +372,7 @@ async function composeServer({
           const input = await body(req);
           checkpoint(shutdown.signal);
           if (typeof input.operation !== 'string') return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '缺少 operation'}});
+          deletionGate.rpc(res,input.operation,input.input);
           const data = await callObservedRpc(req, res, services, input.operation, input.input || {},Object.hasOwn(input,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin:input.expectedWorkspaceOrigin}:{});
           if (res.destroyed || res.writableEnded) return;
           return json(res, 200, {ok: true, data:candidate ? publicValue(data) : data});

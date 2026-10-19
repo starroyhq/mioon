@@ -222,6 +222,8 @@ export function createLocalDelivery({root,channel='web',guards,storage,signal,fa
     });
   }
   return {
+    assertProjectDeletable(projectId:string):void{guarded(()=>{owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');});},
+    removeProject(projectId:string):void{guarded(()=>{owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');const entries=disk.entries.filter(row=>row.projectId!==projectId);if(entries.length===disk.entries.length)return;disk.entries=entries;persist(disk);syncDirectory();});},
     get(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{if(!active())return unsupported;const {projectId}=parse(schemas.project,value);return response(slot(read(),projectId));});},
     put(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{
       if(!active())return unsupported;const args=parse(schemas.put,value);writable(args);const disk=read(),row=slot(disk,args.projectId),current=timeline(args.projectId);evidence(row);

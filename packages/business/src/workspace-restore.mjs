@@ -1,3 +1,4 @@
+import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
 // Local/offline only. Never starts a store, backend, worker or provider; never
 // opens the backup's SQLite. The original DB includes private, unredacted text.
 import path from 'node:path';
@@ -21,7 +22,7 @@ const messages=Object.freeze({
  DESTINATION_EXISTS:'The restore destination already exists. Choose a new destination; existing contents were not changed.',
  LOCKED:'The destination contains a preexisting workspace lock. No lock was removed or repaired.',
  LOCK_LOST:'The destination lock changed. The restore was not activated by this operation.',
- SOURCE_SCHEMA_UNSUPPORTED:'Only fully classified schema24, schema26, schema28, schema30, schema32, schema34, schema36, schema38 or schema40 original backups can be restored. Restored or unknown schemas are not supported.',
+ SOURCE_SCHEMA_UNSUPPORTED:'Only fully classified schema24, schema26, schema28, schema30, schema32, schema34, schema36, schema38, schema40 schema44 or schema48 original backups can be restored. Restored or unknown schemas are not supported.',
  CHANGED:'A backup or destination file changed. Preserve the incomplete destination for review.',
  LIMIT:'The backup or restored candidate exceeds a fixed offline restore safety limit.',
  CANCELLED:'Restore was cancelled before activation. The incomplete destination is retained and cannot be reused automatically.',
@@ -60,7 +61,7 @@ function checkDestinationAncestors(destination){
 }
 function requireSupportedOriginalSource(db){
  const profile=classifyWorkspaceSchema(db);
- if(![24,26,28,30,32,34,36,38,40].includes(profile.schemaVersion)||profile.profile!=='ordinary')fail('SOURCE_SCHEMA_UNSUPPORTED');
+ if(![24,26,28,30,32,34,36,38,40,44,48].includes(profile.schemaVersion)||profile.profile!=='ordinary')fail('SOURCE_SCHEMA_UNSUPPORTED');
 }
 function sameBinding(info,expected){return ['sourceBackupId','manifestHash','sourceDbHash',...(Object.hasOwn(expected,'restorationId')?['restorationId']:[])].every(key=>info[key]===expected[key]);}
 function binding(info){return Object.fromEntries(['restorationId','workspaceOrigin','sourceBackupId','manifestHash','sourceDbHash'].map(key=>[key,info[key]]));}
@@ -120,8 +121,8 @@ export async function restoreWorkspaceBackup({directory,destination,signal}={},f
  try{
   // The extra argument is an internal fixed-version seam, not a caller-owned
   // constructor or schema selector. Legacy callers retain the original path.
-  if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
-  const candidateProfile=fixedProfile===OPACITY_CANDIDATE_BACKUP_PROFILE;
+  if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
+  const candidateProfile=(fixedProfile===OPACITY_CANDIDATE_BACKUP_PROFILE||fixedProfile===OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE);
   const requireSource=candidateProfile?fixedProfile.requireSource:requireSupportedOriginalSource;
   const installRestore=candidateProfile?fixedProfile.installRestore:installWorkspaceRestoreSchema;
   const validateRestore=candidateProfile?fixedProfile.validateRestore:validateWorkspaceRestoreSchema;
@@ -130,7 +131,7 @@ export async function restoreWorkspaceBackup({directory,destination,signal}={},f
   if(validatePrivateDirectory(destination,{allowMissing:true}))fail('DESTINATION_EXISTS');
   checkDestinationAncestors(destination);
   return await withVerifiedWorkspaceBackup({directory,signal,inspectDatabaseCopy:requireSource},async source=>{
-   if(candidateProfile?source.manifest.databaseSchemaVersion!==fixedProfile.sourceVersion:![24,26,28,30,32,34,36,38,40].includes(source.manifest.databaseSchemaVersion))fail('SOURCE_SCHEMA_UNSUPPORTED');
+   if(candidateProfile?source.manifest.databaseSchemaVersion!==fixedProfile.sourceVersion:![24,26,28,30,32,34,36,38,40,44,48].includes(source.manifest.databaseSchemaVersion))fail('SOURCE_SCHEMA_UNSUPPORTED');
    const sourceDatabase=source.files.find(value=>value.entry.role==='database');
    info={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:source.manifest.backupId,
     manifestHash:source.manifestHash,sourceDbHash:sourceDatabase.entry.sha256,createdAt:new Date().toISOString()};
@@ -218,8 +219,8 @@ export async function restoreWorkspaceBackup({directory,destination,signal}={},f
 async function inspectExpectedPublication({destination,expected,signal,checkSource=()=>{}},fixedProfile){
  let temporary,temporaryIdentity;
  try{
-  if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE)fail('STATUS_UNAVAILABLE');
-  const candidateProfile=fixedProfile===OPACITY_CANDIDATE_BACKUP_PROFILE;
+  if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('STATUS_UNAVAILABLE');
+  const candidateProfile=(fixedProfile===OPACITY_CANDIDATE_BACKUP_PROFILE||fixedProfile===OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE);
   const validateRestore=candidateProfile?fixedProfile.validateRestore:validateWorkspaceRestoreSchema;
   const resultSchema=candidateProfile?fixedProfile.restoreStatusSchema:workspaceRestorePublicationStatusSchema;
   destination=explicitPath(destination);checkCancelled(signal);
@@ -245,8 +246,8 @@ async function inspectExpectedPublication({destination,expected,signal,checkSour
 // for execution; it discloses the already-guarded target's actual provenance.
 export async function inspectWorkspaceRestorePublication({destination,directory,restorationId,sourceBackupId,manifestHash,sourceDbHash,signal}={},fixedProfile){
  try{
-  if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE)fail('STATUS_UNAVAILABLE');
-  const requireSource=fixedProfile===OPACITY_CANDIDATE_BACKUP_PROFILE?fixedProfile.requireSource:requireSupportedOriginalSource;
+  if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('STATUS_UNAVAILABLE');
+  const requireSource=(fixedProfile===OPACITY_CANDIDATE_BACKUP_PROFILE||fixedProfile===OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)?fixedProfile.requireSource:requireSupportedOriginalSource;
   if(directory!==undefined){
    if([restorationId,sourceBackupId,manifestHash,sourceDbHash].some(value=>value!==undefined))fail('STATUS_UNAVAILABLE');
    directory=explicitPath(directory);destination=explicitPath(destination);checkSeparate(directory,destination);

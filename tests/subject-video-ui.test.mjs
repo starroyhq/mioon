@@ -13,6 +13,7 @@ import * as subjectState from '../apps/web/src/subject-state.js';
 import * as submissions from '../apps/web/src/submissions.js';
 import * as workspaceOrigin from '../apps/web/src/workspace-origin.js';
 import * as api from '../apps/web/src/api.js';
+import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.js';
 import { referenceForShot } from '../apps/web/src/reference-connections.js';
 
 const taskIntentModule = { exports: {} };
@@ -58,6 +59,8 @@ function harness(file, initial) {
       if (name.endsWith('/packages/i18n/src/index.ts')) return i18n;
       if (name === './creation-i18n.ts') return creationI18n;
       if (name === './RecoveryStorageDetails.tsx') return load('RecoveryStorageDetails.tsx');
+      if (['./AssetAnnotations.tsx', './CanvasOverview.tsx', './BoardInspectorGroup.tsx', './VersionCardPreview.tsx', './TaskRenderList.tsx'].includes(name)) return { default: name, __esModule: true };
+      if (name === './image-generation.js') return { imageEditSourceIssueDescriptor };
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
       if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }) => {
         assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
@@ -347,13 +350,16 @@ test('subject selection and immutable provenance relabel live in all four locale
 });
 
 test('subject warning and reason descriptor sidecars preserve exact legacy meaning and all locales', () => {
+  // Display catalogs intentionally omit paragraph-final periods; immutable
+  // machine/legacy messages keep their internal and terminal punctuation.
+  const displayLegacy = value => value.replace(/[。.]+$/u, '');
   const conflicts = [[shot(), {}], [shot(), { boundReference: true }], [shot({ referenceAssetIds: [asset().id] }), {}], [shot(), { savedShot: shot({ lastFrameAssetId: asset().id }) }]];
-  for (const [value, options] of conflicts) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoConflictDescriptor(value, options)), subjectVideo.subjectVideoConflictIssue(value, options));
+  for (const [value, options] of conflicts) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoConflictDescriptor(value, options)), displayLegacy(subjectVideo.subjectVideoConflictIssue(value, options)));
   const references = [[null, assets, projectId], [{}, assets, projectId], [reference(), assets, id(999)], [reference(), [], projectId], [reference(), [asset(1, { sha256: 'f'.repeat(64) })], projectId], [reference(), assets, projectId]];
-  for (const values of references) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoReferenceDescriptor(...values)), subjectVideo.subjectVideoReferenceIssue(...values));
-  for (const provenance of [null, { kind: 'user-import' }, { kind: 'extracted-frame' }, { kind: 'synthetic-mock' }, { kind: 'generated', imageSource: {} }, { kind: 'generated' }, { kind: 'export' }, { kind: 'future-kind' }]) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoSourceDescriptor({ provenance })), subjectVideo.subjectVideoSourceLabel({ provenance }));
-  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.ARK_SUBJECT_WARNING_MESSAGE), subjectVideo.ARK_SUBJECT_WARNING);
-  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE), subjectVideo.MOCK_SUBJECT_WARNING);
+  for (const values of references) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoReferenceDescriptor(...values)), displayLegacy(subjectVideo.subjectVideoReferenceIssue(...values)));
+  for (const provenance of [null, { kind: 'user-import' }, { kind: 'extracted-frame' }, { kind: 'synthetic-mock' }, { kind: 'generated', imageSource: {} }, { kind: 'generated' }, { kind: 'export' }, { kind: 'future-kind' }]) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoSourceDescriptor({ provenance })), displayLegacy(subjectVideo.subjectVideoSourceLabel({ provenance })));
+  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.ARK_SUBJECT_WARNING_MESSAGE), displayLegacy(subjectVideo.ARK_SUBJECT_WARNING));
+  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE), displayLegacy(subjectVideo.MOCK_SUBJECT_WARNING));
   for (const locale of i18n.LOCALES) for (const value of [subjectVideo.ARK_SUBJECT_WARNING_MESSAGE, subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE, ...conflicts.map(([value, options]) => subjectVideo.subjectVideoConflictDescriptor(value, options)).filter(Boolean), ...references.map(values => subjectVideo.subjectVideoReferenceDescriptor(...values)).filter(Boolean)]) {
     assert.ok(i18n.renderMessage(locale, value));
     if (locale !== 'zh-Hans') assert.notEqual(i18n.renderMessage(locale, value), i18n.renderMessage('zh-Hans', value));

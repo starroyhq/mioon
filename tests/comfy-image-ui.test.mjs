@@ -3,6 +3,7 @@ import * as i18n from '../packages/i18n/src/index.ts';
 import { createI18nTestContext as localeDisplay } from './helpers/i18n.ts';
 const localizedSource = source => source + JSON.stringify(Object.entries(i18n.catalogs).filter(([key]) => source.includes(key)).map(([, entry]) => entry['zh-Hans']));
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
+import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -161,6 +162,7 @@ function componentHarness(filename, resolve, props) {
   const require = name => {
     if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) };
     if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n;
+    if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === './editor-settings-scope.ts') {
       const settingsModule = { exports: {} };
       const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code;

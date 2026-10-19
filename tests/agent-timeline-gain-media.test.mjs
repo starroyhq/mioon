@@ -175,6 +175,9 @@ async function fixtureSources(f) {
 }
 async function setup(f, fixture, allSources) {
   const project = await f.rpc('project.create', {name: `Synthetic reviewed ${fixture.name} gain`});
+ // This pixel/audio fixture explicitly preserves its historical 720 canvas.
+ await f.rpc('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
+
   let timeline = await f.rpc('timeline.get', {projectId: project.id});
   const sources = [];
   for (const source of [fixture, ...allSources.filter(item => ['other', 'zero', 'muted'].includes(item.name))]) {

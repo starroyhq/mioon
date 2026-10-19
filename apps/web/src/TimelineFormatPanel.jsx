@@ -19,7 +19,7 @@ export default function TimelineFormatPanel({ state, controller, onBack, onOpenT
       {saved && <p data-testid="timeline-format-saved">{saved.width} × {saved.height} · {saved.fps} fps · {saved.timelineId ? t('timeline.format.revision', { revision: saved.timelineRevision }) : t('timeline.format.notCreated')}</p>}
       <Label htmlFor="timeline-format-preset">{t('timeline.format.aspect')}</Label>
       <WorkbenchSelect id="timeline-format-preset" data-testid="timeline-format-preset" value={state?.draftPresetId || ''} disabled={!saved || !saved.eligible || !state?.connected} onChange={event => controller.choose(event.target.value, state?.scope ?? null)}>
-        {!saved && <option value="">{t('timeline.format.waiting')}</option>}{TIMELINE_OUTPUT_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{t(`timeline.format.preset.${preset.id}`)} · {preset.width} × {preset.height}</option>)}
+        {!saved && <option value="">{t('timeline.format.waiting')}</option>}{TIMELINE_OUTPUT_PRESETS.filter(preset => preset.id.endsWith('_1080') || preset.id === saved?.presetId).map(preset => <option key={preset.id} value={preset.id}>{t(`timeline.format.preset.${preset.id}`)} · {preset.width} × {preset.height}</option>)}
       </WorkbenchSelect>
       {draft && <p className="input-hint">{t('timeline.format.selected', { width: draft.width, height: draft.height })}</p>}
       <dl><div><dt>{t('timeline.format.fps')}</dt><dd data-testid="timeline-format-fps">30 fps</dd></div></dl>

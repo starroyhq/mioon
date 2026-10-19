@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import {TIMELINE_TRACK_HEADER_PX, TIMELINE_RULER_PX} from './timeline-view-geometry.ts';
 import { rpc } from './api.js';
 import { createWaveformController, visibleWaveformWindows } from './waveform-state.js';
 
@@ -17,13 +18,13 @@ export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFram
       const shown = current.active && document.visibilityState !== 'hidden';
       const bounds = element?.getBoundingClientRect();
       const visibleTrackIds = new Set();
-      if (shown && element && element.clientWidth > 160 && element.clientHeight > 26) {
+      if (shown && element && element.clientWidth > TIMELINE_TRACK_HEADER_PX && element.clientHeight > TIMELINE_RULER_PX) {
         for (const track of element.querySelectorAll('[data-waveform-track]')) {
           const rect = track.getBoundingClientRect();
-          if (rect.bottom > bounds.top + 26 && rect.top < bounds.top + element.clientHeight) visibleTrackIds.add(track.dataset.waveformTrack);
+          if (rect.bottom > bounds.top + TIMELINE_RULER_PX && rect.top < bounds.top + element.clientHeight) visibleTrackIds.add(track.dataset.waveformTrack);
         }
       }
-      const next = shown && element ? visibleWaveformWindows({ ...current, visibleTrackIds, leftFrame: element.scrollLeft / current.pixelsPerFrame, rightFrame: (element.scrollLeft + Math.max(0, element.clientWidth - 160)) / current.pixelsPerFrame }) : [];
+      const next = shown && element ? visibleWaveformWindows({ ...current, visibleTrackIds, leftFrame: element.scrollLeft / current.pixelsPerFrame, rightFrame: (element.scrollLeft + Math.max(0, element.clientWidth - TIMELINE_TRACK_HEADER_PX)) / current.pixelsPerFrame }) : [];
       setWindows(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
       manager.setView({ projectId: current.timeline?.projectId || null, active: shown, windows: next, readOnly: current.readOnly, workspaceOrigin: current.workspaceOrigin });
     }

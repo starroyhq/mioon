@@ -20,6 +20,7 @@ import {createLocalMutationServices} from './local-mutations.mjs';
 import {createReferenceServices} from './references.mjs';
 import {NO_MUTATION_REPLAY} from './mutation-replay.mjs';
 import {createInspectionServices} from './inspection.mjs';
+import {createProjectHomeServices} from './project-home.ts';
 import {createTimelineServices} from './timeline.mjs';
 import {createSourceRangeServices} from './source-ranges.mjs';
 import {createAssetDispositionServices} from './asset-dispositions.mjs';
@@ -45,6 +46,7 @@ export function createRestoredReadServices(store,{signal}={}) {
  const lookPacks=createLookPackInspectionServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertLutReadProfile(restored.schemaVersion)}});
  const timeline=createTimelineServices(store,{required,check:denied,hash,now});
  const inspection=createInspectionServices(store);
+ const projectHome=createProjectHomeServices(store);
  const ranges=createSourceRangeServices(store,{canonical,readOnly:true});
  const annotations=createAssetAnnotationServices(store,{mutate:createMutationReplay(store,{canonical,readOnly:true}),error:(...args)=>new AppError(...args),restoredSchema:()=>getWorkspaceRestoreContext(store)?.schemaVersion??null});
  const dispositions=createAssetDispositionServices(store,{canonical,readOnly:true});
@@ -72,6 +74,7 @@ export function createRestoredReadServices(store,{signal}={}) {
  const exportValues=projectId=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
   .map(row=>disclose('exports',JSON.parse(row.data),row.projectId,row.id));
  const readers={
+  ...projectHome.handlers,
   ...luts.readers,
   ...lookPacks.readers,
   ...createWaveformHistoryReaders(store).handlers,
@@ -81,7 +84,8 @@ export function createRestoredReadServices(store,{signal}={}) {
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts).map(([kind,count])=>({kind,count})),
-   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>lutRestorePolicy(operation,restored.schemaVersion)),
+   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>operation==='timeline.clip.rippleRemove'&&![45,49].includes(restored.schemaVersion)
+    ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,restored.schemaVersion)),
     ...RESTORE_DENIED_OPERATIONS.map(operation=>({operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}))],
    backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}}),
   ...inspection.handlers,

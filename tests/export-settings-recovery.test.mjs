@@ -47,7 +47,7 @@ test('post-commit lost transport acknowledgement never acquires not-applied proo
 test('corrupt frozen delivery and ACK settings fail closed without fresh probe or key-release proof',async t=>{
  for(const target of ['export','receipt'])await t.test(target,async t=>{
   const f=await fixture(t),input=f.input(),result=await f.services.call('timeline.render',input);
-  if(target==='export'){f.store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot');const current=f.store.get('exports',result.id);current.snapshot.delivery.effective.width=1080;f.store.put('exports',current);}
+  if(target==='export'){f.store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot');const current=f.store.get('exports',result.id);current.snapshot.delivery.effective.width+=2;assert.equal(isTimelineExportSnapshot(current.snapshot,{purpose:current.purpose}),false);f.store.put('exports',current);}
   else{f.store.db.exec('DROP TRIGGER immutable_timeline_responses');const row=f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId),value=JSON.parse(row.response);value.snapshot.delivery.exportSettings.rateControl.quality='high';f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(value),input.requestId);}
   const before=f.state();await assert.rejects(f.services.call('timeline.render',input),e=>['INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE'].includes(e.code)&&e.details?.mutationOutcome===undefined);assert.deepEqual(f.state(),before);assert.equal(f.probes,1);
  });

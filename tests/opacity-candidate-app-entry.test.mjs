@@ -80,7 +80,13 @@ test('candidate App binds the actual task lane, Inspector v3 client and render r
   assert.match(app, /const editorView = application \? \{ \.\.\.restored, activeMode: 'editing' \}/);
   assert.match(app, /<Preview[^>]*opacityApplication=\{opacityApplication\}/);
   assert.match(app, /onCanvas=\{application \? undefined : \(\) => changeMode\('canvas'\)\}/);
-  assert.match(app, /<ExportHistoryList[^>]*opacityApplication=\{opacityApplication\} projectId=\{data\.project\?\.id\}/);
+  const history = app.match(/<ExportHistoryList\s[\s\S]*?\/>/)?.[0];
+  assert.ok(history, 'The actual history composition remains in App');
+  for (const prop of [
+    /opacityApplication=\{opacityApplication\}/, /projectId=\{data\.project\?\.id\}/,
+    /fileRecoveryEnabled=\{!restored && !application\}/,
+    /candidateConnected=\{online && auth === true && workbenchReady && !loading\}/,
+  ]) assert.match(history, prop);
   assert.match(app, /onReplaceSource=\{application \? undefined : replaceTimelineClipSource\}/);
   assert.match(app, /<Timeline basicEditingOnly=\{Boolean\(application\)\}/);
   assert.match(app, /!application && <AgentWorkspace/);

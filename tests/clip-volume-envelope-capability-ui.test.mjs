@@ -12,6 +12,9 @@ import { rawVolumeEnvelopeChanged } from '../apps/web/src/clip-volume-envelope-s
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
 import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 import * as imeSubmitGuard from '../apps/web/src/opacity-ime-submit-guard.ts';
+import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
+import * as removalState from '../apps/web/src/timeline-removal.ts';
+import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 const capability={profileId:VOLUME_ENVELOPE_PROFILE,editable:true};
 const normal={restored:false};
 const id=n=>`a1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -44,10 +47,22 @@ function inspector(locale='en', eligible=true, supported=true){
  const raw={name:'clip',trackId:id(4),startFrame:'0',durationFrames:'10',sourceInFrame:'0',gain:'1',rect:{x:'0',y:'0',width:'720',height:'1280'},volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:'0',multiplier:'1'}]}};
  const state={raw,dirty:true,conflict:false,compositionPending:false};
  const token={owner:1};const controller={capture:()=>({serial:capture}),isDiscarding:()=>false,hasPendingComposition:()=>state.compositionPending,hasUnsaved:()=>state.dirty,getState:()=>state,edit:()=>true,discard:()=>calls.push('discard'),save:()=>calls.push('save'),beginVolumeComposition:c=>{calls.push(['begin',c]);state.compositionPending=true;return token;},updateVolumeComposition:(t,s)=>{calls.push(['update',t,s]);capture++;return true;},endVolumeComposition:t=>{calls.push(['end',t]);state.compositionPending=false;return true;},editVolumeEnvelope:(v,c)=>{calls.push(['edit',v,c]);state.raw={...state.raw,volumeEnvelope:v};return true;}};
- const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useRef:initial=>hooks[cursor++]??={current:initial},useLayoutEffect:fn=>{fn();}};react.default=react;
+ const removalModule={exports:{}};
+ const react={createElement:(type,props,...children)=>type===removalModule.exports.ClipActionsMenu?type({...props,children}):({type,props:{...props,children}}),useRef:initial=>hooks[cursor++]??={current:initial},useState:initial=>{const at=cursor++;hooks[at]??={value:initial};return[hooks[at].value,next=>{hooks[at].value=typeof next==='function'?next(hooks[at].value):next;}];},useEffect(){},useLayoutEffect:fn=>{fn();}};react.default=react;
  const stubs={};const stub=name=>stubs[name]??=(props=>props);
+ Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipRemovalControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>{
+  if(name==='react')return react;
+  if(name.includes('I18nProvider'))return i18nTestModule(locale);
+  if(name==='./timeline-removal.ts')return removalState;
+  if(name==='./workbench-modal-state.ts')return {hasOpenWorkbenchModal};
+  if(name.startsWith('@mioon/ui/'))return new Proxy({}, {get:(_,key)=>stub(key)});
+  return assert.fail(name);
+ },removalModule,removalModule.exports);
  const module={exports:{}};Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/TimelineInspector.jsx',import.meta.url),'utf8'),{loader:'jsx',format:'cjs'}).code)(name=>{
   if(name==='react')return react;
+  if(name==='./UiPreferencesProvider.tsx')return {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})};
+  if(name==='./timeline-removal.ts')return removalState;
+  if(name==='./ClipRemovalControls.tsx')return removalModule.exports;
   if(name.includes('I18nProvider'))return i18nTestModule(locale);
   if(name.includes('i18n/src/index'))return {message:(key)=>({key})};
   if(name.includes('workbench-confirm'))return {useConfirmation:()=>async()=>{calls.push('confirm');return true;}};
@@ -103,6 +118,7 @@ test('Inspector wires controller-owned envelope token across renders and blocks 
  const h=inspector();const editor=h.editor();const session=Symbol('first');assert.equal(editor.props.disabled,false);
  editor.props.onCompositionChange({session,pending:true,dirty:true,row:0,field:'frame',text:'一'});h.render();assert.equal(h.button('save-clip').props.disabled,true);assert.equal(h.button('remove-clip').props.disabled,true);
  await h.button('remove-clip').props.onClick();assert.equal(h.calls.includes('confirm'),false);
+ assert.equal(h.calls.includes('remove'),false);assert.equal(h.button('confirm-clip-removal').props.disabled,true);
  h.props.draftContext.volumeEnvelopeEditable=false;h.props.draftConnected=false;h.render();assert.equal(h.editor().props.disabled,false); // Never disable the active IME input before it can settle.
  h.props.draftContext.volumeEnvelopeEditable=true;h.props.draftConnected=true;
  const value={...h.state.raw.volumeEnvelope,points:[{frame:'1e-',multiplier:'1'}]};h.editor().props.onEdit(value,session);h.editor().props.onCompositionChange({session,pending:false,dirty:false});

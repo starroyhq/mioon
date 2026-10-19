@@ -149,7 +149,7 @@ test('GET accepts only whole-layout legacy omission and seeds both mode flags wi
     for (const mode of ['canvas', 'editing']) {
       assert.equal(loaded.layout[mode].assetsCollapsed, true);
       assert.equal(loaded.layout[mode].inspectorCollapsed, false);
-      assert.equal(loaded.layout[mode].assetsWidth, 242);
+      assert.equal(loaded.layout[mode].assetsWidth, 260);
     }
     assert.equal(loaded.editing.snappingEnabled, magnetLegacy);
     await clock.tick(2000); await controller.flush();

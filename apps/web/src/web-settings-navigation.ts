@@ -1,5 +1,6 @@
 import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
+import { isSettingsConnectionPage } from './settings-window-state.ts';
 import type { SettingsPage } from './settings-window-state.ts';
 import type { ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
@@ -19,7 +20,7 @@ export function createWebSettingsNavigation({ registry, confirm, onChange = () =
     if (!current()) { notice = msg('shell.settingsBusy'); onChange(); return false; }
     if (registry.needsConfirmation(capture) && !await confirm(msg('shell.changeConnectionConfirm'))) return false;
     if (!current()) return false;
-    page = next; if (next !== 'general') selected = next;
+    page = next; if (isSettingsConnectionPage(next)) selected = next;
     opened = show; notice = ''; onChange(); return true;
   }
   return {

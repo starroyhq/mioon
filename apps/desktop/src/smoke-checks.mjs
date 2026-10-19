@@ -5,10 +5,14 @@ import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-export async function runSmoke({ app, getWindow, getSession, getReady, getBackend, restart, paths, report, output, attemptDirtyQuit }) {
+export async function runSmoke({ app, getWindow, getProjectWindow, getSession, getReady, getBackend, restart, reload, paths, report, output, attemptDirtyQuit }) {
   const checks = [], skippedChecks = [];
-  const record = (name, details = {}) => checks.push({ name, ok: true, ...details });
-  const evaluate = expression => getWindow().webContents.executeJavaScript(expression, true);
+  let selectedProjectId = null;
+  // Opening an already-owned project focuses its existing window; it does not
+  // create another window or change main's most recently created-window slot.
+  const currentWindow = () => selectedProjectId ? getProjectWindow(selectedProjectId) ?? getWindow() : getWindow();
+  const record = (name, details = {}) => { checks.push({ name, ok: true, ...details }); console.info('Desktop smoke:', name); };
+  const evaluate = expression => currentWindow().webContents.executeJavaScript(expression, true);
   const rpc = (operation, input = {}) => evaluate(`fetch('/api/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify({ operation, input })})}).then(async r=>({status:r.status,body:await r.json()}))`);
   const waitFor = async (predicate, message, timeout = 60000) => {
     const deadline = Date.now() + timeout;
@@ -17,6 +21,9 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
       if (value) return value;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+    await mkdir(path.dirname(output), {recursive:true});
+    await writeFile(output+'.partial.json', JSON.stringify({checks,skippedChecks,waitingFor:message},null,2)+'\n');
+    if(currentWindow()&&!currentWindow().isDestroyed())await writeFile(output+'.partial.png',(await currentWindow().webContents.capturePage()).toPNG());
     throw new Error(`Timed out: ${message}`);
   };
   const call = async (operation, input = {}) => {
@@ -29,6 +36,7 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
     if (job.status === 'failed') throw new Error(`Render failed: ${JSON.stringify(job.error)}`);
     return job.status === 'succeeded' ? job : false;
   }, 'actual FFmpeg timeline render');
+  const waitEntry = () => waitFor(() => evaluate(`window.__mioonProjectWindow.context().then(context=>context.role==='editor' ? context.editorPhase==='ready' : Boolean(document.querySelector('[data-testid="project-home"][data-phase="home"]') && document.querySelector('[data-testid="project-home-create-toggle"]:not(:disabled)')),()=>false)`), 'native project entry or editor ready');
   const metadata = JSON.parse(await readFile(path.join(app.getAppPath(), 'package.json'), 'utf8'));
   assert.deepEqual(report.identity, metadata.mioonDesktop);
   assert.equal(app.getName(), report.identity.productName);
@@ -47,6 +55,15 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   assert.equal(prefs.nodeIntegration, false);
   assert.equal(prefs.webSecurity, true);
   record('renderer-sandbox-context-isolation-no-node');
+  if(process.platform==='darwin'){
+    assert.deepEqual(getWindow().getWindowButtonPosition(),{x:20,y:22});
+    record('native-macos-traffic-light-position',{position:getWindow().getWindowButtonPosition()});
+  }
+  const workspaceInfo=await evaluate(`fetch('/api/workspace-info').then(r=>r.json())`);
+  assert.equal(workspaceInfo.ok,true);assert.equal(workspaceInfo.data.version,metadata.version);assert.equal(workspaceInfo.data.channel,report.identity.channel);
+  const toolPaths=await evaluate(`window.__mioonWorkspaceTools.read()`);
+  assert.ok(path.isAbsolute(toolPaths.ffmpeg)&&path.isAbsolute(toolPaths.ffprobe));
+  record('native-fixed-workspace-tools-and-real-channel');
   const globals = await evaluate(`({node:typeof process,require:typeof require,electron:typeof window.electron,bridge:typeof window.workbench,cookie:document.cookie,url:location.href,secureContext:isSecureContext})`);
   assert.equal(globals.node, 'undefined'); assert.equal(globals.require, 'undefined');
   assert.equal(globals.electron, 'undefined'); assert.equal(globals.bridge, 'undefined');
@@ -71,6 +88,7 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   record('v4-six-provider-catalog-safe-status', {providers:providerCatalog.map(({id,status})=>({id,status}))});
   const fixture = initial.body.data.find(project => project.name !== 'Electron utility persistence smoke');
   assert.ok(fixture, 'Synthetic multitrack example must be copied into isolated userData before launch');
+  await waitEntry();
   const anonymous = await fetch(`${getReady().url}/api/rpc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'project.list' }) });
   assert.equal(anonymous.status, 401);
   record('anonymous-loopback-denied');
@@ -89,7 +107,8 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   const created = await rpc('project.create', { name: 'Electron utility persistence smoke' });
   assert.equal(created.body.ok, true);
   const projectId = created.body.data.id;
-  await getWindow().loadURL(`${origin}/`);
+  assert.equal(await reload(), true, 'Clean native entry accepts guarded reload');
+  await waitEntry();
   assert.equal((await rpc('project.list')).status, 200);
   record('reload-preserves-session');
   const connection = JSON.parse(await readFile(path.join(paths.userData, 'mcp-connection.json'), 'utf8'));
@@ -98,11 +117,11 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   assert.equal((await stat(connection.tokenFile)).mode & 0o777, 0o600);
   assert.equal((await stat(path.join(paths.userData, 'mcp-connection.json'))).mode & 0o777, 0o600);
   record('private-mcp-discovery-files');
-  await restart();
+  assert.equal(await restart(), true, 'Clean native entry accepts restart');
   const restored = await rpc('project.get', { projectId });
   assert.equal(restored.body.data.project.id, projectId);
   const rotated = (await getSession().cookies.get({ name: 'mioon_session' }))[0];
-  assert.notEqual(rotated.value, oldToken);
+  assert.ok(rotated.value !== oldToken, 'An accepted backend restart rotates the session');
   record('graceful-backend-restart-persists-data-rotates-auth');
   const crashedPid = getReady().runtime.pid;
   const exited = new Promise(resolve => getBackend().once('exit', resolve));
@@ -145,7 +164,18 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   await waitExport(interrupted.id);
   record('graceful-restart-interrupts-and-recovers-active-render');
 
-  await getWindow().loadURL(`${getReady().url}/?project=${fixture.id}`);
+  await waitEntry();
+  const alreadySelected = await evaluate(`window.__mioonProjectWindow.context().then(context=>context.initialProjectId===${JSON.stringify(fixture.id)})`);
+  const launcherEntry = !alreadySelected && await evaluate(`Boolean(document.querySelector('[data-testid="project-home-open-${fixture.id}"]')?.getBoundingClientRect().width)`);
+  if (launcherEntry) await evaluate(`document.querySelector('[data-testid="project-home-open-${fixture.id}"]').click(); true`);
+  else if (!alreadySelected) {
+    await evaluate(`document.querySelector('[data-testid="project-switcher"]').click(); true`);
+    await waitFor(() => evaluate(`Boolean([...document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent.trim()===${JSON.stringify(fixture.name)}))`), 'project menu target');
+    await evaluate(`[...document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent.trim()===${JSON.stringify(fixture.name)}).click(); true`);
+  }
+  selectedProjectId = fixture.id;
+  await waitFor(() => evaluate(`Boolean(document.querySelector('[data-testid="project-switcher"]')?.textContent.includes(${JSON.stringify(fixture.name)}) && document.querySelector('[data-testid="workspace-editing"]'))`), 'target native project ready');
+  await evaluate(`document.querySelector('[data-testid="workspace-editing"]').click(); true`);
   await waitFor(() => evaluate(`Boolean(document.querySelector('[data-testid="project-switcher"]')?.textContent.includes(${JSON.stringify(fixture.name)}) && document.querySelector('[data-testid="timeline-panel"]') && document.querySelectorAll('[data-testid^="timeline-clip-"]').length >= 4 && !document.body.innerText.includes('正在打开项目'))`), 'final project and timeline ready');
   await evaluate(`window.__desktopTestPreventUnload = event => { event.preventDefault(); event.returnValue = false; }; window.addEventListener('beforeunload', window.__desktopTestPreventUnload); true`);
   const beforeCancelPid = getReady().runtime.pid;
@@ -155,7 +185,7 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   await evaluate(`window.removeEventListener('beforeunload', window.__desktopTestPreventUnload); delete window.__desktopTestPreventUnload; true`);
   record('actual-renderer-beforeunload-cancel-preserves-window-and-service');
 
-  await evaluate(`document.querySelector('[data-testid="workspace-preview"]').click(); true`);
+  await evaluate(`document.querySelector('[data-testid="workspace-editing"]').click(); true`);
   await waitFor(() => evaluate(`Boolean(document.querySelector('[data-testid="central-preview"]:not(.workspace-hidden)'))`), 'preview workspace visible');
   await evaluate(`document.querySelector('[data-testid="preview-timeline-mode"]').click(); true`);
   await waitFor(() => evaluate(`Boolean(document.querySelector('[data-testid="timeline-preview-video"]'))`), 'rendered timeline video present');
@@ -172,9 +202,10 @@ export async function runSmoke({ app, getWindow, getSession, getReady, getBacken
   assert.equal(decoded.width, 720); assert.equal(decoded.height, 1280);
   assert.ok(decoded.duration >= 9.9 && decoded.duration <= 10.1); assert.ok(decoded.readyState >= 2);
   record('shared-react-ui-stable-and-real-timeline-video-decoded', decoded);
+  assert.equal(await evaluate(`Boolean([...document.querySelectorAll('[role="dialog"]')].some(dialog=>dialog.getBoundingClientRect().width>0))`),false,'The accepted editor must be visible without a retained dialog');
   await mkdir(path.dirname(output), { recursive: true });
   const screenshot = path.join(path.dirname(output), 'electron-workbench.png');
-  await writeFile(screenshot, (await getWindow().webContents.capturePage()).toPNG());
+  await writeFile(screenshot, (await currentWindow().webContents.capturePage()).toPNG());
   await writeFile(output, JSON.stringify({ ok: true, appVersion: app.getVersion(), runtime: report.runtime,
     ffmpeg: report.tools, checks, skippedChecks, screenshot }, null, 2) + '\n');
 }

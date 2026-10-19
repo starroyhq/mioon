@@ -15,7 +15,7 @@ function record(i){
 test('export settings syntax is fully strict, required at every nested level, export-only and non-normalizing',()=>{
  const legacy=input();assert.equal(JSON.stringify(parse('timeline.render',legacy)),JSON.stringify(legacy));
  const good={...legacy,exportSettings:settings()};assert.deepEqual(parse('timeline.render',good),good);
- for(const exportSettings of [{},{profileId:'mp4_h264_v1'}, {...settings(),resolution:'short_720'}, {...settings(),fps:60}, {...settings(),rateControl:{mode:'crf'}}, {...settings(),rateControl:{mode:'crf',quality:'high',crf:18}}, {...settings(),rateControl:{mode:'bitrate',targetKbps:3000}}, {...settings(),rateControl:{mode:'bitrate',targetKbps:2000,quality:'high'}}, {...settings(),profileId:'h265'}, {...settings(),executable:'/tmp/ffmpeg'}])assert.throws(()=>parse('timeline.render',{...legacy,exportSettings}));
+ for(const exportSettings of [{},{profileId:'mp4_h264_v1'}, {...settings(),resolution:'short_1440'}, {...settings(),fps:60}, {...settings(),rateControl:{mode:'crf'}}, {...settings(),rateControl:{mode:'crf',quality:'high',crf:18}}, {...settings(),rateControl:{mode:'bitrate',targetKbps:3000}}, {...settings(),rateControl:{mode:'bitrate',targetKbps:2000,quality:'high'}}, {...settings(),profileId:'h265'}, {...settings(),executable:'/tmp/ffmpeg'}])assert.throws(()=>parse('timeline.render',{...legacy,exportSettings}));
  assert.throws(()=>parse('timeline.render',{...good,purpose:'preview'}));
  assert.throws(()=>parse('export.create',{projectId:legacy.projectId,requestId:legacy.requestId,exportSettings:settings()}));
  const cap={projectId:legacy.projectId,expectedRevision:1,exportSettings:settings()};assert.deepEqual(parse('timeline.export.capabilities',cap),cap);
@@ -26,9 +26,9 @@ test('export settings syntax is fully strict, required at every nested level, ex
 
 test('every fixed output size, CRF mapping and bitrate resolves without mutating composition or input',()=>{
  const rates=[{mode:'crf',quality:'compact'},{mode:'crf',quality:'standard'},{mode:'crf',quality:'high'},...([2000,4000,8000].map(targetKbps=>({mode:'bitrate',targetKbps})))];
- for(const timeline of TIMELINE_OUTPUT_PRESETS)for(const resolution of ['native','short_360','short_1080'])for(const rateControl of rates){
+ for(const timeline of TIMELINE_OUTPUT_PRESETS)for(const resolution of ['native','short_360','short_720','short_1080'])for(const rateControl of rates){
   const s={profileId:'mp4_h264_v1',resolution,rateControl},before=JSON.stringify([timeline,s]),delivery=resolveTimelineExportDelivery(timeline,s);
-  const factor=resolution==='native'?1:resolution==='short_360'?.5:1.5;
+  const factor=(resolution==='native'?Math.min(timeline.width,timeline.height):resolution==='short_360'?360:resolution==='short_720'?720:1080)/Math.min(timeline.width,timeline.height);
   assert.equal(delivery.effective.width,timeline.width*factor);assert.equal(delivery.effective.height,timeline.height*factor);assert.equal(delivery.effective.fps,30);
   assert.deepEqual(delivery.effective.rateControl,rateControl.mode==='crf'?{mode:'crf',crf:{compact:28,standard:23,high:18}[rateControl.quality]}:rateControl);
   assert.ok(isTimelineExportDelivery(delivery,timeline,s));assert.equal(JSON.stringify([timeline,s]),before);assert.notEqual(delivery.exportSettings,s);

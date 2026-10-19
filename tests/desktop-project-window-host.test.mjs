@@ -121,6 +121,32 @@ test('v2 requires exact sender, main frame, context and fixed project URL', asyn
   assert.throws(() => f.ready(a, projectB), /sender/);
 });
 
+test('a blocked foreign navigation start retains the assigned live document but never trusts a foreign commit', async t => {
+  const invalidated = [], f = fixture(t, { invalidated: owner => invalidated.push(owner) });
+  const launcher = await f.launcher(), before = f.host.contextFor(launcher), owner = f.host.ownerForContents(launcher.webContents);
+  assert.ok(owner?.isCurrent());
+  launcher.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: 'https://example.com/' });
+  assert.equal(f.host.contextFor(launcher).contextId, before.contextId);
+  assert.equal(f.host.isTrustedDocument(launcher), true);
+  assert.equal(owner.isCurrent(), true);
+  assert.deepEqual(invalidated, []);
+  assert.equal(f.invoke(launcher, { action: 'describe' }).contextId, before.contextId);
+  launcher.webContents.mainFrame = { url: 'https://example.com/' };
+  launcher.webContents.emit('did-navigate', {}, 'https://example.com/');
+  assert.equal(owner.isCurrent(), false);
+  assert.equal(f.host.isTrustedDocument(launcher), false);
+  assert.throws(() => f.invoke(launcher, { action: 'describe' }), /sender/);
+});
+
+test('an assigned reload retires the previous document before its replacement commits', async t => {
+  const f = fixture(t), launcher = await f.launcher(), before = f.host.contextFor(launcher);
+  const owner = f.host.ownerForContents(launcher.webContents);
+  launcher.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: `${origin}/` });
+  assert.equal(owner.isCurrent(), false);
+  assert.notEqual(f.host.contextFor(launcher).contextId, before.contextId);
+  assert.throws(() => f.invoke(launcher, { action: 'describe' }), /sender/);
+});
+
 test('same project including uppercase UUID focuses its exact existing owner without another load', async t => {
   const f = fixture(t); await f.launcher(); const a = await f.editor();
   const before = f.events.filter(event => event === 'editor:load').length;

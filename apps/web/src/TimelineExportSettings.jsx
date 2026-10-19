@@ -16,7 +16,7 @@ export default function TimelineExportSettings({ timeline, value, disabled, onCh
     <p className="export-preflight-note">{t('export.settings.scope')}</p>
     <div className="export-settings-field"><Label htmlFor="export-resolution">{t('export.settings.resolution')}</Label>
       <WorkbenchSelect id="export-resolution" data-testid="export-resolution" value={value.resolution} disabled={disabled} onChange={event => choose({ resolution: event.target.value })}>
-        <option value="native">{t('export.settings.native')}</option><option value="short_360">{t('export.settings.short360')}</option><option value="short_1080">{t('export.settings.short1080')}</option>
+        <option value="native">{t('export.settings.native')}</option>{Math.min(timeline?.width || 0, timeline?.height || 0) >= 1080 ? <option value="short_720">{t('export.settings.short720')}</option> : <option value="short_1080">{t('export.settings.short1080')}</option>}<option value="short_360">{t('export.settings.short360')}</option>
       </WorkbenchSelect></div>
     <div className="export-settings-field"><Label htmlFor="export-rate-mode">{t('export.settings.rateControl')}</Label>
       <WorkbenchSelect id="export-rate-mode" data-testid="export-rate-mode" value={value.rateControl.mode} disabled={disabled} onChange={event => choose({ rateControl: event.target.value === 'crf' ? { mode: 'crf', quality: 'standard' } : { mode: 'bitrate', targetKbps: 4000 } })}>

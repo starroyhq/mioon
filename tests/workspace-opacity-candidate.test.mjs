@@ -68,10 +68,44 @@ test('production dispatcher continues refusing42/43 marker evidence without writ
   }
 });
 
-test('historical25–41 hashes retain63 exact files and one explicitly approved renderer delta', t => {
+test('historical25–41 pins survive only finite reviewed integration deltas and the approved renderer seam', t => {
   const manifestBytes = readFileSync(new URL('./fixtures/opacity-envelope-frozen-baseline.json', import.meta.url));
   const manifest = JSON.parse(manifestBytes);
   const exception = JSON.parse(readFileSync(new URL('./fixtures/opacity-render-seam-exception.json', import.meta.url), 'utf8'));
+  const deltaBytes = readFileSync(new URL('./fixtures/mioon-redesign-reviewed-source-deltas.json', import.meta.url));
+  const deltas = JSON.parse(deltaBytes);
+  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+  assert.equal(sha256(deltaBytes), '4b7aaad5681fdd50b3b1841a868aa85d2cfff4a5f83175f2bcbfa842158e033a', 'the independently reviewable finite delta ledger is pinned');
+  assert.equal(deltas.formatVersion, 1);
+  assert.equal(deltas.baseline, manifest.baseline);
+  assert.equal(deltas.baselineManifestSha256, sha256(manifestBytes));
+  const reviewedPaths = [
+    'packages/business/src/local-drafts.ts', 'packages/business/src/timeline-inputs.mjs',
+    'packages/business/src/timeline-media.mjs', 'packages/business/src/workspace-backup-schema-versions.ts',
+    'packages/business/src/workspace-restore-invocation.mjs', 'packages/business/src/workspace-restore-policy.mjs',
+    'packages/business/src/workspace-schema-dispatch.ts', 'packages/contracts/src/index.mjs',
+    'packages/contracts/src/timeline-acknowledgement.mjs', 'packages/contracts/src/workspace-schema-profiles.ts',
+  ];
+  assert.deepEqual(deltas.files.map(item => item.path).sort(), reviewedPaths.sort());
+  function reverseReviewed(file, bytes, expected) {
+    const delta = deltas.files.find(item => item.path === file);
+    if (!delta) return bytes;
+    assert.equal(delta.beforeSha256, expected, `${file}: existing historical pin is authoritative`);
+    assert.equal(bytes.byteLength, delta.afterBytes, `${file}: reviewed current byte count`);
+    assert.equal(sha256(bytes), delta.afterSha256, `${file}: exact reviewed integration source`);
+    assert.ok(delta.review.length > 40 && delta.inverse.length > 0);
+    let source = bytes.toString('utf8');
+    for (const inverse of [...delta.inverse].reverse()) {
+      assert.equal(inverse.occurrences, 1);
+      assert.ok(inverse.after.length > 0);
+      assert.equal(source.split(inverse.after).length - 1, inverse.occurrences, `${file}: exact unique inverse snippet`);
+      source = source.replace(inverse.after, inverse.before);
+    }
+    const restoredBytes = Buffer.from(source);
+    assert.equal(restoredBytes.byteLength, delta.beforeBytes, `${file}: restored historical byte count`);
+    assert.equal(sha256(restoredBytes), expected, `${file}: finite inverse must recover the unchanged historical hash`);
+    return restoredBytes;
+  }
   assert.equal(createHash('sha256').update(manifestBytes).digest('hex'), '7381ed3486563b84cf4f4912dfde81ae07b0369cde4e479ad2b1bcfd88633f0d', 'original64-file baseline manifest stays byte-identical');
   assert.equal(manifest.baseline, '812d18a9d493f01f94235bd4f424b4e17e742ad8');
   assert.equal(exception.baseline, manifest.baseline);
@@ -85,14 +119,18 @@ test('historical25–41 hashes retain63 exact files and one explicitly approved 
   for (const name of readdirSync(new URL(directory, root))) {
     if (/^workspace-(?:restore-)?schema-v(?:2[6-9]|3[0-9]|4[01])\.ts$/.test(name)) assert.ok(manifest.sha256[directory + name], `missing frozen module ${name}`);
   }
-  let unchanged = 0;
+  let unchanged = 0, rawUnchanged = 0;
   for (const [path, expected] of Object.entries(manifest.sha256)) {
-    assert.equal(createHash('sha256').update(readFileSync(new URL(path, root))).digest('hex'), path === exception.path ? exception.afterSha256 : expected, path);
+    const pinned = path === exception.path ? exception.afterSha256 : expected;
+    const bytes = readFileSync(new URL(path, root));
+    assert.equal(sha256(reverseReviewed(path, bytes, pinned)), pinned, path);
+    if (sha256(bytes) === expected) rawUnchanged++;
     if (path !== exception.path) unchanged++;
   }
   assert.equal(Object.keys(manifest.sha256).length, 64);
   assert.equal(unchanged, 63); assert.equal(exception.unchangedBaselineFiles, unchanged);
-  t.diagnostic('63 committed baseline files retain exact SHA-256 bytes; original64-file manifest unchanged; renderer before/after hashes explicitly recorded');
+  assert.equal(rawUnchanged, 54);
+  t.diagnostic('54 original files retain raw SHA-256 bytes; ten finite reviewed deltas recover all63 original dependency pins and the separately approved renderer seam; original64-file manifest unchanged');
 });
 
 test('candidate modules remain absent from production exports, startup, operations and permissions', () => {

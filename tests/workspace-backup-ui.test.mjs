@@ -174,21 +174,26 @@ test('actual retained details handler cannot read when hidden or after the proje
   assert.equal(f.reads.length, 1);
 });
 
-test('actual App integration is an isolated Properties sibling with live request epochs and exact read-only dispatch', async () => {
+test('workspace settings keep one backup owner with an exact read-only dispatch and inactive admission', async () => {
   const app = read('App.jsx'), jsx = app.match(/<WorkspaceBackupPanel\s[\s\S]*?\/>/)?.[0]; assert.ok(jsx);
-  const start = app.indexOf('<AgentDockPane id="right-dock-properties"'), end = app.indexOf('<AgentDockPane id="right-dock-agent"');
+  assert.equal((app.match(/<WorkspaceBackupPanel /g) || []).length, 1);
+  const start = app.indexOf('export function SettingsConnectionForms('), end = app.indexOf('export default function App(');
   assert.ok(app.indexOf(jsx) > start && app.indexOf(jsx) < end);
-  const currentProject = { current: 'a' }, projectEpoch = { current: 2 }, navigationEpoch = { current: 3 }, calls = [], auth = [];
-  const module = { exports: {} };
-  Function('module', 'React', 'WorkspaceBackupPanel', 'currentProject', 'projectEpoch', 'navigationEpoch', 'online', 'auth', 'loading', 'rpc', 'setAuth',
-    transformSync(`module.exports = ${jsx};`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'Backup', currentProject, projectEpoch, navigationEpoch, true, true, false,
-      async (...args) => { calls.push(args); return inspection(); }, value => auth.push(value));
-  const props = module.exports.props; assert.equal(props.scope, 'a:2:3'); assert.equal(props.connected, true);
-  navigationEpoch.current++; assert.equal(props.getScope(), 'a:2:4'); currentProject.current = 'b'; projectEpoch.current++; assert.equal(props.getScope(), 'b:3:4');
+  assert.match(app.slice(start, end), /<SettingsWorkspace active=\{visible && page === 'workspace'\}/);
+  assert.match(app.slice(start, end), /<WorkspaceVisibilityProvider visible=\{visible && page === 'workspace'\}/);
+  const calls = [];
+  const render = (connectionsAvailable, visible, page) => {
+    const module = { exports: {} };
+    Function('module', 'React', 'WorkspaceBackupPanel', 'connectionsAvailable', 'visible', 'page', 'productionRpc',
+      transformSync(`module.exports = ${jsx};`, { loader: 'jsx', format: 'cjs' }).code)(module, { createElement: element }, 'Backup', connectionsAvailable, visible, page,
+      async (...args) => { calls.push(args); return inspection(); });
+    return module.exports.props;
+  };
+  const props = render(true, true, 'workspace'); assert.equal(props.scope, 'settings:workspace'); assert.equal(props.getScope(), props.scope); assert.equal(props.connected, true);
+  for (const values of [[false,true,'workspace'],[true,false,'workspace'],[true,true,'general']]) assert.equal(render(...values).connected, false);
   const options = { signal: new AbortController().signal }; await props.read({}, options);
-  assert.deepEqual(calls, [['workspace.backup.inspect', {}, options]]); props.onUnauthorized(); assert.deepEqual(auth, [false]);
+  assert.deepEqual(calls, [['workspace.backup.inspect', {}, options]]);
   assert.doesNotMatch(jsx, /setSelected|setPropertiesPage|discardDraft|runDurable|requestId|setToast|setInspectorEpoch|confirm\(/);
-  assert.equal((app.match(/data-testid="right-dock-tab-/g) || []).length, 5);
-  assert.match(app, /data-testid="right-dock-tab-tasks"/);
+  assert.match(app + readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8'), /data-testid="right-dock-tab-tasks"/);
   transformSync(app, { loader: 'jsx', format: 'esm' });
 });

@@ -6,9 +6,9 @@ import { parseWorkspacePreferencesState } from '../packages/business/src/workspa
 
 test('panel defaults and bounds agree across renderer and strict server parsing', () => {
   assert.deepEqual(PANEL_BOUNDS, {
-    assetsWidth: { default: 242, min: 180, max: 480 },
-    inspectorWidth: { default: 310, min: 240, max: 560 },
-    timelineHeight: { default: 320, min: 160, max: 800 },
+    assetsWidth: { default: 260, min: 180, max: 480 },
+    inspectorWidth: { default: 320, min: 240, max: 560 },
+    timelineHeight: { default: 300, min: 160, max: 800 },
   });
   const state = defaultWorkspaceState(); delete state.shared.assetSearch;
   assert.deepEqual(parseWorkspacePreferencesState(state), state);
@@ -19,7 +19,7 @@ test('panel defaults and bounds agree across renderer and strict server parsing'
         assert.equal(parseWorkspacePreferencesState(value).layout[mode][key], good);
         assert.equal(normalizeWorkspaceState(value).layout[mode][key], good);
       }
-      for (const bad of [bounds.min - 1, bounds.max + 1, NaN, Infinity, '320', null]) {
+      for (const bad of [bounds.min - 1, bounds.max + 1, NaN, Infinity, '300', null]) {
         const value = structuredClone(state); value.layout[mode][key] = bad;
         assert.throws(() => parseWorkspacePreferencesState(value), { code: 'VALIDATION_ERROR' });
         assert.equal(isWorkspaceLayout(value.layout), false);
@@ -31,7 +31,7 @@ test('panel defaults and bounds agree across renderer and strict server parsing'
 test('preferred dimensions clamp only explicit state normalization and defaults never share objects', () => {
   const first = defaultWorkspaceLayout(), second = defaultWorkspaceLayout();
   first.canvas.assetsWidth = 400;
-  assert.equal(first.editing.assetsWidth, 242); assert.equal(second.canvas.assetsWidth, 242);
+  assert.equal(first.editing.assetsWidth, 260); assert.equal(second.canvas.assetsWidth, 260);
   assert.equal(isWorkspaceLayout(first), true);
   for (const [key, bounds] of Object.entries(PANEL_BOUNDS)) {
     assert.equal(clampPanelSize(key, -1), bounds.min);
@@ -40,7 +40,7 @@ test('preferred dimensions clamp only explicit state normalization and defaults 
     assert.equal(clampPanelSize(key, '350'), bounds.default);
   }
   assert.deepEqual(normalizeWorkspaceLayout(undefined, { assetsCollapsed: true }).canvas,
-    { assetsWidth: 242, inspectorWidth: 310, assetsCollapsed: true, inspectorCollapsed: false });
+    { assetsWidth: 260, inspectorWidth: 320, assetsCollapsed: true, inspectorCollapsed: false });
   const supplied = defaultWorkspaceLayout(); supplied.editing.assetsCollapsed = true;
   assert.deepEqual(normalizeWorkspaceLayout(supplied, { assetsCollapsed: true, inspectorCollapsed: true }), supplied);
 });
@@ -64,7 +64,7 @@ test('the center keeps a comfortable height while the timeline can still keep it
   const preferred = defaultWorkspaceLayout().editing, before = structuredClone(preferred);
   const options = { width: 1800, centerMinWidth: 300, centerMinHeight: 180, centerComfortHeight: 300, timelineFloorHeight: 220, separatorSize: 0, collapsedWidth: 28 };
   const at = height => effectiveWorkspaceLayout(preferred, { ...options, height });
-  assert.equal(at(900).timelineHeight, 320);
+  assert.equal(at(900).timelineHeight, 300);
   assert.equal(at(584).timelineHeight, 284); assert.equal(at(584).timelineMaxHeight, 284);
   assert.equal(at(434).timelineHeight, 220); assert.equal(at(434).timelineMaxHeight, 220);
   assert.equal(at(380).timelineHeight, 200); assert.equal(at(380).timelineMaxHeight, 200);
@@ -77,7 +77,7 @@ test('the center keeps a comfortable height while the timeline can still keep it
 test('effective collapsed and extremely narrow layouts stay finite and preserve saved visibility', () => {
   const preferred = { ...defaultWorkspaceLayout().editing, assetsCollapsed: true };
   const wide = effectiveWorkspaceLayout(preferred, { width: 1200, height: 900, collapsedWidth: 28, separatorSize: 0 });
-  assert.equal(wide.assetsWidth, 28); assert.equal(wide.inspectorWidth, 310);
+  assert.equal(wide.assetsWidth, 28); assert.equal(wide.inspectorWidth, 320);
   assert.equal(wide.assetsCollapsed, true); assert.equal(wide.inspectorCollapsed, false);
   for (const width of [0, 120, 500, 800]) for (const height of [0, 100, 400]) {
     const result = effectiveWorkspaceLayout(preferred, { width, height });
@@ -88,7 +88,7 @@ test('effective collapsed and extremely narrow layouts stay finite and preserve 
     assert.ok(result.timelineHeight <= height);
     assert.equal(result.assetsCollapsed, true); assert.equal(result.inspectorCollapsed, false);
   }
-  assert.equal(preferred.assetsWidth, 242); assert.equal(preferred.timelineHeight, 320);
+  assert.equal(preferred.assetsWidth, 260); assert.equal(preferred.timelineHeight, 300);
 });
 
 test('layout validation rejects extra, missing, malformed and symbolic fields at every boundary', () => {
@@ -106,4 +106,22 @@ test('layout validation rejects extra, missing, malformed and symbolic fields at
   }
   const extra = defaultWorkspaceLayout(); extra.extra = true; invalid.push(extra);
   for (const value of invalid) assert.equal(isWorkspaceLayout(value), false);
+});
+
+test('old default sizes migrate without changing custom sizes, visibility or the source object', () => {
+  const legacy = {
+    canvas: { assetsWidth: 242, inspectorWidth: 310, assetsCollapsed: true, inspectorCollapsed: false },
+    editing: { assetsWidth: 242, inspectorWidth: 310, timelineHeight: 320, assetsCollapsed: false, inspectorCollapsed: true },
+  };
+  const before = structuredClone(legacy);
+  const result = normalizeWorkspaceLayout(legacy);
+  assert.deepEqual(result, {
+    canvas: { assetsWidth: 260, inspectorWidth: 320, assetsCollapsed: true, inspectorCollapsed: false },
+    editing: { assetsWidth: 260, inspectorWidth: 320, timelineHeight: 300, assetsCollapsed: false, inspectorCollapsed: true },
+  });
+  assert.deepEqual(legacy, before);
+  const custom = structuredClone(legacy); custom.canvas.assetsWidth = 243; custom.editing.timelineHeight = 321;
+  const normalized = normalizeWorkspaceLayout(custom);
+  assert.equal(normalized.canvas.assetsWidth, 243); assert.equal(normalized.canvas.inspectorWidth, 310);
+  assert.equal(normalized.editing.timelineHeight, 321);
 });

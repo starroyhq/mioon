@@ -91,6 +91,9 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
     if (name === './asset-disposition-state.js') return dispositions;
     if (name === './AssetDispositionControls.jsx') return { __esModule: true, default: 'disposition', useDispositionInteraction: () => ({ visible: true, admit: action => action() }) };
     if (name === './AssetTimelineUsage.tsx') return { __esModule: true, default: 'usage', AssetTimelineUsageFilters: 'usage-filter', useAssetTimelineUsageFilter: input => { captured = input.assets; return { visibleAssets: input.assets.filter(asset => asset.id !== 'used'), filter: 'unused', reset() {}, choose() {} }; } };
+    // Layout owns presentation only; keep the real annotation/disposition
+    // filters and their input to the usage filter under test below.
+    if (name === './AssetLibraryToolbar.tsx') return { __esModule: true, default: 'asset-library-toolbar', useAssetLibraryLayout: scope => { assert.equal(scope, projectId); return { layout: 'grid', setLayout() {} }; } };
     if (name === './Timeline.jsx') return { assetKind: () => 'image', dragAsset() {} };
     if (name === './AssetAnnotations.tsx') return { __esModule: true, default: 'annotations-editor' };
     if (name.endsWith('.css')) return {};
@@ -102,6 +105,9 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
   assert.ok(find(tree, node => node.props?.['data-testid'] === 'asset-card-match'));
   assert.ok(find(tree, node => node.props?.['data-testid'] === 'asset-card-unknown'));
   assert.equal(find(tree, node => node.props?.['data-testid'] === 'asset-card-used'), undefined);
-  assert.equal(find(tree, node => node.type === 'annotations-editor').props.asset.id, 'wrongTag');
+  const selectedOutside = find(tree, node => node.props?.['data-testid'] === 'asset-filter-selected-outside');
+  assert.ok(selectedOutside, 'Filtering preserves the selected asset outside the result list');
+  assert.equal(find(selectedOutside, node => node.type === 'disposition').props.asset.id, 'wrongTag');
+  assert.equal(find(tree, node => node.type === 'annotations-editor'), undefined, 'Annotation editing now belongs to Inspector');
   assert.ok(find(tree, node => node.props?.['data-testid'] === 'annotation-unverified-unknown'));
 });

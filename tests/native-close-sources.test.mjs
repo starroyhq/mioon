@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { setImmediate as turn } from 'node:timers/promises';
 import { transformSync } from 'esbuild';
 import * as sources from '../apps/web/src/native-close-sources.ts';
+import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
 import { createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import * as chat from '../apps/web/src/agent-chat.js';
 import * as edits from '../apps/web/src/agent-edits.js';
@@ -16,6 +17,7 @@ import * as image from '../apps/web/src/image-generation.js';
 import * as toolState from '../apps/web/src/agent-tool-state.js';
 import * as timing from '../apps/web/src/agent-timeline-context.js';
 import * as contracts from '@mioon/contracts';
+import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.mjs';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), instanceId = id(2), threadId = id(3), requestId = id(4), runId = id(5), groupId = id(6), taskId = id(7), reviewId = id(8), shotId = id(9), proposalId = id(10);
@@ -73,8 +75,10 @@ function imageFixture(options = {}) {
 }
 function chatFixture(options = {}) {
   const calls = [], streams = [], receiptMap = new Map(), receipts = { get: id => receiptMap.get(id), set: (id, value) => receiptMap.set(id, value) };
+  const authorization = createAgentAuthorizationUiMock(async () => { calls.push('read'); return options.read ? options.read() : chatSnapshot(); });
   const client = {
-    read: async () => { calls.push('read'); return options.read ? options.read() : chatSnapshot(); },
+    ...authorization,
+    authorize: (...args) => { calls.push('authorize'); return authorization.authorize(...args); },
     start: async (_, input) => { calls.push('start'); return options.start ? options.start(input) : envelope(chatRun({ userText: input.message })); },
     stop: async () => { calls.push('stop'); return options.stop ? options.stop() : envelope(chatRun({ status: 'stopped' }), 2); },
     lookup: async () => { calls.push('lookup'); throw Object.assign(Error('Unknown'), { code: 'AGENT_CHAT_NOT_FOUND' }); },
@@ -118,6 +122,7 @@ function renderer(filename, fixture, options = {}) {
       return activity.exports;
     }
     if (name === './native-close-sources.ts') return sources;
+    if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === '@mioon/contracts') return contracts;
     if (name === './agent-chat.js') return { ...chat, createAgentChatSession: input => session = chat.createAgentChatSession({ ...input, client: fixture.client, receipts: fixture.receipts, requestId: () => requestId }) };
     if (name === './agent-edits.js') return { ...edits, createAgentEditsSession: input => session = edits.createAgentEditsSession({ ...input, client: fixture.client }) };
@@ -168,13 +173,16 @@ test('actual Agent draft and held send report before React rerender; accepted st
   ui.render(); await flush(); ui.render(); safeMetadata(ui.state()); assert.equal(ui.state().busy, false);
   ui.edit('agent-chat-prompt', 'PRIVATE_DRAFT'); assert.equal(ui.state().dirty, true);
   const first = ui.state().version; ui.edit('agent-chat-prompt', 'PRIVATE_DRAFT_2'); assert.ok(ui.state().version > first);
-  ui.render(); ui.edit('agent-chat-consent', true); ui.render(); ui.form().props.onSubmit({ preventDefault() {} });
+  ui.render(); ui.click('agent-chat-authorization-open'); ui.render(); ui.edit('agent-chat-consent', true); ui.render(); ui.click('agent-chat-authorization-confirm'); await flush();
+  assert.equal(f.calls.filter(value => value === 'authorize').length, 1);
+  assert.equal(f.calls.includes('start'), false, 'explicitly saving a grant never sends the draft');
+  ui.render(); ui.form().props.onSubmit({ preventDefault() {} });
   assert.equal(ui.state().busy, true); assert.equal(ui.state().blocked, true); assert.equal(f.calls.filter(value => value === 'start').length, 1);
   held.resolve(envelope(chatRun({ userText: 'PRIVATE_DRAFT_2' }))); await flush();
   assert.equal(ui.state().dirty, false); assert.equal(ui.state().busy, false); assert.equal(ui.state().blocked, false);
   const accepted = ui.state().version; f.streams.at(-1).onEvent({ id: 2, type: 'delta', instanceId, threadId, projectId, runId, revision: 1, text: 'PRIVATE_RESPONSE' });
   assert.equal(ui.state().version, accepted); ui.hide(); assert.equal(ui.state().version, accepted);
-  assert.equal(f.calls.includes('stop'), false); safeMetadata(ui.state()); ui.unmount();
+  assert.equal(f.calls.includes('stop'), false); assert.equal(f.calls.filter(value => value === 'authorize').length, 1); safeMetadata(ui.state()); ui.unmount();
 });
 
 test('Agent unrecovered receipt stays blocked on initial failed read, and stopping blocks synchronously', async () => {

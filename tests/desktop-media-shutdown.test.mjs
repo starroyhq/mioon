@@ -3,6 +3,8 @@ import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts'
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
 import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
+import { CLIP_LUT_RECOVERY_CHANNEL } from '../packages/contracts/src/clip-lut-recovery.ts';
+import { WORKSPACE_TOOLS_CHANNEL } from '../packages/contracts/src/workspace-info.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
@@ -450,6 +452,8 @@ async function mainStartupHarness({ validate, settings } = {}) {
   const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   const app = new EventEmitter();
   const counts = { forks: 0, settings: 0, quits: 0, cleanup: 0, exits: [], notices: [] };
+  const expectedChannels = [APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL];
+  const registeredChannels = new Set();
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
     whenReady: () => new Promise(() => {}), quit: () => { counts.quits++; }, exit: code => counts.exits.push(code) });
@@ -462,13 +466,19 @@ async function mainStartupHarness({ validate, settings } = {}) {
     createDesktopAgentSettings: async () => { counts.settings++; return settings ? settings() : { close() {} }; }, safeStorage: {},
     BackendSupervisor: class { constructor() { counts.forks++; } },
     MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
+    CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
-    ipcMain: { handle: (channel, handler) => { assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function'); } },
+    ipcMain: { handle: (channel, handler) => {
+      assert.ok(expectedChannels.includes(channel)); assert.equal(typeof handler, 'function');
+      assert.equal(registeredChannels.has(channel), false, 'Every native channel has exactly one handler');
+      registeredChannels.add(channel);
+    } },
     stopBackendForQuit, removeConnectionOnShutdown: async () => { counts.cleanup++; },
     dialog: { showMessageBox: async message => { counts.notices.push(message); return { response: 0 }; } }
   });
   vm.runInContext(source, context, { filename: 'main-startup-fixture.mjs' });
+  assert.deepEqual([...registeredChannels].sort(), [...expectedChannels].sort());
   return { counts, start: () => vm.runInContext('start()', context), quit: () => vm.runInContext('quitCoordinator.request()', context),
     unknownMediaCrash: () => vm.runInContext('backend = {hasUnconfirmedMedia: true}; backendFailed(backend, createProjectBackendIncident())', context),
     failQuit: code => vm.runInContext(`quitFailed({code:${JSON.stringify(code)}})`, context) };

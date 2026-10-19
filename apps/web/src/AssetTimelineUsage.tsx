@@ -2,6 +2,7 @@ import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Button } from '@mioon/ui/components/button';
+import {Film} from '@mioon/ui/components/workbench-icons';
 import type { TimelineAssetUse, UsageSnapshot } from './timeline-asset-usage.ts';
 
 export type TimelineUsageFilter = 'all' | 'unused';
@@ -65,11 +66,12 @@ export interface AssetTimelineUsageProps extends UsageScope {
   assetId: string;
   assetName: string;
   onLocate?: (use: TimelineAssetUse, isStillCurrent: () => boolean) => void;
+  compact?:boolean;
 }
 
 export default function AssetTimelineUsage(props: AssetTimelineUsageProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
-  const { assetId, assetName, projectId, scope, usage, visible, onLocate } = props;
+  const { assetId, assetName, projectId, scope, usage, visible, onLocate,compact=false } = props;
   const uses = assetTimelineUses(usage, projectId, assetId);
   const [expanded, setExpanded] = useState({ scope, usage, assetId, open: false });
   const same = expanded.scope === scope && expanded.usage === usage && expanded.assetId === assetId;
@@ -77,14 +79,14 @@ export default function AssetTimelineUsage(props: AssetTimelineUsageProps) {
   const open = same && expanded.open;
   const { admit, isCurrent } = useUsageInteraction(props, `${assetId}:${open}`);
   const listId = useId();
-  return <div className="asset-disposition-controls" data-testid={`asset-timeline-usage-${assetId}`} data-no-asset-drag draggable={false}
+  return <div className={`asset-disposition-controls ${compact ? 'asset-usage-compact' : ''}`} data-testid={`asset-timeline-usage-${assetId}`} data-no-asset-drag draggable={false}
     onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
     {uses === null ? <span className="asset-disposition-label unknown" role="status">{t('assets.usage.unknown')}</span>
-      : uses.length === 0 ? <span className="asset-disposition-label" role="status">{t('assets.usage.zero')}</span>
+      : uses.length === 0 ? <span className="asset-disposition-label" role="status" aria-label={compact ? t('assets.usage.zero') : undefined} title={compact ? t('assets.usage.zero') : undefined}>{compact ? <><Film size={11}/><span>0</span></> : t('assets.usage.zero')}</span>
         : <Button variant="ghost" size="sm" type="button" draggable={false} className="text-button" style={{ height: 'auto', justifyContent: 'flex-start', padding: 0, fontSize: 10, whiteSpace: 'normal', textAlign: 'left' }}
           data-testid={`asset-usage-expand-${assetId}`} aria-label={t(open ? 'assets.usage.collapseLabel' : 'assets.usage.expandLabel', { name: assetName, count: uses.length })} aria-expanded={open} aria-controls={listId} disabled={!visible}
           onClick={event => { event.stopPropagation(); admit(() => setExpanded({ scope, usage, assetId, open: !open })); }}>
-          {t(open ? 'assets.usage.collapseSummary' : 'assets.usage.expandSummary', { count: uses.length })}
+          {compact ? <><Film size={11}/><span>{uses.length}</span></> : t(open ? 'assets.usage.collapseSummary' : 'assets.usage.expandSummary', { count: uses.length })}
         </Button>}
     {uses !== null && uses.length > 0 && <ul id={listId} hidden={!open} aria-label={t('assets.usage.locations', { name: assetName })} style={{ listStyle: 'none', margin: 0, padding: 0, minWidth: 0 }}>
       {uses.map(use => <li key={use.clipId}>

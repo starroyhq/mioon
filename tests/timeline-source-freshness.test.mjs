@@ -13,7 +13,7 @@ test('only clips frozen on a version their shot no longer selects are reported',
   const stale = staleClipSources([clip('a', 's1', 'v1'), clip('b', 's1', 'v2'), clip('c', 's2', 'w1'), clip('d', 's3', 'x'), { id: 'e' }, clip('f', 'gone', 'v1')], shots, versions);
   assert.deepEqual([...stale.keys()], ['a']);
   assert.deepEqual(stale.get('a'), { clipId: 'a', shotId: 's1', shotTitle: '01 · 建立场景', versionId: 'v1', versionNumber: 1, selectedVersionId: 'v2', selectedVersionNumber: 2 });
-  assert.equal(staleSourceSentence(stale.get('a')), '镜头「01 · 建立场景」已改选 V2，此片段仍是 V1。');
+  assert.equal(staleSourceSentence(stale.get('a')), '镜头「01 · 建立场景」已改选 V2，此片段仍是 V1');
   // Seeded and library clips carry only the asset; the version is found through it.
   const bySeed = staleClipSources([seeded('p', 'A1'), seeded('q', 'A2'), seeded('r', 'B1'), seeded('s', 'unrelated'), { id: 't' }], shots, versions);
   assert.deepEqual([...bySeed.keys()], ['p']); assert.equal(bySeed.get('p').versionNumber, 1); assert.equal(bySeed.get('p').selectedVersionNumber, 2);

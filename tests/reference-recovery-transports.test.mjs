@@ -19,7 +19,7 @@ import {createClient} from '../packages/client/src/index.mjs';
 import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='reference-recovery-public-synthetic-token';
-const environment=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0',...extra});
+const environment=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
 const clone=value=>JSON.parse(JSON.stringify(value));
 function png(color){
  const chunk=(name,data)=>{const bytes=Buffer.concat([Buffer.from(name),data]),header=Buffer.alloc(4),tail=Buffer.alloc(4);header.writeUInt32BE(data.length);tail.writeUInt32BE(crc32(bytes));return Buffer.concat([header,bytes,tail]);};
@@ -67,11 +67,14 @@ test('real HTTP CLI and official MCP lose attach/detach acknowledgements, retain
   const shot=(await f.raw('shot.create',{projectId:f.project.id,title:'Recovery '+transport.name,prompt:'Synthetic source only'})).data,input=attach(f,shot),op='reference.attach';
   const sent=f.requests.length;f.fault(op);unknown(await transport.call(op,input));assert.equal(f.requests.length,sent+1,'no automatic POST retry');
   const original=JSON.parse(f.observed.at(-1).text).data;assert.ok(original?.edge);const receipt=f.db(db=>db.prepare('SELECT * FROM reference_requests WHERE requestId=?').get(input.requestId));
-  // Deliberate corruption only in disposable fixture; startup reinstalls this
-  // trigger. The production API provides no receipt modification operation.
+  // Deliberate corruption only in this owned fixture. Restore its exact trusted
+  // guard before restart: fixed schema admission must never repair a missing one.
+  const guard=f.db(db=>db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='immutable_reference_responses'").get());assert.equal(typeof guard?.sql,'string');
   f.db(db=>{db.exec('DROP TRIGGER immutable_reference_responses');db.prepare('UPDATE reference_requests SET response=? WHERE requestId=?').run('null',input.requestId);});
   const corruptState=state(f);unknown(await transport.call(op,input));assert.deepEqual(state(f),corruptState);
-  f.db(db=>db.prepare('UPDATE reference_requests SET response=? WHERE requestId=?').run(receipt.response,input.requestId));
+  f.db(db=>{db.prepare('UPDATE reference_requests SET response=? WHERE requestId=?').run(receipt.response,input.requestId);db.exec(guard.sql);
+   assert.deepEqual(db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='immutable_reference_responses'").get(),guard);
+   assert.throws(()=>db.prepare('UPDATE reference_requests SET response=? WHERE requestId=?').run(receipt.response,input.requestId),/reference request responses are immutable/);});
   const source=f.sources[0].asset;f.db(db=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id,JSON.stringify({...source,projectId:f.foreign.id}),source.id));
   const foreignState=state(f);unknown(await transport.call(op,input));assert.deepEqual(state(f),foreignState);
   f.db(db=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id,JSON.stringify(source),source.id));

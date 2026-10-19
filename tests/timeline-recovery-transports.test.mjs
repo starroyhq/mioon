@@ -19,7 +19,7 @@ import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const token='timeline-recovery-public-synthetic-token';
-const environment=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0',...extra});
+const environment=extra=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
 async function command(args,env){
  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.mjs'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';for(const [stream,append] of [[child.stdout,b=>stdout+=b],[child.stderr,b=>stderr+=b]])stream.setEncoding('utf8').on('data',b=>{append(b);if(stdout.length+stderr.length>1024*1024)child.kill('SIGKILL');});
@@ -52,11 +52,14 @@ test('real HTTP, CLI and official MCP retain ambiguous lost-commit errors and re
   const before=f.requests.length;f.fault(operation);envelopeError(await transport.call(operation,input));assert.equal(f.requests.length,before+1,'no POST retry after loss');
   const committed=JSON.parse(f.observed.at(-1).text);assert.equal(committed.ok,true);const original=committed.data;
   const receipt=f.db(db=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(input.requestId));assert.ok(receipt);
-  // Fault injection is confined to this disposable DB. Startup reinstalls the
-  // production immutable-response trigger before the next transport case.
+  // Fault injection is confined to this owned DB. Restore the exact trusted
+  // trigger here; startup correctly refuses incomplete fixed-profile guards.
+  const guard=f.db(db=>db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='immutable_timeline_responses'").get());assert.equal(typeof guard?.sql,'string');
   f.db(db=>{db.exec('DROP TRIGGER immutable_timeline_responses');db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run('null',input.requestId);});
   const damaged=envelopeError(await transport.call(operation,input));assert.ok(!JSON.stringify(damaged).includes('Foreign synthetic recovery'));
-  f.db(db=>db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(receipt.response,input.requestId));
+  f.db(db=>{db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(receipt.response,input.requestId);db.exec(guard.sql);
+   assert.deepEqual(db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='immutable_timeline_responses'").get(),guard);
+   assert.throws(()=>db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(receipt.response,input.requestId),/timeline request responses are immutable/);});
   f.db(db=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id,JSON.stringify({...f.source,projectId:f.foreign.id}),f.source.id));
   envelopeError(await transport.call(operation,input));
   f.db(db=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id,JSON.stringify(f.source),f.source.id));

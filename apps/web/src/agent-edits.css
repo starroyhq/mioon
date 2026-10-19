@@ -1,45 +1,45 @@
 /* Readable immutable diffs live inside the shared right dock, never a modal. */
-.agent-edit-review{margin:12px 0;padding:10px;border:1px solid #52604e;border-radius:8px;background:#151d1b;min-width:0}
+.agent-edit-review{margin:12px 0;padding:10px;border:1px solid var(--wb-line-strong);border-radius:8px;background:var(--wb-card);min-width:0}
 .agent-edit-review>header{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px}
-.agent-edit-review h3,.agent-edit-review h4{margin:0;font-weight:500;font-size:11px;color:#d0ddc5}
-.agent-edit-review>header>span,.agent-edit-controls>span{font-size:10px;color:#9bab9e}
-.agent-edit-review p{font-size:10px;line-height:1.8;color:#adbaae;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}
-.agent-edit-card{padding:10px 0;border-top:1px solid #3d4b40;margin-top:10px}
+.agent-edit-review h3,.agent-edit-review h4{margin:0;font-weight:500;font-size:11px;color:var(--wb-text)}
+.agent-edit-review>header>span,.agent-edit-controls>span{font-size:10px;color:var(--wb-soft)}
+.agent-edit-review p{font-size:10px;line-height:1.8;color:var(--wb-soft);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}
+.agent-edit-card{padding:10px 0;border-top:1px solid var(--wb-line-strong);margin-top:10px}
 .agent-edit-card>h4{display:flex;justify-content:space-between;gap:5px;flex-wrap:wrap}
-.agent-edit-card>h4>span{font-size:10px;color:#aebba5}
-.agent-edit-status{font-size:10px;color:#d9c498;line-height:1.7;margin-top:5px}
-.agent-edit-card[data-status=applied] .agent-edit-status{color:#bcd99e}
-.agent-edit-card[data-status=failed] .agent-edit-status,.agent-edit-card[data-status=cancelled] .agent-edit-status{color:#d8aba0}
+.agent-edit-card>h4>span{font-size:10px;color:var(--wb-soft)}
+.agent-edit-status{font-size:10px;color:var(--wb-warning);line-height:1.7;margin-top:5px}
+.agent-edit-card[data-status=applied] .agent-edit-status{color:var(--wb-soft)}
+.agent-edit-card[data-status=failed] .agent-edit-status,.agent-edit-card[data-status=cancelled] .agent-edit-status{color:var(--wb-danger)}
 .agent-edit-controls{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:8px}
 .agent-edit-controls .button{font-size:10px;min-height:28px;height:auto;padding:5px 7px;white-space:normal;line-height:1.5;text-align:left}
-.agent-edit-controls [aria-pressed=true]{background:#344332;color:#dbe9cc}
+.agent-edit-controls [aria-pressed=true]{background:var(--wb-selected);color:var(--wb-text)}
 .agent-edit-diff{min-width:0;margin-top:8px;max-height:340px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .agent-edit-diff>section+section{margin-top:10px}
 .agent-edit-diff h4{font-size:10px;margin-bottom:6px}
-.agent-edit-diff h4 span{color:#91a291;font-weight:400}
-.agent-edit-diff-side{padding:6px;border-left:2px solid #7c6459;border-radius:3px;background:#201c1b;min-width:0}
-.agent-edit-diff-side.is-after{border-color:#7a916c;background:#1b251d}
-.agent-edit-diff-side>span{font-size:10px;color:#a9b3a8}
-.agent-edit-diff-side>pre,.agent-edit-selected pre{font-family:inherit;font-size:10px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;color:#d0d9cb;margin:3px 0;min-width:0}
-.agent-edit-diff-arrow{color:#8ea285;font-size:11px;text-align:center}
-.agent-edit-review .agent-edit-notice{color:#e1c08e}
-.agent-edit-selected{padding:8px;border:1px solid #52604e;border-radius:6px;margin-bottom:9px;min-width:0}
-.agent-edit-selected>strong{font-size:10px;font-weight:500;color:#c9d8be}
-.agent-edit-selected>p,.agent-edit-selected>span{font-size:10px;line-height:1.7;color:#b1bca9;overflow-wrap:anywhere;margin:4px 0}
+.agent-edit-diff h4 span{color:var(--wb-soft);font-weight:400}
+.agent-edit-diff-side{padding:6px;border-left:2px solid var(--wb-line-strong);border-radius:3px;background:var(--wb-card);min-width:0}
+.agent-edit-diff-side.is-after{border-color:var(--wb-line-strong);background:var(--wb-card)}
+.agent-edit-diff-side>span{font-size:10px;color:var(--wb-soft)}
+.agent-edit-diff-side>pre,.agent-edit-selected pre{font-family:inherit;font-size:10px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;color:var(--wb-text);margin:3px 0;min-width:0}
+.agent-edit-diff-arrow{color:var(--wb-soft);font-size:11px;text-align:center}
+.agent-edit-review .agent-edit-notice{color:var(--wb-warning)}
+.agent-edit-selected{padding:8px;border:1px solid var(--wb-line-strong);border-radius:6px;margin-bottom:9px;min-width:0}
+.agent-edit-selected>strong{font-size:10px;font-weight:500;color:var(--wb-text)}
+.agent-edit-selected>p,.agent-edit-selected>span{font-size:10px;line-height:1.7;color:var(--wb-soft);overflow-wrap:anywhere;margin:4px 0}
 .agent-edit-selected-text{max-height:160px;overflow-y:auto;overscroll-behavior:contain;padding:5px 0}
-.agent-edit-selected-text>span{font-size:10px;color:#9dae92}
+.agent-edit-selected-text>span{font-size:10px;color:var(--wb-soft)}
 .agent-edit-selected pre{font-size:10px}
 
 /* A proposal needs a readable review viewport even when the composer is tall.
    The existing outer dock scroll keeps the full consent and composer reachable. */
 .agent-workspace .agent-chat-scroll:has(.agent-edit-card){min-height:clamp(320px,50dvh,480px);flex-basis:clamp(320px,50dvh,480px);flex-shrink:0}
-.agent-edit-selected-details>p{font-size:10px;line-height:1.7;color:#b1bca9;overflow-wrap:anywhere;margin:4px 0}
+.agent-edit-selected-details>p{font-size:10px;line-height:1.7;color:var(--wb-soft);overflow-wrap:anywhere;margin:4px 0}
 .agent-edit-selected-disclosure>.agent-chat-details-trigger{font-size:10px;line-height:1.7}
 
 .agent-timeline-diff .agent-edit-diff-side + .agent-edit-diff-side{margin-top:7px}
-.agent-timeline-diff .agent-edit-diff-side p{margin:2px 0;font-variant-numeric:tabular-nums;color:#d0d9cb}
-.agent-timeline-intervals{max-height:130px;overflow:auto;overscroll-behavior:contain;padding:5px 8px;background:#17201b;border-radius:4px;font-variant-numeric:tabular-nums}
+.agent-timeline-diff .agent-edit-diff-side p{margin:2px 0;font-variant-numeric:tabular-nums;color:var(--wb-text)}
+.agent-timeline-intervals{max-height:130px;overflow:auto;overscroll-behavior:contain;padding:5px 8px;background:var(--wb-card);border-radius:4px;font-variant-numeric:tabular-nums}
 .agent-timeline-intervals ol{margin:0;padding-left:19px;columns:2;column-gap:16px}
-.agent-timeline-intervals li{font-size:10px;line-height:1.8;break-inside:avoid;color:#c1cdb7}
-.agent-timeline-selected [data-testid=agent-timeline-context-blocked],.agent-edit-card [data-testid=agent-timeline-approval-blocked]{color:#e1c08e}
+.agent-timeline-intervals li{font-size:10px;line-height:1.8;break-inside:avoid;color:var(--wb-text)}
+.agent-timeline-selected [data-testid=agent-timeline-context-blocked],.agent-edit-card [data-testid=agent-timeline-approval-blocked]{color:var(--wb-warning)}
 @media(max-width:420px){.agent-timeline-intervals ol{columns:1}}

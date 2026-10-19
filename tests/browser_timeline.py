@@ -4,7 +4,7 @@ A route abort intentionally loses one accepted response to exercise exact replay
 """
 import json, os, pathlib, shutil, socket, subprocess, tempfile, time, urllib.request
 from playwright.sync_api import sync_playwright, expect
-from browser_workbench_actions import workbench_action
+from browser_workbench_actions import workbench_action, close_task_center, select_asset_kind
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=pathlib.Path(os.environ.get('MIOON_BROWSER_EVIDENCE',str(ROOT/'evidence/v3-browser'))); OUT.mkdir(parents=True,exist_ok=True)
 TOKEN='v2-browser-local-test-token-no-live-provider'
@@ -26,7 +26,7 @@ def poll(fn,predicate,seconds=60):
 def start(data):
     s=socket.socket();s.bind(('127.0.0.1',0));port=s.getsockname()[1];s.close()
     handle=open(OUT/('server-'+str(port)+'.log'),'w')
-    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'MIOON_TOKEN':TOKEN,'MIOON_DATA_DIR':str(data),'MIOON_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':'','RUNWAY_MAX_GENERATIONS':'0'},stdout=handle,stderr=subprocess.STDOUT)
+    proc=subprocess.Popen(['node','server/index.mjs'],cwd=ROOT,env={**os.environ,'PORT':str(port),'MIOON_TOKEN':TOKEN,'MIOON_DATA_DIR':str(data),'MIOON_ENABLE_LIVE_PROVIDER':'0','RUNWAYML_API_SECRET':''},stdout=handle,stderr=subprocess.STDOUT)
     base=f'http://127.0.0.1:{port}'
     for _ in range(100):
         if proc.poll() is not None:raise RuntimeError('Backend exited before health')
@@ -46,9 +46,9 @@ def login(page,base,pid):
     page.get_by_role('button',name='进入工作台',exact=True).click()
     expect(page.get_by_test_id('workbench')).to_be_visible(timeout=15000)
 def dismiss(page):
-    for name in ['关闭提示','关闭生成任务']:
-        button=page.get_by_role('button',name=name,exact=True)
-        if button.is_visible():button.click()
+    close_task_center(page)
+    toast=page.get_by_test_id('global-toast')
+    if toast.is_visible():toast.get_by_role('button',name='关闭提示',exact=True).click()
 def screenshot(page,name):page.screenshot(path=str(OUT/name),full_page=True)
 def drag(page,source,target,tx,ty=None,source_x=None):
     source.scroll_into_view_if_needed(); a=source.bounding_box(); b=target.bounding_box(); assert a and b
@@ -68,8 +68,8 @@ with sync_playwright() as p:
         login(page,base,pid)
         state=lambda:rpc(base,'project.get',{'projectId':pid})
         initial=state();tl=initial['timeline'];assert len(tl['tracks'])==3 and len(tl['clips'])==5
-        for label in ['01 素材库','画板工作区','03 属性']:
-            expect(page.get_by_label(label,exact=True)).to_be_visible()
+        for test_id in ['asset-panel','canvas-drop-zone','dock-inspector']:
+            expect(page.get_by_test_id(test_id)).to_be_visible()
         page.get_by_test_id('fit-canvas').click();page.wait_for_timeout(500)
         screenshot(page,'01-canvas-regions.png')
         workbench_action(page, 'region-guide-toggle').click();expect(page.get_by_test_id('region-guide')).to_be_visible();screenshot(page,'02-region-guide.png');page.get_by_role('button',name='关闭区域说明').click()
@@ -85,12 +85,12 @@ with sync_playwright() as p:
         playhead=int(page.get_by_test_id('timeline-playhead').input_value());assert playhead>94
         log('V2-B2: true timeline render decodes; playhead seeks video and playback advances playhead',playback=played,playhead=playhead)
         assets=initial['assets'];audio=next(a for a in assets if a['mimeType'].startswith('audio/'));image=next(a for a in assets if a['mimeType'].startswith('image/'))
-        page.get_by_test_id('asset-panel').get_by_role('tab',name='音频',exact=True).click()
+        select_asset_kind(page,'音频')
         page.get_by_role('button',name='预览 '+audio['name'],exact=True).click();player=page.get_by_test_id('source-preview-audio');expect(player).to_be_visible();player.evaluate('(v)=>v.play()');page.wait_for_timeout(250);assert player.evaluate('(v)=>v.currentTime')>0;player.evaluate('(v)=>v.pause()')
         page.get_by_test_id('asset-upload').set_input_files(str(ROOT/'examples/timeline-synthetic/sound-bed.wav'))
         imported=poll(state,lambda v:len(v['assets'])==len(assets)+1);assert imported['assets'][-1]['mimeType']=='audio/wav'
         dismiss(page);log('V2-B3: audio library filter, actual source playback and WAV browser import work')
-        page.get_by_test_id('asset-panel').get_by_role('tab',name='图片',exact=True).click();page.get_by_test_id('workspace-canvas').click()
+        select_asset_kind(page,'图片');page.get_by_test_id('workspace-canvas').click()
         before_nodes=len(state()['nodes']);target=page.get_by_test_id('canvas-drop-zone');box=target.bounding_box()
         drag(page,page.get_by_test_id('asset-card-'+image['id']).locator('.asset-card-meta'),target,box['width']*.65,box['height']*.45)
         poll(state,lambda v:len(v['nodes'])==before_nodes+1)
@@ -99,7 +99,7 @@ with sync_playwright() as p:
         # clip from V2 to it; actual HTML5 pointer events carry the app's drag payload.
         page.get_by_test_id('workspace-editing').click()
         expect(page.get_by_test_id('timeline-panel')).to_be_visible()
-        before_tracks=len(state()['timeline']['tracks']);page.get_by_test_id('add-video-track').click()
+        before_tracks=len(state()['timeline']['tracks']);workbench_action(page,'add-video-track').click()
         current=poll(state,lambda v:len(v['timeline']['tracks'])==before_tracks+1);newtrack=max(current['timeline']['tracks'],key=lambda t:t['orderIndex'])
         lane=page.get_by_test_id('track-lane-'+newtrack['id']);expect(lane).to_be_visible()
         before_clips=len(current['timeline']['clips']);drag(page,page.get_by_test_id('asset-card-'+image['id']).locator('.asset-card-meta'),lane,20)
@@ -127,7 +127,7 @@ with sync_playwright() as p:
         current=poll(state,lambda v:next(c for c in v['timeline']['clips'] if c['id']==baseclip['id'])['sourceInFrame']==30)
         assert next(c for c in current['timeline']['clips'] if c['id']==baseclip['id'])['durationFrames']==90
         dismiss(page);page.get_by_test_id('preview-timeline-mode').click();expect(page.get_by_test_id('preview-stale')).to_be_visible();screenshot(page,'04-stale-preview-and-trim.png')
-        page.get_by_test_id('toggle-assets').click();page.get_by_test_id('reopen-assets').click();page.get_by_test_id('toggle-timeline').click();page.get_by_test_id('toggle-timeline').click()
+        page.get_by_test_id('toggle-assets').click();page.get_by_test_id('reopen-assets').click();page.get_by_test_id('toggle-timeline').click();page.get_by_test_id('reopen-timeline').click()
         expect(page.get_by_test_id('timeline-clip-'+baseclip['id'])).to_be_visible()
         log('V2-B6: frame-precise trim and source offset save; mode Cancel/collapsed panels retain unsaved edits; stale render is explicit')
         # Same-track overlap rejection must not mutate the authoritative timeline.
@@ -139,14 +139,14 @@ with sync_playwright() as p:
         audio_track=next(t for t in before['tracks'] if t['kind']=='audio')
         page.get_by_test_id('track-lane-'+audio_track['id']).scroll_into_view_if_needed()
         drag(page,page.get_by_test_id('timeline-clip-'+baseclip['id']),page.get_by_test_id('track-lane-'+audio_track['id']),8*76+10,source_x=10)
-        expect(page.locator('.toast')).to_contain_text('兼容',timeout=5000);assert state()['timeline']==before;dismiss(page)
+        expect(page.get_by_test_id('global-toast')).to_contain_text('兼容',timeout=5000);assert state()['timeline']==before;dismiss(page)
         log('V2-B7: overlap and incompatible cross-track drops visibly reject with unchanged timeline')
         # Picture and sound controls are distinct real persisted operations.
         vtrack=next(t for t in before['tracks'] if t['id']==baseclip['trackId'])
-        page.get_by_role('switch',name='显示 '+vtrack['name'],exact=True).click();poll(state,lambda v:next(t for t in v['timeline']['tracks'] if t['id']==vtrack['id'])['hidden'])
-        page.get_by_role('switch',name='静音 '+audio_track['name'],exact=True).click();poll(state,lambda v:next(t for t in v['timeline']['tracks'] if t['id']==audio_track['id'])['muted'])
-        page.get_by_role('switch',name='显示 '+vtrack['name'],exact=True).click();poll(state,lambda v:not next(t for t in v['timeline']['tracks'] if t['id']==vtrack['id'])['hidden'])
-        page.get_by_role('switch',name='静音 '+audio_track['name'],exact=True).click();poll(state,lambda v:not next(t for t in v['timeline']['tracks'] if t['id']==audio_track['id'])['muted'])
+        page.get_by_role('button',name='显示 '+vtrack['name'],exact=True).click();poll(state,lambda v:next(t for t in v['timeline']['tracks'] if t['id']==vtrack['id'])['hidden'])
+        page.get_by_role('button',name='静音 '+audio_track['name'],exact=True).click();poll(state,lambda v:next(t for t in v['timeline']['tracks'] if t['id']==audio_track['id'])['muted'])
+        page.get_by_role('button',name='显示 '+vtrack['name'],exact=True).click();poll(state,lambda v:not next(t for t in v['timeline']['tracks'] if t['id']==vtrack['id'])['hidden'])
+        page.get_by_role('button',name='静音 '+audio_track['name'],exact=True).click();poll(state,lambda v:not next(t for t in v['timeline']['tracks'] if t['id']==audio_track['id'])['muted'])
         log('V2-B8: separate track picture visibility and mute controls persist')
         # Lose one accepted mutation response; refresh and recover exact request.
         lost=[];count=len(state()['timeline']['tracks'])
@@ -155,23 +155,27 @@ with sync_playwright() as p:
             if body and body.get('operation')=='timeline.track.add' and not lost:
                 lost.append(body);route.fetch();route.abort('failed')
             else:route.continue_()
-        page.route('**/api/rpc',lose);page.get_by_test_id('add-audio-track').click();poll(state,lambda v:len(v['timeline']['tracks'])==count+1)
+        page.route('**/api/rpc',lose);workbench_action(page,'add-audio-track').click();poll(state,lambda v:len(v['timeline']['tracks'])==count+1)
         expect(page.get_by_test_id('pending-submission')).to_be_visible();page.unroute('**/api/rpc',lose)
         page.reload();expect(page.get_by_test_id('workbench')).to_be_visible();workbench_action(page, 'jobs-button').click();expect(page.get_by_test_id('resume-pending')).to_be_visible();page.get_by_test_id('resume-pending').click();expect(page.get_by_test_id('pending-submission')).to_have_count(0)
         assert len(state()['timeline']['tracks'])==count+1 and len(lost)==1;dismiss(page)
         log('V2-B9: accepted mutation response loss survives reload; exact replay creates only one track',requestId=lost[0]['input']['requestId'])
-        before_exports=len(state()['exports']);page.get_by_test_id('timeline-render-preview').click()
+        before_exports=len(state()['exports']);workbench_action(page,'timeline-render-preview').click()
         rendered=poll(state,lambda v:len(v['exports'])==before_exports+1 and v['exports'][-1]['status']=='succeeded',120)
         expect(page.get_by_test_id('timeline-preview-video')).to_be_visible(timeout=15000);expect(page.get_by_test_id('preview-stale')).to_have_count(0)
         current=rendered['timeline'];render=rendered['exports'][-1];assert render['timelineRevision']==current['revision']
         v=page.get_by_test_id('timeline-preview-video');v.evaluate('(v)=>{v.muted=true;return v.play()}');page.wait_for_timeout(350);assert v.evaluate('(v)=>v.currentTime')>0;v.evaluate('(v)=>v.pause()')
         page.get_by_test_id('timeline-playhead').fill('180');page.get_by_test_id('timeline-playhead').press('Tab');poll(lambda:v.evaluate('(v)=>v.currentTime'),lambda x:abs(x-6)<.1)
         screenshot(page,'06-updated-multitrack-preview.png');log('V2-B10: render updated timeline, real playback and seek from exact frame succeed',revision=current['revision'])
-        before_exports=len(rendered['exports']);workbench_action(page, 'export-timeline').click();expect(page.get_by_role('dialog',name='导出记录')).to_be_visible()
+        before_exports=len(rendered['exports']);workbench_action(page, 'export-timeline').click();expect(page.get_by_test_id('timeline-export-dialog')).to_be_visible()
+        page.get_by_test_id('preflight-check').click();expect(page.get_by_test_id('export-preflight')).to_have_attribute('data-phase','ready',timeout=45000)
+        assert len(state()['exports'])==before_exports, 'Preflight must not dispatch an export'
+        page.get_by_test_id('export-workflow-next').click();page.get_by_test_id('export-workflow-next').click();page.get_by_test_id('preflight-export').click()
         final=poll(state,lambda v:len(v['exports'])==before_exports+1 and v['exports'][-1]['status']=='succeeded',120)
+        page.get_by_test_id('delivery-page-history').click()
         downloads=page.get_by_test_id('download-export');expect(downloads.first).to_be_visible(timeout=10000)
         with page.expect_download() as info:downloads.first.click()
-        info.value.save_as(str(OUT/'browser-timeline-export.mp4'));screenshot(page,'07-timeline-export-ready.png');page.get_by_role('button',name='关闭对话框').click();dismiss(page)
+        info.value.save_as(str(OUT/'browser-timeline-export.mp4'));screenshot(page,'07-timeline-export-ready.png');page.get_by_test_id('timeline-export-dialog').get_by_role('button',name='关闭',exact=True).click();dismiss(page)
         assert final['exports'][-1]['mode']=='timeline' and final['exports'][-1]['purpose']=='export'
         log('V2-B11: final timeline export from actual UI downloads successfully',exportId=final['exports'][-1]['id'],durationFrames=final['timeline']['durationFrames'])
         before=state()['timeline'];page.reload();expect(page.get_by_test_id('timeline-panel')).to_be_visible();assert state()['timeline']==before
@@ -190,6 +194,7 @@ with sync_playwright() as p:
         collapse=page.get_by_role('button',name='收起分镜',exact=True)
         if collapse.is_visible():collapse.click()
         page.get_by_test_id('fit-canvas').click();page.wait_for_timeout(500);screenshot(page,'deliverable-canvas.png')
+        page.get_by_test_id('workspace-editing').click()
         overlay=next(c for c in manifest['preview']['snapshot']['timeline']['clips'] if c.get('rect',{}).get('width')==280)
         page.get_by_test_id('timeline-clip-'+overlay['id']).click();page.get_by_test_id('preview-timeline-mode').click();showcase_video=page.get_by_test_id('timeline-preview-video');showcase_video.evaluate('(v)=>{v.muted=true;return v.play()}');poll(lambda:showcase_video.evaluate('(v)=>v.readyState'),lambda r:r>=3);showcase_video.evaluate('(v)=>v.pause()');page.get_by_test_id('timeline-playhead').fill('90');page.get_by_test_id('timeline-playhead').press('Tab')
         poll(lambda:page.get_by_test_id('timeline-preview-video').evaluate('(v)=>({t:v.currentTime,ready:v.readyState,seeking:v.seeking})'),lambda v:abs(v['t']-3)<.1 and v['ready']>=3 and not v['seeking'])

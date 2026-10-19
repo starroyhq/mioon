@@ -7,12 +7,17 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,createHash} from 'node:crypto';
 import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.mjs';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.mjs';
+import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspace-opacity-legacy.ts';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-function fixture(t){
+function fixture(t,{historical40=false}={}){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-restore-capture-'));
  const source=path.join(base,'workspace'),destination=path.join(base,'backup');
- const store=openStore(source);store.close();
+ if(historical40){
+  fs.mkdirSync(source,{mode:0o700});const db=new DatabaseSync(path.join(source,'workbench.sqlite'));
+  try{db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;');initializeOpacityLegacyThrough40(db);}finally{db.close();}
+  fs.chmodSync(path.join(source,'workbench.sqlite'),0o600);
+ }else{const store=openStore(source);store.close();}
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  return {base,source,destination,file:path.join(source,'workbench.sqlite')};
 }
@@ -38,8 +43,8 @@ test('partial restore evidence cannot pass backup capture as an ordinary workspa
  assert.equal(fs.existsSync(f.destination),false);assert.deepEqual(fs.readFileSync(f.file),bytes);
 });
 
-test('ordinary capture still retains unknown non-restoration data and creates a verifiable original backup',async t=>{
- const f=fixture(t),db=new DatabaseSync(f.file);
+test('frozen ordinary40 capture retains unrelated unknown data without granting current-schema restoration',async t=>{
+ const f=fixture(t,{historical40:true}),db=new DatabaseSync(f.file);
  try{db.exec("CREATE TABLE unrelated_private_note(id INTEGER PRIMARY KEY,note TEXT); INSERT INTO unrelated_private_note VALUES(1,'synthetic retained note');");}finally{db.close();}
  const bytes=fs.readFileSync(f.file),created=await createWorkspaceBackup({source:f.source,destination:f.destination});
  assert.equal(created.databaseSchemaVersion,40);

@@ -7,7 +7,7 @@ import {workspaceRestoreError} from './workspace-restore-policy.mjs';
 // Seal acceptance identity independently of mutable status/output fields. The
 // original request hash separately binds optional caller fields absent here.
 export function restoreExportIdentity(value){
- return restoreDigest(Object.fromEntries(['id','projectId','requestId','mode','purpose','timelineRevision','orderedVersionIds','snapshot','createdAt'].filter(key=>Object.hasOwn(value,key)).map(key=>[key,value[key]])));
+ return restoreDigest(Object.fromEntries(['id','projectId','requestId','mode','purpose','timelineRevision','orderedVersionIds','snapshot','createdAt','outputGeometry'].filter(key=>Object.hasOwn(value,key)).map(key=>[key,value[key]])));
 }
 export function bindRestoredExport(store,operation,input,value,requestHash){
  const restored=getWorkspaceRestoreContext(store);if(!restored)return;

@@ -1,2 +1,2 @@
-.timeline-clip-loudness{min-width:0;max-width:100%;margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#35403f);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.timeline-clip-loudness{min-width:0;max-width:100%;margin-top:12px;padding-top:10px;border-top:1px solid var(--border,var(--wb-line-strong));font-size:12px;line-height:1.6;overflow-wrap:anywhere}
 .timeline-clip-loudness .export-sample-peak-actions>button{height:auto;min-height:32px;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}

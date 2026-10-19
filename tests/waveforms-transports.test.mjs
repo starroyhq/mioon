@@ -26,7 +26,7 @@ const operations = ['asset.waveform.request', 'asset.waveform.get'];
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const toolName = operation => operation.replaceAll('.', '_');
 const PRIVATE = 'WAVEFORM_PRIVATE_FIXTURE_MARKER';
-const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', ...extra});
+const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra});
 const noPrivate = value => {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
   for (const secret of [TOKEN, PRIVATE, 'Bearer ']) assert.ok(!text.includes(secret), 'public result omits fixture-private fields and credentials');

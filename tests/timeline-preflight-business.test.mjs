@@ -133,7 +133,7 @@ test('playlist-shaped bytes cannot make the restricted metadata probe contact a 
 });
 
 test('shared renderer validator retains precise legacy messages and input preparation is uncapped by default',async t=>{
- assert.throws(()=>validateTimeline({},new Map()),{code:'INVALID_TIMELINE_SNAPSHOT',message:'Timeline output must be 720×1280 at 30 fps'});
+ assert.throws(()=>validateTimeline({},new Map()),{code:'INVALID_TIMELINE_SNAPSHOT',message:'Timeline output must match a supported 720 or 1080 preset at 30 fps'});
  const f=await fixture(t);await f.seed();const snapshot=readTimelinePreflightSnapshot(f.store,f.project.id).snapshot;let probes=0;
  const assets=await prepareTimelineInputs(snapshot,{root:f.root,projectId:f.project.id,readAsset:id=>readOwnedTimelineAsset(f.store.db,f.project.id,id),probe:async()=>{probes++;return meta();}});
  assert.equal(assets.size,1);assert.equal(probes,1);assert.equal(assets.get(f.assetValue.id).hasAudio,true);

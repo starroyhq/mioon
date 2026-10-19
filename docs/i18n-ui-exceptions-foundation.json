@@ -67,7 +67,7 @@
     {
       "file": "apps/desktop/src/project-window-recovery.ts",
       "category": "cjk-source",
-      "hash": "91280b43e3ff580ba9c536e5a227df6ce16ded65969b335623293797e05989d8",
+      "hash": "cb7f8e44a0c0937cda52568c2bbcc93194e2a5ef86192a3a63ef8eb615a583bf",
       "owner": "foundation",
       "reason": "Internal BACKEND_START_EXITED diagnostic. main.mjs supplies localized native startup/recovery primary messages; it does not substitute raw exception text into primary controls."
     },
@@ -102,21 +102,21 @@
     {
       "file": "apps/desktop/src/supervisor.mjs",
       "category": "cjk-source",
-      "hash": "7d2f0490415e9ebf2bc233ccadd5b0b002d3d6df9ed3f4cd230eb70ddbf15e57",
+      "hash": "24125cde4ce0fb06b517c547a2d2aacaa032db4ad45f98530a50dde4514c8404",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
       "file": "apps/desktop/src/supervisor.mjs",
       "category": "cjk-source",
-      "hash": "de63a9b84bb7a095c3766e42101b36577137bfb77ecbf5fa392681d0b7fed7ff",
+      "hash": "bba25bac41c5905e8ba87b53bcfb4d3ee309092c3a3bee6a6fc369081aae631f",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
     {
       "file": "apps/desktop/src/supervisor.mjs",
       "category": "cjk-source",
-      "hash": "a161a5dff86b23f8e7ef31f67dd3ef7b1ab98b37e5d985c9007e9682bac95296",
+      "hash": "e0543fa08068c83a5e7b67b48fa9438a842d5ab79d02871fde3a0042492e8146",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },
@@ -144,7 +144,7 @@
     {
       "file": "apps/desktop/src/supervisor.mjs",
       "category": "cjk-source",
-      "hash": "e24b89d4739e49dda1a6bc9a88719f919a313916a1036523063880e87f94d5df",
+      "hash": "f23696139cd15595d943b19342754376b79d1a988ce8376c32fa453240344942",
       "owner": "foundation",
       "reason": "Preserved internal lifecycle diagnostic. main.mjs backendFailed/quitFailed/fatal select localized native.* summaries, and fatal raw details use native.originalDiagnostic. No user-owned backend lifecycle source is changed by localization."
     },

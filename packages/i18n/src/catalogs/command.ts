@@ -19,10 +19,10 @@ export const commandMessages = {
     "ja": "呼び出し元が指定する固定 requestId。クライアントは生成しません"
   },
   "cli.option.workspace-origin": {
-    "zh-Hans": "明确指定恢复工作区的 UUID，保留在 input 之外并固定于本次调用；使用 workspace restore inspect 检查。恢复旧请求时绝不能替换为新来源。",
-    "zh-Hant": "明確指定還原工作區的 UUID，保留在 input 之外並固定於本次呼叫；使用 workspace restore inspect 檢查。恢復舊請求時絕不能替換為新來源。",
-    "en": "Explicit restored workspace UUID, kept outside input and pinned for this invocation; inspect with workspace restore inspect. Never substitute a new origin when recovering an old request.",
-    "ja": "復元したワークスペースの UUID を明示します。input に含めず、この呼び出しに固定します。workspace restore inspect で確認してください。古いリクエストの復旧時に新しいオリジンに置き換えないでください。"
+    "zh-Hans": "明确指定恢复工作区的 UUID，保留在 input 之外并固定于本次调用；使用 workspace restore inspect 检查。恢复旧请求时绝不能替换为新来源",
+    "zh-Hant": "明確指定還原工作區的 UUID，保留在 input 之外並固定於本次呼叫；使用 workspace restore inspect 檢查。恢復舊請求時絕不能替換為新來源",
+    "en": "Explicit restored workspace UUID, kept outside input and pinned for this invocation; inspect with workspace restore inspect. Never substitute a new origin when recovering an old request",
+    "ja": "復元したワークスペースの UUID を明示します。input に含めず、この呼び出しに固定します。workspace restore inspect で確認してください。古いリクエストの復旧時に新しいオリジンに置き換えないでください"
   },
   "cli.option.file": {
     "zh-Hans": "仅限 asset/lut import：读取本地字节，绝不发送路径；LUT .cube 文件上限为 7 MiB",
@@ -73,10 +73,10 @@ export const commandMessages = {
     "ja": "JSON 形式のバージョン情報"
   },
   "cli.option.locale": {
-    "zh-Hans": "仅用于帮助与诊断文字：zh-Hans、zh-Hant、en、ja。不指定则保留原始输出；不保存偏好、不重放操作。",
-    "zh-Hant": "僅用於說明與診斷文字：zh-Hans、zh-Hant、en、ja。不指定則保留原始輸出；不儲存偏好、不重放操作。",
-    "en": "Human-readable help and diagnostics only: zh-Hans, zh-Hant, en, ja. Omission preserves legacy output; no saved preference or action replay.",
-    "ja": "ヘルプと診断の文章のみ：zh-Hans、zh-Hant、en、ja。省略すると従来の出力を維持します。設定の保存や操作の再実行は行いません。"
+    "zh-Hans": "仅用于帮助与诊断文字：zh-Hans、zh-Hant、en、ja。不指定则保留原始输出；不保存偏好、不重放操作",
+    "zh-Hant": "僅用於說明與診斷文字：zh-Hans、zh-Hant、en、ja。不指定則保留原始輸出；不儲存偏好、不重放操作",
+    "en": "Human-readable help and diagnostics only: zh-Hans, zh-Hant, en, ja. Omission preserves legacy output; no saved preference or action replay",
+    "ja": "ヘルプと診断の文章のみ：zh-Hans、zh-Hant、en、ja。省略すると従来の出力を維持します。設定の保存や操作の再実行は行いません"
   },
   "cli.connection.desktop": {
     "zh-Hans": "MIOON_CONNECTION_FILE：Electron 描述文件，每次请求重新读取",
@@ -97,58 +97,58 @@ export const commandMessages = {
     "ja": "MIOON_TOKEN：環境変数で明示するトークン。--token オプションはありません"
   },
   "cli.safety": {
-    "zh-Hans": "不自动提交或重试，不虚构请求 ID；Ctrl+C 或超时不取消远端任务。响应不确定时，只重放完全相同的幂等请求。",
-    "zh-Hant": "不自動提交或重試，不虛構請求 ID；Ctrl+C 或逾時不取消遠端任務。回應不確定時，只重放完全相同的冪等請求。",
-    "en": "No automatic submit/retry, no invented request IDs, no remote cancellation on Ctrl+C or timeout. Replay exact idempotent requests after an uncertain response.",
-    "ja": "自動送信・再試行やリクエスト ID の生成は行いません。Ctrl+C やタイムアウトでリモートタスクはキャンセルされません。応答が不確かな場合は、同一の冪等リクエストを再送してください。"
+    "zh-Hans": "不自动提交或重试，不虚构请求 ID；Ctrl+C 或超时不取消远端任务。响应不确定时，只重放完全相同的幂等请求",
+    "zh-Hant": "不自動提交或重試，不虛構請求 ID；Ctrl+C 或逾時不取消遠端任務。回應不確定時，只重放完全相同的冪等請求",
+    "en": "No automatic submit/retry, no invented request IDs, no remote cancellation on Ctrl+C or timeout. Replay exact idempotent requests after an uncertain response",
+    "ja": "自動送信・再試行やリクエスト ID の生成は行いません。Ctrl+C やタイムアウトでリモートタスクはキャンセルされません。応答が不確かな場合は、同一の冪等リクエストを再送してください"
   },
   "cli.error.invalidOption": {
-    "zh-Hans": "选项无效。使用 --help 查看支持的参数。",
-    "zh-Hant": "選項無效。使用 --help 查看支援的參數。",
-    "en": "Invalid option. Use --help for supported arguments.",
-    "ja": "無効なオプションです。使用可能な引数は --help で確認してください。"
+    "zh-Hans": "选项无效。使用 --help 查看支持的参数",
+    "zh-Hant": "選項無效。使用 --help 查看支援的參數",
+    "en": "Invalid option. Use --help for supported arguments",
+    "ja": "無効なオプションです。使用可能な引数は --help で確認してください"
   },
   "cli.error.duplicateOption": {
-    "zh-Hans": "选项 --{name} 只能提供一次。",
-    "zh-Hant": "選項 --{name} 只能提供一次。",
-    "en": "Option --{name} can only be supplied once.",
-    "ja": "オプション --{name} は一度だけ指定できます。"
+    "zh-Hans": "选项 --{name} 只能提供一次",
+    "zh-Hant": "選項 --{name} 只能提供一次",
+    "en": "Option --{name} can only be supplied once",
+    "ja": "オプション --{name} は一度だけ指定できます"
   },
   "cli.error.switchValue": {
-    "zh-Hans": "选项 --{name} 不接受值。",
-    "zh-Hant": "選項 --{name} 不接受值。",
-    "en": "Option --{name} does not take a value.",
-    "ja": "オプション --{name} に値は指定できません。"
+    "zh-Hans": "选项 --{name} 不接受值",
+    "zh-Hant": "選項 --{name} 不接受值",
+    "en": "Option --{name} does not take a value",
+    "ja": "オプション --{name} に値は指定できません"
   },
   "cli.error.unsupportedOption": {
-    "zh-Hans": "不支持此选项。请使用 --help；凭据必须放在私有连接文件中，绝不能放入命令行参数。",
-    "zh-Hant": "不支援此選項。請使用 --help；憑證必須放在私有連線檔案中，絕不能放入命令列參數。",
-    "en": "Unsupported option. Use --help; credentials belong in private connection files, never command-line arguments.",
-    "ja": "未対応のオプションです。--help を確認してください。認証情報は非公開の接続ファイルに保存し、コマンドライン引数に含めないでください。"
+    "zh-Hans": "不支持此选项。请使用 --help；凭据必须放在私有连接文件中，绝不能放入命令行参数",
+    "zh-Hant": "不支援此選項。請使用 --help；憑證必須放在私有連線檔案中，絕不能放入命令列參數",
+    "en": "Unsupported option. Use --help; credentials belong in private connection files, never command-line arguments",
+    "ja": "未対応のオプションです。--help を確認してください。認証情報は非公開の接続ファイルに保存し、コマンドライン引数に含めないでください"
   },
   "cli.error.missingValue": {
-    "zh-Hans": "选项 --{name} 需要一个值。",
-    "zh-Hant": "選項 --{name} 需要一個值。",
-    "en": "Option --{name} requires a value.",
-    "ja": "オプション --{name} には値が必要です。"
+    "zh-Hans": "选项 --{name} 需要一个值",
+    "zh-Hant": "選項 --{name} 需要一個值",
+    "en": "Option --{name} requires a value",
+    "ja": "オプション --{name} には値が必要です"
   },
   "cli.error.locale": {
-    "zh-Hans": "--locale 必须为 zh-Hans、zh-Hant、en、ja 之一。",
-    "zh-Hant": "--locale 必須為 zh-Hans、zh-Hant、en、ja 之一。",
-    "en": "--locale must be one of zh-Hans, zh-Hant, en, ja.",
-    "ja": "--locale は zh-Hans、zh-Hant、en、ja のいずれかで指定してください。"
+    "zh-Hans": "--locale 必须为 zh-Hans、zh-Hant、en、ja 之一",
+    "zh-Hant": "--locale 必須為 zh-Hans、zh-Hant、en、ja 之一",
+    "en": "--locale must be one of zh-Hans, zh-Hant, en, ja",
+    "ja": "--locale は zh-Hans、zh-Hant、en、ja のいずれかで指定してください"
   },
   "cli.error.summary": {
-    "zh-Hans": "命令未能完成。",
-    "zh-Hant": "命令未能完成。",
-    "en": "The command could not be completed.",
-    "ja": "コマンドを完了できませんでした。"
+    "zh-Hans": "命令未能完成",
+    "zh-Hant": "命令未能完成",
+    "en": "The command could not be completed",
+    "ja": "コマンドを完了できませんでした"
   },
   "cli.error.connection": {
-    "zh-Hans": "无法配置本地后端连接。",
-    "zh-Hant": "無法設定本機後端連線。",
-    "en": "The local backend connection could not be configured.",
-    "ja": "ローカルバックエンドへの接続を設定できませんでした。"
+    "zh-Hans": "无法配置本地后端连接",
+    "zh-Hant": "無法設定本機後端連線",
+    "en": "The local backend connection could not be configured",
+    "ja": "ローカルバックエンドへの接続を設定できませんでした"
   },
   "cli.error.original": {
     "zh-Hans": "原始诊断：{diagnostic}",
@@ -157,351 +157,351 @@ export const commandMessages = {
     "ja": "元の診断：{diagnostic}"
   },
   "mcp.doctor": {
-    "zh-Hans": "检查已认证本地后端是否就绪及供应商能力，不暴露凭据路径或令牌。",
-    "zh-Hant": "檢查已驗證本機後端是否就緒及供應商能力，不暴露憑證路徑或權杖。",
-    "en": "Check authenticated local backend readiness and provider capabilities without revealing credential paths or tokens.",
-    "ja": "認証済みローカルバックエンドの準備状態とプロバイダーの機能を確認します。認証情報のパスやトークンは公開しません。"
+    "zh-Hans": "检查已认证本地后端是否就绪及供应商能力，不暴露凭据路径或令牌",
+    "zh-Hant": "檢查已驗證本機後端是否就緒及供應商能力，不暴露憑證路徑或權杖",
+    "en": "Check authenticated local backend readiness and provider capabilities without revealing credential paths or tokens",
+    "ja": "認証済みローカルバックエンドの準備状態とプロバイダーの機能を確認します。認証情報のパスやトークンは公開しません"
   },
   "mcp.capabilities": {
-    "zh-Hans": "从运行中的后端列出当前已配置供应商及各模型的能力。不提交生成。",
-    "zh-Hant": "從執行中的後端列出目前已設定供應商及各模型的能力。不提交生成。",
-    "en": "List current configured provider and per-model capabilities from the running backend. This does not submit generation.",
-    "ja": "実行中のバックエンドから設定済みプロバイダーとモデル別の機能を一覧表示します。生成は送信しません。"
+    "zh-Hans": "从运行中的后端列出当前已配置供应商及各模型的能力。不提交生成",
+    "zh-Hant": "從執行中的後端列出目前已設定供應商及各模型的能力。不提交生成",
+    "en": "List current configured provider and per-model capabilities from the running backend. This does not submit generation",
+    "ja": "実行中のバックエンドから設定済みプロバイダーとモデル別の機能を一覧表示します。生成は送信しません"
   },
   "mcp.schema": {
-    "zh-Hans": "发现精确的共享 RPC JSON Schema、稳定 requestId 要求及参考性操作影响。无需运行后端。",
-    "zh-Hant": "探索精確的共用 RPC JSON Schema、穩定 requestId 要求及參考性操作影響。無需執行後端。",
-    "en": "Discover exact shared RPC JSON Schemas, stable requestId requirements, and advisory operation effects. Works without a running backend.",
-    "ja": "共有 RPC JSON Schema、固定 requestId の要件、参考情報としての操作の影響を確認します。バックエンドの実行は不要です。"
+    "zh-Hans": "发现精确的共享 RPC JSON Schema、稳定 requestId 要求及参考性操作影响。无需运行后端",
+    "zh-Hant": "探索精確的共用 RPC JSON Schema、穩定 requestId 要求及參考性操作影響。無需執行後端",
+    "en": "Discover exact shared RPC JSON Schemas, stable requestId requirements, and advisory operation effects. Works without a running backend",
+    "ja": "共有 RPC JSON Schema、固定 requestId の要件、参考情報としての操作の影響を確認します。バックエンドの実行は不要です"
   },
   "mcp.instructions": {
-    "zh-Hans": "所有操作使用同一个既有本地后端及共享架构。优先使用 project_inspect、asset_inspect、shot_inspect 和 timeline_inspect 进行有界、不创建记录的元数据检查。旧版 project_get 和 timeline_get 可能初始化空时间线。操作影响注解仅供参考，不代表授权。响应不确定后重试时必须保留完全相同的 requestId 和输入。绝不能虚构新 requestId 来恢复未知提交、自动重试付费生成，或认定本地 job.cancel 已取消远端供应商任务。选择模型前使用 provider_list。桌面连接文件在每次请求时重新读取；凭据绝不能进入工具参数。恢复工作区中会产生影响的调用，必须在进程启动时明确指定并固定 --workspace-origin UUID。workspace_restore_inspect 仅提供只读信息；绝不授权或更新此进程固定值。不得用新来源恢复已捕获的任务或不确定的请求。",
-    "zh-Hant": "所有操作使用同一個既有本機後端及共用結構描述。優先使用 project_inspect、asset_inspect、shot_inspect 和 timeline_inspect 進行有界、不建立記錄的中繼資料檢查。舊版 project_get 和 timeline_get 可能初始化空白時間線。操作影響註解僅供參考，不代表授權。回應不確定後重試時必須保留完全相同的 requestId 和輸入。絕不能虛構新 requestId 來恢復未知提交、自動重試付費生成，或認定本機 job.cancel 已取消遠端供應商任務。選擇模型前使用 provider_list。桌面連線檔案在每次請求時重新讀取；憑證絕不能進入工具參數。還原工作區中會產生影響的呼叫，必須在程序啟動時明確指定並固定 --workspace-origin UUID。workspace_restore_inspect 僅提供唯讀資訊；絕不授權或更新此程序固定值。不得用新來源恢復已擷取的任務或不確定的請求。",
-    "en": "All operations use one existing local backend and shared schemas. Prefer project_inspect, asset_inspect, shot_inspect and timeline_inspect for bounded, non-creating metadata inspection. Legacy project_get and timeline_get may initialize an empty timeline. Effect annotations are advisory, not authorization. Preserve the exact requestId and input on retry after an uncertain response. Never invent a new requestId to recover an unknown submission, automatically retry paid generation, or assume local job.cancel cancelled a remote provider job. Use provider_list before choosing models. Desktop connection files are re-read per request; credentials must never enter tool arguments. Restored workspace effectful calls require an explicit --workspace-origin UUID pinned at process launch. workspace_restore_inspect is read-only disclosure; it never authorizes or updates this process pin. Do not use a new origin to recover captured tasks or uncertain requests.",
-    "ja": "すべての操作は既存の同一ローカルバックエンドと共有スキーマを使用します。範囲を限定し、記録を作成しないメタデータ確認には project_inspect、asset_inspect、shot_inspect、timeline_inspect を優先してください。従来の project_get と timeline_get は空のタイムラインを初期化する場合があります。影響の注釈は参考情報であり、権限を付与しません。応答が不確かな後の再試行では、requestId と入力を完全に同一に保ってください。結果不明の送信を復旧するために新しい requestId を生成したり、有料生成を自動で再試行したり、ローカルの job.cancel がリモートのプロバイダージョブをキャンセルしたと見なしたりしないでください。モデルの選択前に provider_list を使用してください。デスクトップ接続ファイルはリクエストごとに再読み込みされます。認証情報をツール引数に含めないでください。復元したワークスペースで影響を伴う呼び出しには、プロセス起動時に明示して固定した --workspace-origin UUID が必要です。workspace_restore_inspect は読み取り専用の情報開示であり、このプロセスの固定値の承認や更新を行いません。記録済みタスクや結果不明のリクエストを復旧するために新しいオリジンを使用しないでください。"
+    "zh-Hans": "所有操作使用同一个既有本地后端及共享架构。优先使用 project_inspect、asset_inspect、shot_inspect 和 timeline_inspect 进行有界、不创建记录的元数据检查。旧版 project_get 和 timeline_get 可能初始化空时间线。操作影响注解仅供参考，不代表授权。响应不确定后重试时必须保留完全相同的 requestId 和输入。绝不能虚构新 requestId 来恢复未知提交、自动重试付费生成，或认定本地 job.cancel 已取消远端供应商任务。选择模型前使用 provider_list。桌面连接文件在每次请求时重新读取；凭据绝不能进入工具参数。恢复工作区中会产生影响的调用，必须在进程启动时明确指定并固定 --workspace-origin UUID。workspace_restore_inspect 仅提供只读信息；绝不授权或更新此进程固定值。不得用新来源恢复已捕获的任务或不确定的请求",
+    "zh-Hant": "所有操作使用同一個既有本機後端及共用結構描述。優先使用 project_inspect、asset_inspect、shot_inspect 和 timeline_inspect 進行有界、不建立記錄的中繼資料檢查。舊版 project_get 和 timeline_get 可能初始化空白時間線。操作影響註解僅供參考，不代表授權。回應不確定後重試時必須保留完全相同的 requestId 和輸入。絕不能虛構新 requestId 來恢復未知提交、自動重試付費生成，或認定本機 job.cancel 已取消遠端供應商任務。選擇模型前使用 provider_list。桌面連線檔案在每次請求時重新讀取；憑證絕不能進入工具參數。還原工作區中會產生影響的呼叫，必須在程序啟動時明確指定並固定 --workspace-origin UUID。workspace_restore_inspect 僅提供唯讀資訊；絕不授權或更新此程序固定值。不得用新來源恢復已擷取的任務或不確定的請求",
+    "en": "All operations use one existing local backend and shared schemas. Prefer project_inspect, asset_inspect, shot_inspect and timeline_inspect for bounded, non-creating metadata inspection. Legacy project_get and timeline_get may initialize an empty timeline. Effect annotations are advisory, not authorization. Preserve the exact requestId and input on retry after an uncertain response. Never invent a new requestId to recover an unknown submission, automatically retry paid generation, or assume local job.cancel cancelled a remote provider job. Use provider_list before choosing models. Desktop connection files are re-read per request; credentials must never enter tool arguments. Restored workspace effectful calls require an explicit --workspace-origin UUID pinned at process launch. workspace_restore_inspect is read-only disclosure; it never authorizes or updates this process pin. Do not use a new origin to recover captured tasks or uncertain requests",
+    "ja": "すべての操作は既存の同一ローカルバックエンドと共有スキーマを使用します。範囲を限定し、記録を作成しないメタデータ確認には project_inspect、asset_inspect、shot_inspect、timeline_inspect を優先してください。従来の project_get と timeline_get は空のタイムラインを初期化する場合があります。影響の注釈は参考情報であり、権限を付与しません。応答が不確かな後の再試行では、requestId と入力を完全に同一に保ってください。結果不明の送信を復旧するために新しい requestId を生成したり、有料生成を自動で再試行したり、ローカルの job.cancel がリモートのプロバイダージョブをキャンセルしたと見なしたりしないでください。モデルの選択前に provider_list を使用してください。デスクトップ接続ファイルはリクエストごとに再読み込みされます。認証情報をツール引数に含めないでください。復元したワークスペースで影響を伴う呼び出しには、プロセス起動時に明示して固定した --workspace-origin UUID が必要です。workspace_restore_inspect は読み取り専用の情報開示であり、このプロセスの固定値の承認や更新を行いません。記録済みタスクや結果不明のリクエストを復旧するために新しいオリジンを使用しないでください"
   },
   "backup.error.RESTORE_BACKUP_UNAVAILABLE": {
-    "zh-Hans": "在支持递归恢复前，此恢复后的工作分支无法再次创建备份。未创建备份目标目录；请保留原始已验证备份。",
-    "zh-Hant": "在支援遞迴還原前，此還原後的工作分支無法再次建立備份。未建立備份目標目錄；請保留原始已驗證備份。",
-    "en": "This restored working branch cannot create another backup until recursive restore is supported. No backup destination was created; keep the original verified backup.",
-    "ja": "再帰的な復元に対応するまでは、この復元済み作業ブランチから別のバックアップを作成できません。バックアップ先は作成されていません。元の検証済みバックアップを保管してください。"
+    "zh-Hans": "在支持递归恢复前，此恢复后的工作分支无法再次创建备份。未创建备份目标目录；请保留原始已验证备份",
+    "zh-Hant": "在支援遞迴還原前，此還原後的工作分支無法再次建立備份。未建立備份目標目錄；請保留原始已驗證備份",
+    "en": "This restored working branch cannot create another backup until recursive restore is supported. No backup destination was created; keep the original verified backup",
+    "ja": "再帰的な復元に対応するまでは、この復元済み作業ブランチから別のバックアップを作成できません。バックアップ先は作成されていません。元の検証済みバックアップを保管してください"
   },
   "backup.error.WORKSPACE_RESTORE_IO": {
-    "zh-Hans": "离线恢复未完成。请保留未完成的目标目录和原始备份；审查后使用另一个新目标目录。",
-    "zh-Hant": "離線還原未完成。請保留未完成的目標目錄和原始備份；檢查後使用另一個新目標目錄。",
-    "en": "Offline restore did not complete. Preserve the incomplete destination and original backup; use a different new destination after review.",
-    "ja": "オフライン復元は完了しませんでした。不完全な復元先と元のバックアップを保管し、確認後に別の新しい復元先を使用してください。"
+    "zh-Hans": "离线恢复未完成。请保留未完成的目标目录和原始备份；审查后使用另一个新目标目录",
+    "zh-Hant": "離線還原未完成。請保留未完成的目標目錄和原始備份；檢查後使用另一個新目標目錄",
+    "en": "Offline restore did not complete. Preserve the incomplete destination and original backup; use a different new destination after review",
+    "ja": "オフライン復元は完了しませんでした。不完全な復元先と元のバックアップを保管し、確認後に別の新しい復元先を使用してください"
   },
   "backup.error.WORKSPACE_RESTORE_INVALID_PATH": {
-    "zh-Hans": "请明确指定规范化的绝对路径作为备份目录和新目标目录，两者不能重叠。",
-    "zh-Hant": "請明確指定正規化的絕對路徑作為備份目錄和新目標目錄，兩者不能重疊。",
-    "en": "Use explicit canonical absolute backup and new destination directories with no overlap.",
-    "ja": "バックアップディレクトリと新しい復元先ディレクトリを、互いに重ならない正規化済みの絶対パスで明示してください。"
+    "zh-Hans": "请明确指定规范化的绝对路径作为备份目录和新目标目录，两者不能重叠",
+    "zh-Hant": "請明確指定正規化的絕對路徑作為備份目錄和新目標目錄，兩者不能重疊",
+    "en": "Use explicit canonical absolute backup and new destination directories with no overlap",
+    "ja": "バックアップディレクトリと新しい復元先ディレクトリを、互いに重ならない正規化済みの絶対パスで明示してください"
   },
   "backup.error.WORKSPACE_RESTORE_DESTINATION_WORKSPACE_ANCESTOR": {
-    "zh-Hans": "目标目录位于包含既有工作区数据库或工作区锁的目录内。请选择既有工作区之外的独立新目标目录。",
-    "zh-Hant": "目標目錄位於包含既有工作區資料庫或工作區鎖定檔的目錄內。請選擇既有工作區之外的獨立新目標目錄。",
-    "en": "The destination is inside a directory with an existing workspace database or workspace lock. Choose an independent new destination outside existing workspaces.",
-    "ja": "復元先が、既存のワークスペースデータベースまたはワークスペースロックを含むディレクトリ内にあります。既存のワークスペースの外にある独立した新しい復元先を選んでください。"
+    "zh-Hans": "目标目录位于包含既有工作区数据库或工作区锁的目录内。请选择既有工作区之外的独立新目标目录",
+    "zh-Hant": "目標目錄位於包含既有工作區資料庫或工作區鎖定檔的目錄內。請選擇既有工作區之外的獨立新目標目錄",
+    "en": "The destination is inside a directory with an existing workspace database or workspace lock. Choose an independent new destination outside existing workspaces",
+    "ja": "復元先が、既存のワークスペースデータベースまたはワークスペースロックを含むディレクトリ内にあります。既存のワークスペースの外にある独立した新しい復元先を選んでください"
   },
   "backup.error.WORKSPACE_RESTORE_DESTINATION_EXISTS": {
-    "zh-Hans": "恢复目标目录已存在。请选择新目标目录；既有内容未被更改。",
-    "zh-Hant": "還原目標目錄已存在。請選擇新目標目錄；既有內容未被變更。",
-    "en": "The restore destination already exists. Choose a new destination; existing contents were not changed.",
-    "ja": "復元先はすでに存在します。新しい復元先を選んでください。既存の内容は変更されていません。"
+    "zh-Hans": "恢复目标目录已存在。请选择新目标目录；既有内容未被更改",
+    "zh-Hant": "還原目標目錄已存在。請選擇新目標目錄；既有內容未被變更",
+    "en": "The restore destination already exists. Choose a new destination; existing contents were not changed",
+    "ja": "復元先はすでに存在します。新しい復元先を選んでください。既存の内容は変更されていません"
   },
   "backup.error.WORKSPACE_RESTORE_LOCKED": {
-    "zh-Hans": "目标目录包含已有锁。未移除或修复任何锁。",
-    "zh-Hant": "目標目錄包含既有鎖定檔。未移除或修復任何鎖定檔。",
-    "en": "The destination contains a preexisting lock. No lock was removed or repaired.",
-    "ja": "復元先に既存のロックがあります。ロックの削除や修復は行っていません。"
+    "zh-Hans": "目标目录包含已有锁。未移除或修复任何锁",
+    "zh-Hant": "目標目錄包含既有鎖定檔。未移除或修復任何鎖定檔",
+    "en": "The destination contains a preexisting lock. No lock was removed or repaired",
+    "ja": "復元先に既存のロックがあります。ロックの削除や修復は行っていません"
   },
   "backup.error.WORKSPACE_RESTORE_LOCK_LOST": {
-    "zh-Hans": "目标目录的锁已发生变化。请保留未完成的目标目录和原始备份。",
-    "zh-Hant": "目標目錄的鎖定檔已發生變化。請保留未完成的目標目錄和原始備份。",
-    "en": "The destination lock changed. Preserve the incomplete destination and original backup.",
-    "ja": "復元先のロックが変更されました。不完全な復元先と元のバックアップを保管してください。"
+    "zh-Hans": "目标目录的锁已发生变化。请保留未完成的目标目录和原始备份",
+    "zh-Hant": "目標目錄的鎖定檔已發生變化。請保留未完成的目標目錄和原始備份",
+    "en": "The destination lock changed. Preserve the incomplete destination and original backup",
+    "ja": "復元先のロックが変更されました。不完全な復元先と元のバックアップを保管してください"
   },
   "backup.error.WORKSPACE_RESTORE_SOURCE_SCHEMA_UNSUPPORTED": {
-    "zh-Hans": "只能恢复已完整分类的 schema24 原始备份。不支持恢复后的架构及未知架构。",
-    "zh-Hant": "只能還原已完整分類的 schema24 原始備份。不支援還原後的結構描述及未知結構描述。",
-    "en": "Only fully classified schema24 original backups can be restored. Restored and unknown schemas are not supported.",
-    "ja": "完全に分類された schema24 の元のバックアップのみ復元できます。復元済みのスキーマや不明なスキーマには対応していません。"
+    "zh-Hans": "只能恢复已完整分类的 schema24 原始备份。不支持恢复后的架构及未知架构",
+    "zh-Hant": "只能還原已完整分類的 schema24 原始備份。不支援還原後的結構描述及未知結構描述",
+    "en": "Only fully classified schema24 original backups can be restored. Restored and unknown schemas are not supported",
+    "ja": "完全に分類された schema24 の元のバックアップのみ復元できます。復元済みのスキーマや不明なスキーマには対応していません"
   },
   "backup.error.WORKSPACE_RESTORE_CHANGED": {
-    "zh-Hans": "备份或目标目录中的文件已发生变化。请保留未完成的目标目录和原始备份。",
-    "zh-Hant": "備份或目標目錄中的檔案已發生變化。請保留未完成的目標目錄和原始備份。",
-    "en": "A backup or destination file changed. Preserve the incomplete destination and original backup.",
-    "ja": "バックアップまたは復元先のファイルが変更されました。不完全な復元先と元のバックアップを保管してください。"
+    "zh-Hans": "备份或目标目录中的文件已发生变化。请保留未完成的目标目录和原始备份",
+    "zh-Hant": "備份或目標目錄中的檔案已發生變化。請保留未完成的目標目錄和原始備份",
+    "en": "A backup or destination file changed. Preserve the incomplete destination and original backup",
+    "ja": "バックアップまたは復元先のファイルが変更されました。不完全な復元先と元のバックアップを保管してください"
   },
   "backup.error.WORKSPACE_RESTORE_LIMIT": {
-    "zh-Hans": "备份或恢复候选副本超过了固定的离线恢复安全限制。",
-    "zh-Hant": "備份或還原候選副本超過了固定的離線還原安全限制。",
-    "en": "The backup or restored candidate exceeds a fixed offline restore safety limit.",
-    "ja": "バックアップまたは復元候補が、オフライン復元の固定の安全上限を超えています。"
+    "zh-Hans": "备份或恢复候选副本超过了固定的离线恢复安全限制",
+    "zh-Hant": "備份或還原候選副本超過了固定的離線還原安全限制",
+    "en": "The backup or restored candidate exceeds a fixed offline restore safety limit",
+    "ja": "バックアップまたは復元候補が、オフライン復元の固定の安全上限を超えています"
   },
   "backup.error.WORKSPACE_RESTORE_CANCELLED": {
-    "zh-Hans": "恢复在启用前已取消。未完成的文件已保留；审查后请选择另一个新目标目录。",
-    "zh-Hant": "還原在啟用前已取消。未完成的檔案已保留；檢查後請選擇另一個新目標目錄。",
-    "en": "Restore was cancelled before activation. Incomplete files are retained; choose a different new destination after review.",
-    "ja": "復元は有効化前にキャンセルされました。不完全なファイルは保持されています。確認後に別の新しい復元先を選んでください。"
+    "zh-Hans": "恢复在启用前已取消。未完成的文件已保留；审查后请选择另一个新目标目录",
+    "zh-Hant": "還原在啟用前已取消。未完成的檔案已保留；檢查後請選擇另一個新目標目錄",
+    "en": "Restore was cancelled before activation. Incomplete files are retained; choose a different new destination after review",
+    "ja": "復元は有効化前にキャンセルされました。不完全なファイルは保持されています。確認後に別の新しい復元先を選んでください"
   },
   "backup.error.WORKSPACE_RESTORE_DATABASE_INVALID": {
-    "zh-Hans": "候选副本未通过固定架构、捕获的身份标识或保全验证。未将其启用。",
-    "zh-Hant": "候選副本未通過固定結構描述、擷取的身分識別或保全驗證。未將其啟用。",
-    "en": "The candidate failed fixed schema, captured identity or preservation validation. It was not activated.",
-    "ja": "復元候補は、固定スキーマ、記録された識別情報、または保持状態の検証に失敗しました。有効化されていません。"
+    "zh-Hans": "候选副本未通过固定架构、捕获的身份标识或保全验证。未将其启用",
+    "zh-Hant": "候選副本未通過固定結構描述、擷取的身分識別或保全驗證。未將其啟用",
+    "en": "The candidate failed fixed schema, captured identity or preservation validation. It was not activated",
+    "ja": "復元候補は、固定スキーマ、記録された識別情報、または保持状態の検証に失敗しました。有効化されていません"
   },
   "backup.error.WORKSPACE_RESTORE_PUBLICATION_UNCONFIRMED": {
-    "zh-Hans": "受保护的数据库可能已启用，但发布或持久性尚未确认。请保留原始备份和此目标目录。使用原始备份目录和目标目录，或返回的完全相同的绑定信息运行 restore-status；若不可用，请审查此目标目录，并使用另一个新目标目录创建另一份离线副本。不要重试继承的任务。",
-    "zh-Hant": "受保護的資料庫可能已啟用，但發佈或持久性尚未確認。請保留原始備份和此目標目錄。使用原始備份目錄和目標目錄，或傳回的完全相同的綁定資訊執行 restore-status；若無法使用，請檢查此目標目錄，並使用另一個新目標目錄建立另一份離線副本。不要重試繼承的任務。",
-    "en": "The guarded database may be activated, but publication or durability is unconfirmed. Preserve the original backup and this destination. Run restore-status with the original backup directory and destination, or the exact returned binding; if unavailable, review this destination and use a different new destination for another offline copy. Do not retry inherited tasks.",
-    "ja": "保護されたデータベースは有効化されている可能性がありますが、公開または永続性は未確認です。元のバックアップとこの復元先を保管してください。元のバックアップディレクトリと復元先、または返された完全に同一の紐付け情報を指定して restore-status を実行してください。利用できない場合は、この復元先を確認し、別の新しい復元先にオフラインコピーを作成してください。引き継いだタスクを再試行しないでください。"
+    "zh-Hans": "受保护的数据库可能已启用，但发布或持久性尚未确认。请保留原始备份和此目标目录。使用原始备份目录和目标目录，或返回的完全相同的绑定信息运行 restore-status；若不可用，请审查此目标目录，并使用另一个新目标目录创建另一份离线副本。不要重试继承的任务",
+    "zh-Hant": "受保護的資料庫可能已啟用，但發佈或持久性尚未確認。請保留原始備份和此目標目錄。使用原始備份目錄和目標目錄，或傳回的完全相同的綁定資訊執行 restore-status；若無法使用，請檢查此目標目錄，並使用另一個新目標目錄建立另一份離線副本。不要重試繼承的任務",
+    "en": "The guarded database may be activated, but publication or durability is unconfirmed. Preserve the original backup and this destination. Run restore-status with the original backup directory and destination, or the exact returned binding; if unavailable, review this destination and use a different new destination for another offline copy. Do not retry inherited tasks",
+    "ja": "保護されたデータベースは有効化されている可能性がありますが、公開または永続性は未確認です。元のバックアップとこの復元先を保管してください。元のバックアップディレクトリと復元先、または返された完全に同一の紐付け情報を指定して restore-status を実行してください。利用できない場合は、この復元先を確認し、別の新しい復元先にオフラインコピーを作成してください。引き継いだタスクを再試行しないでください"
   },
   "backup.error.WORKSPACE_RESTORE_STATUS_UNAVAILABLE": {
-    "zh-Hans": "无法安全地离线检查此目标目录，或它与提供的恢复绑定信息不匹配。检查前请关闭后端。未修复已有锁、链接及附属文件。",
-    "zh-Hant": "無法安全地離線檢查此目標目錄，或它與提供的還原綁定資訊不符。檢查前請關閉後端。未修復既有鎖定檔、連結及附屬檔案。",
-    "en": "The destination is not safely inspectable offline or does not match the supplied restoration binding. Close the backend before inspection. Existing locks, links and sidecars were not repaired.",
-    "ja": "復元先をオフラインで安全に確認できないか、指定された復元の紐付け情報と一致しません。確認前にバックエンドを終了してください。既存のロック、リンク、付随ファイルの修復は行っていません。"
+    "zh-Hans": "无法安全地离线检查此目标目录，或它与提供的恢复绑定信息不匹配。检查前请关闭后端。未修复已有锁、链接及附属文件",
+    "zh-Hant": "無法安全地離線檢查此目標目錄，或它與提供的還原綁定資訊不符。檢查前請關閉後端。未修復既有鎖定檔、連結及附屬檔案",
+    "en": "The destination is not safely inspectable offline or does not match the supplied restoration binding. Close the backend before inspection. Existing locks, links and sidecars were not repaired",
+    "ja": "復元先をオフラインで安全に確認できないか、指定された復元の紐付け情報と一致しません。確認前にバックエンドを終了してください。既存のロック、リンク、付随ファイルの修復は行っていません"
   },
   "backup.error.VALIDATION_ERROR": {
-    "zh-Hans": "请只使用一个受支持的命令及其文档中列出的选项。运行 node apps/cli/src/backup.mjs --help 查看用法。",
-    "zh-Hant": "請只使用一個受支援的命令及其文件中列出的選項。執行 node apps/cli/src/backup.mjs --help 查看用法。",
-    "en": "Use exactly one supported command and its documented options. Run node apps/cli/src/backup.mjs --help for usage.",
-    "ja": "対応するコマンドを一つだけ、文書に記載されたオプションとともに使用してください。使用方法は node apps/cli/src/backup.mjs --help で確認できます。"
+    "zh-Hans": "请只使用一个受支持的命令及其文档中列出的选项。运行 node apps/cli/src/backup.mjs --help 查看用法",
+    "zh-Hant": "請只使用一個受支援的命令及其文件中列出的選項。執行 node apps/cli/src/backup.mjs --help 查看用法",
+    "en": "Use exactly one supported command and its documented options. Run node apps/cli/src/backup.mjs --help for usage",
+    "ja": "対応するコマンドを一つだけ、文書に記載されたオプションとともに使用してください。使用方法は node apps/cli/src/backup.mjs --help で確認できます"
   },
   "backup.error.WORKSPACE_BACKUP_INVALID_PATH": {
-    "zh-Hans": "请明确指定规范化的绝对目录路径，源目录与目标目录不能重叠。",
-    "zh-Hant": "請明確指定正規化的絕對目錄路徑，來源目錄與目標目錄不能重疊。",
-    "en": "Use explicit canonical absolute directories with no overlapping source and destination.",
-    "ja": "正規化済みの絶対ディレクトリパスを明示し、コピー元とコピー先が重ならないようにしてください。"
+    "zh-Hans": "请明确指定规范化的绝对目录路径，源目录与目标目录不能重叠",
+    "zh-Hant": "請明確指定正規化的絕對目錄路徑，來源目錄與目標目錄不能重疊",
+    "en": "Use explicit canonical absolute directories with no overlapping source and destination",
+    "ja": "正規化済みの絶対ディレクトリパスを明示し、コピー元とコピー先が重ならないようにしてください"
   },
   "backup.error.WORKSPACE_BACKUP_DESTINATION_EXISTS": {
-    "zh-Hans": "备份目标目录已存在。请选择新目标目录；既有内容未被更改。",
-    "zh-Hant": "備份目標目錄已存在。請選擇新目標目錄；既有內容未被變更。",
-    "en": "The backup destination already exists. Choose a new destination; existing contents were not changed.",
-    "ja": "バックアップ先はすでに存在します。新しいバックアップ先を選んでください。既存の内容は変更されていません。"
+    "zh-Hans": "备份目标目录已存在。请选择新目标目录；既有内容未被更改",
+    "zh-Hant": "備份目標目錄已存在。請選擇新目標目錄；既有內容未被變更",
+    "en": "The backup destination already exists. Choose a new destination; existing contents were not changed",
+    "ja": "バックアップ先はすでに存在します。新しいバックアップ先を選んでください。既存の内容は変更されていません"
   },
   "backup.error.WORKSPACE_BACKUP_LOCKED": {
-    "zh-Hans": "工作区存在已有锁。重试前请关闭后端并检查该锁。",
-    "zh-Hant": "工作區存在既有鎖定檔。重試前請關閉後端並檢查該鎖定檔。",
-    "en": "The workspace has an existing lock. Close the backend and review the lock before retrying.",
-    "ja": "ワークスペースに既存のロックがあります。再試行前にバックエンドを終了し、ロックを確認してください。"
+    "zh-Hans": "工作区存在已有锁。重试前请关闭后端并检查该锁",
+    "zh-Hant": "工作區存在既有鎖定檔。重試前請關閉後端並檢查該鎖定檔",
+    "en": "The workspace has an existing lock. Close the backend and review the lock before retrying",
+    "ja": "ワークスペースに既存のロックがあります。再試行前にバックエンドを終了し、ロックを確認してください"
   },
   "backup.error.WORKSPACE_BACKUP_LOCK_LOST": {
-    "zh-Hans": "工作区锁已发生变化。未完成的备份尚未发布。",
-    "zh-Hant": "工作區鎖定檔已發生變化。未完成的備份尚未發佈。",
-    "en": "The workspace lock changed. The incomplete backup has not been published.",
-    "ja": "ワークスペースのロックが変更されました。不完全なバックアップは公開されていません。"
+    "zh-Hans": "工作区锁已发生变化。未完成的备份尚未发布",
+    "zh-Hant": "工作區鎖定檔已發生變化。未完成的備份尚未發佈",
+    "en": "The workspace lock changed. The incomplete backup has not been published",
+    "ja": "ワークスペースのロックが変更されました。不完全なバックアップは公開されていません"
   },
   "backup.error.WORKSPACE_BACKUP_NOT_COLD": {
-    "zh-Hans": "工作区中存在尚未执行检查点的 SQLite WAL 或日志。备份前请正常关闭后端；未修复或删除任何附属文件。",
-    "zh-Hant": "工作區中存在尚未執行檢查點的 SQLite WAL 或日誌。備份前請正常關閉後端；未修復或刪除任何附屬檔案。",
-    "en": "The workspace has an uncheckpointed SQLite WAL or journal. Close the backend cleanly before backing up; no sidecar was repaired or deleted.",
-    "ja": "ワークスペースにチェックポイント未完了の SQLite WAL またはジャーナルがあります。バックアップ前にバックエンドを正常に終了してください。付随ファイルの修復や削除は行っていません。"
+    "zh-Hans": "工作区中存在尚未执行检查点的 SQLite WAL 或日志。备份前请正常关闭后端；未修复或删除任何附属文件",
+    "zh-Hant": "工作區中存在尚未執行檢查點的 SQLite WAL 或日誌。備份前請正常關閉後端；未修復或刪除任何附屬檔案",
+    "en": "The workspace has an uncheckpointed SQLite WAL or journal. Close the backend cleanly before backing up; no sidecar was repaired or deleted",
+    "ja": "ワークスペースにチェックポイント未完了の SQLite WAL またはジャーナルがあります。バックアップ前にバックエンドを正常に終了してください。付随ファイルの修復や削除は行っていません"
   },
   "backup.error.WORKSPACE_BACKUP_LIMIT": {
-    "zh-Hans": "工作区或备份超过了固定的离线备份安全限制。",
-    "zh-Hant": "工作區或備份超過了固定的離線備份安全限制。",
-    "en": "The workspace or backup exceeds a fixed offline backup safety limit.",
-    "ja": "ワークスペースまたはバックアップが、オフラインバックアップの固定の安全上限を超えています。"
+    "zh-Hans": "工作区或备份超过了固定的离线备份安全限制",
+    "zh-Hant": "工作區或備份超過了固定的離線備份安全限制",
+    "en": "The workspace or backup exceeds a fixed offline backup safety limit",
+    "ja": "ワークスペースまたはバックアップが、オフラインバックアップの固定の安全上限を超えています"
   },
   "backup.error.WORKSPACE_BACKUP_DATABASE_INVALID": {
-    "zh-Hans": "无法将复制的数据库作为受支持的工作区进行安全检查。",
-    "zh-Hant": "無法將複製的資料庫作為受支援的工作區進行安全檢查。",
-    "en": "The copied database cannot be safely inspected as a supported workspace.",
-    "ja": "コピーしたデータベースを、対応するワークスペースとして安全に確認できません。"
+    "zh-Hans": "无法将复制的数据库作为受支持的工作区进行安全检查",
+    "zh-Hant": "無法將複製的資料庫作為受支援的工作區進行安全檢查",
+    "en": "The copied database cannot be safely inspected as a supported workspace",
+    "ja": "コピーしたデータベースを、対応するワークスペースとして安全に確認できません"
   },
   "backup.error.WORKSPACE_BACKUP_INCOMPLETE": {
-    "zh-Hans": "此目录中没有完整且受支持的工作区备份。",
-    "zh-Hant": "此目錄中沒有完整且受支援的工作區備份。",
-    "en": "This directory has no complete supported workspace backup.",
-    "ja": "このディレクトリに、完全かつ対応する形式のワークスペースバックアップはありません。"
+    "zh-Hans": "此目录中没有完整且受支持的工作区备份",
+    "zh-Hant": "此目錄中沒有完整且受支援的工作區備份",
+    "en": "This directory has no complete supported workspace backup",
+    "ja": "このディレクトリに、完全かつ対応する形式のワークスペースバックアップはありません"
   },
   "backup.error.WORKSPACE_BACKUP_CORRUPT": {
-    "zh-Hans": "备份内容与完整清单不匹配。",
-    "zh-Hant": "備份內容與完整清單不符。",
-    "en": "Backup contents do not match the complete manifest.",
-    "ja": "バックアップの内容が完全なマニフェストと一致しません。"
+    "zh-Hans": "备份内容与完整清单不匹配",
+    "zh-Hant": "備份內容與完整清單不符",
+    "en": "Backup contents do not match the complete manifest",
+    "ja": "バックアップの内容が完全なマニフェストと一致しません"
   },
   "backup.error.WORKSPACE_BACKUP_CHANGED": {
-    "zh-Hans": "检查过程中，工作区或备份文件发生了变化。操作未能安全完成。",
-    "zh-Hant": "檢查過程中，工作區或備份檔案發生了變化。操作未能安全完成。",
-    "en": "A workspace or backup file changed during inspection. The operation did not complete safely.",
-    "ja": "確認中にワークスペースまたはバックアップのファイルが変更されました。操作は安全に完了しませんでした。"
+    "zh-Hans": "检查过程中，工作区或备份文件发生了变化。操作未能安全完成",
+    "zh-Hant": "檢查過程中，工作區或備份檔案發生了變化。操作未能安全完成",
+    "en": "A workspace or backup file changed during inspection. The operation did not complete safely",
+    "ja": "確認中にワークスペースまたはバックアップのファイルが変更されました。操作は安全に完了しませんでした"
   },
   "backup.error.WORKSPACE_BACKUP_PUBLICATION_UNCONFIRMED": {
-    "zh-Hans": "无法确认备份发布的持久性或回滚。此目标目录中可能包含已发布的备份。请保留此目标目录并单独运行 verify 命令；仅存在标记不能证明备份完整。",
-    "zh-Hant": "無法確認備份發佈的持久性或復原。此目標目錄中可能包含已發佈的備份。請保留此目標目錄並單獨執行 verify 命令；僅存在標記不能證明備份完整。",
-    "en": "Backup publication durability or rollback could not be confirmed. This destination may contain a published backup. Preserve this destination and run the separate verify command; marker presence alone is not proof of a complete backup.",
-    "ja": "バックアップの公開の永続性またはロールバックを確認できませんでした。この保存先には公開済みのバックアップが含まれる可能性があります。この保存先を保管し、別途 verify コマンドを実行してください。マーカーの存在だけでは、バックアップが完全である証拠にはなりません。"
+    "zh-Hans": "无法确认备份发布的持久性或回滚。此目标目录中可能包含已发布的备份。请保留此目标目录并单独运行 verify 命令；仅存在标记不能证明备份完整",
+    "zh-Hant": "無法確認備份發佈的持久性或復原。此目標目錄中可能包含已發佈的備份。請保留此目標目錄並單獨執行 verify 命令；僅存在標記不能證明備份完整",
+    "en": "Backup publication durability or rollback could not be confirmed. This destination may contain a published backup. Preserve this destination and run the separate verify command; marker presence alone is not proof of a complete backup",
+    "ja": "バックアップの公開の永続性またはロールバックを確認できませんでした。この保存先には公開済みのバックアップが含まれる可能性があります。この保存先を保管し、別途 verify コマンドを実行してください。マーカーの存在だけでは、バックアップが完全である証拠にはなりません"
   },
   "backup.error.WORKSPACE_BACKUP_CANCELLED": {
-    "zh-Hans": "工作区备份操作已取消。新目标目录中可能仍有未完成的文件。",
-    "zh-Hant": "工作區備份操作已取消。新目標目錄中可能仍有未完成的檔案。",
-    "en": "The workspace backup operation was cancelled. Incomplete files may remain in the new destination.",
-    "ja": "ワークスペースのバックアップ操作はキャンセルされました。新しい保存先に不完全なファイルが残っている可能性があります。"
+    "zh-Hans": "工作区备份操作已取消。新目标目录中可能仍有未完成的文件",
+    "zh-Hant": "工作區備份操作已取消。新目標目錄中可能仍有未完成的檔案",
+    "en": "The workspace backup operation was cancelled. Incomplete files may remain in the new destination",
+    "ja": "ワークスペースのバックアップ操作はキャンセルされました。新しい保存先に不完全なファイルが残っている可能性があります"
   },
   "backup.error.WORKSPACE_BACKUP_IO": {
-    "zh-Hans": "工作区备份操作未能安全完成。新目标目录中可能仍有未完成的文件。",
-    "zh-Hant": "工作區備份操作未能安全完成。新目標目錄中可能仍有未完成的檔案。",
-    "en": "The workspace backup operation could not safely complete. Incomplete files may remain in the new destination.",
-    "ja": "ワークスペースのバックアップ操作を安全に完了できませんでした。新しい保存先に不完全なファイルが残っている可能性があります。"
+    "zh-Hans": "工作区备份操作未能安全完成。新目标目录中可能仍有未完成的文件",
+    "zh-Hant": "工作區備份操作未能安全完成。新目標目錄中可能仍有未完成的檔案",
+    "en": "The workspace backup operation could not safely complete. Incomplete files may remain in the new destination",
+    "ja": "ワークスペースのバックアップ操作を安全に完了できませんでした。新しい保存先に不完全なファイルが残っている可能性があります"
   },
   "backup.error.STORAGE_PRIVATE_REQUIRED": {
-    "zh-Hans": "此操作要求存储空间为当前用户所有且保持私密，并要求文件及上级目录安全。未更改任何权限。",
-    "zh-Hant": "此操作要求儲存空間為目前使用者所有且保持私密，並要求檔案及上層目錄安全。未變更任何權限。",
-    "en": "The operation requires private, current-user-owned storage with safe files and ancestry. No permissions were changed.",
-    "ja": "この操作には、現在のユーザーが所有する非公開のストレージと、安全なファイルおよび親ディレクトリ階層が必要です。アクセス権限は変更していません。"
+    "zh-Hans": "此操作要求存储空间为当前用户所有且保持私密，并要求文件及上级目录安全。未更改任何权限",
+    "zh-Hant": "此操作要求儲存空間為目前使用者所有且保持私密，並要求檔案及上層目錄安全。未變更任何權限",
+    "en": "The operation requires private, current-user-owned storage with safe files and ancestry. No permissions were changed",
+    "ja": "この操作には、現在のユーザーが所有する非公開のストレージと、安全なファイルおよび親ディレクトリ階層が必要です。アクセス権限は変更していません"
   },
   "backup.error.STORAGE_PRIVACY_UNAVAILABLE": {
-    "zh-Hans": "此平台无法执行必需的存储隐私检查。未执行此操作。",
-    "zh-Hant": "此平台無法執行必要的儲存隱私檢查。未執行此操作。",
-    "en": "Required storage privacy checks are unavailable on this platform. The operation was not performed.",
-    "ja": "このプラットフォームでは、必要なストレージのプライバシーチェックを利用できません。操作は実行されていません。"
+    "zh-Hans": "此平台无法执行必需的存储隐私检查。未执行此操作",
+    "zh-Hant": "此平台無法執行必要的儲存隱私檢查。未執行此操作",
+    "en": "Required storage privacy checks are unavailable on this platform. The operation was not performed",
+    "ja": "このプラットフォームでは、必要なストレージのプライバシーチェックを利用できません。操作は実行されていません"
   },
   "backup.requirements.0": {
-    "zh-Hans": "Node.js 24+，并已安装源码工作区的依赖。",
-    "zh-Hant": "Node.js 24+，並已安裝原始碼工作區的相依套件。",
-    "en": "Node.js 24+ with installed source workspace dependencies.",
-    "ja": "Node.js 24+ と、ソースワークスペースの依存関係のインストールが必要です。"
+    "zh-Hans": "Node.js 24+，并已安装源码工作区的依赖",
+    "zh-Hant": "Node.js 24+，並已安裝原始碼工作區的相依套件",
+    "en": "Node.js 24+ with installed source workspace dependencies",
+    "ja": "Node.js 24+ と、ソースワークスペースの依存関係のインストールが必要です"
   },
   "backup.requirements.1": {
-    "zh-Hans": "捕获前请关闭所有使用源工作区的后端或桌面应用。遇到已有锁及尚未执行检查点的 SQLite 附属文件时，将拒绝操作，不进行修复。",
-    "zh-Hant": "擷取前請關閉所有使用來源工作區的後端或桌面應用程式。遇到既有鎖定檔及尚未執行檢查點的 SQLite 附屬檔案時，將拒絕操作，不進行修復。",
-    "en": "Close every backend or desktop app using the source workspace before capture. Existing locks and uncheckpointed SQLite sidecars are refused without repair.",
-    "ja": "取得前に、コピー元ワークスペースを使用しているすべてのバックエンドとデスクトップアプリを終了してください。既存のロックやチェックポイント未完了の SQLite 付随ファイルがある場合は、修復せずに操作を拒否します。"
+    "zh-Hans": "捕获前请关闭所有使用源工作区的后端或桌面应用。遇到已有锁及尚未执行检查点的 SQLite 附属文件时，将拒绝操作，不进行修复",
+    "zh-Hant": "擷取前請關閉所有使用來源工作區的後端或桌面應用程式。遇到既有鎖定檔及尚未執行檢查點的 SQLite 附屬檔案時，將拒絕操作，不進行修復",
+    "en": "Close every backend or desktop app using the source workspace before capture. Existing locks and uncheckpointed SQLite sidecars are refused without repair",
+    "ja": "取得前に、コピー元ワークスペースを使用しているすべてのバックエンドとデスクトップアプリを終了してください。既存のロックやチェックポイント未完了の SQLite 付随ファイルがある場合は、修復せずに操作を拒否します"
   },
   "backup.requirements.2": {
-    "zh-Hans": "请明确使用规范化的绝对路径。目标目录必须是新目录，其父目录必须已存在且安全，并且目标目录不能与源目录重叠。恢复还会拒绝上级目录中包含 workbench.sqlite 或 server.lock 的目标位置；请选择独立的工作区根目录。",
-    "zh-Hant": "請明確使用正規化的絕對路徑。目標目錄必須是新目錄，其父目錄必須已存在且安全，並且目標目錄不能與來源目錄重疊。還原還會拒絕上層目錄中包含 workbench.sqlite 或 server.lock 的目標位置；請選擇獨立的工作區根目錄。",
-    "en": "Use explicit canonical absolute paths. The destination must be new, with an existing safe parent, and must not overlap the source. Restore also refuses destination ancestors containing workbench.sqlite or server.lock; choose an independent workspace root.",
-    "ja": "正規化済みの絶対パスを明示してください。保存先は新規で、安全な親ディレクトリがすでに存在し、コピー元と重ならない必要があります。復元では、祖先ディレクトリに workbench.sqlite または server.lock がある復元先も拒否します。独立したワークスペースのルートを選んでください。"
+    "zh-Hans": "请明确使用规范化的绝对路径。目标目录必须是新目录，其父目录必须已存在且安全，并且目标目录不能与源目录重叠。恢复还会拒绝上级目录中包含 workbench.sqlite 或 server.lock 的目标位置；请选择独立的工作区根目录",
+    "zh-Hant": "請明確使用正規化的絕對路徑。目標目錄必須是新目錄，其父目錄必須已存在且安全，並且目標目錄不能與來源目錄重疊。還原還會拒絕上層目錄中包含 workbench.sqlite 或 server.lock 的目標位置；請選擇獨立的工作區根目錄",
+    "en": "Use explicit canonical absolute paths. The destination must be new, with an existing safe parent, and must not overlap the source. Restore also refuses destination ancestors containing workbench.sqlite or server.lock; choose an independent workspace root",
+    "ja": "正規化済みの絶対パスを明示してください。保存先は新規で、安全な親ディレクトリがすでに存在し、コピー元と重ならない必要があります。復元では、祖先ディレクトリに workbench.sqlite または server.lock がある復元先も拒否します。独立したワークスペースのルートを選んでください"
   },
   "backup.requirements.3": {
-    "zh-Hans": "备份 format1 不记录原始源路径。对于已重命名或未初始化、缺少固定工作区/锁标记的源目录，无法自动识别；请将新目标目录放在原始工作区之外。",
-    "zh-Hant": "備份 format1 不記錄原始來源路徑。對於已重新命名或未初始化、缺少固定工作區/鎖定標記的來源目錄，無法自動識別；請將新目標目錄放在原始工作區之外。",
-    "en": "Backup format1 does not record its original source path. Renamed or uninitialized source directories lacking fixed workspace/lock markers cannot be identified automatically; keep the new destination outside your original workspace.",
-    "ja": "バックアップ format1 は元のコピー元パスを記録しません。名前が変更された、または未初期化のコピー元ディレクトリで、所定のワークスペース/ロックのマーカーがないものは自動識別できません。新しい保存先は元のワークスペースの外に置いてください。"
+    "zh-Hans": "备份 format1 不记录原始源路径。对于已重命名或未初始化、缺少固定工作区/锁标记的源目录，无法自动识别；请将新目标目录放在原始工作区之外",
+    "zh-Hant": "備份 format1 不記錄原始來源路徑。對於已重新命名或未初始化、缺少固定工作區/鎖定標記的來源目錄，無法自動識別；請將新目標目錄放在原始工作區之外",
+    "en": "Backup format1 does not record its original source path. Renamed or uninitialized source directories lacking fixed workspace/lock markers cannot be identified automatically; keep the new destination outside your original workspace",
+    "ja": "バックアップ format1 は元のコピー元パスを記録しません。名前が変更された、または未初期化のコピー元ディレクトリで、所定のワークスペース/ロックのマーカーがないものは自動識別できません。新しい保存先は元のワークスペースの外に置いてください"
   },
   "backup.privacy.0": {
-    "zh-Hans": "整个工作区的捕获包含所有项目的数据库，以及受支持的托管媒体/暂存数据。",
-    "zh-Hant": "整個工作區的擷取包含所有專案的資料庫，以及受支援的受管媒體/暫存資料。",
-    "en": "Whole-workspace capture includes the database and supported managed media/staging payloads across all projects.",
-    "ja": "ワークスペース全体の取得には、すべてのプロジェクトにわたるデータベースと、対応する管理対象メディア/ステージングデータが含まれます。"
+    "zh-Hans": "整个工作区的捕获包含所有项目的数据库，以及受支持的托管媒体/暂存数据",
+    "zh-Hant": "整個工作區的擷取包含所有專案的資料庫，以及受支援的受管媒體/暫存資料",
+    "en": "Whole-workspace capture includes the database and supported managed media/staging payloads across all projects",
+    "ja": "ワークスペース全体の取得には、すべてのプロジェクトにわたるデータベースと、対応する管理対象メディア/ステージングデータが含まれます"
   },
   "backup.privacy.1": {
-    "zh-Hans": "数据库包含聊天、提示词、请求/重放缓存及其他用户文本。用户文本中可能含有机密；此导出不会删去机密信息。",
-    "zh-Hant": "資料庫包含聊天、提示詞、請求/重放快取及其他使用者文字。使用者文字中可能含有機密；此匯出不會刪去機密資訊。",
-    "en": "The database includes chats, prompts, request/replay caches and other user text. User text may contain secrets; this is not a secret-redacted export.",
-    "ja": "データベースにはチャット、プロンプト、リクエスト/再送キャッシュ、その他のユーザーテキストが含まれます。ユーザーテキストに秘密情報が含まれる可能性があります。このエクスポートは秘密情報を除去するものではありません。"
+    "zh-Hans": "数据库包含聊天、提示词、请求/重放缓存及其他用户文本。用户文本中可能含有机密；此导出不会删去机密信息",
+    "zh-Hant": "資料庫包含聊天、提示詞、請求/重放快取及其他使用者文字。使用者文字中可能含有機密；此匯出不會刪去機密資訊",
+    "en": "The database includes chats, prompts, request/replay caches and other user text. User text may contain secrets; this is not a secret-redacted export",
+    "ja": "データベースにはチャット、プロンプト、リクエスト/再送キャッシュ、その他のユーザーテキストが含まれます。ユーザーテキストに秘密情報が含まれる可能性があります。このエクスポートは秘密情報を除去するものではありません"
   },
   "backup.privacy.2": {
-    "zh-Hans": "应用凭据、设置及连接文件不包含在备份中。备份数据仍为私密存储的明文，未加密。",
-    "zh-Hant": "應用程式憑證、設定及連線檔案不包含在備份中。備份資料仍為私密儲存的明文，未加密。",
-    "en": "App credential, settings and connection files are excluded. Backup payloads remain private plaintext, not encrypted.",
-    "ja": "アプリの認証情報、設定、接続ファイルは除外されます。バックアップデータは非公開の平文のままで、暗号化されません。"
+    "zh-Hans": "应用凭据、设置及连接文件不包含在备份中。备份数据仍为私密存储的明文，未加密",
+    "zh-Hant": "應用程式憑證、設定及連線檔案不包含在備份中。備份資料仍為私密儲存的明文，未加密",
+    "en": "App credential, settings and connection files are excluded. Backup payloads remain private plaintext, not encrypted",
+    "ja": "アプリの認証情報、設定、接続ファイルは除外されます。バックアップデータは非公開の平文のままで、暗号化されません"
   },
   "backup.safety.0": {
-    "zh-Hans": "仅处理本地文件。不读取连接或令牌配置，也不启动任何 HTTP、供应商、恢复处理或生成操作。",
-    "zh-Hant": "僅處理本機檔案。不讀取連線或權杖設定，也不啟動任何 HTTP、供應商、復原處理或生成操作。",
-    "en": "Local files only. No connection or token configuration is read, and no HTTP, provider, recovery or generation operation is started.",
-    "ja": "ローカルファイルのみを扱います。接続設定やトークン設定は読み取らず、HTTP、プロバイダー、リカバリー、生成の操作は開始しません。"
+    "zh-Hans": "仅处理本地文件。不读取连接或令牌配置，也不启动任何 HTTP、供应商、恢复处理或生成操作",
+    "zh-Hant": "僅處理本機檔案。不讀取連線或權杖設定，也不啟動任何 HTTP、供應商、復原處理或生成操作",
+    "en": "Local files only. No connection or token configuration is read, and no HTTP, provider, recovery or generation operation is started",
+    "ja": "ローカルファイルのみを扱います。接続設定やトークン設定は読み取らず、HTTP、プロバイダー、リカバリー、生成の操作は開始しません"
   },
   "backup.safety.1": {
-    "zh-Hans": "验证仅检查受支持的清单及数据完整性，不代表已具备恢复条件。恢复是独立操作，仅接受已分类的 schema24，并在 schema25 中安装永久性的暂缓任务保护。",
-    "zh-Hant": "驗證僅檢查受支援的清單及資料完整性，不代表已具備還原條件。還原是獨立操作，僅接受已分類的 schema24，並在 schema25 中安裝永久性的暫緩任務保護。",
-    "en": "Verification checks supported manifest and payload integrity; it does not establish restoration readiness. Restore separately accepts only classified schema24 and installs permanent held-work guards in schema25.",
-    "ja": "検証は、対応するマニフェストとデータの整合性を確認するもので、復元の準備が整っていることを保証しません。復元は別の操作で、分類済みの schema24 のみを受け入れ、schema25 に保留中の作業に対する恒久的な保護を設定します。"
+    "zh-Hans": "验证仅检查受支持的清单及数据完整性，不代表已具备恢复条件。恢复是独立操作，仅接受已分类的 schema24，并在 schema25 中安装永久性的暂缓任务保护",
+    "zh-Hant": "驗證僅檢查受支援的清單及資料完整性，不代表已具備還原條件。還原是獨立操作，僅接受已分類的 schema24，並在 schema25 中安裝永久性的暫緩任務保護",
+    "en": "Verification checks supported manifest and payload integrity; it does not establish restoration readiness. Restore separately accepts only classified schema24 and installs permanent held-work guards in schema25",
+    "ja": "検証は、対応するマニフェストとデータの整合性を確認するもので、復元の準備が整っていることを保証しません。復元は別の操作で、分類済みの schema24 のみを受け入れ、schema25 に保留中の作業に対する恒久的な保護を設定します"
   },
   "backup.safety.2": {
-    "zh-Hans": "恢复后的分支允许受支持的新本地编辑和导出。捕获的任务、审批、历史记录、回执和未知结果仍保持暂缓；生成、Agent、Comfy、帧及波形工作不可用。无法为恢复后的分支创建备份；请保留原始已验证备份。",
-    "zh-Hant": "還原後的分支允許受支援的新本機編輯和匯出。擷取的任務、核准、歷史記錄、回執和未知結果仍保持暫緩；生成、Agent、Comfy、影格及波形工作無法使用。無法為還原後的分支建立備份；請保留原始已驗證備份。",
-    "en": "Restored branches allow supported fresh local editing and export. Captured tasks, approvals, histories, receipts and unknown outcomes remain held; generation, Agent, Comfy, frame and waveform work are unavailable. Backup creation of restored branches is unavailable; keep the original verified backup.",
-    "ja": "復元済みブランチでは、対応する新規のローカル編集とエクスポートが可能です。記録されたタスク、承認、履歴、受領記録、不明な結果は保留のままです。生成、Agent、Comfy、フレーム、波形の作業は利用できません。復元済みブランチのバックアップ作成は利用できないため、元の検証済みバックアップを保管してください。"
+    "zh-Hans": "恢复后的分支允许受支持的新本地编辑和导出。捕获的任务、审批、历史记录、回执和未知结果仍保持暂缓；生成、Agent、Comfy、帧及波形工作不可用。无法为恢复后的分支创建备份；请保留原始已验证备份",
+    "zh-Hant": "還原後的分支允許受支援的新本機編輯和匯出。擷取的任務、核准、歷史記錄、回執和未知結果仍保持暫緩；生成、Agent、Comfy、影格及波形工作無法使用。無法為還原後的分支建立備份；請保留原始已驗證備份",
+    "en": "Restored branches allow supported fresh local editing and export. Captured tasks, approvals, histories, receipts and unknown outcomes remain held; generation, Agent, Comfy, frame and waveform work are unavailable. Backup creation of restored branches is unavailable; keep the original verified backup",
+    "ja": "復元済みブランチでは、対応する新規のローカル編集とエクスポートが可能です。記録されたタスク、承認、履歴、受領記録、不明な結果は保留のままです。生成、Agent、Comfy、フレーム、波形の作業は利用できません。復元済みブランチのバックアップ作成は利用できないため、元の検証済みバックアップを保管してください"
   },
   "backup.safety.3": {
-    "zh-Hans": "恢复绝不会自动打开或切换后端。对于 Web，请使用 MIOON_DATA_DIR 选择新工作区。对于 Desktop，请恢复到新 root/workspace 子目录，再使用 MIOON_DESKTOP_USER_DATA 明确选择该新根目录；绝不能共用旧令牌/会话文件。",
-    "zh-Hant": "還原絕不會自動開啟或切換後端。對於 Web，請使用 MIOON_DATA_DIR 選擇新工作區。對於 Desktop，請還原到新 root/workspace 子目錄，再使用 MIOON_DESKTOP_USER_DATA 明確選擇該新根目錄；絕不能共用舊權杖/工作階段檔案。",
-    "en": "Restore never opens or switches the backend automatically. For Web, select the new workspace with MIOON_DATA_DIR. For Desktop, restore to a new root/workspace child, then explicitly select that new root with MIOON_DESKTOP_USER_DATA; never share old token/session files.",
-    "ja": "復元によってバックエンドを自動で開いたり切り替えたりすることはありません。Web では MIOON_DATA_DIR で新しいワークスペースを選んでください。Desktop では新しい root/workspace 子ディレクトリに復元し、MIOON_DESKTOP_USER_DATA でその新しいルートを明示的に選んでください。古いトークン/セッションファイルを共有しないでください。"
+    "zh-Hans": "恢复绝不会自动打开或切换后端。对于 Web，请使用 MIOON_DATA_DIR 选择新工作区。对于 Desktop，请恢复到新 root/workspace 子目录，再使用 MIOON_DESKTOP_USER_DATA 明确选择该新根目录；绝不能共用旧令牌/会话文件",
+    "zh-Hant": "還原絕不會自動開啟或切換後端。對於 Web，請使用 MIOON_DATA_DIR 選擇新工作區。對於 Desktop，請還原到新 root/workspace 子目錄，再使用 MIOON_DESKTOP_USER_DATA 明確選擇該新根目錄；絕不能共用舊權杖/工作階段檔案",
+    "en": "Restore never opens or switches the backend automatically. For Web, select the new workspace with MIOON_DATA_DIR. For Desktop, restore to a new root/workspace child, then explicitly select that new root with MIOON_DESKTOP_USER_DATA; never share old token/session files",
+    "ja": "復元によってバックエンドを自動で開いたり切り替えたりすることはありません。Web では MIOON_DATA_DIR で新しいワークスペースを選んでください。Desktop では新しい root/workspace 子ディレクトリに復元し、MIOON_DESKTOP_USER_DATA でその新しいルートを明示的に選んでください。古いトークン/セッションファイルを共有しないでください"
   },
   "backup.safety.4": {
-    "zh-Hans": "恢复的空间预算包括数据本身，以及四份各 512MiB 的数据库/副本/日志预留空间和 64MiB 附属文件空间。这只是估计，不保证可用空间或内存充足。",
-    "zh-Hant": "還原的空間預算包含資料本身，以及四份各 512MiB 的資料庫/副本/日誌預留空間和 64MiB 附屬檔案空間。這只是估計，不保證可用空間或記憶體充足。",
-    "en": "Restore budgets payload plus four 512MiB database/copy/journal allowances and 64MiB sidecars. This is an estimate, not a free-space or memory guarantee.",
-    "ja": "復元では、データに加えて、データベース/コピー/ジャーナル用に各 512MiB を4枠、付随ファイル用に 64MiB を見込みます。これは推定であり、空き容量やメモリを保証するものではありません。"
+    "zh-Hans": "恢复的空间预算包括数据本身，以及四份各 512MiB 的数据库/副本/日志预留空间和 64MiB 附属文件空间。这只是估计，不保证可用空间或内存充足",
+    "zh-Hant": "還原的空間預算包含資料本身，以及四份各 512MiB 的資料庫/副本/日誌預留空間和 64MiB 附屬檔案空間。這只是估計，不保證可用空間或記憶體充足",
+    "en": "Restore budgets payload plus four 512MiB database/copy/journal allowances and 64MiB sidecars. This is an estimate, not a free-space or memory guarantee",
+    "ja": "復元では、データに加えて、データベース/コピー/ジャーナル用に各 512MiB を4枠、付随ファイル用に 64MiB を見込みます。これは推定であり、空き容量やメモリを保証するものではありません"
   },
   "backup.safety.5": {
-    "zh-Hans": "若 stdout/确认信息全部丢失，请使用 restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace。它会先验证整个原始备份及目标绑定信息，再披露现有恢复身份标识。仍可使用精确 ID 模式：restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256。",
-    "zh-Hant": "若 stdout/確認資訊全部遺失，請使用 restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace。它會先驗證整個原始備份及目標綁定資訊，再揭露現有還原身分識別。仍可使用精確 ID 模式：restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256。",
-    "en": "After total stdout/acknowledgement loss, use restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace. It verifies the whole original backup and target binding before disclosing the existing restoration identity. Exact-ID mode remains available: restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256.",
-    "ja": "stdout/確認応答がすべて失われた場合は、restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace を使用してください。元のバックアップ全体と復元先の紐付けを検証したうえで、既存の復元識別情報を開示します。正確な ID を指定するモードも利用できます：restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256。"
+    "zh-Hans": "若 stdout/确认信息全部丢失，请使用 restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace。它会先验证整个原始备份及目标绑定信息，再披露现有恢复身份标识。仍可使用精确 ID 模式：restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256",
+    "zh-Hant": "若 stdout/確認資訊全部遺失，請使用 restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace。它會先驗證整個原始備份及目標綁定資訊，再揭露現有還原身分識別。仍可使用精確 ID 模式：restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256",
+    "en": "After total stdout/acknowledgement loss, use restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace. It verifies the whole original backup and target binding before disclosing the existing restoration identity. Exact-ID mode remains available: restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256",
+    "ja": "stdout/確認応答がすべて失われた場合は、restore-status --directory /absolute/original-backup --destination /absolute/restored-workspace を使用してください。元のバックアップ全体と復元先の紐付けを検証したうえで、既存の復元識別情報を開示します。正確な ID を指定するモードも利用できます：restore-status --destination /absolute/restored-workspace --restoration-id UUID --backup-id UUID --manifest-hash SHA256 --source-db-hash SHA256"
   },
   "backup.safety.6": {
-    "zh-Hans": "Restore-status 是对受保护架构及来源的只读检查。它不会修复锁或附属文件、恢复任务，也不能证明此前未确认的 fsync 已持久化。",
-    "zh-Hant": "Restore-status 是對受保護結構描述及來源的唯讀檢查。它不會修復鎖定檔或附屬檔案、恢復任務，也不能證明先前未確認的 fsync 已持久化。",
-    "en": "Restore-status is a read-only guarded-schema and provenance observation. It does not repair locks or sidecars, resume work, or prove a previously unconfirmed fsync was durable.",
-    "ja": "Restore-status は、保護されたスキーマと来歴を読み取り専用で確認するものです。ロックや付随ファイルの修復、作業の再開は行わず、以前に未確認だった fsync の永続性を証明するものでもありません。"
+    "zh-Hans": "Restore-status 是对受保护架构及来源的只读检查。它不会修复锁或附属文件、恢复任务，也不能证明此前未确认的 fsync 已持久化",
+    "zh-Hant": "Restore-status 是對受保護結構描述及來源的唯讀檢查。它不會修復鎖定檔或附屬檔案、恢復任務，也不能證明先前未確認的 fsync 已持久化",
+    "en": "Restore-status is a read-only guarded-schema and provenance observation. It does not repair locks or sidecars, resume work, or prove a previously unconfirmed fsync was durable",
+    "ja": "Restore-status は、保護されたスキーマと来歴を読み取り専用で確認するものです。ロックや付随ファイルの修復、作業の再開は行わず、以前に未確認だった fsync の永続性を証明するものでもありません"
   },
   "backup.safety.7": {
-    "zh-Hans": "不会覆盖、自动重试或自动删除。中断的捕获可能留下未完成的新目标目录；审查后请选择另一个新目标目录。",
-    "zh-Hant": "不會覆寫、自動重試或自動刪除。中斷的擷取可能留下未完成的新目標目錄；檢查後請選擇另一個新目標目錄。",
-    "en": "No overwrite, automatic retry or automatic deletion. Interrupted captures may leave an incomplete new destination; choose a different new destination after review.",
-    "ja": "上書き、自動再試行、自動削除は行いません。取得が中断されると、新しい保存先が不完全なまま残る場合があります。確認後に別の新しい保存先を選んでください。"
+    "zh-Hans": "不会覆盖、自动重试或自动删除。中断的捕获可能留下未完成的新目标目录；审查后请选择另一个新目标目录",
+    "zh-Hant": "不會覆寫、自動重試或自動刪除。中斷的擷取可能留下未完成的新目標目錄；檢查後請選擇另一個新目標目錄",
+    "en": "No overwrite, automatic retry or automatic deletion. Interrupted captures may leave an incomplete new destination; choose a different new destination after review",
+    "ja": "上書き、自動再試行、自動削除は行いません。取得が中断されると、新しい保存先が不完全なまま残る場合があります。確認後に別の新しい保存先を選んでください"
   },
   "backup.safety.8": {
-    "zh-Hans": "SIGINT 和 SIGTERM 会请求取消，并等待本地清理尝试完成。若无法确认源目录锁已释放，会明确报告；再次捕获前请先检查。",
-    "zh-Hant": "SIGINT 和 SIGTERM 會要求取消，並等待本機清理嘗試完成。若無法確認來源目錄鎖定已解除，會明確回報；再次擷取前請先檢查。",
-    "en": "SIGINT and SIGTERM request cancellation and wait for local cleanup attempts. Unconfirmed source lock release is explicitly reported; inspect it before another capture.",
-    "ja": "SIGINT と SIGTERM はキャンセルを要求し、ローカルのクリーンアップの試行が終わるまで待機します。コピー元のロック解除を確認できない場合は明示的に報告します。次の取得前に確認してください。"
+    "zh-Hans": "SIGINT 和 SIGTERM 会请求取消，并等待本地清理尝试完成。若无法确认源目录锁已释放，会明确报告；再次捕获前请先检查",
+    "zh-Hant": "SIGINT 和 SIGTERM 會要求取消，並等待本機清理嘗試完成。若無法確認來源目錄鎖定已解除，會明確回報；再次擷取前請先檢查",
+    "en": "SIGINT and SIGTERM request cancellation and wait for local cleanup attempts. Unconfirmed source lock release is explicitly reported; inspect it before another capture",
+    "ja": "SIGINT と SIGTERM はキャンセルを要求し、ローカルのクリーンアップの試行が終わるまで待機します。コピー元のロック解除を確認できない場合は明示的に報告します。次の取得前に確認してください"
   },
   "backup.safety.9": {
-    "zh-Hans": "已发布的备份可能包含 warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"]。若无法确认源目录锁已清理，失败或取消的操作会保留其错误码，并添加 details.sourceLockRelease:\"unconfirmed\"。",
-    "zh-Hant": "已發佈的備份可能包含 warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"]。若無法確認來源目錄鎖定檔已清理，失敗或取消的操作會保留其錯誤碼，並新增 details.sourceLockRelease:\"unconfirmed\"。",
-    "en": "A published backup may include warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"]. A failed or cancelled operation preserves its error code and adds details.sourceLockRelease:\"unconfirmed\" if source lock cleanup is unconfirmed.",
-    "ja": "公開済みバックアップに warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"] が含まれる場合があります。失敗またはキャンセルされた操作は、コピー元のロックのクリーンアップが未確認の場合、エラーコードを保持したまま details.sourceLockRelease:\"unconfirmed\" を追加します。"
+    "zh-Hans": "已发布的备份可能包含 warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"]。若无法确认源目录锁已清理，失败或取消的操作会保留其错误码，并添加 details.sourceLockRelease:\"unconfirmed\"",
+    "zh-Hant": "已發佈的備份可能包含 warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"]。若無法確認來源目錄鎖定檔已清理，失敗或取消的操作會保留其錯誤碼，並新增 details.sourceLockRelease:\"unconfirmed\"",
+    "en": "A published backup may include warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"]. A failed or cancelled operation preserves its error code and adds details.sourceLockRelease:\"unconfirmed\" if source lock cleanup is unconfirmed",
+    "ja": "公開済みバックアップに warnings:[\"SOURCE_LOCK_RELEASE_UNCONFIRMED\"] が含まれる場合があります。失敗またはキャンセルされた操作は、コピー元のロックのクリーンアップが未確認の場合、エラーコードを保持したまま details.sourceLockRelease:\"unconfirmed\" を追加します"
   },
   "backup.output": {
-    "zh-Hans": "stdout 上恰好输出一个 JSON 封装。成功为 {ok:true,data:...}；错误为 {ok:false,error:{code,message,details:{...},retryable:false}}。Details 仅包含固定的清理警告，以及在发布结果不确定后生成的恢复来源信息。退出码：0 成功，2 参数无效，1 操作失败，130 SIGINT 取消，143 SIGTERM 取消。",
-    "zh-Hant": "stdout 上恰好輸出一個 JSON 封裝。成功為 {ok:true,data:...}；錯誤為 {ok:false,error:{code,message,details:{...},retryable:false}}。Details 僅包含固定的清理警告，以及在發佈結果不確定後產生的還原來源資訊。結束代碼：0 成功，2 參數無效，1 操作失敗，130 SIGINT 取消，143 SIGTERM 取消。",
-    "en": "Exactly one JSON envelope on stdout. Success is {ok:true,data:...}; errors are {ok:false,error:{code,message,details:{...},retryable:false}}. Details contain only fixed cleanup warnings and generated restore provenance after uncertain publication. Exit codes: 0 success, 2 invalid arguments, 1 operation failure, 130 SIGINT cancellation, 143 SIGTERM cancellation.",
-    "ja": "stdout に JSON エンベロープを一つだけ出力します。成功は {ok:true,data:...}、エラーは {ok:false,error:{code,message,details:{...},retryable:false}} です。Details に含まれるのは、固定のクリーンアップ警告と、公開が不確かな場合に生成された復元の来歴情報のみです。終了コード：0 成功、2 無効な引数、1 操作失敗、130 SIGINT によるキャンセル、143 SIGTERM によるキャンセル。"
+    "zh-Hans": "stdout 上恰好输出一个 JSON 封装。成功为 {ok:true,data:...}；错误为 {ok:false,error:{code,message,details:{...},retryable:false}}。Details 仅包含固定的清理警告，以及在发布结果不确定后生成的恢复来源信息。退出码：0 成功，2 参数无效，1 操作失败，130 SIGINT 取消，143 SIGTERM 取消",
+    "zh-Hant": "stdout 上恰好輸出一個 JSON 封裝。成功為 {ok:true,data:...}；錯誤為 {ok:false,error:{code,message,details:{...},retryable:false}}。Details 僅包含固定的清理警告，以及在發佈結果不確定後產生的還原來源資訊。結束代碼：0 成功，2 參數無效，1 操作失敗，130 SIGINT 取消，143 SIGTERM 取消",
+    "en": "Exactly one JSON envelope on stdout. Success is {ok:true,data:...}; errors are {ok:false,error:{code,message,details:{...},retryable:false}}. Details contain only fixed cleanup warnings and generated restore provenance after uncertain publication. Exit codes: 0 success, 2 invalid arguments, 1 operation failure, 130 SIGINT cancellation, 143 SIGTERM cancellation",
+    "ja": "stdout に JSON エンベロープを一つだけ出力します。成功は {ok:true,data:...}、エラーは {ok:false,error:{code,message,details:{...},retryable:false}} です。Details に含まれるのは、固定のクリーンアップ警告と、公開が不確かな場合に生成された復元の来歴情報のみです。終了コード：0 成功、2 無効な引数、1 操作失敗、130 SIGINT によるキャンセル、143 SIGTERM によるキャンセル"
   },
   "mcp.error.launchOptions": {
-    "zh-Hans": "MCP 在进程启动时仅接受可选的 --workspace-origin UUID 和 --locale zh-Hans|zh-Hant|en|ja，各限一次。",
-    "zh-Hant": "MCP 在程序啟動時僅接受可選的 --workspace-origin UUID 和 --locale zh-Hans|zh-Hant|en|ja，各限一次。",
-    "en": "MCP accepts only one optional --workspace-origin UUID and --locale zh-Hans|zh-Hant|en|ja at process launch.",
-    "ja": "MCP はプロセス起動時に、任意の --workspace-origin UUID と --locale zh-Hans|zh-Hant|en|ja をそれぞれ一度だけ受け付けます。"
+    "zh-Hans": "MCP 在进程启动时仅接受可选的 --workspace-origin UUID 和 --locale zh-Hans|zh-Hant|en|ja，各限一次",
+    "zh-Hant": "MCP 在程序啟動時僅接受可選的 --workspace-origin UUID 和 --locale zh-Hans|zh-Hant|en|ja，各限一次",
+    "en": "MCP accepts only one optional --workspace-origin UUID and --locale zh-Hans|zh-Hant|en|ja at process launch",
+    "ja": "MCP はプロセス起動時に、任意の --workspace-origin UUID と --locale zh-Hans|zh-Hant|en|ja をそれぞれ一度だけ受け付けます"
   },
   "mcp.error.originRequired": {
-    "zh-Hans": "--workspace-origin 需要明确指定 UUID。",
-    "zh-Hant": "--workspace-origin 需要明確指定 UUID。",
-    "en": "--workspace-origin requires an explicit UUID.",
-    "ja": "--workspace-origin には UUID の明示が必要です。"
+    "zh-Hans": "--workspace-origin 需要明确指定 UUID",
+    "zh-Hant": "--workspace-origin 需要明確指定 UUID",
+    "en": "--workspace-origin requires an explicit UUID",
+    "ja": "--workspace-origin には UUID の明示が必要です"
   },
   "mcp.error.origin": {
-    "zh-Hans": "工作区来源必须为明确指定的 UUID。请保留与既有请求一起保存的来源。",
-    "zh-Hant": "工作區來源必須為明確指定的 UUID。請保留與既有請求一起儲存的來源。",
-    "en": "Workspace origin must be an explicit UUID. Preserve the origin saved with an existing request.",
-    "ja": "ワークスペースのオリジンには UUID を明示してください。既存のリクエストとともに保存されたオリジンを保持してください。"
+    "zh-Hans": "工作区来源必须为明确指定的 UUID。请保留与既有请求一起保存的来源",
+    "zh-Hant": "工作區來源必須為明確指定的 UUID。請保留與既有請求一起儲存的來源",
+    "en": "Workspace origin must be an explicit UUID. Preserve the origin saved with an existing request",
+    "ja": "ワークスペースのオリジンには UUID を明示してください。既存のリクエストとともに保存されたオリジンを保持してください"
   },
   "mcp.error.localeRequired": {
-    "zh-Hans": "--locale 需要明确指定值。",
-    "zh-Hant": "--locale 需要明確指定值。",
-    "en": "--locale requires an explicit value.",
-    "ja": "--locale には値の明示が必要です。"
+    "zh-Hans": "--locale 需要明确指定值",
+    "zh-Hant": "--locale 需要明確指定值",
+    "en": "--locale requires an explicit value",
+    "ja": "--locale には値の明示が必要です"
   },
   "mcp.error.locale": {
-    "zh-Hans": "--locale 必须为 zh-Hans、zh-Hant、en、ja 之一。",
-    "zh-Hant": "--locale 必須為 zh-Hans、zh-Hant、en、ja 之一。",
-    "en": "--locale must be one of zh-Hans, zh-Hant, en, ja.",
-    "ja": "--locale は zh-Hans、zh-Hant、en、ja のいずれかで指定してください。"
+    "zh-Hans": "--locale 必须为 zh-Hans、zh-Hant、en、ja 之一",
+    "zh-Hant": "--locale 必須為 zh-Hans、zh-Hant、en、ja 之一",
+    "en": "--locale must be one of zh-Hans, zh-Hant, en, ja",
+    "ja": "--locale は zh-Hans、zh-Hant、en、ja のいずれかで指定してください"
   },
   "mcp.error.transport": {
-    "zh-Hans": "Mioon MCP 无法启动 stdio 传输。",
-    "zh-Hant": "Mioon MCP 無法啟動 stdio 傳輸。",
-    "en": "Mioon MCP could not start the stdio transport.",
-    "ja": "Mioon MCP は stdio トランスポートを開始できませんでした。"
+    "zh-Hans": "Mioon MCP 无法启动 stdio 传输",
+    "zh-Hant": "Mioon MCP 無法啟動 stdio 傳輸",
+    "en": "Mioon MCP could not start the stdio transport",
+    "ja": "Mioon MCP は stdio トランスポートを開始できませんでした"
   }
 } as const satisfies MessageCatalog;

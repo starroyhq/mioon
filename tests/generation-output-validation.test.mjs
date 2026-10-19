@@ -18,7 +18,7 @@ for(const [dimensions,expected] of [['128x128','cancelled'],['144x256','succeede
  const provider={id:'ark',capabilities:{id:'ark',models:['fixture'],inputModes:['text'],aspectRatios:['9:16'],durations:[4],configured:true,enabled:true,mock:false},
   submit:async()=>{submissions++;return {providerJobId:'existing-offline-fixture-task'};},poll:async()=>({status:'succeeded'}),reconcile:async()=>null,
   download:async(id,destination)=>copyFile(fixture,destination)};
- const providers=new Map([['ark',provider]]),services=createServices(store,providers,{env:{ARK_MAX_GENERATIONS:'1'}});
+ const providers=new Map([['ark',provider]]),services=createServices(store,providers,{});
  const project=await services.call('project.create',{name:'Offline output shape fixture'});
  const shot=await services.call('shot.create',{projectId:project.id,title:'Output shape',prompt:'A synthetic blue rectangle',duration:4});
  const job=await services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,providerId:'ark',requestId:randomUUID()});

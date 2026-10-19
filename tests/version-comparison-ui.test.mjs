@@ -5,6 +5,8 @@ import { transformSync } from 'esbuild';
 import * as state from '../apps/web/src/version-comparison-state.ts';
 import { comparisonMessages } from '../packages/i18n/src/catalogs/comparison.ts';
 import { translate } from '../packages/i18n/src/index.ts';
+import { createComparisonPlayback } from '../apps/web/src/comparison-playback.ts';
+import { comparisonDetailRows } from '../apps/web/src/comparison-details.ts';
 const code = transformSync(readFileSync(new URL('../apps/web/src/VersionComparison.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 function context() { return { scope: 'same-project:epoch', projectId: id(1), workspaceOrigin: 'normal', connected: true, visible: true, restored: false,
@@ -23,14 +25,14 @@ function harness() {
     useLayoutEffect: effect };
   const t = (key, params = {}) => comparisonMessages[key] ? comparisonMessages[key][locale].replace(/\{(\w+)\}/g, (_, k) => String(params[k])) : translate(locale, key, params);
   const module = { exports: {} };
-  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, name => name === 'react' ? react : name.includes('I18nProvider') ? { useI18n: () => ({ t, formatDate: value => value, formatNumber: value => String(value) }) } : name.includes('version-comparison-state') ? state : name.includes('button') ? { Button: 'button' } : name.includes('/dialog') ? Object.fromEntries(['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription', 'DialogClose'].map(key => [key, key])) : {}, document, window);
+  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, name => name === 'react' ? react : name.includes('I18nProvider') ? { useI18n: () => ({ t, formatDate: value => value, formatNumber: value => String(value) }) } : name.includes('version-comparison-state') ? state : name.includes('comparison-playback') ? { createComparisonPlayback } : name.includes('comparison-details') ? { comparisonDetailRows } : name.includes('/switch') ? { Switch: 'switch' } : name.includes('workbench-icons') ? { Play: 'svg', Pause: 'svg' } : name.includes('button') ? { Button: 'button' } : name.includes('/dialog') ? Object.fromEntries(['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription', 'DialogClose'].map(key => [key, key])) : {}, document, window);
   function all(node, predicate, results = []) { if (node && typeof node === 'object') { if (predicate(node)) results.push(node); for (const child of Array.isArray(node) ? node : node.children || []) all(child, predicate, results); } return results; }
   const props = { context: context(), getContext: () => props.context, busy: false, onClose: () => closes++, onUse: b => used.push(b), onBeforePlay: () => ownerCalls++, onRegisterMediaPause: pause => { registered = pause; return () => { registered = null; }; } };
   function render(patch = {}) { Object.assign(props, patch); cursor = 0; tree = module.exports.default(props); while (pending.length) pending.shift()(); return tree; }
   const find = testId => all(tree, node => node.props?.['data-testid'] === testId)[0];
   const videos = () => all(tree, node => node.type === module.exports.ComparisonVideo);
   function choose(side, n) { find(`comparison-select-${side}`).props.onChange({ target: { value: id(n) } }); render(); }
-  function media(node) { const element = { isConnected: true, src: node.props.binding.url, pauses: 0, pause() { this.pauses++; }, getAttribute() { return this.src; } }; node.props.register(element); return element; }
+  function media(node) { const element = { isConnected: true, src: node.props.binding.url, pauses: 0, duration: 4, currentTime: 0, play() { return Promise.resolve(); }, pause() { this.pauses++; }, getAttribute() { return this.src; } }; node.props.register(element); return element; }
   return { render, find, choose, videos, media, props, used, events, document, ownerCalls: () => ownerCalls, closes: () => closes, pause: () => registered?.(),
     locale(value) { locale = value; render(); }, button(text) { return all(tree, node => node.type === 'button' && node.children.includes(text))[0]; },
     unmount() { hooks.forEach(hook => hook.cleanup?.()); }, module, react, pending, hooks, setCursor(value) { cursor = value; } };
@@ -108,4 +110,24 @@ test('removing the open shot retains a closable unavailable dialog without playb
   h.props.context.shot = null; const tree = h.render(); assert.equal(tree.type, 'Dialog'); assert.equal(h.videos().length, 0);
   assert.equal(h.find('comparison-select-A').props.value, id(3)); old.props.onPlay({ currentTarget: element }); assert.equal(h.ownerCalls(), 0);
   tree.props.onOpenChange(false); assert.equal(h.closes(), 1); h.unmount();
+});
+
+test('actual differences switch filters frozen parameters and stale add cannot insert a replacement source', () => {
+  const h = harness(), added = []; h.render({ onAdd: binding => added.push(binding) }); h.choose('A', 3); h.choose('B', 4);
+  const add = h.find('comparison-add-A').props.onClick; add(); assert.equal(added[0].versionId, id(3));
+  const rows = h.find('comparison-differences'); assert.ok(rows);
+  h.find('comparison-differences-only').props.onCheckedChange(true); h.render();
+  // Source prompt and duration differ; equal/missing model and provider rows disappear.
+  const body = h.find('comparison-differences').children[1];
+  assert.equal(body.children[0].length, 2);
+  h.choose('A', 5); add(); assert.equal(added.length, 1); h.unmount();
+});
+
+test('enabling synchronized playback is explicit and does not start either decoder', () => {
+  const h = harness(); h.render(); h.choose('A', 3); h.choose('B', 4);
+  const media = h.videos().map(node => h.media(node));
+  h.find('comparison-sync').props.onCheckedChange(true); h.render();
+  assert.ok(h.videos().every(node => node.props.controls === false)); assert.equal(h.ownerCalls(), 0);
+  assert.ok(h.find('comparison-shared-play')); assert.ok(media.every(element => element.pauses > 0));
+  h.unmount();
 });

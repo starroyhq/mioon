@@ -31,11 +31,14 @@ function hasDrawtext(listing: unknown): boolean | undefined {
   if (typeof listing !== 'string') return undefined;
   const lines = listing.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (lines.shift() !== 'Filters:') return undefined;
-  let scale = false, drawtext = false, rows = false;
+  let scale = false, drawtext = false, rows = false, separator = false;
   for (const line of lines) {
     // Keep the existing two/three-flag fixture formats and real FFmpeg legends.
     // Any unrecognized line makes absence unproven, even beside a scale row.
-    if (!rows && FILTER_LEGENDS.has(line.replace(/\s+/g, ' '))) continue;
+    if (!rows && !separator && FILTER_LEGENDS.has(line.replace(/\s+/g, ' '))) continue;
+    // Newer FFmpeg separates its legend from filter rows with this exact line.
+    // Accept it once in the header; a separator within data remains unknown.
+    if (!rows && !separator && line === '------') { separator = true; continue; }
     const row = /^[TSC.]{2,3}\s+([a-zA-Z0-9_]+)\s+[AVN|]+->[AVN|]+\s+\S.*$/.exec(line);
     if (!row) return undefined;
     rows = true;

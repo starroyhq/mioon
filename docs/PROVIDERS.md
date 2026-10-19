@@ -63,7 +63,7 @@ A successful submit returns `{ providerJobId }`. An error tagged `uncertain: tru
 
 ### Implemented model subsets
 
-These are deliberately smaller than the providers' full catalogs. The UI and service use per-model `modelCapabilities`; legacy `models`, `inputModes`, `aspectRatios`, and `durations` remain available. Configuration exposes only names/reasons, never values. `available` means local configuration and approved count permit a request; it is not a live-verified claim.
+These are deliberately smaller than the providers' full catalogs. The UI and service use per-model `modelCapabilities`; legacy `models`, `inputModes`, `aspectRatios`, and `durations` remain available. Configuration exposes only names/reasons, never values. `available` means local configuration permits a request; it is not a live-verified claim.
 
 | Provider ID | Exact model | Inputs | Implemented ratios | Seconds | Resolution |
 | --- | --- | --- | --- | --- | --- |
@@ -78,19 +78,19 @@ New adapters deliberately accept PNG/JPEG only, at most one image, and a nonblan
 
 ### Required server settings
 
-Every real provider needs `MIOON_ENABLE_LIVE_PROVIDER=1`, the corresponding server key, and a separately approved application-level generation count. None are implied by installing the app or having a ChatGPT plan.
+Every real provider needs `MIOON_ENABLE_LIVE_PROVIDER=1` and the corresponding server key. Image input also requires approved reference hashes; output-host and regional checks remain enforced. Installing the app or having a ChatGPT plan does not enable live calls.
 
-| ID | Credential name | Approved-image checksum list | Generation count | Additional settings |
-| --- | --- | --- | --- | --- |
-| runway | RUNWAYML_API_SECRET | RUNWAY_APPROVED_ASSET_SHA256 | RUNWAY_MAX_GENERATIONS | RUNWAY_OUTPUT_HOSTS |
-| ark | ARK_API_KEY | ARK_APPROVED_ASSET_SHA256 | ARK_MAX_GENERATIONS | ARK_OUTPUT_HOSTS |
-| veo | GEMINI_API_KEY | VEO_APPROVED_ASSET_SHA256 | VEO_MAX_GENERATIONS | VEO_OUTPUT_HOSTS |
-| minimax | MINIMAX_API_KEY | MINIMAX_APPROVED_ASSET_SHA256 | MINIMAX_MAX_GENERATIONS | MINIMAX_OUTPUT_HOSTS; MINIMAX_REGION=global or cn |
-| vidu | VIDU_API_KEY | VIDU_APPROVED_ASSET_SHA256 | VIDU_MAX_GENERATIONS | VIDU_OUTPUT_HOSTS required; VIDU_REGION=global or cn |
+| ID | Credential name | Approved-image checksum list | Additional settings |
+| --- | --- | --- | --- |
+| runway | RUNWAYML_API_SECRET | RUNWAY_APPROVED_ASSET_SHA256 | RUNWAY_OUTPUT_HOSTS |
+| ark | ARK_API_KEY | ARK_APPROVED_ASSET_SHA256 | ARK_OUTPUT_HOSTS |
+| veo | GEMINI_API_KEY | VEO_APPROVED_ASSET_SHA256 | VEO_OUTPUT_HOSTS |
+| minimax | MINIMAX_API_KEY | MINIMAX_APPROVED_ASSET_SHA256 | MINIMAX_OUTPUT_HOSTS; MINIMAX_REGION=global or cn |
+| vidu | VIDU_API_KEY | VIDU_APPROVED_ASSET_SHA256 | VIDU_OUTPUT_HOSTS required; VIDU_REGION=global or cn |
 
 `*_APPROVED_ASSET_SHA256` is a comma-separated list of exact reviewed image hashes; text-only generation does not need an image approval. `*_OUTPUT_HOSTS` contains exact independently verified output CDN hostnames, never URLs, wildcard suffixes or hosts copied blindly from a provider response. Vidu has no verified default output CDN and stays unconfigured until its output host list is supplied. MiniMax/Vidu region defaults to `global`; keys must belong to that selected regional account. Invalid region settings fail closed. API origins cannot be overridden by request input or arbitrary environment URLs.
 
-The generation-count limit is enforced by the shared service against jobs in the local data directory, before queuing. It is not a provider-account credit limit or a currency price guarantee. All queued attempts conservatively count, including later rejected submissions. Deleting/resetting the local data directory is not an authorized budget reset.
+The application does not impose a generation-count limit. Legacy count environment settings are ignored and are no longer forwarded to the desktop backend. Capability discovery returns no generation-count budget fields. This does not provide an account credit or currency-spending limit; verify billing and any spending controls with the provider.
 
 ### Shared live-adapter safeguards
 
@@ -141,7 +141,7 @@ Live calls require all applicable gates, configured only after separate user aut
 1. `MIOON_ENABLE_LIVE_PROVIDER=1`
 2. `RUNWAYML_API_SECRET` supplied to the server environment through a secure credential route
 3. `RUNWAY_APPROVED_ASSET_SHA256`: comma-separated hashes of the exact approved synthetic reference files
-4. Any additional application-level budget/authorization gate, including the backend's `RUNWAY_MAX_GENERATIONS`
+4. Independently verified output hosts and the separately agreed scope and cost of the live call; the application has no generation-count or currency-spending cap
 
 The provider never reads credentials from browser input, project JSON or a URL. Construction, capability listing, reconciliation of an unknown request, and local-only cancellation make no network calls. A credential alone does not enable live calls. Capability `configured` reports presence only; `enabled` reflects the explicit enable switch and key, while per-reference approval is still mandatory.
 
@@ -177,7 +177,7 @@ A9 remains pending. An authorized real smoke test should use one reviewed synthe
 
 ## One bundled live-verification decision
 
-Before any A9 run, confirm all of these together with the owner: Runway organization/account and `gen4_turbo` model; exact reference image scope (server-side SHA256 allowlist) and prompt; 9:16 duration; maximum generation count and total currency budget; secure local credential configuration method. Do not paste credentials into conversation. Configure the approved count using `RUNWAY_MAX_GENERATIONS`; rejected/local validation attempts can conservatively consume a count because jobs are counted. The application cannot guarantee a dollar price from account balance, and no budget/real-generation approval is implied by a Pro plan or the offline adapter tests.
+Before any A9 run, confirm all of these together with the owner: Runway organization/account and `gen4_turbo` model; exact reference image scope (server-side SHA256 allowlist) and prompt; 9:16 duration; maximum generation count and total currency budget; secure local credential configuration method. Do not paste credentials into conversation. The application does not enforce a generation-count cap or guarantee a dollar price from account balance, and no budget/real-generation approval is implied by a Pro plan or the offline adapter tests.
 
 The same bundled approval is required independently for each additional provider: exact account/region/model, text and optional reference-image scope, duration/ratio, maximum count and total currency budget, verified download hosts, and secure server credential configuration. No cross-provider fallback submission is automatic. If acceptance is unknown, stop and investigate the provider account rather than spending again.
 

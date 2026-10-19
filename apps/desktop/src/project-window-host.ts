@@ -226,6 +226,11 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       const sameDocument = value && 'isSameDocument' in value ? value.isSameDocument : legacyInPlace;
       if (mainFrame === false || sameDocument === true || !ownsRecord(record)) return;
       const target = value && 'url' in value ? value.url : legacyUrl;
+      // The assigned-navigation policy rejects every other destination. Electron
+      // emits this event before that rejection; retiring the still-live document
+      // here would strand its renderer and close guard. A foreign commit remains
+      // untrusted through the exact URL and main-frame checks below.
+      if (target !== record.url) return;
       const previousContext = record.contextId;
       const firstAssignedLoad = !initialLoad.started && initialLoad.contextId === previousContext && target === url;
       invalidateDocument(record); retireLocator(record);

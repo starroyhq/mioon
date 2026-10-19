@@ -2,6 +2,8 @@ import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts'
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
 import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
+import { WORKSPACE_TOOLS_CHANNEL } from '../packages/contracts/src/workspace-info.ts';
+import { createWorkspaceToolsHost } from '../apps/desktop/src/workspace-tools-host.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../packages/contracts/src/clip-lut-recovery.ts';
 import { calculateWorkspaceScope } from '../packages/contracts/src/workspace-scope.ts';
 import { createDesktopLutRecoveryHost } from '../apps/desktop/src/lut-recovery-host.ts';
@@ -26,6 +28,7 @@ import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-proto
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import * as security from '../apps/desktop/src/security.mjs';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
+import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
 const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -130,6 +133,7 @@ async function harness(t, options = {}) {
       r.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
+    setBackgroundColor(value) { this.backgroundColor = value; }
     isMinimized() { return false; }
     restore() {}
     deliverClosed() { if (!this.closedDelivered) { this.closedDelivered = true; this.emit('closed'); } }
@@ -160,6 +164,15 @@ async function harness(t, options = {}) {
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
+    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost,
+    nativeTheme: Object.assign(new EventEmitter(), {shouldUseDarkColors:true}),
+    createDesktopWindowAppearance: options => createDesktopWindowAppearance({...options,
+      // This lifecycle fixture has no persistent appearance sidecar. Keep the
+      // real scope/current/abort controller while excluding OS filesystem IO.
+      storage:{...options.storage,readPrivateFile:(file,configuration)=>{
+        assert.equal(file,'/synthetic/workspace/ui-preferences-v1.json');
+        assert.equal(configuration.private,true);return null;
+      }},watchDirectory:()=>Object.assign(new EventEmitter(),{close(){}})}),
     createDesktopLutRecoveryStore: createLutStore,
     validatePrivateDirectory: root => { assert.equal(root, '/synthetic/workspace'); return lutDirectory; },
     validateManagedFile: (file, { root }) => {
@@ -208,7 +221,7 @@ async function harness(t, options = {}) {
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel, handler) {
-      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -230,7 +243,7 @@ async function harness(t, options = {}) {
   });
   vm.runInContext(source, context, { filename: 'actual-desktop-main.mjs' });
   assert.deepEqual([...r.ipcHandlers.keys()].sort(),
-    [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL].sort());
+    [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL].sort());
   const get = text => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true'); options.release?.();
@@ -337,7 +350,7 @@ for (const stage of ['cookie', 'connection']) {
     assert.equal(f.get('windowContext'), undefined);
     preparation.resolve(); await f.initial(); await until(() => f.r.finished === 1);
     assert.equal(f.fatals().length, 1);
-    assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: '本地服务在窗口准备完成前已停止。' }));
+    assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: '本地服务在窗口准备完成前已停止' }));
     assert.equal(f.r.windows.length, 0);
     assert.equal(f.r.backends.length, 1, 'No replacement can be started by an ownerless recovery reply');
     assert.equal(f.get('windowContext'), null);
@@ -354,7 +367,7 @@ test('unexpected backend exit before the handshake continuation fails before pre
   await f.initial();
   assert.equal(f.fatals().length, 1);
   await until(() => f.r.finished === 1);
-  assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: '本地服务在窗口准备完成前已停止。' }));
+  assert.equal(f.fatals()[0].detail, nativeText('native.originalDiagnostic', { detail: '本地服务在窗口准备完成前已停止' }));
   assert.equal(f.r.dialogs.filter(value => value.title === '本地服务已停止').length, 0);
   assert.equal(f.r.sessions.length, 0); assert.equal(f.r.connections.length, 0); assert.equal(f.r.windows.length, 0);
   assert.equal(f.r.backends.length, 1);

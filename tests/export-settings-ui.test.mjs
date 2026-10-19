@@ -167,7 +167,7 @@ const appSource = readFileSync(new URL('../apps/web/src/App.jsx', import.meta.ur
 function appFunction(begin, end, scope) { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`)(...Object.values(scope)); }
 function appHarness(f, { restored = false, localState = { baselineConflict: false, candidate: null } } = {}) {
   const calls = [], panels = [], notices = [], pending = [], submitOptions = []; let ids = 0;
-  const environment = { msg: i18n.message, t: i18n.i18nTestModule().useI18n().t, panelIntent: { current: 0 }, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
+  const environment = { clipDraftRef:{current:null}, markPanelIntent(){}, setShowTasks:value=>panels.push(['tasks',value]), setShowImage:value=>panels.push(['image',value]), setShowDelivery:value=>panels.push(['delivery',value]), msg: i18n.message, t: i18n.i18nTestModule().useI18n().t, panelIntent: { current: 0 }, setDeliveryAttempt() {}, setShowExports() {}, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
     setRightDockTab: value => panels.push(value), setPanelOpen: (...args) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
     notify: (...args) => notices.push(args), openTasks() {}, setShowExports() {}, updateView() {}, setPreviewKind() {},
     context: () => ({ scope: f.live.scope, projectId: environment.currentProject.current }), isCurrent: captured => captured.scope === f.live.scope && captured.projectId === environment.currentProject.current,
@@ -183,7 +183,7 @@ function appHarness(f, { restored = false, localState = { baselineConflict: fals
 
 test('actual App open is passive, explicit Check performs both operations, and export freezes exactly one selected request', async () => {
   const f = fixture({ exportSettings: settings({ resolution: 'short_360', rateControl: { mode: 'bitrate', targetKbps: 2000 } }) }), h = appHarness(f);
-  h.open(); assert.deepEqual(h.panels, ['delivery', ['inspector', true]]); assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
+  h.open(); assert.deepEqual(h.panels, [['tasks',false],['image',false],['delivery',true]]); assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
   const waiting = h.check(); f.capabilities[0].resolve(capability(f.live.exportSettings)); await Promise.resolve(); f.reads[0].resolve(report(f.live.exportSettings)); await waiting;
   const binding = f.state().binding; await h.render('export', binding); await h.render('export', binding);
   assert.equal(h.ids(), 1); assert.deepEqual(h.calls, [['local-delivery.submit', { ...binding, requestId: 'frozen-render-id', purpose: 'export' }]]);
@@ -232,7 +232,7 @@ const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree &&
 function component(file, extra = {}) {
   const module = { exports: {} }, react = { createElement: element, useRef: current => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: value => [value, () => {}] }; react.default = react;
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.js' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.js' ? preflightState : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' });
+  Function('module', 'exports', 'require', 'fetch', transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, name => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? extra.react || react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.js' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.js' ? preflightState : name === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : name === './api.js' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', WorkbenchButton: 'WorkbenchButton', WorkbenchAlert: 'WorkbenchAlert', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' }, extra.fetch || globalThis.fetch);
   return module.exports.default;
 }
 
@@ -267,7 +267,20 @@ test('history renders the actual frozen settings and output dimensions; old reco
   assert.match(textOf(oldTree), /时间线导出 · 修订版 4 · 当前/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
   const tree = View({ orderedExports: [custom], projectName: '作品', timelineRevision: 4 });
   assert.match(textOf(tree), /1080 × 1920/); assert.match(textOf(tree), /平均目标 8 Mb\/s/); assert.match(textOf(tree), /放大输出，不增加细节/);
-  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'download-export').props.href, custom.url);
+  assert.equal(nodes(tree).find(node => node.props.exportId === custom.id && typeof node.props.downloadHref === 'string').props.downloadHref, custom.url);
+});
+
+test('successful timeline preview keeps its original download and never probes the export-only recovery endpoint', () => {
+  const View = component('ExportHistoryList.jsx');
+  const preview = { id: id(42), projectId, mode: 'timeline', purpose: 'preview', timelineRevision: 4, status: 'succeeded', createdAt: '2026-10-11T18:00:00.000Z', url: '/media/original-editing-preview', snapshot: { timeline } };
+  const tree = View({ orderedExports: [preview], projectId, projectName: '作品', timelineRevision: 4, fileRecoveryEnabled: true });
+  const action = nodes(tree).find(node => node.props.exportId === preview.id && typeof node.props.downloadHref === 'string');
+  assert.equal(action.props.disabled, true); assert.equal(action.props.downloadHref, preview.url);
+  let reads = 0;
+  const react = { createElement: element, useRef: current => ({ current }), useState: value => [value, () => {}], useEffect: run => run(), useLayoutEffect: run => run(), useMemo: run => run() };
+  const Actions = component('ExportFileActions.tsx', { react, './workspace-visibility.jsx': {useWorkspaceVisibility: () => true}, fetch: () => { reads++; return Promise.reject(new Error('Preview must not use export recovery')); } });
+  const download = Actions(action.props);
+  assert.equal(reads, 0); assert.equal(download.props.render.props.href, preview.url); assert.equal(download.props.render.props.download, true);
 });
 
 
@@ -277,10 +290,10 @@ test('actual playback keeps the produced artifact URL and shows its frozen dimen
   const job = { id: id(90), mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', url: '/media/exact-produced-file', snapshot: { timeline, delivery } };
   const tree = View({ kind: 'timeline', timeline: { ...timeline, revision: 5 }, job, playhead: 0 });
   assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'timeline-preview-video').props.src, job.url);
-  const footer = nodes(tree).find(node => node.props.className === 'preview-footer');
-  assert.match(textOf(footer), /已导出的成片文件/); assert.match(textOf(footer), /360 × 640/); assert.match(textOf(footer), /CRF 28/); assert.doesNotMatch(textOf(footer), /720 × 1280/);
+  const metadata = nodes(tree).find(node => typeof node.props.metadata === 'string').props.metadata;
+  assert.match(textOf(tree), new RegExp(i18n.translate('zh-Hans', 'timeline.preview.final'))); assert.match(metadata, /360 × 640/); assert.match(metadata, /CRF 28/); assert.doesNotMatch(metadata, /720 × 1280/);
   const preview = View({ kind: 'timeline', timeline, job: { ...job, purpose: 'preview', snapshot: { timeline } }, playhead: 0 });
-  assert.match(textOf(preview), /编辑预览 · 原始尺寸与默认画质/); assert.match(textOf(nodes(preview).find(node => node.props.className === 'preview-footer')), /720 × 1280/);
+  assert.match(textOf(preview), new RegExp(i18n.translate('zh-Hans', 'timeline.preview.editing'))); assert.match(nodes(preview).find(node => typeof node.props.metadata === 'string').props.metadata, /720 × 1280/);
 });
 
 

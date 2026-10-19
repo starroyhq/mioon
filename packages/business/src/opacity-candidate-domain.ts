@@ -7,7 +7,7 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import {
   captureOpacityTimelineRecord, captureOpacityTimelineIntent, captureOpacityTimelinePrepare,
   isOpacityTimelineMutationResponse, isOpacityTimelineTask,
-  captureOpacityApplicationPrepare, isOpacityApplicationMutationResponse, isOpacityApplicationTask,
+  captureOpacityApplicationPrepare, isOpacityApplicationMutationResponse, isOpacityApplicationTask, captureRippleOpacityPrepare, isRippleOpacityMutationResponse,
 } from '../../contracts/src/timeline-opacity-persistence.ts';
 import {captureOpacityRenderInput, captureOpacityPreflightInput, captureOpacityCapabilitiesInput, createOpacityRenderSnapshotPlan, captureOpacityRenderSnapshot, captureOpacityPreparedSourceProjection, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 import {getOpacityCandidateAssembly, freezeOpacityCandidateInput, isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
@@ -57,7 +57,8 @@ export function createOpacityCandidateDomain(store: unknown) {
   const db = store.db;
   const boundAssembly = assembly;
   const application = isOpacityCandidateApplicationStore(store);
-  const mutationResponse = application ? isOpacityApplicationMutationResponse : isOpacityTimelineMutationResponse;
+  const originalMutationResponse = application ? isOpacityApplicationMutationResponse : isOpacityTimelineMutationResponse;
+  const mutationResponse = (operation:string,input:unknown,value:unknown):boolean => operation==='timeline.clip.rippleRemove' && assembly.rippleRemove ? isRippleOpacityMutationResponse(input,value) : originalMutationResponse(operation,input,value);
   const checkpoint = (): void => {
     boundAssembly.checkpoint();
     if (getOpacityCandidateAssembly(store) !== boundAssembly || !boundAssembly.ownsLock()) throw new AppError('EDIT_TASK_OWNER_REQUIRED', '只有持有工作区锁的后端可以修改编辑任务。', 403);
@@ -288,9 +289,10 @@ export function createOpacityCandidateDomain(store: unknown) {
   }
   return Object.freeze({
     parse, boundary, admit, freezeRenderSnapshot, readPreflightSnapshot,
-    capturePrepare: (value: unknown) => {checkpoint();return application ? captureOpacityApplicationPrepare(value) : captureOpacityTimelinePrepare(value);},
+    capturePrepare: (value: unknown) => {checkpoint();return assembly.rippleRemove ? captureRippleOpacityPrepare(value,application) : application ? captureOpacityApplicationPrepare(value) : captureOpacityTimelinePrepare(value);},
     captureIntent: (operation: string, value: unknown) => {checkpoint();return captureOpacityTimelineIntent(operation, value);},
     isTask: (value: unknown) => {checkpoint();
+      if (assembly.rippleRemove && object(value) && value.operation==='timeline.clip.rippleRemove') return isOpacityTimelineTask(value);
       if (application) return isOpacityApplicationTask(value);
       if (isOpacityTimelineTask(value)) return true;
       return isOpacityApplicationTask(value) && object(value) && value.operation === 'timeline.clip.add' && capturedClipAdd(value.input, value.id) !== null;

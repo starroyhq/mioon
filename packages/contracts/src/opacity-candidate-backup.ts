@@ -6,8 +6,8 @@ import {z} from 'zod';
 const require = createRequire(import.meta.url);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function unavailable(): never {throw new Error('The fixed offline archive contract is unavailable.');}
-function base(moduleName: string, name: string) {
-  const module: unknown = require(moduleName);
+function base(moduleName: './workspace-backup.mjs' | './workspace-restore-offline.mjs', name: string) {
+  const module: unknown = moduleName === './workspace-backup.mjs' ? require('./workspace-backup.mjs') : require('./workspace-restore-offline.mjs');
   if (!object(module)) return unavailable();
   const schema: unknown = module[name];
   const inner: unknown = schema instanceof z.ZodEffects ? schema.innerType() : schema;

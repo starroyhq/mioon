@@ -26,7 +26,7 @@ const TOKEN = 'synthetic-named-delivery-transport-token';
 const NAME = ' 交付 Café e\u0301 🎬 / Final.mp4 ';
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const sha256 = value => createHash('sha256').update(value).digest('hex');
-const environment = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0',
+const environment = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
   ...(url ? {MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN} : {})});
 const noPrivate = value => {
   const text = typeof value === 'string' ? value : JSON.stringify(value);

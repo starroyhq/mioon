@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {timelineHistoryState} from '../apps/web/src/timeline-history.js';
 import {timelineHistoryActionForKey} from '../apps/web/src/timeline-keyboard.js';
+import {message as msg, renderMessage} from '../packages/i18n/src/index.ts';
 
 // No application, HTTP server, browser, worker, media process or provider is started.
 // The first group executes unchanged ordinary-JS App functions, extracted exactly
@@ -24,7 +25,7 @@ function section(start, end) {
   return app.slice(at, until);
 }
 const actual = [
-  section('function readableError(', 'function Login('),
+  section('function localizedError(', 'function Modal('),
   section('  async function run(', '  async function adoptLegacyTask('),
   section('  function changeTimelineHistory(', '  useEffect('),
   section('  async function mutateTimeline(', '  async function selectClip('),
@@ -74,7 +75,7 @@ function appHarness(port, {revision = 7, refreshedRevision = 9, subtitleDirty = 
   const currentProject = {current:projectId}, busy = new Set();
   const dataRef = {current:{project:{id:projectId}, timeline:timeline(revision), timelineHistory:history(revision)}};
   const state = {epoch:0, ids:0, notices:[], refreshes:[], jobs:false, recoveredFormats:[], recoveredSubtitles:[]};
-  const scope = { captureTaskWorkspaceIntent,
+  const scope = { msg, renderCoreMessage: renderMessage, application: null, clipConnectionBlocked: {current:false}, clipDraftRef: {current:null}, shotTextRef: {current:null}, captureTaskWorkspaceIntent,
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }),
     timelineFormatRef:{current:{controller:{recovered:task=>state.recoveredFormats.push(copy(task))}}}, subtitlesRef:{current:{controller:{recovered:task=>state.recoveredSubtitles.push(copy(task))}}},
     currentProject, dataRef, tasksRef:{current:port}, requestCounter:{current:0}, timelineHistoryState,
@@ -88,7 +89,7 @@ function appHarness(port, {revision = 7, refreshedRevision = 9, subtitleDirty = 
     markBusy: (owner, key, value) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
     requestId: () => `audit-user-intent-${++state.ids}`,
     setData: update => { dataRef.current = update(dataRef.current); },
-    notify: (message, type) => state.notices.push({message, type}),
+    notify: (message, type) => state.notices.push({message:renderMessage('zh-Hans',message), type}),
     openTasks: (canReveal = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: value => { state.auth = value; },
     setSubjectRefresh: () => assert.fail('Undo/Redo must not refresh subject bindings'),
     refresh: async owner => {
@@ -133,7 +134,7 @@ for (const direction of ['undo', 'redo']) {
     const message = h.state.notices.at(-1).message;
     // Execute the real readableError; a new Error.message does not by itself
     // make the historical browser assertion obsolete.
-    assert.equal(message, '保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存。');
+    assert.equal(message, '保存冲突：内容已在其他窗口更新。已刷新最新状态，请检查后再保存');
     const browser = readFileSync(new URL('../tests/browser_timeline_history.mjs', import.meta.url), 'utf8');
     assert.ok(browser.includes(`getByText('${message}',{exact:true})`));
   });
@@ -176,8 +177,8 @@ for (const direction of ['undo', 'redo']) {
     const notices = h.state.notices.length; release.resolve(); await recovery;
     assert.equal(allowed, false); assert.equal(h.state.notices.length, notices);
     assert.equal(h.busy.size, 0);
-    assert.match(app, /canExecute: \(\) => !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)/);
-    assert.match(app, /<TaskCenter taskViewScope=\{taskViewScope\} captureView=\{captureTaskView\}/);
+    assert.match(app, /canExecute: \(\) => !clipConnectionBlocked\.current && !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)/);
+    assert.match(app, /<TaskCenter taskViewScope=\{taskViewScope\}[^>]*captureView=\{captureTaskView\}/);
   });
 }
 

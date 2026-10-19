@@ -34,7 +34,7 @@ async function bounded(promise, label, ms = 15_000) {
 function environment(root, extra = {}) {
   // Do not inherit credentials, proxy variables, loaders or provider settings.
   return {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8',
-    NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0', ...extra};
+    NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
 }
 
 function ownedProcess(args, env, {ipc = false} = {}) {

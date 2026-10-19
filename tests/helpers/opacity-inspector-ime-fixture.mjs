@@ -11,6 +11,9 @@ import * as imeSubmit from '../../apps/web/src/opacity-ime-submit-guard.ts';
 import {i18nTestModule} from './i18n.ts';
 import {message, translate} from '../../packages/i18n/src/index.ts';
 import {createOpacityRestoredApplicationInspection} from '../../packages/contracts/src/opacity-restored-application.ts';
+import {DEFAULT_UI_PREFERENCES} from '../../packages/contracts/src/ui-preferences.ts';
+import * as removalState from '../../apps/web/src/timeline-removal.ts';
+import {hasOpenWorkbenchModal} from '../../apps/web/src/workbench-modal-state.ts';
 
 const id = n => `b4000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-16T00:00:00.000Z';
@@ -68,16 +71,28 @@ export function opacityInspectorImeFixture(t, {locale = 'en', restored = false, 
     const previous = current;current = owners.get(name) ?? {hooks: [], cursor: 0};owners.set(name, current);current.cursor = 0;
     try {return callback();} finally {current = previous;}
   }
-  const react = {createElement: (type, properties, ...children) => ({type, props: {...properties, children}}),
+  const removalModule = {exports:{}};
+  const react = {createElement: (type, properties, ...children) => type === removalModule.exports.ClipActionsMenu ? type({...properties, children}) : ({type, props: {...properties, children}}),
     useRef(initial) {return current.hooks[current.cursor++] ??= {current: initial};},
     useState(initial) {const owner = current, at = owner.cursor++;owner.hooks[at] ??= {value: initial};return [owner.hooks[at].value, value => {owner.hooks[at].value = value;}];},
-    useId: () => 'synthetic-opacity', useLayoutEffect(callback) {callback();}};react.default = react;
+    useId: () => 'synthetic-opacity', useEffect() {}, useLayoutEffect(callback) {callback();}};react.default = react;
   const stub = name => {if (!stubs.has(name)) stubs.set(name, properties => properties);return stubs.get(name);};
+  Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../../apps/web/src/ClipRemovalControls.tsx', import.meta.url), 'utf8'), {loader:'tsx', format:'cjs'}).code)(name => {
+    if (name === 'react') return react;
+    if (name.includes('I18nProvider')) return i18nTestModule(locale);
+    if (name === './timeline-removal.ts') return removalState;
+    if (name === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
+    if (name.startsWith('@mioon/ui/')) return new Proxy({}, {get: (_, key) => stub(key)});
+    return assert.fail(name);
+  }, removalModule, removalModule.exports);
   function load(code, importer) {const module = {exports: {}};Function('require', 'module', 'exports', code)(importer, module, module.exports);return module.exports.default;}
   const Controls = load(controlsCode, name => name === 'react' ? react : name.includes('I18nProvider') ? i18nTestModule(locale)
     : name.endsWith('clip-opacity-envelope-state.ts') ? opacity : name.endsWith('timeline-opacity-envelope.ts') ? opacityContract : assert.fail(name));
   const Inspector = load(inspectorCode, name => {
     if (name === 'react') return react;
+    if (name === './UiPreferencesProvider.tsx') return {useUiPreferences: () => ({preferences:DEFAULT_UI_PREFERENCES})};
+    if (name === './timeline-removal.ts') return removalState;
+    if (name === './ClipRemovalControls.tsx') return removalModule.exports;
     if (name.includes('I18nProvider')) return i18nTestModule(locale);
     if (name.includes('i18n/src/index')) return {message};
     if (name.includes('workbench-confirm')) return {useConfirmation: () => async () => true};

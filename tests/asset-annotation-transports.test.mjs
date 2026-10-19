@@ -26,7 +26,7 @@ const operations = ['asset.disposition.list', 'asset.disposition.set'];
 const oldMutations = ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select'];
 const dispositionTables = new Set(['asset_dispositions', 'asset_disposition_requests']);
 const toolName = operation => operation.replaceAll('.', '_');
-const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0',
+const environment = extra => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
   MIOON_DISPOSITION_WIRE_GUARD: '1', ...extra});
 const noPrivate = value => {
   const text = typeof value === 'string' ? value : JSON.stringify(value);

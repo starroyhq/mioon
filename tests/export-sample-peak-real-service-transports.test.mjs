@@ -19,7 +19,7 @@ import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-e
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.export.samplePeak',token='synthetic-real-export-sample-peak-token';
 const sha=value=>createHash('sha256').update(value).digest('hex');
-const environment=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAY_MAX_GENERATIONS:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
+const environment=url=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function bounded(promise,label,ms=20000){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}}
 function png(){

@@ -37,7 +37,7 @@ test('real HTTP RPC, CLI and official MCP expose the same strict read-only conti
   let backend, mcp;
   t.after(async () => {await mcp?.close(); await backend?.close(); await rm(root, {recursive: true, force: true});});
   backend = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {throw Error('No model call permitted');}});
-  const env = {...mediaEnvironment(), MIOON_BASE_URL: backend.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0'};
+  const env = {...mediaEnvironment(), MIOON_BASE_URL: backend.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'};
   const client = createClient({env}), project = await client.rpc('project.create', {name: 'Synthetic continuous transport'});
   let timeline = await client.rpc('timeline.get', {projectId: project.id});
   const asset = await client.rpc('asset.import', {projectId: project.id, name: 'Controlled opposite channels.wav', mimeType: 'audio/wav', dataBase64: wav().toString('base64')});

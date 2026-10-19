@@ -22,7 +22,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 function environment(extra = {}) {
   const env = {...process.env};
   for (const key of Object.keys(env)) if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MIOON_)/.test(key)) delete env[key];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', RUNWAY_MAX_GENERATIONS:'0', ...extra};
+  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', ...extra};
 }
 function startCli(args, env = {}, stdin = '') {
   const child = spawn(process.execPath, [cliPath, ...args], {cwd:repo, env:environment(env), stdio:['pipe','pipe','pipe']});
@@ -151,7 +151,9 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   const command = async (operation, input = {}, flags = []) => succeeded(await cli([...operation.split('.'), '--input', JSON.stringify(input), ...flags], env));
   const callMcp = await connectMcp(t, env);
   assert.deepEqual(succeeded(await cli(['schema'], env)), await callMcp('mioon_schema'), 'CLI and MCP discovery share exact schema metadata');
-  assert.deepEqual(succeeded(await cli(['capabilities'], env)), await rpc(service, 'provider.list'));
+  const capabilities = succeeded(await cli(['capabilities'], env));
+  assert.deepEqual(capabilities, await rpc(service, 'provider.list'));
+  assert.doesNotMatch(JSON.stringify(capabilities), /MAX_GENERATIONS|maxGenerations|usedGenerations|remainingGenerations/);
   const doctor = succeeded(await cli(['doctor'], env));
   assert.equal(doctor.ready, true); assert.equal(doctor.connection.source, 'private-token-file');
   assert.equal(doctor.connection.credentialsReloadedPerRequest, true);
@@ -242,7 +244,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     failed(await cli(['asset','download','--input',JSON.stringify({assetId:rendered.assetId}),'--output',limitedPath,'--max-bytes','1'], env), 2, 'FILE_TOO_LARGE');
     await assert.rejects(readFile(limitedPath), {code:'ENOENT'}, 'size-limit errors remove any partial local file');
     const video = probe.streams.find(item => item.codec_type === 'video');
-    assert.equal(video.width, 720); assert.equal(video.height, 1280);
+    assert.equal(video.width, 1080); assert.equal(video.height, 1920);
     assert.equal(video.codec_name, 'h264'); assert.ok(Number(probe.format.duration) > 0);
   });
 

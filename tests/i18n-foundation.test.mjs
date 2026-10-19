@@ -20,7 +20,7 @@ test('invalid/unsupported system locale falls back to English and explicit choic
 test('foundation/native catalogs have complete four-language placeholders', () => {
   assert.deepEqual(validateCatalogs(foundationMessages), []); assert.deepEqual(validateCatalogs(nativeMessages), []);
   assert.equal(translate('en', 'common.cancel'), 'Cancel'); assert.equal(renderMessage('ja', message('common.cancel')), 'キャンセル');
-  assert.throws(() => translate('en', 'missing.key')); assert.equal(renderMessage('en', { key: 'missing.key' }), 'This message cannot be displayed right now.');
+  assert.throws(() => translate('en', 'missing.key')); assert.equal(renderMessage('en', { key: 'missing.key' }), 'This message cannot be displayed right now');
   assert.throws(() => translate('en', 'native.chooseExecutable'));
   assert.equal(translate('en', 'native.chooseExecutable', { name: '<FFmpeg>' }), 'Choose the <FFmpeg> executable');
   assert.equal(renderMessage('en', '用户内容'), '用户内容');
@@ -89,7 +89,7 @@ test('plural selection keeps numeric counts while formatting only their display 
   assert.equal(translate('en', 'timeline.view.clipCount', { duration: '00:10', count: 1000 }), '00:10 · 1,000 clips');
   for (const locale of LOCALES) assert.ok(translate(locale, 'timeline.view.clipCount', { duration: '00:10', count: 1000 }).includes(formatNumber(locale, 1000)));
   let reads = 0; const params = { duration: '00:10' }; Object.defineProperty(params, 'count', { enumerable: true, get() { reads++; return 1; } });
-  assert.equal(renderMessage('en', { key: 'timeline.view.clipCount', params }), 'This message cannot be displayed right now.'); assert.equal(reads, 0);
+  assert.equal(renderMessage('en', { key: 'timeline.view.clipCount', params }), 'This message cannot be displayed right now'); assert.equal(reads, 0);
 });
 test('system-language changes affect only system preference without saving or requests', async () => {
   let writes = 0; const store = createLanguageStore({ systemLanguages: ['en'], storage: () => ({ getItem: () => null, setItem: () => { writes++; } }) });

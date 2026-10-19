@@ -27,8 +27,8 @@ async function fixture(t){
 }
 async function fakeMedia(t,f){
  const binary=path.join(f.root,'synthetic-media.mjs'),old={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
- const video={index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'30'},audio={index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2};
- await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const source=args.at(-1).endsWith('source.mp4');process.stdout.write(JSON.stringify({streams:source?[${JSON.stringify(video)}]:[${JSON.stringify(video)},${JSON.stringify(audio)}],format:{duration:'1'}}));}else writeFileSync(args.at(-1),'synthetic rendered bytes',{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
+ const video={index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'30'},renderedVideo={...video,width:f.timeline.width,height:f.timeline.height},audio={index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2};
+ await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const source=args.at(-1).endsWith('source.mp4');process.stdout.write(JSON.stringify({streams:source?[${JSON.stringify(video)}]:[${JSON.stringify(renderedVideo)},${JSON.stringify(audio)}],format:{duration:'1'}}));}else writeFileSync(args.at(-1),'synthetic rendered bytes',{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
  process.env.MIOON_FFMPEG_PATH=binary;process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{for(const [key,value]of Object.entries(old))if(value===undefined)delete process.env[key];else process.env[key]=value;});
 }
 
@@ -91,6 +91,7 @@ test('title-only render completes legacy encoding in normal and restored workspa
   if(restored){const origin=f.store.db.prepare('SELECT * FROM workspace_restore_export_origins WHERE exportId=?').get(accepted.id);assert.equal(origin.requestHash,hash({operation:'timeline.render',input}));assert.equal(origin.identityHash,restoreExportIdentity(f.store.get('exports',accepted.id)));}
   const worker=startWorker(f.store,f.services,new Map());try{await worker.tick();}finally{await worker.stop();}
   const result=f.store.get('exports',accepted.id);assert.equal(result.status,'succeeded',JSON.stringify(result.error));assert.equal(result.snapshot.deliveryName,input.deliveryName);assert.equal(Object.hasOwn(result.snapshot,'delivery'),false);assert.equal(f.probes,0);assert.ok(result.assetId);assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);assert.deepEqual(await f.services.call('timeline.render',input),accepted);
+  const rendered=f.store.get('assets',result.assetId);assert.deepEqual({width:rendered.width,height:rendered.height},{width:accepted.snapshot.timeline.width,height:accepted.snapshot.timeline.height});
   if(restored){assert.ok(matchesRestoredExport(f.store,result));assert.equal(JSON.stringify({export:f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(held.id),task:f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(heldTask.task.id)}),heldRows);}
  });
 });

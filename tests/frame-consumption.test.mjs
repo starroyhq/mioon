@@ -38,7 +38,10 @@ async function fixture(t){
  const original=path.join(root,'synthetic-original.mp4');
  await fixtureMedia(['-f','lavfi','-i','color=c=red:s=64x48:r=30:d=1','-vf',"drawbox=x=0:y=0:w=iw:h=ih:color=blue:t=fill:enable='gte(t,0.5)',setsar=1",'-an','-c:v','libx264','-preset','ultrafast','-crf','12','-bf','0','-threads','1','-pix_fmt','yuv420p','-movflags','+faststart',original]);
  f.store=openStore(root);f.services=createServices(f.store,providers);f.call=(operation,input)=>f.services.call(operation,input);
- f.project=await f.call('project.create',{name:'Real extracted-frame consumers'});f.other=await f.call('project.create',{name:'Foreign synthetic owner'});
+ f.project=await f.call('project.create',{name:'Real extracted-frame consumers'});
+ // This pixel/audio fixture explicitly preserves its historical 720 canvas.
+ await f.call('timeline.format.set',{projectId:f.project.id,expectedProjectRevision:f.project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
+ f.other=await f.call('project.create',{name:'Foreign synthetic owner'});
  const bytes=await readFile(original),imported=await f.call('asset.import',{projectId:f.project.id,name:'One-second synthetic.mp4',mimeType:'video/mp4',dataBase64:bytes.toString('base64')});
  f.source=f.store.get('assets',imported.id);f.sourceFile=path.join(root,f.source.relativePath);f.sourceBytes=bytes;
  assert.equal(f.source.sha256,sha(bytes));assert.deepEqual([f.source.width,f.source.height],[64,48]);assert.ok(Math.abs(f.source.duration-1)<0.04);

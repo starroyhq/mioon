@@ -51,7 +51,7 @@ const formatInput=(state,presetId)=>({projectId:state.projectId,expectedProjectR
 test('format reads are noncreating and schemas/effects discoverable through actual CLI and official MCP, without Agent authority',{timeout:60000},async t=>{
  const w=await wire(t),{f}=w;
  const before=snapshot(f.root),read=await w.client.rpc('timeline.format.get',{projectId:f.foreign.id});
- assert.ok(isTimelineFormatReadResponse(read,{projectId:f.foreign.id}));assert.equal(read.timelineId,null);assert.equal(read.timelineRevision,0);assert.equal(read.presetId,'portrait_720');assert.equal(read.eligible,true);assert.deepEqual(snapshot(f.root),before);
+ assert.ok(isTimelineFormatReadResponse(read,{projectId:f.foreign.id}));assert.equal(read.timelineId,null);assert.equal(read.timelineRevision,0);assert.equal(read.presetId,'portrait_1080');assert.equal(read.eligible,true);assert.deepEqual(snapshot(f.root),before);
  assert.equal(operationEffects['timeline.format.get'].readOnly,true);assert.equal(operationEffects['timeline.format.set'].idempotent,true);
  for(const field of ['fileWrite','externalIO','localProcess','paidGeneration'])assert.equal(operationEffects['timeline.format.set'][field],false);
  const catalog=discoverSchema(),cliCatalog=await cli(w.url,['schema']);assert.deepEqual(cliCatalog.data,catalog);

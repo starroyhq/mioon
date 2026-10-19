@@ -25,6 +25,7 @@ function fixture() {
   const asset = { id: 'asset-one', name: 'Synthetic image', mimeType: 'image/png' };
   const timeline = { revision: 5, tracks: [{ id: 'video-one', kind: 'video' }], clips: [] };
   const env = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
+    application: null,
     panelIntent: { current: 0 }, currentProject: { current: 'project-one' },
     guardNavigation: async () => true,
     dataRef: { current: { assets: [asset], timeline } },
@@ -72,9 +73,10 @@ for (const mode of ['canvas', 'editing']) {
 
   test(`newer narrow ${mode} navigation to its center suppresses a held bridge reveal`, async () => {
     const f = fixture(); f.state.activeMode = mode;
-    const navigate = Function('markPanelIntent', 'setMobilePanel', 'setPanelOpen', `return (${mobileSource});`)(
+    const navigate = Function('markPanelIntent', 'setMobilePanel', 'setPanelOpen', 'clipDraftRef', `return (${mobileSource});`)(
       () => f.env.panelIntent.current++, f.env.setMobilePanel,
       () => assert.fail('Center navigation must not open a side panel'),
+      { current: { hasPendingComposition: () => false } },
     );
     const pending = f.add('asset-one'); await f.started;
     navigate('canvas');

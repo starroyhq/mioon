@@ -54,7 +54,8 @@ test('new typed leaf and real barrel expose a closed gain contract without chang
   assert.deepEqual(typed.agentTimelineGainTargetFromTimeline(saved(), id(5), source()), target());
   assert.ok(typed.isAgentTimelineGainProposal(proposal('failed')));
   assert.throws(() => createAgentTimelineGainContracts({}), TypeError);
-  assert.equal(Object.keys(schemas).some(key => key.includes('agent') || key.includes('gain')), false);
+  assert.deepEqual(Object.keys(schemas).filter(key => key.includes('agent') || key.includes('gain') || key.includes('model')).sort(),
+    ['agent.authorization.grant', 'agent.authorization.list', 'agent.authorization.revoke']);
   assert.ok(schemas['timeline.clip.update'].safeParse({projectId: id(2), clipId: id(5), expectedRevision: 4, requestId: id(22), patch: {gain: 0.4}}).success);
 });
 
@@ -123,6 +124,44 @@ test('private target uses canonical clip/track/format validity and exact bounded
     timeline.clips.forEach(clip => Object.assign(clip.rect, {width,height}));
     const selected = agentTimelineGainTargetFromTimeline(timeline, id(5), source());
     assert.ok(selected); assert.ok(timelineOutputPreset(selected)); assert.ok(isAgentTimelineGainPublicTarget(agentTimelineGainPublicTarget(selected)));
+  }
+});
+
+test('private, public and review targets share six exact native/legacy output pairs without changing saved data', () => {
+  const formats = [[1080,1920], [1920,1080], [1080,1080], [720,1280], [1280,720], [720,720]];
+  const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
+  for (const [width, height] of formats) {
+    const timeline = saved(); Object.assign(timeline, {width,height});
+    timeline.clips.forEach(clip => Object.assign(clip.rect, {width,height}));
+    freeze(timeline);
+    const original = JSON.stringify(timeline), selected = agentTimelineGainTargetFromTimeline(timeline, id(5), source());
+    assert.ok(selected, `${width}x${height}: private target`);
+    const publicTarget = freeze(agentTimelineGainPublicTarget(selected)), review = freeze(agentTimelineGainReviewTarget(selected));
+    const publicBytes = JSON.stringify(publicTarget), reviewBytes = JSON.stringify(review);
+    assert.ok(isAgentTimelineGainTarget(selected));
+    assert.ok(isAgentTimelineGainPublicTarget(publicTarget, {projectId: id(2)}));
+    assert.ok(isAgentTimelineGainReviewTarget(review, {projectId: id(2)}));
+    assert.deepEqual([publicTarget.fps,publicTarget.width,publicTarget.height], [30,width,height]);
+    assert.deepEqual([review.fps,review.width,review.height], [30,width,height]);
+    assert.equal(JSON.stringify(timeline), original);
+    assert.equal(JSON.stringify(publicTarget), publicBytes); assert.equal(JSON.stringify(review), reviewBytes);
+  }
+  const selected = target(), publicTarget = agentTimelineGainPublicTarget(selected), review = agentTimelineGainReviewTarget(selected);
+  const invalid = [
+    {width:1080,height:1919}, {width:1079,height:1920}, {width:1919,height:1080}, {width:1920,height:1081},
+    {width:720,height:1279}, {width:1279,height:720}, {width:720,height:1080}, {width:1080,height:720},
+    {width:1280,height:1080}, {width:1080,height:1280}, {width:1920,height:1920}, {width:2160,height:3840},
+    {width:960,height:540}, {width:0,height:0}, {width:1080.5,height:1920}, {width:'1080',height:1920},
+    {width:1080,height:'1920'}, {fps:24}, {fps:60}, {fps:29.97}, {fps:'30'},
+  ];
+  for (const geometry of invalid) {
+    const privateValue = freeze({...clone(selected), ...geometry}), publicValue = freeze({...publicTarget, ...geometry}),
+      reviewValue = freeze({...review, ...geometry});
+    const bytes = [privateValue,publicValue,reviewValue].map(value => JSON.stringify(value));
+    assert.equal(isAgentTimelineGainTarget(privateValue), false, JSON.stringify(geometry));
+    assert.equal(isAgentTimelineGainPublicTarget(publicValue), false, JSON.stringify(geometry));
+    assert.equal(isAgentTimelineGainReviewTarget(reviewValue), false, JSON.stringify(geometry));
+    assert.deepEqual([privateValue,publicValue,reviewValue].map(value => JSON.stringify(value)), bytes);
   }
 });
 

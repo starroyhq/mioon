@@ -1,0 +1,17 @@
+/* CSS zoom scales viewport units as well as controls. Use the inverse logical
+ * viewport for full-window surfaces and modal bounds, then let zoom scale once. */
+:root { --mioon-ui-scale: 1; --mioon-viewport-width: calc(100vw / var(--mioon-ui-scale)); --mioon-viewport-height: calc(100dvh / var(--mioon-ui-scale)); }
+html, body, #root { height: var(--mioon-viewport-height); min-height: 0; }
+.workbench, .project-home-page, .project-home-page > .project-home, .project-home-settings-window, .boot-page { height: var(--mioon-viewport-height); }
+.login-redesign { min-height: var(--mioon-viewport-height); }
+/* ReactFlow calculates pointer coordinates from physical client coordinates.
+ * Cancel the app zoom at its drawing root so dragging, drops and connection
+ * hit testing share the same coordinate space as the library viewport. */
+.flow-wrap > .react-flow { zoom: calc(1 / var(--mioon-ui-scale)); }
+[data-slot="dialog-content"] { z-index: 90; max-width: calc(var(--mioon-viewport-width) - 32px); max-height: calc(var(--mioon-viewport-height) - 32px); }
+.web-settings-dialog.project-home { width: min(960px, calc(var(--mioon-viewport-width) - 40px)); height: min(640px, calc(var(--mioon-viewport-height) - 40px)); }
+.wb-dialog[data-slot="dialog-content"] { max-width: calc(var(--mioon-viewport-width) - 32px); max-height: calc(var(--mioon-viewport-height) - 32px); }
+.wb-dialog[data-size="large"] { width: min(960px, calc(var(--mioon-viewport-width) - 32px)); height: min(640px, calc(var(--mioon-viewport-height) - 32px)); }
+.modal[data-slot="dialog-content"] { max-width: calc(var(--mioon-viewport-width) - 40px); max-height: calc(var(--mioon-viewport-height) - 40px); }
+.workbench-confirm[data-slot="dialog-content"] { z-index: 120; }
+body:has([data-slot="dialog-content"][data-open]) [role="presentation"]:has(>[data-slot="select-content"]), body:has([data-slot="dialog-content"][data-open]) [role="presentation"]:has(>[data-slot="tooltip-content"]) { z-index: 100; }

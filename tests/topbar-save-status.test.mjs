@@ -145,7 +145,9 @@ const settingsDepartureSource = section('  async function prepareSettingsDepartu
 const sessionReadySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const selectSource = section('  async function selectProject(', '  async function reloadPreferences(');
 const reloadSource = section('  async function reloadPreferences() {', '  async function boot() {');
-const callsite = section('<TopbarSaveStatus ', '<>{nativeWindow ? <NativeLocatorStatus ');
+const callsites = [...app.matchAll(/<TopbarSaveStatus\b[\s\S]*?\/>/g)];
+assert.equal(callsites.length, 1, 'the actual status component has one unambiguous callsite');
+const callsite = callsites[0][0];
 assert.match(callsite, /\/>$/);
 const compile = (source, expression, env) => Function(...Object.keys(env), `${source}\nreturn ${expression};`)(...Object.values(env));
 let projectElement;

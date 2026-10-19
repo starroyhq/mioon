@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@mioon/ui/components/dialog';
+import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { Button } from '@mioon/ui/components/button';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { useI18n } from './i18n/I18nProvider.tsx';
@@ -24,11 +25,11 @@ export default function WebSettingsCenter({ request, registry, onOpenChange, ren
   useEffect(() => { callbacks.current.onOpenChange(navigation.opened); }, [navigation.opened]);
   return <Dialog open={navigation.opened} onOpenChange={open => { if (!open) void navigation.close(); }}>
     <DialogContent keepMounted showCloseButton={false} initialFocus={closeButton} className="web-settings-dialog project-home" data-testid="web-settings-dialog" hidden={!navigation.opened} inert={!navigation.opened} aria-describedby={undefined}>
-    <header className="project-home-header"><span className="project-home-brand">mioon.</span><DialogTitle className="project-home-header-label">{t('settings.title')}</DialogTitle><Button ref={closeButton} type="button" variant="ghost" className="settings-back" data-testid="settings-center-close" onClick={() => { void navigation.close(); }}>{t('settings.back')}</Button></header>
+    <DialogTitle className="sr-only">{t('settings.title')}</DialogTitle><Button ref={closeButton} type="button" variant="ghost" className="settings-center-close" aria-label={t('common.close')} data-testid="settings-center-close" onClick={() => { void navigation.close(); }}><WorkbenchIcon name="close" /></Button>
     <div className="web-settings-scroll">
       {navigation.notice && <p role="status" className="project-home-notice">{renderMessage(navigation.notice)}</p>}
       {renderSettings({ selected: navigation.selected, page: navigation.page, visible: navigation.opened, registry, connectionsAvailable, general: undefined,
-        onSelect: slot => { if (connectionsAvailable) void navigation.selectPage(slot); }, onPage: page => { if (connectionsAvailable || page === 'general') void navigation.selectPage(page); },
+        onSelect: slot => { if (connectionsAvailable) void navigation.selectPage(slot); }, onPage: page => { if (connectionsAvailable || !['agent', 'models', 'extensions', 'official', 'custom', 'comfy'].includes(page)) void navigation.selectPage(page); },
         beforeClose: async () => { void navigation.close(); return false; }, onClose: () => {} })}
     </div>
   </DialogContent></Dialog>;

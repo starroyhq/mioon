@@ -25,7 +25,7 @@ function splitEnvelopeMatches(left,right){
 
 export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
-  'timeline.clip.replaceSource', 'timeline.clip.remove', 'timeline.clip.split', 'timeline.seed',
+  'timeline.clip.replaceSource', 'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.seed',
   'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
   ...TIMELINE_SUBTITLE_OPERATIONS, TIMELINE_LOUDNESS_APPLY_OPERATION,
 ]);
@@ -102,6 +102,7 @@ export function isTimelineMutationResponse(operation, input, value) {
     case 'timeline.clip.update':
       return operationInput(input, ['clipId', 'patch']) && uuid(input.clipId) && patchInput(input.patch, clipFields) && Boolean(target && hasFields(target, input.patch, Object.keys(input.patch)));
     case 'timeline.clip.remove':
+    case 'timeline.clip.rippleRemove':
       return operationInput(input, ['clipId']) && uuid(input.clipId) && !target;
     case 'timeline.clip.split':
       if (!operationInput(input, ['clipId', 'atFrame']) || !uuid(input.clipId) || !integer(input.atFrame, 0, 18000) || !target || target.startFrame + target.durationFrames !== input.atFrame || (target.fadeOutFrames ?? 0) !== 0) return false;

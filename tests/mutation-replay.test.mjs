@@ -5,7 +5,9 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/db.mjs';
+import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.mjs';
 import {createServices,canonical} from '../packages/business/src/services.mjs';
 import {createMutationReplay} from '../packages/business/src/mutation-replay.mjs';
 import {AppError} from '@mioon/contracts';
@@ -225,16 +227,35 @@ test('journal entries cannot be updated, deleted or replaced and retain exact re
 });
 
 test('additive first migration and repeated startup preserve old rows and journal response bytes',async t=>{
- const f=await fixture(t,{open:openLegacyWorkspaceStore}),projectId=f.project.id;
- await f.shot(projectId);await f.node(projectId);
- for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(key(),'old-hash',' { "legacy": true, "spacing": "preserve" } ');
- f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',key(),'legacy-hash',randomUUID());
- f.store.db.exec('DROP TABLE mutation_requests; DELETE FROM schema_version WHERE version=9;');
- const before=capture(f,['schema_version']);
- f.restart();assert.deepEqual(capture(f,['schema_version','mutation_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests']),before);
- for(const table of ['project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests'])assert.equal(f.store.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n,0);
- assert.deepEqual(journal(f),[]);assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=9').get());
- const migrated=capture(f);f.restart();assert.deepEqual(capture(f),migrated);
+ const seed=await fixture(t,{open:openLegacyWorkspaceStore}),projectId=seed.project.id;
+ await seed.shot(projectId);await seed.node(projectId);
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-mutation-schema8-'));
+ let store=null,db=new DatabaseSync(path.join(root,'workbench.sqlite'));
+ t.after(async()=>{store?.close();if(db.isOpen)db.close();await rm(root,{recursive:true,force:true});});
+ db.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
+ // Execute the frozen constructor only through its real schema8 boundary.
+ // Removing schema9 from a completed schema24 leaves later reciprocal guards
+ // behind and fabricates a historical catalog that never existed.
+ const boundary=new Error('schema9 not installed');
+ assert.throws(()=>initializeLegacyWorkspaceSchema({exec(sql){
+  if(sql.includes('CREATE TABLE IF NOT EXISTS mutation_requests('))throw boundary;
+  return db.exec(sql);
+ }}),error=>error===boundary);
+ assert.equal(db.isTransaction,false);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[1,2,3,4,5,6,7,8]);
+ assert.equal(db.prepare("SELECT 1 FROM sqlite_schema WHERE name='mutation_requests'").get(),undefined);
+ for(const table of ['projects','shots','nodes'])for(const row of seed.store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()){
+  const columns=Object.keys(row);db.prepare(`INSERT INTO ${table}(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).run(...Object.values(row));
+ }
+ for(const table of ['timeline_requests','reference_requests'])db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(key(),'old-hash',' { "legacy": true, "spacing": "preserve" } ');
+ db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',key(),'legacy-hash',randomUUID());
+ const f={get store(){return {db};}},before=capture(f,['schema_version']);
+ const restart=()=>{if(store)store.close();else db.close();store=openStore(root);db=store.db;};
+ restart();const after=capture(f);
+ for(const [table,rows]of Object.entries(before))assert.deepEqual(after[table],rows,`${table} retains its original row bytes`);
+ for(const table of ['project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests'])assert.equal(db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n,0);
+ assert.deepEqual(journal(f),[]);assert.ok(db.prepare('SELECT version FROM schema_version WHERE version=9').get());
+ const migrated=capture(f);restart();assert.deepEqual(capture(f),migrated);
 });
 
 test('transactions reject async work and nesting, roll back thenables and remain usable afterward',async t=>{

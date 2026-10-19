@@ -95,7 +95,7 @@ async function decodedFingerprint(file){
  return {video:video.split('\n').filter(line=>line&&!line.startsWith('#')).join('\n'),audio:sha(await pcm(file))};
 }
 
-test('three frozen timeline output presets render exact real media without changing legacy exports',{timeout:300000},async t=>{
+test('three current and three legacy frozen timeline presets render exact real media and retain project-sized storyboard exports',{timeout:300000},async t=>{
  const f=await fixture(t);await makeFixtures(f.root);const retained=[];
  for(const rate of [24,60]){
   const file=path.join(f.root,`source-${rate}.mp4`),info=JSON.parse(await command('ffprobe',['-v','error','-show_streams','-of','json',file]));
@@ -105,7 +105,7 @@ test('three frozen timeline output presets render exact real media without chang
  for(const [index,preset] of TIMELINE_OUTPUT_PRESETS.entries())await t.test(preset.id,async()=>{
   const {width,height}=preset,frames=index===1?91:71,project=await f.call('project.create',{name:`Output preset ${preset.id}`});
   const status=await f.call('timeline.format.get',{projectId:project.id});assert.equal(status.timelineRevision,0);
-  // The old implicit portrait timeline remains valid without any format receipt.
+  // The current implicit portrait timeline is created without any format receipt; explicit legacy presets retain their own geometry.
   let timeline=index===0?await f.call('timeline.get',{projectId:project.id}):await f.call('timeline.format.set',{
    projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:preset.id});
   assert.deepEqual([timeline.fps,timeline.width,timeline.height],[30,width,height]);
@@ -141,7 +141,7 @@ test('three frozen timeline output presets render exact real media without chang
   const output=await f.finish(queued.id,`${preset.id}-export.mp4`),previewOutput=await f.finish(preview.id,`${preset.id}-preview.mp4`);
   const verified=await probeOutput(output.file,{width,height,frames});await probeOutput(previewOutput.file,{width,height,frames});
   assert.deepEqual(await decodedFingerprint(previewOutput.file),await decodedFingerprint(output.file),'Preview and export decode identically');
-  const ratio=index===0?'9x16':index===1?'16x9':'1x1';assert.equal(output.asset.name,`多轨时间线-导出-${ratio}.mp4`);assert.equal(previewOutput.asset.name,`多轨时间线-预览-${ratio}.mp4`);
+  const ratio=width===height?'1x1':width<height?'9x16':'16x9';assert.equal(output.asset.name,`多轨时间线-导出-${ratio}.mp4`);assert.equal(previewOutput.asset.name,`多轨时间线-预览-${ratio}.mp4`);
   const pixels=[];
   for(const n of [12,18,40]){
    const bytes=await frame(output.file,n,width,height);
@@ -161,7 +161,7 @@ test('three frozen timeline output presets render exact real media without chang
   retained.push({project,request,receipt,queued,output,frozen,source24});
   records.checks.push({presetId:preset.id,result:'passed',...verified,pixels,audio:{beforeSwitch,afterSwitch,gap,tail,fadeIn,fadeOut},previewExportDecodedEqual:true,sourcesUnchanged:true});
  });
- await t.test('retained portrait receipt/output and legacy storyboard stay unchanged',async()=>{
+ await t.test('retained receipts/output stay unchanged while a new storyboard export freezes saved project geometry',async()=>{
   for(const item of retained){
    assert.deepEqual((await f.call('export.get',{exportId:item.queued.id})).snapshot.timeline,item.frozen);
    assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(item.request.requestId).response,item.receipt);
@@ -178,8 +178,8 @@ test('three frozen timeline output presets render exact real media without chang
   const request={projectId,requestId:randomUUID()},queued=await f.call('export.create',request);
   assert.notEqual(queued.mode,'timeline');assert.ok(Array.isArray(queued.snapshot));
   const output=await f.finish(queued.id,'legacy-storyboard.mp4');
-  const verified=await probeOutput(output.file,{width:720,height:1280,frames:60,legacy:true});
-  assert.equal(output.asset.name,'分镜拼接-9x16.mp4');assert.equal(f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId).data,before);
-  records.checks.push({name:'Frozen receipt/output retention and separate legacy storyboard',result:'passed',...verified,retainedPortraitSha256:sha(retained[0].output.bytes)});
+  const verified=await probeOutput(output.file,{width:1280,height:720,frames:60,legacy:true});
+  assert.equal(output.asset.name,'分镜拼接-16x9.mp4');assert.equal(f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId).data,before);
+  records.checks.push({name:'Frozen receipt/output retention and separate project-sized storyboard',result:'passed',...verified,retainedPortraitSha256:sha(retained[0].output.bytes)});
  });
 });

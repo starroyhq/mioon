@@ -1,3 +1,4 @@
+import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -21,14 +22,15 @@ async function fixture(t, {gateway, journalLimits, settingsWrapper} = {}) {
   const initial = await settings.get();
   await settings.put({expectedRevision: 0, configuration: initial.configuration, secret: {action: 'replace', storage: 'session', value: SECRET}});
   const wrapped = {get: (...args) => settings.get(...args), [AGENT_CREDENTIAL_ACQUIRE](...args) { acquisitions++; return settings[AGENT_CREDENTIAL_ACQUIRE](...args); }};
-  const start = () => createChatRuntime({store, agentSettings: settingsWrapper ? settingsWrapper(wrapped) : wrapped, selfPort: () => 4318,
+  const authorizations=createTestAuthorizations(()=>store,settings);
+  const start = () => createChatRuntime({store,authorizations, agentSettings: settingsWrapper ? settingsWrapper(wrapped) : wrapped, selfPort: () => 4318,
     ...(journalLimits ? {journalLimits} : {}), gateway: async function* (options) { calls++; if (gateway) yield* gateway(options); else { yield {type: 'delta', text: 'Saved response'}; yield {type: 'done', finishReason: 'stop'}; } }});
   runtime = start();
   t.after(async () => { runtime.close(); if (!closed) store.close(); await settings.close(); rmSync(root, {recursive: true, force: true}); });
   const f = {root, settings, get store() { return store; }, get runtime() { return runtime; }, get calls() { return calls; }, get acquisitions() { return acquisitions; },
     restart() { runtime.close(); store.close(); store = openStore(root); runtime = start(); },
     closeStore() { runtime.close(); store.close(); closed = true; },
-    async input(projectId = 'p1', overrides = {}) { const snapshot = await runtime.snapshot(projectId); return {requestId: randomUUID(), instanceId: snapshot.instanceId,
+    async input(projectId = 'p1', overrides = {}) { await authorizeTestScope(authorizations); const snapshot = await runtime.snapshot(projectId); return {requestId: randomUUID(), instanceId: snapshot.instanceId,
       expectedSettingsRevision: snapshot.settings.revision, expectedConversationRevision: snapshot.revision, message: 'Typed only',
       consent: {destination: deriveAgentEndpoint(snapshot.settings.configuration), protocol: snapshot.settings.configuration.protocol, model: snapshot.settings.configuration.model, context: 'typed_chat_only'}, ...overrides}; },
     async finish(sent) { return until(() => { const result = runtime.get(sent.projectId, sent.run.id, sent.instanceId); return result.run.status !== 'running' && result; }); },

@@ -17,7 +17,7 @@ import {mediaEnvironment} from '../packages/business/src/media-environment.mjs';
 import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded, authority, action} from './fixtures/selected-range-http-fixture.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const env = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAY_MAX_GENERATIONS: '0',
+const env = url => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
   ...(url ? {MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN} : {})});
 const safe = value => {assert.equal(JSON.stringify(value).includes(TOKEN), false); assert.equal(JSON.stringify(value).includes('Bearer '), false);};
 

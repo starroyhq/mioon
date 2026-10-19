@@ -2,6 +2,11 @@ import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts'
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
 import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
+import { CLIP_LUT_RECOVERY_CHANNEL } from '../packages/contracts/src/clip-lut-recovery.ts';
+import { calculateWorkspaceScope } from '../packages/contracts/src/workspace-scope.ts';
+import { createDesktopLutRecoveryHost } from '../apps/desktop/src/lut-recovery-host.ts';
+import { WORKSPACE_TOOLS_CHANNEL } from '../packages/contracts/src/workspace-info.ts';
+import { createWorkspaceToolsHost } from '../apps/desktop/src/workspace-tools-host.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -21,6 +26,7 @@ import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjec
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
+import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
 const source = (await readFile(new URL('../apps/desktop/src/main.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -42,6 +48,19 @@ const failure = (code = 'SYNTHETIC_FAILURE') => Object.assign(new Error(`Synthet
 // Only OS boundaries are fake: no Electron, utility, native vault or media runs.
 async function harness(t, options = {}) {
   const records = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [] };
+  const expectedChannels = [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL];
+  const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
+  const lutDatabase = Object.freeze({ dev: 1, ino: 3 });
+  const lutStoreCalls = [];
+  const unexpectedLutFileAccess = () => assert.fail('Restart fixture must not access filesystem LUT storage');
+  function createLutStore({ userData, guard }) {
+    assert.equal(userData, '/synthetic/userData');
+    return Object.fromEntries(['read', 'reserve', 'verify', 'complete'].map(action => [action, () => {
+      guard(); lutStoreCalls.push(action);
+      if (action !== 'read') assert.fail('Restart cases must not mutate LUT recovery metadata');
+      return null;
+    }]));
+  }
   let menu, initial;
   const app = new EventEmitter();
   Object.assign(app, {
@@ -106,6 +125,7 @@ async function harness(t, options = {}) {
       records.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
+    setBackgroundColor(value) { this.backgroundColor = value; }
     isMinimized() { return false; }
     restore() {}
     destroy() { if (!this.destroyed) { this.destroyed = true; this.emit('closed'); } }
@@ -120,7 +140,23 @@ async function harness(t, options = {}) {
   }
   const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
-    prepareDesktopStorage: () => ({ dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
+    prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
+    CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
+    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost,
+    nativeTheme: Object.assign(new EventEmitter(), { shouldUseDarkColors: true }),
+    createDesktopWindowAppearance: configuration => createDesktopWindowAppearance({ ...configuration,
+      // Keep real scope/current/abort behavior; only private IO and OS watching
+      // are synthetic, with no saved appearance in this lifecycle fixture.
+      storage: { ...configuration.storage, readPrivateFile: (file, options) => {
+        assert.equal(file, '/synthetic/workspace/ui-preferences-v1.json');
+        assert.equal(options.private, true); return null;
+      } }, watchDirectory: () => Object.assign(new EventEmitter(), { close() {} }) }),
+    createDesktopLutRecoveryStore: createLutStore,
+    validatePrivateDirectory: root => { assert.equal(root, '/synthetic/workspace'); return lutDirectory; },
+    validateManagedFile: (file, { root }) => {
+      assert.equal(file, '/synthetic/workspace/workbench.sqlite'); assert.equal(root, '/synthetic/workspace'); return lutDatabase;
+    },
+    readPrivateFile: unexpectedLutFileAccess, removePrivateFile: unexpectedLutFileAccess, writePrivateFileAtomic: unexpectedLutFileAccess,
     ensureDataIdentity: async () => {}, readToolConfig: async () => tools,
     createDesktopStartup: () => {
       const index = records.scopes.length;
@@ -134,6 +170,12 @@ async function harness(t, options = {}) {
       constructor(config) {
         super({ ...config, startupTimeout: 3000, stopTimeout: 10, terminateTimeout: 10, exitTimeout: 10, forceKill: child => { child.hardKills++; } });
         records.backends.push(this);
+      }
+      // Diagnostics filesystem persistence is an OS boundary, not a restart
+      // decision. Retain observations in memory instead of publishing sidecars.
+      recordDiagnostic(event, details = {}) {
+        (records.diagnosticEvents ??= []).push({ event, ...details });
+        this.diagnosticsAvailable = false;
       }
     },
     BrowserWindow: Window,
@@ -162,7 +204,7 @@ async function harness(t, options = {}) {
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel, handler) {
-      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok(expectedChannels.includes(channel)); assert.equal(typeof handler, 'function');
       records.ipcHandlers ??= new Map(); assert.equal(records.ipcHandlers.has(channel), false); records.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) records.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) records.audioBridge = handler;
     } },
@@ -177,10 +219,12 @@ async function harness(t, options = {}) {
     start = (...args) => observedStart(...args).then(
       report => { observeStart({ report }); return report; },
       error => { observeStart({ error }); throw error; });`, context, { filename: 'actual-desktop-main.mjs' });
+  assert.deepEqual([...records.ipcHandlers.keys()].sort(), [...expectedChannels].sort());
   t.after(() => {
-    vm.runInContext('quitting = true', context);
+    vm.runInContext('windowContext?.appearance?.dispose(); quitting = true', context);
     for (const child of records.children) child.emit('exit', 0);
     for (const win of records.windows) win.destroy();
+    assert.deepEqual(lutStoreCalls, [], 'Restart lifecycle must not read or mutate LUT recovery metadata');
   });
   await until(() => menu);
   return { records, app, initial: () => initial,
