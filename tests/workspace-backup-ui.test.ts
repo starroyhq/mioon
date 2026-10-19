@@ -5,22 +5,30 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { WORKSPACE_BACKUP_LIMITS, isWorkspaceBackupInspection } from '@mioon/contracts';
 import * as backup from '../apps/web/src/workspace-backup-ui.ts';
+import type {TestContext} from 'node:test';
+type Loose = Record<string, unknown>;
+interface Element {type: unknown; props: Loose}
+interface Counts {projects: number|null; assets: number|null; videoTasks: number|null; imageTasks: number|null; frameTasks: number|null; exports: number|null}
+interface InspectionView {formatVersion: number; scope: string; captureReady: boolean; reason: string; databaseSchemaVersion: number; counts: Counts; unresolved: Loose; limits: Loose; inspectionComplete: boolean; issues: string[]}
+interface UIState {phase?: string; report: InspectionView; checkedAt?: string; scope?: string; error?: string; [key: string]: unknown}
+interface DeferredTask {promise: Promise<unknown>; resolve: (value: unknown)=>void; reject: (reason?: unknown)=>void}
+interface BackupUI {controller: {setContext: (value: Loose)=>void; inspect: ()=>Promise<unknown>; getState: ()=>UIState}; reads: Loose[]; pending: DeferredTask[]; auth: boolean[]; changes: unknown[]; state: ()=>UIState; set: (patch: Loose, commit?: boolean)=>void; ready: (result?: unknown)=>Promise<UIState>}
 
-const inspection = patch => ({ formatVersion: 1, scope: 'whole_workspace', captureReady: false, reason: 'BACKEND_RUNNING', databaseSchemaVersion: 24,
+const inspection = (patch: Loose = {}): InspectionView => ({ formatVersion: 1, scope: 'whole_workspace', captureReady: false, reason: 'BACKEND_RUNNING', databaseSchemaVersion: 24,
   counts: { projects: 2, assets: 5, videoTasks: 3, imageTasks: 4, frameTasks: 1, exports: 2 },
   unresolved: { videoTasks: 1, imageTasks: 0, frameTasks: 0, exports: 0, agentRuns: 0, agentProposals: 2, editTasks: 0 },
-  limits: { ...WORKSPACE_BACKUP_LIMITS }, inspectionComplete: true, issues: [], ...patch });
-const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-function fixture() {
-  let live = { scope: 'project-a:1:1', connected: true, visible: true };
-  const reads = [], pending = [], auth = [], changes = [];
+  limits: { ...WORKSPACE_BACKUP_LIMITS }, inspectionComplete: true, issues: [], ...patch } as InspectionView);
+const deferred = (): DeferredTask => { let resolve: (value: unknown)=>void = ()=>{}; let reject: (reason?: unknown)=>void = ()=>{}; const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+function fixture(): BackupUI {
+  let live: Loose = { scope: 'project-a:1:1', connected: true, visible: true };
+  const reads: Loose[] = [], pending: DeferredTask[] = [], auth: boolean[] = [], changes: unknown[] = [];
   const controller = backup.createWorkspaceBackupController({ getContext: () => live,
-    read(input, options) { const response = deferred(); reads.push({ input, options }); pending.push(response); return response.promise; },
-    onChange: value => changes.push(value), onUnauthorized: () => auth.push(true), now: () => '2026-10-12T00:00:00.000Z' });
+    read(input: Loose, options: Loose) { const response = deferred(); reads.push({ input, options }); pending.push(response); return response.promise as Promise<never>; },
+    onChange: (value: unknown) => changes.push(value), onUnauthorized: () => auth.push(true), now: () => '2026-10-12T00:00:00.000Z' });
   controller.setContext(live);
-  return { controller, reads, pending, auth, changes, state: () => controller.getState(),
-    set(patch, commit = true) { live = { ...live, ...patch }; if (commit) controller.setContext(live); },
-    async ready(result = inspection()) { const request = controller.inspect(); pending.at(-1).resolve(result); await request; return controller.getState(); } };
+  return { controller, reads, pending, auth, changes, state: (): UIState => controller.getState() as UIState,
+    set(patch: Loose, commit = true) { live = { ...live, ...patch }; if (commit) controller.setContext(live); },
+    async ready(result: unknown = inspection()) { const request = controller.inspect(); pending.at(-1)!.resolve(result); await request; return controller.getState() as UIState; } } as unknown as BackupUI;
 }
 
 test('mount, expansion, reconnection and restored visibility never inspect automatically', async () => {
@@ -115,17 +123,18 @@ test('current errors use fixed safe messages and never expose server exception t
   }
 });
 
-const element = (type, props, ...children) => ({ type, props: { ...props, children } });
-const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
-const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join('') : tree && typeof tree === 'object' ? textOf(tree.props?.children) : tree == null || typeof tree === 'boolean' ? '' : String(tree);
-const read = name => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
-const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (target, name) => target[name] ?? String(name) });
-function component(visible = true) {
-  const react = { createElement: element, useLayoutEffect() {}, useRef: current => ({ current }), useState: value => [value, () => {}] }; react.default = react;
-  const module = { exports: {} };
+const element = (type: unknown, props: Loose, ...children: unknown[]): Element => ({ type, props: { ...props, children } });
+const nodes = (tree: unknown): Element[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [{type: (tree as Element).type, props: (tree as Element).props}, ...nodes((tree as Element).props?.children)] : [];
+const textOf = (tree: unknown): string => Array.isArray(tree) ? tree.map(textOf).join('') : tree && typeof tree === 'object' ? textOf((tree as Element).props?.children) : tree == null || typeof tree === 'boolean' ? '' : String(tree);
+const read = (name: string): string => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
+const primitive = new Proxy<Loose>({ __esModule: true, default: 'Component' }, { get: (target, name) => target[name as string] ?? String(name) });
+interface ComponentModule {default: (props: Loose)=>Element; WorkspaceBackupDetails: (props: Loose)=>Element; props?: Loose}
+function component(visible = true): ComponentModule {
+  const react: Loose = { createElement: element, useLayoutEffect() {}, useRef: (current: unknown) => ({ current }), useState: (value: unknown) => [value, () => {}] }; react.default = react;
+  const module: {exports: Loose} = { exports: {} };
   Function('module', 'exports', 'require', transformSync(read('WorkspaceBackupPanel.tsx'), { loader: 'tsx', format: 'cjs' }).code)(module, module.exports,
-    key => key === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : key === '../../../packages/i18n/src/index.ts' ? i18n : key === 'react' ? react : key === './workspace-backup-ui.ts' ? backup : key === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : key.endsWith('.md?raw') ? { __esModule: true, default: 'Bundled offline backup guide' } : primitive);
-  return module.exports;
+    (key: string) => key === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : key === '../../../packages/i18n/src/index.ts' ? i18n : key === 'react' ? react : key === './workspace-backup-ui.ts' ? backup : key === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : key.endsWith('.md?raw') ? { __esModule: true, default: 'Bundled offline backup guide' } : primitive);
+  return module.exports as unknown as ComponentModule;
 }
 
 test('actual compact component uses shared collapsible controls and never reads on mount', () => {

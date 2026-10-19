@@ -2,19 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {schemas,operationEffect,WORKSPACE_BACKUP_FORMAT,WORKSPACE_BACKUP_LIMITS,workspaceBackupManifestSchema,workspaceBackupCompleteSchema,workspaceBackupInspectionSchema,isWorkspaceBackupPayloadPath} from '@mioon/contracts';
-const manifest=()=>({format:WORKSPACE_BACKUP_FORMAT,formatVersion:1,backupId:randomUUID(),createdAt:'2026-10-12T02:00:00.000Z',applicationVersion:'0.4.1',databaseSchemaVersion:24,scope:'whole_workspace',entries:[{path:'payload/workbench.sqlite',role:'database',bytes:4096,sha256:'a'.repeat(64)}],inventory:{complete:true,totalIssues:0,issues:[],truncated:false}});
+interface ManifestView {format: string; formatVersion: number; backupId: string; createdAt: string; applicationVersion: string; databaseSchemaVersion: number; scope: string; restore?: boolean;
+ entries: Array<{path: string; role: string; bytes: number; sha256: string}>;
+ inventory: {complete: boolean; totalIssues: number; issues: Array<{code: string; path?: string}>; truncated: boolean}}
+const manifest=(): ManifestView => ({format:WORKSPACE_BACKUP_FORMAT,formatVersion:1,backupId:randomUUID(),createdAt:'2026-10-12T02:00:00.000Z',applicationVersion:'0.4.1',databaseSchemaVersion:24,scope:'whole_workspace',entries:[{path:'payload/workbench.sqlite',role:'database',bytes:4096,sha256:'a'.repeat(64)}],inventory:{complete:true,totalIssues:0,issues:[],truncated:false}});
 test('only strict no-path read-only inspection enters public shared contracts',()=>{
  assert.deepEqual(schemas['workspace.backup.inspect'].parse({}),{});
  for(const input of [{source:'/private'},{destination:'/tmp/a'},{projectId:randomUUID()},{restore:true},{requestId:'request-key'}])assert.equal(schemas['workspace.backup.inspect'].safeParse(input).success,false);
  for(const op of ['workspace.backup.create','workspace.backup.verify','workspace.backup.restore'])assert.equal(Object.hasOwn(schemas,op),false);
  const effect=operationEffect('workspace.backup.inspect');assert.equal(effect.readOnly,true);assert.equal(effect.idempotent,true);
- for(const key of ['databaseWrite','fileWrite','externalIO','localProcess','paidGeneration','destructive','openWorld'])assert.equal(effect[key],false,key);
+ for(const key of ['databaseWrite','fileWrite','externalIO','localProcess','paidGeneration','destructive','openWorld'])assert.equal((effect as unknown as Record<string, boolean>)[key],false,key);
 });
 test('manifest pins one raw database and rejects paths, duplicate entries, role changes and unbounded sizes',()=>{
  assert.equal(workspaceBackupManifestSchema.safeParse(manifest()).success,true);
  const id=randomUUID();for(const file of [`payload/media/${id}.png`,`payload/media/result-${id}.mp4.part.mp4`,`payload/media/export-${id}-${randomUUID()}.mp4`,`payload/frame-staging/${id}.json`])assert.equal(isWorkspaceBackupPayloadPath(file),true,file);
  for(const file of ['../workbench.sqlite','/payload/workbench.sqlite','payload/../access-token','payload/agent-settings/settings.json','payload/media/../../secret','payload\\workbench.sqlite','https://example.test/p.png','payload/media/no-id.png'])assert.equal(isWorkspaceBackupPayloadPath(file),false,file);
- for(const mutate of [v=>v.entries.push({...v.entries[0]}),v=>v.entries=[],v=>v.entries[0].role='asset',v=>v.entries[0].bytes=WORKSPACE_BACKUP_LIMITS.databaseBytes+1,v=>v.entries[0].sha256='A'.repeat(64),v=>v.scope='project',v=>v.restore=true,v=>v.databaseSchemaVersion=25]){const v=manifest();mutate(v);assert.equal(workspaceBackupManifestSchema.safeParse(v).success,false);}
+ for(const mutate of ([v=>v.entries.push({...v.entries[0]}),v=>{v.entries=[];},v=>{v.entries[0]!.role='asset';},v=>{v.entries[0]!.bytes=WORKSPACE_BACKUP_LIMITS.databaseBytes+1;},v=>{v.entries[0]!.sha256='A'.repeat(64);},v=>{v.scope='project';},v=>{v.restore=true;},v=>{v.databaseSchemaVersion=25;}] as Array<(v: ManifestView)=>void>)){const v=manifest();mutate(v);assert.equal(workspaceBackupManifestSchema.safeParse(v).success,false);}
 });
 test('missing or retained partial source evidence cannot masquerade as clean inventory',()=>{
  const v=manifest();v.inventory={complete:false,totalIssues:1,issues:[{code:'PARTIAL_RESULT_PRESERVED',path:`payload/image-staging/${randomUUID()}.png`}],truncated:false};assert.equal(workspaceBackupManifestSchema.safeParse(v).success,true);

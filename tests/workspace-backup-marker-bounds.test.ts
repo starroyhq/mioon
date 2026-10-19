@@ -8,16 +8,18 @@ import {createHash} from 'node:crypto';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {readWorkspaceBackupSchemaVersion} from '../packages/business/src/workspace-backup-schema-versions.ts';
+import type {TestContext} from 'node:test';
+type Loose = Record<string, unknown>;
 
-const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-function watchMarkerRows(t){
- const native=DatabaseSync.prototype.prepare,observed=[];
- t.mock.method(DatabaseSync.prototype,'prepare',function(sql){
+const digest=(bytes: Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
+function watchMarkerRows(t: TestContext): Array<{type: string; bytes: number}>{
+ const native=DatabaseSync.prototype.prepare,observed: Array<{type: string; bytes: number}>=[];
+ t.mock.method(DatabaseSync.prototype,'prepare',function(this: DatabaseSync,sql: string){
   const statement=Reflect.apply(native,this,[sql]);
   if(!/\bFROM\s+main\.schema_version\b/iu.test(sql))return statement;
   return new Proxy(statement,{get(target,key){
-   if(key==='iterate')return function*(...args){
-    for(const row of target.iterate(...args)){
+   if(key==='iterate')return function*(...args: unknown[]){
+    for(const row of target.iterate(...(args as never[])) as Iterable<Record<string, unknown>>){
      observed.push({type:typeof row.version,bytes:typeof row.version==='string'?Buffer.byteLength(row.version):row.version instanceof Uint8Array?row.version.byteLength:0});
      yield row;
     }
@@ -26,13 +28,13 @@ function watchMarkerRows(t){
   }});
  });return observed;
 }
-function refresh(backup){
+function refresh(backup: string){
  const file=path.join(backup,'manifest.json'),manifest=JSON.parse(fs.readFileSync(file,'utf8'));
- const database=fs.readFileSync(path.join(backup,'payload/workbench.sqlite')),entry=manifest.entries.find(value=>value.role==='database');
+ const database=fs.readFileSync(path.join(backup,'payload/workbench.sqlite')),entry=manifest.entries.find((value: {role?: string})=>value.role==='database');
  entry.bytes=database.byteLength;entry.sha256=digest(database);
  const text=JSON.stringify(manifest);fs.writeFileSync(file,text);
  const completeFile=path.join(backup,'COMPLETE.json'),complete=JSON.parse(fs.readFileSync(completeFile,'utf8'));
- complete.manifestSha256=digest(text);complete.payloadBytes=manifest.entries.reduce((sum,value)=>sum+value.bytes,0);fs.writeFileSync(completeFile,JSON.stringify(complete));
+ complete.manifestSha256=digest(text);complete.payloadBytes=manifest.entries.reduce((sum: number,value: {bytes: number})=>sum+value.bytes,0);fs.writeFileSync(completeFile,JSON.stringify(complete));
 }
 for(const kind of ['text','blob'])test(`verify projects an imported oversized ${kind} marker to NULL before materializing rows`,async t=>{
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'backup-marker-bounds-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -74,12 +76,12 @@ test('ordinary24 unknown journal survives startup migration and cold40 archive w
  const original24=fs.readFileSync(file);
  assert.equal((await createWorkspaceBackup({source,destination:backup24})).databaseSchemaVersion,24);
  assert.deepEqual(fs.readFileSync(path.join(backup24,'payload/workbench.sqlite')),original24);
- assert.equal((await verifyWorkspaceBackup({directory:backup24})).restoration,'not_tested');
+ assert.equal((await verifyWorkspaceBackup({directory:backup24}) as Loose).restoration,'not_tested');
  const store=openStore(source);
  try{
-  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get().n,48);
+  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get()!.n,48);
   const read=store.db.prepare('SELECT rowid AS rowid,* FROM unknown_retained_journal');read.setReadBigInts(true);
-  const actual=read.get();assert.equal(actual.rowid,9007199254740993n);assert.deepEqual(actual.data,new Uint8Array([0,255,13,10]));assert.equal(actual.n,123.25);
+  const actual=read.get() as {rowid: bigint; data: Uint8Array; n: number};assert.equal(actual.rowid,9007199254740993n);assert.deepEqual(actual.data,new Uint8Array([0,255,13,10]));assert.equal(actual.n,123.25);
  }finally{store.close();}
  const originalCurrent=fs.readFileSync(file),created=await createWorkspaceBackup({source,destination:backupCurrent});
  assert.equal(created.databaseSchemaVersion,48);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');

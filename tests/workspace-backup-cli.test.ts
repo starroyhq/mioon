@@ -8,13 +8,18 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../packages/business/src/db.ts';
 import {workspaceBackupResultSchema} from '../packages/contracts/src/workspace-backup.ts';
+import type {TestContext} from 'node:test';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const entry = path.join(repo, 'apps/cli/src/backup.ts');
 const secret = 'synthetic-backup-credential-never-live';
 const privateText = 'Synthetic chat and prompt text may contain a secret.';
-const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const sha256 = value => createHash('sha256').update(value).digest('hex');
+type Loose = Record<string, unknown>;
+const inventoryView=(value: Loose)=>(value as {inventory: {complete: boolean; truncated: boolean; totalIssues: number; issues: Array<{code: string}>}}).inventory;
+interface CliContext {root: string; guard: string; children: Set<() => Promise<unknown>>}
+interface CliResult {code: number|null; signal: NodeJS.Signals|null; stdout: string; stderr: string; failure: Error|undefined; body: {ok?: boolean; data?: Loose; error?: {code?: string; message?: string; details?: unknown; retryable?: boolean}}}
+const pause=(ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+const sha256=(value: string|Buffer): string => createHash('sha256').update(value).digest('hex');
 
 // Fail at the boundary rather than merely relying on unreachable endpoints.
 // The real child remains responsible for all backup/verification filesystem I/O.
@@ -55,11 +60,11 @@ for (const name of ['readFile', 'open']) {
 syncBuiltinESMExports();
 `;
 
-async function sandbox(t) {
+async function sandbox(t: TestContext): Promise<CliContext> {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-backup-cli-'));
   const guard = path.join(root, 'offline-guard.mjs');
   await writeFile(guard, offlineGuard, {mode: 0o600});
-  const children = new Set();
+  const children = new Set<() => Promise<unknown>>();
   t.after(async () => {
     await Promise.all([...children].map(cleanup => cleanup()));
     await rm(root, {recursive: true, force: true});
@@ -67,14 +72,14 @@ async function sandbox(t) {
   return {root, guard, children};
 }
 
-function startCli(t, args, {root, guard, children, timeout = 20_000} = {}) {
+function startCli(t: TestContext, args: string[], {root, guard, children, timeout = 20_000}: CliContext & {timeout?: number}) {
   const child = spawn(process.execPath, ['--import', guard, entry, ...args], {
     cwd: repo,
     env: {...process.env, MIOON_TOKEN: secret, MIOON_TOKEN_FILE: path.join(root, 'access-token'), MIOON_CONNECTION_FILE: path.join(root, 'mcp-connection.json'), MIOON_BASE_URL: 'https://must-never-contact.invalid'},
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  let stdout = '', stderr = '', failure, closed = false;
-  const capture = which => chunk => {
+  let stdout = '', stderr = '', closed = false;let failure: Error|undefined;
+  const capture = (which: 'stdout'|'stderr') => (chunk: string) => {
     if (which === 'stdout') stdout += chunk;
     else stderr += chunk;
     if (stdout.length + stderr.length > 256 * 1024) {
@@ -85,7 +90,7 @@ function startCli(t, args, {root, guard, children, timeout = 20_000} = {}) {
   // Set UTF-8 before adding data handlers; chunk boundaries must not corrupt it.
   child.stdout.setEncoding('utf8').on('data', capture('stdout'));
   child.stderr.setEncoding('utf8').on('data', capture('stderr'));
-  const complete = new Promise(resolve => {
+  const complete = new Promise<Omit<CliResult,'body'>>(resolve => {
     const timer = setTimeout(() => {
       failure ??= Error('Owned backup CLI did not exit within its test deadline');
       child.kill('SIGKILL');
@@ -108,8 +113,8 @@ function startCli(t, args, {root, guard, children, timeout = 20_000} = {}) {
   return {child, complete, isClosed: () => closed};
 }
 
-async function resultFor(owned) {
-  const result = await owned.complete;
+async function resultFor(owned: {complete: Promise<Omit<CliResult,'body'>>}): Promise<CliResult> {
+  const result = await owned.complete as CliResult;
   if (result.failure) throw result.failure;
   const lines = result.stdout.trim().split('\n');
   assert.equal(lines.length, 1, 'exactly one JSON envelope, no progress/logging on stdout');
@@ -121,29 +126,30 @@ async function resultFor(owned) {
   return result;
 }
 
-const run = (t, args, context) => resultFor(startCli(t, args, context));
-function success(result) {
+const run = (t: TestContext, args: string[], context: CliContext): Promise<CliResult> => resultFor(startCli(t, args, context));
+function success(result: CliResult): Loose {
   assert.equal(result.code, 0, result.stdout + result.stderr);
   assert.equal(result.signal, null);
   assert.equal(result.body.ok, true);
   assert.ok(Object.hasOwn(result.body, 'data'));
-  return result.body.data;
+  return result.body.data as Loose;
 }
-function failure(result, code, exit = 1, details = {}) {
+function failure(result: CliResult, code: string, exit = 1, details: Loose = {}): Loose {
   assert.equal(result.code, exit, result.stdout + result.stderr);
   assert.equal(result.signal, null);
   assert.deepEqual(Object.keys(result.body).sort(), ['error', 'ok']);
   assert.equal(result.body.ok, false);
-  assert.equal(result.body.error.code, code);
-  assert.equal(typeof result.body.error.message, 'string');
-  assert.deepEqual(result.body.error.details, details);
-  assert.equal(result.body.error.retryable, false);
+  const error=result.body.error as {code?: string; message?: string; details?: unknown; retryable?: boolean};
+  assert.equal(error.code, code);
+  assert.equal(typeof String(error.message), 'string');
+  assert.deepEqual(error.details, details);
+  assert.equal(error.retryable, false);
   assert.ok(result.stderr.includes(code));
   assert.ok(!result.stdout.includes(repo));
-  return result.body.error;
+  return error as Loose;
 }
 
-async function fixture(t, context, {large = false} = {}) {
+async function fixture(t: TestContext, context: CliContext, {large = false}: {large?: boolean} = {}) {
   const source = path.join(context.root, 'workspace');
   const store = openStore(source);
   const projectId = randomUUID(), assetId = randomUUID();
@@ -164,8 +170,8 @@ async function fixture(t, context, {large = false} = {}) {
   return {source, media, assetRelative, projectId};
 }
 
-async function exists(file) {
-  try {await stat(file); return true;} catch (error) {if (error.code === 'ENOENT') return false; throw error;}
+async function exists(file: string): Promise<boolean> {
+  try {await stat(file); return true;} catch (error) {if ((error as {code?: string}).code === 'ENOENT') return false; throw error;}
 }
 
 test('offline backup help/version disclose whole-workspace sensitivity without startup or credentials', {timeout: 15_000}, async t => {
@@ -175,7 +181,7 @@ test('offline backup help/version disclose whole-workspace sensitivity without s
     const content = JSON.stringify(output);
     assert.equal(output.name, 'mioon-backup');
     assert.equal(output.offline, true);
-    assert.ok(output.usage.every(usage => usage.startsWith('node apps/cli/src/backup.ts ') || usage.startsWith('pnpm backup ')), 'only verified source-checkout launchers are advertised');
+    assert.ok((output.usage as string[]).every((usage: string) => usage.startsWith('node apps/cli/src/backup.ts ') || usage.startsWith('pnpm backup ')), 'only verified source-checkout launchers are advertised');
     for (const text of ['Whole-workspace', 'chats', 'prompts', 'caches', 'may contain secrets', 'private plaintext', 'Restore separately accepts only classified schema24', 'App credential, settings and connection files are excluded', 'cleanup attempts', 'SOURCE_LOCK_RELEASE_UNCONFIRMED']) assert.ok(content.includes(text), text);
   }
   const output = success(await run(t, ['--version'], context));
@@ -233,7 +239,7 @@ test('offline CLI creates and verifies a real closed workspace without reading c
   assert.equal(workspaceBackupResultSchema.safeParse(created).success, true);
   assert.equal(created.integrity, 'verified');
   assert.equal(created.restoration, 'not_tested');
-  assert.equal(created.inventory.complete, true);
+  assert.equal(inventoryView(created).complete, true);
   assert.equal(created.fileCount, 2);
   assert.deepEqual((await readdir(destination)).sort(), ['COMPLETE.json', 'manifest.json', 'payload']);
   assert.deepEqual((await readdir(path.join(destination, 'payload'))).sort(), ['media', 'workbench.sqlite']);
@@ -289,10 +295,10 @@ test('offline CLI emits a complete bounded inventory result larger than a pipe b
   const result = await run(t, ['create', '--source', f.source, '--destination', path.join(context.root, 'bounded-inventory')], context);
   const data = success(result);
   assert.equal(workspaceBackupResultSchema.safeParse(data).success, true);
-  assert.equal(data.inventory.complete, false);
-  assert.equal(data.inventory.issues.length, 100);
-  assert.equal(data.inventory.totalIssues, 105);
-  assert.equal(data.inventory.truncated, true);
+  assert.equal(inventoryView(data).complete, false);
+  assert.equal(inventoryView(data).issues.length, 100);
+  assert.equal(inventoryView(data).totalIssues, 105);
+  assert.equal(inventoryView(data).truncated, true);
   assert.ok(Buffer.byteLength(result.stdout) > 16 * 1024);
 });
 
@@ -335,10 +341,10 @@ syncBuiltinESMExports();
 `, {mode: 0o600});
   const result = await run(t, ['create', '--source', f.source, '--destination', destination], {...context, guard: faultGuard});
   const error = failure(result, 'WORKSPACE_BACKUP_PUBLICATION_UNCONFIRMED');
-  assert.match(error.message, /may contain a published backup/);
-  assert.match(error.message, /Preserve this destination/);
-  assert.match(error.message, /separate verify command/);
-  assert.match(error.message, /marker presence alone is not proof/);
+  assert.match(String(error.message), /may contain a published backup/);
+  assert.match(String(error.message), /Preserve this destination/);
+  assert.match(String(error.message), /separate verify command/);
+  assert.match(String(error.message), /marker presence alone is not proof/);
   assert.ok(!result.stdout.includes(context.root));
   assert.ok(!result.stderr.includes(context.root));
   assert.equal(await exists(path.join(destination, 'COMPLETE.json')), true);
@@ -378,7 +384,7 @@ syncBuiltinESMExports();
   assert.ok(!failed.stderr.includes(context.root));
 });
 
-for (const [signal, exit] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+for (const [signal, exit] of ([['SIGINT', 130], ['SIGTERM', 143]] as Array<[NodeJS.Signals, number]>)) {
   test(`offline CLI ${signal} waits for owned lock cleanup and leaves no complete marker`, {timeout: 30_000}, async t => {
     const context = await sandbox(t), f = await fixture(t, context, {large: true});
     const destination = path.join(context.root, 'interrupted');
@@ -387,7 +393,7 @@ for (const [signal, exit] of [['SIGINT', 130], ['SIGTERM', 143]]) {
     for (;;) {
       let copied = 0;
       try {copied = (await stat(path.join(destination, 'payload', f.assetRelative))).size;}
-      catch (error) {if (error.code !== 'ENOENT') throw error;}
+      catch (error) {if ((error as {code?: string}).code !== 'ENOENT') throw error;}
       if (copied > 0) break;
       assert.equal(owned.isClosed(), false, 'copy should still be running when interrupted');
       assert.ok(Date.now() < deadline, 'copy began within the bounded wait');

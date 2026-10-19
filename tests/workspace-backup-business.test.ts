@@ -5,13 +5,16 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {createHash,randomUUID} from 'node:crypto';
+import type {TestContext} from 'node:test';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {canonicalImageInput as canonical,IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
 import {workspaceBackupManifestSchema,workspaceBackupResultSchema} from '../packages/contracts/src/workspace-backup.ts';
 
-const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-const code=expected=>error=>error.code===expected;
-function fixture(t){
+type Loose = Record<string, unknown>;
+interface BackupResultView {integrity: string; restoration: string; fileCount: number; inventory: {complete: boolean; truncated: boolean; totalIssues: number; issues: Array<{code: string; path?: string}>}}
+const digest=(bytes: Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
+const code=(expected: string)=>(error: unknown)=>(error as {code?: string}).code===expected;
+function fixture(t: TestContext){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-backup-business-')),source=path.join(base,'source'),destination=path.join(base,'backup');
  fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o755});
  const db=new DatabaseSync(path.join(source,'workbench.sqlite'));
@@ -22,12 +25,12 @@ function fixture(t){
  CREATE TABLE unknown_retained_journal(id TEXT PRIMARY KEY,data BLOB);`);
  let closed=false;
  t.after(()=>{if(!closed)db.close();fs.rmSync(base,{recursive:true,force:true});});
- const write=(relative,bytes,mode=0o600)=>{const file=path.join(source,relative);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,bytes,{mode});return file;};
- const asset=(bytes=Buffer.from('synthetic media'),patch={})=>{
+ const write=(relative: string,bytes: string|Buffer,mode=0o600)=>{const file=path.join(source,relative);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,bytes,{mode});return file;};
+ const asset=(bytes: Buffer=Buffer.from('synthetic media'),patch: Loose={})=>{
   const id=randomUUID(),relativePath=`media/${id}.png`,value={id,relativePath,sha256:digest(bytes),sizeBytes:bytes.length,...patch};
   db.prepare('INSERT INTO assets VALUES(?,?)').run(id,JSON.stringify(value));write(value.relativePath,bytes);return value;
  };
- const image=(patch={})=>{
+ const image=(patch: Loose={})=>{
   const id=randomUUID(),projectId=randomUUID(),groupId=randomUUID(),requestId=randomUUID(),input={projectId,requestId,name:'Preserved result',providerId:'mock',model:'mock-image-v1',prompt:'PRIVATE_USER_PROMPT including user-entered secrets',options:{...IMAGE_FIXED_OPTIONS}};
   const snapshot={schemaVersion:1,projectId,groupId,taskId:id,name:input.name,providerId:input.providerId,model:input.model,prompt:input.prompt,options:input.options};
   const row={id,projectId,groupId,requestId,input:canonical(input),inputHash:digest(canonical(input)),snapshot:canonical(snapshot),stagedReceipt:null,state:'outcome_unknown',...patch};
@@ -36,10 +39,10 @@ function fixture(t){
   return {row,receipt,insert};
  };
  const close=()=>{db.close();closed=true;};
- return {base,source,destination,db,write,asset,image,close,backup:()=>createWorkspaceBackup({source,destination})};
+ return {base,source,destination,db,write,asset,image,close,backup:async(): Promise<BackupResultView>=>createWorkspaceBackup({source,destination}) as unknown as BackupResultView};
 }
-const manifest=f=>JSON.parse(fs.readFileSync(path.join(f.destination,'manifest.json'),'utf8'));
-const issues=result=>result.inventory.issues.map(issue=>issue.code);
+const manifest=(f: {destination: string}): Loose & {entries: Array<{path: string; role?: string}>}=>JSON.parse(fs.readFileSync(path.join(f.destination,'manifest.json'),'utf8')) as Loose & {entries: Array<{path: string; role?: string}>};
+const issues=(result: BackupResultView)=>result.inventory.issues.map(issue=>issue.code);
 
 test('whole SQLite bytes, unknown journals and canonical assets survive while settings/token/browser data are excluded',async t=>{
  const f=fixture(t),a=f.asset();f.db.prepare('INSERT INTO unknown_retained_journal VALUES(?,?)').run('approval/replay/cache/unknown',Buffer.from('user chat prompt and embedded secret preserved'));
@@ -49,7 +52,7 @@ test('whole SQLite bytes, unknown journals and canonical assets survive while se
  assert.equal(result.integrity,'verified');assert.equal(result.restoration,'not_tested');assert.equal(result.inventory.complete,true);
  assert.deepEqual(fs.readFileSync(path.join(f.destination,'payload/workbench.sqlite')),before);
  assert.deepEqual(fs.readFileSync(path.join(f.source,'workbench.sqlite')),before);
- assert.deepEqual(value.entries.map(entry=>entry.path).sort(),[`payload/${a.relativePath}`,'payload/workbench.sqlite'].sort());
+ assert.deepEqual(value.entries.map((entry: {path: string})=>entry.path).sort(),[`payload/${a.relativePath}`,'payload/workbench.sqlite'].sort());
  assert.deepEqual(await verifyWorkspaceBackup({directory:f.destination}),result);assert.deepEqual(fs.readdirSync(f.destination).sort(),['COMPLETE.json','manifest.json','payload']);
  assert.equal(fs.existsSync(path.join(f.source,'server.lock')),false);
  for(const entry of value.entries)assert.equal(fs.statSync(path.join(f.destination,entry.path)).mode&0o777,0o600);
@@ -59,20 +62,20 @@ test('disk receipt preserves task-bound final PNG before asset registration, plu
  const f=fixture(t),complete=f.image(),partial=f.image();complete.insert();partial.insert();
  f.write(`image-staging/${complete.row.id}.json`,JSON.stringify(complete.receipt));f.write(`media/${complete.receipt.assetId}.png`,'result bytes');
  f.write(`image-staging/${partial.row.id}.png`,'partial bytes');f.close();const result=await f.backup(),value=manifest(f);
- assert.ok(value.entries.some(entry=>entry.path===`payload/media/${complete.receipt.assetId}.png`&&entry.role==='receipt_media'));
- assert.ok(value.entries.some(entry=>entry.path===`payload/image-staging/${partial.row.id}.png`));
+ assert.ok(value.entries.some((entry: {path: string; role?: string})=>entry.path===`payload/media/${complete.receipt.assetId}.png`&&entry.role==='receipt_media'));
+ assert.ok(value.entries.some((entry: {path: string})=>entry.path===`payload/image-staging/${partial.row.id}.png`));
  assert.ok(issues(result).includes('PARTIAL_RESULT_PRESERVED'));assert.ok(issues(result).includes('MISSING_STAGE_MANIFEST'));assert.ok(issues(result).includes('UNRESOLVED_TASK_RETAINED'));
  assert.equal(result.inventory.complete,false);assert.deepEqual(await verifyWorkspaceBackup({directory:f.destination}),result);
 });
 
 test('DB receipt alone retains a final PNG and reports missing durable manifest',async t=>{
- const f=fixture(t),task=f.image();task.row.stagedReceipt=JSON.stringify(task.receipt);task.row.state='persisting';task.insert();
+ const f=fixture(t),task=f.image();(task.row as Loose).stagedReceipt=JSON.stringify(task.receipt);(task.row as Loose).state='persisting';task.insert();
  f.write(`media/${task.receipt.assetId}.png`,'result bytes');f.close();const result=await f.backup();
- assert.ok(manifest(f).entries.some(entry=>entry.path===`payload/media/${task.receipt.assetId}.png`));assert.ok(issues(result).includes('MISSING_STAGE_MANIFEST'));
+ assert.ok(manifest(f).entries.some((entry: {path: string})=>entry.path===`payload/media/${task.receipt.assetId}.png`));assert.ok(issues(result).includes('MISSING_STAGE_MANIFEST'));
 });
 
 test('valid receipt with no staged or final PNG is explicitly incomplete',async t=>{
- const f=fixture(t),task=f.image();task.row.stagedReceipt=JSON.stringify(task.receipt);task.insert();f.write(`image-staging/${task.row.id}.json`,JSON.stringify(task.receipt));f.close();
+ const f=fixture(t),task=f.image();(task.row as Loose).stagedReceipt=JSON.stringify(task.receipt);task.insert();f.write(`image-staging/${task.row.id}.json`,JSON.stringify(task.receipt));f.close();
  assert.ok(issues(await f.backup()).includes('MISSING_RECEIPT_MEDIA'));
 });
 
@@ -91,7 +94,7 @@ test('issues distinguish missing and mismatched registered bytes, malformed and 
  f.close();const result=await f.backup();
  assert.equal(result.inventory.complete,false);assert.equal(result.inventory.truncated,false);
  for(const code of ['MISSING_REGISTERED_MEDIA','REGISTERED_MEDIA_MISMATCH','RECORD_INSPECTION_LIMIT','INVALID_TASK_RECORD'])assert.ok(issues(result).includes(code),code);
- assert.ok(manifest(f).entries.some(entry=>entry.path===`payload/${mismatch.relativePath}`));
+ assert.ok(manifest(f).entries.some((entry: {path: string})=>entry.path===`payload/${mismatch.relativePath}`));
 });
 
 test('issue detail is capped without concealing total issues or asserting completeness',async t=>{
@@ -100,9 +103,9 @@ test('issue detail is capped without concealing total issues or asserting comple
 });
 
 test('inconsistent image input/snapshot cannot attest a receipt-derived final path',async t=>{
- const f=fixture(t),task=f.image();const snapshot=JSON.parse(task.row.snapshot);snapshot.prompt='mismatched prompt';task.row.snapshot=canonical(snapshot);task.insert();
+ const f=fixture(t),task=f.image();const snapshot=JSON.parse(task.row.snapshot);snapshot.prompt='mismatched prompt';(task.row as Loose).snapshot=canonical(snapshot);task.insert();
  f.write(`image-staging/${task.row.id}.json`,JSON.stringify(task.receipt));f.write(`media/${task.receipt.assetId}.png`,'result bytes');f.close();
- const result=await f.backup();assert.ok(issues(result).includes('INVALID_TASK_RECORD'));assert.ok(!manifest(f).entries.some(entry=>entry.role==='receipt_media'));
+ const result=await f.backup();assert.ok(issues(result).includes('INVALID_TASK_RECORD'));assert.ok(!manifest(f).entries.some((entry: {role?: string})=>entry.role==='receipt_media'));
 });
 
 test('frame disk receipt binds exact input, snapshot and final result before asset commit',async t=>{
@@ -112,7 +115,7 @@ test('frame disk receipt binds exact input, snapshot and final result before ass
  const receipt={schemaVersion:1,projectId,taskId:id,inputHash,sourceAssetId,sourceHash:input.sourceHash,sourceFrame:0,fps:30,profileId:snapshot.profile.id,selectionRule:snapshot.profile.selectionRule,assetId:randomUUID(),sha256:digest('frame bytes'),mimeType:'image/png',width:4,height:2,byteLength:11,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:4,height:2,rotation:0,sarNumerator:1,sarDenominator:1}};
  f.db.prepare('INSERT INTO frame_tasks VALUES(?,?,?,?,?,?,?,?)').run(id,projectId,requestId,inputHash,canonical(input),canonical(snapshot),null,'interrupted');
  f.write(`frame-staging/${id}.json`,JSON.stringify(receipt));f.write(`media/${receipt.assetId}.png`,'frame bytes');f.close();
- const result=await f.backup();assert.ok(!issues(result).includes('INVALID_TASK_RECORD'));assert.ok(manifest(f).entries.some(entry=>entry.path===`payload/media/${receipt.assetId}.png`));
+ const result=await f.backup();assert.ok(!issues(result).includes('INVALID_TASK_RECORD'));assert.ok(manifest(f).entries.some((entry: {path: string})=>entry.path===`payload/media/${receipt.assetId}.png`));
 });
 
 for(const variant of ['payload-corrupt','extra-file','extra-directory','missing-marker','manifest-corrupt','marker-corrupt'])test(`verification refuses ${variant}`,async t=>{
@@ -123,7 +126,7 @@ for(const variant of ['payload-corrupt','extra-file','extra-directory','missing-
  if(variant==='missing-marker')fs.unlinkSync(path.join(f.destination,'COMPLETE.json'));
  if(variant==='manifest-corrupt')fs.appendFileSync(path.join(f.destination,'manifest.json'),' ');
  if(variant==='marker-corrupt')fs.writeFileSync(path.join(f.destination,'COMPLETE.json'),'{}');
- await assert.rejects(verifyWorkspaceBackup({directory:f.destination}),error=>error.code==='WORKSPACE_BACKUP_CORRUPT'||variant==='missing-marker'&&error.code==='WORKSPACE_BACKUP_INCOMPLETE');
+ await assert.rejects(verifyWorkspaceBackup({directory:f.destination}),(error: unknown)=>{const view=error as {code?: string};return view.code==='WORKSPACE_BACKUP_CORRUPT'||variant==='missing-marker'&&view.code==='WORKSPACE_BACKUP_INCOMPLETE';});
 });
 
 test('database inventory enumeration stops at its fixed global row bound',async t=>{

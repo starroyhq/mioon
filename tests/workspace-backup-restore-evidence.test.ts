@@ -10,15 +10,16 @@ import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-sc
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {hasWorkspaceBackupRestoreEvidence} from '../packages/business/src/workspace-backup-schema-versions.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
+import type {TestContext} from 'node:test';
 
-const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-function tree(root){
- const visit=relative=>{
+const sha=(bytes: Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
+function tree(root: string): Array<unknown[]>{
+ const visit=(relative: string): Array<unknown[]>=>{
   const file=path.join(root,relative),stat=fs.lstatSync(file);
-  return stat.isDirectory()?[[relative,stat.mode],...fs.readdirSync(file).sort().flatMap(name=>visit(path.join(relative,name)))]:[[relative,stat.mode,sha(fs.readFileSync(file))]];
+  return stat.isDirectory()?[[relative,stat.mode],...fs.readdirSync(file).sort().flatMap((name: string)=>visit(path.join(relative,name)))]:[[relative,stat.mode,sha(fs.readFileSync(file))]];
  };return visit('');
 }
-function fixture(t,version,sql=''){
+function fixture(t: TestContext,version: number,sql=''){
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'capture-restore-evidence-')),source=path.join(root,'source'),destination=path.join(root,'backup');
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));fs.mkdirSync(source,{mode:0o700});fs.mkdirSync(path.join(source,'media'),{mode:0o700});
  const file=path.join(source,'workbench.sqlite'),db=new DatabaseSync(file);
