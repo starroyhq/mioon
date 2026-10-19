@@ -38,11 +38,12 @@ test('downloads are only UUID managed media on the current backend', () => {
 });
 
 test('base renderer preferences expose no Node or implicit preload; main owns the fixed window bridge', () => {
-  const session = {}, prefs = secureWebPreferences(session);
+  const session = {}; const prefs = secureWebPreferences(session as unknown as Parameters<typeof secureWebPreferences>[0]);
   assert.equal(prefs.session, session);
-  for (const key of ['sandbox', 'contextIsolation', 'webSecurity']) assert.equal(prefs[key], true);
+  const preferenceMap = prefs as unknown as Record<string, unknown>;
+  for (const key of ['sandbox', 'contextIsolation', 'webSecurity']) assert.equal(preferenceMap[key], true);
   for (const key of ['nodeIntegration', 'nodeIntegrationInWorker', 'nodeIntegrationInSubFrames', 'webviewTag',
-    'allowRunningInsecureContent', 'experimentalFeatures', 'devTools']) assert.equal(prefs[key], false);
+    'allowRunningInsecureContent', 'experimentalFeatures', 'devTools']) assert.equal(preferenceMap[key], false);
   assert.equal('preload' in prefs, false);
 });
 
@@ -54,45 +55,59 @@ test('cookie is Secure HttpOnly SameSite Strict without disk expiration', () => 
   assert.throws(() => sessionCookie(origin, 'short'));
 });
 
-function fakeSession() {
-  const session = new EventEmitter();
+type SessionArg = Parameters<typeof installSessionPolicy>[0];
+type Handler = (...args: never) => unknown;
+interface FakeSession extends EventEmitter {
+  permission?: (...args: unknown[]) => unknown; permissionCheck?: (...args: unknown[]) => unknown;
+  device?: (...args: unknown[]) => unknown; display?: (...args: unknown[]) => unknown;
+  beforeRequest?: (...args: unknown[]) => unknown;
+  setPermissionRequestHandler?: (handler: (...args: unknown[]) => unknown) => void;
+  setPermissionCheckHandler?: (handler: (...args: unknown[]) => unknown) => void;
+  setDevicePermissionHandler?: (handler: (...args: unknown[]) => unknown) => void;
+  setDisplayMediaRequestHandler?: (handler: (...args: unknown[]) => unknown) => void;
+  webRequest?: {onBeforeRequest?: (handler: (...args: unknown[]) => unknown) => void};
+}
+function fakeSession(): FakeSession {
+  const session = new EventEmitter() as FakeSession;
   session.setPermissionRequestHandler = handler => { session.permission = handler; };
   session.setPermissionCheckHandler = handler => { session.permissionCheck = handler; };
   session.setDevicePermissionHandler = handler => { session.device = handler; };
   session.setDisplayMediaRequestHandler = handler => { session.display = handler; };
-  session.webRequest = { onBeforeRequest: handler => { session.beforeRequest = handler; } };
+  session.webRequest = {onBeforeRequest: handler => { session.beforeRequest = handler; }};
   return session;
 }
 
 test('session rejects permissions, subframes, and external requests', () => {
   const session = fakeSession();
-  installSessionPolicy(session, origin, () => null, { downloadsPath: '/tmp/video.mp4' });
-  session.permission({}, 'camera', allowed => assert.equal(allowed, false));
-  assert.equal(session.permissionCheck(), false); assert.equal(session.device(), false);
-  session.display({}, result => assert.deepEqual(result, {}));
-  session.beforeRequest({ url: `${origin}/`, resourceType: 'subFrame' }, result => assert.equal(result.cancel, true));
-  session.beforeRequest({ url: `${origin}/api/rpc`, resourceType: 'xhr' }, result => assert.equal(result.cancel, false));
+  installSessionPolicy(session as unknown as SessionArg, origin, () => null, { downloadsPath: '/tmp/video.mp4' });
+  session.permission!({}, 'camera', (allowed: unknown) => assert.equal(allowed, false));
+  assert.equal(session.permissionCheck!(), false); assert.equal(session.device!(), false);
+  session.display!({}, (result: unknown) => assert.deepEqual(result, {}));
+  session.beforeRequest!({ url: `${origin}/`, resourceType: 'subFrame' }, (result: {cancel: boolean}) => assert.equal(result.cancel, true));
+  session.beforeRequest!({ url: `${origin}/api/rpc`, resourceType: 'xhr' }, (result: {cancel: boolean}) => assert.equal(result.cancel, false));
 });
 
 test('native export permits project query but never assigns an automatic save path', () => {
   const session = fakeSession(), contents = { getURL: () => `${origin}/?project=${id}` };
   const win = { isDestroyed: () => false, webContents: contents };
-  installSessionPolicy(session, origin, () => win, { downloadsPath: '/tmp/video.mp4' });
-  let options, cancelled = false;
+  installSessionPolicy(session as unknown as SessionArg, origin,
+    (() => win) as unknown as Parameters<typeof installSessionPolicy>[2], { downloadsPath: '/tmp/video.mp4' });
+  let options: {defaultPath?: string} | undefined, cancelled = false;
   const item = { getInitiatorOrigin: () => origin, getURLChain: () => [`${origin}/media/${id}`], getURL: () => `${origin}/media/${id}`, getMimeType: () => 'video/mp4',
-    setSaveDialogOptions: value => { options = value; }, setSavePath: () => assert.fail('Must show native Save As') };
+    setSaveDialogOptions: (value: {defaultPath?: string}) => { options = value; }, setSavePath: () => assert.fail('Must show native Save As') };
   session.emit('will-download', { preventDefault: () => { cancelled = true; } }, item, contents);
-  assert.equal(cancelled, false); assert.equal(options.defaultPath, '/tmp/video.mp4');
+  assert.equal(cancelled, false); assert.equal(options?.defaultPath, '/tmp/video.mp4');
   item.getURLChain = () => ['https://example.com/file', `${origin}/media/${id}`];
   session.emit('will-download', { preventDefault: () => { cancelled = true; } }, item, contents);
   assert.equal(cancelled, true);
 });
 
 test('window blocks webviews, popups, subframes and navigations', () => {
-  const contents = new EventEmitter();
+  type Contents = EventEmitter & {setWindowOpenHandler: (handler: (value: {url: string}) => unknown) => void; open?: (value: {url: string}) => unknown};
+  const contents = new EventEmitter() as Contents;
   contents.setWindowOpenHandler = handler => { contents.open = handler; };
-  installWindowPolicy({ webContents: contents }, origin);
-  assert.deepEqual(contents.open({ url: 'https://example.com' }), { action: 'deny' });
+  installWindowPolicy({ webContents: contents } as unknown as Parameters<typeof installWindowPolicy>[0], origin);
+  assert.deepEqual(contents.open!({ url: 'https://example.com' }), { action: 'deny' });
   let blocked = 0;
   contents.emit('will-navigate', { url: 'https://example.com', preventDefault: () => blocked++ });
   contents.emit('will-frame-navigate', { url: `${origin}/`, isMainFrame: false, preventDefault: () => blocked++ });

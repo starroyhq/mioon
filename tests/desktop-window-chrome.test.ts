@@ -12,7 +12,7 @@ test('macOS hides the native title bar and insets the traffic lights; other plat
   assert.equal(options.titleBarStyle, 'hidden');
   assert.deepEqual(options.trafficLightPosition, MAC_TRAFFIC_LIGHT_POSITION);
   assert.notEqual(options.trafficLightPosition, MAC_TRAFFIC_LIGHT_POSITION, 'the frozen default must not be handed to Electron');
-  for (const platform of ['win32', 'linux', 'freebsd']) assert.deepEqual(windowChromeOptions(platform), {});
+  for (const platform of ['win32', 'linux', 'freebsd'] as const) assert.deepEqual(windowChromeOptions(platform as Parameters<typeof windowChromeOptions>[0]), {});
 });
 
 test('the renderer insets its top bar only inside the macOS desktop shell', () => {
@@ -32,7 +32,7 @@ test('the top bar reserves room for the traffic lights, drags the window and kee
   assert.ok(inset >= MAC_TRAFFIC_LIGHT_POSITION.x + 3 * 12 + 2 * 8, `top bar inset ${inset}px overlaps the traffic lights`);
   const controls = css.match(/:root\[data-desktop-frame="mac-inset"\] \.topbar :is\(([^)]*\)?[^)]*)\) \{([^}]*)\}/);
   assert.match(controls?.[2] ?? '', /-webkit-app-region:\s*no-drag/);
-  for (const selector of ['a', 'button', 'input', '\\[role="tablist"\\]']) assert.match(controls[1], new RegExp(`(^|, )${selector}(,|$)`));
+  for (const selector of ['a', 'button', 'input', '\\[role="tablist"\\]']) assert.match(controls![1], new RegExp(`(^|, )${selector}(,|$)`));
   // Dialogs and menus can open over the drag region and must keep their pointer events.
   assert.match(css, /:root\[data-desktop-frame="mac-inset"\] :is\(\[data-slot\$="-overlay"\], \[data-slot\$="-content"\]\) \{ -webkit-app-region: no-drag; \}/);
 });

@@ -30,7 +30,7 @@ test('FFmpeg config contains paths only, explicit env wins, and relative binarie
   try {
     const file = path.join(directory, 'desktop-config.json');
     assert.deepEqual(await readToolConfig(file, {}), { ffmpeg: '', ffprobe: '' });
-    await saveToolConfig(file, { ffmpeg: '/tools/ffmpeg', ffprobe: '/tools/ffprobe', secret: 'not persisted' });
+    await saveToolConfig(file, { ffmpeg: '/tools/ffmpeg', ffprobe: '/tools/ffprobe', secret: 'not persisted' } as unknown as Parameters<typeof saveToolConfig>[1]);
     assert.equal((await stat(file)).mode & 0o777, 0o600);
     assert.deepEqual(await readToolConfig(file, { MIOON_FFMPEG_PATH: '/override/ffmpeg' }), { ffmpeg: '/override/ffmpeg', ffprobe: '/tools/ffprobe' });
     assert.ok(!(await readFile(file, 'utf8')).includes('secret'));
@@ -57,8 +57,11 @@ test('MCP discovery uses private rotating files and cleanup', async () => {
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-function fakeChild(mode = 'ready') {
-  const child = new EventEmitter();
+type SupervisorOptions = ConstructorParameters<typeof BackendSupervisor>[0];
+type FakeMessage = {type: string; token?: string} & Record<string, unknown>;
+interface FakeChild extends EventEmitter {pid: number | undefined; messages: FakeMessage[]; postMessage(message: FakeMessage): void; kill(): boolean}
+function fakeChild(mode = 'ready'): FakeChild {
+  const child = new EventEmitter() as FakeChild;
   child.pid = 12345;
   child.messages = [];
   child.postMessage = message => {
@@ -72,22 +75,22 @@ function fakeChild(mode = 'ready') {
 }
 
 test('supervisor starts only a bundled utility and stops gracefully without host Node', async () => {
-  const child = fakeChild(); let options;
-  const supervisor = new BackendSupervisor({ fork: (file, args, opts) => {
+  const child = fakeChild(); let options: Record<string, unknown> | undefined;
+  const supervisor = new BackendSupervisor({ fork: ((file: string, args: string[], opts: Record<string, unknown>) => {
     assert.equal(file, '/app/backend.cjs'); assert.deepEqual(args, []); options = opts; return child;
-  }, modulePath: '/app/backend.cjs', environment: { MIOON_FFMPEG_PATH: '/bin/ffmpeg' } });
-  const ready = await supervisor.start({ dataDir: '/data', distDir: '/app/web', token: 'private' });
+  }) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: { MIOON_FFMPEG_PATH: '/bin/ffmpeg' } });
+  const ready = await supervisor.start({ dataDir: '/data', distDir: '/app/web', token: 'private' } as Parameters<typeof supervisor.start>[0]);
   assert.equal(ready.url, 'http://127.0.0.1:49123'); assert.equal(supervisor.state, 'running');
-  assert.equal(options.allowLoadingUnsignedLibraries, false); assert.equal(options.stdio, 'ignore');
-  assert.deepEqual(options.execArgv, []); assert.equal(child.messages[0].token, 'private');
+  assert.equal(options?.allowLoadingUnsignedLibraries, false); assert.equal(options?.stdio, 'ignore');
+  assert.deepEqual(options?.execArgv, []); assert.equal(child.messages[0]?.token, 'private');
   await supervisor.stop(); assert.equal(supervisor.state, 'stopped');
-  assert.equal(child.messages.at(-1).type, 'stop');
+  assert.equal(child.messages.at(-1)?.type, 'stop');
 });
 
 test('supervisor rejects wrong-origin handshakes and terminates that child', async () => {
   const child = fakeChild('idle');
-  const supervisor = new BackendSupervisor({ fork: () => child, modulePath: '/app/backend.cjs', environment: {} });
-  const promise = supervisor.start({});
+  const supervisor = new BackendSupervisor({ fork: (() => child) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: {} });
+  const promise = supervisor.start({} as Parameters<typeof supervisor.start>[0]);
   child.emit('message', { type: 'ready', url: 'https://evil.example' });
   await assert.rejects(promise, /loopback/);
   await new Promise(resolve => child.once('exit', resolve));
@@ -96,50 +99,52 @@ test('supervisor rejects wrong-origin handshakes and terminates that child', asy
 
 test('supervisor bounds startup timeout and leaves a restartable failed state', async () => {
   const child = fakeChild('idle');
-  const supervisor = new BackendSupervisor({ fork: () => child, modulePath: '/app/backend.cjs', environment: {}, startupTimeout: 10 });
-  const exited = new Promise(resolve => child.once('exit', resolve));
-  await assert.rejects(supervisor.start({}), /超时/); await exited;
+  const supervisor = new BackendSupervisor({ fork: (() => child) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: {}, startupTimeout: 10 });
+  const exited = new Promise<void>(resolve => child.once('exit', () => resolve()));
+  await assert.rejects(supervisor.start({} as Parameters<typeof supervisor.start>[0]), /超时/); await exited;
   assert.equal(supervisor.state, 'failed');
 });
 
 test('supervisor reports unexpected utility crash instead of silently restarting submissions', async () => {
   const child = fakeChild();
-  const supervisor = new BackendSupervisor({ fork: () => child, modulePath: '/app/backend.cjs', environment: {} });
-  await supervisor.start({});
-  const exit = new Promise(resolve => supervisor.once('exit', resolve));
+  const supervisor = new BackendSupervisor({ fork: (() => child) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: {} });
+  await supervisor.start({} as Parameters<typeof supervisor.start>[0]);
+  type ExitOutcome = {code: number; expected: boolean};
+  const exit = new Promise<ExitOutcome>(resolve => supervisor.once('exit', outcome => resolve(outcome as ExitOutcome)));
   child.emit('exit', 9);
   assert.deepEqual(await exit, { code: 9, expected: false });
   assert.equal(supervisor.state, 'failed'); assert.equal(supervisor.child, null);
 });
 
 test('supervisor safely rejects a synchronous utility spawn failure', async () => {
-  const supervisor = new BackendSupervisor({ fork: () => { throw new Error('spawn unavailable'); }, modulePath: '/app/backend.cjs', environment: {} });
-  await assert.rejects(supervisor.start({}), /spawn unavailable/);
+  const supervisor = new BackendSupervisor({ fork: (() => { throw new Error('spawn unavailable'); }) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: {} });
+  await assert.rejects(supervisor.start({} as Parameters<typeof supervisor.start>[0]), /spawn unavailable/);
   assert.equal(supervisor.state, 'failed');
   await supervisor.stop();
 });
 
 test('utility crash preserves unknown media ownership without killing a possibly reused PID', async () => {
-  const child = fakeChild(), killed = [];
-  const supervisor = new BackendSupervisor({ fork: () => child, modulePath: '/app/backend.cjs', environment: {}, killMedia: pid => killed.push(pid) });
-  await supervisor.start({});
+  const child = fakeChild(), killed: number[] = [];
+  const supervisor = new BackendSupervisor({ fork: (() => child) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: {}, killMedia: (pid: number) => killed.push(pid) } as unknown as SupervisorOptions);
+  await supervisor.start({} as Parameters<typeof supervisor.start>[0]);
   for (const pid of [20001, 20002, -1, process.pid, child.pid]) child.emit('message', { type: 'media-process', event: 'started', pid });
   child.emit('message', { type: 'media-process', event: 'exited', pid: 20002 });
-  const result = new Promise(resolve => supervisor.once('exit', outcome => {
+  const result = new Promise<void>(resolve => supervisor.once('exit', outcome => {
     assert.deepEqual(killed, []); assert.equal(outcome.mediaExitConfirmed, false); resolve();
   }));
   child.emit('exit', 9); await result;
   assert.equal(supervisor.mediaPids.size, 1);
   assert.equal(supervisor.state, 'media-unconfirmed');
-  assert.throws(() => supervisor.start({}), { code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
+  assert.throws(() => supervisor.start({} as Parameters<typeof supervisor.start>[0]), { code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
   await assert.rejects(supervisor.stop(), { code: 'BACKEND_MEDIA_EXIT_UNCONFIRMED' });
 });
 
 test('cancelled dirty-window quit keeps backend running and permits a later successful quit', async () => {
-  const win = new EventEmitter(); win.webContents = new EventEmitter(); win.isDestroyed = () => false;
+  type QuitWindowLike = EventEmitter & {webContents: EventEmitter; isDestroyed: () => boolean; close: () => void};
+  const win = new EventEmitter() as QuitWindowLike; win.webContents = new EventEmitter(); win.isDestroyed = () => false;
   let discard = false, stopped = 0, finished = 0;
-  const coordinator = new QuitCoordinator({ getWindow: () => win, stop: async () => stopped++, finish: () => finished++ });
-  installUnsavedGuard(win, { confirmDiscard: () => discard, onCancel: () => coordinator.cancel() });
+  const coordinator = new QuitCoordinator({ getWindow: () => win as unknown as ReturnType<ConstructorParameters<typeof QuitCoordinator>[0]['getWindow']>, stop: async () => stopped++, finish: () => finished++ });
+  installUnsavedGuard(win as unknown as Parameters<typeof installUnsavedGuard>[0], { confirmDiscard: () => discard, onCancel: () => coordinator.cancel() });
   win.close = () => {
     let allowed = false;
     win.webContents.emit('will-prevent-unload', { preventDefault: () => { allowed = true; } });
@@ -153,10 +158,11 @@ test('cancelled dirty-window quit keeps backend running and permits a later succ
 });
 
 test('repeated quit requests drain backend only once after renderer closes', async () => {
-  const win = new EventEmitter(); win.isDestroyed = () => false;
+  const win = new EventEmitter() as EventEmitter & {isDestroyed: () => boolean; close: () => void};
+  win.isDestroyed = () => false;
   let stopped = 0, closeCount = 0, finished = 0;
   win.close = () => { closeCount++; setImmediate(() => win.emit('closed')); };
-  const coordinator = new QuitCoordinator({ getWindow: () => win, stop: async () => stopped++, finish: () => finished++ });
+  const coordinator = new QuitCoordinator({ getWindow: () => win as unknown as ReturnType<ConstructorParameters<typeof QuitCoordinator>[0]['getWindow']>, stop: async () => stopped++, finish: () => finished++ });
   const first = coordinator.request(), second = coordinator.request();
   assert.equal(first, second); await first;
   assert.equal(closeCount, 1); assert.equal(stopped, 1); assert.equal(finished, 1);

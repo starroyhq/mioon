@@ -12,7 +12,8 @@ const run=promisify(execFile),repo=fileURLToPath(new URL('../',import.meta.url))
 test('desktop adapter transform refuses dynamic or escaped require and preserves other source',()=>{
  const declaration='const require = createRequire(import.meta.url);';
  assert.equal(exposeLocalRequire('export const unrelated=1;','test.ts'),null);
- assert.match(exposeLocalRequire(declaration+"\nconst result:unknown=require('./media.ts');",'test.ts'),/require\('\.\/media.ts'\)/u);
+ const exposed = exposeLocalRequire(declaration+"\nconst result:unknown=require('./media.ts');",'test.ts');
+ assert.ok(exposed !== null); assert.match(exposed, /require\('\.\/media.ts'\)/u);
  for(const source of ["require(variable)","require('node:fs')",'const escape=require;',"require.resolve('./media.ts')"])assert.throws(()=>exposeLocalRequire(declaration+'\n'+source,'test.ts'),/Non-static/u);
 });
 test('a self-contained CJS bundle opens ordinary48 and exact46/47 without source-tree runtime paths',{timeout:60000},async t=>{
