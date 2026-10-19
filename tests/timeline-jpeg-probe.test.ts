@@ -16,18 +16,22 @@ import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
 import {probeJfifFixture, PROBE_JFIF_SHA256} from './helpers/timeline-jpeg-probe-fixture.ts';
 
 const genericFormats = 'mov,matroska,mp3,wav,png_pipe,jpeg_pipe,webp_pipe';
-const option = (args, key) => args.includes(key) ? args[args.indexOf(key) + 1] : undefined;
-function recordSpawns(t) {
-  const original = childProcess.spawn, calls = [];
-  childProcess.spawn = function(command, args, options) {
-    calls.push({command: path.basename(command), args: [...args], shell: options?.shell});
-    return original.call(this, command, args, options);
-  };
+interface SpawnCall {command: string; args: string[]; shell: boolean | undefined}
+interface PreparedSourceView {width: number; height: number; videoStreamIndex: number; colourProbe: {streams: {codec_name?: string; pix_fmt?: string; width?: number; height?: number}[]}; colourImageEvidence: {profileId?: string; sha256?: string}}
+interface ProbeFixture {root: string; file: string; bytes: Buffer; asset: Record<string, unknown> & {id: string; projectId: string}; snapshot: unknown; prepare(options?: Record<string, unknown>): Promise<Map<string, PreparedSourceView>>}
+interface FixtureOptions {bytes?: Buffer; mimeType?: string; declaredHash?: string; evidence?: Record<string, unknown>; code?: string}
+const option = (args: readonly string[], key: string): string | undefined => args.includes(key) ? args[args.indexOf(key) + 1] : undefined;
+function recordSpawns(t: import('node:test').TestContext): SpawnCall[] {
+  const original = childProcess.spawn, calls: SpawnCall[] = [];
+  (childProcess as unknown as {spawn: typeof childProcess.spawn}).spawn = function(this: unknown, command: string, args?: readonly string[], options?: import('node:child_process').SpawnOptions): childProcess.ChildProcess {
+    calls.push({command: path.basename(command), args: [...(args ?? [])], shell: (options as {shell?: boolean} | undefined)?.shell});
+    return original.call(childProcess, command, args as string[], options as import('node:child_process').SpawnOptions) as childProcess.ChildProcess;
+  } as typeof childProcess.spawn;
   syncBuiltinESMExports();
-  t.after(() => {childProcess.spawn = original; syncBuiltinESMExports();});
+  t.after(() => {(childProcess as unknown as {spawn: typeof childProcess.spawn}).spawn = original; syncBuiltinESMExports();});
   return calls;
 }
-async function fixture(t, {bytes = probeJfifFixture(), mimeType = 'image/jpeg', declaredHash, evidence} = {}) {
+async function fixture(t: import('node:test').TestContext, {bytes = probeJfifFixture(), mimeType = 'image/jpeg', declaredHash, evidence}: FixtureOptions = {}): Promise<ProbeFixture> {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-jfif-probe-'));
   await mkdir(path.join(root, 'media'), {mode: 0o700});
   const extension = mimeType === 'image/png' ? 'png' : 'jpg';
@@ -39,14 +43,14 @@ async function fixture(t, {bytes = probeJfifFixture(), mimeType = 'image/jpeg', 
   // Malformed-input cases supply a plausible saved declaration bound to their
   // current bytes; the actual source preparation must reject the file itself.
   const boundEvidence = {...originalEvidence, sha256: asset.sha256, sourceByteLength: bytes.length};
-  const colour = mimeType === 'image/png' ? imageColour(boundEvidence) : jpegColour(boundEvidence);
+  const colour = mimeType === 'image/png' ? imageColour(boundEvidence as never) : jpegColour(boundEvidence as never);
   const timeline = timelineFixture([asset], [colour]);
-  const snapshot = freezeTimelineSnapshot(timeline, new Map([[asset.id, asset]]));
+  const snapshot = freezeTimelineSnapshot(timeline as never, new Map([[asset.id, asset]]) as never, undefined);
   return {root, file, bytes, asset, snapshot,
-    prepare: options => prepareTimelineInputs(snapshot, {root, projectId: asset.projectId,
-      readAsset: id => id === asset.id ? asset : null, ...options})};
+    prepare: (options: Record<string, unknown> = {}) => prepareTimelineInputs(snapshot as never, {root, projectId: asset.projectId,
+      readAsset: (id: string) => id === asset.id ? asset : null, ...options} as never) as Promise<Map<string, PreparedSourceView>>};
 }
-function assertLocalProbe(call, file, verified) {
+function assertLocalProbe(call: SpawnCall, file: string, verified: boolean): void {
   assert.equal(call.command, 'ffprobe'); assert.equal(call.shell, false);
   assert.deepEqual(call.args, ['-v', 'error', '-protocol_whitelist', 'file,pipe',
     ...(verified ? ['-format_whitelist', 'jpeg_pipe', '-f', 'jpeg_pipe'] : ['-format_whitelist', genericFormats]),
@@ -74,8 +78,8 @@ test('exact 2592-byte JFIF reproduces real image2 autodetect and old restricted 
 });
 
 test('hash-owned strict admission and real decode precede a jpeg_pipe-only metadata probe', async t => {
-  const f = await fixture(t), before = await readFile(f.file), calls = recordSpawns(t), receivedOptions = [];
-  const prepared = await f.prepare({probe: async (file, options) => {
+  const f = await fixture(t), before = await readFile(f.file), calls = recordSpawns(t), receivedOptions: unknown[] = [];
+  const prepared = await f.prepare({probe: async (file: string, options: Record<string, unknown>) => {
     receivedOptions.push(options);
     assert.equal(calls.length, 1, 'one actual strict FFmpeg decode has completed before metadata probing');
     assert.equal(calls[0].command, 'ffmpeg');
@@ -90,7 +94,7 @@ test('hash-owned strict admission and real decode precede a jpeg_pipe-only metad
   assert.equal(option(calls[0].args, '-c:v'), 'mjpeg');
   assert.equal(option(calls[0].args, '-pattern_type'), 'none');
   assert.equal(option(calls[0].args, '-i'), f.file);
-  const verified = prepared.get(f.asset.id), stream = verified.colourProbe.streams[0];
+  const verified = prepared.get(f.asset.id); assert.ok(verified); const stream = verified.colourProbe.streams[0]; assert.ok(stream);
   assert.equal(verified.width, 320); assert.equal(verified.height, 180); assert.equal(verified.videoStreamIndex, 0);
   assert.equal(stream.codec_name, 'mjpeg'); assert.equal(stream.pix_fmt, 'yuvj444p');
   assert.equal(stream.width, 320); assert.equal(stream.height, 180);
@@ -110,19 +114,19 @@ test('bad source hash, malformed JPEG and PNG masquerading as JPEG fail before d
   const calls = recordSpawns(t);
   for (const scenario of cases) {
     const f = await fixture(t, scenario); let probes = 0;
-    await assert.rejects(f.prepare({probe: async (...args) => {probes++; return probeTimelineSource(...args);}}), {code: scenario.code});
+    await assert.rejects(f.prepare({probe: async (...args: Parameters<typeof probeTimelineSource>) => {probes++; return probeTimelineSource(...args);}}), {code: scenario.code});
     assert.equal(probes, 0); assert.equal(calls.length, 0);
   }
 });
 
 test('PNG source preparation retains the exact generic restricted probe without JPEG decode or flags', async t => {
-  const f = await fixture(t, {bytes: png({width: 320, height: 180, rgba: false}), mimeType: 'image/png'});
+  const f = await fixture(t, {bytes: png({width: 320, height: 180, rgba: false}) as Buffer, mimeType: 'image/png'});
   const calls = recordSpawns(t); let probes = 0;
-  const prepared = await f.prepare({probe: async (file, options) => {
+  const prepared = await f.prepare({probe: async (file: string, options: Record<string, unknown>) => {
     probes++; assert.equal(Object.hasOwn(options, 'verifiedJfif'), false); return probeTimelineSource(file, options);
   }});
   assert.equal(probes, 1); assert.equal(calls.length, 1); assertLocalProbe(calls[0], f.file, false);
-  assert.equal(prepared.get(f.asset.id).colourProbe.streams[0].codec_name, 'png');
+  const preparedPng=prepared.get(f.asset.id); assert.ok(preparedPng); assert.equal(preparedPng.colourProbe.streams[0]?.codec_name, 'png');
 });
 
 test('generic video probe remains unchanged and only literal true selects the closed JPEG demuxer', async t => {
@@ -130,10 +134,10 @@ test('generic video probe remains unchanged and only literal true selects the cl
   await run('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'color=c=gray:s=32x32:r=30',
     '-frames:v', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-threads', '1', '-y', videoFile]);
   const calls = recordSpawns(t);
-  const media = await probeTimelineSource(videoFile); assert.equal(media.hasVideo, true);
-  assert.equal(media.probe.streams[0].codec_name, 'h264'); assertLocalProbe(calls[0], videoFile, false);
+  const media = await probeTimelineSource(videoFile) as unknown as {hasVideo: boolean; probe: {streams: {codec_name?: string}[]}}; assert.equal(media.hasVideo, true);
+  assert.equal(media.probe.streams[0]?.codec_name, 'h264'); assertLocalProbe(calls[0], videoFile, false);
   for (const value of [undefined, false, 1, 'true']) {
-    await assert.rejects(probeTimelineSource(f.file, {verifiedJfif: value}), {code: 'MEDIA_EXIT_FAILED'});
-    assertLocalProbe(calls.at(-1), f.file, false);
+    await assert.rejects(probeTimelineSource(f.file, {verifiedJfif: value} as never), {code: 'MEDIA_EXIT_FAILED'});
+    const lastCall=calls.at(-1); assert.ok(lastCall); assertLocalProbe(lastCall, f.file, false);
   }
 });

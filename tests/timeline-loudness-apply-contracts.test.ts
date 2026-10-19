@@ -7,8 +7,9 @@ import {TIMELINE_LOUDNESS_CANDIDATE_VERSION, timelineLoudnessApplyInputSchema, i
   createTimelineLoudnessApplyContracts,hasTimelineLoudnessApplyNotAppliedProof} from '../packages/contracts/src/timeline-loudness-apply.ts';
 import {readyMixLoudness, mixLoudnessInput, silentMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.ts';
 const {isTimelineLoudnessApplyResponse}=createTimelineLoudnessApplyContracts({isTimelineRecord});
-const report=()=>readyMixLoudness({...mixLoudnessInput,target:{integratedLufs:-24,truePeakCeilingDbtp:-1}});
-const inputFor=value=>({...mixLoudnessInput,target:value.target,requestId:'reviewed-fixed-gain-request',snapshotSha256:value.identity.snapshotSha256,
+type MixReport = ReturnType<typeof readyMixLoudness>;
+const report=(): MixReport =>readyMixLoudness({...mixLoudnessInput,target:{integratedLufs:-24,truePeakCeilingDbtp:-1}});
+const inputFor=(value: MixReport)=>({...mixLoudnessInput,target:value.target,requestId:'reviewed-fixed-gain-request',snapshotSha256:value.identity.snapshotSha256,
   candidateDigest:`${TIMELINE_LOUDNESS_CANDIDATE_VERSION}:${createHash('sha256').update(canonicalTimelineLoudnessCandidate(value)).digest('hex')}`});
 function ack(){
   const value=report(),input=inputFor(value),trackId='55555555-5555-4555-8555-555555555555',gain=value.candidate.gains[0];
@@ -28,19 +29,20 @@ test('apply input is exactly bounded scalar intent; gains, paths, timing and per
     {expiresAt:1},{candidateDigest:'a'.repeat(64)},{candidateDigest:'timeline-loudness-candidate-v2:'+ 'a'.repeat(64)},
     {snapshotSha256:'wrong'},{target:{integratedLufs:-24,truePeakCeilingDbtp:-1,approved:true}},{requestId:'short'}])
     assert.equal(isTimelineLoudnessApplyInput({...input,...patch}),false);
-  let reads=0;assert.equal(isTimelineLoudnessApplyInput({...input,get approved(){reads++;return true;}}),false);assert.equal(reads,0);
-  const cyclic={...input};cyclic.target=cyclic;assert.equal(isTimelineLoudnessApplyInput(cyclic),false);
+  let reads=0;assert.equal(isTimelineLoudnessApplyInput({...input,get approved(){reads++;return true;}} as never),false);assert.equal(reads,0);
+  const cyclic={...input};(cyclic as Record<string, unknown>).target=cyclic;assert.equal(isTimelineLoudnessApplyInput(cyclic),false);
   const hidden={...input};Object.defineProperty(hidden,'approved',{value:true});assert.equal(isTimelineLoudnessApplyInput(hidden),false);
 });
 test('canonical versioned digest binds full report, excludes checkedAt and ignores object key order',async()=>{
   const first=report(),changed={...first,checkedAt:'2026-10-15T01:02:03.000Z'};
-  const reverse=value=>Array.isArray(value)?value.map(reverse):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).reverse().map(([key,value])=>[key,reverse(value)])):value;
+  const reverse = (value: unknown): unknown => Array.isArray(value)?value.map(reverse):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).reverse().map(([key,inner])=>[key,reverse(inner)])):value;
   assert.equal(canonicalTimelineLoudnessCandidate(first),canonicalTimelineLoudnessCandidate(changed));
   assert.equal(await timelineLoudnessCandidateDigest(first),inputFor(first).candidateDigest);
-  assert.equal(await timelineLoudnessCandidateDigest(reverse(changed)),inputFor(first).candidateDigest);
-  for(const mutate of [v=>v.identity.snapshotSha256='c'.repeat(64),v=>v.identity.sources[0].sha256='d'.repeat(64),
-    v=>{v.candidate.gains[0].beforeGain=.5;v.candidate.gains[0].afterGain=.5*v.candidate.gainMultiplier;},
-    v=>v.checks.decodeWorkFrames+=2,v=>{v.original.samplePeakLinear=.4;v.original.samplePeakDbfs=20*Math.log10(.4);}]){
+  assert.equal(await timelineLoudnessCandidateDigest(reverse(changed) as never),inputFor(first).candidateDigest);
+  const mutations: ((value: MixReport) => unknown)[] = [v=>{v.identity.snapshotSha256='c'.repeat(64);},v=>{v.identity.sources[0]!.sha256='d'.repeat(64);},
+    v=>{v.candidate.gains[0]!.beforeGain=.5;v.candidate.gains[0]!.afterGain=.5*(v.candidate.gainMultiplier ?? 0);},
+    v=>{v.checks.decodeWorkFrames+=2;},v=>{v.original.samplePeakLinear=.4;v.original.samplePeakDbfs=20*Math.log10(.4);}];
+  for(const mutate of mutations){
     const copy=structuredClone(first);mutate(copy);assert.notEqual(await timelineLoudnessCandidateDigest(copy),inputFor(first).candidateDigest);
   }
   assert.throws(()=>canonicalTimelineLoudnessCandidate({...first,applyAllowed:true}),TypeError);
@@ -59,30 +61,31 @@ test('typed ACK binds full established timeline, reviewed intent and measured ap
   assert.equal(isTimelineLoudnessApplyResponse(value,{...input,projectId:'99999999-9999-4999-8999-999999999999'}),false);
   assert.equal(isTimelineLoudnessApplyResponse(value,{...input,candidateDigest:input.candidateDigest.replace(/.$/u,'f')}),false);
 });
-const badProofs=[['operation',v=>v.operation='timeline.clip.update'],['request',v=>v.requestId='other-request'],
-  ['extra',v=>v.approved=true],['before revision',v=>v.application.beforeRevision++],['after revision',v=>v.application.afterRevision++],
-  ['target',v=>v.application.target.integratedLufs++],['hash',v=>v.application.snapshotSha256='e'.repeat(64)],
-  ['source',v=>v.application.gains[0].assetId='99999999-9999-4999-8999-999999999999'],
-  ['gain',v=>v.timeline.clips[0].gain=.25],['gain order',v=>v.application.gains.push({...v.application.gains[0]})],
-  ['target claim',v=>v.application.meetsTarget=false],['reserve',v=>v.application.marginDb=0],['muted',v=>v.timeline.tracks[0].muted=true],
-  ['candidate duration',v=>{v.application.candidate.sampleFrames++;v.application.candidate.decodedDurationSeconds=v.application.candidate.sampleFrames/48000;}],
-  ['current timeline extra',v=>v.timeline.approved=true],['clipping',v=>v.application.gains[0].afterGain=2.01]];
+type AckValue = ReturnType<typeof ack>['value'];
+const badProofs: [string, (value: AckValue) => unknown][] = [['operation',v=>{v.operation='timeline.clip.update';}],['request',v=>{v.requestId='other-request';}],
+  ['extra',v=>{(v as unknown as Record<string, unknown>).approved=true;}],['before revision',v=>{v.application.beforeRevision++;}],['after revision',v=>{v.application.afterRevision++;}],
+  ['target',v=>{v.application.target.integratedLufs++;}],['hash',v=>{v.application.snapshotSha256='e'.repeat(64);}],
+  ['source',v=>{v.application.gains[0]!.assetId='99999999-9999-4999-8999-999999999999';}],
+  ['gain',v=>{v.timeline.clips[0]!.gain=.25;}],['gain order',v=>{v.application.gains.push({...v.application.gains[0]!});}],
+  ['target claim',v=>{v.application.meetsTarget=false;}],['reserve',v=>{v.application.marginDb=0;}],['muted',v=>{v.timeline.tracks[0]!.muted=true;}],
+  ['candidate duration',v=>{const candidate=v.application.candidate;assert.ok(candidate);candidate.sampleFrames++;candidate.decodedDurationSeconds=candidate.sampleFrames/48000;}],
+  ['current timeline extra',v=>{(v.timeline as unknown as Record<string, unknown>).approved=true;}],['clipping',v=>{v.application.gains[0]!.afterGain=2.01;}]];
 for(const [name,mutate]of badProofs)test(`typed ACK rejects ${name}`,()=>{const {input,value}=ack();mutate(value);assert.equal(isTimelineLoudnessApplyResponse(value,input),false);});
 test('hostile ACK getters cannot run through legacy DTO validation',()=>{
   const {input,value}=ack();let reads=0;Object.defineProperty(value.timeline,'clips',{enumerable:true,get(){reads++;return [];}});
   assert.equal(isTimelineLoudnessApplyResponse(value,input),false);assert.equal(reads,0);
 });
 test('new envelope retains existing timeline DTO string and optional-field semantics',()=>{
-  const {input,value}=ack();value.timeline.clips[0].name='legacy \ud800';
+  const {input,value}=ack();value.timeline.clips[0]!.name='legacy \ud800';
   assert.equal(isTimelineRecord(value.timeline),true);assert.equal(isTimelineLoudnessApplyResponse(value,input),true);
-  value.timeline.clips[0].fadeInFrames=0;assert.equal(isTimelineLoudnessApplyResponse(value,input),true);
+  (value.timeline.clips[0] as unknown as Record<string, unknown>).fadeInFrames=0;assert.equal(isTimelineLoudnessApplyResponse(value,input),true);
 });
 
 test('not-applied proof never inherits legacy optional owner fields or generic media errors',()=>{
   const input=inputFor(report()),details={mutationOutcome:'not_applied',operation:'timeline.loudness.apply',projectId:input.projectId,requestId:input.requestId};
   for(const code of ['TIMELINE_LOUDNESS_APPLY_STALE','TIMELINE_LOUDNESS_APPLY_UNSAFE','TIMELINE_LOUDNESS_APPLY_UNCHANGED','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT'])
     assert.equal(hasTimelineLoudnessApplyNotAppliedProof({code,status:409,details},input),true);
-  for(const field of ['operation','projectId','requestId']){const missing={...details};delete missing[field];
+  for(const field of ['operation','projectId','requestId']){const missing={...details};delete (missing as Record<string, unknown>)[field];
     assert.equal(hasTimelineLoudnessApplyNotAppliedProof({code:'REVISION_CONFLICT',status:409,details:missing},input),false);}
   for(const patch of [{status:503},{status:403},{code:'TIMELINE_MIX_LOUDNESS_DECODE_FAILED'},{terminationUnconfirmed:true},
     {details:{...details,projectId:'99999999-9999-4999-8999-999999999999'}},{details:{...details,operation:'timeline.clip.update'}}])

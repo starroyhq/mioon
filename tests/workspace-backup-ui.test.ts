@@ -10,9 +10,10 @@ type Loose = Record<string, unknown>;
 interface Element {type: unknown; props: Loose}
 interface Counts {projects: number|null; assets: number|null; videoTasks: number|null; imageTasks: number|null; frameTasks: number|null; exports: number|null}
 interface InspectionView {formatVersion: number; scope: string; captureReady: boolean; reason: string; databaseSchemaVersion: number; counts: Counts; unresolved: Loose; limits: Loose; inspectionComplete: boolean; issues: string[]}
-interface UIState {phase?: string; report: InspectionView; checkedAt?: string; scope?: string; error?: string; [key: string]: unknown}
+interface UIState {phase?: string; report: InspectionView; checkedAt?: string; scope?: string; version?: number; error?: string; [key: string]: unknown}
 interface DeferredTask {promise: Promise<unknown>; resolve: (value: unknown)=>void; reject: (reason?: unknown)=>void}
-interface BackupUI {controller: {setContext: (value: Loose)=>void; inspect: ()=>Promise<unknown>; getState: ()=>UIState}; reads: Loose[]; pending: DeferredTask[]; auth: boolean[]; changes: unknown[]; state: ()=>UIState; set: (patch: Loose, commit?: boolean)=>void; ready: (result?: unknown)=>Promise<UIState>}
+interface BackupRead {input: Loose; options: Loose}
+interface BackupUI {controller: {setContext: (value: Loose)=>void; inspect: (scope?: string, version?: number)=>Promise<unknown>; getState: ()=>UIState; dispose: ()=>void; connect: ()=>void}; reads: BackupRead[]; pending: DeferredTask[]; auth: boolean[]; changes: unknown[]; state: ()=>UIState; set: (patch: Loose, commit?: boolean)=>void; ready: (result?: unknown)=>Promise<UIState>}
 
 const inspection = (patch: Loose = {}): InspectionView => ({ formatVersion: 1, scope: 'whole_workspace', captureReady: false, reason: 'BACKEND_RUNNING', databaseSchemaVersion: 24,
   counts: { projects: 2, assets: 5, videoTasks: 3, imageTasks: 4, frameTasks: 1, exports: 2 },
@@ -21,14 +22,14 @@ const inspection = (patch: Loose = {}): InspectionView => ({ formatVersion: 1, s
 const deferred = (): DeferredTask => { let resolve: (value: unknown)=>void = ()=>{}; let reject: (reason?: unknown)=>void = ()=>{}; const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 function fixture(): BackupUI {
   let live: Loose = { scope: 'project-a:1:1', connected: true, visible: true };
-  const reads: Loose[] = [], pending: DeferredTask[] = [], auth: boolean[] = [], changes: unknown[] = [];
+  const reads: BackupRead[] = [], pending: DeferredTask[] = [], auth: boolean[] = [], changes: unknown[] = [];
   const controller = backup.createWorkspaceBackupController({ getContext: () => live,
-    read(input: Loose, options: Loose) { const response = deferred(); reads.push({ input, options }); pending.push(response); return response.promise as Promise<never>; },
+    read(input: Loose, options: unknown) { const response = deferred(); reads.push({ input, options: options as Loose }); pending.push(response); return response.promise as Promise<never>; },
     onChange: (value: unknown) => changes.push(value), onUnauthorized: () => auth.push(true), now: () => '2026-10-12T00:00:00.000Z' });
   controller.setContext(live);
-  return { controller, reads, pending, auth, changes, state: (): UIState => controller.getState() as UIState,
+  return { controller, reads, pending, auth, changes, state: (): UIState => controller.getState() as unknown as UIState,
     set(patch: Loose, commit = true) { live = { ...live, ...patch }; if (commit) controller.setContext(live); },
-    async ready(result: unknown = inspection()) { const request = controller.inspect(); pending.at(-1)!.resolve(result); await request; return controller.getState() as UIState; } } as unknown as BackupUI;
+    async ready(result: unknown = inspection()) { const request = controller.inspect(); pending.at(-1)!.resolve(result); await request; return controller.getState() as unknown as UIState; } } as unknown as BackupUI;
 }
 
 test('mount, expansion, reconnection and restored visibility never inspect automatically', async () => {
@@ -69,14 +70,14 @@ for (const patch of [
 ]) test(`malformed read fails closed without rendering arbitrary data: ${Object.keys(patch).join(',')}`, async () => {
   const f = fixture(); await f.ready(inspection(patch));
   assert.equal(f.state().phase, 'error'); assert.equal(f.state().report, null);
-  assert.match(f.state().error, /无法识别/); assert.doesNotMatch(f.state().error, /SECRET_TOKEN|private/);
+  assert.match(String(f.state().error), /无法识别/); assert.doesNotMatch(String(f.state().error), /SECRET_TOKEN|private/);
 });
 
 for (const action of [{ visible: false }, { connected: false }, { scope: 'project-b:2:2' }]) {
   test(`context change aborts pending work and late success/auth cannot replace current state: ${JSON.stringify(action)}`, async () => {
     for (const fail of [false, true]) {
       const f = fixture(), waiting = f.controller.inspect(); f.set(action);
-      assert.equal(f.reads[0].options.signal.aborted, true);
+      assert.equal((f.reads[0]!.options.signal as AbortSignal).aborted, true);
       if (fail) f.pending[0].reject(Object.assign(Error('private token'), { code: 'UNAUTHORIZED' })); else f.pending[0].resolve(inspection());
       await waiting; assert.equal(f.state().report, null); assert.equal(f.auth.length, 0); assert.equal(f.state().error, '');
     }
@@ -108,7 +109,7 @@ test('newer navigation request wins even when cancelled reads ignore their abort
 
 test('unmount aborts, suppresses late callbacks and cannot be revived by a retained click; explicit remount is supported', async () => {
   const f = fixture(), waiting = f.controller.inspect(), old = f.state(); f.controller.dispose();
-  assert.equal(f.reads[0].options.signal.aborted, true);
+  assert.equal((f.reads[0]!.options.signal as AbortSignal).aborted, true);
   f.pending[0].reject(Object.assign(Error('private token'), { code: 'UNAUTHORIZED' })); await waiting;
   assert.equal(f.auth.length, 0); assert.equal(await f.controller.inspect(old.scope, old.version), null); assert.equal(f.reads.length, 1);
   f.controller.connect(); f.set({ scope: 'project-a:1:1' }); await f.ready(); assert.equal(f.reads.length, 2);
@@ -118,7 +119,7 @@ test('current errors use fixed safe messages and never expose server exception t
   for (const code of ['UNAUTHORIZED', 'NETWORK', 'BOGUS_SECRET']) {
     const f = fixture(), waiting = f.controller.inspect();
     f.pending[0].reject(Object.assign(Error('/private/workspace connection_token=abc'), { code })); await waiting;
-    assert.equal(f.state().phase, 'error'); assert.doesNotMatch(f.state().error, /private|connection_token|abc|BOGUS/);
+    assert.equal(f.state().phase, 'error'); assert.doesNotMatch(String(f.state().error), /private|connection_token|abc|BOGUS/);
     assert.equal(f.auth.length, code === 'UNAUTHORIZED' ? 1 : 0);
   }
 });
@@ -138,14 +139,14 @@ function component(visible = true): ComponentModule {
 }
 
 test('actual compact component uses shared collapsible controls and never reads on mount', () => {
-  const calls = [], Panel = component().default;
-  const tree = Panel({ scope: 'a:1', getScope: () => 'a:1', connected: true, read: (...args) => calls.push(args) });
+  const calls: unknown[] = [], Panel = component().default;
+  const tree = Panel({ scope: 'a:1', getScope: () => 'a:1', connected: true, read: (...args: unknown[]) => calls.push(args) });
   assert.equal(tree.type, 'Collapsible'); assert.equal(tree.props.open, false);
-  assert.equal(nodes(tree).find(node => node.type === 'CollapsibleContent').props.keepMounted, true);
-  assert.equal(nodes(tree).find(node => node.type === 'CollapsibleContent').props.inert, true);
+  assert.equal(nodes(tree).find(node => node.type === 'CollapsibleContent')!.props.keepMounted, true);
+  assert.equal(nodes(tree).find(node => node.type === 'CollapsibleContent')!.props.inert, true);
   assert.match(textOf(tree), /整工作区.*需先正常关闭应用/); assert.equal(calls.length, 0);
   const hidden = component(false).default({ scope: 'a:1', connected: true, read: () => assert.fail('Hidden panel must not read') });
-  assert.equal(nodes(hidden).find(node => node.type === 'CollapsibleTrigger').props.render.props.disabled, true);
+  assert.equal(((nodes(hidden).find(node => node.type === 'CollapsibleTrigger')!.props.render as Element).props as Loose).disabled, true);
   const css = read('workspace-backup.css'); assert.match(css, /max-height: 52%/); assert.match(css, /overflow: auto/);
 });
 
@@ -154,15 +155,15 @@ test('actual details truthfully describe SQLite scope, exclusions, readonly limi
   const tree = Details({ state: f.state(), controller: f.controller }), text = textOf(tree);
   for (const label of ['整个工作区', '所有项目、聊天、提示词', 'SQLite 内的本地缓存', '不包含应用凭据与应用设置', '用户文本仍可能含密钥', '未逐一检查源文件', '没有创建备份或验证恢复', '正常关闭 Mioon 和所有使用同一工作区的后端', '不会自动恢复、提交或重试任务', '不表示可以安全恢复', '恢复需按离线指南写入全新目录', '受限功能和后续备份限制请先阅读指南']) assert.ok(text.includes(label), label);
   assert.equal(text.includes('本阶段不支持恢复'), false);
-  assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-create-command')), backup.WORKSPACE_BACKUP_CREATE_COMMAND);
-  assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-verify-command')), backup.WORKSPACE_BACKUP_VERIFY_COMMAND);
-  const guide = nodes(tree).find(node => node.type === 'a');
+  assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-create-command')!), backup.WORKSPACE_BACKUP_CREATE_COMMAND);
+  assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-verify-command')!), backup.WORKSPACE_BACKUP_VERIFY_COMMAND);
+  const guide = nodes(tree).find(node => node.type === 'a')!;
   assert.equal(guide.props.href, '#workspace-backup-guide-text'); assert.equal(guide.props['aria-expanded'], false);
-  let prevented = false; guide.props.onClick({ preventDefault() { prevented = true; } }); assert.equal(prevented, true, 'Guide expansion must not navigate or alter history');
+  let prevented = false; (guide.props.onClick as (value: unknown)=>void)({ preventDefault() { prevented = true; } }); assert.equal(prevented, true, 'Guide expansion must not navigate or alter history');
   assert.equal(guide.props.target, undefined); assert.match(read('WorkspaceBackupPanel.tsx'), /WORKSPACE-BACKUP-GUIDE\.zh-CN\.md\?raw/);
   assert.doesNotMatch(read('WorkspaceBackupPanel.tsx'), /WORKSPACE-BACKUP\.md|window\.open|dangerouslySetInnerHTML/);
   assert.equal(nodes(tree).filter(node => node.type === 'Button').length, 1);
-  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-count-projects').props.children[0], '2');
+  assert.equal((nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-count-projects')!.props.children as unknown[])[0], '2');
   assert.doesNotMatch(read('WorkspaceBackupPanel.tsx'), /<input|<select|<button|role="dialog"|setInterval|setTimeout|fetch\(|clipboard|localStorage|sessionStorage/);
 });
 
@@ -173,12 +174,12 @@ test('actual details show bounded missing counts, issues, current error and no f
   assert.match(text, /未知数量不等于零/); assert.match(text, /记录数量超过/); assert.doesNotMatch(text, /未发现未解决记录/);
   assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-count-assets')), '未知');
   const error = Details({ state: { ...f.state(), phase: 'error', report: null, error: backup.workspaceBackupError({ code: 'NETWORK' }) }, controller: f.controller });
-  assert.match(textOf(error), /核对失败/); assert.equal(nodes(error).find(node => node.props.role === 'alert').props.children[0], backup.workspaceBackupError({ code: 'NETWORK' }));
+  assert.match(textOf(error), /核对失败/); assert.equal((nodes(error).find(node => node.props.role === 'alert')!.props.children as unknown[])[0], backup.workspaceBackupError({ code: 'NETWORK' }));
 });
 
 test('actual retained details handler cannot read when hidden or after the project epoch changed', async () => {
   const f = fixture(); await f.ready(); const Details = component().WorkspaceBackupDetails;
-  const old = Details({ state: f.state(), controller: f.controller }), click = nodes(old).find(node => node.type === 'Button').props.onClick;
+  const old = Details({ state: f.state(), controller: f.controller }), click = nodes(old).find(node => node.type === 'Button')!.props.onClick as ()=>Promise<void>;
   f.set({ visible: false }); await click(); f.set({ visible: true, scope: 'project-b:2:2' }); await click();
   assert.equal(f.reads.length, 1);
 });
@@ -190,17 +191,17 @@ test('workspace settings keep one backup owner with an exact read-only dispatch 
   assert.ok(app.indexOf(jsx) > start && app.indexOf(jsx) < end);
   assert.match(app.slice(start, end), /<SettingsWorkspace active=\{visible && page === 'workspace'\}/);
   assert.match(app.slice(start, end), /<WorkspaceVisibilityProvider visible=\{visible && page === 'workspace'\}/);
-  const calls = [];
-  const render = (connectionsAvailable, visible, page) => {
-    const module = { exports: {} };
+  const calls: unknown[] = [];
+  const render = (connectionsAvailable: boolean, visible: boolean, page: string) => {
+    const module: {exports: Loose} = { exports: {} };
     Function('module', 'React', 'WorkspaceBackupPanel', 'connectionsAvailable', 'visible', 'page', 'productionRpc',
       transformSync(`module.exports = ${jsx};`, { loader: 'tsx', format: 'cjs' }).code)(module, { createElement: element }, 'Backup', connectionsAvailable, visible, page,
-      async (...args) => { calls.push(args); return inspection(); });
-    return module.exports.props;
+      async (...args: unknown[]) => { calls.push(args); return inspection(); });
+    return module.exports.props as Loose;
   };
-  const props = render(true, true, 'workspace'); assert.equal(props.scope, 'settings:workspace'); assert.equal(props.getScope(), props.scope); assert.equal(props.connected, true);
-  for (const values of [[false,true,'workspace'],[true,false,'workspace'],[true,true,'general']]) assert.equal(render(...values).connected, false);
-  const options = { signal: new AbortController().signal }; await props.read({}, options);
+  const props = render(true, true, 'workspace'); assert.equal(props.scope, 'settings:workspace'); assert.equal((props.getScope as ()=>string)(), props.scope); assert.equal(props.connected, true);
+  for (const values of ([[false,true,'workspace'],[true,false,'workspace'],[true,true,'general']] as Array<[boolean,boolean,string]>)) assert.equal(render(...values).connected, false);
+  const options = { signal: new AbortController().signal }; await (props.read as (value: unknown, options: unknown)=>Promise<unknown>)({}, options);
   assert.deepEqual(calls, [['workspace.backup.inspect', {}, options]]);
   assert.doesNotMatch(jsx, /setSelected|setPropertiesPage|discardDraft|runDurable|requestId|setToast|setInspectorEpoch|confirm\(/);
   assert.match(app + readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8'), /data-testid="right-dock-tab-tasks"/);

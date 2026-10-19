@@ -1,0 +1,224 @@
+{
+  "formatVersion": 1,
+  "note": "PR9 reviewed legacy->current provenance migration for workspace-restore-integrity/frozen-sources.json. Historical manifest bytes/hashes remain authoritative and are asserted unchanged; this map records the exact current source file (renamed .mjs->.ts) and its deterministic esbuild type-erased bytes/hash (or raw bytes for reviewed post-baseline source deltas whose executable change is separately reviewed).",
+  "sourceCommit": "dc7a057d582c0ef2a6c5316939f6b42be8735987",
+  "constructorFiles": [
+    "packages/business/src/workspace-restore-schema.ts",
+    "packages/business/src/workspace-restore-schema-v27.ts",
+    "packages/business/src/workspace-restore-schema-v29.ts",
+    "packages/business/src/workspace-restore-schema-v31.ts",
+    "packages/business/src/workspace-restore-schema-v33.ts",
+    "packages/business/src/workspace-restore-schema-v35.ts",
+    "packages/business/src/workspace-restore-schema-v37.ts",
+    "packages/business/src/workspace-restore-schema-v39.ts"
+  ],
+  "entries": {
+    "packages/business/src/workspace-restore-schema.mjs": {
+      "legacyPath": "packages/business/src/workspace-restore-schema.mjs",
+      "currentPath": "packages/business/src/workspace-restore-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 41391,
+      "currentSha256": "69b714eb95876e6ee6ce49357dbb6e6d8591099f6ae3bf49460ce98f92f504a6",
+      "legacyBytes": 40812,
+      "legacySha256": "35ec2bb60ea012e7a70c3c966a2a8749b15bf5c4433fd1c6499f32ff6a4446b1"
+    },
+    "packages/business/src/workspace-restore-schema-v27.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v27.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v27.ts",
+      "mode": "type-erased",
+      "currentBytes": 41268,
+      "currentSha256": "a03b3a5a5a344dd7e0fc07d6de488b27a69251f786f02ce42e97e0f93cfd0644",
+      "legacyBytes": 43332,
+      "legacySha256": "49fee1a9b0f891e04f7dc789c5793cfbafba843c728bb8f10bc30529a0c6dc35"
+    },
+    "packages/business/src/workspace-restore-schema-v29.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v29.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v29.ts",
+      "mode": "type-erased",
+      "currentBytes": 41992,
+      "currentSha256": "c9e25eca19fe306c4e072714d55296b23893d0d11d62187ab3d890fdfda5b7f1",
+      "legacyBytes": 44027,
+      "legacySha256": "07823b4fdf6ffa570e3e1cf2caf3edcd20db37ee6649f134e56e6067ad595a31"
+    },
+    "packages/business/src/workspace-restore-schema-v31.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v31.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v31.ts",
+      "mode": "type-erased",
+      "currentBytes": 42321,
+      "currentSha256": "c192c98a11739aa35768e5c5d8e3c934a2891b8df0da0250f9bcba71873122d7",
+      "legacyBytes": 44323,
+      "legacySha256": "0932065643b57395d310792236846357c5927bbc6e5ef596b07ce9caff551764"
+    },
+    "packages/business/src/workspace-restore-schema-v33.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v33.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v33.ts",
+      "mode": "type-erased",
+      "currentBytes": 42494,
+      "currentSha256": "0f659b02ea4057fb96f54d6306f2d2bcc00f18884506db92206273c5851d5573",
+      "legacyBytes": 44488,
+      "legacySha256": "81feb41eeb6d2853bb3f8a905f4cc7dd57aaf7fec4317374bba4499ddef054da"
+    },
+    "packages/business/src/workspace-restore-schema-v35.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v35.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v35.ts",
+      "mode": "type-erased",
+      "currentBytes": 42806,
+      "currentSha256": "f4adf663953b63c0619b652bef12d44246aead03aef5ce19f9937d3cb0a6a77d",
+      "legacyBytes": 44792,
+      "legacySha256": "a8d7f889d593b8d3dd97e424e599c60697de52f7cc2c73fb15611e88797ecaee"
+    },
+    "packages/business/src/workspace-restore-schema-v37.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v37.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v37.ts",
+      "mode": "type-erased",
+      "currentBytes": 43464,
+      "currentSha256": "96206ab0433e53a3cbc80490c7e3226549ec39d24889b209f67c4d59e233d306",
+      "legacyBytes": 45404,
+      "legacySha256": "4f331ff1d5962dc11a9cc3d2bb34b07eaa656f5862195e7244451a0758ccf2dc"
+    },
+    "packages/business/src/workspace-restore-schema-v39.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v39.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v39.ts",
+      "mode": "type-erased",
+      "currentBytes": 43817,
+      "currentSha256": "901ce959a58111e18023464cb6affd370ad5bcdcff718cb8aafdf6c5ec1997e1",
+      "legacyBytes": 45723,
+      "legacySha256": "2dc569e1224b0083abe4ea75fd248d51588080b71b34bf71c7c0a2da71de6fc8"
+    },
+    "packages/business/src/agent/edit-proposal-schema.mjs": {
+      "legacyPath": "packages/business/src/agent/edit-proposal-schema.mjs",
+      "currentPath": "packages/business/src/agent/edit-proposal-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 4612,
+      "currentSha256": "80a651108a0e6962f57f72a07dfa9a32e4d6eba29331539a8d2f7cc8a52467e9",
+      "legacyBytes": 4658,
+      "legacySha256": "662ed2c50f6d69c6d675c0d0db3f4edf10ffef93f56931c3fde36b323d6fc632"
+    },
+    "packages/business/src/comfy-image-schema.mjs": {
+      "legacyPath": "packages/business/src/comfy-image-schema.mjs",
+      "currentPath": "packages/business/src/comfy-image-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 12338,
+      "currentSha256": "da54ec03c66097c7d3dd1c04c8e808d3c0d0236c093ce102cb73f83fe644a770",
+      "legacyBytes": 12491,
+      "legacySha256": "31e354a1223ecfbfa67d7e8cdc171c99f49a4b032d57ac17366aa4061ca2300c"
+    },
+    "packages/business/src/edit-task-schema.mjs": {
+      "legacyPath": "packages/business/src/edit-task-schema.mjs",
+      "currentPath": "packages/business/src/edit-task-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 8229,
+      "currentSha256": "6143022de4336fdbbefa1679a72426ce853c28f24b570f8dda237490cc387ca0",
+      "legacyBytes": 8720,
+      "legacySha256": "6a7753f04ede401445f3e68f35aa804cc546938e5b485b2152f48e8d6d69ca91"
+    },
+    "packages/business/src/frame-schema.mjs": {
+      "legacyPath": "packages/business/src/frame-schema.mjs",
+      "currentPath": "packages/business/src/frame-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 15291,
+      "currentSha256": "469030ad3531d85aae09bfd104c8fb28222c8f65e6b6c4a489914b81f2fce417",
+      "legacyBytes": 15393,
+      "legacySha256": "7a06c47828b84eba549d7089f70f287ea1918485dd41512efd07bb7cecc21cc7"
+    },
+    "packages/business/src/image-schema.mjs": {
+      "legacyPath": "packages/business/src/image-schema.mjs",
+      "currentPath": "packages/business/src/image-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 11136,
+      "currentSha256": "f843f1988e0dd5a74d55a3d2ae3e841b98da1de5fe7674223220c4b7402ad8cc",
+      "legacyBytes": 11256,
+      "legacySha256": "452722a5e9a38200e8ac9e717b224984dab2841a6186c4f700487ff6e24bf40b"
+    },
+    "packages/business/src/images/review-schema.mjs": {
+      "legacyPath": "packages/business/src/images/review-schema.mjs",
+      "currentPath": "packages/business/src/images/review-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 29307,
+      "currentSha256": "5a64b8ba50aa766467dc6cbcb962a866c6fb7303725dc5a678aa99dbd51b7205",
+      "legacyBytes": 30500,
+      "legacySha256": "71d7b325ec4441c758638f214ce35f27296493aef1073c3b0be62f669ebdd240"
+    },
+    "packages/business/src/subject-schema.mjs": {
+      "legacyPath": "packages/business/src/subject-schema.mjs",
+      "currentPath": "packages/business/src/subject-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 7489,
+      "currentSha256": "f101064019f467a753d7fb886b3c70c607e4662135366a22fb086c9643b554c6",
+      "legacyBytes": 7617,
+      "legacySha256": "2ba181530ac2ed4cb861e7578280f6d653b2fbe81b25a6b2484e088833a62e7d"
+    },
+    "packages/business/src/timeline-format-schema.mjs": {
+      "legacyPath": "packages/business/src/timeline-format-schema.mjs",
+      "currentPath": "packages/business/src/timeline-format-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 1899,
+      "currentSha256": "e59d071392f543baef6c2972a0abc1f55b605fd53fc1c52f313971bcc2e70711",
+      "legacyBytes": 1983,
+      "legacySha256": "25ac5e155a99d8df4c4c53dd1acb184df51b29f6b034b5becc4ceef2ccf44609"
+    },
+    "packages/business/src/timeline-subtitle-schema.mjs": {
+      "legacyPath": "packages/business/src/timeline-subtitle-schema.mjs",
+      "currentPath": "packages/business/src/timeline-subtitle-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 3166,
+      "currentSha256": "ef2c289decd324cd8f190d253105ed963292a038f121aa51bcce284bc3271b59",
+      "legacyBytes": 3222,
+      "legacySha256": "cdcfa2c9e97dd26bb478e91852ae48e76f5847b179c4d84e7e6f81d5ce01e9fe"
+    },
+    "packages/business/src/workspace-fixed-schema.mjs": {
+      "legacyPath": "packages/business/src/workspace-fixed-schema.mjs",
+      "currentPath": "packages/business/src/workspace-fixed-schema.ts",
+      "mode": "type-erased",
+      "currentBytes": 25952,
+      "currentSha256": "9113425728d1755e9a51977b7cfab7d48fd5008f5d28afa57f9acc7d61b3af0a",
+      "legacyBytes": 28167,
+      "legacySha256": "d66be4bb57fdf62fa9fd3bb06da7d0fa502419f6794dc446a0beeca69296315b"
+    },
+    "packages/business/src/workspace-restore-schema-v41.ts": {
+      "legacyPath": "packages/business/src/workspace-restore-schema-v41.ts",
+      "currentPath": "packages/business/src/workspace-restore-schema-v41.ts",
+      "mode": "type-erased",
+      "currentBytes": 45715,
+      "currentSha256": "f77676a37aa06ce9cc657b1182106fce243305cdbb5675ef2cb7a48d3d5251f8",
+      "legacyBytes": 46304,
+      "legacySha256": "50eab2f5ec49847cda2b008b397e71fb18e662e294d002d25639b6c433a9173a"
+    },
+    "packages/business/src/workspace-schema-v26.ts": {
+      "legacyPath": "packages/business/src/workspace-schema-v26.ts",
+      "currentPath": "packages/business/src/workspace-schema-v26.ts",
+      "mode": "type-erased",
+      "currentBytes": 13729,
+      "currentSha256": "14f60e314f486f03345215d0d479e1a85a661adb359e3554a00bc2c4fab81964",
+      "legacyBytes": 15681,
+      "legacySha256": "3731061a64f2ce71ca5deddda9d8972e73e5e6d3a2743d5923f60bd4af9a41cd"
+    },
+    "packages/business/src/workspace-volume-envelope-validation.ts": {
+      "legacyPath": "packages/business/src/workspace-volume-envelope-validation.ts",
+      "currentPath": "packages/business/src/workspace-volume-envelope-validation.ts",
+      "mode": "type-erased",
+      "currentBytes": 15871,
+      "currentSha256": "8a68b5bc43c84beeff8ccef3f4ebcc190cdd0506d53ca11555162ebc92556b23",
+      "legacyBytes": 16134,
+      "legacySha256": "1face8429869dd619ccb83214998537d103d9e70c1974e7b85b29bf83361ef09"
+    },
+    "packages/contracts/src/agent-timeline-gain.ts": {
+      "legacyPath": "packages/contracts/src/agent-timeline-gain.ts",
+      "currentPath": "packages/contracts/src/agent-timeline-gain.ts",
+      "mode": "type-erased",
+      "currentBytes": 13176,
+      "currentSha256": "efaa9165fbced13b26b31d27f270ef7add4f64884b5ae31d24b63d9f9c4f4898",
+      "legacyBytes": 18645,
+      "legacySha256": "63135fe3a789e619c5214b86c231ac96c1b8c7f2bdb6050e38d938a65880c6a1"
+    },
+    "packages/contracts/src/lut-resources.ts": {
+      "legacyPath": "packages/contracts/src/lut-resources.ts",
+      "currentPath": "packages/contracts/src/lut-resources.ts",
+      "mode": "type-erased",
+      "currentBytes": 6899,
+      "currentSha256": "f30708c213d1fcc4380aa7f048f361f378fab9466a8685eb92626dd67d3458d2",
+      "legacyBytes": 7006,
+      "legacySha256": "5658797cd03a25f8c047b1700fc53f1df91ecab58da8698630e715c673e3a21b"
+    }
+  }
+}

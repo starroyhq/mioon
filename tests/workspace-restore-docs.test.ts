@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseBackupArguments} from '../apps/cli/src/backup.ts';
-const root=fileURLToPath(new URL('..',import.meta.url)),read=file=>fs.readFileSync(path.join(root,file),'utf8');
+const root=fileURLToPath(new URL('..',import.meta.url)),read=(file: string)=>fs.readFileSync(path.join(root,file),'utf8');
 
 test('restore instructions use actual strict offline flags for known-ID and total-output-loss observation',()=>{
  const help=read('apps/cli/src/backup.ts'),docs=read('docs/CLI.md');

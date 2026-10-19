@@ -9,8 +9,9 @@ import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/busin
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspace-opacity-legacy.ts';
 
-const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-function fixture(t,{historical40=false}={}){
+import type {TestContext} from 'node:test';
+const digest=(bytes: Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
+function fixture(t: TestContext,{historical40=false}: {historical40?: boolean}={}){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-restore-capture-'));
  const source=path.join(base,'workspace'),destination=path.join(base,'backup');
  if(historical40){

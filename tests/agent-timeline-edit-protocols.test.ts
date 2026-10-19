@@ -26,8 +26,8 @@ function ccEvents(argumentsJson = args, toolName = name): Chunk[] {return [
   chunk({tool_calls: [{index: 0, id: callId, type: 'function', function: {name: toolName, arguments: argumentsJson.slice(0, 7)}}]}),
   chunk({tool_calls: [{index: 0, function: {arguments: argumentsJson.slice(7)}}]}), chunk({}, 'tool_calls')];}
 function responseEvents(argumentsJson = args, toolName = name): Obj[] {
-  const item = (value, status) => ({id: itemId, type: 'function_call', call_id: callId, name: toolName, arguments: value, status});
-  const response = (output, status) => ({id: 'resp_edit_fixture', object: 'response', status, output, error: null, incomplete_details: null});
+  const item = (value: unknown, status: string) => ({id: itemId, type: 'function_call', call_id: callId, name: toolName, arguments: value, status});
+  const response = (output: unknown[], status: string) => ({id: 'resp_edit_fixture', object: 'response', status, output, error: null, incomplete_details: null});
   return [{type: 'response.created', response: response([], 'in_progress')},
     {type: 'response.output_item.added', output_index: 0, item: item('', 'in_progress')},
     {type: 'response.function_call_arguments.delta', output_index: 0, item_id: itemId, delta: argumentsJson.slice(0, 7)},
@@ -80,28 +80,28 @@ for (const protocol of ['chat_completions', 'responses'] as const) {
     const final = JSON.parse(buildAgentRequest({configuration: config as never, messages: messages as never, readTools: answer as never, selfPort: 1}).body) as {tools: unknown[]; tool_choice?: string; previous_response_id?: string; input: Array<{call_id?: string; id?: string}>; messages: Array<{tool_call_id?: string; tool_calls: Array<{id?: string}>}>};
     assert.deepEqual(final.tools, []); assert.equal(final.tool_choice, profile.choice ? 'none' : undefined);
     assert.equal(final.previous_response_id, undefined);
-    if (protocol === 'responses') {assert.equal(final.store, false); assert.equal(final.input.at(-1).call_id, callId); assert.equal(final.input.at(-2).id, itemId);}
-    else {assert.equal(final.messages.at(-1).tool_call_id, callId); assert.equal(final.messages.at(-2).tool_calls[0].id, callId);}
+    if (protocol === 'responses') {assert.equal((final as {store?: unknown}).store, false); assert.equal((final.input.at(-1) as {call_id?: string}).call_id, callId); assert.equal((final.input.at(-2) as {id?: string}).id, itemId);}
+    else {assert.equal((final.messages.at(-1) as {tool_call_id?: string}).tool_call_id, callId); assert.equal((final.messages.at(-2) as {tool_calls: Array<{id?: string}>}).tool_calls[0].id, callId);}
   });
   test(`${protocol}: old shot scope rejects the new timeline tool after a complete response`, async () => {
     await assert.rejects(run(protocol, wire(protocol), {phase: 'request', scope: 'selected_shot_edit'}, configuration(protocol),
       [{role: 'system', content: CHAT_SYSTEM_INSTRUCTION}, {role: 'user', content: 'hello'}]), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});
   });
   test(`${protocol}: timeline move tool rejects read catalog, identifiers, duplicate keys and incomplete streams before any completed call`, async () => {
-    const build = (json, toolName) => wire(protocol, protocol === 'responses' ? responseEvents(json, toolName) : ccEvents(json, toolName));
+    const build = (json: string, toolName: string) => wire(protocol, (protocol === 'responses' ? responseEvents(json, toolName) : ccEvents(json, toolName)) as Obj[]);
     for (const [json, toolName] of [[args, 'mioon_propose_shot_update'], ['{"startFrame":90,"clipId":"x"}', name],
       ['{"startFrame":90,"startFrame":91}', name], ['{"startFrame":null}', name], ['{"startFrame":1.5}', name], ['{"startFrame":18001}', name], ['{"startFrame":-1}', name], ['{"startFrame":90,"requestId":"forged"}', name]]) {
       await assert.rejects(run(protocol, build(json, toolName)));
     }
     const events = protocol === 'responses' ? responseEvents().slice(0, -1) : ccEvents().slice(0, -1);
-    await assert.rejects(run(protocol, wire(protocol, events)), {code: 'AGENT_CHAT_TRUNCATED'});
+    await assert.rejects(run(protocol, wire(protocol, events as Obj[])), {code: 'AGENT_CHAT_TRUNCATED'});
     await assert.rejects(run(protocol, wire(protocol), {phase: 'request'}), {code: 'AGENT_CHAT_VALIDATION'});
   });
   test(`${protocol}: terminal function snapshot changes fail closed and answer phase cannot call again`, async () => {
     const events = protocol === 'responses' ? responseEvents() : ccEvents();
-    if (protocol === 'responses') events.at(-1).response.output[0].call_id = itemId;
-    else events[1].choices[0].delta.tool_calls[0].id = 'replacement';
-    await assert.rejects(run(protocol, wire(protocol, events)), {code: 'AGENT_CHAT_PROTOCOL_ERROR'});
+    if (protocol === 'responses') ((events.at(-1) as unknown as {response: {output: Array<{call_id?: string}>}}).response.output[0]).call_id = itemId;
+    else ((events[1] as Chunk).choices[0].delta.tool_calls as Array<{id?: string}>)[0].id = 'replacement';
+    await assert.rejects(run(protocol, wire(protocol, events as Obj[])), {code: 'AGENT_CHAT_PROTOCOL_ERROR'});
     const {done} = await run(protocol, wire(protocol));
     await assert.rejects(run(protocol, wire(protocol), {...requestMode, phase: 'answer', toolCall: done.toolCall,
       providerOutput: done.providerOutput, result: '{"status":"pending_review","applied":false}'}), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});

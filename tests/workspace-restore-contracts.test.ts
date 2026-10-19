@@ -2,16 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {schemas,operationEffect,parseExpectedWorkspaceOrigin,isWorkspaceRestoreInspection,
   workspaceRestoreTaskContextSchema,isEditTaskEnvelope,isEditTaskListEnvelope} from '@mioon/contracts';
+type Loose = Record<string, unknown>;
+interface InspectionView {source: Loose & {key?: string; schemaVersion?: number}; workspacePath?: string; heldCounts: Array<{kind?: string; count: number; [key: string]: unknown}>; operationPolicy: Array<{operation: string; available: boolean; reason: string}>; backupCreate: Loose & {available?: boolean}; errors?: Loose; [key: string]: unknown}
 
 const origin='10000000-0000-4000-8000-000000000001',other='10000000-0000-4000-8000-000000000002';
 const id='20000000-0000-4000-8000-000000000001',project='30000000-0000-4000-8000-000000000001';
 const hash='a'.repeat(64),time='2026-10-12T00:00:00.000Z';
 const task=()=>({id,projectId:project,operation:'timeline.clip.remove',input:{projectId:project,clipId:other,expectedRevision:1,requestId:'restore-contract-key'},
   requestId:'restore-contract-key',digest:hash,lane:'timeline:mutation',status:'prepared',revision:1,createdAt:time,updatedAt:time,acknowledged:false,origin:'new'});
-const inspect=()=>({restored:true,schemaVersion:25,profile:'restored-local-v1',workspaceOrigin:origin,restorationId:other,createdAt:time,
+const inspect=(): InspectionView => ({restored:true,schemaVersion:25,profile:'restored-local-v1',workspaceOrigin:origin,restorationId:other,createdAt:time,
   source:{backupId:id,schemaVersion:24,manifestHash:hash,dbHash:hash},heldCounts:[{kind:'jobs',count:3}],
   operationPolicy:[{operation:'project.list',available:true,reason:'AVAILABLE'},{operation:'generation.submit',available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}],
-  backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}});
+  backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}} as InspectionView);
 
 test('restore origin is optional only by omission and never normalized or coerced',()=>{
   assert.equal(parseExpectedWorkspaceOrigin(undefined),undefined);
@@ -26,18 +28,14 @@ test('restore inspection is a strict non-path public read and does not grant eff
     assert.equal(schemas['workspace.restore.inspect'].safeParse(value).success,false);
   const effect=operationEffect('workspace.restore.inspect');
   assert.equal(effect.readOnly,true);
-  for(const key of ['databaseWrite','fileWrite','externalIO','localProcess','paidGeneration'])assert.equal(effect[key],false);
+  for(const key of ['databaseWrite','fileWrite','externalIO','localProcess','paidGeneration'])assert.equal((effect as unknown as Record<string, boolean>)[key],false);
   assert.equal(isWorkspaceRestoreInspection({restored:false}),true);
   assert.equal(isWorkspaceRestoreInspection({restored:false,workspaceOrigin:origin}),false);
 });
 
 test('restore disclosure is bounded, excludes arbitrary fields and reports backup unavailable',()=>{
   assert.equal(isWorkspaceRestoreInspection(inspect()),true);
-  for(const change of [value=>value.source.key='synthetic-key',value=>value.source.schemaVersion=25,
-    value=>value.workspacePath='/tmp/workspace',value=>value.backupCreate.available=true,
-    value=>value.heldCounts[0].count=20001,value=>value.heldCounts.push({...value.heldCounts[0]}),
-    value=>value.operationPolicy.push({...value.operationPolicy[0]}),value=>value.operationPolicy[0].available=false,
-    value=>value.operationPolicy[1].reason='AVAILABLE',value=>value.operationPolicy=Array.from({length:161},(_,index)=>({operation:`project.op${index}`,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}))]){
+  for(const change of ([value=>{value.source.key='synthetic-key';},value=>{value.source.schemaVersion=25;},value=>{value.workspacePath='/tmp/workspace';},value=>{value.backupCreate.available=true;},value=>{value.heldCounts[0]!.count=20001;},value=>{value.heldCounts.push({...value.heldCounts[0]!});},value=>{value.operationPolicy.push({...value.operationPolicy[0]!});},value=>{value.operationPolicy[0]!.available=false;},value=>{value.operationPolicy[1]!.reason='AVAILABLE';},value=>{value.operationPolicy=Array.from({length:161},(_,index)=>({operation:`project.op${index}`,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}));}] as Array<(value: InspectionView)=>void>)) {
     const value=inspect();change(value);assert.equal(isWorkspaceRestoreInspection(value),false);
   }
 });

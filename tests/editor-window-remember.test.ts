@@ -17,7 +17,8 @@ interface AttachedController {
   getState(): LocatorState; consume(entryToken: unknown, projectId: unknown): unknown;
 }
 interface FakeWebContents extends EventEmitter {mainFrame: {url: string}; getURL(): string; send(channel: string, value: unknown): void}
-interface Attached {window: FakeWindow; bridge: Record<string, unknown>; controller: AttachedController}
+interface FakeWindowView extends EventEmitter {destroyed: boolean; webContents: FakeWebContents; isDestroyed(): boolean; isMinimized(): boolean; show(): void; showInactive(): void; focus(): void; restore(): void; hide(): void; close(): void; loadURL(url: string): Promise<void>}
+interface Attached {window: FakeWindowView; bridge: Record<string, unknown>; controller: AttachedController}
 interface FixtureOptions {put?: (value: LocatorValue, envelope: (projectId?: string | null, rev?: number) => Envelope) => Promise<Envelope> | Envelope}
 const report = (binding: unknown, projectId: string, status: string, options?: Record<string, unknown>) =>
   reportRaw(binding as never, projectId, status as never, options as never);
@@ -27,8 +28,8 @@ const origin = 'http://127.0.0.1:41234';
 const tick = () => new Promise(setImmediate);
 function fixture(t: TestContext, { put }: FixtureOptions = {}) {
   let interactive = true, token = 0, revision = 0;
-  const windows: FakeWindow[] = [], requests: unknown[] = [], writes: LocatorValue[] = [], controllers = new Map<FakeWindow, AttachedController>();
-  class FakeWindow extends EventEmitter {
+  const windows: FakeWindowView[] = [], requests: unknown[] = [], writes: LocatorValue[] = [], controllers = new Map<FakeWindowView, AttachedController>();
+  class FakeWindow extends EventEmitter implements FakeWindowView {
     destroyed = false;
     webContents: FakeWebContents;
     constructor() { super(); this.webContents = Object.assign(new EventEmitter(), {
@@ -42,18 +43,18 @@ function fixture(t: TestContext, { put }: FixtureOptions = {}) {
   }
   const host = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, settingsUrl: `${origin}/?settings=1`, editorUrl: id => `${origin}/?project=${id}`,
     isCurrent: () => true, canInteract: () => interactive, createWindow() { const window = new FakeWindow(); windows.push(window); return window as never; },
-    consumeProjectEntry: (owner: {window: FakeWindow}, entryToken: unknown, projectId: unknown) => controllers.get(owner.window)?.consume(entryToken, projectId) });
+    consumeProjectEntry: (owner: {window: FakeWindowView}, entryToken: unknown, projectId: unknown) => controllers.get(owner.window)?.consume(entryToken, projectId) });
   const envelope = (projectId: string | null = null, rev = 0): Envelope => ({ supported: true, workspaceScope: 'a'.repeat(64), instanceId: backendId,
     projectId, revision: rev, updatedAt: projectId ? '2026-10-13T00:00:00.000Z' : null, targetStatus: projectId ? 'matching' : 'unset' });
   const locator = createLastProjectController({ client: { get: async () => envelope(), put: async (value: LocatorValue) => {
     writes.push(value); if (put) return put(value, envelope); revision++; return envelope(value.projectId, revision); } } as never }) as unknown as {getState(): LocatorState};
   t.after(() => { for (const controller of controllers.values()) controller.dispose(); host.dispose(); });
   const client = { inspect: async () => ({restored: false, workspaceOrigin: null}), list: async () => [projectA, projectB].map((id: string) => ({id, name: id, updatedAt: '2026-10-13T00:00:00.000Z'})), create: async () => assert.fail('No create in selection test') };
-  function bridge(window: FakeWindow): Record<string, unknown> { return readDesktopWindowBridge({__mioonProjectWindow: createProjectWindowBridge({
+  function bridge(window: FakeWindowView): Record<string, unknown> { return readDesktopWindowBridge({__mioonProjectWindow: createProjectWindowBridge({
     async invoke(channel: string, request: unknown) { requests.push(request); assert.equal(channel, PROJECT_WINDOW_CHANNEL); return host.dispatch({sender: window.webContents, senderFrame: window.webContents.mainFrame}, request as never); },
     on: (channel: string, listener: (...args: unknown[]) => void) => window.webContents.on(channel, listener), removeListener: (channel: string, listener: (...args: unknown[]) => void) => window.webContents.removeListener(channel, listener),
   } as never)}) as never; }
-  async function attach(window: FakeWindow, launcher = false): Promise<Attached> {
+  async function attach(window: FakeWindowView, launcher = false): Promise<Attached> {
     await host.loadFor(window as never); const native = bridge(window), context = await (native as {context(): Promise<unknown>}).context();
     const controller = createProjectEntryController({context, bridge: native as never, client: client as never, locator: (launcher ? locator : null) as never,
       newToken: () => `77000000-0000-4000-8000-${String(++token).padStart(12, '0')}`} as never) as unknown as AttachedController;
@@ -62,7 +63,7 @@ function fixture(t: TestContext, { put }: FixtureOptions = {}) {
     return { window, bridge: native, controller };
   }
   return { host, windows, requests, writes, locator, attach,
-    async launcher() { return attach(host.ensureLauncher(), true); },
+    async launcher() { return attach(host.ensureLauncher() as unknown as FakeWindowView, true); },
     async editor(id: string): Promise<Attached> { const target = windows.find(window => (host.contextFor(window as never) as {initialProjectId?: string} | null | undefined)?.initialProjectId === id); assert.ok(target); return attach(target); },
     async binding(editor: Attached): Promise<{context: unknown; bridge: Record<string, unknown>}> { return {context: await (editor.bridge as {context(): Promise<unknown>}).context(), bridge: editor.bridge}; },
     setInteractive(value: boolean): void { interactive = value; host.refresh(); } };
@@ -76,7 +77,7 @@ test('automatic native startup is read-only; editors never call their locator ca
   const f = fixture(t), launcher = await f.launcher();
   await launcher.controller.open(projectA, false); const editor = await f.editor(projectA);
   await report(await f.binding(editor), projectA, 'ready', { rememberProject: () => assert.fail('Editor cannot write locator') });
-  await tick(); assert.deepEqual(f.writes, []); assert.equal(isProjectWindowContext(await editor.bridge.context()), true);
+  await tick(); assert.deepEqual(f.writes, []); assert.equal(isProjectWindowContext(await (editor.bridge as {context(): Promise<unknown>}).context()), true);
 });
 test('out-of-order A/B readiness remembers only newest explicit target through one launcher queue', async (t: TestContext) => {
   const f = fixture(t), launcher = await f.launcher();

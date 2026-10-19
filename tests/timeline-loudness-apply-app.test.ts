@@ -13,17 +13,22 @@ import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-const part = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
+const part = (start: string, end: string): string => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 const durable = part('  async function run(', '  async function runSession(');
 const mutate = part('  async function mutateTimeline(', '  async function selectClip(');
 const apply = part('  const timelineLoudnessApply = useTimelineLoudnessApply(', '  const effectivePlayhead =');
 const operation = 'timeline.loudness.apply', stamp = '2026-10-14T00:00:00.000Z';
-async function intent() {
+interface ApplyIntentView {operation: string; scope: string; timelineId: string; sourceIdentity: string; executionScope: string; input: {projectId: string; expectedRevision: number; mixProfile: string; measurementProfile: string; target: {integratedLufs: number; truePeakCeilingDbtp: number}; requestId: string; snapshotSha256: string; candidateDigest: string}}
+interface TaskRecord {id: string; projectId: string; operation: string; input: ApplyIntentView['input'] & {[key: string]: unknown}; requestId: string; digest: string; lane: string; status: string; revision: number; createdAt: string; updatedAt: string; acknowledged: boolean; origin?: unknown; [key: string]: unknown}
+interface ServerCall {path: string; body: Record<string, unknown>; method?: string}
+interface Wire {fetcher: (path: string, options?: RequestInit) => Promise<Response>; calls: ServerCall[]; readonly task: TaskRecord | null; restart(): void}
+interface ApplyHarness {run: (...args: unknown[]) => Promise<unknown>; mutateTimeline: (...args: unknown[]) => Promise<unknown>; recoverTask: (...args: unknown[]) => Promise<unknown>; submit: (intent: ApplyIntentView, canExecute: () => boolean) => Promise<{status: string}>; tasks: ReturnType<typeof createEditTaskController>; refreshed: unknown[]; recovered: TaskRecord[]; notices: unknown[]; currentProject: {current: string}; keys: () => number; navigate: () => void}
+async function intent(): Promise<ApplyIntentView> {
   const value = report(input());
   return { operation, scope: mixContext().scope, timelineId, sourceIdentity: mixContext().sourceIdentity, executionScope: mixContext().executionScope,
     input: { ...input(), requestId: 'one-original-apply-key', snapshotSha256: value.identity.snapshotSha256, candidateDigest: await timelineLoudnessCandidateDigest(value) } };
 }
-function result(exact) {
+function result(exact: ApplyIntentView['input']) {
   const value = report(input()), gain = value.candidate.gains[0];
   const timeline = { id: timelineId, projectId, revision: exact.expectedRevision + 1, fps: 30, width: 720, height: 1280, durationFrames: 60,
     createdAt: stamp, updatedAt: stamp, tracks: [{ id: id(7), name: 'Audio', kind: 'audio', orderIndex: 0, muted: false, hidden: false }],
@@ -32,50 +37,52 @@ function result(exact) {
     mixProfile: exact.mixProfile, measurementProfile: exact.measurementProfile, target: exact.target, beforeRevision: exact.expectedRevision, afterRevision: exact.expectedRevision + 1,
     gainMultiplier: value.candidate.gainMultiplier, gains: value.candidate.gains, original: value.original, candidate: value.candidate.measurement, meetsTarget: true, meetsTruePeak: true, marginDb: .5 } };
 }
-function server({ lose, invalidAck = false } = {}) {
-  let task = null, instanceId = id(71), once = lose; const calls = [];
-  const reply = data => new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  const fetcher = async (path, options = {}) => {
-    const body = options.body ? JSON.parse(options.body) : undefined; calls.push({ path, body, method: options.method });
+function server({ lose, invalidAck = false }: {lose?: string; invalidAck?: boolean} = {}): Wire {
+  let task: TaskRecord | null = null, instanceId = id(71), once: string | null | undefined = lose; const calls: ServerCall[] = [];
+  const reply = (data: unknown): Response => new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const fetcher = async (path: string, options: RequestInit = {}): Promise<Response> => {
+    const body: Record<string, unknown> = options.body ? JSON.parse(String(options.body)) : {}; calls.push({ path, body, method: options.method });
     if (path.startsWith('/api/tasks?')) return reply({ items: task && !task.acknowledged ? [task] : [], nextCursor: null, instanceId });
     if (path === '/api/tasks/prepare') {
-      task = { id: id(70), projectId: body.projectId, operation: body.operation, input: structuredClone(body.input), requestId: body.input.requestId,
+      const prepareInput = body.input as ApplyIntentView['input'];
+      task = { id: id(70), projectId: String(body.projectId), operation: String(body.operation), input: structuredClone(prepareInput), requestId: prepareInput.requestId,
         digest: 'd'.repeat(64), lane: 'timeline:mutation', status: 'prepared', revision: 1, createdAt: stamp, updatedAt: stamp, acknowledged: false, origin: body.origin };
       if (once === 'prepare') { once = null; throw Error('Lost persisted prepare response'); }
       return reply({ task, instanceId });
     }
     if (path.endsWith('/execute')) {
-      assert.equal(body.instanceId, instanceId); task = { ...task, status: 'applied', revision: task.revision + 2 };
+      assert.equal(body.instanceId, instanceId); assert.ok(task); task = { ...task, status: 'applied', revision: task.revision + 2 };
       if (once === 'execute') { once = null; throw Error('Lost committed execute response'); }
-      const ack = result(task.input); if (invalidAck) ack.requestId = 'wrong-request-key';
+      assert.ok(task); const ack = result(task.input); if (invalidAck) ack.requestId = 'wrong-request-key';
       return reply({ task, instanceId, result: ack });
     }
-    if (path.endsWith('/acknowledge')) { task = { ...task, acknowledged: true, revision: task.revision + 1 }; return reply({ task, instanceId }); }
+    if (path.endsWith('/acknowledge')) { assert.ok(task); task = { ...task, acknowledged: true, revision: task.revision + 1 }; return reply({ task, instanceId }); }
     if (path.startsWith(`/api/tasks/${id(70)}?`)) return reply({ task, instanceId });
     throw Error(`Unexpected request ${path}`);
   };
   return { fetcher, calls, get task() { return task; }, restart() { instanceId = id(72); } };
 }
-async function harness(wire, onBusy = () => {}) {
-  const client = createEditTaskClient({ fetcher: wire.fetcher }), tasks = createEditTaskController({ client }); await tasks.load(projectId);
-  const busy = new Set(), refreshed = [], recovered = [], notices = [];
+async function harness(wire: Wire, onBusy: (busy: boolean) => void = () => {}): Promise<ApplyHarness> {
+  const client = createEditTaskClient({ fetcher: wire.fetcher as never }), tasks = createEditTaskController({ client }); await tasks.load(projectId);
+  const busy = new Set<string>(), refreshed: unknown[] = [], recovered: TaskRecord[] = [], notices: unknown[] = [];
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
-  let options, keys = 0, epoch = 0;
-  const env = {
+  let options: Parameters<ReturnType<typeof createTimelineLoudnessApplyController>['review']> & {submit?: ApplyHarness['submit']} | undefined, keys = 0, epoch = 0;
+  const env: Record<string, unknown> = {
     application: null, clipDraftRef: { current: null }, setSubjectRefresh: () => undefined, msg: messageKey,
-    localizedError: value => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
+    localizedError: (value: never) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     readTimelineLoudnessRecoveryScope: () => 'test-workspace-identity', nativeCloseRegistry: { current: undefined }, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,
-    timelinePending: false, requestId: () => `unused-generated-key-${++keys}`, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === epoch,
+    timelinePending: false, requestId: () => `unused-generated-key-${++keys}`, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: (captured: {projectId: string; epoch: number}) => captured.projectId === currentProject.current && captured.epoch === epoch,
     captureTaskWorkspaceIntent: () => () => true, readTaskRevealContext: () => ({}), pendingForProject: () => [], isMutationOperation: () => false,
-    isBusy: key => busy.has(key), markBusy: (_projectId, key, value) => { if (value) busy.add(key); else busy.delete(key); onBusy(value); },
-    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async owner => { refreshed.push(owner); },
-    notify: message => notices.push(message), openTasks: () => undefined, setAuth: () => undefined, readableError: error => error.message,
+    isBusy: (key: string) => busy.has(key), markBusy: (_projectId: string, key: string, value: boolean) => { if (value) busy.add(key); else busy.delete(key); onBusy(value); },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: (update: (previous: typeof dataRef.current) => typeof dataRef.current) => { dataRef.current = update(dataRef.current); }, refresh: async (owner: unknown) => { refreshed.push(owner); },
+    notify: (message: unknown) => { notices.push(message); }, openTasks: () => undefined, setAuth: () => undefined, readableError: (error: Error) => error.message,
     runSession: () => { throw Error('Loudness must not use the legacy session path'); },
-    timelineFormatRef: { current: null }, subtitlesRef: { current: null }, timelineLoudnessApplyRef: { current: { controller: { recovered: task => recovered.push(task) } } },
-    useTimelineLoudnessApply: value => { options = value; return env.timelineLoudnessApplyRef.current; }, confirm: async () => true,
+    timelineFormatRef: { current: null }, subtitlesRef: { current: null }, timelineLoudnessApplyRef: { current: { controller: { recovered: (task: TaskRecord) => recovered.push(task) } } },
+    useTimelineLoudnessApply: (value: never) => { options = value; return (env.timelineLoudnessApplyRef as {current: unknown}).current; }, confirm: async () => true,
   };
-  const actual = Function(...Object.keys(env), `${durable}\n${mutate}\n${apply}\nreturn {run, mutateTimeline, recoverTask};`)(...Object.values(env));
-  return { ...actual, submit: options.submit, tasks, refreshed, recovered, notices, currentProject, keys: () => keys, navigate: () => { epoch++; } };
+  const actual = Function(...Object.keys(env), `${durable}\n${mutate}\n${apply}\nreturn {run, mutateTimeline, recoverTask};`)(...Object.values(env)) as unknown as {run: ApplyHarness['run']; mutateTimeline: ApplyHarness['mutateTimeline']; recoverTask: ApplyHarness['recoverTask']};
+  assert.ok(options); const submit = options.submit as ApplyHarness['submit'];
+  return { ...actual, submit, tasks, refreshed, recovered, notices, currentProject, keys: () => keys, navigate: () => { epoch++; } };
 }
 test('actual App callback routes scalar request through real task client prepare/execute/ACK; no direct RPC or gain array', async () => {
   const wire = server(), h = await harness(wire), exact = await intent();
@@ -88,7 +95,7 @@ test('actual App callback routes scalar request through real task client prepare
 for (const lose of ['prepare','execute']) test(`actual App unknown ${lose} survives controller/server restart and recovers original key without a new prepare`, async () => {
   const wire = server({ lose }), h = await harness(wire), exact = await intent();
   assert.equal((await h.submit(exact, () => true)).status, 'unknown'); assert.equal(h.tasks.blocked(projectId), true);
-  assert.equal(wire.task.requestId, exact.input.requestId); assert.deepEqual(wire.task.input, exact.input);
+  assert.ok(wire.task); assert.equal(wire.task.requestId, exact.input.requestId); assert.deepEqual(wire.task.input, exact.input);
   wire.restart(); const next = await harness(wire), saved = next.tasks.getState(projectId).items[0];
   assert.equal(saved.requestId, exact.input.requestId); assert.deepEqual(saved.input, exact.input);
   await next.recoverTask(saved); assert.equal(next.tasks.blocked(projectId), false); assert.equal(wire.task.acknowledged, true);
@@ -100,7 +107,7 @@ test('late navigation after persisted prepare leaves original durable task recov
   const wire = server(), original = wire.fetcher; let allowed = true;
   wire.fetcher = async (...args) => { const value = await original(...args); if (args[0] === '/api/tasks/prepare') allowed = false; return value; };
   const h = await harness(wire), exact = await intent(); assert.equal((await h.submit(exact, () => allowed)).status, 'unknown');
-  assert.equal(wire.task.status, 'prepared'); assert.equal(wire.calls.some(call => call.path.endsWith('/execute')), false);
+  assert.ok(wire.task); assert.equal(wire.task.status, 'prepared'); assert.equal(wire.calls.some(call => call.path.endsWith('/execute')), false);
   assert.deepEqual(h.tasks.getState(projectId).items[0].input, exact.input);
 });
 test('malformed application ACK cannot release durable lane or become UI success', async () => {
@@ -116,11 +123,11 @@ test('apply is nested in the existing delivery card and recovers through existin
 });
 
 test('actual review and App durable path tolerate only their own validated prepared-task pending fence', async () => {
-  const observation = fixture(); observation.edit(); await observation.ready();
+  const observation = fixture(); observation.edit(); await observation.ready(undefined);
   const wire = server(), h = await harness(wire, pending => observation.set({ pending }));
   const controller = createTimelineLoudnessApplyController({ getObservation: () => timelineMixLoudnessViewState(observation.state(), observation.live()),
-    createRequestId: () => 'review-and-app-original-key', confirm: async () => true, submit: h.submit }); controller.attach();
-  const outcome = await controller.review(observation.state()); assert.equal(outcome.status,'applied');
-  assert.equal(wire.task.requestId,'review-and-app-original-key'); assert.equal(wire.task.acknowledged,true);
+    createRequestId: () => 'review-and-app-original-key', confirm: async () => true, submit: h.submit } as never); controller.attach();
+  const outcome = await controller.review(observation.state() as never); assert.equal((outcome as {status?: string} | null)?.status,'applied');
+  assert.ok(wire.task); assert.equal(wire.task.requestId,'review-and-app-original-key'); assert.equal(wire.task.acknowledged,true);
   assert.equal(wire.calls.filter(call=>call.path.endsWith('/execute')).length,1);
 });

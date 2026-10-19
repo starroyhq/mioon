@@ -22,118 +22,134 @@ import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 // Frozen pre-fix sources exercise the identical causal test without changing
 // the worktree. Only these four non-secret renderer files are substituted.
-const sourcePath = filename => process.env.MIOON_LOUDNESS_CLOSE_SOURCE_ROOT
+const sourcePath = (filename: string): URL => process.env.MIOON_LOUDNESS_CLOSE_SOURCE_ROOT
   ? pathToFileURL(resolve(process.env.MIOON_LOUDNESS_CLOSE_SOURCE_ROOT, filename)) : new URL(`../apps/web/src/${filename}`, import.meta.url);
-const { createNativeCloseAdmission, createNativeCloseRegistry } = await import(sourcePath('native-close-state.ts'));
+const { createNativeCloseAdmission, createNativeCloseRegistry } = await import(sourcePath('native-close-state.ts').href);
 let applyState = currentApplyState;
 if (process.env.MIOON_LOUDNESS_CLOSE_SOURCE_ROOT) {
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(readFileSync(sourcePath('timeline-loudness-apply-state.ts'), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(module, module.exports, name => {
+  Function('module', 'exports', 'require', transformSync(readFileSync(sourcePath('timeline-loudness-apply-state.ts'), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(module, module.exports, (name: string) => {
     if (name === '@mioon/contracts/timeline-loudness-apply') return applyContracts;
     if (name === './timeline-mix-loudness-state.ts') return mixState;
     throw Error(`Unexpected controller dependency ${name}`);
   });
-  applyState = module.exports;
+  applyState = module.exports as unknown as typeof currentApplyState;
 }
 const app = readFileSync(sourcePath('App.tsx'), 'utf8');
-const part = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
+const part = (start: string, end: string): string => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 const durable = part('  async function run(', '  async function runSession(');
 const mutate = part('  async function mutateTimeline(', '  async function selectClip(');
 const scopeReader = part('  function readTimelineLoudnessRecoveryScope()', '  const timelineLoudnessApply =');
 const apply = part('  const timelineLoudnessApply = useTimelineLoudnessApply(', '  const effectivePlayhead =');
 const stamp = '2026-10-14T00:00:00.000Z';
-function hookHarness() {
-  const hooks = [], effects = [], pending = []; let cursor = 0;
-  const react = {
-    useRef(value) { return hooks[cursor++] ??= { current: value }; },
-    useState(value) { const index = cursor++; hooks[index] ??= { value }; return [hooks[index].value, next => { hooks[index].value = next; }]; },
-    useLayoutEffect(fn, deps) { const index = cursor++, old = effects[index]; if (!old || !deps || deps.some((value, i) => value !== old.deps?.[i])) pending.push(() => { old?.cleanup?.(); effects[index] = { deps, fn, cleanup: fn() }; }); },
+interface HookRecord {current?: unknown; value?: unknown; deps?: unknown[]; fn?: () => (() => void) | void; cleanup?: (() => void) | void}
+interface ApplyViewController {review(observation: unknown): Promise<{status?: string} | null>; recovered(task: unknown, scope?: unknown): void; getState(): {phase: string; requestId?: string; error?: string}; getCloseState(): {blocked: boolean; busy: boolean}}
+interface ApplyView {controller: ApplyViewController; [key: string]: unknown}
+interface Gate {started: {promise: Promise<unknown>; resolve: (value: unknown) => void}; wait: {promise: Promise<unknown>; resolve: (value?: unknown) => void}}
+interface TaskRecord {id: string; digest: string; projectId: string; operation: string; input: {requestId: string; expectedRevision: number; candidateDigest: string; snapshotSha256: string; target: {integratedLufs: number; [key: string]: unknown}; [key: string]: unknown}; requestId: string; lane: string; status: string; revision: number; acknowledged: boolean; createdAt: string; updatedAt: string; origin?: unknown; [key: string]: unknown}
+type CloseAdmission = ReturnType<typeof createNativeCloseAdmission>
+interface CloseHarness {
+  registry: ReturnType<typeof createNativeCloseRegistry>; admission: CloseAdmission; observation: ReturnType<typeof fixture>;
+  document: EventTarget & {visibilityState: string}; window: EventTarget; calls: {path: string; body?: Record<string, unknown>}[]; busy: Set<string>;
+  transitions: boolean[]; wireTasks: Map<string, TaskRecord>; tasks: ReturnType<typeof createEditTaskController>; hook: ReturnType<typeof hookHarness>;
+  view(): ApplyView; render(): ApplyView; apply(): Promise<{status?: string} | null>; recover(task: TaskRecord | undefined): Promise<unknown>;
+  holdAcknowledgement(): Gate; reads(): number; confirms: unknown[]; requestKeys(): number; holdConfirmation(): Gate;
+  scope(): unknown; setStorage(scope: string | null, blocked?: boolean): void; navigate(nextProject?: string, scope?: string): Promise<ApplyView>;
+  unload(): {allowed: boolean; prevented: boolean};
+}
+function hookHarness(): {render(options: Record<string, unknown>): ApplyView; dispose(): void; reattach(): void} {
+  const hooks: HookRecord[] = [], effects: HookRecord[] = [], pending: (() => void)[] = []; let cursor = 0;
+  const react: Record<string, unknown> = {
+    useRef(value: unknown) { const index=cursor++; hooks[index] ??= { current: value }; return hooks[index]; },
+    useState(value: unknown) { const index = cursor++; hooks[index] ??= { value }; return [hooks[index]?.value, (next: unknown) => { const item=hooks[index]; if(item)item.value = next; }]; },
+    useLayoutEffect(fn: () => (() => void) | void, deps?: unknown[]) { const index = cursor++, old = effects[index]; if (!old || !deps || deps.some((value, i) => value !== old.deps?.[i])) pending.push(() => { old?.cleanup?.(); effects[index] = { deps, fn, cleanup: fn() }; }); },
   };
-  const module = { exports: {} };
+  const module: {exports: Record<string, unknown>} = { exports: {} };
   const source = readFileSync(sourcePath('use-timeline-loudness-apply.ts'), 'utf8');
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'ts', format: 'cjs' }).code)(module, module.exports, name => {
+  Function('module', 'exports', 'require', transformSync(source, { loader: 'ts', format: 'cjs' }).code)(module, module.exports, (name: string) => {
     if (name === 'react') return react;
     if (name === './timeline-loudness-apply-state.ts') return applyState;
     throw Error(`Unexpected hook dependency ${name}`);
   });
   return {
-    render(options) { cursor = 0; const result = module.exports.useTimelineLoudnessApply(options); while (pending.length) pending.shift()(); return result; },
+    render(options: Record<string, unknown>) { cursor = 0; const result = (module.exports.useTimelineLoudnessApply as (value: unknown) => ApplyView)(options); while (pending.length) pending.shift()?.(); return result; },
     dispose() { effects.forEach(effect => effect?.cleanup?.()); },
-    reattach() { effects.forEach(effect => { if (effect) effect.cleanup = effect.fn(); }); },
+    reattach() { effects.forEach(effect => { if (effect) effect.cleanup = effect.fn?.(); }); },
   };
 }
-async function harness(t, { lose = 'execute' } = {}) {
+async function harness(t: import('node:test').TestContext, { lose = 'execute' }: {lose?: string} = {}): Promise<CloseHarness> {
   const previous = { document: globalThis.document, window: globalThis.window };
-  const document = new EventTarget(), window = new EventTarget(); document.visibilityState = 'visible';
-  globalThis.document = document; globalThis.window = window;
-  const observation = fixture(); observation.edit(); await observation.ready();
-  const calls = [], busy = new Set(), transitions = [], wireTasks = new Map(); let serial = 70, ackGate = null, confirmGate = null, contextReads = 0, requestKeys = 0;
-  const confirms = [];
-  const reply = data => new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const document = new EventTarget() as EventTarget & {visibilityState: string}, window = new EventTarget(); document.visibilityState = 'visible';
+  (globalThis as unknown as {document: unknown}).document = document; (globalThis as unknown as {window: unknown}).window = window;
+  const observation = fixture(); observation.edit(); await observation.ready(undefined);
+  const calls: {path: string; body?: Record<string, unknown>}[] = [], busy = new Set<string>(), transitions: boolean[] = [], wireTasks = new Map<string, TaskRecord>(); let serial = 70, ackGate: Gate | null = null, confirmGate: Gate | null = null, contextReads = 0, requestKeys = 0;
+  const confirms: unknown[] = [];
+  const reply = (data: unknown): Response => new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   const instanceId = id(69);
-  const fetcher = async (path, options = {}) => {
-    const body = options.body ? JSON.parse(options.body) : undefined; calls.push({ path, body });
+  const fetcher = async (path: string, options: RequestInit = {}): Promise<Response> => {
+    const body: Record<string, unknown> | undefined = options.body ? JSON.parse(String(options.body)) : undefined; calls.push({ path, body });
     if (path.startsWith('/api/tasks?')) return reply({ items: [...wireTasks.values()].filter(task => !task.acknowledged && task.projectId === new URL(path, 'http://localhost').searchParams.get('projectId')), nextCursor: null, instanceId });
     if (path === '/api/tasks/prepare') {
-      const task = { id: id(serial++), digest: 'd'.repeat(64), projectId: body.projectId, operation: body.operation, input: structuredClone(body.input), requestId: body.input.requestId,
-        lane: 'timeline:mutation', status: 'prepared', revision: 1, acknowledged: false, createdAt: stamp, updatedAt: stamp, origin: body.origin };
+      const prepareInput = (body?.input ?? {}) as TaskRecord['input'];
+      const task: TaskRecord = { id: id(serial++), digest: 'd'.repeat(64), projectId: String(body?.projectId), operation: String(body?.operation), input: structuredClone(prepareInput), requestId: prepareInput.requestId,
+        lane: 'timeline:mutation', status: 'prepared', revision: 1, acknowledged: false, createdAt: stamp, updatedAt: stamp, origin: body?.origin };
       wireTasks.set(task.id, task); if (lose === 'prepare') throw Error('Prepare response lost after persistence'); return reply({ task, instanceId });
     }
-    const taskId = path.split('/')[3], task = wireTasks.get(taskId?.split('?')[0]);
+    const taskId = path.split('/')[3]?.split('?')[0]; assert.ok(taskId); const task = wireTasks.get(taskId);
     assert.ok(task, `Expected original task for ${path}`);
     if (path.endsWith('/execute')) { wireTasks.set(task.id, { ...task, status: 'applied', revision: 3 }); throw Object.assign(Error('Execute response timed out after commit'), { code: 'REQUEST_TIMEOUT' }); }
     if (path.endsWith('/acknowledge')) { const ack = { ...task, acknowledged: true, revision: task.revision + 1 }; wireTasks.set(task.id, ack); if (ackGate) { const gate = ackGate; ackGate = null; gate.started.resolve(ack); await gate.wait.promise; } return reply({ task: ack, instanceId }); }
     return reply({ task, instanceId });
   };
-  const tasks = createEditTaskController({ client: createEditTaskClient({ fetcher }) }); await tasks.load(projectId);
+  const tasks = createEditTaskController({ client: createEditTaskClient({ fetcher: fetcher as never }) }); await tasks.load(projectId);
   const registry = createNativeCloseRegistry(), hook = hookHarness();
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
   let keys = 0, epoch = 0;
-  const env = {
+  const env: Record<string, unknown> = {
     application: null, clipDraftRef: { current: null }, setSubjectRefresh: () => undefined, msg: messageKey,
-    localizedError: value => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
+    localizedError: (value: never) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     workspaceOriginScope, workspaceRef: { current: { restored: false } }, preferenceScope: { current: 'a'.repeat(64) },
     lastProjectRef: { current: { getState: () => ({ identityBlocked: false }) } }, timelineLoudnessApplyRecoveryScope: currentApplyState.timelineLoudnessApplyRecoveryScope, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,
     nativeCloseRegistry: { current: registry }, timelineLoudnessApplyRef: { current: null },
     timelineMixLoudness: { controller: observation.controller }, timelineMixLoudnessContext: () => { contextReads++; return observation.live(); }, timelineMixLoudnessViewState,
-    timelinePending: false, requestId: () => { requestKeys++; return `close-original-key-${++keys}`; }, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: captured => captured.projectId === currentProject.current && captured.epoch === epoch,
+    timelinePending: false, requestId: () => { requestKeys++; return `close-original-key-${++keys}`; }, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: (captured: {projectId: string; epoch: number}) => captured.projectId === currentProject.current && captured.epoch === epoch,
     captureTaskWorkspaceIntent: () => () => false, readTaskRevealContext: () => ({}), pendingForProject: () => [], isMutationOperation: () => false,
-    isBusy: key => busy.has(key), markBusy: (_owner, key, value) => { if (value) busy.add(key); else busy.delete(key); observation.set({ pending: value }); transitions.push(value); },
-    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: update => { dataRef.current = update(dataRef.current); }, refresh: async () => undefined,
-    notify: () => undefined, openTasks: () => undefined, setAuth: () => undefined, readableError: error => error.message,
+    isBusy: (key: string) => busy.has(key), markBusy: (_owner: string, key: string, value: boolean) => { if (value) busy.add(key); else busy.delete(key); observation.set({ pending: value }); transitions.push(value); },
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: (update: (previous: typeof dataRef.current) => typeof dataRef.current) => { dataRef.current = update(dataRef.current); }, refresh: async () => undefined,
+    notify: () => undefined, openTasks: () => undefined, setAuth: () => undefined, readableError: (error: Error) => error.message,
     runSession: () => assert.fail('No legacy session mutation'), timelineFormatRef: { current: null }, subtitlesRef: { current: null },
-    useTimelineLoudnessApply: options => hook.render(options), confirm: async message => { confirms.push(message); if (confirmGate) { const gate = confirmGate; confirmGate = null; gate.started.resolve(); return gate.wait.promise; } return true; },
+    useTimelineLoudnessApply: (options: Record<string, unknown>) => hook.render(options), confirm: async (message: unknown) => { confirms.push(message); if (confirmGate) { const gate = confirmGate; confirmGate = null; gate.started.resolve(undefined); return gate.wait.promise; } return true; },
   };
-  const execute = () => Function(...Object.keys(env), `${durable}\n${mutate}\n${scopeReader}\n${apply}\nreturn { view: timelineLoudnessApply, recoverTask };`)(...Object.values(env));
+  const execute = () => Function(...Object.keys(env), `${durable}\n${mutate}\n${scopeReader}\n${apply}\nreturn { view: timelineLoudnessApply, recoverTask };`)(...Object.values(env)) as unknown as {view: ApplyView; recoverTask: (task: TaskRecord | undefined) => Promise<unknown>};
   let actual = execute();
   const admission = createNativeCloseAdmission({ registry, settings: createSettingsNavigationRegistry(), readScope: () => `${currentProject.current}:${epoch}`, readLegacyDirty: () => false,
     readAdditionalSnapshot: () => ({ dirty: false, busy: busy.size > 0, unknown: false, identity: [currentProject.current, epoch] }), now: () => 1000, newToken: () => `close-${++keys}` });
-  const h = { registry, admission, observation, document, window, calls, busy, transitions, wireTasks, tasks, hook,
+  const h: CloseHarness = { registry, admission, observation, document, window, calls, busy: busy as Set<string>, transitions, wireTasks, tasks, hook,
     view: () => actual.view, render() { actual = execute(); return actual.view; },
     async apply() { return actual.view.controller.review(timelineMixLoudnessViewState(observation.state(), observation.live())); },
-    recover(task) { return actual.recoverTask(task); },
+    recover(task: TaskRecord | undefined) { return actual.recoverTask(task); },
     holdAcknowledgement() { ackGate = { started: deferred(), wait: deferred() }; return ackGate; },
     reads: () => contextReads, confirms, requestKeys: () => requestKeys,
     holdConfirmation() { confirmGate = { started: deferred(), wait: deferred() }; return confirmGate; },
-    scope: () => currentApplyState.timelineLoudnessApplyRecoveryScope(env.preferenceScope.current, workspaceOriginScope(env.workspaceRef.current)),
-    setStorage(scope, blocked = false) { env.preferenceScope.current = scope; env.lastProjectRef.current = { getState: () => ({ identityBlocked: blocked }) }; },
-    async navigate(nextProject = id(90), scope = `${nextProject}:2:normal`) { currentProject.current = nextProject; epoch++; observation.set({ projectId: nextProject, scope, pending: false }); dataRef.current = { ...dataRef.current, project: { id: nextProject } }; await tasks.load(nextProject); return h.render(); },
+    scope: () => currentApplyState.timelineLoudnessApplyRecoveryScope((env.preferenceScope as {current: string}).current, workspaceOriginScope((env.workspaceRef as {current: {restored: boolean}}).current)),
+    setStorage(scope: string | null, blocked = false) { (env.preferenceScope as {current: string | null}).current = scope; (env.lastProjectRef as {current: unknown}).current = { getState: () => ({ identityBlocked: blocked }) }; },
+    async navigate(nextProject: string = id(90), scope: string = `${nextProject}:2:normal`) { currentProject.current = nextProject; epoch++; observation.set({ projectId: nextProject, scope, pending: false }); dataRef.current = { ...dataRef.current, project: { id: nextProject } }; await tasks.load(nextProject); return h.render(); },
     unload() { let prevented = false; const event = { preventDefault() { prevented = true; }, returnValue: undefined }; return { allowed: admission.beforeUnload(event), prevented }; },
   };
-  t.after(() => { try { hook.dispose(); } finally { globalThis.document = previous.document; globalThis.window = previous.window; } }); return h;
+  t.after(() => { try { hook.dispose(); } finally { (globalThis as unknown as {document: unknown}).document = previous.document; (globalThis as unknown as {window: unknown}).window = previous.window; } }); return h;
 }
 
 test('actual App timeout clears generic busy, but apply unknown remains a native hard block through exact recovery', async t => {
   const h = await harness(t);
   assert.equal(h.admission.inspect().disposition, 'clean');
-  assert.equal((await h.apply()).status, 'unknown');
+  assert.equal((await h.apply())?.status, 'unknown');
   assert.equal(h.view().controller.getState().phase, 'unknown');
   assert.equal(h.busy.size, 0); assert.deepEqual(h.transitions, [true, false]);
   // This is the causal regression: no rerender is needed to report the unknown.
   assert.equal(h.admission.inspect().disposition, 'blocked');
   assert.deepEqual(h.unload(), { allowed: false, prevented: true });
-  const saved = h.tasks.getState(projectId).items[0]; await h.recover(saved);
-  assert.equal(h.wireTasks.get(saved.id).acknowledged, true);
+  const saved = h.tasks.getState(projectId).items[0]; assert.ok(saved); await h.recover(saved as unknown as TaskRecord);
+  const savedTask=h.wireTasks.get(saved.id); assert.ok(savedTask); assert.equal(savedTask.acknowledged, true);
   assert.equal(h.view().controller.getState().phase, 'applied');
   assert.equal(h.admission.inspect().disposition, 'clean');
   assert.deepEqual(h.unload(), { allowed: true, prevented: false });
@@ -167,13 +183,13 @@ test('only the exact original acknowledged terminal task can release close; stal
 
 test('lost prepare retains original scalar binding and clears only after explicit terminal recovery without another prepare', async t => {
   const h = await harness(t, { lose: 'prepare' });
-  assert.equal((await h.apply()).status, 'unknown'); assert.equal(h.busy.size, 0);
+  assert.equal((await h.apply())?.status, 'unknown'); assert.equal(h.busy.size, 0);
   assert.equal(h.admission.inspect().disposition, 'blocked');
   const original = [...h.wireTasks.values()][0];
   h.view().controller.recovered({ ...original, input: { ...original.input, snapshotSha256: 'c'.repeat(64) }, status: 'not_applied', revision: 2, acknowledged: true }, h.scope());
   assert.equal(h.admission.inspect().disposition, 'blocked');
   h.wireTasks.set(original.id, { ...original, status: 'not_applied', revision: 2 });
-  await h.tasks.load(projectId); await h.recover(h.tasks.getState(projectId).items[0]);
+  await h.tasks.load(projectId); await h.recover(h.tasks.getState(projectId).items[0] as unknown as TaskRecord);
   assert.equal(h.view().controller.getState().phase, 'error'); assert.equal(h.admission.inspect().disposition, 'clean');
   assert.equal(h.calls.filter(call => call.path === '/api/tasks/prepare').length, 1);
   assert.equal(h.calls.some(call => call.path.endsWith('/execute')), false);
@@ -187,9 +203,9 @@ test('hiding, navigation and a late old-project ACK retain the new owner and its
   h.document.visibilityState = 'visible'; h.document.dispatchEvent(new Event('visibilitychange'));
   const gate = h.holdAcknowledgement(), recovering = h.recover(original); await gate.started.promise;
   await h.navigate(); assert.equal(h.admission.inspect().disposition, 'blocked');
-  h.observation.edit(); await h.observation.ready(); h.render(); await h.apply();
+  h.observation.edit(); await h.observation.ready(undefined); h.render(); await h.apply();
   const next = [...h.wireTasks.values()].find(task => task.id !== original.id), state = h.view().controller.getState();
-  assert.equal(state.requestId, next.requestId); assert.equal(state.phase, 'unknown');
+  assert.ok(next); assert.equal(state.requestId, next.requestId); assert.equal(state.phase, 'unknown');
   gate.wait.resolve(); await recovering;
   assert.equal(h.view().controller.getState(), state, 'Old ACK must not replace the new owner UI');
   assert.equal(h.admission.inspect().disposition, 'blocked', 'Old ACK cannot clear the new pending owner');
@@ -245,7 +261,8 @@ test('close inspection and final beforeunload are pure cached reads with no cont
 
 test('actual App recovery scope rejects copied tasks in another normal workspace or blocked identity, but permits original workspace after UI epoch change', async t => {
   const h = await harness(t); await h.apply(); const original = [...h.wireTasks.values()][0];
-  for (const [scope, blocked] of [['b'.repeat(64), false], ['a'.repeat(64), true], [null, false], ['invalid', false]]) {
+  const identityCasesA: [string | null, boolean][] = [['b'.repeat(64), false], ['a'.repeat(64), true], [null, false], ['invalid', false]];
+  for (const [scope, blocked] of identityCasesA) {
     h.setStorage(scope, blocked); await h.recover(original);
     assert.equal(h.admission.inspect().disposition, 'blocked', 'A copied terminal task from a different or unverified database cannot settle the original');
   }
@@ -266,7 +283,8 @@ test('retired hook listeners and cleanup cannot publish into or release a newer 
 });
 
 
-for (const [name, scope, blocked] of [['missing', null, false], ['malformed', 'invalid', false], ['blocked', 'a'.repeat(64), true]]) {
+const identityCasesB: [string, string | null, boolean][] = [['missing', null, false], ['malformed', 'invalid', false], ['blocked', 'a'.repeat(64), true]];
+for (const [name, scope, blocked] of identityCasesB) {
   test(`actual App ${name} recovery identity cannot confirm, mint a request or create a pending apply`, async t => {
     const h = await harness(t); h.setStorage(scope, blocked); h.render();
     assert.equal(await h.apply(), null);
@@ -274,25 +292,26 @@ for (const [name, scope, blocked] of [['missing', null, false], ['malformed', 'i
     assert.equal(h.calls.some(call => call.path === '/api/tasks/prepare'), false); assert.equal(h.wireTasks.size, 0);
     assert.equal(h.view().controller.getCloseState().blocked, false); assert.equal(h.view().controller.getCloseState().busy, false);
     assert.equal(h.admission.inspect().disposition, 'clean');
-    assert.match(h.view().controller.getState().error, /工作区身份.*未.*核验|身份尚未核验/);
-    h.setStorage('a'.repeat(64)); h.observation.edit(); await h.observation.ready(); h.render();
-    assert.equal((await h.apply()).status, 'unknown'); assert.equal(h.confirms.length, 1); assert.ok(h.requestKeys() > 0);
+    assert.match(String(h.view().controller.getState().error), /工作区身份.*未.*核验|身份尚未核验/);
+    h.setStorage('a'.repeat(64)); h.observation.edit(); await h.observation.ready(undefined); h.render();
+    assert.equal((await h.apply())?.status, 'unknown'); assert.equal(h.confirms.length, 1); assert.ok(h.requestKeys() > 0);
     assert.equal(h.calls.filter(call => call.path === '/api/tasks/prepare').length, 1);
     const original = [...h.wireTasks.values()][0]; await h.recover(original); assert.equal(h.admission.inspect().disposition, 'clean');
   });
 }
 
-for (const notify of [false, true]) for (const [name, scope, blocked] of [['changed', 'b'.repeat(64), false], ['unverified', null, false], ['blocked', 'a'.repeat(64), true]]) {
+const identityCasesC: [string, string | null, boolean][] = [['changed', 'b'.repeat(64), false], ['unverified', null, false], ['blocked', 'a'.repeat(64), true]];
+for (const notify of [false, true]) for (const [name, scope, blocked] of identityCasesC) {
   test(`actual App ${name} recovery identity during confirmation exits busy without POST, with${notify ? '' : 'out'} render`, async t => {
     const h = await harness(t), gate = h.holdConfirmation(), reviewing = h.apply(); await gate.started.promise;
     assert.equal(h.view().controller.getState().phase, 'confirming');
     h.setStorage(scope, blocked); if (notify) h.render(); gate.wait.resolve(true); assert.equal(await reviewing, null);
-    const state = h.view().controller.getState(); assert.ok(['stale', 'error'].includes(state.phase)); assert.match(state.error, /身份/);
+    const state = h.view().controller.getState(); assert.ok(['stale', 'error'].includes(state.phase)); assert.match(String(state.error), /身份/);
     assert.equal(h.wireTasks.size, 0); assert.equal(h.calls.some(call => call.path === '/api/tasks/prepare'), false);
     assert.equal(h.view().controller.getCloseState().busy, false); assert.equal(h.view().controller.getCloseState().blocked, false);
     assert.equal(h.admission.inspect().disposition, 'clean');
-    h.setStorage('a'.repeat(64)); h.observation.edit(); await h.observation.ready(); h.render();
-    assert.equal((await h.apply()).status, 'unknown'); const original = [...h.wireTasks.values()][0]; await h.recover(original);
+    h.setStorage('a'.repeat(64)); h.observation.edit(); await h.observation.ready(undefined); h.render();
+    assert.equal((await h.apply())?.status, 'unknown'); const original = [...h.wireTasks.values()][0]; await h.recover(original);
     assert.equal(h.admission.inspect().disposition, 'clean');
   });
 }

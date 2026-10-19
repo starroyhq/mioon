@@ -18,7 +18,7 @@ for(const pair of pairs){
   assert.equal(info.sourceSchema,pair.source);assert.equal(info.schemaVersion,pair.restored);assert.equal(info.profile,pair.profile);
   const populatedKinds=db.prepare('SELECT DISTINCT kind FROM workspace_restore_holds ORDER BY kind').all().map(row=>row.kind);
   assert.deepEqual(populatedKinds,populated?expectedPopulated(pair).sort():[]);
-  if(populated)assert.equal(db.prepare("SELECT CAST(capturedRowid AS TEXT) AS id FROM workspace_restore_holds WHERE kind='timeline_requests'").get().id,'9007199254740993');
+  if(populated)assert.equal(db.prepare("SELECT CAST(capturedRowid AS TEXT) AS id FROM workspace_restore_holds WHERE kind='timeline_requests'").get()!.id,'9007199254740993');
   readOnly(db,()=>{assert.deepEqual(pair.validate(db),info);assert.deepEqual(dispatch.validateRestore(db),info);assert.deepEqual(dispatch.initialize(db),info);});
  });
 
@@ -26,7 +26,7 @@ for(const pair of pairs){
   const db=fresh(t,pair,{populated:true});pair.install(db,metadata());
   alter(db,['workspace_restore_holds'],()=>db.prepare("UPDATE workspace_restore_holds SET rowHash=? WHERE kind='timeline_requests'").run(wrongHash));
   readOnly(db,()=>assert.equal(pair.validate(db).schemaVersion,pair.restored));
-  readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'});
+  readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'} as never);
  });
 
  test(`historical ${pair.restored}: ${pair.families.length*2} absent-pointer negatives across every fixed family (pointer coverage, not content coverage)`,async t=>{
@@ -35,7 +35,7 @@ for(const pair of pairs){
    assert.equal(db.prepare(`SELECT 1 FROM ${quote(kind)} WHERE rowid=?`).get(pointer),undefined);
    alter(db,['workspace_restore_holds'],()=>insert(db,'workspace_restore_holds',{kind,id:'missing-capture',capturedRowid:pointer,projectId:null,namespace:null,requestId:null,operation:null,rowHash:wrongHash}));
    readOnly(db,()=>assert.equal(pair.validate(db).schemaVersion,pair.restored),{full:false});
-   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false});checked++;
+   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false} as never);checked++;
   }));
   assert.equal(checked,pair.families.length*2);assert.deepEqual(snapshot(db),original);
  });
@@ -43,10 +43,10 @@ for(const pair of pairs){
  test(`historical ${pair.restored}: wrong well-formed hash for each of ${expectedPopulated(pair).length} genuinely populated families`,async t=>{
   const db=fresh(t,pair,{populated:true});pair.install(db,metadata());
   for(const kind of expectedPopulated(pair))await t.test(kind,()=>probe(db,()=>{
-   assert.equal(db.prepare('SELECT count(*) AS n FROM workspace_restore_holds WHERE kind=?').get(kind).n,1);
+   assert.equal(db.prepare('SELECT count(*) AS n FROM workspace_restore_holds WHERE kind=?').get(kind)!.n,1);
    alter(db,['workspace_restore_holds'],()=>db.prepare('UPDATE workspace_restore_holds SET rowHash=? WHERE kind=?').run(wrongHash,kind));
    readOnly(db,()=>assert.equal(pair.validate(db).schemaVersion,pair.restored),{full:false});
-   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false});
+   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false} as never);
   }));
  });
 
@@ -55,7 +55,7 @@ for(const pair of pairs){
   for(const [field,value] of [['id','other-timeline-request'],['projectId',id(99)],['namespace','reference'],['requestId','other-request'],['operation','timeline.redo']])await t.test(field,()=>probe(db,()=>{
    alter(db,['workspace_restore_holds'],()=>db.prepare(`UPDATE workspace_restore_holds SET ${quote(field)}=? WHERE kind='timeline_requests'`).run(value));
    readOnly(db,()=>assert.equal(pair.validate(db).schemaVersion,pair.restored),{full:false});
-   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false});
+   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false} as never);
   }));
  });
 }

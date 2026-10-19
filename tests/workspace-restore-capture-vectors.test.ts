@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {validateHistoricalRestoreCapture} from '../packages/business/src/workspace-restore-capture-integrity.ts';
+import type {TestContext} from 'node:test';
+type Loose = Record<string, unknown>;
 import {pairs,expectedPopulated,fresh,metadata,dispatch,alter,probe,readOnly,insert,snapshot,id,quote,wholeRowDigest,refreshFixtureHash} from './workspace-restore-capture-fixtures.mjs';
 
 const contentChanges={jobs:"data=data||' '",exports:"data=data||' '",versions:"data=data||' '",job_events:"event=CAST(event||x'20' AS BLOB)",timeline_requests:"response=response||' '",reference_requests:"response=response||' '",idempotency:"requestHash='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",mutation_requests:"response=response||' '",asset_range_requests:"response=response||' '",asset_disposition_requests:"response=response||' '",subject_requests:"response=response||' '",agent_chat_threads:'revision=revision+1',agent_chat_requests:"acceptance=acceptance||' '",agent_chat_runs:"data=data||' '",agent_chat_events:"data=data||' '",agent_chat_steps:"data=data||' '",agent_chat_quota:'runs=runs+1',agent_edit_proposals:"definition=definition||' '",edit_tasks:"updatedAt='later'",project_lut_resources:"createdAt='2026-10-16T01:00:00.000Z'",asset_annotations:'revision=revision+1',asset_annotation_requests:"response=response||' '"};
@@ -10,9 +12,9 @@ for(const pair of pairs){
   const holds=db.prepare('SELECT kind,capturedRowid,rowHash FROM workspace_restore_holds');holds.setReadBigInts(true);
   for(const hold of holds.all())assert.equal(wholeRowDigest(db,hold.kind,hold.capturedRowid),hold.rowHash,'independent whole-byte oracle equals unchanged constructor');
   for(const kind of expectedPopulated(pair).filter(name=>name!=='lut_import_requests'))await t.test(kind,()=>probe(db,()=>{
-   alter(db,[kind],()=>db.exec(`UPDATE ${quote(kind)} SET ${contentChanges[kind]}`));
+   alter(db,[kind],()=>db.exec(`UPDATE ${quote(kind)} SET ${(contentChanges as Record<string, string>)[kind as string]}`));
    readOnly(db,()=>assert.equal(pair.validate(db).schemaVersion,pair.restored),{full:false});
-   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false});
+   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false} as never);
   }));
  });
 
@@ -41,43 +43,44 @@ for(const pair of pairs){
   readOnly(db,()=>dispatch.validateRestore(db));
   for(const {rowid,value} of vectors)probe(db,()=>{
    alter(db,['job_events'],()=>db.prepare('UPDATE job_events SET event=? WHERE rowid=?').run(typeof value==='string'?value+'!':Buffer.concat([value,Buffer.from([33])]),rowid));
-   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false});
+   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false} as never);
   });
   for(const [rowid,value] of [[0n,Buffer.alloc(0)],[9007199254740993n,Buffer.from('界\0end')]])probe(db,()=>{
    alter(db,['job_events'],()=>db.prepare('UPDATE job_events SET event=? WHERE rowid=?').run(value,rowid));
-   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false});
+   readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED',full:false} as never);
   });
  });
 
  test(`historical ${pair.restored}: null framing and genuine SQLite REAL formatting match constructor bytes`,t=>{
   const db=fresh(t,pair,{populated:true});db.prepare('UPDATE agent_chat_quota SET runs=?,bytes=?,reservedBytes=?').run(1e-7,1.2345678901234567,1e30);
   pair.install(db,metadata());
-  assert.equal(db.prepare('SELECT typeof(runs) AS type FROM agent_chat_quota').get().type,'real');
+  assert.equal(db.prepare('SELECT typeof(runs) AS type FROM agent_chat_quota').get()!.type,'real');
   const stmt=db.prepare('SELECT kind,capturedRowid,rowHash FROM workspace_restore_holds');stmt.setReadBigInts(true);
   for(const row of stmt.all())assert.equal(wholeRowDigest(db,row.kind,row.capturedRowid),row.rowHash);
   readOnly(db,()=>dispatch.validateRestore(db));
   // The constructor excludes only executionEpoch. An epoch mismatch is still
   // refused by the unchanged earlier validator, not mislabeled a digest error.
-  probe(db,()=>{alter(db,['edit_tasks'],()=>db.prepare('UPDATE edit_tasks SET executionEpoch=?').run(id(777)));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EPOCH_INVALID'});});
+  probe(db,()=>{alter(db,['edit_tasks'],()=>db.prepare('UPDATE edit_tasks SET executionEpoch=?').run(id(777)));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EPOCH_INVALID'} as never as never);});
  });
 
  test(`historical ${pair.restored}: invalid live request shape preserves identity diagnostic after matching independent digest`,t=>{
   const db=fresh(t,pair,{populated:true});pair.install(db,metadata());
   alter(db,['timeline_requests','workspace_restore_holds'],()=>{db.exec("UPDATE timeline_requests SET requestId=''");refreshFixtureHash(db,'timeline_requests');});
   readOnly(db,()=>assert.equal(pair.validate(db).schemaVersion,pair.restored));
-  readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_IDENTITY_INVALID'});
+  readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_IDENTITY_INVALID'} as never);
  });
 
  test(`historical ${pair.restored}: gate exact tuple is not a version-range admission API`,t=>{
   const db=fresh(t,pair);pair.install(db,metadata());
-  readOnly(db,()=>validateHistoricalRestoreCapture(db,pair.restored));
-  for(const wrong of [25,27,29,31,33,35,37,39].filter(value=>value!==pair.restored))readOnly(db,()=>validateHistoricalRestoreCapture(db,wrong),{code:'RESTORE_METADATA_INVALID',full:false});
-  for(const wrong of [24,26,40,41,42])readOnly(db,()=>validateHistoricalRestoreCapture(db,wrong),{code:'RESTORE_SCHEMA_UNSUPPORTED',full:false});
+  readOnly(db,()=>validateHistoricalRestoreCapture(db,pair.restored as never));
+  for(const wrong of [25,27,29,31,33,35,37,39].filter(value=>value!==pair.restored))readOnly(db,()=>validateHistoricalRestoreCapture(db,wrong as never),{code:'RESTORE_METADATA_INVALID',full:false} as never as never);
+  for(const wrong of [24,26,40,41,42])readOnly(db,()=>validateHistoricalRestoreCapture(db,wrong as never),{code:'RESTORE_SCHEMA_UNSUPPORTED',full:false} as never);
  });
 }
 
-function exportSource(t,pair,{mode='storyboard',explicit=true,receipt=true}={}){
- const db=fresh(t,pair),projectId=id(1),exportId=id(5),requestId='export-matrix-key';
+interface PairLike {install: (db: unknown, info: unknown)=>unknown}
+function exportSource(t: TestContext,pair: PairLike,{mode='storyboard',explicit=true,receipt=true}: {mode?: string|null; explicit?: boolean; receipt?: boolean}={}): {db: ReturnType<typeof fresh>; info: unknown; requestId: string; exportId: string; projectId: string}{
+ const db=fresh(t,pair as never),projectId=id(1),exportId=id(5),requestId='export-matrix-key';
  insert(db,'projects',{id:projectId,data:JSON.stringify({id:projectId})});
  const data={id:exportId,projectId,...(mode==='absent'?{}:{mode}),...(explicit?{requestId}:{})};
  insert(db,'exports',{id:exportId,projectId,data:JSON.stringify(data)});
@@ -109,30 +112,30 @@ for(const pair of pairs){
   for(const [field,value,code] of [['namespace','other','RESTORE_EXPORT_IDENTITY_UNSUPPORTED'],['namespace','timeline','RESTORE_EXPORT_IDENTITY_UNSUPPORTED'],['requestId','different-key','RESTORE_EXPORT_IDENTITY_UNSUPPORTED'],['operation','timeline.render','RESTORE_CAPTURE_CHANGED'],['projectId',id(99),'RESTORE_CAPTURE_CHANGED']])await t.test(`${field}=${value}`,()=>probe(db,()=>{
    alter(db,['workspace_restore_holds'],()=>db.prepare(`UPDATE workspace_restore_holds SET ${quote(field)}=? WHERE kind='exports'`).run(value));
    readOnly(db,()=>assert.equal(pair.validate(db).schemaVersion,pair.restored),{full:false});
-   readOnly(db,()=>dispatch.validateRestore(db),{code,full:false});
+   readOnly(db,()=>dispatch.validateRestore(db),{code,full:false} as never);
   }));
  });
 
  test(`historical ${pair.restored}: export live malformed mode/request and wrong receipt binding preserve unsupported diagnostics`,async t=>{
-  for(const [label,patch] of [['numeric mode',{mode:1}],['unsupported mode',{mode:'other'}],['object mode',{mode:{}}],['numeric request',{requestId:42}],['object request',{requestId:{}}]])await t.test(label,()=>{
+  for(const [label,patch] of ([['numeric mode',{mode:1}],['unsupported mode',{mode:'other'}],['object mode',{mode:{}}],['numeric request',{requestId:42}],['object request',{requestId:{}}]] as Array<[string, Loose]>))await t.test(label,()=>{
    const {db}=exportSource(t,pair);
-   alter(db,['exports','workspace_restore_holds'],()=>{const data=JSON.parse(db.prepare('SELECT data FROM exports').get().data);db.prepare('UPDATE exports SET data=?').run(JSON.stringify({...data,...patch}));refreshFixtureHash(db,'exports');});
-   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'});
+   alter(db,['exports','workspace_restore_holds'],()=>{const data=JSON.parse(db.prepare('SELECT data FROM exports').get()!.data as string) as Loose;db.prepare('UPDATE exports SET data=?').run(JSON.stringify({...data,...patch}));refreshFixtureHash(db,'exports');});
+   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'} as never);
   });
   for(const mode of ['timeline','storyboard'])for(const explicit of [true,false])await t.test(`missing saved receipt: ${mode}, explicit=${explicit}`,()=>{
    const {db}=exportSource(t,pair,{mode,explicit});const table=mode==='timeline'?'timeline_requests':'idempotency';
    alter(db,[table,'workspace_restore_holds'],()=>{db.exec(`DELETE FROM ${table}`);db.prepare('DELETE FROM workspace_restore_holds WHERE kind=?').run(table);});
-   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),explicit?{}:{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'});
+   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),explicit?{}:{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'} as never);
   });
   for(const mode of ['timeline','storyboard'])await t.test(`wrong receipt resource: ${mode}`,()=>{
    const {db}=exportSource(t,pair,{mode});const table=mode==='timeline'?'timeline_requests':'idempotency';
    alter(db,[table,'workspace_restore_holds'],()=>{if(mode==='timeline')db.prepare('UPDATE timeline_requests SET response=?').run(JSON.stringify({id:id(99),projectId:id(1)}));else db.prepare('UPDATE idempotency SET resourceId=?').run(id(99));refreshFixtureHash(db,table);});
-   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'});
+   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'} as never);
   });
   await t.test('wrong timeline receipt project',()=>{
    const {db}=exportSource(t,pair,{mode:'timeline'});
    alter(db,['timeline_requests','workspace_restore_holds'],()=>{db.prepare('UPDATE timeline_requests SET response=?').run(JSON.stringify({id:id(5),projectId:id(99)}));refreshFixtureHash(db,'timeline_requests');});
-   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'});
+   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_EXPORT_IDENTITY_UNSUPPORTED'} as never);
   });
  });
 }
@@ -146,16 +149,16 @@ for(const pair of pairs){
    alter(db,['workspace_restore_holds'],()=>{
     db.exec("UPDATE workspace_restore_holds SET capturedRowid=-9 WHERE kind='timeline_requests' AND capturedRowid=1; UPDATE workspace_restore_holds SET capturedRowid=1 WHERE kind='timeline_requests' AND capturedRowid=9007199254740993; UPDATE workspace_restore_holds SET capturedRowid=9007199254740993 WHERE kind='timeline_requests' AND capturedRowid=-9;");
    });
-   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'});
+   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'} as never);
   }));
   await t.test('cross-family existing pointer with donor hash',()=>probe(db,()=>{
-   const donor=db.prepare("SELECT capturedRowid,rowHash FROM workspace_restore_holds WHERE kind='reference_requests'").get();
-   alter(db,['workspace_restore_holds'],()=>{db.prepare("DELETE FROM workspace_restore_holds WHERE kind='timeline_requests' AND capturedRowid=1").run();db.prepare("UPDATE workspace_restore_holds SET capturedRowid=?,rowHash=? WHERE kind='timeline_requests'").run(donor.capturedRowid,donor.rowHash);});
-   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'});
+   const donor=db.prepare("SELECT capturedRowid,rowHash FROM workspace_restore_holds WHERE kind='reference_requests'").get() as {capturedRowid: unknown; rowHash: string};
+   alter(db,['workspace_restore_holds'],()=>{db.prepare("DELETE FROM workspace_restore_holds WHERE kind='timeline_requests' AND capturedRowid=1").run();db.prepare("UPDATE workspace_restore_holds SET capturedRowid=?,rowHash=? WHERE kind='timeline_requests'").run(donor.capturedRowid as never,donor.rowHash);});
+   readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'} as never);
   }));
   await t.test('deleted captured row',()=>probe(db,()=>{
    alter(db,['timeline_requests'],()=>db.prepare("DELETE FROM timeline_requests WHERE requestId='retained-timeline'").run());
-   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'});
+   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);readOnly(db,()=>pair.validate(db));readOnly(db,()=>dispatch.validateRestore(db),{code:'RESTORE_CAPTURE_CHANGED'} as never);
   }));
  });
 

@@ -17,37 +17,43 @@ import {timelineColourInputFilter} from '../packages/business/src/timeline-colou
 import {greyJfif,jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
 import {png, sha, imageColour, stamp} from './helpers/timeline-image-fixtures.ts';
 import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
+import type {DatabaseSync} from 'node:sqlite';
+interface ExportRowView {id: string; requestId: string; snapshot: Record<string, unknown>; assetId: string; status?: string; [key: string]: unknown}
+interface AssetRowView {id: string; relativePath: string; sha256: string; [key: string]: unknown}
+interface RenderResultView {id: string; requestId: string; snapshot: {colourPlan: {profileId?: string}; [key: string]: unknown}; [key: string]: unknown}
+interface TimelineRowView {id: string; projectId: string; revision: number; tracks: {id: string; kind?: string; [key: string]: unknown}[]; clips: {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; [key: string]: unknown}[]; [key: string]: unknown}
+interface ExecuteResult {completed: ExportRowView; persisted: unknown; asset: AssetRowView; file: string}
+const rowsOf = (db: DatabaseSync, table: string): Record<string, unknown>[] => db.prepare(`SELECT rowid AS retainedRowid, * FROM ${table} ORDER BY rowid`).all() as Record<string, unknown>[];
 
 const retainedTables = ['projects', 'assets', 'timelines', 'timeline_history',
   'timeline_history_cursors', 'timeline_requests', 'exports', 'project_lut_resources', 'lut_import_requests'];
-const rawRows = db => Object.fromEntries(retainedTables.map(table => [table,
-  db.prepare(`SELECT rowid AS retainedRowid, * FROM ${table} ORDER BY rowid`).all()]));
+const rawRows = (db: DatabaseSync): Record<string, Record<string, unknown>[]> => Object.fromEntries(retainedTables.map((table: string) => [table, rowsOf(db, table)]));
 
-function assertRetainedRows(db, captured) {
+function assertRetainedRows(db: DatabaseSync, captured: Record<string, Record<string, unknown>[]>): void {
   for (const [table, rows] of Object.entries(captured)) {
     for (const row of rows) {
       assert.deepEqual(db.prepare(`SELECT rowid AS retainedRowid, * FROM ${table} WHERE rowid=?`)
-        .get(row.retainedRowid), row, `${table}: exact captured row ${row.retainedRowid}`);
+        .get(row.retainedRowid as never), row, `${table}: exact captured row ${row.retainedRowid}`);
     }
   }
 }
 
-async function assertSourceBytes(root, files) {
+async function assertSourceBytes(root: string, files: Map<string, Uint8Array>): Promise<void> {
   for (const [relativePath, bytes] of files) {
     assert.deepEqual(await readFile(path.join(root, relativePath)), bytes, relativePath);
   }
 }
 
-async function executeQueued(store, services, accepted) {
+async function executeQueued(store: ReturnType<typeof openStore>, services: ReturnType<typeof createServices>, accepted: RenderResultView): Promise<ExecuteResult> {
   // The real local worker owns preparation, rendering, verification and publication.
   // No server, desktop runtime, provider or synthetic renderer is started.
   const worker = startWorker(store, services, new Map());
   try {
     await worker.tick();
-    const completed = await services.call('export.get', {exportId: accepted.id});
-    assert.equal(completed.status, 'succeeded', JSON.stringify(completed.error));
+    const completed = await services.call('export.get', {exportId: accepted.id}) as ExportRowView;
+    assert.equal(completed.status, 'succeeded', JSON.stringify(completed['error']));
     assert.deepEqual(completed.snapshot, accepted.snapshot);
-    const asset = store.get('assets', completed.assetId);
+    const asset = store.get('assets', completed.assetId) as AssetRowView;
     const file = path.join(store.root, asset.relativePath);
     assert.equal(sha(await readFile(file)), asset.sha256);
     return {completed, persisted: store.get('exports', completed.id), asset, file};
@@ -56,20 +62,20 @@ async function executeQueued(store, services, accepted) {
   }
 }
 
-async function decoded(file) {
-  const chunks = [];
+async function decoded(file: string): Promise<Buffer> {
+  const chunks: Uint8Array[] = [];
   await runStreaming('ffmpeg', ['-v', 'error', '-threads', '1', '-i', file,
     '-vf', `${timelineColourInputFilter('limited')},format=rgb24`, '-an',
     '-fps_mode', 'passthrough', '-threads', '1', '-f', 'rawvideo', 'pipe:1'], {
     timeout: 20000, maxStdoutBytes: 16 * 1024 * 1024,
-    onStdout: chunk => chunks.push(Buffer.from(chunk)),
+    onStdout: (chunk: Uint8Array) => { chunks.push(Buffer.from(chunk)); },
   });
   return Buffer.concat(chunks);
 }
 
-function assertMixedPixels(bytes) {
+function assertMixedPixels(bytes: Buffer): void {
   assert.equal(bytes.length, 6 * 720 * 720 * 3);
-  const pixel = (frame, x, y) => {
+  const pixel = (frame: number, x: number, y: number): number[] => {
     const start = (frame * 720 * 720 + y * 720 + x) * 3;
     return [...bytes.subarray(start, start + 3)];
   };
@@ -93,7 +99,7 @@ test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with ex
     const base = await mkdtemp(path.join(tmpdir(), 'mioon-image-restored-render-'));
     let source = path.join(base, 'source'), backup = path.join(base, 'backup');
     const restored = path.join(base, 'restored'), videoFile = path.join(base, 'video.mp4');
-    let store, services;
+    let store: ReturnType<typeof openStore> | undefined, services: ReturnType<typeof createServices> | undefined;
     const close = async () => {
       await services?.drain();
       services = undefined;
@@ -115,94 +121,94 @@ test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with ex
 
     store = openStore(source);
     services = createServices(store, new Map());
-    const project = await services.call('project.create', {name: 'Cold mixed SDR rerender'});
+    const project = await services.call('project.create', {name: 'Cold mixed SDR rerender'}) as {id: string; revision: number};
     const projectId = project.id;
     let timeline = await services.call('timeline.format.set', {projectId,
       expectedProjectRevision: project.revision, expectedRevision: 0,
-      requestId: randomUUID(), presetId: 'square_720'});
+      requestId: randomUUID(), presetId: 'square_720'}) as TimelineRowView;
     const video = await services.call('asset.import', {projectId, name: 'Video.mp4',
-      mimeType: 'video/mp4', dataBase64: videoBytes.toString('base64')});
+      mimeType: 'video/mp4', dataBase64: videoBytes.toString('base64')}) as AssetRowView;
     const image = await services.call('asset.import', {projectId, name: 'Still.jpg',
-      mimeType: 'image/jpeg', dataBase64: imageBytes.toString('base64')});
-    const motion = await services.call('timeline.colour.source.inspect', {projectId, assetId: video.id});
-    const picture = await services.call('timeline.colour.jpeg.inspect', {projectId, assetId: image.id});
+      mimeType: 'image/jpeg', dataBase64: imageBytes.toString('base64')}) as AssetRowView;
+    const motion = await services.call('timeline.colour.source.inspect', {projectId, assetId: video.id}) as {status: string; streamIndex: number; evidence: {range?: string}};
+    const picture = await services.call('timeline.colour.jpeg.inspect', {projectId, assetId: image.id}) as {status: string; evidence: Record<string, unknown>};
     assert.equal(motion.status, 'compatible');
     assert.equal(motion.evidence.range, 'limited');
     assert.equal(picture.status, 'needs_interpretation');
-    const overlay=await services.call('asset.import',{projectId,name:'Overlay.png',mimeType:'image/png',dataBase64:overlayBytes.toString('base64')});
-    const overlayInspection=await services.call('timeline.colour.image.inspect',{projectId,assetId:overlay.id});
+    const overlay=await services.call('asset.import',{projectId,name:'Overlay.png',mimeType:'image/png',dataBase64:overlayBytes.toString('base64')}) as AssetRowView;
+    const overlayInspection=await services.call('timeline.colour.image.inspect',{projectId,assetId:overlay.id}) as {evidence: Record<string, unknown>};
     const cube=Buffer.from('LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n');
-    const lut=await services.call('lut.import',{projectId,requestId:randomUUID(),name:'Retained.cube',dataBase64:cube.toString('base64')});
-    const params = extra => ({projectId, expectedRevision: timeline.revision, requestId: randomUUID(), ...extra});
+    const lut=await services.call('lut.import',{projectId,requestId:randomUUID(),name:'Retained.cube',dataBase64:cube.toString('base64')}) as {resource: {id: string}};
+    const params = (extra: Record<string, unknown>): Record<string, unknown> => ({projectId, expectedRevision: timeline.revision, requestId: randomUUID(), ...extra});
     const videoColour = {profileId: 'mioon-rec709-sdr-clip-v1', source: {
       assetSha256: video.sha256, streamIndex: motion.streamIndex, profileId: 'rec709-yuv-sdr-v1',
       range: 'limited', declaredBy: 'user', declaredAt: stamp}, look: null};
     timeline = await services.call('timeline.clip.add', params({assetId: video.id,
-      trackId: timeline.tracks[0].id, startFrame: 0, durationFrames: 6, colour: videoColour}));
+      trackId: timeline.tracks[0]?.id, startFrame: 0, durationFrames: 6, colour: videoColour})) as TimelineRowView;
     timeline = await services.call('timeline.clip.add', params({assetId: image.id,
-      trackId: timeline.tracks[1].id, startFrame: 0, durationFrames: 6,
-      rect: {x: 180, y: 180, width: 360, height: 360}, colour: jpegColour(picture.evidence)}));
-    timeline = await services.call('timeline.track.add',params({kind:'video',name:'PNG overlay'}));
-    timeline = await services.call('timeline.clip.add',params({assetId:overlay.id,trackId:timeline.tracks.at(-1).id,startFrame:0,durationFrames:6,rect:{x:360,y:360,width:180,height:180},colour:imageColour(overlayInspection.evidence)}));
+      trackId: timeline.tracks[1]?.id, startFrame: 0, durationFrames: 6,
+      rect: {x: 180, y: 180, width: 360, height: 360}, colour: jpegColour(picture.evidence as never)})) as TimelineRowView;
+    timeline = await services.call('timeline.track.add',params({kind:'video',name:'PNG overlay'})) as TimelineRowView;
+    timeline = await services.call('timeline.clip.add',params({assetId:overlay.id,trackId:timeline.tracks.at(-1)?.id,startFrame:0,durationFrames:6,rect:{x:360,y:360,width:180,height:180},colour:imageColour(overlayInspection.evidence as never)})) as TimelineRowView;
     timeline = await services.call('timeline.subtitle.add', params({text: 'Mixed SDR subtitle',
-      startFrame: 2, durationFrames: 2}));
+      startFrame: 2, durationFrames: 2})) as TimelineRowView;
 
-    const ordinary = await services.call('timeline.render', params({purpose: 'export'}));
+    const ordinary = await services.call('timeline.render', params({purpose: 'export'})) as RenderResultView;
     assert.equal(ordinary.snapshot.colourPlan.profileId, 'mioon-mixed-sdr-render-v3');
     const baseline = await executeQueued(store, services, ordinary);
     const ordinaryRgb = await decoded(baseline.file);
     assertMixedPixels(ordinaryRgb);
     // A second captured request remains genuinely queued. Restore must preserve it,
     // not resume it, while an independently acknowledged request may render.
-    const held = await services.call('timeline.render', params({purpose: 'export'}));
+    const held = await services.call('timeline.render', params({purpose: 'export'})) as RenderResultView;
     assert.deepEqual(held.snapshot, ordinary.snapshot);
-    const heldRecord = store.get('exports', held.id);
+    const heldRecord = store.get('exports', held.id) as ExportRowView;
     const captured = rawRows(store.db);
-    const sourceFiles = new Map([[store.get('assets', video.id).relativePath, videoBytes],
-      [store.get('assets', image.id).relativePath, imageBytes],
-      [store.get('assets', overlay.id).relativePath, overlayBytes],
+    const sourceFiles = new Map([[String((store.get('assets', video.id) as AssetRowView).relativePath), videoBytes],
+      [String((store.get('assets', image.id) as AssetRowView).relativePath), imageBytes],
+      [String((store.get('assets', overlay.id) as AssetRowView).relativePath), overlayBytes],
       [baseline.asset.relativePath, await readFile(baseline.file)]]);
     await close();// Reviewed historical JPEG-capable fixture; never relabel or downgrade the current workspace.
     source = materializeHistoricalWorkspace({root: source}, path.join(base, 'source34'), {version: 34}).root;
     const coldDb = await readFile(path.join(source, 'workbench.sqlite'));
 
-    const capturedBackup = await createWorkspaceBackup({source, destination: backup});
+    const capturedBackup = await createWorkspaceBackup({source, destination: backup}) as {databaseSchemaVersion: number; integrity: string} as {databaseSchemaVersion: number; integrity: string};
     assert.equal(capturedBackup.databaseSchemaVersion, 34);
     assert.equal(capturedBackup.integrity, 'verified');
-    const verified = await verifyWorkspaceBackup({directory: backup});
+    const verified = await verifyWorkspaceBackup({directory: backup}) as {databaseSchemaVersion: number};
     assert.equal(verified.databaseSchemaVersion, 34);
     assert.deepEqual(await readFile(path.join(backup, 'payload/workbench.sqlite')), coldDb);
-    const installed = await restoreWorkspaceBackup({directory: backup, destination: restored});
+    const installed = await restoreWorkspaceBackup({directory: backup, destination: restored}) as {databaseSchemaVersion: number; sourceSchema: number; profile: string};
     assert.equal(installed.databaseSchemaVersion, 35);
     assert.equal(installed.sourceSchema, 34);
     assert.equal(installed.profile, 'restored-local-v6');
 
     store = openStore(restored);
     services = createServices(store, new Map());
-    const restoredInfo = validateCurrentWorkspaceRestoreSchema(store.db);
+    const restoredInfo = validateCurrentWorkspaceRestoreSchema(store.db) as {schemaVersion: number; sourceSchema: number; [key: string]: unknown};
     assert.equal(restoredInfo.schemaVersion, 35);
     assert.equal(restoredInfo.sourceSchema, 34);
     assertRetainedRows(store.db, captured);
     await assertSourceBytes(restored, sourceFiles);
     assert.deepEqual(await services.call('timeline.get', {projectId}), timeline);
     assert.ok(store.db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='exports' AND id=?").get(held.id));
-    assert.equal(matchesRestoredExport(store, heldRecord), false, 'captured queued export grants no execution authority');
-    const listed=await services.call('lut.list',{projectId});assert.equal(listed.items.length,1);
-    const retainedLut=await services.call('lut.inspect',{projectId,lutId:lut.resource.id});assert.deepEqual(retainedLut.resource,lut.resource);assert.equal(retainedLut.integrity,'verified');
+    assert.equal(matchesRestoredExport(store, heldRecord as never), false, 'captured queued export grants no execution authority');
+    const listed=await services.call('lut.list',{projectId}) as {items: unknown[]};assert.equal(listed.items.length,1);
+    const retainedLut=await services.call('lut.inspect',{projectId,lutId:lut.resource.id}) as {resource: unknown; integrity: string};assert.deepEqual(retainedLut.resource,lut.resource);assert.equal(retainedLut.integrity,'verified');
     for(const op of ['timeline.colour.jpeg.inspect','timeline.colour.image.inspect','timeline.colour.source.inspect'])await assert.rejects(services.call(op,{projectId,assetId:image.id}),{code:'RESTORE_OPERATION_UNAVAILABLE'});
-    const context = {expectedWorkspaceOrigin: getWorkspaceRestoreContext(store).workspaceOrigin};
+    const restoreContext=getWorkspaceRestoreContext(store);assert.ok(restoreContext);const context = {expectedWorkspaceOrigin: restoreContext.workspaceOrigin};
     const request = params({purpose: 'export'});
     await assert.rejects(services.call('timeline.render', request), {code: 'RESTORE_WORKSPACE_ORIGIN_REQUIRED'});
-    await assert.rejects(services.call('timeline.render', request, {expectedWorkspaceOrigin: randomUUID()}),
+    await assert.rejects(Promise.resolve(services.call('timeline.render', request as never, {expectedWorkspaceOrigin: randomUUID()} as never)),
       {code: 'RESTORE_WORKSPACE_ORIGIN_MISMATCH'});
-    assert.equal(store.db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=?').get(request.requestId), undefined);
-    const accepted = await services.call('timeline.render', request, context);
+    assert.equal(store.db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=?').get(request.requestId as string), undefined);
+    const accepted = await services.call('timeline.render', request as never, context as never) as RenderResultView;
     assert.notEqual(accepted.id, held.id);
     assert.notEqual(accepted.requestId, held.requestId);
     assert.deepEqual(accepted.snapshot, held.snapshot);
-    assert.deepEqual(store.get('exports', accepted.id).snapshot, heldRecord.snapshot);
-    assert.equal(matchesRestoredExport(store, store.get('exports', accepted.id)), true);
-    const binding = store.db.prepare('SELECT * FROM workspace_restore_export_origins WHERE exportId=?').get(accepted.id);
+    assert.deepEqual((store.get('exports', accepted.id) as ExportRowView).snapshot, heldRecord.snapshot);
+    assert.equal(matchesRestoredExport(store, store.get('exports', accepted.id) as never), true);
+    const binding = store.db.prepare('SELECT * FROM workspace_restore_export_origins WHERE exportId=?').get(accepted.id) as {workspaceOrigin?: unknown; requestId?: string} | undefined;assert.ok(binding);
     assert.equal(binding.workspaceOrigin, context.expectedWorkspaceOrigin);
     assert.equal(binding.requestId, request.requestId);
     assert.deepEqual(validateCurrentWorkspaceRestoreSchema(store.db), restoredInfo, 'valid before actual rerender');
@@ -211,11 +217,12 @@ test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with ex
     const restoredRgb = await decoded(rerendered.file);
     assert.deepEqual(restoredRgb, ordinaryRgb, 'decoded RGB is byte-identical after genuine cold restore');
     assertMixedPixels(restoredRgb);
-    const stream = (await probe(rerendered.file)).probe.streams.find(s => s.codec_type === 'video');
+    const probeResult = await probe(rerendered.file) as unknown as {probe: {streams: {codec_type?: string; width?: number; height?: number; nb_frames?: string | number; color_primaries?: string; color_transfer?: string; color_space?: string; color_range?: string}[]}};
+    const stream = probeResult.probe.streams.find((s: {codec_type?: string}) => s.codec_type === 'video');assert.ok(stream);
     assert.equal(stream.width, 720);
     assert.equal(stream.height, 720);
     assert.equal(Number(stream.nb_frames), 6);
-    for (const key of ['color_primaries', 'color_transfer', 'color_space']) assert.equal(stream[key], 'bt709');
+    for (const key of ['color_primaries', 'color_transfer', 'color_space'] as const) assert.equal(stream[key], 'bt709');
     assert.equal(stream.color_range, 'tv');
     assert.deepEqual(store.get('exports', held.id), heldRecord, 'captured queued export never resumes or changes');
     assertRetainedRows(store.db, captured);

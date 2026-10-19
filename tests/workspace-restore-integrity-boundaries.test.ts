@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
+import type {TestContext} from 'node:test';
+type Loose = Record<string, unknown>;
+type Entity = Loose;
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,24 +25,24 @@ import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from '../pack
 const steps = [initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,
   initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38];
 const pairs = [[24,25,0],[26,27,1],[28,29,2],[30,31,3],[32,33,4],[34,35,5],[36,37,6],[38,39,7]];
-const quote = name => '"'+name.replaceAll('"','""')+'"';
-const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-function tree(root) {
-  const visit = relative => {
+const quote = (name: string) => '"'+name.replaceAll('"','""')+'"';
+const sha = (bytes: Buffer|string) => createHash('sha256').update(bytes).digest('hex');
+function tree(root: string): Array<unknown[]> {
+  const visit = (relative: string): Array<unknown[]> => {
     const file=path.join(root,relative),info=fs.lstatSync(file);
-    return info.isDirectory() ? [[relative,{mode:info.mode}],...fs.readdirSync(file).sort().flatMap(name=>visit(path.join(relative,name)))]
+    return info.isDirectory() ? [[relative,{mode:info.mode}],...fs.readdirSync(file).sort().flatMap((name: string)=>visit(path.join(relative,name)))]
       : [[relative,{mode:info.mode,size:info.size,sha256:sha(fs.readFileSync(file))}]];
   };
   return visit('');
 }
-function logical(db) {
+function logical(db: DatabaseSync) {
   const objects=db.prepare('SELECT type,name,tbl_name,sql FROM main.sqlite_schema ORDER BY type,name').all();
-  return {objects,tables:objects.filter(row=>row.type==='table').map(({name})=>{
+  return {objects,tables:objects.filter((row: Entity)=>row['type']==='table').map((value: unknown)=>{const name=(value as {name: string}).name;
     const statement=db.prepare(`SELECT rowid AS originalRowid,* FROM main.${quote(name)} ORDER BY rowid`);
     statement.setReadBigInts(true);return [name,statement.all()];
   })};
 }
-async function fixture(t,sourceSchema,stepCount) {
+async function fixture(t: TestContext,sourceSchema: number,stepCount: number) {
   const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'restore-integrity-boundary-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const source=path.join(root,'source'),backup=path.join(root,'backup'),destination=path.join(root,'destination');
@@ -49,7 +52,7 @@ async function fixture(t,sourceSchema,stepCount) {
     db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON');
     initializeWorkspaceSchemaThrough24(db);
     for(const initialize of steps.slice(0,stepCount))initialize(db);
-    assert.equal(db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,sourceSchema);
+    assert.equal(db.prepare('SELECT MAX(version) AS version FROM schema_version').get()!.version,sourceSchema);
   } finally {db.close();}
   fs.chmodSync(path.join(source,'workbench.sqlite'),0o600);
   const sourceBefore=tree(source),created=await createWorkspaceBackup({source,destination:backup});
@@ -57,9 +60,9 @@ async function fixture(t,sourceSchema,stepCount) {
   const backupBefore=tree(backup);
   return {root,source,backup,destination,assertOriginals(){assert.deepEqual(tree(source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);}};
 }
-function corruptCapturedHash(db) {
+function corruptCapturedHash(db: DatabaseSync) {
   const trigger='restore_workspace_restore_holds_update';
-  const sql=db.prepare('SELECT sql FROM main.sqlite_schema WHERE type=\'trigger\' AND name=?').get(trigger).sql;
+  const sql=db.prepare('SELECT sql FROM main.sqlite_schema WHERE type=\'trigger\' AND name=?').get(trigger)!.sql as string;
   const before=db.prepare("SELECT rowHash FROM main.workspace_restore_holds WHERE kind='agent_chat_quota' AND id='1'").get();
   assert.ok(before);
   // Offline synthetic corruption only. Restore the exact original guard DDL
@@ -69,7 +72,7 @@ function corruptCapturedHash(db) {
     const wrong=before.rowHash==='0'.repeat(64)?'1'.repeat(64):'0'.repeat(64);
     assert.equal(db.prepare("UPDATE main.workspace_restore_holds SET rowHash=? WHERE kind='agent_chat_quota' AND id='1'").run(wrong).changes,1);
   } finally {db.exec(sql);}
-  assert.equal(db.prepare('SELECT sql FROM main.sqlite_schema WHERE name=?').get(trigger).sql,sql);
+  assert.equal(db.prepare('SELECT sql FROM main.sqlite_schema WHERE name=?').get(trigger)!.sql,sql);
 }
 
 for(const [sourceSchema,restoredSchema,stepCount] of pairs) {
@@ -79,7 +82,7 @@ for(const [sourceSchema,restoredSchema,stepCount] of pairs) {
     assert.equal(result.databaseSchemaVersion,restoredSchema);
     assert.equal((await inspectWorkspaceRestorePublication({destination:f.destination,...result})).publication,'observed_guarded');
     const valid=openStore(f.destination);
-    try {assert.equal(getWorkspaceRestoreContext(valid).schemaVersion,restoredSchema);}finally{valid.close();}
+    try {assert.equal(getWorkspaceRestoreContext(valid)!.schemaVersion,restoredSchema);}finally{valid.close();}
     const database=path.join(f.destination,'workbench.sqlite');
     const changed=new DatabaseSync(database);
     let before;
@@ -88,10 +91,10 @@ for(const [sourceSchema,restoredSchema,stepCount] of pairs) {
     await assert.rejects(inspectWorkspaceRestorePublication({destination:f.destination,...result}),{code:'WORKSPACE_RESTORE_STATUS_UNAVAILABLE'});
     await assert.rejects(inspectWorkspaceRestorePublication({destination:f.destination,directory:f.backup}),{code:'WORKSPACE_RESTORE_STATUS_UNAVAILABLE'});
     assert.deepEqual(tree(f.destination),beforeStatus,'offline status does not repair or rewrite corrupt bytes');
-    const closed=[],close=DatabaseSync.prototype.close;
-    const spy=t.mock.method(DatabaseSync.prototype,'close',function(...args){
-      const main=this.prepare('PRAGMA database_list').all().find(row=>row.name==='main');
-      if(main.file===database)closed.push(this);
+    const closed: DatabaseSync[]=[],close=DatabaseSync.prototype.close;
+    const spy=t.mock.method(DatabaseSync.prototype,'close',function(this: DatabaseSync,...args: unknown[]){
+      const main=this.prepare('PRAGMA database_list').all().find((row: Loose)=>row['name']==='main');
+      if((main as Loose)['file']===database)closed.push(this);
       return Reflect.apply(close,this,args);
     });
     let returned;
@@ -103,9 +106,9 @@ for(const [sourceSchema,restoredSchema,stepCount] of pairs) {
     try {
       assert.deepEqual(logical(read),before,'established startup PRAGMAs do not alter logical schema or rows');
       assert.throws(()=>getWorkspaceRestoreContext({db:read,root:f.destination}),{code:'RESTORE_STORE_UNVERIFIED'});
-      const changes=read.prepare('SELECT total_changes() AS n').get().n;
+      const changes=read.prepare('SELECT total_changes() AS n').get()!.n;
       assert.throws(()=>validateCurrentWorkspaceRestoreSchema(read),{code:'RESTORE_CAPTURE_CHANGED'});
-      assert.equal(read.prepare('SELECT total_changes() AS n').get().n,changes);
+      assert.equal(read.prepare('SELECT total_changes() AS n').get()!.n,changes);
       assert.deepEqual(logical(read),before,'the current validator itself is read-only');
     } finally {read.close();}
     f.assertOriginals();
@@ -114,10 +117,10 @@ for(const [sourceSchema,restoredSchema,stepCount] of pairs) {
   test(`source${sourceSchema}/restored${restoredSchema}: corrupt private candidate is rejected before publication with public error mapping`,async t=>{
     const f=await fixture(t,sourceSchema,stepCount),close=DatabaseSync.prototype.close;
     let fired=0,candidate;
-    const spy=t.mock.method(DatabaseSync.prototype,'close',function(...args){
-      const main=this.prepare('PRAGMA database_list').all().find(row=>row.name==='main');
-      if(!fired&&path.dirname(main.file)===f.destination&&/^\.restore-.+\.sqlite$/.test(path.basename(main.file))&&this.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='workspace_restoration'").get()){
-        candidate=main.file;fired++;corruptCapturedHash(this);
+    const spy=t.mock.method(DatabaseSync.prototype,'close',function(this: DatabaseSync,...args: unknown[]){
+      const main=this.prepare('PRAGMA database_list').all().find((row: Loose)=>row['name']==='main');
+      if(!fired&&main&&path.dirname((main as Loose)['file'] as string)===f.destination&&/^\.restore-.+\.sqlite$/.test(path.basename((main as Loose)['file'] as string))&&this.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='workspace_restoration'").get()){
+        candidate=(main as Loose)['file'] as string;fired++;corruptCapturedHash(this);
       }
       return Reflect.apply(close,this,args);
     });
@@ -127,12 +130,12 @@ for(const [sourceSchema,restoredSchema,stepCount] of pairs) {
     assert.equal(fired,1,'fault occurs after historical construction and before independent candidate reopen');
     assert.equal(fs.existsSync(path.join(f.destination,'workbench.sqlite')),false,'no active workspace is published');
     assert.equal(fs.existsSync(path.join(f.destination,'server.lock')),false);
-    assert.ok(fs.existsSync(candidate),'incomplete candidate is retained for review, not represented as constructor rollback');
-    const db=new DatabaseSync(candidate,{readOnly:true});
+    assert.ok(fs.existsSync(candidate as unknown as string),'incomplete candidate is retained for review, not represented as constructor rollback');
+    const db=new DatabaseSync(candidate as unknown as string,{readOnly:true});
     try {
-      const before=logical(db),changes=db.prepare('SELECT total_changes() AS n').get().n;
+      const before=logical(db),changes=db.prepare('SELECT total_changes() AS n').get()!.n;
       assert.throws(()=>validateCurrentWorkspaceRestoreSchema(db),{code:'RESTORE_CAPTURE_CHANGED'});
-      assert.equal(db.prepare('SELECT total_changes() AS n').get().n,changes);
+      assert.equal(db.prepare('SELECT total_changes() AS n').get()!.n,changes);
       assert.deepEqual(logical(db),before);
     } finally {db.close();}
     f.assertOriginals();
