@@ -2,8 +2,7 @@
 // afade uses its input PTS as the sample position. Give it clip-relative integer
 // sample timestamps, then let the caller reset PTS for the segment's mixer.
 // Fixed 30 fps / 48 kHz output has exactly 1600 samples per timeline frame.
-export interface LegacyFadeClip {readonly startFrame: number; readonly durationFrames: number; readonly fadeInFrames?: number; readonly fadeOutFrames?: number; readonly [key: string]: unknown}
-export function timelineAudioFadeFilters(clip: LegacyFadeClip, segmentStartFrame: number): string {
+export function timelineAudioFadeFilters(clip, segmentStartFrame) {
   const fadeIn = clip.fadeInFrames ?? 0, fadeOut = clip.fadeOutFrames ?? 0;
   if (fadeIn === 0 && fadeOut === 0) return '';
   const offsetSamples = (segmentStartFrame - clip.startFrame) * 1600;

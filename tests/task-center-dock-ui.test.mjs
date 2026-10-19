@@ -221,7 +221,7 @@ test('narrow-dock styles keep only the body scrollable and wrap long IDs and sha
   const shell = read('TaskWorkspace.tsx'), taskCenter = read('TaskCenter.tsx');
   assert.doesNotMatch(shell, /\bfetch\s*\(|\brpc\s*\(|sessionStorage|localStorage|setInterval|setTimeout|createPortal|Dialog|Modal|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck/);
   assert.doesNotMatch(shell, /workspace-visibility\.jsx|TaskWorkspace\.css/);
-  assert.match(taskCenter, /useTaskWorkspaceInteraction\(captureView, taskViewScope, Boolean\(useWorkspaceVisibility\(\)\)\)/);
+  assert.match(taskCenter, /useTaskWorkspaceInteraction\(pass\(captureView\), taskViewScope, Boolean\(useWorkspaceVisibility\(\)\)\)/);
   assert.doesNotMatch(taskCenter, /components\/dialog|onClose|setShowJobs|\binspect\(/);
 });
 
