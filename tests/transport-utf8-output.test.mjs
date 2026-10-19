@@ -104,9 +104,8 @@ const textSites = {
   "tests/agent-tool-journal-crash.test.mjs": 2,
   "tests/asset-disposition-transports.test.mjs": 2,
   "tests/asset-dispositions.test.mjs": 1,
-  "tests/cli-mcp-key-recovery-transport.test.mjs": 3,
+  "tests/cli-mcp-key-recovery-transport.test.mjs": 2,
   "tests/cli-v4.test.mjs": 2,
-  "tests/client-version-source.test.mjs": 1,
   "tests/comfy-transports.test.mjs": 2,
   "tests/custom-image-transports.test.mjs": 2,
   "tests/desktop-media-shutdown.test.mjs": 2,
@@ -116,12 +115,12 @@ const textSites = {
   "tests/workspace-schema26.test.mjs": 2,
   "tests/edit-tasks-http.test.mjs": 2,
   "tests/export-preflight-http-observer.test.mjs": 2,
-  "tests/export-settings-transports.test.mjs": 3,
+  "tests/export-settings-transports.test.mjs": 2,
   "tests/frame-recovery.test.mjs": 1,
   "tests/frame-transports.test.mjs": 3,
   "tests/generation-input-transports.test.mjs": 4,
   "tests/helpers/agent-edit-wire-lifecycle.ts": 3,
-  "tests/helpers/inspection-wire-lifecycle.ts": 3,
+  "tests/helpers/inspection-wire-lifecycle.ts": 1,
   "tests/helpers/agent-edit-wire-lifecycle-cases.ts": 1,
   "tests/helpers/edit-tasks-http-fixture.ts": 1,
   "tests/http-file-shutdown.test.mjs": 2,
@@ -133,8 +132,7 @@ const textSites = {
   "tests/inspection-wire.test.mjs": 3,
   "tests/integration.test.mjs": 2,
   "tests/keychain-timeout-audit.test.mjs": 1,
-  "tests/mcp-v4.test.mjs": 1,
-  "tests/mcp.test.mjs": 3,
+  "tests/mcp.test.mjs": 2,
   "tests/media-runtime-bounds.test.mjs": 1,
   "tests/mutation-wire.test.mjs": 3,
   "tests/private-storage-transports.test.mjs": 2,
@@ -158,12 +156,14 @@ const textSites = {
   "tests/workspace-preferences-http.test.mjs": 2,
   "tests/subject-video-transports.test.mjs": 5,
   "tests/video-first-last-transports.test.mjs": 5,
-  'tests/export-loudness-transports.test.mjs': 3,
+  'tests/export-loudness-transports.test.mjs': 2,
   // CLI JSON stdout/stderr + SDK stderr continuously decode; SDK stdout remains protocol-owned.
   'tests/timeline-mix-loudness-transports.test.mjs': 3,
   'tests/timeline-clip-loudness-transports.test.mjs': 3,
   // One shared stdout/stderr loop site plus the official MCP stderr site.
-  'tests/asset-annotation-transports.test.mjs': 2,
+  // Typed rewrite consolidated the two per-stream registrations into one loop after
+  // setting UTF-8 encoding on both streams; one listener site covers both.
+  'tests/asset-annotation-transports.test.mjs': 1,
   // Actual CLI stdout/stderr and official MCP stderr are bounded UTF-8 text.
   'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.

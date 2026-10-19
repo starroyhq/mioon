@@ -112,9 +112,8 @@ function launch(t: import('node:test').TestContext, args: string[], env: Record<
       envelopeObserved, phases: phases.slice(-16)};
   };
   // JSON descriptions may cross pipe chunks inside a UTF-8 character.
-  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
   assert.ok(child.stdout && child.stderr);
-  for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]] as [string, NodeJS.ReadableStream][]) stream.on('data', (chunk: string) => {
+  for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]] as [string, NodeJS.ReadableStream][]) stream.setEncoding('utf8').on('data', (chunk: string) => {
     milestones.firstOutputMs ??= elapsed(); milestones.lastOutputMs = elapsed();
     if (name === 'stdout') stdout += chunk; else stderr += chunk;
     if (stdout.length + stderr.length > 512 * 1024) { failure = Error('Owned child exceeded bounded output'); child.kill('SIGKILL'); }
